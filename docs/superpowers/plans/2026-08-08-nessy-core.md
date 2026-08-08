@@ -3081,10 +3081,10 @@ class InProcessEngineTest {
 
         private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
 
-        FakeProvider(List<ModelEvent>... scripted) {
-            for (List<ModelEvent> turn : scripted) {
-                turns.add(turn);
-            }
+        // Takes a List of turns rather than varargs: generic varargs would raise an
+        // unchecked warning, and this project forbids @SuppressWarnings outright.
+        FakeProvider(List<List<ModelEvent>> scripted) {
+            turns.addAll(scripted);
         }
 
         @Override
@@ -3142,6 +3142,35 @@ class InProcessEngineTest {
         @Override
         public Awaited<ToolResult> execute(Echo input, ToolContext context) {
             return Awaited.ready(ToolResult.ok("echoed:" + input.value()));
+        }
+    }
+
+    /** A tool that throws, to prove the loop survives a broken tool. */
+    private static final class ExplodingTool implements Tool<Echo> {
+
+        @Override
+        public String name() {
+            return "boom";
+        }
+
+        @Override
+        public String description() {
+            return "Always throws";
+        }
+
+        @Override
+        public Class<Echo> inputType() {
+            return Echo.class;
+        }
+
+        @Override
+        public boolean requiresApproval() {
+            return false;
+        }
+
+        @Override
+        public Awaited<ToolResult> execute(Echo input, ToolContext context) {
+            throw new IllegalStateException("kaboom");
         }
     }
 
@@ -3282,17 +3311,7 @@ class InProcessEngineTest {
                         new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
                 List.of(new ModelEvent.TextChunk("Oh."), new ModelEvent.TurnEnded(StopReason.END_TURN)));
 
-        Tool<Echo> exploding = new EchoTool(false) {
-            @Override
-            public String name() {
-                return "boom";
-            }
-
-            @Override
-            public Awaited<ToolResult> execute(Echo input, ToolContext context) {
-                throw new IllegalStateException("kaboom");
-            }
-        };
+        Tool<Echo> exploding = new ExplodingTool();
 
         RunOutcome outcome = engine(
                         provider, MapToolRegistry.of(exploding), new ApproveEverything(), new InMemorySessionStore())
@@ -3367,9 +3386,28 @@ Before running, tidy this test's imports: replace every inline fully-qualified
 reference (`org.jwcarman.nessy.core.Decision`, `org.jwcarman.nessy.approval.ApprovalRequest`,
 `org.jwcarman.nessy.core.SessionState`, `java.util.ArrayList`) with explicit
 single-symbol imports at the top. The project forbids star imports and prefers
-imports over inline qualification. Also add `@SafeVarargs`-free handling by
-changing `FakeProvider`'s constructor to take `List<List<ModelEvent>>` if the
-varargs generic array triggers a warning — **do not** suppress it.
+imports over inline qualification.
+
+Also wrap every `FakeProvider` call site. Its constructor takes
+`List<List<ModelEvent>>` — a list of turns — rather than generic varargs, because
+generic varargs raise an unchecked warning and this project forbids
+`@SuppressWarnings` outright. So each construction wraps its turn lists:
+
+```java
+// one scripted turn
+new FakeProvider(List.of(
+        List.of(new ModelEvent.TextChunk("Four."), new ModelEvent.TurnEnded(StopReason.END_TURN))));
+
+// two scripted turns
+new FakeProvider(List.of(
+        List.of(new ModelEvent.ToolUseEmitted(call), new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+        List.of(new ModelEvent.TextChunk("Done."), new ModelEvent.TurnEnded(StopReason.END_TURN))));
+
+// no scripted turns
+new FakeProvider(List.of());
+```
+
+Apply that at all nine call sites.
 
 - [ ] **Step 2: Run it to verify it fails**
 
