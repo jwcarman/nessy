@@ -64,10 +64,13 @@ class InProcessEngineTest {
   private static final SessionId ID = new SessionId("s1");
   private static final AgentConfig CONFIG = new AgentConfig("fake-model", "be helpful", 1024);
 
-  /** A model that replays scripted turns, one per call. */
+  /** A model that replays scripted turns, one per call, and tracks how its streams are held. */
   private static final class FakeProvider implements ModelProvider {
 
     private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
+    private int closedCount;
+    private int openStreams;
+    private int maxOpenStreams;
 
     // Takes a List of turns rather than varargs: generic varargs would raise an
     // unchecked warning, and this project forbids @SuppressWarnings outright.
@@ -78,6 +81,8 @@ class InProcessEngineTest {
     @Override
     public ModelStream stream(ModelRequest request) {
       Iterator<ModelEvent> events = turns.removeFirst().iterator();
+      openStreams++;
+      maxOpenStreams = Math.max(maxOpenStreams, openStreams);
       return new ModelStream() {
         @Override
         public Iterator<ModelEvent> iterator() {
@@ -86,7 +91,8 @@ class InProcessEngineTest {
 
         @Override
         public void close() {
-          // nothing to release
+          openStreams--;
+          closedCount++;
         }
       };
     }
@@ -162,6 +168,35 @@ class InProcessEngineTest {
     }
   }
 
+  /** A tool that always parks, to prove InProcessEngine refuses rather than swallows it. */
+  private static final class ParkingTool implements Tool<Echo> {
+
+    @Override
+    public String name() {
+      return "park";
+    }
+
+    @Override
+    public String description() {
+      return "Always parks";
+    }
+
+    @Override
+    public Class<Echo> inputType() {
+      return Echo.class;
+    }
+
+    @Override
+    public boolean requiresApproval() {
+      return false;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(Echo input, ToolContext context) {
+      return Awaited.parked(ParkToken.random());
+    }
+  }
+
   /** An approver that records whether it was ever consulted. */
   private static final class CountingApprover implements Approver {
 
@@ -182,6 +217,13 @@ class InProcessEngineTest {
   private static ObjectNode echoArgs(String value) {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
     args.put("value", value);
+    return args;
+  }
+
+  /** Arguments that do not bind to {@link Echo}: a typo'd field name. */
+  private static ObjectNode malformedArgs(String value) {
+    ObjectNode args = JsonNodeFactory.instance.objectNode();
+    args.put("vlaue", value);
     return args;
   }
 
@@ -405,6 +447,131 @@ class InProcessEngineTest {
                     .resume(ID, ParkToken.random(), new Event.UserSaid("x")))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("DurableEngine");
+  }
+
+  @Test
+  void aParkingToolIsRefusedRatherThanSwallowed() {
+    FakeProvider provider =
+        new FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "park", echoArgs("hi"))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE))));
+
+    assertThatThrownBy(
+            () ->
+                engine(
+                        provider,
+                        MapToolRegistry.of(new ParkingTool()),
+                        new ApproveEverything(),
+                        new InMemorySessionStore())
+                    .run(ID, new Event.UserSaid("go")))
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("DurableEngine");
+  }
+
+  @Test
+  void malformedArgumentsOnAnApprovalRequiringToolAreRecoverable() {
+    FakeProvider provider =
+        new FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", malformedArgs("hi"))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                List.of(
+                    new ModelEvent.TextChunk("Oh."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+    SessionStore store = new InMemorySessionStore();
+
+    RunOutcome outcome =
+        engine(provider, MapToolRegistry.of(new EchoTool(true)), new ApproveEverything(), store)
+            .run(ID, new Event.UserSaid("echo hi"));
+
+    assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
+    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+    ToolResultBlock block =
+        (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+    assertThat(block.isError()).isTrue();
+    assertThat(store.load(ID)).isPresent();
+  }
+
+  @Test
+  void theModelStreamIsClosedAfterEachTurn() {
+    FakeProvider provider =
+        new FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                List.of(
+                    new ModelEvent.TextChunk("Done."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+
+    engine(
+            provider,
+            MapToolRegistry.of(new EchoTool(true)),
+            new ApproveEverything(),
+            new InMemorySessionStore())
+        .run(ID, new Event.UserSaid("echo hi"));
+
+    assertThat(provider.closedCount).isEqualTo(2);
+    assertThat(provider.openStreams).isZero();
+    assertThat(provider.maxOpenStreams).isEqualTo(1);
+  }
+
+  @Test
+  void aSecondRunContinuesTheSavedSession() {
+    FakeProvider provider =
+        new FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.TextChunk("Four."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN)),
+                List.of(
+                    new ModelEvent.TextChunk("Five."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+    SessionStore store = new InMemorySessionStore();
+    InProcessEngine engine = engine(provider, MapToolRegistry.of(), new ApproveEverything(), store);
+
+    engine.run(ID, new Event.UserSaid("what is 2+2?"));
+    RunOutcome outcome = engine.run(ID, new Event.UserSaid("what is 2+3?"));
+
+    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+    assertThat(completed.state().messages())
+        .containsExactly(
+            Message.user("what is 2+2?"),
+            Message.assistant(List.of(new TextBlock("Four."))),
+            Message.user("what is 2+3?"),
+            Message.assistant(List.of(new TextBlock("Five."))));
+  }
+
+  @Test
+  void twoToolCallsInOneTurnBatchIntoOneResultMessage() {
+    FakeProvider provider =
+        new FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("a"))),
+                    new ModelEvent.ToolUseEmitted(new ToolCall("c2", "echo", echoArgs("b"))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                List.of(
+                    new ModelEvent.TextChunk("Done."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+
+    RunOutcome outcome =
+        engine(
+                provider,
+                MapToolRegistry.of(new EchoTool(false)),
+                new ApproveEverything(),
+                new InMemorySessionStore())
+            .run(ID, new Event.UserSaid("echo a and b"));
+
+    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+    assertThat(completed.state().messages()).hasSize(4);
+    assertThat(completed.state().messages().get(2).content())
+        .containsExactly(
+            new ToolResultBlock("c1", "echoed:a", false),
+            new ToolResultBlock("c2", "echoed:b", false));
   }
 
   private static final class RecordingListener implements AgentEventListener {

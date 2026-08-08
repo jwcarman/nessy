@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -97,13 +98,19 @@ public final class InProcessEngine implements ExecutionEngine {
         "InProcessEngine never parks, so there is nothing to resume. Use DurableEngine.");
   }
 
+  /** Reduces one event and tells the listeners, without performing its effects. */
+  private Step reduceAndNotify(SessionState state, Event event) {
+    Step step = reducer.reduce(state, event);
+    for (AgentEventListener listener : listeners) {
+      listener.onEvent(step.state().id(), event, step.state());
+    }
+    return step;
+  }
+
   /** Reduces one event, tells the listeners, then performs whatever it asked for. */
   private SessionState feed(SessionState state, Event event) {
-    Step step = reducer.reduce(state, event);
+    Step step = reduceAndNotify(state, event);
     SessionState next = step.state();
-    for (AgentEventListener listener : listeners) {
-      listener.onEvent(next.id(), event, next);
-    }
     for (Effect effect : step.effects()) {
       next = perform(next, effect);
     }
@@ -114,16 +121,31 @@ public final class InProcessEngine implements ExecutionEngine {
     return switch (effect) {
       case Effect.CallModel ignored -> callModel(state);
       case Effect.RequestApproval request -> feed(state, decide(state, request.call()));
-      case Effect.ExecuteTool execute -> feed(state, run(state, execute.call()));
+      case Effect.ExecuteTool execute -> feed(state, executeTool(state, execute.call()));
     };
   }
 
+  /**
+   * Streams one model turn, deferring its effects until after the stream closes.
+   *
+   * <p>A tool round-trip triggered by the terminal event would otherwise open the next {@code
+   * ModelStream} while this one is still held open by the enclosing try-with-resources, leaking a
+   * live connection per round-trip. Listeners are still notified as each chunk arrives, from inside
+   * the loop, so streaming stays live; only effects — of which only the terminal event has any —
+   * are deferred.
+   */
   private SessionState callModel(SessionState state) {
     SessionState current = state;
+    List<Effect> deferred = new ArrayList<>();
     try (ModelStream stream = provider.stream(requestFor(current))) {
       for (ModelEvent modelEvent : stream) {
-        current = feed(current, translate(modelEvent));
+        Step step = reduceAndNotify(current, translate(modelEvent));
+        current = step.state();
+        deferred.addAll(step.effects());
       }
+    }
+    for (Effect effect : deferred) {
+      current = perform(current, effect);
     }
     return current;
   }
@@ -163,23 +185,46 @@ public final class InProcessEngine implements ExecutionEngine {
     if (!tool.requiresApproval()) {
       return new Event.ApprovalDecided(call, Decision.allow());
     }
-    ApprovalRequest request = new ApprovalRequest(state.id(), call, invoker.describe(tool, call));
+    ApprovalRequest request =
+        new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
     return new Event.ApprovalDecided(call, resolve(approver.approve(request), "approver"));
   }
 
-  private Event run(SessionState state, ToolCall call) {
+  /**
+   * Renders a call for the approval prompt, without letting malformed arguments blow up the
+   * session.
+   *
+   * <p>{@code describe} binds the call's raw JSON to the tool's input record, which throws on
+   * arguments the record cannot accept — the same failure {@link #executeTool} recovers from. A
+   * tool that does not require approval already turns that failure into a model-visible error; a
+   * tool that does should get the same chance rather than losing the whole session before it ever
+   * reaches execution. The raw call is still shown, so a human reviewing the prompt can see the
+   * arguments are malformed rather than being told they parsed.
+   */
+  private String describeForApproval(Tool<?> tool, ToolCall call) {
+    try {
+      return invoker.describe(tool, call);
+    } catch (RuntimeException e) {
+      return call.name() + "(" + call.arguments() + ")";
+    }
+  }
+
+  private Event executeTool(SessionState state, ToolCall call) {
     Optional<Tool<?>> found = tools.find(call.name());
     if (found.isEmpty()) {
       return new Event.ToolFinished(call, ToolResult.error("No such tool: " + call.name()));
     }
+    Awaited<ToolResult> awaited;
     try {
-      Awaited<ToolResult> awaited = invoker.invoke(found.get(), call, new ToolContext(state.id()));
-      return new Event.ToolFinished(call, resolve(awaited, "tool " + call.name()));
+      awaited = invoker.invoke(found.get(), call, new ToolContext(state.id()));
     } catch (RuntimeException e) {
       // Factor 9: the model sees a compact error and gets to recover. It
       // never sees a stack trace, and the loop never dies on a bad tool.
       return new Event.ToolFinished(call, ToolResult.error(describe(e)));
     }
+    // Outside the catch: a tool that parks is a configuration error, not a
+    // runtime one, and must fail loudly rather than becoming model-visible noise.
+    return new Event.ToolFinished(call, resolve(awaited, "tool " + call.name()));
   }
 
   private static String describe(RuntimeException e) {
