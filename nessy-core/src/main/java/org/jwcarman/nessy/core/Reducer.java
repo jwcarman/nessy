@@ -47,7 +47,7 @@ public record Reducer(int maxConsecutiveErrors) {
       case Event.UserSaid e -> userSaid(state, e);
       case Event.TextDelta e -> textDelta(state, e);
       case Event.ModelTurnEnded e -> modelTurnEnded(state, e);
-      case Event.ToolCallRequested e -> throw new UnsupportedOperationException("Task 6");
+      case Event.ToolCallRequested e -> toolCallRequested(state, e);
       case Event.ApprovalDecided e -> throw new UnsupportedOperationException("Task 7");
       case Event.ToolFinished e -> throw new UnsupportedOperationException("Task 8");
     };
@@ -75,7 +75,22 @@ public record Reducer(int maxConsecutiveErrors) {
 
   private Step modelTurnEnded(SessionState state, Event.ModelTurnEnded event) {
     SessionState settled = settleAssistantMessage(state);
-    return Step.of(settled.with(SessionStatus.COMPLETE));
+    if (settled.pendingCalls().isEmpty()) {
+      return Step.of(settled.with(SessionStatus.COMPLETE));
+    }
+    return Step.of(
+        settled.with(SessionStatus.AWAITING_APPROVAL),
+        new Effect.RequestApproval(settled.pendingCalls().getFirst()));
+  }
+
+  private Step toolCallRequested(SessionState state, Event.ToolCallRequested event) {
+    List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
+    blocks.add(new ToolUseBlock(event.call()));
+
+    List<ToolCall> calls = new ArrayList<>(state.pendingCalls());
+    calls.add(event.call());
+
+    return Step.of(state.withPendingBlocks(blocks).withPendingCalls(calls));
   }
 
   /** Moves the in-flight blocks into the settled conversation. */
