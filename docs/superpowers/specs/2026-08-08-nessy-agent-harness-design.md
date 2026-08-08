@@ -221,6 +221,17 @@ public interface ToolRegistry {
 Schemas derive from records, never hand-written JSON (factor 4):
 `Tools.of("read_file", "Read a file", ReadFile.class, (args, ctx) -> …)`.
 
+Generation uses victools `jsonschema-generator` 4.38 with `DRAFT_2020_12` and
+`PLAIN_JSON`. Verified output: a root `type: "object"` with `properties` and a
+`required` array; every component is required unless its type is `Optional`;
+`@JsonPropertyDescription` becomes the property description.
+
+**One thing provider modules must handle:** an `Optional<Integer>` component
+renders as `"type": ["integer", "null"]`, not a bare `"integer"`. Providers with
+strict function-calling modes reject type unions, so a provider module may need
+to normalize them on the way out. That conversion belongs in the provider, not in
+`Schemas` — the core emits correct JSON Schema and each wire format adapts.
+
 ### Approver
 
 ```java
