@@ -165,6 +165,27 @@ class ReducerToolResultTest {
   }
 
   @Test
+  void aTurnCutOffAtTheTokenCeilingWithCallsStillPendingAnswersEveryOneOfThem() {
+    ToolCall first = call("c1");
+    ToolCall second = call("c2");
+    SessionState state = initial;
+    for (ToolCall each : List.of(first, second)) {
+      state = reducer.reduce(state, new Event.ToolCallRequested(each)).state();
+    }
+
+    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS));
+
+    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+    assertThat(step.effects()).isEmpty();
+    assertThat(step.state().pendingCalls()).isEmpty();
+    assertThat(step.state().messages().getLast().content())
+        .extracting(block -> ((ToolResultBlock) block).toolUseId())
+        .containsExactly("c1", "c2");
+    assertThat(step.state().messages().getLast().content())
+        .allMatch(block -> ((ToolResultBlock) block).isError());
+  }
+
+  @Test
   void reachingTheErrorCeilingFailsTheSessionInsteadOfLooping() {
     ToolCall toolCall = call("c1");
     SessionState state = awaitingApproval(toolCall).withConsecutiveErrors(1);

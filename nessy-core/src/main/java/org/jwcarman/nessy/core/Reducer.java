@@ -90,11 +90,18 @@ public record Reducer(int maxConsecutiveErrors) {
    * SessionStatus#COMPLETE}. Context compaction is deliberately deferred, so overflow has to fail
    * loudly: a half-finished sentence reported as a finished answer is the worse outcome, and it is
    * silent.
+   *
+   * <p>A turn can be truncated mid-{@code tool_use}, leaving the just-settled assistant message
+   * with {@link ToolUseBlock}s that never got a matching result. Left alone, those pending calls
+   * would leak into a resumed session and the next user message would follow a {@code tool_use}
+   * with no {@code tool_result}, which providers reject outright. So this path closes the shape the
+   * same way the error ceiling does: answer every pending call and flush the results before
+   * failing.
    */
   private Step modelTurnEnded(SessionState state, Event.ModelTurnEnded event) {
     SessionState settled = settleAssistantMessage(state);
     if (event.reason() == StopReason.MAX_TOKENS) {
-      return Step.of(settled.with(SessionStatus.FAILED));
+      return Step.of(flushResults(abandonPendingCalls(settled)).with(SessionStatus.FAILED));
     }
     if (settled.pendingCalls().isEmpty()) {
       return Step.of(settled.with(SessionStatus.COMPLETE));
@@ -178,8 +185,9 @@ public record Reducer(int maxConsecutiveErrors) {
    *
    * <p>The settled assistant message already carries a {@code tool_use} block for each of them, and
    * providers reject a turn whose blocks are not all answered. Leaving them unanswered would make
-   * the transcript permanently unusable — a 400 on every subsequent call — so the breaker closes
-   * the shape it opened.
+   * the transcript permanently unusable — a 400 on every subsequent call — so whichever path is
+   * failing the session closes the shape it opened, whether that's the error ceiling or a turn
+   * truncated at the token limit.
    */
   private static SessionState abandonPendingCalls(SessionState state) {
     if (state.pendingCalls().isEmpty()) {
