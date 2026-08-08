@@ -3522,6 +3522,7 @@ import org.jwcarman.nessy.tool.ToolContext;
 import org.jwcarman.nessy.tool.ToolInvoker;
 import org.jwcarman.nessy.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -3582,13 +3583,19 @@ public final class InProcessEngine implements ExecutionEngine {
                 "InProcessEngine never parks, so there is nothing to resume. Use DurableEngine.");
     }
 
+    /** Reduces one event and tells the listeners, without performing anything. */
+    private Step reduceAndNotify(SessionState state, Event event) {
+        Step step = reducer.reduce(state, event);
+        for (AgentEventListener listener : listeners) {
+            listener.onEvent(step.state().id(), event, step.state());
+        }
+        return step;
+    }
+
     /** Reduces one event, tells the listeners, then performs whatever it asked for. */
     private SessionState feed(SessionState state, Event event) {
-        Step step = reducer.reduce(state, event);
+        Step step = reduceAndNotify(state, event);
         SessionState next = step.state();
-        for (AgentEventListener listener : listeners) {
-            listener.onEvent(next.id(), event, next);
-        }
         for (Effect effect : step.effects()) {
             next = perform(next, effect);
         }
@@ -3599,16 +3606,27 @@ public final class InProcessEngine implements ExecutionEngine {
         return switch (effect) {
             case Effect.CallModel ignored -> callModel(state);
             case Effect.RequestApproval request -> feed(state, decide(state, request.call()));
-            case Effect.ExecuteTool execute -> feed(state, run(state, execute.call()));
+            case Effect.ExecuteTool execute -> feed(state, executeTool(state, execute.call()));
         };
     }
 
     private SessionState callModel(SessionState state) {
         SessionState current = state;
+        List<Effect> deferred = new ArrayList<>();
+        // Effects are collected here and performed only AFTER the stream closes, so a
+        // tool round-trip never opens a second stream while this one is still held.
+        // Against a real provider the naive version keeps N HTTP connections alive for
+        // N round-trips. Listeners are still notified inside the loop, so a TUI paints
+        // tokens live — text deltas produce no effects, only the terminal event does.
         try (ModelStream stream = provider.stream(requestFor(current))) {
             for (ModelEvent modelEvent : stream) {
-                current = feed(current, translate(modelEvent));
+                Step step = reduceAndNotify(current, translate(modelEvent));
+                current = step.state();
+                deferred.addAll(step.effects());
             }
+        }
+        for (Effect effect : deferred) {
+            current = perform(current, effect);
         }
         return current;
     }
@@ -3650,24 +3668,47 @@ public final class InProcessEngine implements ExecutionEngine {
             return new Event.ApprovalDecided(call, Decision.allow());
         }
         ApprovalRequest request =
-                new ApprovalRequest(state.id(), call, invoker.describe(tool, call));
+                new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
         return new Event.ApprovalDecided(call, resolve(approver.approve(request), "approver"));
     }
 
-    private Event run(SessionState state, ToolCall call) {
+    /**
+     * Renders a call for a human, tolerating arguments the tool's record cannot bind.
+     *
+     * <p>{@code describe} binds the arguments exactly as {@code invoke} does, so a
+     * malformed tool call from the model would throw here. Unguarded, that escapes
+     * {@code run} and the session is never saved — while the identical malformed call
+     * against a tool needing no approval stays recoverable. Same mistake, opposite
+     * outcomes, decided by a flag unrelated to argument validity. So fall back to the
+     * raw JSON: the human still sees the arguments are malformed rather than being
+     * shown something that looks like it parsed.
+     */
+    private String describeForApproval(Tool<?> tool, ToolCall call) {
+        try {
+            return invoker.describe(tool, call);
+        } catch (RuntimeException e) {
+            return call.name() + "(" + call.arguments() + ")";
+        }
+    }
+
+    private Event executeTool(SessionState state, ToolCall call) {
         Optional<Tool<?>> found = tools.find(call.name());
         if (found.isEmpty()) {
             return new Event.ToolFinished(call, ToolResult.error("No such tool: " + call.name()));
         }
+        Awaited<ToolResult> awaited;
         try {
-            Awaited<ToolResult> awaited =
-                    invoker.invoke(found.get(), call, new ToolContext(state.id()));
-            return new Event.ToolFinished(call, resolve(awaited, "tool " + call.name()));
+            awaited = invoker.invoke(found.get(), call, new ToolContext(state.id()));
         } catch (RuntimeException e) {
             // Factor 9: the model sees a compact error and gets to recover. It
             // never sees a stack trace, and the loop never dies on a bad tool.
             return new Event.ToolFinished(call, ToolResult.error(describe(e)));
         }
+        // resolve() is deliberately OUTSIDE the catch. It throws when a tool returns
+        // Awaited.Parked, and that is a configuration error this engine must fail
+        // loudly on — swallowing it into a ToolResult would turn a misconfiguration
+        // into confusing model-visible noise.
+        return new Event.ToolFinished(call, resolve(awaited, "tool " + call.name()));
     }
 
     private static String describe(RuntimeException e) {
