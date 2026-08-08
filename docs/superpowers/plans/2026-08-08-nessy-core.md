@@ -15,9 +15,11 @@
 ## Global Constraints
 
 - **Java 25.** `<maven.compiler.release>25</maven.compiler.release>`. Records, sealed interfaces, and pattern matching for switch are load-bearing.
-- **groupId** `com.callibrity.nessy`, **version** `0.1.0-SNAPSHOT`, base package `com.callibrity.nessy`.
+- **groupId** `org.jwcarman.nessy`, **version** `0.1.0-SNAPSHOT`, base package `org.jwcarman.nessy`. Matches the sibling `substrate` project's convention (`org.jwcarman.substrate`).
 - **No star imports.** Every import is a single explicit symbol, including static imports. This is a hard project rule.
 - **No warning suppression.** No `@SuppressWarnings` of any kind. Fix the underlying cause instead.
+- **Apache License 2.0.** Every `.java` file carries the Apache 2.0 header applied by the mycila `license-maven-plugin` under the non-default `license` profile. Run `mvn license:format -Plicense` after creating files, and commit the headers.
+- **Spotless with Google Java Format is enforced.** `spotless:check` is bound to the `validate` phase, so an unformatted file fails the build. Run `mvn spotless:apply` before committing. This reformats the plan's code samples to Google style (2-space indent) — that reformatting is expected and correct, not a deviation from the plan.
 - **`nessy-core` depends only on** `jackson-databind`, `jackson-annotations`, and `victools jsonschema-generator` + `jsonschema-module-jackson`. No Spring, no reactive types, no model SDKs.
 - **Dependency versions:** jackson `2.19.2`, victools `4.38.0`, junit-jupiter `6.1.2`, assertj-core `3.27.7`, maven-surefire-plugin `3.5.6`.
 - **Live tests are tagged `live` and excluded by default.** `mvn verify` must pass with no API key and no network. This plan produces zero live tests, but the exclusion is configured now so later plans inherit it.
@@ -28,7 +30,7 @@
 
 ## File Structure
 
-**`nessy-core/src/main/java/com/callibrity/nessy/core/`** — the reducer and its data. Depends on nothing outside itself.
+**`nessy-core/src/main/java/org/jwcarman/nessy/core/`** — the reducer and its data. Depends on nothing outside itself.
 
 | File | Responsibility |
 |---|---|
@@ -50,7 +52,7 @@
 | `Awaited.java` | Sealed: `Ready<T>`, `Parked<T>` |
 | `ParkToken.java` | Single-use resume token |
 
-**`nessy-core/src/main/java/com/callibrity/nessy/tool/`** — the tool seam.
+**`nessy-core/src/main/java/org/jwcarman/nessy/tool/`** — the tool seam.
 
 | File | Responsibility |
 |---|---|
@@ -62,7 +64,7 @@
 | `Schemas.java` | Record → JSON Schema via victools |
 | `ToolInvoker.java` | Deserializes arguments and invokes, bridging the generic capture |
 
-**`nessy-core/src/main/java/com/callibrity/nessy/model/`** — the model seam.
+**`nessy-core/src/main/java/org/jwcarman/nessy/model/`** — the model seam.
 
 | File | Responsibility |
 |---|---|
@@ -72,7 +74,7 @@
 | `ModelStream.java` | `AutoCloseable Iterable<ModelEvent>` |
 | `Capability.java` | What a provider supports |
 
-**`nessy-core/src/main/java/com/callibrity/nessy/approval/`** — the approval seam.
+**`nessy-core/src/main/java/org/jwcarman/nessy/approval/`** — the approval seam.
 
 | File | Responsibility |
 |---|---|
@@ -80,14 +82,14 @@
 | `ApprovalRequest.java` | What the human is being asked |
 | `ApproveEverything.java`, `DenyEverything.java` | Non-interactive modes |
 
-**`nessy-core/src/main/java/com/callibrity/nessy/session/`** — persistence seam.
+**`nessy-core/src/main/java/org/jwcarman/nessy/session/`** — persistence seam.
 
 | File | Responsibility |
 |---|---|
 | `SessionStore.java` | `load` / `save` / `consumeToken` |
 | `InMemorySessionStore.java` | Default |
 
-**`nessy-core/src/main/java/com/callibrity/nessy/engine/`** — execution.
+**`nessy-core/src/main/java/org/jwcarman/nessy/engine/`** — execution.
 
 | File | Responsibility |
 |---|---|
@@ -98,7 +100,7 @@
 | `InProcessEngine.java` | Default engine: virtual threads, never parks |
 | `Nessy.java` | Builder facade |
 
-**`nessy-testing/src/main/java/com/callibrity/nessy/testing/`**
+**`nessy-testing/src/main/java/org/jwcarman/nessy/testing/`**
 
 | File | Responsibility |
 |---|---|
@@ -114,18 +116,18 @@
 - Create: `nessy-core/pom.xml`
 - Create: `nessy-testing/pom.xml`
 - Create: `.gitignore`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/BuildSmokeTest.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/BuildSmokeTest.java`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: two Maven modules, `com.callibrity.nessy:nessy-core:0.1.0-SNAPSHOT` and `com.callibrity.nessy:nessy-testing:0.1.0-SNAPSHOT`, both on Java 25 with JUnit and AssertJ on the test classpath, and surefire excluding the `live` group.
+- Produces: two Maven modules, `org.jwcarman.nessy:nessy-core:0.1.0-SNAPSHOT` and `org.jwcarman.nessy:nessy-testing:0.1.0-SNAPSHOT`, both on Java 25 with JUnit and AssertJ on the test classpath, and surefire excluding the `live` group.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/BuildSmokeTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/BuildSmokeTest.java`:
 
 ```java
-package com.callibrity.nessy;
+package org.jwcarman.nessy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -156,7 +158,7 @@ Create `pom.xml`:
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.callibrity.nessy</groupId>
+  <groupId>org.jwcarman.nessy</groupId>
   <artifactId>nessy-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
@@ -182,7 +184,7 @@ Create `pom.xml`:
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>com.callibrity.nessy</groupId>
+        <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-core</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -269,7 +271,7 @@ Create `nessy-core/pom.xml`:
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.callibrity.nessy</groupId>
+    <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
@@ -308,7 +310,7 @@ Create `nessy-testing/pom.xml`:
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.callibrity.nessy</groupId>
+    <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
@@ -318,7 +320,7 @@ Create `nessy-testing/pom.xml`:
 
   <dependencies>
     <dependency>
-      <groupId>com.callibrity.nessy</groupId>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-core</artifactId>
     </dependency>
   </dependencies>
@@ -344,7 +346,7 @@ Expected: PASS. `BuildSmokeTest` runs green in `nessy-core`.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add pom.xml nessy-core/pom.xml nessy-testing/pom.xml .gitignore nessy-core/src/test/java/com/callibrity/nessy/BuildSmokeTest.java
+git add pom.xml nessy-core/pom.xml nessy-testing/pom.xml .gitignore nessy-core/src/test/java/org/jwcarman/nessy/BuildSmokeTest.java
 git commit -m "build: add Maven skeleton for nessy-core and nessy-testing"
 ```
 
@@ -353,16 +355,16 @@ git commit -m "build: add Maven skeleton for nessy-core and nessy-testing"
 ### Task 2: Core message model
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/SessionId.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/Role.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/ContentBlock.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/TextBlock.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/ToolUseBlock.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/ToolResultBlock.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/ToolCall.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/ToolResult.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/StopReason.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/core/MessageTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/SessionId.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/Role.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/ContentBlock.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/TextBlock.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/ToolUseBlock.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/ToolResultBlock.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/ToolCall.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/ToolResult.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/StopReason.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/core/MessageTest.java`
 
 **Interfaces:**
 - Consumes: Task 1's `nessy-core` module.
@@ -370,10 +372,10 @@ git commit -m "build: add Maven skeleton for nessy-core and nessy-testing"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/core/MessageTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/core/MessageTest.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -445,7 +447,7 @@ Expected: FAIL — compilation errors, `cannot find symbol: class Message`.
 `SessionId.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import java.util.UUID;
 
@@ -467,7 +469,7 @@ public record SessionId(String value) {
 `Role.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /**
  * Who a message came from.
@@ -485,7 +487,7 @@ public enum Role {
 `ContentBlock.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /** One piece of a message. Messages are lists of these, not strings. */
 public sealed interface ContentBlock permits TextBlock, ToolUseBlock, ToolResultBlock {}
@@ -494,7 +496,7 @@ public sealed interface ContentBlock permits TextBlock, ToolUseBlock, ToolResult
 `TextBlock.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /** Prose, from either side of the conversation. */
 public record TextBlock(String text) implements ContentBlock {}
@@ -503,7 +505,7 @@ public record TextBlock(String text) implements ContentBlock {}
 `ToolUseBlock.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /** The model asking for a tool to run. Always on an assistant message. */
 public record ToolUseBlock(ToolCall call) implements ContentBlock {}
@@ -512,7 +514,7 @@ public record ToolUseBlock(ToolCall call) implements ContentBlock {}
 `ToolResultBlock.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /**
  * What a tool produced, addressed back to the call that asked for it.
@@ -526,7 +528,7 @@ public record ToolResultBlock(String toolUseId, String content, boolean isError)
 `ToolCall.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -543,7 +545,7 @@ public record ToolCall(String id, String name, JsonNode arguments) {}
 `ToolResult.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /**
  * What a tool produced.
@@ -566,7 +568,7 @@ public record ToolResult(String content, boolean isError) {
 `StopReason.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /** Why a model turn ended. */
 public enum StopReason {
@@ -579,7 +581,7 @@ public enum StopReason {
 `Message.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import java.util.List;
 
@@ -613,7 +615,7 @@ Expected: PASS — all six tests in `MessageTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/core nessy-core/src/test/java/com/callibrity/nessy/core
+git add nessy-core/src/main/java/org/jwcarman/nessy/core nessy-core/src/test/java/org/jwcarman/nessy/core
 git commit -m "feat(core): add message, tool call, and tool result model"
 ```
 
@@ -622,9 +624,9 @@ git commit -m "feat(core): add message, tool call, and tool result model"
 ### Task 3: SessionState
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/SessionStatus.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/SessionState.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/core/SessionStateTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/SessionStatus.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/SessionState.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/core/SessionStateTest.java`
 
 **Interfaces:**
 - Consumes: Task 2's `SessionId`, `Message`, `ContentBlock`, `ToolCall`.
@@ -632,10 +634,10 @@ git commit -m "feat(core): add message, tool call, and tool result model"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/core/SessionStateTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/core/SessionStateTest.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -708,7 +710,7 @@ Expected: FAIL — `cannot find symbol: class SessionState`.
 `SessionStatus.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /** Where a session is in its lifecycle. */
 public enum SessionStatus {
@@ -736,7 +738,7 @@ public enum SessionStatus {
 `SessionState.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import java.util.List;
 
@@ -824,7 +826,7 @@ Expected: PASS — four tests in `SessionStateTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/core nessy-core/src/test/java/com/callibrity/nessy/core
+git add nessy-core/src/main/java/org/jwcarman/nessy/core nessy-core/src/test/java/org/jwcarman/nessy/core
 git commit -m "feat(core): add SessionState and SessionStatus"
 ```
 
@@ -833,11 +835,11 @@ git commit -m "feat(core): add SessionState and SessionStatus"
 ### Task 4: Events, effects, and Step
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/Decision.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/Event.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/Effect.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/Step.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/core/EventTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/Decision.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/Event.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/Effect.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/Step.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/core/EventTest.java`
 
 **Interfaces:**
 - Consumes: Task 2's `ToolCall`, `ToolResult`, `StopReason`.
@@ -845,10 +847,10 @@ git commit -m "feat(core): add SessionState and SessionStatus"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/core/EventTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/core/EventTest.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -914,7 +916,7 @@ Expected: FAIL — `cannot find symbol: class Event`.
 `Decision.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /**
  * The answer to an approval question.
@@ -941,7 +943,7 @@ public sealed interface Decision {
 `Event.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /**
  * Something that happened.
@@ -975,7 +977,7 @@ public sealed interface Event {
 `Effect.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /**
  * Something that should happen.
@@ -1012,7 +1014,7 @@ public sealed interface Effect {
 `Step.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import java.util.List;
 
@@ -1037,7 +1039,7 @@ Expected: PASS — five tests in `EventTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/core nessy-core/src/test/java/com/callibrity/nessy/core
+git add nessy-core/src/main/java/org/jwcarman/nessy/core nessy-core/src/test/java/org/jwcarman/nessy/core
 git commit -m "feat(core): add Event, Effect, Decision, and Step"
 ```
 
@@ -1046,8 +1048,8 @@ git commit -m "feat(core): add Event, Effect, Decision, and Step"
 ### Task 5: Reducer — user input and streaming text
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/Reducer.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/core/ReducerTextTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/Reducer.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerTextTest.java`
 
 **Interfaces:**
 - Consumes: Tasks 2–4.
@@ -1055,10 +1057,10 @@ git commit -m "feat(core): add Event, Effect, Decision, and Step"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/core/ReducerTextTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerTextTest.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1137,7 +1139,7 @@ Expected: FAIL — `cannot find symbol: class Reducer`.
 `Reducer.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -1226,7 +1228,7 @@ Expected: PASS — five tests in `ReducerTextTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/core/Reducer.java nessy-core/src/test/java/com/callibrity/nessy/core/ReducerTextTest.java
+git add nessy-core/src/main/java/org/jwcarman/nessy/core/Reducer.java nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerTextTest.java
 git commit -m "feat(core): reduce user input and streaming text deltas"
 ```
 
@@ -1235,8 +1237,8 @@ git commit -m "feat(core): reduce user input and streaming text deltas"
 ### Task 6: Reducer — tool calls request approval
 
 **Files:**
-- Modify: `nessy-core/src/main/java/com/callibrity/nessy/core/Reducer.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/core/ReducerToolCallTest.java`
+- Modify: `nessy-core/src/main/java/org/jwcarman/nessy/core/Reducer.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerToolCallTest.java`
 
 **Interfaces:**
 - Consumes: Task 5's `Reducer`.
@@ -1244,10 +1246,10 @@ git commit -m "feat(core): reduce user input and streaming text deltas"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/core/ReducerToolCallTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerToolCallTest.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1359,7 +1361,7 @@ Expected: PASS — `ReducerToolCallTest` green and `ReducerTextTest` still green
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/core/Reducer.java nessy-core/src/test/java/com/callibrity/nessy/core/ReducerToolCallTest.java
+git add nessy-core/src/main/java/org/jwcarman/nessy/core/Reducer.java nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerToolCallTest.java
 git commit -m "feat(core): reduce tool calls into approval requests"
 ```
 
@@ -1368,8 +1370,8 @@ git commit -m "feat(core): reduce tool calls into approval requests"
 ### Task 7: Reducer — tool results, batching, and the error ceiling
 
 **Files:**
-- Modify: `nessy-core/src/main/java/com/callibrity/nessy/core/Reducer.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/core/ReducerToolResultTest.java`
+- Modify: `nessy-core/src/main/java/org/jwcarman/nessy/core/Reducer.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerToolResultTest.java`
 
 **Interfaces:**
 - Consumes: Task 6's `Reducer`.
@@ -1377,10 +1379,10 @@ git commit -m "feat(core): reduce tool calls into approval requests"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/core/ReducerToolResultTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerToolResultTest.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1573,7 +1575,7 @@ Expected: PASS — seven tests in `ReducerToolResultTest` green, earlier reducer
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/core/Reducer.java nessy-core/src/test/java/com/callibrity/nessy/core/ReducerToolResultTest.java
+git add nessy-core/src/main/java/org/jwcarman/nessy/core/Reducer.java nessy-core/src/test/java/org/jwcarman/nessy/core/ReducerToolResultTest.java
 git commit -m "feat(core): reduce approvals, tool results, and the error ceiling"
 ```
 
@@ -1582,9 +1584,9 @@ git commit -m "feat(core): reduce approvals, tool results, and the error ceiling
 ### Task 8: Parking types
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/ParkToken.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/core/Awaited.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/core/AwaitedTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/ParkToken.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/core/Awaited.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/core/AwaitedTest.java`
 
 **Interfaces:**
 - Consumes: nothing new.
@@ -1592,10 +1594,10 @@ git commit -m "feat(core): reduce approvals, tool results, and the error ceiling
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/core/AwaitedTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/core/AwaitedTest.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1641,7 +1643,7 @@ Expected: FAIL — `cannot find symbol: class Awaited`.
 `ParkToken.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 import java.util.UUID;
 
@@ -1669,7 +1671,7 @@ public record ParkToken(String value) {
 `Awaited.java`:
 
 ```java
-package com.callibrity.nessy.core;
+package org.jwcarman.nessy.core;
 
 /**
  * The outcome of something that might have to wait.
@@ -1705,7 +1707,7 @@ Expected: PASS — three tests in `AwaitedTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/core/ParkToken.java nessy-core/src/main/java/com/callibrity/nessy/core/Awaited.java nessy-core/src/test/java/com/callibrity/nessy/core/AwaitedTest.java
+git add nessy-core/src/main/java/org/jwcarman/nessy/core/ParkToken.java nessy-core/src/main/java/org/jwcarman/nessy/core/Awaited.java nessy-core/src/test/java/org/jwcarman/nessy/core/AwaitedTest.java
 git commit -m "feat(core): add Awaited and ParkToken"
 ```
 
@@ -1714,8 +1716,8 @@ git commit -m "feat(core): add Awaited and ParkToken"
 ### Task 9: Tool schema generation
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/tool/Schemas.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/tool/SchemasTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/tool/Schemas.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/tool/SchemasTest.java`
 
 **Interfaces:**
 - Consumes: victools from Task 1.
@@ -1723,10 +1725,10 @@ git commit -m "feat(core): add Awaited and ParkToken"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/tool/SchemasTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/tool/SchemasTest.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1784,7 +1786,7 @@ Expected: FAIL — `cannot find symbol: class Schemas`.
 `Schemas.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.victools.jsonschema.generator.FieldScope;
@@ -1837,7 +1839,7 @@ If `type` is absent from the generated root, add `.with(com.github.victools.json
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/tool/Schemas.java nessy-core/src/test/java/com/callibrity/nessy/tool/SchemasTest.java
+git add nessy-core/src/main/java/org/jwcarman/nessy/tool/Schemas.java nessy-core/src/test/java/org/jwcarman/nessy/tool/SchemasTest.java
 git commit -m "feat(tool): derive JSON Schema from record input types"
 ```
 
@@ -1846,13 +1848,13 @@ git commit -m "feat(tool): derive JSON Schema from record input types"
 ### Task 10: The tool seam
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/tool/ToolSpec.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/tool/ToolContext.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/tool/Tool.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/tool/ToolRegistry.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/tool/MapToolRegistry.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/tool/ToolInvoker.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/tool/ToolRegistryTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/tool/ToolSpec.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/tool/ToolContext.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/tool/Tool.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/tool/ToolRegistry.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/tool/MapToolRegistry.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/tool/ToolInvoker.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/tool/ToolRegistryTest.java`
 
 **Interfaces:**
 - Consumes: Task 2's `ToolResult`, `SessionId`; Task 8's `Awaited`; Task 9's `Schemas`.
@@ -1866,18 +1868,18 @@ git commit -m "feat(tool): derive JSON Schema from record input types"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/tool/ToolRegistryTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/tool/ToolRegistryTest.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.ToolCall;
-import com.callibrity.nessy.core.ToolResult;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.ToolCall;
+import org.jwcarman.nessy.core.ToolResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -1982,7 +1984,7 @@ Expected: FAIL — `cannot find symbol: interface Tool`.
 `ToolSpec.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -1999,9 +2001,9 @@ public record ToolSpec(String name, String description, ObjectNode inputSchema) 
 `ToolContext.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
-import com.callibrity.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionId;
 
 /** What a tool learns about the invocation it is serving. */
 public record ToolContext(SessionId sessionId) {}
@@ -2010,10 +2012,10 @@ public record ToolContext(SessionId sessionId) {}
 `Tool.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.ToolResult;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.ToolResult;
 
 /**
  * Something the model can ask the harness to do.
@@ -2068,7 +2070,7 @@ public interface Tool<T> {
 `ToolRegistry.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
 import java.util.List;
 import java.util.Optional;
@@ -2086,7 +2088,7 @@ public interface ToolRegistry {
 `MapToolRegistry.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -2128,11 +2130,11 @@ public final class MapToolRegistry implements ToolRegistry {
 `ToolInvoker.java`:
 
 ```java
-package com.callibrity.nessy.tool;
+package org.jwcarman.nessy.tool;
 
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.ToolCall;
-import com.callibrity.nessy.core.ToolResult;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.ToolCall;
+import org.jwcarman.nessy.core.ToolResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
@@ -2180,7 +2182,7 @@ Expected: PASS — six tests in `ToolRegistryTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/tool nessy-core/src/test/java/com/callibrity/nessy/tool
+git add nessy-core/src/main/java/org/jwcarman/nessy/tool nessy-core/src/test/java/org/jwcarman/nessy/tool
 git commit -m "feat(tool): add Tool, ToolRegistry, and ToolInvoker"
 ```
 
@@ -2189,12 +2191,12 @@ git commit -m "feat(tool): add Tool, ToolRegistry, and ToolInvoker"
 ### Task 11: The model seam
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/model/Capability.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/model/ModelEvent.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/model/ModelStream.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/model/ModelRequest.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/model/ModelProvider.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/model/ModelRequestTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/model/Capability.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/model/ModelEvent.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/model/ModelStream.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/model/ModelRequest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/model/ModelProvider.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/model/ModelRequestTest.java`
 
 **Interfaces:**
 - Consumes: Task 2's `Message`, `ToolCall`, `StopReason`; Task 10's `ToolSpec`.
@@ -2207,14 +2209,14 @@ git commit -m "feat(tool): add Tool, ToolRegistry, and ToolInvoker"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/model/ModelRequestTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/model/ModelRequestTest.java`:
 
 ```java
-package com.callibrity.nessy.model;
+package org.jwcarman.nessy.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.callibrity.nessy.core.Message;
+import org.jwcarman.nessy.core.Message;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -2266,7 +2268,7 @@ Expected: FAIL — `cannot find symbol: class ModelRequest`.
 `Capability.java`:
 
 ```java
-package com.callibrity.nessy.model;
+package org.jwcarman.nessy.model;
 
 /**
  * Something a provider may or may not be able to do.
@@ -2287,10 +2289,10 @@ public enum Capability {
 `ModelEvent.java`:
 
 ```java
-package com.callibrity.nessy.model;
+package org.jwcarman.nessy.model;
 
-import com.callibrity.nessy.core.StopReason;
-import com.callibrity.nessy.core.ToolCall;
+import org.jwcarman.nessy.core.StopReason;
+import org.jwcarman.nessy.core.ToolCall;
 
 /**
  * Something a provider emitted while streaming one turn.
@@ -2313,7 +2315,7 @@ public sealed interface ModelEvent {
 `ModelStream.java`:
 
 ```java
-package com.callibrity.nessy.model;
+package org.jwcarman.nessy.model;
 
 /**
  * One turn's worth of streamed events.
@@ -2334,10 +2336,10 @@ public interface ModelStream extends Iterable<ModelEvent>, AutoCloseable {
 `ModelRequest.java`:
 
 ```java
-package com.callibrity.nessy.model;
+package org.jwcarman.nessy.model;
 
-import com.callibrity.nessy.core.Message;
-import com.callibrity.nessy.tool.ToolSpec;
+import org.jwcarman.nessy.core.Message;
+import org.jwcarman.nessy.tool.ToolSpec;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -2377,7 +2379,7 @@ public record ModelRequest(
 `ModelProvider.java`:
 
 ```java
-package com.callibrity.nessy.model;
+package org.jwcarman.nessy.model;
 
 import java.util.Set;
 
@@ -2405,7 +2407,7 @@ Expected: PASS — two tests in `ModelRequestTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/model nessy-core/src/test/java/com/callibrity/nessy/model
+git add nessy-core/src/main/java/org/jwcarman/nessy/model nessy-core/src/test/java/org/jwcarman/nessy/model
 git commit -m "feat(model): add capability-aware ModelProvider seam"
 ```
 
@@ -2414,11 +2416,11 @@ git commit -m "feat(model): add capability-aware ModelProvider seam"
 ### Task 12: The approval seam
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/approval/ApprovalRequest.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/approval/Approver.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/approval/ApproveEverything.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/approval/DenyEverything.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/approval/ApproverTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/approval/ApprovalRequest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/approval/Approver.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/approval/ApproveEverything.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/approval/DenyEverything.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/approval/ApproverTest.java`
 
 **Interfaces:**
 - Consumes: Task 2's `ToolCall`, `SessionId`; Task 4's `Decision`; Task 8's `Awaited`.
@@ -2426,17 +2428,17 @@ git commit -m "feat(model): add capability-aware ModelProvider seam"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/approval/ApproverTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/approval/ApproverTest.java`:
 
 ```java
-package com.callibrity.nessy.approval;
+package org.jwcarman.nessy.approval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.Decision;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.ToolCall;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Decision;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.ToolCall;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 
@@ -2471,10 +2473,10 @@ Expected: FAIL — `cannot find symbol: class ApprovalRequest`.
 `ApprovalRequest.java`:
 
 ```java
-package com.callibrity.nessy.approval;
+package org.jwcarman.nessy.approval;
 
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.ToolCall;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.ToolCall;
 
 /**
  * The question put to a human.
@@ -2488,10 +2490,10 @@ public record ApprovalRequest(SessionId sessionId, ToolCall call, String descrip
 `Approver.java`:
 
 ```java
-package com.callibrity.nessy.approval;
+package org.jwcarman.nessy.approval;
 
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.Decision;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Decision;
 
 /**
  * The safety gate.
@@ -2520,10 +2522,10 @@ public interface Approver {
 `ApproveEverything.java`:
 
 ```java
-package com.callibrity.nessy.approval;
+package org.jwcarman.nessy.approval;
 
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.Decision;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Decision;
 
 /** Says yes to everything. For tests, sandboxes, and users who have opted in. */
 public final class ApproveEverything implements Approver {
@@ -2538,10 +2540,10 @@ public final class ApproveEverything implements Approver {
 `DenyEverything.java`:
 
 ```java
-package com.callibrity.nessy.approval;
+package org.jwcarman.nessy.approval;
 
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.Decision;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Decision;
 
 /** Says no to everything, with a reason the model can read and adapt to. */
 public record DenyEverything(String reason) implements Approver {
@@ -2561,7 +2563,7 @@ Expected: PASS — two tests in `ApproverTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/approval nessy-core/src/test/java/com/callibrity/nessy/approval
+git add nessy-core/src/main/java/org/jwcarman/nessy/approval nessy-core/src/test/java/org/jwcarman/nessy/approval
 git commit -m "feat(approval): add the Approver interceptor seam"
 ```
 
@@ -2570,9 +2572,9 @@ git commit -m "feat(approval): add the Approver interceptor seam"
 ### Task 13: The session store
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/session/SessionStore.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/session/InMemorySessionStore.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/session/InMemorySessionStoreTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/session/SessionStore.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/session/InMemorySessionStore.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/session/InMemorySessionStoreTest.java`
 
 **Interfaces:**
 - Consumes: Task 3's `SessionState`; Task 8's `ParkToken`.
@@ -2580,17 +2582,17 @@ git commit -m "feat(approval): add the Approver interceptor seam"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/session/InMemorySessionStoreTest.java`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/session/InMemorySessionStoreTest.java`:
 
 ```java
-package com.callibrity.nessy.session;
+package org.jwcarman.nessy.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.callibrity.nessy.core.ParkToken;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionState;
-import com.callibrity.nessy.core.SessionStatus;
+import org.jwcarman.nessy.core.ParkToken;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionState;
+import org.jwcarman.nessy.core.SessionStatus;
 import org.junit.jupiter.api.Test;
 
 class InMemorySessionStoreTest {
@@ -2640,11 +2642,11 @@ Expected: FAIL — `cannot find symbol: class InMemorySessionStore`.
 `SessionStore.java`:
 
 ```java
-package com.callibrity.nessy.session;
+package org.jwcarman.nessy.session;
 
-import com.callibrity.nessy.core.ParkToken;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionState;
+import org.jwcarman.nessy.core.ParkToken;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionState;
 import java.util.Optional;
 
 /**
@@ -2672,11 +2674,11 @@ public interface SessionStore {
 `InMemorySessionStore.java`:
 
 ```java
-package com.callibrity.nessy.session;
+package org.jwcarman.nessy.session;
 
-import com.callibrity.nessy.core.ParkToken;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionState;
+import org.jwcarman.nessy.core.ParkToken;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionState;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -2718,7 +2720,7 @@ Expected: PASS — four tests in `InMemorySessionStoreTest` green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/session nessy-core/src/test/java/com/callibrity/nessy/session
+git add nessy-core/src/main/java/org/jwcarman/nessy/session nessy-core/src/test/java/org/jwcarman/nessy/session
 git commit -m "feat(session): add SessionStore with in-memory default"
 ```
 
@@ -2727,9 +2729,9 @@ git commit -m "feat(session): add SessionStore with in-memory default"
 ### Task 14: The scripted model provider
 
 **Files:**
-- Create: `nessy-testing/src/main/java/com/callibrity/nessy/testing/ScriptedModelProvider.java`
-- Create: `nessy-testing/src/main/java/com/callibrity/nessy/testing/RecordingEventListener.java`
-- Test: `nessy-testing/src/test/java/com/callibrity/nessy/testing/ScriptedModelProviderTest.java`
+- Create: `nessy-testing/src/main/java/org/jwcarman/nessy/testing/ScriptedModelProvider.java`
+- Create: `nessy-testing/src/main/java/org/jwcarman/nessy/testing/RecordingEventListener.java`
+- Test: `nessy-testing/src/test/java/org/jwcarman/nessy/testing/ScriptedModelProviderTest.java`
 
 **Interfaces:**
 - Consumes: Task 11's model seam; Task 15 will consume `RecordingEventListener`, so `AgentEventListener` must exist first — **implement Task 15's `AgentEventListener` interface file as part of this task if executing out of order.** In the intended order, do Task 15 before this one if you prefer; the plan lists this first because the engine test needs both.
@@ -2742,19 +2744,19 @@ git commit -m "feat(session): add SessionStore with in-memory default"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-testing/src/test/java/com/callibrity/nessy/testing/ScriptedModelProviderTest.java`:
+Create `nessy-testing/src/test/java/org/jwcarman/nessy/testing/ScriptedModelProviderTest.java`:
 
 ```java
-package com.callibrity.nessy.testing;
+package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.callibrity.nessy.core.Message;
-import com.callibrity.nessy.core.StopReason;
-import com.callibrity.nessy.model.ModelEvent;
-import com.callibrity.nessy.model.ModelRequest;
-import com.callibrity.nessy.model.ModelStream;
+import org.jwcarman.nessy.core.Message;
+import org.jwcarman.nessy.core.StopReason;
+import org.jwcarman.nessy.model.ModelEvent;
+import org.jwcarman.nessy.model.ModelRequest;
+import org.jwcarman.nessy.model.ModelStream;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
@@ -2838,15 +2840,15 @@ Expected: FAIL — `cannot find symbol: class ScriptedModelProvider`.
 `ScriptedModelProvider.java`:
 
 ```java
-package com.callibrity.nessy.testing;
+package org.jwcarman.nessy.testing;
 
-import com.callibrity.nessy.core.StopReason;
-import com.callibrity.nessy.core.ToolCall;
-import com.callibrity.nessy.model.Capability;
-import com.callibrity.nessy.model.ModelEvent;
-import com.callibrity.nessy.model.ModelProvider;
-import com.callibrity.nessy.model.ModelRequest;
-import com.callibrity.nessy.model.ModelStream;
+import org.jwcarman.nessy.core.StopReason;
+import org.jwcarman.nessy.core.ToolCall;
+import org.jwcarman.nessy.model.Capability;
+import org.jwcarman.nessy.model.ModelEvent;
+import org.jwcarman.nessy.model.ModelProvider;
+import org.jwcarman.nessy.model.ModelRequest;
+import org.jwcarman.nessy.model.ModelStream;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -2950,12 +2952,12 @@ public final class ScriptedModelProvider implements ModelProvider {
 `RecordingEventListener.java`:
 
 ```java
-package com.callibrity.nessy.testing;
+package org.jwcarman.nessy.testing;
 
-import com.callibrity.nessy.core.Event;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionState;
-import com.callibrity.nessy.engine.AgentEventListener;
+import org.jwcarman.nessy.core.Event;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionState;
+import org.jwcarman.nessy.engine.AgentEventListener;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -2999,12 +3001,12 @@ git commit -m "feat(testing): add ScriptedModelProvider and RecordingEventListen
 ### Task 15: The execution engine
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/engine/AgentEventListener.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/engine/RunOutcome.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/engine/ExecutionEngine.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/engine/AgentConfig.java`
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/engine/InProcessEngine.java`
-- Test: `nessy-core/src/test/java/com/callibrity/nessy/engine/InProcessEngineTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/engine/AgentEventListener.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/engine/RunOutcome.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/engine/ExecutionEngine.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/engine/AgentConfig.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/engine/InProcessEngine.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/engine/InProcessEngineTest.java`
 
 **Interfaces:**
 - Consumes: everything from Tasks 2–13.
@@ -3019,41 +3021,41 @@ git commit -m "feat(testing): add ScriptedModelProvider and RecordingEventListen
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-core/src/test/java/com/callibrity/nessy/engine/InProcessEngineTest.java`. Because `nessy-core` cannot depend on `nessy-testing` (that would be circular), this test declares a minimal inline scripted provider rather than reusing `ScriptedModelProvider`:
+Create `nessy-core/src/test/java/org/jwcarman/nessy/engine/InProcessEngineTest.java`. Because `nessy-core` cannot depend on `nessy-testing` (that would be circular), this test declares a minimal inline scripted provider rather than reusing `ScriptedModelProvider`:
 
 ```java
-package com.callibrity.nessy.engine;
+package org.jwcarman.nessy.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.callibrity.nessy.approval.ApproveEverything;
-import com.callibrity.nessy.approval.Approver;
-import com.callibrity.nessy.approval.DenyEverything;
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.Event;
-import com.callibrity.nessy.core.Message;
-import com.callibrity.nessy.core.ParkToken;
-import com.callibrity.nessy.core.Reducer;
-import com.callibrity.nessy.core.Role;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionStatus;
-import com.callibrity.nessy.core.StopReason;
-import com.callibrity.nessy.core.TextBlock;
-import com.callibrity.nessy.core.ToolCall;
-import com.callibrity.nessy.core.ToolResult;
-import com.callibrity.nessy.core.ToolResultBlock;
-import com.callibrity.nessy.model.Capability;
-import com.callibrity.nessy.model.ModelEvent;
-import com.callibrity.nessy.model.ModelProvider;
-import com.callibrity.nessy.model.ModelRequest;
-import com.callibrity.nessy.model.ModelStream;
-import com.callibrity.nessy.session.InMemorySessionStore;
-import com.callibrity.nessy.session.SessionStore;
-import com.callibrity.nessy.tool.MapToolRegistry;
-import com.callibrity.nessy.tool.Tool;
-import com.callibrity.nessy.tool.ToolContext;
-import com.callibrity.nessy.tool.ToolRegistry;
+import org.jwcarman.nessy.approval.ApproveEverything;
+import org.jwcarman.nessy.approval.Approver;
+import org.jwcarman.nessy.approval.DenyEverything;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Event;
+import org.jwcarman.nessy.core.Message;
+import org.jwcarman.nessy.core.ParkToken;
+import org.jwcarman.nessy.core.Reducer;
+import org.jwcarman.nessy.core.Role;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionStatus;
+import org.jwcarman.nessy.core.StopReason;
+import org.jwcarman.nessy.core.TextBlock;
+import org.jwcarman.nessy.core.ToolCall;
+import org.jwcarman.nessy.core.ToolResult;
+import org.jwcarman.nessy.core.ToolResultBlock;
+import org.jwcarman.nessy.model.Capability;
+import org.jwcarman.nessy.model.ModelEvent;
+import org.jwcarman.nessy.model.ModelProvider;
+import org.jwcarman.nessy.model.ModelRequest;
+import org.jwcarman.nessy.model.ModelStream;
+import org.jwcarman.nessy.session.InMemorySessionStore;
+import org.jwcarman.nessy.session.SessionStore;
+import org.jwcarman.nessy.tool.MapToolRegistry;
+import org.jwcarman.nessy.tool.Tool;
+import org.jwcarman.nessy.tool.ToolContext;
+import org.jwcarman.nessy.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -3149,8 +3151,8 @@ class InProcessEngineTest {
         }
 
         @Override
-        public Awaited<com.callibrity.nessy.core.Decision> approve(
-                com.callibrity.nessy.approval.ApprovalRequest request) {
+        public Awaited<org.jwcarman.nessy.core.Decision> approve(
+                org.jwcarman.nessy.approval.ApprovalRequest request) {
             calls++;
             return delegate.approve(request);
         }
@@ -3349,7 +3351,7 @@ class InProcessEngineTest {
         private final List<Event> events = new java.util.ArrayList<>();
 
         @Override
-        public void onEvent(SessionId id, Event event, com.callibrity.nessy.core.SessionState state) {
+        public void onEvent(SessionId id, Event event, org.jwcarman.nessy.core.SessionState state) {
             events.add(event);
         }
     }
@@ -3357,8 +3359,8 @@ class InProcessEngineTest {
 ```
 
 Before running, tidy this test's imports: replace every inline fully-qualified
-reference (`com.callibrity.nessy.core.Decision`, `com.callibrity.nessy.approval.ApprovalRequest`,
-`com.callibrity.nessy.core.SessionState`, `java.util.ArrayList`) with explicit
+reference (`org.jwcarman.nessy.core.Decision`, `org.jwcarman.nessy.approval.ApprovalRequest`,
+`org.jwcarman.nessy.core.SessionState`, `java.util.ArrayList`) with explicit
 single-symbol imports at the top. The project forbids star imports and prefers
 imports over inline qualification. Also add `@SafeVarargs`-free handling by
 changing `FakeProvider`'s constructor to take `List<List<ModelEvent>>` if the
@@ -3374,11 +3376,11 @@ Expected: FAIL — `cannot find symbol: class InProcessEngine`.
 `AgentEventListener.java`:
 
 ```java
-package com.callibrity.nessy.engine;
+package org.jwcarman.nessy.engine;
 
-import com.callibrity.nessy.core.Event;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionState;
+import org.jwcarman.nessy.core.Event;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionState;
 
 /**
  * Every front-end's window into the loop.
@@ -3396,10 +3398,10 @@ public interface AgentEventListener {
 `RunOutcome.java`:
 
 ```java
-package com.callibrity.nessy.engine;
+package org.jwcarman.nessy.engine;
 
-import com.callibrity.nessy.core.ParkToken;
-import com.callibrity.nessy.core.SessionState;
+import org.jwcarman.nessy.core.ParkToken;
+import org.jwcarman.nessy.core.SessionState;
 
 /** How a run ended: finished, or waiting for something that outlives this process. */
 public sealed interface RunOutcome {
@@ -3413,11 +3415,11 @@ public sealed interface RunOutcome {
 `ExecutionEngine.java`:
 
 ```java
-package com.callibrity.nessy.engine;
+package org.jwcarman.nessy.engine;
 
-import com.callibrity.nessy.core.Event;
-import com.callibrity.nessy.core.ParkToken;
-import com.callibrity.nessy.core.SessionId;
+import org.jwcarman.nessy.core.Event;
+import org.jwcarman.nessy.core.ParkToken;
+import org.jwcarman.nessy.core.SessionId;
 
 /**
  * Drives the reducer and performs its effects.
@@ -3441,7 +3443,7 @@ public interface ExecutionEngine {
 `AgentConfig.java`:
 
 ```java
-package com.callibrity.nessy.engine;
+package org.jwcarman.nessy.engine;
 
 /** The knobs one agent needs that are not seams. */
 public record AgentConfig(String model, String systemPrompt, int maxTokens) {}
@@ -3452,30 +3454,30 @@ public record AgentConfig(String model, String systemPrompt, int maxTokens) {}
 `InProcessEngine.java`:
 
 ```java
-package com.callibrity.nessy.engine;
+package org.jwcarman.nessy.engine;
 
-import com.callibrity.nessy.approval.ApprovalRequest;
-import com.callibrity.nessy.approval.Approver;
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.Decision;
-import com.callibrity.nessy.core.Effect;
-import com.callibrity.nessy.core.Event;
-import com.callibrity.nessy.core.ParkToken;
-import com.callibrity.nessy.core.Reducer;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionState;
-import com.callibrity.nessy.core.Step;
-import com.callibrity.nessy.core.ToolCall;
-import com.callibrity.nessy.core.ToolResult;
-import com.callibrity.nessy.model.ModelEvent;
-import com.callibrity.nessy.model.ModelProvider;
-import com.callibrity.nessy.model.ModelRequest;
-import com.callibrity.nessy.model.ModelStream;
-import com.callibrity.nessy.session.SessionStore;
-import com.callibrity.nessy.tool.Tool;
-import com.callibrity.nessy.tool.ToolContext;
-import com.callibrity.nessy.tool.ToolInvoker;
-import com.callibrity.nessy.tool.ToolRegistry;
+import org.jwcarman.nessy.approval.ApprovalRequest;
+import org.jwcarman.nessy.approval.Approver;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Decision;
+import org.jwcarman.nessy.core.Effect;
+import org.jwcarman.nessy.core.Event;
+import org.jwcarman.nessy.core.ParkToken;
+import org.jwcarman.nessy.core.Reducer;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionState;
+import org.jwcarman.nessy.core.Step;
+import org.jwcarman.nessy.core.ToolCall;
+import org.jwcarman.nessy.core.ToolResult;
+import org.jwcarman.nessy.model.ModelEvent;
+import org.jwcarman.nessy.model.ModelProvider;
+import org.jwcarman.nessy.model.ModelRequest;
+import org.jwcarman.nessy.model.ModelStream;
+import org.jwcarman.nessy.session.SessionStore;
+import org.jwcarman.nessy.tool.Tool;
+import org.jwcarman.nessy.tool.ToolContext;
+import org.jwcarman.nessy.tool.ToolInvoker;
+import org.jwcarman.nessy.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
@@ -3649,7 +3651,7 @@ Expected: PASS — nine tests in `InProcessEngineTest` green, and every earlier 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/engine nessy-core/src/test/java/com/callibrity/nessy/engine
+git add nessy-core/src/main/java/org/jwcarman/nessy/engine nessy-core/src/test/java/org/jwcarman/nessy/engine
 git commit -m "feat(engine): add ExecutionEngine seam and InProcessEngine"
 ```
 
@@ -3658,8 +3660,8 @@ git commit -m "feat(engine): add ExecutionEngine seam and InProcessEngine"
 ### Task 16: The Nessy facade and an end-to-end test
 
 **Files:**
-- Create: `nessy-core/src/main/java/com/callibrity/nessy/engine/Nessy.java`
-- Create: `nessy-testing/src/test/java/com/callibrity/nessy/testing/EndToEndTest.java`
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/engine/Nessy.java`
+- Create: `nessy-testing/src/test/java/org/jwcarman/nessy/testing/EndToEndTest.java`
 - Create: `README.md`
 
 **Interfaces:**
@@ -3668,26 +3670,26 @@ git commit -m "feat(engine): add ExecutionEngine seam and InProcessEngine"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `nessy-testing/src/test/java/com/callibrity/nessy/testing/EndToEndTest.java`:
+Create `nessy-testing/src/test/java/org/jwcarman/nessy/testing/EndToEndTest.java`:
 
 ```java
-package com.callibrity.nessy.testing;
+package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.callibrity.nessy.approval.ApproveEverything;
-import com.callibrity.nessy.core.Awaited;
-import com.callibrity.nessy.core.Event;
-import com.callibrity.nessy.core.SessionId;
-import com.callibrity.nessy.core.SessionStatus;
-import com.callibrity.nessy.core.ToolResult;
-import com.callibrity.nessy.engine.ExecutionEngine;
-import com.callibrity.nessy.engine.Nessy;
-import com.callibrity.nessy.engine.RunOutcome;
-import com.callibrity.nessy.tool.MapToolRegistry;
-import com.callibrity.nessy.tool.Tool;
-import com.callibrity.nessy.tool.ToolContext;
+import org.jwcarman.nessy.approval.ApproveEverything;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Event;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionStatus;
+import org.jwcarman.nessy.core.ToolResult;
+import org.jwcarman.nessy.engine.ExecutionEngine;
+import org.jwcarman.nessy.engine.Nessy;
+import org.jwcarman.nessy.engine.RunOutcome;
+import org.jwcarman.nessy.tool.MapToolRegistry;
+import org.jwcarman.nessy.tool.Tool;
+import org.jwcarman.nessy.tool.ToolContext;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
@@ -3800,16 +3802,16 @@ Expected: FAIL — `cannot find symbol: class Nessy`.
 `Nessy.java`:
 
 ```java
-package com.callibrity.nessy.engine;
+package org.jwcarman.nessy.engine;
 
-import com.callibrity.nessy.approval.ApproveEverything;
-import com.callibrity.nessy.approval.Approver;
-import com.callibrity.nessy.core.Reducer;
-import com.callibrity.nessy.model.ModelProvider;
-import com.callibrity.nessy.session.InMemorySessionStore;
-import com.callibrity.nessy.session.SessionStore;
-import com.callibrity.nessy.tool.MapToolRegistry;
-import com.callibrity.nessy.tool.ToolRegistry;
+import org.jwcarman.nessy.approval.ApproveEverything;
+import org.jwcarman.nessy.approval.Approver;
+import org.jwcarman.nessy.core.Reducer;
+import org.jwcarman.nessy.model.ModelProvider;
+import org.jwcarman.nessy.session.InMemorySessionStore;
+import org.jwcarman.nessy.session.SessionStore;
+import org.jwcarman.nessy.tool.MapToolRegistry;
+import org.jwcarman.nessy.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
@@ -4012,7 +4014,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add nessy-core/src/main/java/com/callibrity/nessy/engine/Nessy.java nessy-testing/src/test README.md
+git add nessy-core/src/main/java/org/jwcarman/nessy/engine/Nessy.java nessy-testing/src/test README.md
 git commit -m "feat: add Nessy builder facade and end-to-end coverage"
 ```
 

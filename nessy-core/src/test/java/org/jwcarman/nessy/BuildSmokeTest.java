@@ -1,4 +1,4 @@
-package com.callibrity.nessy;
+package org.jwcarman.nessy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

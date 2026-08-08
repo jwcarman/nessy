@@ -65,6 +65,9 @@ reactive types. Spring support is a separate starter module.
 **Java 25.** Records, sealed interfaces, pattern matching, and virtual threads
 are load-bearing, not stylistic.
 
+**Coordinates.** groupId `org.jwcarman.nessy`, base package `org.jwcarman.nessy`.
+Nessy is a personal project, not a Callibrity one.
+
 ## Architecture
 
 ### The core is an effectful reducer
