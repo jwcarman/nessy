@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.core.Awaited;
 import org.jwcarman.nessy.core.SessionId;
@@ -60,6 +61,41 @@ class ToolRegistryTest {
     @Override
     public Awaited<ToolResult> execute(Greet input, ToolContext context) {
       return Awaited.ready(ToolResult.ok("Hello, " + input.name()));
+    }
+  }
+
+  record Named(String value) {}
+
+  static final class NamedTool implements Tool<Named> {
+    private final String name;
+
+    NamedTool(String name) {
+      this.name = name;
+    }
+
+    @Override
+    public String name() {
+      return name;
+    }
+
+    @Override
+    public String description() {
+      return "A tool named " + name;
+    }
+
+    @Override
+    public Class<Named> inputType() {
+      return Named.class;
+    }
+
+    @Override
+    public boolean requiresApproval() {
+      return false;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(Named input, ToolContext context) {
+      return Awaited.ready(ToolResult.ok(input.value()));
     }
   }
 
@@ -106,6 +142,17 @@ class ToolRegistryTest {
     Tool<?> tool = registry.find("greet").orElseThrow();
 
     assertThat(invoker.describe(tool, greetCall("Ada"))).isEqualTo("greet(Ada)");
+  }
+
+  @Test
+  void specsPreserveRegistrationOrder() {
+    ToolRegistry ordered =
+        MapToolRegistry.of(
+            new NamedTool("charlie"), new NamedTool("alpha"), new NamedTool("bravo"));
+
+    List<String> names = ordered.specs().stream().map(ToolSpec::name).toList();
+
+    assertThat(names).containsExactly("charlie", "alpha", "bravo");
   }
 
   @Test

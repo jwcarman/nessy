@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.tool;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +27,7 @@ public final class MapToolRegistry implements ToolRegistry {
   private final Map<String, Tool<?>> tools;
 
   private MapToolRegistry(Map<String, Tool<?>> tools) {
-    this.tools = Map.copyOf(tools);
+    this.tools = Collections.unmodifiableMap(new LinkedHashMap<>(tools));
   }
 
   public static MapToolRegistry of(Tool<?>... tools) {
