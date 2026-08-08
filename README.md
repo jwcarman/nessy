@@ -19,12 +19,34 @@ JDK 25 and Maven.
 
 ## The smallest agent
 
+Provider modules are not built yet, so this uses `ScriptedModelProvider` from
+`nessy-testing` — no key, no network, and it compiles against what ships today.
+Swap it for a real `ModelProvider` when one lands.
+
 ```java
+record Add(int left, int right) {}
+
+Tool<Add> add = new Tool<>() {
+    public String name() { return "add"; }
+    public String description() { return "Adds two integers"; }
+    public Class<Add> inputType() { return Add.class; }
+    public boolean requiresApproval() { return false; }
+
+    public Awaited<ToolResult> execute(Add input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
+    }
+};
+
+ModelProvider provider = ScriptedModelProvider.builder()
+        .text("The answer is 4.")
+        .endTurn()
+        .build();
+
 ExecutionEngine engine = Nessy.builder()
-        .model(someProvider)
+        .model(provider)
         .modelName("some-model")
         .systemPrompt("You are a helpful assistant.")
-        .tools(MapToolRegistry.of(new ReadFileTool()))
+        .tools(MapToolRegistry.of(add))
         .approver(new ApproveEverything())
         .build();
 
@@ -60,14 +82,15 @@ far more readable than a callback protocol.
 ## Building
 
 ```bash
-mvn verify
+./mvnw verify
 ```
 
 The default build needs no API key and makes no network calls. Tests that spend
-real tokens are tagged `live` and excluded:
+real tokens are tagged `live` and are excluded by default. To run them, clear the
+exclusion:
 
 ```bash
-mvn test -Dgroups=live
+./mvnw test -Dnessy.excludedGroups=
 ```
 
 ## Design

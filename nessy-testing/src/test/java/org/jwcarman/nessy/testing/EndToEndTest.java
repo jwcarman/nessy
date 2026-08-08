@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.approval.ApproveEverything;
 import org.jwcarman.nessy.core.Awaited;
@@ -30,6 +31,7 @@ import org.jwcarman.nessy.core.ToolResult;
 import org.jwcarman.nessy.engine.ExecutionEngine;
 import org.jwcarman.nessy.engine.Nessy;
 import org.jwcarman.nessy.engine.RunOutcome;
+import org.jwcarman.nessy.model.Capability;
 import org.jwcarman.nessy.tool.MapToolRegistry;
 import org.jwcarman.nessy.tool.Tool;
 import org.jwcarman.nessy.tool.ToolContext;
@@ -130,6 +132,21 @@ class EndToEndTest {
                 .get("properties")
                 .has("left"))
         .isTrue();
+  }
+
+  @Test
+  void requestedCapabilitiesReachTheProvider() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+
+    Nessy.builder()
+        .model(provider)
+        .modelName("fake-model")
+        .capabilities(Set.of(Capability.PROMPT_CACHING))
+        .build()
+        .run(new SessionId("s1"), new Event.UserSaid("hello"));
+
+    assertThat(provider.requests().getFirst().requested())
+        .containsExactly(Capability.PROMPT_CACHING);
   }
 
   @Test

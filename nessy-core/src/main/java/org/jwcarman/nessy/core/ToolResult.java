@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.core;
 
+import java.util.Objects;
+
 /**
  * What a tool produced.
  *
@@ -22,6 +24,10 @@ package org.jwcarman.nessy.core;
  * can recover, rather than blowing up the loop.
  */
 public record ToolResult(String content, boolean isError) {
+
+  public ToolResult {
+    Objects.requireNonNull(content, "content must not be null");
+  }
 
   public static ToolResult ok(String content) {
     return new ToolResult(content, false);

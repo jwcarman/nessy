@@ -17,6 +17,7 @@ package org.jwcarman.nessy.core;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Everything the loop knows, as data.
@@ -44,6 +45,8 @@ public record SessionState(
     SessionStatus status) {
 
   public SessionState {
+    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(status, "status must not be null");
     messages = List.copyOf(messages);
     pendingBlocks = List.copyOf(pendingBlocks);
     pendingCalls = List.copyOf(pendingCalls);

@@ -15,5 +15,25 @@
  */
 package org.jwcarman.nessy.engine;
 
-/** The knobs one agent needs that are not seams. */
-public record AgentConfig(String model, String systemPrompt, int maxTokens) {}
+import java.util.Objects;
+import java.util.Set;
+import org.jwcarman.nessy.model.Capability;
+
+/**
+ * The knobs one agent needs that are not seams.
+ *
+ * @param capabilities what the harness asks providers to use; a provider that cannot do one says so
+ *     rather than silently degrading
+ */
+public record AgentConfig(
+    String model, String systemPrompt, int maxTokens, Set<Capability> capabilities) {
+
+  public AgentConfig {
+    Objects.requireNonNull(model, "model must not be null");
+    Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
+    if (maxTokens < 1) {
+      throw new IllegalArgumentException("maxTokens must be at least 1");
+    }
+    capabilities = Set.copyOf(capabilities);
+  }
+}

@@ -24,7 +24,9 @@ package org.jwcarman.nessy.core;
 public sealed interface Effect {
 
   /** Call the model with the conversation as it now stands. */
-  record CallModel() implements Effect {}
+  record CallModel() implements Effect {
+    private static final CallModel INSTANCE = new CallModel();
+  }
 
   /**
    * Resolve the approval question for a call.
@@ -39,9 +41,8 @@ public sealed interface Effect {
   /** Run an approved tool. */
   record ExecuteTool(ToolCall call) implements Effect {}
 
-  CallModel CALL_MODEL = new CallModel();
-
+  /** The one instance of {@link CallModel}; the record has no state, so one is enough. */
   static Effect callModel() {
-    return CALL_MODEL;
+    return CallModel.INSTANCE;
   }
 }

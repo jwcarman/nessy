@@ -67,6 +67,30 @@ class ReducerTextTest {
   }
 
   @Test
+  void newUserInputClearsTheErrorStreak() {
+    SessionState state = initial.withConsecutiveErrors(2);
+
+    Step step = reducer.reduce(state, new Event.UserSaid("try again"));
+
+    assertThat(step.state().consecutiveErrors()).isZero();
+    assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+  }
+
+  @Test
+  void aTurnCutOffAtTheTokenCeilingFailsRatherThanReportingCompletion() {
+    SessionState state = reducer.reduce(initial, new Event.UserSaid("hi")).state();
+    state = reducer.reduce(state, new Event.TextDelta("Half a sen")).state();
+
+    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS));
+
+    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+    assertThat(step.effects()).isEmpty();
+    assertThat(step.state().messages())
+        .containsExactly(
+            Message.user("hi"), Message.assistant(List.of(new TextBlock("Half a sen"))));
+  }
+
+  @Test
   void turnEndWithNothingPendingAddsNoEmptyMessage() {
     SessionState state = reducer.reduce(initial, new Event.UserSaid("hi")).state();
 

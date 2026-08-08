@@ -15,5 +15,12 @@
  */
 package org.jwcarman.nessy.core;
 
+import java.util.Objects;
+
 /** The model asking for a tool to run. Always on an assistant message. */
-public record ToolUseBlock(ToolCall call) implements ContentBlock {}
+public record ToolUseBlock(ToolCall call) implements ContentBlock {
+
+  public ToolUseBlock {
+    Objects.requireNonNull(call, "call must not be null");
+  }
+}

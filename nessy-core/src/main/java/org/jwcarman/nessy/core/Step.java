@@ -16,11 +16,13 @@
 package org.jwcarman.nessy.core;
 
 import java.util.List;
+import java.util.Objects;
 
 /** What one turn of the reducer produced: the next state, and what to do about it. */
 public record Step(SessionState state, List<Effect> effects) {
 
   public Step {
+    Objects.requireNonNull(state, "state must not be null");
     effects = List.copyOf(effects);
   }
 

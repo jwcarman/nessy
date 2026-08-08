@@ -18,9 +18,11 @@ package org.jwcarman.nessy.engine;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.jwcarman.nessy.approval.ApproveEverything;
 import org.jwcarman.nessy.approval.Approver;
 import org.jwcarman.nessy.core.Reducer;
+import org.jwcarman.nessy.model.Capability;
 import org.jwcarman.nessy.model.ModelProvider;
 import org.jwcarman.nessy.session.InMemorySessionStore;
 import org.jwcarman.nessy.session.SessionStore;
@@ -50,6 +52,7 @@ public final class Nessy {
     private String modelName;
     private String systemPrompt = "";
     private int maxTokens = DEFAULT_MAX_TOKENS;
+    private Set<Capability> capabilities = Set.of();
     private ToolRegistry tools = MapToolRegistry.of();
     private Approver approver = new ApproveEverything();
     private SessionStore store = new InMemorySessionStore();
@@ -76,6 +79,14 @@ public final class Nessy {
 
     public Builder maxTokens(int maxTokens) {
       this.maxTokens = maxTokens;
+      return this;
+    }
+
+    /**
+     * What this agent asks providers to use. Empty means "whatever the provider does by default".
+     */
+    public Builder capabilities(Set<Capability> capabilities) {
+      this.capabilities = Set.copyOf(capabilities);
       return this;
     }
 
@@ -123,7 +134,7 @@ public final class Nessy {
           store,
           listeners,
           new Reducer(maxConsecutiveErrors),
-          new AgentConfig(modelName, systemPrompt, maxTokens),
+          new AgentConfig(modelName, systemPrompt, maxTokens, capabilities),
           mapper);
     }
   }

@@ -118,6 +118,53 @@ class ReducerToolResultTest {
   }
 
   @Test
+  void anErrorBelowTheCeilingKeepsTheSessionGoing() {
+    ToolCall toolCall = call("c1");
+    SessionState state = awaitingApproval(toolCall);
+    state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
+
+    Step step = reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.error("boom")));
+
+    assertThat(step.state().consecutiveErrors()).isEqualTo(1);
+    assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+    assertThat(step.effects()).containsExactly(Effect.callModel());
+  }
+
+  @Test
+  void aDenialCountsTowardTheErrorCeiling() {
+    ToolCall toolCall = call("c1");
+    SessionState state = awaitingApproval(toolCall);
+
+    Step step =
+        reducer.reduce(state, new Event.ApprovalDecided(toolCall, new Decision.Deny("no thanks")));
+
+    assertThat(step.state().consecutiveErrors()).isEqualTo(1);
+  }
+
+  @Test
+  void failingWithCallsStillPendingAnswersEveryOneOfThem() {
+    Reducer strict = new Reducer(1);
+    ToolCall first = call("c1");
+    ToolCall second = call("c2");
+    SessionState state = initial;
+    for (ToolCall each : List.of(first, second)) {
+      state = strict.reduce(state, new Event.ToolCallRequested(each)).state();
+    }
+    state = strict.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE)).state();
+    state = strict.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
+
+    Step step = strict.reduce(state, new Event.ToolFinished(first, ToolResult.error("boom")));
+
+    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+    assertThat(step.state().pendingCalls()).isEmpty();
+    assertThat(step.state().messages().getLast().content())
+        .extracting(block -> ((ToolResultBlock) block).toolUseId())
+        .containsExactly("c1", "c2");
+    assertThat(step.state().messages().getLast().content())
+        .allMatch(block -> ((ToolResultBlock) block).isError());
+  }
+
+  @Test
   void reachingTheErrorCeilingFailsTheSessionInsteadOfLooping() {
     ToolCall toolCall = call("c1");
     SessionState state = awaitingApproval(toolCall).withConsecutiveErrors(1);

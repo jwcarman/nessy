@@ -17,7 +17,6 @@ package org.jwcarman.nessy.testing;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -59,8 +58,18 @@ public final class ScriptedModelProvider implements ModelProvider {
     requests.add(request);
     Iterator<ModelEvent> events = turns.get(nextTurn++).iterator();
     return new ModelStream() {
+
+      private boolean iterated;
+
       @Override
       public Iterator<ModelEvent> iterator() {
+        // A second pass over an already-advanced iterator would silently look
+        // like an empty turn. This module exists to fail loudly instead.
+        if (iterated) {
+          throw new IllegalStateException(
+              "this ModelStream has already been iterated; a stream replays one turn exactly once");
+        }
+        iterated = true;
         return events;
       }
 
@@ -76,9 +85,9 @@ public final class ScriptedModelProvider implements ModelProvider {
     return Set.of();
   }
 
-  /** Every request this provider was handed, oldest first. */
+  /** A snapshot of every request this provider was handed, oldest first. */
   public List<ModelRequest> requests() {
-    return Collections.unmodifiableList(requests);
+    return List.copyOf(requests);
   }
 
   public static final class Builder {

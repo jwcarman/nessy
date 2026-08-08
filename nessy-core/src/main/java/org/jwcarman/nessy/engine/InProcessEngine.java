@@ -19,7 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.approval.ApprovalRequest;
 import org.jwcarman.nessy.approval.Approver;
 import org.jwcarman.nessy.core.Awaited;
@@ -84,12 +84,25 @@ public final class InProcessEngine implements ExecutionEngine {
     this.invoker = new ToolInvoker(mapper);
   }
 
+  /**
+   * Runs one turn to completion and persists it.
+   *
+   * <p>Durability contract: the most recent state the run reached is saved on <em>every</em> exit
+   * path, including an exception. A provider socket reset, a throwing listener, or a tool that asks
+   * to park would otherwise unwind past the save and discard the user's message along with every
+   * token streamed before the failure, while the store still held pre-run state. Progress is
+   * published into a holder as the run advances, so what survives is what actually happened rather
+   * than only what was already durable.
+   */
   @Override
   public RunOutcome run(SessionId id, Event input) {
-    SessionState state = store.load(id).orElseGet(() -> SessionState.newSession(id));
-    SessionState finished = feed(state, input);
-    store.save(finished);
-    return new RunOutcome.Completed(finished);
+    AtomicReference<SessionState> progress =
+        new AtomicReference<>(store.load(id).orElseGet(() -> SessionState.newSession(id)));
+    try {
+      return new RunOutcome.Completed(feed(progress, progress.get(), input));
+    } finally {
+      store.save(progress.get());
+    }
   }
 
   @Override
@@ -107,21 +120,30 @@ public final class InProcessEngine implements ExecutionEngine {
     return step;
   }
 
-  /** Reduces one event, tells the listeners, then performs whatever it asked for. */
-  private SessionState feed(SessionState state, Event event) {
+  /**
+   * Reduces one event, tells the listeners, then performs whatever it asked for.
+   *
+   * <p>{@code progress} is the run's latest-known-state holder. Every advance publishes into it so
+   * {@link #run} can persist partial work even when the recursion unwinds on an exception.
+   */
+  private SessionState feed(
+      AtomicReference<SessionState> progress, SessionState state, Event event) {
     Step step = reduceAndNotify(state, event);
     SessionState next = step.state();
+    progress.set(next);
     for (Effect effect : step.effects()) {
-      next = perform(next, effect);
+      next = perform(progress, next, effect);
+      progress.set(next);
     }
     return next;
   }
 
-  private SessionState perform(SessionState state, Effect effect) {
+  private SessionState perform(
+      AtomicReference<SessionState> progress, SessionState state, Effect effect) {
     return switch (effect) {
-      case Effect.CallModel ignored -> callModel(state);
-      case Effect.RequestApproval request -> feed(state, decide(state, request.call()));
-      case Effect.ExecuteTool execute -> feed(state, executeTool(state, execute.call()));
+      case Effect.CallModel ignored -> callModel(progress, state);
+      case Effect.RequestApproval request -> feed(progress, state, decide(state, request.call()));
+      case Effect.ExecuteTool execute -> feed(progress, state, executeTool(state, execute.call()));
     };
   }
 
@@ -134,18 +156,20 @@ public final class InProcessEngine implements ExecutionEngine {
    * the loop, so streaming stays live; only effects — of which only the terminal event has any —
    * are deferred.
    */
-  private SessionState callModel(SessionState state) {
+  private SessionState callModel(AtomicReference<SessionState> progress, SessionState state) {
     SessionState current = state;
     List<Effect> deferred = new ArrayList<>();
     try (ModelStream stream = provider.stream(requestFor(current))) {
       for (ModelEvent modelEvent : stream) {
         Step step = reduceAndNotify(current, translate(modelEvent));
         current = step.state();
+        progress.set(current);
         deferred.addAll(step.effects());
       }
     }
     for (Effect effect : deferred) {
-      current = perform(current, effect);
+      current = perform(progress, current, effect);
+      progress.set(current);
     }
     return current;
   }
@@ -157,7 +181,7 @@ public final class InProcessEngine implements ExecutionEngine {
         config.model(),
         config.maxTokens(),
         tools.specs(),
-        Set.of());
+        config.capabilities());
   }
 
   private static Event translate(ModelEvent event) {

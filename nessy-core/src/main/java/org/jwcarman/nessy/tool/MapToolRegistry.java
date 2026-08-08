@@ -25,9 +25,13 @@ import java.util.Optional;
 public final class MapToolRegistry implements ToolRegistry {
 
   private final Map<String, Tool<?>> tools;
+  private final List<ToolSpec> specs;
 
   private MapToolRegistry(Map<String, Tool<?>> tools) {
     this.tools = Collections.unmodifiableMap(new LinkedHashMap<>(tools));
+    // Computed once: Tool.spec() runs reflective schema generation, and specs()
+    // is called on every model round-trip.
+    this.specs = this.tools.values().stream().map(Tool::spec).toList();
   }
 
   public static MapToolRegistry of(Tool<?>... tools) {
@@ -48,6 +52,6 @@ public final class MapToolRegistry implements ToolRegistry {
 
   @Override
   public List<ToolSpec> specs() {
-    return tools.values().stream().map(Tool::spec).toList();
+    return specs;
   }
 }

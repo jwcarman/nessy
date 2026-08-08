@@ -68,6 +68,10 @@
     <assertj.version>3.27.7</assertj.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
 
+    <!-- Test groups the default build skips. Override to empty to run them:
+         ./mvnw test -Dnessy.excludedGroups= -->
+    <nessy.excludedGroups>live</nessy.excludedGroups>
+
     <!-- Build plugin versions (pinned explicitly since this POM has no parent
          to inherit plugin management from) -->
     <spotless.version>3.4.0</spotless.version>
@@ -144,7 +148,7 @@
           <configuration>
             <!-- Tests that spend real tokens are tagged `live`. The default
                  build stays green with no API key and no network. -->
-            <excludedGroups>live</excludedGroups>
+            <excludedGroups>${nessy.excludedGroups}</excludedGroups>
           </configuration>
         </plugin>
       </plugins>

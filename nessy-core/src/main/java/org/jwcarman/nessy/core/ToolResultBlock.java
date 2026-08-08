@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.core;
 
+import java.util.Objects;
+
 /**
  * What a tool produced, addressed back to the call that asked for it.
  *
@@ -22,4 +24,10 @@ package org.jwcarman.nessy.core;
  * model an answer arrives from the user side.
  */
 public record ToolResultBlock(String toolUseId, String content, boolean isError)
-    implements ContentBlock {}
+    implements ContentBlock {
+
+  public ToolResultBlock {
+    Objects.requireNonNull(toolUseId, "toolUseId must not be null");
+    Objects.requireNonNull(content, "content must not be null");
+  }
+}

@@ -15,7 +15,13 @@
  */
 package org.jwcarman.nessy.tool;
 
+import java.util.Objects;
 import org.jwcarman.nessy.core.SessionId;
 
 /** What a tool learns about the invocation it is serving. */
-public record ToolContext(SessionId sessionId) {}
+public record ToolContext(SessionId sessionId) {
+
+  public ToolContext {
+    Objects.requireNonNull(sessionId, "sessionId must not be null");
+  }
+}

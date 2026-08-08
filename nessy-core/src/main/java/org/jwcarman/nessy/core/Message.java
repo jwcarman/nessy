@@ -16,11 +16,13 @@
 package org.jwcarman.nessy.core;
 
 import java.util.List;
+import java.util.Objects;
 
 /** One turn of the conversation, as a role and its content blocks. */
 public record Message(Role role, List<ContentBlock> content) {
 
   public Message {
+    Objects.requireNonNull(role, "role must not be null");
     content = List.copyOf(content);
   }
 

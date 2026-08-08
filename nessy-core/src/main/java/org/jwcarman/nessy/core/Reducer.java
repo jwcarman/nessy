@@ -53,9 +53,19 @@ public record Reducer(int maxConsecutiveErrors) {
     };
   }
 
+  /**
+   * A new human turn starts a fresh error streak.
+   *
+   * <p>The circuit breaker counts <em>consecutive</em> errored tool results. A person typing again
+   * is by definition not part of the previous streak, so resuming a session that tripped the
+   * breaker must not re-fail on its very first errored result.
+   */
   private Step userSaid(SessionState state, Event.UserSaid event) {
     return Step.of(
-        state.withMessageAppended(Message.user(event.text())).with(SessionStatus.AWAITING_MODEL),
+        state
+            .withMessageAppended(Message.user(event.text()))
+            .withConsecutiveErrors(0)
+            .with(SessionStatus.AWAITING_MODEL),
         Effect.callModel());
   }
 
@@ -73,8 +83,19 @@ public record Reducer(int maxConsecutiveErrors) {
     return Step.of(state.withPendingBlocks(blocks));
   }
 
+  /**
+   * Ends the model's turn.
+   *
+   * <p>A turn cut off at the token ceiling fails the session rather than reporting {@link
+   * SessionStatus#COMPLETE}. Context compaction is deliberately deferred, so overflow has to fail
+   * loudly: a half-finished sentence reported as a finished answer is the worse outcome, and it is
+   * silent.
+   */
   private Step modelTurnEnded(SessionState state, Event.ModelTurnEnded event) {
     SessionState settled = settleAssistantMessage(state);
+    if (event.reason() == StopReason.MAX_TOKENS) {
+      return Step.of(settled.with(SessionStatus.FAILED));
+    }
     if (settled.pendingCalls().isEmpty()) {
       return Step.of(settled.with(SessionStatus.COMPLETE));
     }
@@ -119,7 +140,7 @@ public record Reducer(int maxConsecutiveErrors) {
     results.add(new ToolResultBlock(call.id(), result.content(), result.isError()));
 
     List<ToolCall> remaining = new ArrayList<>(state.pendingCalls());
-    remaining.removeIf(pending -> pending.id().equals(call.id()));
+    removeFirstMatch(remaining, call.id());
 
     int errors = result.isError() ? state.consecutiveErrors() + 1 : 0;
 
@@ -127,7 +148,7 @@ public record Reducer(int maxConsecutiveErrors) {
         state.withPendingResults(results).withPendingCalls(remaining).withConsecutiveErrors(errors);
 
     if (errors >= maxConsecutiveErrors) {
-      return Step.of(flushResults(next).with(SessionStatus.FAILED));
+      return Step.of(flushResults(abandonPendingCalls(next)).with(SessionStatus.FAILED));
     }
     if (!remaining.isEmpty()) {
       return Step.of(
@@ -135,6 +156,42 @@ public record Reducer(int maxConsecutiveErrors) {
           new Effect.RequestApproval(remaining.getFirst()));
     }
     return Step.of(flushResults(next).with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+  }
+
+  /**
+   * Removes one pending call by id, not every call sharing it.
+   *
+   * <p>A provider that reuses an id would otherwise silently drop a second call's slot, leaving its
+   * {@code tool_use} block without a matching result.
+   */
+  private static void removeFirstMatch(List<ToolCall> calls, String id) {
+    for (int i = 0; i < calls.size(); i++) {
+      if (calls.get(i).id().equals(id)) {
+        calls.remove(i);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Answers every still-pending call with an errored result before the session dies.
+   *
+   * <p>The settled assistant message already carries a {@code tool_use} block for each of them, and
+   * providers reject a turn whose blocks are not all answered. Leaving them unanswered would make
+   * the transcript permanently unusable — a 400 on every subsequent call — so the breaker closes
+   * the shape it opened.
+   */
+  private static SessionState abandonPendingCalls(SessionState state) {
+    if (state.pendingCalls().isEmpty()) {
+      return state;
+    }
+    List<ContentBlock> results = new ArrayList<>(state.pendingResults());
+    for (ToolCall pending : state.pendingCalls()) {
+      results.add(
+          new ToolResultBlock(
+              pending.id(), "Abandoned: the session failed before this tool ran.", true));
+    }
+    return state.withPendingResults(results).withPendingCalls(List.of());
   }
 
   /**

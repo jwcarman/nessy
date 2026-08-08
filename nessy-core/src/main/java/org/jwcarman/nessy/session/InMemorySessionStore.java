@@ -39,6 +39,11 @@ public final class InMemorySessionStore implements SessionStore {
     return Optional.ofNullable(sessions.get(id));
   }
 
+  /**
+   * Last write wins: there is no compare-and-set, so two threads running the same session will
+   * clobber each other, and the consumed-token set grows without eviction for the life of the
+   * process. That suits a process that owns its sessions, not a long-lived multi-tenant server.
+   */
   @Override
   public void save(SessionState state) {
     sessions.put(state.id(), state);

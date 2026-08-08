@@ -62,7 +62,8 @@ import org.jwcarman.nessy.tool.ToolRegistry;
 class InProcessEngineTest {
 
   private static final SessionId ID = new SessionId("s1");
-  private static final AgentConfig CONFIG = new AgentConfig("fake-model", "be helpful", 1024);
+  private static final AgentConfig CONFIG =
+      new AgentConfig("fake-model", "be helpful", 1024, Set.of());
 
   /** A model that replays scripted turns, one per call, and tracks how its streams are held. */
   private static final class FakeProvider implements ModelProvider {
@@ -434,6 +435,33 @@ class InProcessEngineTest {
   }
 
   @Test
+  void progressIsSavedEvenWhenTheRunBlowsUp() {
+    FakeProvider provider =
+        new FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.TextChunk("Four."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+    SessionStore store = new InMemorySessionStore();
+
+    assertThatThrownBy(
+            () ->
+                engine(
+                        provider,
+                        MapToolRegistry.of(),
+                        new ApproveEverything(),
+                        store,
+                        new ExplodingListener())
+                    .run(ID, new Event.UserSaid("what is 2+2?")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("listener blew up");
+
+    SessionState saved = store.load(ID).orElseThrow();
+    assertThat(saved.messages()).containsExactly(Message.user("what is 2+2?"));
+    assertThat(saved.pendingBlocks()).containsExactly(new TextBlock("Four."));
+  }
+
+  @Test
   void resumeIsRefusedBecauseThisEngineNeverParks() {
     FakeProvider provider = new FakeProvider(List.of());
 
@@ -572,6 +600,17 @@ class InProcessEngineTest {
         .containsExactly(
             new ToolResultBlock("c1", "echoed:a", false),
             new ToolResultBlock("c2", "echoed:b", false));
+  }
+
+  /** A listener that fails mid-turn, to prove the run still persists what it reached. */
+  private static final class ExplodingListener implements AgentEventListener {
+
+    @Override
+    public void onEvent(SessionId id, Event event, SessionState state) {
+      if (event instanceof Event.ModelTurnEnded) {
+        throw new IllegalStateException("listener blew up");
+      }
+    }
   }
 
   private static final class RecordingListener implements AgentEventListener {

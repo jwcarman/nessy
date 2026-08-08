@@ -24,14 +24,15 @@ package org.jwcarman.nessy.core;
 public sealed interface Decision {
 
   /** Run it. */
-  record Allow() implements Decision {}
+  record Allow() implements Decision {
+    private static final Allow INSTANCE = new Allow();
+  }
 
   /** Do not run it. The reason goes into context so the model can adapt. */
   record Deny(String reason) implements Decision {}
 
-  Allow ALLOW = new Allow();
-
+  /** The one instance of {@link Allow}; the record has no state, so one is enough. */
   static Decision allow() {
-    return ALLOW;
+    return Allow.INSTANCE;
   }
 }

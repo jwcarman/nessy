@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.tool;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Objects;
 
 /**
  * What a provider needs to tell the model a tool exists.
@@ -23,4 +24,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * <p>Wire-neutral on purpose: the schema is a Jackson node, not any SDK's type, so {@code
  * nessy-core} stays free of model SDKs and each provider module converts on its way out.
  */
-public record ToolSpec(String name, String description, ObjectNode inputSchema) {}
+public record ToolSpec(String name, String description, ObjectNode inputSchema) {
+
+  public ToolSpec {
+    if (name == null || name.isBlank()) {
+      throw new IllegalArgumentException("tool name must not be blank");
+    }
+    Objects.requireNonNull(description, "description must not be null");
+    Objects.requireNonNull(inputSchema, "inputSchema must not be null");
+  }
+}

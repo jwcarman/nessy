@@ -17,6 +17,7 @@ package org.jwcarman.nessy.model;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.core.Message;
 import org.jwcarman.nessy.tool.ToolSpec;
@@ -39,6 +40,13 @@ public record ModelRequest(
     Set<Capability> requested) {
 
   public ModelRequest {
+    Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
+    if (model == null || model.isBlank()) {
+      throw new IllegalArgumentException("model must not be blank");
+    }
+    if (maxTokens < 1) {
+      throw new IllegalArgumentException("maxTokens must be at least 1");
+    }
     messages = List.copyOf(messages);
     tools = List.copyOf(tools);
     requested = Set.copyOf(requested);

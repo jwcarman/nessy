@@ -86,6 +86,32 @@ class ScriptedModelProviderTest {
   }
 
   @Test
+  void iteratingTheSameStreamTwiceIsALoudFailure() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+
+    try (ModelStream stream = provider.stream(request())) {
+      stream.iterator();
+      assertThatThrownBy(stream::iterator)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("already been iterated");
+    }
+  }
+
+  @Test
+  void requestsIsASnapshotRatherThanALiveView() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("Hello").endTurn().text("Again").endTurn().build();
+    provider.stream(request()).close();
+    List<ModelRequest> snapshot = provider.requests();
+
+    provider.stream(request()).close();
+
+    assertThat(snapshot).hasSize(1);
+    assertThat(provider.requests()).hasSize(2);
+  }
+
+  @Test
   void runningOutOfScriptIsALoudFailure() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hello").endTurn().build();

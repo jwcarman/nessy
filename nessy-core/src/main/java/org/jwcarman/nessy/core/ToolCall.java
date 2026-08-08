@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Objects;
 
 /**
  * The model's request to run one tool.
@@ -24,4 +25,15 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param name the tool's registered name
  * @param arguments raw JSON, not yet bound to the tool's input record
  */
-public record ToolCall(String id, String name, JsonNode arguments) {}
+public record ToolCall(String id, String name, JsonNode arguments) {
+
+  public ToolCall {
+    if (id == null || id.isBlank()) {
+      throw new IllegalArgumentException("tool call id must not be blank");
+    }
+    if (name == null || name.isBlank()) {
+      throw new IllegalArgumentException("tool name must not be blank");
+    }
+    Objects.requireNonNull(arguments, "arguments must not be null");
+  }
+}
