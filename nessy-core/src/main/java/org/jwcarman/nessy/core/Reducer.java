@@ -48,8 +48,8 @@ public record Reducer(int maxConsecutiveErrors) {
       case Event.TextDelta e -> textDelta(state, e);
       case Event.ModelTurnEnded e -> modelTurnEnded(state, e);
       case Event.ToolCallRequested e -> toolCallRequested(state, e);
-      case Event.ApprovalDecided e -> throw new UnsupportedOperationException("Task 7");
-      case Event.ToolFinished e -> throw new UnsupportedOperationException("Task 8");
+      case Event.ApprovalDecided e -> approvalDecided(state, e);
+      case Event.ToolFinished e -> toolFinished(state, e.call(), e.result());
     };
   }
 
@@ -101,5 +101,53 @@ public record Reducer(int maxConsecutiveErrors) {
     return state
         .withMessageAppended(Message.assistant(state.pendingBlocks()))
         .withPendingBlocks(List.of());
+  }
+
+  private Step approvalDecided(SessionState state, Event.ApprovalDecided event) {
+    return switch (event.decision()) {
+      case Decision.Allow ignored ->
+          Step.of(state.with(SessionStatus.EXECUTING_TOOL), new Effect.ExecuteTool(event.call()));
+      // A denial is not a special path: it is a result the model can read and
+      // adapt to, exactly like a tool that failed.
+      case Decision.Deny deny ->
+          toolFinished(state, event.call(), ToolResult.error("Denied by user: " + deny.reason()));
+    };
+  }
+
+  private Step toolFinished(SessionState state, ToolCall call, ToolResult result) {
+    List<ContentBlock> results = new ArrayList<>(state.pendingResults());
+    results.add(new ToolResultBlock(call.id(), result.content(), result.isError()));
+
+    List<ToolCall> remaining = new ArrayList<>(state.pendingCalls());
+    remaining.removeIf(pending -> pending.id().equals(call.id()));
+
+    int errors = result.isError() ? state.consecutiveErrors() + 1 : 0;
+
+    SessionState next =
+        state.withPendingResults(results).withPendingCalls(remaining).withConsecutiveErrors(errors);
+
+    if (errors >= maxConsecutiveErrors) {
+      return Step.of(flushResults(next).with(SessionStatus.FAILED));
+    }
+    if (!remaining.isEmpty()) {
+      return Step.of(
+          next.with(SessionStatus.AWAITING_APPROVAL),
+          new Effect.RequestApproval(remaining.getFirst()));
+    }
+    return Step.of(flushResults(next).with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+  }
+
+  /**
+   * Collected results become one user message. They are batched rather than sent one at a time
+   * because the providers we target require every result for a turn to arrive together in the
+   * message that follows it.
+   */
+  private SessionState flushResults(SessionState state) {
+    if (state.pendingResults().isEmpty()) {
+      return state;
+    }
+    return state
+        .withMessageAppended(Message.toolResults(state.pendingResults()))
+        .withPendingResults(List.of());
   }
 }
