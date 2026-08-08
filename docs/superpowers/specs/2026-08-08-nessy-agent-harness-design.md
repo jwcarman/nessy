@@ -35,11 +35,18 @@ keeps the sea monster and the harness pun while remaining findable.
 [12-factor-agents](https://github.com/humanlayer/12-factor-agents) as its spine,
 including the two deviations already established in `agentic-agency`:
 
-- **Factor 7 is partial, on purpose.** Approval is a harness-side interceptor
-  that the model cannot see, name, or route around. Routing approval through a
-  model-chosen tool call puts the safety gate on the far side of the thing it
-  guards. Nessy ships *both* mechanisms and keeps them distinct: `Approver` for
-  approval, and an optional model-callable ask-the-human tool for clarification.
+- **Factor 7: keep its structure, reject its trigger.** The factor makes two
+  claims that are worth separating. Its *mechanism* — human contact as a
+  structured request that is persisted, breaks the loop, and resumes on a
+  webhook — is right, and Nessy implements it directly as `Awaited.Parked`,
+  `ParkToken`, and `ExecutionEngine.resume`. Its *trigger* — the model deciding
+  when to reach a human — is right for clarification and unsafe for approval: a
+  model that never emits the intent simply never asks, and that is
+  indistinguishable from a question that was answered. So approval is a
+  harness-side interceptor the model cannot see or route around, even though the
+  waiting machinery underneath it is exactly Factor 7's. Nessy ships both
+  triggers and keeps them distinct: `Approver` for approval, and an optional
+  model-callable ask-the-human tool for clarification.
 - **Factor 5 stays partial.** Unifying execution and business state only fully
   lands inside a business domain. Nessy provides the hooks; applications land it.
 
