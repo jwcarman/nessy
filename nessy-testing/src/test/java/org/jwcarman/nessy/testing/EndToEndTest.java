@@ -1,0 +1,141 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.testing;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.approval.ApproveEverything;
+import org.jwcarman.nessy.core.Awaited;
+import org.jwcarman.nessy.core.Event;
+import org.jwcarman.nessy.core.SessionId;
+import org.jwcarman.nessy.core.SessionStatus;
+import org.jwcarman.nessy.core.ToolResult;
+import org.jwcarman.nessy.engine.ExecutionEngine;
+import org.jwcarman.nessy.engine.Nessy;
+import org.jwcarman.nessy.engine.RunOutcome;
+import org.jwcarman.nessy.tool.MapToolRegistry;
+import org.jwcarman.nessy.tool.Tool;
+import org.jwcarman.nessy.tool.ToolContext;
+
+class EndToEndTest {
+
+  record Add(int left, int right) {}
+
+  static final class AddTool implements Tool<Add> {
+    @Override
+    public String name() {
+      return "add";
+    }
+
+    @Override
+    public String description() {
+      return "Adds two integers";
+    }
+
+    @Override
+    public Class<Add> inputType() {
+      return Add.class;
+    }
+
+    @Override
+    public boolean requiresApproval() {
+      return true;
+    }
+
+    @Override
+    public String describe(Add input) {
+      return "add(" + input.left() + ", " + input.right() + ")";
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(Add input, ToolContext context) {
+      return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
+    }
+  }
+
+  private static ObjectNode addArgs(int left, int right) {
+    ObjectNode args = JsonNodeFactory.instance.objectNode();
+    args.put("left", left);
+    args.put("right", right);
+    return args;
+  }
+
+  @Test
+  void aFullToolCallingConversationRunsEndToEnd() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .text("Let me add those.")
+            .toolUse("c1", "add", addArgs(2, 2))
+            .endWithToolUse()
+            .text("The answer is 4.")
+            .endTurn()
+            .build();
+    RecordingEventListener listener = new RecordingEventListener();
+
+    ExecutionEngine engine =
+        Nessy.builder()
+            .model(provider)
+            .modelName("fake-model")
+            .systemPrompt("be helpful")
+            .tools(MapToolRegistry.of(new AddTool()))
+            .approver(new ApproveEverything())
+            .listener(listener)
+            .build();
+
+    RunOutcome outcome = engine.run(new SessionId("s1"), new Event.UserSaid("what is 2+2?"));
+
+    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+    assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
+    assertThat(completed.state().messages()).hasSize(4);
+    assertThat(listener.events()).isNotEmpty();
+  }
+
+  @Test
+  void theToolSchemaReachesTheModel() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+
+    Nessy.builder()
+        .model(provider)
+        .modelName("fake-model")
+        .tools(MapToolRegistry.of(new AddTool()))
+        .build()
+        .run(new SessionId("s1"), new Event.UserSaid("hello"));
+
+    assertThat(provider.requests().getFirst().tools()).hasSize(1);
+    assertThat(provider.requests().getFirst().tools().getFirst().name()).isEqualTo("add");
+    assertThat(
+            provider
+                .requests()
+                .getFirst()
+                .tools()
+                .getFirst()
+                .inputSchema()
+                .get("properties")
+                .has("left"))
+        .isTrue();
+  }
+
+  @Test
+  void aMissingModelIsRejectedAtBuildTime() {
+    assertThatThrownBy(() -> Nessy.builder().modelName("fake-model").build())
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("model");
+  }
+}
