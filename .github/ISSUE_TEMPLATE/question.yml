@@ -1,0 +1,49 @@
+name: Question
+description: Ask a question about usage or functionality
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help!
+
+        Before asking, please check:
+        - [README documentation](https://github.com/jwcarman/nessy#readme)
+        - [Existing issues](https://github.com/jwcarman/nessy/issues)
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: How do I...?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish?
+      placeholder: I'm working on... and I need to...
+    validations:
+      required: false
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What Have You Tried?
+      description: Describe what you've already attempted
+      placeholder: I tried... but...
+      render: java
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Nessy Version
+      description: Which version are you using?
+      placeholder: e.g., 0.1.0
+    validations:
+      required: false

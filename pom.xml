@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2026 James Carman
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -11,8 +28,33 @@
 
   <name>Nessy</name>
   <description>An AI agent harness framework for Java</description>
+  <url>https://github.com/jwcarman/nessy</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <developers>
+    <developer>
+      <id>jwcarman</id>
+      <name>James Carman</name>
+    </developer>
+  </developers>
+
+  <licenses>
+    <license>
+      <name>Apache 2</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+      <comments>A business-friendly OSS license</comments>
+    </license>
+  </licenses>
+
+  <scm>
+    <url>https://github.com/jwcarman/nessy</url>
+    <connection>scm:git:git@github.com:jwcarman/nessy.git</connection>
+    <developerConnection>scm:git:git@github.com:jwcarman/nessy.git</developerConnection>
+  </scm>
 
   <modules>
+    <module>nessy-bom</module>
     <module>nessy-core</module>
     <module>nessy-testing</module>
   </modules>
@@ -25,6 +67,18 @@
     <junit.version>6.1.2</junit.version>
     <assertj.version>3.27.7</assertj.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+
+    <!-- Build plugin versions (pinned explicitly since this POM has no parent
+         to inherit plugin management from) -->
+    <spotless.version>3.4.0</spotless.version>
+    <license.plugin.version>5.0.0</license.plugin.version>
+    <source.plugin.version>3.4.0</source.plugin.version>
+    <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
+    <gpg.plugin.version>3.2.8</gpg.plugin.version>
+    <sonatype.plugin.version>0.10.0</sonatype.plugin.version>
+
+    <!-- License Header Configuration -->
+    <license.owner>James Carman</license.owner>
   </properties>
 
   <dependencyManagement>
@@ -100,6 +154,157 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
       </plugin>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <style>GOOGLE</style>
+            </googleJavaFormat>
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Release profile for Maven Central publishing -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>${sonatype.plugin.version}</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <tokenAuth>true</tokenAuth>
+              <autoPublish>true</autoPublish>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>${source.plugin.version}</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>${javadoc.plugin.version}</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>${gpg.plugin.version}</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <gpgArguments>
+                <arg>--pinentry-mode</arg>
+                <arg>loopback</arg>
+              </gpgArguments>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!-- License header check/format -->
+    <profile>
+      <id>license</id>
+      <activation>
+        <activeByDefault>false</activeByDefault>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>com.mycila</groupId>
+            <artifactId>license-maven-plugin</artifactId>
+            <version>${license.plugin.version}</version>
+            <configuration>
+              <properties>
+                <owner>${license.owner}</owner>
+              </properties>
+              <licenseSets>
+                <licenseSet>
+                  <inlineHeader><![CDATA[Copyright © ${year} ${owner}
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.]]></inlineHeader>
+                  <excludes>
+                    <exclude>**/README</exclude>
+                    <exclude>**/README.md</exclude>
+                    <exclude>src/test/resources/**</exclude>
+                    <exclude>src/main/resources/**</exclude>
+                    <exclude>LICENSE</exclude>
+                    <exclude>.github/**</exclude>
+                    <exclude>**/*.txt</exclude>
+                    <exclude>**/*.sh</exclude>
+                    <exclude>**/*.md</exclude>
+                    <exclude>docs/**</exclude>
+                    <exclude>.mvn/**</exclude>
+                    <exclude>mvnw</exclude>
+                    <exclude>mvnw.cmd</exclude>
+                  </excludes>
+                </licenseSet>
+              </licenseSets>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -1,0 +1,58 @@
+version: 2
+updates:
+  # Maven dependencies
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    reviewers:
+      - "jwcarman"
+    groups:
+      jackson:
+        patterns:
+          - "com.fasterxml.jackson*"
+        update-types:
+          - "minor"
+          - "patch"
+      testing:
+        patterns:
+          - "org.junit*"
+          - "org.assertj*"
+        update-types:
+          - "minor"
+          - "patch"
+      build-plugins:
+        patterns:
+          - "org.apache.maven.plugins*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    reviewers:
+      - "jwcarman"
