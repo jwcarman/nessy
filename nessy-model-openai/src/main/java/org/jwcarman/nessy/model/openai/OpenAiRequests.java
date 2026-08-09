@@ -1,0 +1,212 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.model.openai;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.openai.core.JsonValue;
+import com.openai.models.FunctionDefinition;
+import com.openai.models.FunctionParameters;
+import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
+import com.openai.models.chat.completions.ChatCompletionContentPart;
+import com.openai.models.chat.completions.ChatCompletionContentPartImage;
+import com.openai.models.chat.completions.ChatCompletionContentPartText;
+import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.models.chat.completions.ChatCompletionFunctionTool;
+import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
+import com.openai.models.chat.completions.ChatCompletionMessageParam;
+import com.openai.models.chat.completions.ChatCompletionStreamOptions;
+import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
+import com.openai.models.chat.completions.ChatCompletionTool;
+import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
+import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import java.util.ArrayList;
+import java.util.List;
+import org.jwcarman.nessy.api.ContentBlock;
+import org.jwcarman.nessy.api.ImageBlock;
+import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.TextBlock;
+import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.spi.model.ModelRequest;
+
+/**
+ * Assembles a wire-neutral {@link ModelRequest} into the openai-java SDK's {@link
+ * ChatCompletionCreateParams}.
+ *
+ * <p>This is pure request assembly: it builds params from a request already fully formed by the
+ * harness. It never talks to a client and never sees a key.
+ *
+ * <p>{@link org.jwcarman.nessy.api.ThinkingBlock} and {@link
+ * org.jwcarman.nessy.api.RedactedThinkingBlock} are dropped outright: Chat Completions has no
+ * assistant content type that carries opaque or extended-reasoning payloads, so there is nothing on
+ * this wire to round-trip them through.
+ */
+public final class OpenAiRequests {
+
+  private static final String ERROR_PREFIX = "ERROR: ";
+
+  private OpenAiRequests() {}
+
+  public static ChatCompletionCreateParams toParams(ModelRequest request) {
+    var messages = new ArrayList<ChatCompletionMessageParam>();
+    messages.add(
+        ChatCompletionMessageParam.ofSystem(
+            ChatCompletionSystemMessageParam.builder().content(request.systemPrompt()).build()));
+    for (Message message : request.messages()) {
+      messages.addAll(toMessageParams(message));
+    }
+
+    var builder =
+        ChatCompletionCreateParams.builder()
+            .model(request.model())
+            .maxCompletionTokens((long) request.maxTokens())
+            .messages(messages)
+            .streamOptions(ChatCompletionStreamOptions.builder().includeUsage(true).build());
+
+    request.tools().forEach(spec -> builder.addTool(toFunctionTool(spec)));
+
+    return builder.build();
+  }
+
+  private static List<ChatCompletionMessageParam> toMessageParams(Message message) {
+    return switch (message.role()) {
+      case USER -> toUserRoleMessageParams(message.content());
+      case ASSISTANT -> List.of(toAssistantMessageParam(message.content()));
+    };
+  }
+
+  /**
+   * A {@code USER}-role {@link Message} is, by grammar construction, either an actual user turn
+   * (text and/or images) or a batch of tool results — never both. Tool results have no home inside
+   * a Chat Completions user message; each becomes its own {@code tool}-role message.
+   */
+  private static List<ChatCompletionMessageParam> toUserRoleMessageParams(
+      List<ContentBlock> content) {
+    if (content.stream().anyMatch(ToolResultBlock.class::isInstance)) {
+      return content.stream()
+          .map(ToolResultBlock.class::cast)
+          .map(OpenAiRequests::toToolMessageParam)
+          .toList();
+    }
+    return List.of(ChatCompletionMessageParam.ofUser(toUserMessageParam(content)));
+  }
+
+  private static ChatCompletionUserMessageParam toUserMessageParam(List<ContentBlock> content) {
+    var builder = ChatCompletionUserMessageParam.builder();
+    if (content.stream().anyMatch(ImageBlock.class::isInstance)) {
+      var parts = content.stream().map(OpenAiRequests::toContentPart).toList();
+      builder.content(ChatCompletionUserMessageParam.Content.ofArrayOfContentParts(parts));
+    } else {
+      builder.content(concatenateText(content));
+    }
+    return builder.build();
+  }
+
+  private static ChatCompletionContentPart toContentPart(ContentBlock block) {
+    return switch (block) {
+      case TextBlock text ->
+          ChatCompletionContentPart.ofText(
+              ChatCompletionContentPartText.builder().text(text.text()).build());
+      case ImageBlock image ->
+          ChatCompletionContentPart.ofImageUrl(
+              ChatCompletionContentPartImage.builder()
+                  .imageUrl(
+                      ChatCompletionContentPartImage.ImageUrl.builder().url(dataUri(image)).build())
+                  .build());
+      default ->
+          throw new IllegalArgumentException(
+              "unsupported content block in a user message: " + block);
+    };
+  }
+
+  private static String dataUri(ImageBlock image) {
+    return "data:%s;base64,%s".formatted(image.mediaType(), image.base64Data());
+  }
+
+  private static ChatCompletionMessageParam toToolMessageParam(ToolResultBlock result) {
+    var content = result.isError() ? ERROR_PREFIX + result.content() : result.content();
+    return ChatCompletionMessageParam.ofTool(
+        ChatCompletionToolMessageParam.builder()
+            .toolCallId(result.toolUseId())
+            .content(content)
+            .build());
+  }
+
+  private static ChatCompletionMessageParam toAssistantMessageParam(List<ContentBlock> content) {
+    var builder = ChatCompletionAssistantMessageParam.builder();
+    var text = concatenateText(content);
+    if (!text.isEmpty()) {
+      builder.content(text);
+    }
+    content.stream()
+        .filter(ToolUseBlock.class::isInstance)
+        .map(ToolUseBlock.class::cast)
+        .map(OpenAiRequests::toToolCall)
+        .forEach(builder::addToolCall);
+    return ChatCompletionMessageParam.ofAssistant(builder.build());
+  }
+
+  private static String concatenateText(List<ContentBlock> content) {
+    var builder = new StringBuilder();
+    for (ContentBlock block : content) {
+      if (block instanceof TextBlock text) {
+        builder.append(text.text());
+      }
+    }
+    return builder.toString();
+  }
+
+  private static ChatCompletionMessageFunctionToolCall toToolCall(ToolUseBlock toolUse) {
+    var call = toolUse.call();
+    return ChatCompletionMessageFunctionToolCall.builder()
+        .id(call.id())
+        .function(
+            ChatCompletionMessageFunctionToolCall.Function.builder()
+                .name(call.name())
+                .arguments(call.arguments().toString())
+                .build())
+        .build();
+  }
+
+  /**
+   * Converts a {@link ToolSpec} to a Chat Completions function tool.
+   *
+   * <p>{@code strict: true} is deliberately never set here. Strict mode imposes its own rules on
+   * the schema (every property required, unions expressed as nullable types) that {@code
+   * ToolSpec.inputSchema()} was not built to satisfy; wiring it up is a later, deliberate feature.
+   */
+  private static ChatCompletionTool toFunctionTool(ToolSpec spec) {
+    return ChatCompletionTool.ofFunction(
+        ChatCompletionFunctionTool.builder()
+            .function(
+                FunctionDefinition.builder()
+                    .name(spec.name())
+                    .description(spec.description())
+                    .parameters(toFunctionParameters(spec.inputSchema()))
+                    .build())
+            .build());
+  }
+
+  /** Copies the schema's top-level fields onto the SDK's parameters object as-is. */
+  private static FunctionParameters toFunctionParameters(ObjectNode schema) {
+    var builder = FunctionParameters.builder();
+    for (var property : schema.properties()) {
+      builder.putAdditionalProperty(property.getKey(), JsonValue.fromJsonNode(property.getValue()));
+    }
+    return builder.build();
+  }
+}
