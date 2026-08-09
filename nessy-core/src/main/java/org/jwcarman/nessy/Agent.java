@@ -35,12 +35,12 @@ public final class Agent {
 
   /** Opens a fresh conversation. */
   public Conversation converse() {
-    return new Conversation(engine, SessionId.generate());
+    return new Conversation(engine, SessionId.generate(), events);
   }
 
   /** Reopens a stored session. The engine loads its state on the next send. */
   public Conversation resume(SessionId sessionId) {
-    return new Conversation(engine, sessionId);
+    return new Conversation(engine, sessionId, events);
   }
 
   /** The event-level API, for anything the facade does not say. */

@@ -16,8 +16,12 @@
 package org.jwcarman.nessy;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.SessionEvent;
+import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 
 /** One session. Sugar over {@code engine.run} — no semantics of its own. */
@@ -25,14 +29,33 @@ public final class Conversation {
 
   private final ExecutionEngine engine;
   private final SessionId sessionId;
+  private final EventHub events;
 
-  Conversation(ExecutionEngine engine, SessionId sessionId) {
+  Conversation(ExecutionEngine engine, SessionId sessionId, EventHub events) {
     this.engine = Objects.requireNonNull(engine, "engine must not be null");
     this.sessionId = Objects.requireNonNull(sessionId, "sessionId must not be null");
+    this.events = Objects.requireNonNull(events, "events must not be null");
   }
 
   public Reply send(String text) {
-    return new Reply(engine.run(sessionId, Event.UserSaid.of(text)));
+    return send(text, ignored -> {});
+  }
+
+  /**
+   * Sends, delivering this conversation's loop events to {@code tap} for the duration of the send.
+   */
+  public Reply send(String text, Consumer<Event> tap) {
+    Objects.requireNonNull(tap, "tap must not be null");
+    try (Subscription subscription =
+        events.subscribe(SessionEvent.class, sessionEvent -> deliver(sessionEvent, tap))) {
+      return new Reply(engine.run(sessionId, Event.UserSaid.of(text)));
+    }
+  }
+
+  private void deliver(SessionEvent sessionEvent, Consumer<Event> tap) {
+    if (sessionEvent.sessionId().equals(sessionId)) {
+      tap.accept(sessionEvent.event());
+    }
   }
 
   public SessionId sessionId() {

@@ -59,6 +59,7 @@
     <module>nessy-testing</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
+    <module>nessy-examples</module>
   </modules>
 
   <properties>

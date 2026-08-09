@@ -20,12 +20,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.ToolResult;
@@ -190,5 +193,59 @@ class AgentFacadeTest {
     assertThat(second.failed()).isTrue();
     assertThat(second.failureReason()).isPresent();
     assertThat(second.failureReason().orElseThrow()).contains("turn");
+  }
+
+  @Test
+  void a_send_tap_sees_this_conversations_events_in_order() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    List<Event> tapped = new ArrayList<>();
+
+    agent.converse().send("what is 2+2?", tapped::add);
+
+    assertThat(tapped)
+        .filteredOn(Event.TextDelta.class::isInstance)
+        .isNotEmpty()
+        .allSatisfy(event -> assertThat(((Event.TextDelta) event).text()).isNotEmpty());
+    assertThat(tapped.getLast()).isInstanceOf(Event.ModelTurnEnded.class);
+  }
+
+  @Test
+  void a_send_tap_never_sees_another_conversations_events() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .text("Hello from A.")
+            .endTurn()
+            .text("Hello from B.")
+            .endTurn()
+            .build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    List<Event> tappedFromA = new ArrayList<>();
+    Conversation a = agent.converse();
+    Conversation b = agent.converse();
+
+    a.send("hi", tappedFromA::add);
+    b.send("hi");
+
+    assertThat(tappedFromA)
+        .filteredOn(Event.TextDelta.class::isInstance)
+        .extracting(event -> ((Event.TextDelta) event).text())
+        .allSatisfy(text -> assertThat(text).doesNotContain("Hello from B."));
+  }
+
+  @Test
+  void the_tap_is_closed_after_send() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("Hi").endTurn().text("Hi again").endTurn().build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    List<Event> tapped = new ArrayList<>();
+    Conversation chat = agent.converse();
+
+    chat.send("hi", tapped::add);
+    int sizeAfterTappedSend = tapped.size();
+    chat.send("still there?");
+
+    assertThat(tapped).hasSize(sizeAfterTappedSend);
   }
 }
