@@ -37,6 +37,8 @@ import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.spi.ContextBuilder;
+import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class AgentFacadeTest {
 
@@ -162,6 +164,32 @@ class AgentFacadeTest {
     Reply second = chat.send("you there?");
 
     assertThat(second.text()).isEqualTo("Still here.");
+    assertThat(second.state().messages()).hasSize(4);
+  }
+
+  @Test
+  void the_engine_consults_the_context_builder() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .text("Hello!")
+            .endTurn()
+            .text("Still here.")
+            .endTurn()
+            .build();
+    // A marking projection: drops the oldest message so the assertions below can tell the
+    // projected request apart from the untouched state the reducer kept.
+    ContextBuilder droppingOldest = state -> state.messages().subList(1, state.messages().size());
+    Agent agent =
+        Nessy.agent().provider(provider).model("fake-model").contextBuilder(droppingOldest).build();
+
+    Conversation chat = agent.converse();
+    chat.send("hi");
+    Reply second = chat.send("you there?");
+
+    List<ModelRequest> requests = provider.requests();
+    assertThat(requests).hasSize(2);
+    assertThat(requests.get(0).messages()).isEmpty();
+    assertThat(requests.get(1).messages()).hasSize(2);
     assertThat(second.state().messages()).hasSize(4);
   }
 

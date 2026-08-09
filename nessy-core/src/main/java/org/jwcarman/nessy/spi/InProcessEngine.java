@@ -75,6 +75,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final ModelSettings config;
   private final ToolInvoker invoker;
   private final ObservationRegistry observations;
+  private final ContextBuilder contextBuilder;
 
   public InProcessEngine(
       ModelProvider provider,
@@ -85,7 +86,8 @@ public final class InProcessEngine implements ExecutionEngine {
       Reducer reducer,
       ModelSettings config,
       ObjectMapper mapper,
-      ObservationRegistry observations) {
+      ObservationRegistry observations,
+      ContextBuilder contextBuilder) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
@@ -95,6 +97,7 @@ public final class InProcessEngine implements ExecutionEngine {
     this.config = Objects.requireNonNull(config, "config must not be null");
     this.invoker = new ToolInvoker(Objects.requireNonNull(mapper, "mapper must not be null"));
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    this.contextBuilder = Objects.requireNonNull(contextBuilder, "contextBuilder must not be null");
   }
 
   /**
@@ -181,8 +184,10 @@ public final class InProcessEngine implements ExecutionEngine {
    * uncompacted.
    *
    * <p>{@code effect.messages()} is sent to the provider exactly as the reducer packaged it; it is
-   * not projected through a context-builder seam (that seam does not exist yet — see the
-   * context-management plan's later tasks).
+   * never projected through {@link ContextBuilder}. The projection seam exists to shape what a
+   * conversational call sees; a compaction call's messages are already exactly the slice the
+   * reducer chose to summarize, and projecting them again would defeat the reducer's own choice of
+   * what to keep verbatim versus compact away.
    */
   private SessionState compact(
       AtomicReference<SessionState> progress, SessionState state, Effect.Compact effect) {
@@ -288,7 +293,7 @@ public final class InProcessEngine implements ExecutionEngine {
 
   private ModelRequest requestFor(SessionState state) {
     return new ModelRequest(
-        state.messages(),
+        contextBuilder.project(state),
         config.systemPrompt(),
         config.model(),
         config.maxTokens(),

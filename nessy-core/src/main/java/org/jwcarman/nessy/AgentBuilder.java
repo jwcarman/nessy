@@ -24,6 +24,7 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.spi.ContextBuilder;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
@@ -56,6 +57,7 @@ public final class AgentBuilder {
   private CompactionPolicy compaction = CompactionPolicy.defaults();
   private ObjectMapper mapper = new ObjectMapper();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
+  private ContextBuilder contextBuilder = ContextBuilder.identity();
 
   AgentBuilder() {}
 
@@ -121,6 +123,14 @@ public final class AgentBuilder {
     return this;
   }
 
+  /**
+   * What a conversational call sees, projected from the full session state. Default: everything.
+   */
+  public AgentBuilder contextBuilder(ContextBuilder contextBuilder) {
+    this.contextBuilder = contextBuilder;
+    return this;
+  }
+
   public AgentBuilder objectMapper(ObjectMapper mapper) {
     this.mapper = mapper;
     return this;
@@ -148,7 +158,8 @@ public final class AgentBuilder {
             new Reducer(termination, compaction),
             new ModelSettings(model, systemPrompt, maxTokens, capabilities),
             mapper,
-            observations);
+            observations,
+            contextBuilder);
     return new Agent(engine, events);
   }
 }

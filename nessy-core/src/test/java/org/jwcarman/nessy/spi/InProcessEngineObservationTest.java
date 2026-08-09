@@ -99,7 +99,8 @@ class InProcessEngineObservationTest {
             Reducer.defaults(),
             CONFIG,
             new ObjectMapper(),
-            observations);
+            observations,
+            ContextBuilder.identity());
 
     assertThatThrownBy(() -> engine.run(ID, Event.UserSaid.of("echo hi")))
         .isInstanceOf(IllegalStateException.class);
@@ -151,7 +152,8 @@ class InProcessEngineObservationTest {
             Reducer.defaults(),
             CONFIG,
             new ObjectMapper(),
-            observations);
+            observations,
+            ContextBuilder.identity());
 
     engine.run(ID, Event.UserSaid.of("go"));
 
@@ -223,7 +225,8 @@ class InProcessEngineObservationTest {
             Reducer.defaults(),
             CONFIG,
             new ObjectMapper(),
-            observations);
+            observations,
+            ContextBuilder.identity());
 
     engine.run(ID, Event.UserSaid.of("echo hi"));
   }

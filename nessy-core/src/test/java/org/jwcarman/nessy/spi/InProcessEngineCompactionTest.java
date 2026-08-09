@@ -79,7 +79,8 @@ class InProcessEngineCompactionTest {
         reducer,
         CONFIG,
         new ObjectMapper(),
-        observations);
+        observations,
+        ContextBuilder.identity());
   }
 
   /**

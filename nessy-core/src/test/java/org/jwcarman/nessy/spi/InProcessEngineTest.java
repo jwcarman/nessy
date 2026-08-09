@@ -206,7 +206,8 @@ class InProcessEngineTest {
         Reducer.defaults(),
         CONFIG,
         new ObjectMapper(),
-        ObservationRegistry.NOOP);
+        ObservationRegistry.NOOP,
+        ContextBuilder.identity());
   }
 
   @Nested
@@ -225,9 +226,29 @@ class InProcessEngineTest {
                       Reducer.defaults(),
                       CONFIG,
                       new ObjectMapper(),
-                      ObservationRegistry.NOOP))
+                      ObservationRegistry.NOOP,
+                      ContextBuilder.identity()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("provider");
+    }
+
+    @Test
+    void a_null_context_builder_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  new InProcessEngine(
+                      new EngineFixtures.FakeProvider(List.of()),
+                      ToolRegistry.of(),
+                      Approver.allowAll(),
+                      SessionStore.inMemory(),
+                      EventHub.synchronous(),
+                      Reducer.defaults(),
+                      CONFIG,
+                      new ObjectMapper(),
+                      ObservationRegistry.NOOP,
+                      null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("contextBuilder");
     }
   }
 
