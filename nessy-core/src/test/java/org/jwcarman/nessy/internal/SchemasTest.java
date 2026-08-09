@@ -29,7 +29,7 @@ class SchemasTest {
       Optional<Integer> maxLines) {}
 
   @Test
-  void componentsBecomeProperties() {
+  void components_become_properties() {
     ObjectNode schema = Schemas.of(ReadFile.class);
 
     assertThat(schema.get("properties").has("path")).isTrue();
@@ -37,7 +37,7 @@ class SchemasTest {
   }
 
   @Test
-  void descriptionsSurviveIntoTheSchema() {
+  void descriptions_survive_into_the_schema() {
     ObjectNode schema = Schemas.of(ReadFile.class);
 
     assertThat(schema.get("properties").get("path").get("description").asText())
@@ -45,7 +45,7 @@ class SchemasTest {
   }
 
   @Test
-  void everythingIsRequiredExceptOptionals() {
+  void everything_is_required_except_optionals() {
     ObjectNode schema = Schemas.of(ReadFile.class);
 
     assertThat(schema.get("required")).hasSize(1);
@@ -53,7 +53,7 @@ class SchemasTest {
   }
 
   @Test
-  void theSchemaDescribesAnObject() {
+  void the_schema_describes_an_object() {
     ObjectNode schema = Schemas.of(ReadFile.class);
 
     assertThat(schema.get("type").asText()).isEqualTo("object");

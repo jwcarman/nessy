@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 class MessageTest {
 
   @Test
-  void userMessageWrapsTextInABlock() {
+  void user_message_wraps_text_in_a_block() {
     Message message = Message.user("hello");
 
     assertThat(message.role()).isEqualTo(Role.USER);
@@ -33,7 +33,7 @@ class MessageTest {
   }
 
   @Test
-  void toolResultsAreCarriedOnAUserMessage() {
+  void tool_results_are_carried_on_a_user_message() {
     ToolResultBlock block = new ToolResultBlock("call_1", "contents", false);
 
     Message message = Message.toolResults(List.of(block));
@@ -43,7 +43,7 @@ class MessageTest {
   }
 
   @Test
-  void contentIsDefensivelyCopied() {
+  void content_is_defensively_copied() {
     List<ContentBlock> mutable = new ArrayList<>();
     mutable.add(new TextBlock("first"));
 
@@ -54,7 +54,7 @@ class MessageTest {
   }
 
   @Test
-  void contentIsUnmodifiable() {
+  void content_is_unmodifiable() {
     Message message = Message.user("hello");
 
     assertThatThrownBy(() -> message.content().add(new TextBlock("nope")))
@@ -62,14 +62,14 @@ class MessageTest {
   }
 
   @Test
-  void toolResultFactoriesSetTheErrorFlag() {
+  void tool_result_factories_set_the_error_flag() {
     assertThat(ToolResult.ok("fine").isError()).isFalse();
     assertThat(ToolResult.error("boom").isError()).isTrue();
     assertThat(ToolResult.error("boom").content()).isEqualTo("boom");
   }
 
   @Test
-  void randomSessionIdsAreDistinct() {
+  void random_session_ids_are_distinct() {
     assertThat(SessionId.random()).isNotEqualTo(SessionId.random());
   }
 }

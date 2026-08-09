@@ -47,7 +47,7 @@ class ScriptedModelProviderTest {
   }
 
   @Test
-  void replaysASingleTextTurn() {
+  void replays_a_single_text_turn() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hello").endTurn().build();
 
@@ -60,7 +60,7 @@ class ScriptedModelProviderTest {
   }
 
   @Test
-  void replaysTurnsInOrder() {
+  void replays_turns_in_order() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
@@ -78,7 +78,7 @@ class ScriptedModelProviderTest {
   }
 
   @Test
-  void recordsEveryRequestItReceived() {
+  void records_every_request_it_received() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hello").endTurn().build();
 
@@ -89,7 +89,7 @@ class ScriptedModelProviderTest {
   }
 
   @Test
-  void iteratingTheSameStreamTwiceIsALoudFailure() {
+  void iterating_the_same_stream_twice_is_a_loud_failure() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hello").endTurn().build();
 
@@ -102,7 +102,7 @@ class ScriptedModelProviderTest {
   }
 
   @Test
-  void requestsIsASnapshotRatherThanALiveView() {
+  void requests_is_a_snapshot_rather_than_a_live_view() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hello").endTurn().text("Again").endTurn().build();
     provider.stream(request()).close();
@@ -115,7 +115,7 @@ class ScriptedModelProviderTest {
   }
 
   @Test
-  void runningOutOfScriptIsALoudFailure() {
+  void running_out_of_script_is_a_loud_failure() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hello").endTurn().build();
     provider.stream(request()).close();

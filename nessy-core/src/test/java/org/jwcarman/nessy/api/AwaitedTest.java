@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 class AwaitedTest {
 
   @Test
-  void readyCarriesItsValue() {
+  void ready_carries_its_value() {
     Awaited<String> awaited = Awaited.ready("done");
 
     String resolved =
@@ -35,7 +35,7 @@ class AwaitedTest {
   }
 
   @Test
-  void parkedCarriesItsToken() {
+  void parked_carries_its_token() {
     ParkToken token = new ParkToken("t1");
 
     Awaited<String> awaited = Awaited.parked(token);
@@ -44,7 +44,7 @@ class AwaitedTest {
   }
 
   @Test
-  void randomTokensAreDistinct() {
+  void random_tokens_are_distinct() {
     assertThat(ParkToken.random()).isNotEqualTo(ParkToken.random());
   }
 }

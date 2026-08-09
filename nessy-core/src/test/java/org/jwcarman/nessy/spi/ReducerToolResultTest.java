@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
@@ -58,186 +59,201 @@ class ReducerToolResultTest {
         .state();
   }
 
-  @Test
-  void approvalAsksForExecution() {
-    ToolCall toolCall = call("c1");
-    SessionState state = awaitingApproval(toolCall);
+  @Nested
+  class Approval_decisions {
 
-    Step step = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow()));
+    @Test
+    void approval_asks_for_execution() {
+      ToolCall toolCall = call("c1");
+      SessionState state = awaitingApproval(toolCall);
 
-    assertThat(step.state().status()).isEqualTo(SessionStatus.EXECUTING_TOOL);
-    assertThat(step.effects()).containsExactly(new Effect.ExecuteTool(toolCall));
-  }
+      Step step = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow()));
 
-  @Test
-  void denialBecomesAnErroredResultTheModelCanSee() {
-    ToolCall toolCall = call("c1");
-    SessionState state = awaitingApproval(toolCall);
-
-    Step step =
-        reducer.reduce(state, new Event.ApprovalDecided(toolCall, new Decision.Deny("no thanks")));
-
-    assertThat(step.state().messages().getLast().content())
-        .containsExactly(new ToolResultBlock("c1", "Denied by user: no thanks", true));
-    assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
-    assertThat(step.effects()).containsExactly(Effect.callModel());
-  }
-
-  @Test
-  void aFinishedToolFlushesResultsAndCallsTheModelAgain() {
-    ToolCall toolCall = call("c1");
-    SessionState state = awaitingApproval(toolCall);
-    state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
-
-    Step step =
-        reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.ok("file contents")));
-
-    assertThat(step.state().messages().getLast())
-        .isEqualTo(Message.toolResults(List.of(new ToolResultBlock("c1", "file contents", false))));
-    assertThat(step.state().pendingCalls()).isEmpty();
-    assertThat(step.state().pendingResults()).isEmpty();
-    assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
-    assertThat(step.effects()).containsExactly(Effect.callModel());
-  }
-
-  @Test
-  void resultsAreBatchedIntoOneMessageWhenSeveralCallsArePending() {
-    ToolCall first = call("c1");
-    ToolCall second = call("c2");
-    SessionState state = awaitingApproval(first, second);
-
-    state = reducer.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
-    Step afterFirst = reducer.reduce(state, new Event.ToolFinished(first, ToolResult.ok("one")));
-
-    assertThat(afterFirst.state().pendingResults()).hasSize(1);
-    assertThat(afterFirst.effects()).containsExactly(new Effect.RequestApproval(second));
-
-    SessionState afterApproval =
-        reducer
-            .reduce(afterFirst.state(), new Event.ApprovalDecided(second, Decision.allow()))
-            .state();
-    Step afterSecond =
-        reducer.reduce(afterApproval, new Event.ToolFinished(second, ToolResult.ok("two")));
-
-    assertThat(afterSecond.state().messages().getLast().content())
-        .containsExactly(
-            new ToolResultBlock("c1", "one", false), new ToolResultBlock("c2", "two", false));
-    assertThat(afterSecond.effects()).containsExactly(Effect.callModel());
-  }
-
-  @Test
-  void aSuccessfulResultResetsTheErrorCount() {
-    ToolCall toolCall = call("c1");
-    SessionState state = awaitingApproval(toolCall).withConsecutiveErrors(1);
-    state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
-
-    Step step = reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.ok("fine")));
-
-    assertThat(step.state().consecutiveErrors()).isZero();
-  }
-
-  @Test
-  void anErrorBelowTheCeilingKeepsTheSessionGoing() {
-    ToolCall toolCall = call("c1");
-    SessionState state = awaitingApproval(toolCall);
-    state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
-
-    Step step = reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.error("boom")));
-
-    assertThat(step.state().consecutiveErrors()).isEqualTo(1);
-    assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
-    assertThat(step.effects()).containsExactly(Effect.callModel());
-  }
-
-  @Test
-  void aDenialCountsTowardTheErrorCeiling() {
-    ToolCall toolCall = call("c1");
-    SessionState state = awaitingApproval(toolCall);
-
-    Step step =
-        reducer.reduce(state, new Event.ApprovalDecided(toolCall, new Decision.Deny("no thanks")));
-
-    assertThat(step.state().consecutiveErrors()).isEqualTo(1);
-  }
-
-  @Test
-  void failingWithCallsStillPendingAnswersEveryOneOfThem() {
-    Reducer strict = new Reducer(TerminationPolicy.maxConsecutiveErrors(1));
-    ToolCall first = call("c1");
-    ToolCall second = call("c2");
-    SessionState state = initial;
-    for (ToolCall each : List.of(first, second)) {
-      state = strict.reduce(state, new Event.ToolCallRequested(each)).state();
-    }
-    state =
-        strict.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero())).state();
-    state = strict.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
-
-    Step step = strict.reduce(state, new Event.ToolFinished(first, ToolResult.error("boom")));
-
-    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
-    assertThat(step.state().pendingCalls()).isEmpty();
-    assertThat(step.state().messages().getLast().content())
-        .extracting(block -> ((ToolResultBlock) block).toolUseId())
-        .containsExactly("c1", "c2");
-    assertThat(step.state().messages().getLast().content())
-        .allMatch(block -> ((ToolResultBlock) block).isError());
-  }
-
-  @Test
-  void aTurnCutOffAtTheTokenCeilingWithCallsStillPendingAnswersEveryOneOfThem() {
-    ToolCall first = call("c1");
-    ToolCall second = call("c2");
-    SessionState state = initial;
-    for (ToolCall each : List.of(first, second)) {
-      state = reducer.reduce(state, new Event.ToolCallRequested(each)).state();
+      assertThat(step.state().status()).isEqualTo(SessionStatus.EXECUTING_TOOL);
+      assertThat(step.effects()).containsExactly(new Effect.ExecuteTool(toolCall));
     }
 
-    Step step =
-        reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS, Usage.zero()));
+    @Test
+    void denial_becomes_an_errored_result_the_model_can_see() {
+      ToolCall toolCall = call("c1");
+      SessionState state = awaitingApproval(toolCall);
 
-    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
-    assertThat(step.effects()).isEmpty();
-    assertThat(step.state().pendingCalls()).isEmpty();
-    assertThat(step.state().messages().getLast().content())
-        .extracting(block -> ((ToolResultBlock) block).toolUseId())
-        .containsExactly("c1", "c2");
-    assertThat(step.state().messages().getLast().content())
-        .allMatch(block -> ((ToolResultBlock) block).isError());
+      Step step =
+          reducer.reduce(
+              state, new Event.ApprovalDecided(toolCall, new Decision.Deny("no thanks")));
+
+      assertThat(step.state().messages().getLast().content())
+          .containsExactly(new ToolResultBlock("c1", "Denied by user: no thanks", true));
+      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.effects()).containsExactly(Effect.callModel());
+    }
+
+    @Test
+    void a_denial_counts_toward_the_error_ceiling() {
+      ToolCall toolCall = call("c1");
+      SessionState state = awaitingApproval(toolCall);
+
+      Step step =
+          reducer.reduce(
+              state, new Event.ApprovalDecided(toolCall, new Decision.Deny("no thanks")));
+
+      assertThat(step.state().consecutiveErrors()).isEqualTo(1);
+    }
   }
 
-  @Test
-  void reachingTheErrorCeilingFailsTheSessionInsteadOfLooping() {
-    ToolCall toolCall = call("c1");
-    SessionState state = awaitingApproval(toolCall).withConsecutiveErrors(1);
-    state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
+  @Nested
+  class Batching {
 
-    Step step = reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.error("boom")));
+    @Test
+    void a_finished_tool_flushes_results_and_calls_the_model_again() {
+      ToolCall toolCall = call("c1");
+      SessionState state = awaitingApproval(toolCall);
+      state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
 
-    assertThat(step.state().consecutiveErrors()).isEqualTo(2);
-    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
-    assertThat(step.effects()).isEmpty();
-    assertThat(step.state().messages().getLast().content())
-        .containsExactly(new ToolResultBlock("c1", "boom", true));
+      Step step =
+          reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.ok("file contents")));
+
+      assertThat(step.state().messages().getLast())
+          .isEqualTo(
+              Message.toolResults(List.of(new ToolResultBlock("c1", "file contents", false))));
+      assertThat(step.state().pendingCalls()).isEmpty();
+      assertThat(step.state().pendingResults()).isEmpty();
+      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.effects()).containsExactly(Effect.callModel());
+    }
+
+    @Test
+    void results_are_batched_into_one_message_when_several_calls_are_pending() {
+      ToolCall first = call("c1");
+      ToolCall second = call("c2");
+      SessionState state = awaitingApproval(first, second);
+
+      state = reducer.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
+      Step afterFirst = reducer.reduce(state, new Event.ToolFinished(first, ToolResult.ok("one")));
+
+      assertThat(afterFirst.state().pendingResults()).hasSize(1);
+      assertThat(afterFirst.effects()).containsExactly(new Effect.RequestApproval(second));
+
+      SessionState afterApproval =
+          reducer
+              .reduce(afterFirst.state(), new Event.ApprovalDecided(second, Decision.allow()))
+              .state();
+      Step afterSecond =
+          reducer.reduce(afterApproval, new Event.ToolFinished(second, ToolResult.ok("two")));
+
+      assertThat(afterSecond.state().messages().getLast().content())
+          .containsExactly(
+              new ToolResultBlock("c1", "one", false), new ToolResultBlock("c2", "two", false));
+      assertThat(afterSecond.effects()).containsExactly(Effect.callModel());
+    }
+
+    @Test
+    void a_turn_cut_off_at_the_token_ceiling_with_calls_still_pending_answers_every_one_of_them() {
+      ToolCall first = call("c1");
+      ToolCall second = call("c2");
+      SessionState state = initial;
+      for (ToolCall each : List.of(first, second)) {
+        state = reducer.reduce(state, new Event.ToolCallRequested(each)).state();
+      }
+
+      Step step =
+          reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS, Usage.zero()));
+
+      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.effects()).isEmpty();
+      assertThat(step.state().pendingCalls()).isEmpty();
+      assertThat(step.state().messages().getLast().content())
+          .extracting(block -> ((ToolResultBlock) block).toolUseId())
+          .containsExactly("c1", "c2");
+      assertThat(step.state().messages().getLast().content())
+          .allMatch(block -> ((ToolResultBlock) block).isError());
+    }
   }
 
-  @Test
-  void halting_mid_batch_still_answers_every_pending_tool_use() {
-    Reducer limited = new Reducer(TerminationPolicy.maxConsecutiveErrors(1));
-    ToolCall first = call("c1");
-    ToolCall second = call("c2");
-    SessionState state = awaitingApprovalWith(limited, first, second);
-    state = limited.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
+  @Nested
+  class The_error_ceiling {
 
-    Step step = limited.reduce(state, new Event.ToolFinished(first, ToolResult.error("boom")));
+    @Test
+    void a_successful_result_resets_the_error_count() {
+      ToolCall toolCall = call("c1");
+      SessionState state = awaitingApproval(toolCall).withConsecutiveErrors(1);
+      state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
 
-    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
-    assertThat(step.state().failureReason()).contains("consecutive");
-    assertThat(step.state().pendingCalls()).isEmpty();
-    assertThat(step.state().messages().getLast().content())
-        .extracting("toolUseId")
-        .containsExactly("c1", "c2");
-    assertThat(step.effects()).isEmpty();
+      Step step = reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.ok("fine")));
+
+      assertThat(step.state().consecutiveErrors()).isZero();
+    }
+
+    @Test
+    void an_error_below_the_ceiling_keeps_the_session_going() {
+      ToolCall toolCall = call("c1");
+      SessionState state = awaitingApproval(toolCall);
+      state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
+
+      Step step = reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.error("boom")));
+
+      assertThat(step.state().consecutiveErrors()).isEqualTo(1);
+      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.effects()).containsExactly(Effect.callModel());
+    }
+
+    @Test
+    void failing_with_calls_still_pending_answers_every_one_of_them() {
+      Reducer strict = new Reducer(TerminationPolicy.maxConsecutiveErrors(1));
+      ToolCall first = call("c1");
+      ToolCall second = call("c2");
+      SessionState state = initial;
+      for (ToolCall each : List.of(first, second)) {
+        state = strict.reduce(state, new Event.ToolCallRequested(each)).state();
+      }
+      state =
+          strict.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero())).state();
+      state = strict.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
+
+      Step step = strict.reduce(state, new Event.ToolFinished(first, ToolResult.error("boom")));
+
+      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.state().pendingCalls()).isEmpty();
+      assertThat(step.state().messages().getLast().content())
+          .extracting(block -> ((ToolResultBlock) block).toolUseId())
+          .containsExactly("c1", "c2");
+      assertThat(step.state().messages().getLast().content())
+          .allMatch(block -> ((ToolResultBlock) block).isError());
+    }
+
+    @Test
+    void reaching_the_error_ceiling_fails_the_session_instead_of_looping() {
+      ToolCall toolCall = call("c1");
+      SessionState state = awaitingApproval(toolCall).withConsecutiveErrors(1);
+      state = reducer.reduce(state, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
+
+      Step step = reducer.reduce(state, new Event.ToolFinished(toolCall, ToolResult.error("boom")));
+
+      assertThat(step.state().consecutiveErrors()).isEqualTo(2);
+      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.effects()).isEmpty();
+      assertThat(step.state().messages().getLast().content())
+          .containsExactly(new ToolResultBlock("c1", "boom", true));
+    }
+
+    @Test
+    void halting_mid_batch_still_answers_every_pending_tool_use() {
+      Reducer limited = new Reducer(TerminationPolicy.maxConsecutiveErrors(1));
+      ToolCall first = call("c1");
+      ToolCall second = call("c2");
+      SessionState state = awaitingApprovalWith(limited, first, second);
+      state = limited.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
+
+      Step step = limited.reduce(state, new Event.ToolFinished(first, ToolResult.error("boom")));
+
+      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.state().failureReason()).contains("consecutive");
+      assertThat(step.state().pendingCalls()).isEmpty();
+      assertThat(step.state().messages().getLast().content())
+          .extracting("toolUseId")
+          .containsExactly("c1", "c2");
+      assertThat(step.effects()).isEmpty();
+    }
   }
 
   @Test

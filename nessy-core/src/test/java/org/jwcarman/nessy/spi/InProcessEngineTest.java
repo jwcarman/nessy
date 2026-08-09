@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
@@ -170,416 +171,445 @@ class InProcessEngineTest {
         ObservationRegistry.NOOP);
   }
 
-  @Test
-  void aPlainAnswerCompletesTheSession() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.TextChunk("Four."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+  @Nested
+  class Plain_answers {
 
-    RunOutcome outcome =
-        engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
-            .run(ID, Event.UserSaid.of("what is 2+2?"));
+    @Test
+    void a_plain_answer_completes_the_session() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("Four."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
-    assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
-    assertThat(completed.state().messages())
-        .containsExactly(
-            Message.user("what is 2+2?"), Message.assistant(List.of(new TextBlock("Four."))));
+      RunOutcome outcome =
+          engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
+              .run(ID, Event.UserSaid.of("what is 2+2?"));
+
+      assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
+      assertThat(completed.state().messages())
+          .containsExactly(
+              Message.user("what is 2+2?"), Message.assistant(List.of(new TextBlock("Four."))));
+    }
   }
 
-  @Test
-  void aToolCallRunsAndFeedsItsResultBack() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+  @Nested
+  class Tool_calls {
 
-    RunOutcome outcome =
-        engineWith(
-                provider,
-                ToolRegistry.of(new EngineFixtures.EchoTool(true)),
-                Approver.allowAll(),
-                SessionStore.inMemory())
-            .run(ID, Event.UserSaid.of("echo hi"));
+    @Test
+    void a_tool_call_runs_and_feeds_its_result_back() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Done."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().messages()).hasSize(4);
-    assertThat(completed.state().messages().get(2).role()).isEqualTo(Role.USER);
-    assertThat(completed.state().messages().get(2).content())
-        .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
-    assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
+      RunOutcome outcome =
+          engineWith(
+                  provider,
+                  ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+                  Approver.allowAll(),
+                  SessionStore.inMemory())
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages()).hasSize(4);
+      assertThat(completed.state().messages().get(2).role()).isEqualTo(Role.USER);
+      assertThat(completed.state().messages().get(2).content())
+          .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
+      assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
+    }
+
+    @Test
+    void two_tool_calls_in_one_turn_batch_into_one_result_message() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", EngineFixtures.echoArgs("a"))),
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c2", "echo", EngineFixtures.echoArgs("b"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Done."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+
+      RunOutcome outcome =
+          engineWith(
+                  provider,
+                  ToolRegistry.of(new EngineFixtures.EchoTool(false)),
+                  Approver.allowAll(),
+                  SessionStore.inMemory())
+              .run(ID, Event.UserSaid.of("echo a and b"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages()).hasSize(4);
+      assertThat(completed.state().messages().get(2).content())
+          .containsExactly(
+              new ToolResultBlock("c1", "echoed:a", false),
+              new ToolResultBlock("c2", "echoed:b", false));
+    }
   }
 
-  @Test
-  void toolsThatDoNotRequireApprovalNeverReachTheApprover() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-    CountingApprover approver = new CountingApprover(Approver.allowAll());
+  @Nested
+  class Approval {
 
-    engineWith(
-            provider,
-            ToolRegistry.of(new EngineFixtures.EchoTool(false)),
-            approver,
-            SessionStore.inMemory())
-        .run(ID, Event.UserSaid.of("echo hi"));
+    @Test
+    void tools_that_do_not_require_approval_never_reach_the_approver() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Done."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      CountingApprover approver = new CountingApprover(Approver.allowAll());
 
-    assertThat(approver.calls).isZero();
+      engineWith(
+              provider,
+              ToolRegistry.of(new EngineFixtures.EchoTool(false)),
+              approver,
+              SessionStore.inMemory())
+          .run(ID, Event.UserSaid.of("echo hi"));
+
+      assertThat(approver.calls).isZero();
+    }
+
+    @Test
+    void a_denial_becomes_an_errored_result_rather_than_an_exception() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Understood."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+
+      RunOutcome outcome =
+          engineWith(
+                  provider,
+                  ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+                  Approver.denyAll("not allowed"),
+                  SessionStore.inMemory())
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages().get(2).content())
+          .containsExactly(new ToolResultBlock("c1", "Denied by user: not allowed", true));
+    }
   }
 
-  @Test
-  void aDenialBecomesAnErroredResultRatherThanAnException() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Understood."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+  @Nested
+  class Failure_handling {
 
-    RunOutcome outcome =
-        engineWith(
-                provider,
-                ToolRegistry.of(new EngineFixtures.EchoTool(true)),
-                Approver.denyAll("not allowed"),
-                SessionStore.inMemory())
-            .run(ID, Event.UserSaid.of("echo hi"));
+    @Test
+    void an_unknown_tool_becomes_an_errored_result_the_model_can_see() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "missing", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Oh."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().messages().get(2).content())
-        .containsExactly(new ToolResultBlock("c1", "Denied by user: not allowed", true));
+      RunOutcome outcome =
+          engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
+              .run(ID, Event.UserSaid.of("go"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(block.content()).contains("missing");
+    }
+
+    @Test
+    void a_throwing_tool_becomes_an_errored_result_rather_than_killing_the_loop() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "boom", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Oh."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+
+      Tool<EngineFixtures.Echo> exploding = new ExplodingTool();
+
+      RunOutcome outcome =
+          engineWith(
+                  provider,
+                  ToolRegistry.of(exploding),
+                  Approver.allowAll(),
+                  SessionStore.inMemory())
+              .run(ID, Event.UserSaid.of("go"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(block.content()).contains("kaboom");
+    }
+
+    @Test
+    void progress_is_saved_even_when_the_run_blows_up() {
+      // The hub contains subscriber exceptions (see EventHubTest), so a throwing
+      // observer can no longer be the source of a blown-up run. The failure has
+      // to come from the provider itself instead.
+      SessionStore store = SessionStore.inMemory();
+
+      assertThatThrownBy(
+              () ->
+                  engineWith(
+                          new ExplodingStreamProvider(),
+                          ToolRegistry.of(),
+                          Approver.allowAll(),
+                          store)
+                      .run(ID, Event.UserSaid.of("what is 2+2?")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("stream blew up");
+
+      SessionState saved = store.load(ID).orElseThrow();
+      assertThat(saved.messages()).containsExactly(Message.user("what is 2+2?"));
+      assertThat(saved.pendingBlocks()).containsExactly(new TextBlock("Four."));
+    }
+
+    @Test
+    void resume_is_refused_because_this_engine_never_parks() {
+      EngineFixtures.FakeProvider provider = new EngineFixtures.FakeProvider(List.of());
+
+      assertThatThrownBy(
+              () ->
+                  engineWith(
+                          provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
+                      .resume(ID, ParkToken.random(), Event.UserSaid.of("x")))
+          .isInstanceOf(UnsupportedOperationException.class)
+          .hasMessageContaining("DurableEngine");
+    }
+
+    @Test
+    void a_parking_tool_is_refused_rather_than_swallowed() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "park", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
+
+      assertThatThrownBy(
+              () ->
+                  engineWith(
+                          provider,
+                          ToolRegistry.of(new ParkingTool()),
+                          Approver.allowAll(),
+                          SessionStore.inMemory())
+                      .run(ID, Event.UserSaid.of("go")))
+          .isInstanceOf(UnsupportedOperationException.class)
+          .hasMessageContaining("DurableEngine");
+    }
+
+    @Test
+    void malformed_arguments_on_an_approval_requiring_tool_are_recoverable() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", malformedArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Oh."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      SessionStore store = SessionStore.inMemory();
+
+      RunOutcome outcome =
+          engineWith(
+                  provider,
+                  ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+                  Approver.allowAll(),
+                  store)
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(store.load(ID)).isPresent();
+    }
   }
 
-  @Test
-  void anUnknownToolBecomesAnErroredResultTheModelCanSee() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "missing", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Oh."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+  @Nested
+  class Streams_and_sessions {
 
-    RunOutcome outcome =
-        engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
-            .run(ID, Event.UserSaid.of("go"));
+    @Test
+    void the_final_state_is_saved() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("Four."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      SessionStore store = SessionStore.inMemory();
 
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    ToolResultBlock block =
-        (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
-    assertThat(block.isError()).isTrue();
-    assertThat(block.content()).contains("missing");
+      engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store)
+          .run(ID, Event.UserSaid.of("what is 2+2?"));
+
+      assertThat(store.load(ID)).isPresent();
+      assertThat(store.load(ID).orElseThrow().status()).isEqualTo(SessionStatus.COMPLETE);
+    }
+
+    @Test
+    void the_model_stream_is_closed_after_each_turn() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Done."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+
+      engineWith(
+              provider,
+              ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+              Approver.allowAll(),
+              SessionStore.inMemory())
+          .run(ID, Event.UserSaid.of("echo hi"));
+
+      assertThat(provider.closedCount).isEqualTo(2);
+      assertThat(provider.openStreams).isZero();
+      assertThat(provider.maxOpenStreams).isEqualTo(1);
+    }
+
+    @Test
+    void a_second_run_continues_the_saved_session() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("Four."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Five."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      SessionStore store = SessionStore.inMemory();
+      InProcessEngine engine = engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store);
+
+      engine.run(ID, Event.UserSaid.of("what is 2+2?"));
+      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("what is 2+3?"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages())
+          .containsExactly(
+              Message.user("what is 2+2?"),
+              Message.assistant(List.of(new TextBlock("Four."))),
+              Message.user("what is 2+3?"),
+              Message.assistant(List.of(new TextBlock("Five."))));
+    }
   }
 
-  @Test
-  void aThrowingToolBecomesAnErroredResultRatherThanKillingTheLoop() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "boom", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Oh."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+  @Nested
+  class Events_and_progress {
 
-    Tool<EngineFixtures.Echo> exploding = new ExplodingTool();
+    @Test
+    void the_hub_sees_every_event_as_it_happens() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("Fo"),
+                      new ModelEvent.TextChunk("ur."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      EventHub hub = EventHub.synchronous();
+      List<Event> events = new ArrayList<>();
+      hub.subscribe(SessionEvent.class, sessionEvent -> events.add(sessionEvent.event()));
 
-    RunOutcome outcome =
-        engineWith(
-                provider, ToolRegistry.of(exploding), Approver.allowAll(), SessionStore.inMemory())
-            .run(ID, Event.UserSaid.of("go"));
+      engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory(), hub)
+          .run(ID, Event.UserSaid.of("what is 2+2?"));
 
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    ToolResultBlock block =
-        (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
-    assertThat(block.isError()).isTrue();
-    assertThat(block.content()).contains("kaboom");
-  }
+      assertThat(events)
+          .containsExactly(
+              Event.UserSaid.of("what is 2+2?"),
+              new Event.TextDelta("Fo"),
+              new Event.TextDelta("ur."),
+              new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
+    }
 
-  @Test
-  void theHubSeesEveryEventAsItHappens() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.TextChunk("Fo"),
-                    new ModelEvent.TextChunk("ur."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-    EventHub hub = EventHub.synchronous();
-    List<Event> events = new ArrayList<>();
-    hub.subscribe(SessionEvent.class, sessionEvent -> events.add(sessionEvent.event()));
+    @Test
+    void tools_can_report_progress_through_the_hub() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "noisy", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Done."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      EventHub hub = EventHub.synchronous();
+      List<ToolProgress> progress = new ArrayList<>();
+      hub.subscribe(ToolProgress.class, progress::add);
 
-    engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory(), hub)
-        .run(ID, Event.UserSaid.of("what is 2+2?"));
+      Tool<EngineFixtures.Echo> noisy =
+          new Tool<>() {
+            @Override
+            public String name() {
+              return "noisy";
+            }
 
-    assertThat(events)
-        .containsExactly(
-            Event.UserSaid.of("what is 2+2?"),
-            new Event.TextDelta("Fo"),
-            new Event.TextDelta("ur."),
-            new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
-  }
+            @Override
+            public String description() {
+              return "Reports progress";
+            }
 
-  @Test
-  void theFinalStateIsSaved() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.TextChunk("Four."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-    SessionStore store = SessionStore.inMemory();
+            @Override
+            public Class<EngineFixtures.Echo> inputType() {
+              return EngineFixtures.Echo.class;
+            }
 
-    engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store)
-        .run(ID, Event.UserSaid.of("what is 2+2?"));
+            @Override
+            public boolean requiresApproval() {
+              return false;
+            }
 
-    assertThat(store.load(ID)).isPresent();
-    assertThat(store.load(ID).orElseThrow().status()).isEqualTo(SessionStatus.COMPLETE);
-  }
+            @Override
+            public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
+              context.events().emit(new ToolProgress(context.sessionId(), "c1", "halfway"));
+              return Awaited.ready(ToolResult.ok("done"));
+            }
+          };
 
-  @Test
-  void progressIsSavedEvenWhenTheRunBlowsUp() {
-    // The hub contains subscriber exceptions (see EventHubTest), so a throwing
-    // observer can no longer be the source of a blown-up run. The failure has
-    // to come from the provider itself instead.
-    SessionStore store = SessionStore.inMemory();
+      engineWith(
+              provider, ToolRegistry.of(noisy), Approver.allowAll(), SessionStore.inMemory(), hub)
+          .run(ID, Event.UserSaid.of("go"));
 
-    assertThatThrownBy(
-            () ->
-                engineWith(
-                        new ExplodingStreamProvider(),
-                        ToolRegistry.of(),
-                        Approver.allowAll(),
-                        store)
-                    .run(ID, Event.UserSaid.of("what is 2+2?")))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("stream blew up");
-
-    SessionState saved = store.load(ID).orElseThrow();
-    assertThat(saved.messages()).containsExactly(Message.user("what is 2+2?"));
-    assertThat(saved.pendingBlocks()).containsExactly(new TextBlock("Four."));
-  }
-
-  @Test
-  void tools_can_report_progress_through_the_hub() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "noisy", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-    EventHub hub = EventHub.synchronous();
-    List<ToolProgress> progress = new ArrayList<>();
-    hub.subscribe(ToolProgress.class, progress::add);
-
-    Tool<EngineFixtures.Echo> noisy =
-        new Tool<>() {
-          @Override
-          public String name() {
-            return "noisy";
-          }
-
-          @Override
-          public String description() {
-            return "Reports progress";
-          }
-
-          @Override
-          public Class<EngineFixtures.Echo> inputType() {
-            return EngineFixtures.Echo.class;
-          }
-
-          @Override
-          public boolean requiresApproval() {
-            return false;
-          }
-
-          @Override
-          public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
-            context.events().emit(new ToolProgress(context.sessionId(), "c1", "halfway"));
-            return Awaited.ready(ToolResult.ok("done"));
-          }
-        };
-
-    engineWith(provider, ToolRegistry.of(noisy), Approver.allowAll(), SessionStore.inMemory(), hub)
-        .run(ID, Event.UserSaid.of("go"));
-
-    assertThat(progress).containsExactly(new ToolProgress(ID, "c1", "halfway"));
-  }
-
-  @Test
-  void resumeIsRefusedBecauseThisEngineNeverParks() {
-    EngineFixtures.FakeProvider provider = new EngineFixtures.FakeProvider(List.of());
-
-    assertThatThrownBy(
-            () ->
-                engineWith(
-                        provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
-                    .resume(ID, ParkToken.random(), Event.UserSaid.of("x")))
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("DurableEngine");
-  }
-
-  @Test
-  void aParkingToolIsRefusedRatherThanSwallowed() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "park", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
-
-    assertThatThrownBy(
-            () ->
-                engineWith(
-                        provider,
-                        ToolRegistry.of(new ParkingTool()),
-                        Approver.allowAll(),
-                        SessionStore.inMemory())
-                    .run(ID, Event.UserSaid.of("go")))
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("DurableEngine");
-  }
-
-  @Test
-  void malformedArgumentsOnAnApprovalRequiringToolAreRecoverable() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", malformedArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Oh."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-    SessionStore store = SessionStore.inMemory();
-
-    RunOutcome outcome =
-        engineWith(
-                provider,
-                ToolRegistry.of(new EngineFixtures.EchoTool(true)),
-                Approver.allowAll(),
-                store)
-            .run(ID, Event.UserSaid.of("echo hi"));
-
-    assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    ToolResultBlock block =
-        (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
-    assertThat(block.isError()).isTrue();
-    assertThat(store.load(ID)).isPresent();
-  }
-
-  @Test
-  void theModelStreamIsClosedAfterEachTurn() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-
-    engineWith(
-            provider,
-            ToolRegistry.of(new EngineFixtures.EchoTool(true)),
-            Approver.allowAll(),
-            SessionStore.inMemory())
-        .run(ID, Event.UserSaid.of("echo hi"));
-
-    assertThat(provider.closedCount).isEqualTo(2);
-    assertThat(provider.openStreams).isZero();
-    assertThat(provider.maxOpenStreams).isEqualTo(1);
-  }
-
-  @Test
-  void aSecondRunContinuesTheSavedSession() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.TextChunk("Four."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Five."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-    SessionStore store = SessionStore.inMemory();
-    InProcessEngine engine = engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store);
-
-    engine.run(ID, Event.UserSaid.of("what is 2+2?"));
-    RunOutcome outcome = engine.run(ID, Event.UserSaid.of("what is 2+3?"));
-
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().messages())
-        .containsExactly(
-            Message.user("what is 2+2?"),
-            Message.assistant(List.of(new TextBlock("Four."))),
-            Message.user("what is 2+3?"),
-            Message.assistant(List.of(new TextBlock("Five."))));
-  }
-
-  @Test
-  void twoToolCallsInOneTurnBatchIntoOneResultMessage() {
-    EngineFixtures.FakeProvider provider =
-        new EngineFixtures.FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("a"))),
-                    new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c2", "echo", EngineFixtures.echoArgs("b"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
-                List.of(
-                    new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-
-    RunOutcome outcome =
-        engineWith(
-                provider,
-                ToolRegistry.of(new EngineFixtures.EchoTool(false)),
-                Approver.allowAll(),
-                SessionStore.inMemory())
-            .run(ID, Event.UserSaid.of("echo a and b"));
-
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().messages()).hasSize(4);
-    assertThat(completed.state().messages().get(2).content())
-        .containsExactly(
-            new ToolResultBlock("c1", "echoed:a", false),
-            new ToolResultBlock("c2", "echoed:b", false));
+      assertThat(progress).containsExactly(new ToolProgress(ID, "c1", "halfway"));
+    }
   }
 
   /** A model stream that fails mid-turn, to prove the run still persists what it reached. */

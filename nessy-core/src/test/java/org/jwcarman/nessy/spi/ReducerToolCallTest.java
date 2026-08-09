@@ -44,7 +44,7 @@ class ReducerToolCallTest {
   }
 
   @Test
-  void aRequestedCallIsRecordedAsABlockAndAsPendingWork() {
+  void a_requested_call_is_recorded_as_a_block_and_as_pending_work() {
     ToolCall toolCall = call("c1", "read_file");
 
     Step step = reducer.reduce(initial, new Event.ToolCallRequested(toolCall));
@@ -55,7 +55,7 @@ class ReducerToolCallTest {
   }
 
   @Test
-  void turnEndWithCallsAsksForApprovalOfTheFirst() {
+  void turn_end_with_calls_asks_for_approval_of_the_first() {
     ToolCall first = call("c1", "read_file");
     ToolCall second = call("c2", "grep");
 
@@ -70,7 +70,7 @@ class ReducerToolCallTest {
   }
 
   @Test
-  void turnEndSettlesTextAndToolUseBlocksIntoOneAssistantMessage() {
+  void turn_end_settles_text_and_tool_use_blocks_into_one_assistant_message() {
     ToolCall toolCall = call("c1", "read_file");
 
     SessionState state = reducer.reduce(initial, new Event.TextDelta("Looking.")).state();

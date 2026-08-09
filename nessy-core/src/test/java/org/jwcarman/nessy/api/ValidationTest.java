@@ -35,58 +35,58 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 class ValidationTest {
 
   @Test
-  void aBlankSessionIdIsRejected() {
+  void a_blank_session_id_is_rejected() {
     assertThatThrownBy(() -> new SessionId("")).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void aBlankParkTokenIsRejected() {
+  void a_blank_park_token_is_rejected() {
     assertThatThrownBy(() -> new ParkToken(" ")).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void aNullTerminationPolicyIsRejected() {
+  void a_null_termination_policy_is_rejected() {
     assertThatThrownBy(() -> new Reducer(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void aToolCallWithoutAnIdIsRejected() {
+  void a_tool_call_without_an_id_is_rejected() {
     assertThatThrownBy(() -> new ToolCall(null, "echo", JsonNodeFactory.instance.objectNode()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void aToolCallWithoutANameIsRejected() {
+  void a_tool_call_without_a_name_is_rejected() {
     assertThatThrownBy(() -> new ToolCall("c1", " ", JsonNodeFactory.instance.objectNode()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void aToolResultBlockWithoutContentIsRejected() {
+  void a_tool_result_block_without_content_is_rejected() {
     assertThatThrownBy(() -> new ToolResultBlock("c1", null, false))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void aToolSpecWithoutANameIsRejected() {
+  void a_tool_spec_without_a_name_is_rejected() {
     assertThatThrownBy(() -> new ToolSpec("", "does things", JsonNodeFactory.instance.objectNode()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void aModelSettingsWithoutAModelIsRejected() {
+  void a_model_settings_without_a_model_is_rejected() {
     assertThatThrownBy(() -> new ModelSettings(null, "", 1024, Set.of()))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void aModelSettingsWithoutTokensToSpendIsRejected() {
+  void a_model_settings_without_tokens_to_spend_is_rejected() {
     assertThatThrownBy(() -> new ModelSettings("fake-model", "", 0, Set.of()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void aModelRequestWithoutAModelIsRejected() {
+  void a_model_request_without_a_model_is_rejected() {
     assertThatThrownBy(() -> new ModelRequest(List.of(), "system", " ", 1024, List.of(), Set.of()))
         .isInstanceOf(IllegalArgumentException.class);
   }

@@ -29,12 +29,12 @@ class InMemorySessionStoreTest {
   private final SessionId id = new SessionId("s1");
 
   @Test
-  void loadingAnUnknownSessionIsEmpty() {
+  void loading_an_unknown_session_is_empty() {
     assertThat(store.load(id)).isEmpty();
   }
 
   @Test
-  void savedStateComesBack() {
+  void saved_state_comes_back() {
     SessionState state = SessionState.newSession(id).with(SessionStatus.COMPLETE);
 
     store.save(state);
@@ -43,7 +43,7 @@ class InMemorySessionStoreTest {
   }
 
   @Test
-  void savingAgainReplaces() {
+  void saving_again_replaces() {
     store.save(SessionState.newSession(id).with(SessionStatus.AWAITING_MODEL));
     store.save(SessionState.newSession(id).with(SessionStatus.COMPLETE));
 
@@ -51,7 +51,7 @@ class InMemorySessionStoreTest {
   }
 
   @Test
-  void aTokenCanBeConsumedExactlyOnce() {
+  void a_token_can_be_consumed_exactly_once() {
     ParkToken token = ParkToken.random();
 
     assertThat(store.consumeToken(token)).isTrue();

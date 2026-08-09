@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.Message;
 class ModelRequestTest {
 
   @Test
-  void collectionsAreDefensivelyCopied() {
+  void collections_are_defensively_copied() {
     List<Message> messages = new ArrayList<>();
     messages.add(Message.user("hi"));
     Set<Capability> requested = EnumSet.of(Capability.PROMPT_CACHING);
@@ -43,7 +43,7 @@ class ModelRequestTest {
   }
 
   @Test
-  void unsupportedCapabilitiesAreVisibleRatherThanSilent() {
+  void unsupported_capabilities_are_visible_rather_than_silent() {
     ModelRequest request =
         new ModelRequest(
             List.of(Message.user("hi")),

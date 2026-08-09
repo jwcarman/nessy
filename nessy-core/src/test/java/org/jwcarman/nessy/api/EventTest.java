@@ -24,7 +24,7 @@ import org.jwcarman.nessy.spi.Step;
 class EventTest {
 
   @Test
-  void eventsAreExhaustivelyMatchable() {
+  void events_are_exhaustively_matchable() {
     Event event = Event.UserSaid.of("hello");
 
     String described =
@@ -42,12 +42,12 @@ class EventTest {
   }
 
   @Test
-  void allowIsASharedInstance() {
+  void allow_is_a_shared_instance() {
     assertThat(Decision.allow()).isSameAs(Decision.allow());
   }
 
   @Test
-  void denyCarriesItsReason() {
+  void deny_carries_its_reason() {
     Decision decision = new Decision.Deny("user pressed n");
 
     assertThat(decision).isInstanceOf(Decision.Deny.class);
@@ -55,7 +55,7 @@ class EventTest {
   }
 
   @Test
-  void stepOfCollectsItsEffects() {
+  void step_of_collects_its_effects() {
     SessionState state = SessionState.newSession(new SessionId("s1"));
 
     Step step = Step.of(state, Effect.callModel());
@@ -65,7 +65,7 @@ class EventTest {
   }
 
   @Test
-  void stepEffectsAreUnmodifiable() {
+  void step_effects_are_unmodifiable() {
     SessionState state = SessionState.newSession(new SessionId("s1"));
 
     assertThat(Step.of(state).effects()).isUnmodifiable();

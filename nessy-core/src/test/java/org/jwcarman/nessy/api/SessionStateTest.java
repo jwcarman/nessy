@@ -25,7 +25,7 @@ class SessionStateTest {
   private static final SessionId ID = new SessionId("s1");
 
   @Test
-  void newSessionStartsEmptyAndIdle() {
+  void new_session_starts_empty_and_idle() {
     SessionState state = SessionState.newSession(ID);
 
     assertThat(state.id()).isEqualTo(ID);
@@ -38,7 +38,7 @@ class SessionStateTest {
   }
 
   @Test
-  void withersReturnNewInstancesAndLeaveTheOriginalAlone() {
+  void withers_return_new_instances_and_leave_the_original_alone() {
     SessionState original = SessionState.newSession(ID);
 
     SessionState changed =
@@ -57,7 +57,7 @@ class SessionStateTest {
   }
 
   @Test
-  void allListsAreUnmodifiable() {
+  void all_lists_are_unmodifiable() {
     SessionState state = SessionState.newSession(ID);
 
     assertThat(state.messages()).isUnmodifiable();
@@ -67,7 +67,7 @@ class SessionStateTest {
   }
 
   @Test
-  void withPendingBlocksReplacesRatherThanAppends() {
+  void with_pending_blocks_replaces_rather_than_appends() {
     SessionState state =
         SessionState.newSession(ID)
             .withPendingBlocks(List.of(new TextBlock("a")))

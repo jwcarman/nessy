@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 class BuildSmokeTest {
 
   @Test
-  void runsOnJava25OrLater() {
+  void runs_on_java_25_or_later() {
     assertThat(Runtime.version().feature()).isGreaterThanOrEqualTo(25);
   }
 }

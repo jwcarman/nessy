@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.SessionId;
@@ -110,64 +111,76 @@ class ToolRegistryTest {
     return new ToolCall("c1", "greet", args);
   }
 
-  @Test
-  void findsARegisteredTool() {
-    assertThat(registry.find("greet")).isPresent();
+  @Nested
+  class Lookup {
+
+    @Test
+    void finds_a_registered_tool() {
+      assertThat(registry.find("greet")).isPresent();
+    }
+
+    @Test
+    void the_interface_is_the_front_door_to_its_default() {
+      ToolRegistry registry = ToolRegistry.of(new GreetTool());
+
+      assertThat(registry.find("greet")).isPresent();
+    }
+
+    @Test
+    void returns_empty_for_an_unknown_tool() {
+      assertThat(registry.find("nope")).isEmpty();
+    }
   }
 
-  @Test
-  void the_interface_is_the_front_door_to_its_default() {
-    ToolRegistry registry = ToolRegistry.of(new GreetTool());
+  @Nested
+  class Specs {
 
-    assertThat(registry.find("greet")).isPresent();
+    @Test
+    void specs_carry_name_description_and_schema() {
+      ToolSpec spec = registry.specs().getFirst();
+
+      assertThat(spec.name()).isEqualTo("greet");
+      assertThat(spec.description()).isEqualTo("Greets somebody by name");
+      assertThat(spec.inputSchema().get("properties").has("name")).isTrue();
+    }
+
+    @Test
+    void specs_preserve_registration_order() {
+      ToolRegistry ordered =
+          ToolRegistry.of(new NamedTool("charlie"), new NamedTool("alpha"), new NamedTool("bravo"));
+
+      List<String> names = ordered.specs().stream().map(ToolSpec::name).toList();
+
+      assertThat(names).containsExactly("charlie", "alpha", "bravo");
+    }
+
+    @Test
+    void duplicate_names_are_rejected_at_registration_time() {
+      assertThatThrownBy(() -> ToolRegistry.of(new GreetTool(), new GreetTool()))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("greet");
+    }
   }
 
-  @Test
-  void returnsEmptyForAnUnknownTool() {
-    assertThat(registry.find("nope")).isEmpty();
-  }
+  @Nested
+  class Invocation {
 
-  @Test
-  void specsCarryNameDescriptionAndSchema() {
-    ToolSpec spec = registry.specs().getFirst();
+    @Test
+    void invoking_binds_json_arguments_to_the_record() {
+      Tool<?> tool = registry.find("greet").orElseThrow();
 
-    assertThat(spec.name()).isEqualTo("greet");
-    assertThat(spec.description()).isEqualTo("Greets somebody by name");
-    assertThat(spec.inputSchema().get("properties").has("name")).isTrue();
-  }
+      Awaited<ToolResult> awaited =
+          invoker.invoke(
+              tool, greetCall("Ada"), new ToolContext(new SessionId("s1"), EventHub.synchronous()));
 
-  @Test
-  void invokingBindsJsonArgumentsToTheRecord() {
-    Tool<?> tool = registry.find("greet").orElseThrow();
+      assertThat(awaited).isEqualTo(Awaited.ready(ToolResult.ok("Hello, Ada")));
+    }
 
-    Awaited<ToolResult> awaited =
-        invoker.invoke(
-            tool, greetCall("Ada"), new ToolContext(new SessionId("s1"), EventHub.synchronous()));
+    @Test
+    void describe_renders_the_call_for_a_human() {
+      Tool<?> tool = registry.find("greet").orElseThrow();
 
-    assertThat(awaited).isEqualTo(Awaited.ready(ToolResult.ok("Hello, Ada")));
-  }
-
-  @Test
-  void describeRendersTheCallForAHuman() {
-    Tool<?> tool = registry.find("greet").orElseThrow();
-
-    assertThat(invoker.describe(tool, greetCall("Ada"))).isEqualTo("greet(Ada)");
-  }
-
-  @Test
-  void specsPreserveRegistrationOrder() {
-    ToolRegistry ordered =
-        ToolRegistry.of(new NamedTool("charlie"), new NamedTool("alpha"), new NamedTool("bravo"));
-
-    List<String> names = ordered.specs().stream().map(ToolSpec::name).toList();
-
-    assertThat(names).containsExactly("charlie", "alpha", "bravo");
-  }
-
-  @Test
-  void duplicateNamesAreRejectedAtRegistrationTime() {
-    assertThatThrownBy(() -> ToolRegistry.of(new GreetTool(), new GreetTool()))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("greet");
+      assertThat(invoker.describe(tool, greetCall("Ada"))).isEqualTo("greet(Ada)");
+    }
   }
 }
