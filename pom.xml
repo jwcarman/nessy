@@ -57,11 +57,15 @@
     <module>nessy-bom</module>
     <module>nessy-core</module>
     <module>nessy-testing</module>
+    <module>nessy-model-anthropic</module>
+    <module>nessy-model-openai</module>
   </modules>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
+    <anthropic.version>2.52.0</anthropic.version>
+    <openai.version>4.50.0</openai.version>
     <jackson.version>2.19.2</jackson.version>
     <victools.version>4.38.0</victools.version>
     <!-- Matches the slf4j-api version victools pulls transitively. -->
@@ -103,6 +107,16 @@
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-core</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.anthropic</groupId>
+        <artifactId>anthropic-java</artifactId>
+        <version>${anthropic.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.openai</groupId>
+        <artifactId>openai-java</artifactId>
+        <version>${openai.version}</version>
       </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson.core</groupId>
