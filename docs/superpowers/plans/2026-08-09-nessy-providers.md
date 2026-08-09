@@ -620,10 +620,37 @@ Commit — `feat(openai): the provider`
 
 **Files:** `README.md`, `CHANGELOG.md`, spec `§14` check-off note.
 
-- README: Status section moves both providers to "built"; the five-minute example gets a sibling **real** variant (Anthropic, `fromEnv()`, with the "set ANTHROPIC_API_KEY" sentence and a cost warning); a short "Other endpoints" note showing `OpenAiModelProvider.builder().baseUrl("https://openrouter.ai/api/v1")`. Every new code block compile-verified via the scratch-file method (mandatory; delete scratch before commit).
+- README: Status section moves both providers to "built"; a "Try it" section documents the two example-app commands (Task 11 runs first); the five-minute example gets a sibling **real** variant (Anthropic, `fromEnv()`, with the "set ANTHROPIC_API_KEY" sentence and a cost warning); a short "Other endpoints" note showing `OpenAiModelProvider.builder().baseUrl("https://openrouter.ai/api/v1")`. Every new code block compile-verified via the scratch-file method (mandatory; delete scratch before commit).
 - CHANGELOG Unreleased: providers, retry decorator, grammar completions (REFUSAL, thinking signatures, redacted thinking).
 - Spec: add one line to §14 marking Plan 3 delivered and the `StopReason` wire audit performed (the fail-loudly mapping in Tasks 5/8 is the audit's executable form).
 - Full reactor + release profile green; commit — `docs: providers are real`
+
+---
+
+### Task 11: Example apps — one agent, two providers (runs BEFORE Task 10)
+
+**Files:**
+- Create: `nessy-examples/pom.xml` (module: depends on nessy-core + both providers; `<maven.deploy.skip>true</maven.deploy.skip>` — examples are never published; NOT added to the BOM)
+- Create: `nessy-examples/src/main/java/org/jwcarman/nessy/examples/DemoAgent.java`, `ConsoleApprover.java`, `AnthropicChat.java`, `OpenAiChat.java`
+- Modify: parent `pom.xml` modules list
+
+**Interfaces:**
+- Consumes: `Nessy.agent()`, both provider builders, the hub, `Approver`.
+- Produces: two runnable mains where the ONLY setup is an env var:
+  - `ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.AnthropicChat`
+  - `OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.OpenAiChat`
+  (add exec-maven-plugin to the module pom, version property matching agentic-agency's `3.6.3`)
+
+**The shape (complete except for provider lines, which differ per main):**
+
+- `DemoAgent.agentFor(ModelProvider provider, String model)` — the SHARED definition: system prompt ("You are Nessy's demo assistant…"), two tools (`AddTool` — record-schema arithmetic; `ClockTool` — returns `java.time.ZonedDateTime.now()` as text, demonstrating a side-effect-free tool), `ConsoleApprover`, and a hub subscription wired by the mains.
+- `ConsoleApprover implements Approver`: prints the approval request's description, reads `y`/`n` from the console (`java.lang.IO.readln` — Java 25, matching agentic-agency's idiom), returns `Awaited.ready(Decision.allow())` or a `Deny("declined at the console")`. Set `AddTool.requiresApproval() = false`, `ClockTool.requiresApproval() = true` so every run demonstrates the gate at least once when the user asks the time.
+- Each main: read its env var (missing → print one friendly line naming the variable and exit 1 — never a stack trace), build its provider (`AnthropicModelProvider.builder().fromEnv().build()` / `OpenAiModelProvider.builder().fromEnv().build()`), pick a cheap model (`claude-haiku-4-5-20251001` / the OpenAI cheap default recorded in Task 9), subscribe `SessionEvent` on `agent.events()` printing `TextDelta` text as it arrives (streaming to stdout, no newline until turn end) and a `⚙ tool: name` line on `ToolCallRequested`, then loop: `IO.readln("you> ")` → `conversation.send(...)` → newline; empty input or `/quit` exits. On a `failed()` reply, print the failure reason.
+- No tests beyond compilation (mains are live-by-nature); the module inherits the prose-test properties file anyway for future use. The default build must stay keyless-green: `./mvnw -q clean verify` compiles the module with zero tests executed against a network.
+
+Execution note: this task runs after Task 9 and BEFORE Task 10, so Task 10's README documents real, existing examples (a "Try it" section with the two commands above, compile-verified like all README code).
+
+Commit — `feat: example chat apps for both providers`
 
 ---
 
