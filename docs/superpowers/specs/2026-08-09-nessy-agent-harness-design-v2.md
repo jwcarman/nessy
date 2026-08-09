@@ -466,6 +466,19 @@ Unchanged: `load` / `save` / `consumeToken`, with single-use token consumption a
 the at-least-once-delivery defense. In-memory default via `SessionStore.inMemory()`;
 last-write-wins and non-evicting-token semantics documented on it.
 
+**Incremental persistence (added 2026-08-09).** The snapshot-shaped contract does
+not mandate full rewrites. `SessionState.messages` is **append-only** — the
+reducer only ever appends, never edits or removes — and this is a documented
+invariant durable stores may rely on: persist the un-persisted tail plus a small
+mutable header (status, counters, usage, failureReason, pending state), making
+save cost O(new messages) rather than O(history). Compaction will be the one
+licensed violation of append-only; its design adds a generation marker to
+`SessionState` so a store can distinguish "append the tail" (generation
+unchanged) from "rewrite" (generation bumped). The load side is addressed by
+compaction/`ContextBuilder` (summary + tail as the working set); full
+event-sourced journaling remains a `DurableEngine`-plan question, not a seam
+change.
+
 ### 10.4 TerminationPolicy (new, API-zone, consulted by the reducer)
 
 v1's hard-coded consecutive-error ceiling was one termination rule wearing the
