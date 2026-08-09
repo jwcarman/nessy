@@ -662,7 +662,13 @@ the application's own explicit declaration. If none is declared, the starter's
 4. Then as previously mapped: OpenAI-wire provider, `DurableEngine` (+ trace
    continuity, + resume semantics of §6), compactor + `ContextBuilder`, Spring
    Boot starter, TUI.
-5. **1.0 gate**: grammar freeze after the `StopReason`/wire audit; JPMS decision
+5. **`nessy-tool-mcp` (unscheduled, acknowledged)**: an adapter exposing MCP
+   server tools as `Tool<?>` instances. Deliberately unscheduled: it drags in
+   authorization, elicitation, and remote-tool trust — interactions with the
+   grant principle (§13.1) and the `Approver` that deserve their own design
+   round, not a footnote. Recorded here so the seam review for `Tool`/`Policy`
+   keeps remote tools in mind as a future implementor.
+6. **1.0 gate**: grammar freeze after the `StopReason`/wire audit; JPMS decision
    finalized; artifact-reference design (outputs referenced from state, not
    embedded) resolved before any coding-agent toolset ships.
 
