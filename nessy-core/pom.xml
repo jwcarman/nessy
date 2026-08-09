@@ -47,5 +47,14 @@
       <groupId>com.github.victools</groupId>
       <artifactId>jsonschema-module-jackson</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-observation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-observation-test</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>
