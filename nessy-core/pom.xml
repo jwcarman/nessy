@@ -57,4 +57,24 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <!-- JPMS module descriptor withdrawn (see CHANGELOG Unreleased):
+                   white-box tests fail on the module path in IDEs. The
+                   api/spi/internal boundary stands on package convention
+                   until revisited pre-1.0. -->
+              <Automatic-Module-Name>org.jwcarman.nessy.core</Automatic-Module-Name>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

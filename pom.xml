@@ -171,15 +171,6 @@
             <!-- Tests that spend real tokens are tagged `live`. The default
                  build stays green with no API key and no network. -->
             <excludedGroups>${nessy.excludedGroups}</excludedGroups>
-            <!-- nessy-core's tests live in the same packages as the production
-                 code they exercise (white-box style, incl. @Nested classes and
-                 Jackson reflection over package-private test fixtures). Running
-                 them on the module path enforces module encapsulation against
-                 the test code itself, which breaks Jackson's constructor
-                 reflection into test-only records/fixtures. Keeping tests on
-                 the classpath is the standard, documented escape hatch for
-                 exactly this shape of library. -->
-            <useModulePath>false</useModulePath>
           </configuration>
         </plugin>
       </plugins>
