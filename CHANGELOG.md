@@ -21,6 +21,7 @@ changed.
 
 ### Added
 
+- **Coverage reporting via JaCoCo** (report-only; no gate yet).
 - **Time-ordered UUIDs (v7)** — Session and park identifiers are now time-ordered
   UUIDv7 (sortable by creation time, index-friendly in durable stores).
 - **The `Agent` facade** — `Nessy.agent().provider(...).model(...).tools(...).build()`
