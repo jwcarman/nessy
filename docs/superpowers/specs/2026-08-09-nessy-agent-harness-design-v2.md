@@ -615,23 +615,34 @@ registered; it just asks for an `Agent`:
   `@ConditionalOnMissingBean`; any contributed bean of a seam type displaces it
   (`nessy-store-jdbc` + a `DataSource` → the in-memory store stands down).
   Conflicts resolve with standard Spring means (`@Primary`, `nessy.store=jdbc`).
-- Every `Tool<?>` bean in the context is collected into the `ToolRegistry`
-  automatically — `@Component class ReadFileTool implements Tool<…>` is all an
-  application writes.
-- Consuming code injects a prototype-scoped, pre-wired `AgentBuilder` (set
-  `model` and `systemPrompt`, call `build()`), or declares the whole agent in
-  properties and injects `Agent` directly.
+- **Tool beans are available, never ambient.** Declaring
+  `@Component class LookupOrderTool implements Tool<…>` buys dependency
+  injection and lifecycle — and grants the tool to no agent. Every agent's tool
+  list is an explicit grant: tool beans injected into an `@Bean` method that
+  calls `builder.tools(lookupOrder, escalate)`, or names listed in properties
+  (`nessy.agents.support.tools: lookup_order, escalate`, matched by
+  `Tool.name()`). An agent's tool list is its attack surface; least privilege
+  is the grain of the design, not an opt-in.
+- The primary pattern is hand-built, qualified `Agent` beans: consuming code
+  injects a prototype-scoped `AgentBuilder` pre-wired with *infrastructure
+  only* (provider, store, hub, observations, termination — never tools), sets
+  what is the agent's own (`model`, `systemPrompt`, tools, approver), and calls
+  `build()`. Declarative `nessy.agents.<name>.*` properties yield named `Agent`
+  beans for the config-only path. The zero-configuration injectable `Agent`
+  exists only in its safe form: no tools at all.
 
-This requires no core changes: the starter pre-applies discovered seams to the
-builder, and explicit user calls still win. Core stays magic-free; the magic
-lives entirely in the Spring layer, per §3.
+This requires no core changes: the starter pre-applies discovered infrastructure
+to the builder, and explicit user calls still win. Core stays magic-free; the
+magic lives entirely in the Spring layer, per §3.
 
-**The authority rule:** classpath takeover applies to *infrastructure* seams
-only (stores, engines, hubs, observability, providers). No library module may
-auto-contribute an `Approver` or `Policy` bean — a jar silently changing what an
-agent is allowed to do is a supply-chain-shaped footgun. Approval authority is
-always the application's own explicit declaration. Infrastructure swaps in;
-authority is declared.
+**The grant principle — infrastructure is ambient; capability is granted;
+authority is declared.** Stores, engines, hubs, providers, and observability
+swap in by classpath. Tools are granted per agent, explicitly, in reviewable
+code or config — a jar silently expanding an agent's capabilities is the same
+supply-chain footgun as one changing its authority. And no library module may
+auto-contribute an `Approver` or `Policy` bean: approval authority is always
+the application's own explicit declaration. If none is declared, the starter's
+`allowAll()` fallback announces itself with a prominent startup warning.
 
 ## 14. Sequencing
 
