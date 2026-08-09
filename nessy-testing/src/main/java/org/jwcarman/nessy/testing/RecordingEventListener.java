@@ -18,10 +18,10 @@ package org.jwcarman.nessy.testing;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.jwcarman.nessy.core.Event;
-import org.jwcarman.nessy.core.SessionId;
-import org.jwcarman.nessy.core.SessionState;
-import org.jwcarman.nessy.engine.AgentEventListener;
+import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.event.AgentEventListener;
 
 /** Captures everything the loop emitted, so tests can assert on it. */
 public final class RecordingEventListener implements AgentEventListener {

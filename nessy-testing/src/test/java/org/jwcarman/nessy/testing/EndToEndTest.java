@@ -22,19 +22,19 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.approval.ApproveEverything;
-import org.jwcarman.nessy.core.Awaited;
-import org.jwcarman.nessy.core.Event;
-import org.jwcarman.nessy.core.SessionId;
-import org.jwcarman.nessy.core.SessionStatus;
-import org.jwcarman.nessy.core.ToolResult;
-import org.jwcarman.nessy.engine.ExecutionEngine;
-import org.jwcarman.nessy.engine.Nessy;
-import org.jwcarman.nessy.engine.RunOutcome;
-import org.jwcarman.nessy.model.Capability;
-import org.jwcarman.nessy.tool.MapToolRegistry;
-import org.jwcarman.nessy.tool.Tool;
-import org.jwcarman.nessy.tool.ToolContext;
+import org.jwcarman.nessy.Nessy;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.RunOutcome;
+import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.SessionStatus;
+import org.jwcarman.nessy.api.ToolResult;
+import org.jwcarman.nessy.api.approval.ApproveEverything;
+import org.jwcarman.nessy.api.tool.MapToolRegistry;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.spi.ExecutionEngine;
+import org.jwcarman.nessy.spi.model.Capability;
 
 class EndToEndTest {
 

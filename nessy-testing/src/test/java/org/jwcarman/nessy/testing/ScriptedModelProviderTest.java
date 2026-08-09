@@ -24,11 +24,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.core.Message;
-import org.jwcarman.nessy.core.StopReason;
-import org.jwcarman.nessy.model.ModelEvent;
-import org.jwcarman.nessy.model.ModelRequest;
-import org.jwcarman.nessy.model.ModelStream;
+import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelStream;
 
 class ScriptedModelProviderTest {
 
