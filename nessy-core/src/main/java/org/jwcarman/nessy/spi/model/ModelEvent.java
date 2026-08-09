@@ -34,6 +34,22 @@ public sealed interface ModelEvent {
   /** A chunk of the model's visible reasoning arrived from the stream. */
   record ThinkingChunk(String text) implements ModelEvent {}
 
+  /** The provider finished a thinking block and delivered its signature. */
+  record ThinkingSigned(String signature) implements ModelEvent {
+
+    public ThinkingSigned {
+      Objects.requireNonNull(signature, "signature must not be null");
+    }
+  }
+
+  /** A complete redacted-thinking block arrived; its contents are opaque by design. */
+  record RedactedThinkingEmitted(String data) implements ModelEvent {
+
+    public RedactedThinkingEmitted {
+      Objects.requireNonNull(data, "data must not be null");
+    }
+  }
+
   /** Emitted once the provider has assembled a complete tool call. */
   record ToolUseEmitted(ToolCall call) implements ModelEvent {}
 

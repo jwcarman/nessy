@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
@@ -59,6 +60,8 @@ public record Reducer(TerminationPolicy termination) {
       case Event.UserSaid e -> userSaid(state, e);
       case Event.TextDelta e -> textDelta(state, e);
       case Event.ThinkingDelta e -> thinkingDelta(state, e);
+      case Event.ThinkingSigned(String signature) -> thinkingSigned(state, signature);
+      case Event.RedactedThinkingArrived(String data) -> redactedThinkingArrived(state, data);
       case Event.ModelTurnEnded e -> modelTurnEnded(state, e);
       case Event.ToolCallRequested e -> toolCallRequested(state, e);
       case Event.ApprovalDecided e -> approvalDecided(state, e);
@@ -121,12 +124,37 @@ public record Reducer(TerminationPolicy termination) {
   }
 
   /**
+   * Lands a signature on the trailing thinking block once the provider has finished it.
+   *
+   * <p>A no-op when the trailing block is not a {@link ThinkingBlock}: the provider contract always
+   * emits a {@code ThinkingChunk} before a signature, so a signature with nothing trailing it to
+   * sign is not a shape this reducer needs to guard against loudly.
+   */
+  private Step thinkingSigned(SessionState state, String signature) {
+    List<ContentBlock> blocks = state.pendingBlocks();
+    if (blocks.isEmpty() || !(blocks.getLast() instanceof ThinkingBlock last)) {
+      return Step.of(state);
+    }
+    List<ContentBlock> next = new ArrayList<>(blocks);
+    next.set(next.size() - 1, new ThinkingBlock(last.text(), signature));
+    return Step.of(state.withPendingBlocks(next));
+  }
+
+  /** Appends a complete redacted-thinking block; its contents stay opaque by design. */
+  private Step redactedThinkingArrived(SessionState state, String data) {
+    List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
+    blocks.add(new RedactedThinkingBlock(data));
+    return Step.of(state.withPendingBlocks(blocks));
+  }
+
+  /**
    * Ends the model's turn.
    *
-   * <p>A turn cut off at the token ceiling fails the session rather than reporting {@link
-   * SessionStatus#COMPLETE}. Context compaction is deliberately deferred, so overflow has to fail
-   * loudly: a half-finished sentence reported as a finished answer is the worse outcome, and it is
-   * silent.
+   * <p>A turn cut off at the token ceiling, or one the model refused to continue, fails the session
+   * rather than reporting {@link SessionStatus#COMPLETE}. Context compaction is deliberately
+   * deferred, so overflow has to fail loudly: a half-finished sentence reported as a finished
+   * answer is the worse outcome, and it is silent. A refusal gets the same treatment for the same
+   * reason: nothing downstream can tell a refused turn from a finished one except this reducer.
    *
    * <p>A turn can be truncated mid-{@code tool_use}, leaving the just-settled assistant message
    * with {@link ToolUseBlock}s that never got a matching result. Left alone, those pending calls
@@ -139,10 +167,14 @@ public record Reducer(TerminationPolicy termination) {
     SessionState accounted =
         state.withTurns(state.turns() + 1).withUsage(state.usage().plus(event.usage()));
     SessionState settled = settleAssistantMessage(accounted);
-    if (event.reason() == StopReason.MAX_TOKENS) {
+    if (event.reason() == StopReason.MAX_TOKENS || event.reason() == StopReason.REFUSAL) {
+      String reason =
+          event.reason() == StopReason.MAX_TOKENS
+              ? "model hit the token ceiling (MAX_TOKENS)"
+              : "model refused to continue (REFUSAL)";
       return Step.of(
           flushResults(abandonPendingCalls(settled))
-              .withFailureReason("model hit the token ceiling (MAX_TOKENS)")
+              .withFailureReason(reason)
               .with(SessionStatus.FAILED));
     }
     if (settled.pendingCalls().isEmpty()) {

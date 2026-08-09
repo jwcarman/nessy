@@ -227,6 +227,9 @@ public final class InProcessEngine implements ExecutionEngine {
     return switch (event) {
       case ModelEvent.TextChunk(String text) -> new Event.TextDelta(text);
       case ModelEvent.ThinkingChunk(String text) -> new Event.ThinkingDelta(text);
+      case ModelEvent.ThinkingSigned(String signature) -> new Event.ThinkingSigned(signature);
+      case ModelEvent.RedactedThinkingEmitted(String data) ->
+          new Event.RedactedThinkingArrived(data);
       case ModelEvent.ToolUseEmitted(ToolCall call) -> new Event.ToolCallRequested(call);
       case ModelEvent.TurnEnded(StopReason reason, Usage usage) ->
           new Event.ModelTurnEnded(reason, usage);

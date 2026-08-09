@@ -106,6 +106,16 @@ public final class ScriptedModelProvider implements ModelProvider {
       return this;
     }
 
+    public Builder thinkingSigned(String signature) {
+      current.add(new ModelEvent.ThinkingSigned(signature));
+      return this;
+    }
+
+    public Builder redactedThinking(String data) {
+      current.add(new ModelEvent.RedactedThinkingEmitted(data));
+      return this;
+    }
+
     public Builder toolUse(String id, String name, ObjectNode arguments) {
       current.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments)));
       return this;

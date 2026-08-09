@@ -19,5 +19,11 @@ package org.jwcarman.nessy.api;
 public enum StopReason {
   END_TURN,
   TOOL_USE,
-  MAX_TOKENS
+  MAX_TOKENS,
+
+  /**
+   * The model declined to continue; maps from Anthropic {@code refusal} and OpenAI {@code
+   * content_filter}.
+   */
+  REFUSAL
 }

@@ -183,6 +183,20 @@ class ReducerToolResultTest {
       assertThat(step.state().messages().getLast().content())
           .allMatch(block -> ((ToolResultBlock) block).isError());
     }
+
+    @Test
+    void a_refusal_fails_loudly_and_still_answers_every_pending_tool_use() {
+      ToolCall first = call("c1");
+      ToolCall second = call("c2");
+      SessionState state = awaitingApprovalWith(reducer, first, second);
+
+      Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.REFUSAL, Usage.zero()));
+
+      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.state().failureReason()).contains("REFUSAL");
+      assertThat(step.state().pendingCalls()).isEmpty();
+      assertThat(step.effects()).isEmpty();
+    }
   }
 
   @Nested

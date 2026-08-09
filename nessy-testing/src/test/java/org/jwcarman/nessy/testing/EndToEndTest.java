@@ -173,4 +173,22 @@ class EndToEndTest {
     assertThat(completed.state().messages().getLast().content())
         .containsExactly(new ThinkingBlock("Let me think.", ""), new TextBlock("Answer."));
   }
+
+  @Test
+  void thinking_signatures_round_trip_through_the_final_state() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .thinking("Let me think.")
+            .thinkingSigned("sig-abc")
+            .text("The answer is 4.")
+            .endTurn()
+            .build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+
+    Reply reply = agent.converse().send("what is 2+2?");
+
+    assertThat(reply.state().messages().getLast().content())
+        .containsExactly(
+            new ThinkingBlock("Let me think.", "sig-abc"), new TextBlock("The answer is 4."));
+  }
 }

@@ -21,6 +21,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
@@ -82,6 +83,36 @@ class ReducerGrammarTest {
 
     assertThat(state.status()).isEqualTo(SessionStatus.FAILED);
     assertThat(state.failureReason()).contains("MAX_TOKENS");
+  }
+
+  @Test
+  void a_signature_lands_on_the_trailing_thinking_block() {
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+    state = reducer.reduce(state, new Event.ThinkingDelta("Let me think.")).state();
+    state = reducer.reduce(state, new Event.ThinkingSigned("sig-abc")).state();
+
+    assertThat(state.pendingBlocks())
+        .containsExactly(new ThinkingBlock("Let me think.", "sig-abc"));
+  }
+
+  @Test
+  void a_signature_with_no_trailing_thinking_block_changes_nothing() {
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+    state = reducer.reduce(state, new Event.TextDelta("Answer.")).state();
+    Step step = reducer.reduce(state, new Event.ThinkingSigned("sig-abc"));
+
+    assertThat(step.state().pendingBlocks()).containsExactly(new TextBlock("Answer."));
+    assertThat(step.effects()).isEmpty();
+  }
+
+  @Test
+  void redacted_thinking_appends_its_block_in_order() {
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+    state = reducer.reduce(state, new Event.RedactedThinkingArrived("opaque-bytes")).state();
+    state = reducer.reduce(state, new Event.TextDelta("Answer.")).state();
+
+    assertThat(state.pendingBlocks())
+        .containsExactly(new RedactedThinkingBlock("opaque-bytes"), new TextBlock("Answer."));
   }
 
   @Test

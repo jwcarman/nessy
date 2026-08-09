@@ -32,6 +32,8 @@ class EventTest {
           case Event.UserSaid e -> "user:" + ((TextBlock) e.content().getFirst()).text();
           case Event.TextDelta e -> "delta:" + e.text();
           case Event.ThinkingDelta e -> "thinking:" + e.text();
+          case Event.ThinkingSigned e -> "signed:" + e.signature();
+          case Event.RedactedThinkingArrived e -> "redacted:" + e.data();
           case Event.ToolCallRequested e -> "call:" + e.call().name();
           case Event.ModelTurnEnded e -> "end:" + e.reason();
           case Event.ApprovalDecided e -> "approval:" + e.call().name();
