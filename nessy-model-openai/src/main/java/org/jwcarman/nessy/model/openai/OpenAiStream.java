@@ -1,0 +1,267 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.model.openai;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.openai.core.ObjectMappers;
+import com.openai.core.http.StreamResponse;
+import com.openai.models.chat.completions.ChatCompletionChunk;
+import com.openai.models.completions.CompletionUsage;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.TreeMap;
+import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.model.ModelStream;
+
+/**
+ * Lazily translates the openai-java SDK's raw {@code ChatCompletionChunk} stream into {@link
+ * ModelEvent}s.
+ *
+ * <p>Each call to {@link Iterator#next()} pulls only as many SDK chunks as needed to produce the
+ * next {@link ModelEvent}; the turn is never buffered in full. Tool calls are the one case that
+ * span several chunks: unlike Anthropic's block-indexed {@code tool_use} events, Chat Completions
+ * streams {@code delta.tool_calls} fragments keyed by an integer {@code index} — the fragment that
+ * opens an index carries the call's {@code id} and function {@code name}; every fragment after that
+ * (for the same index) appends to {@code function.arguments}. Fragments for different indexes can
+ * interleave chunk-to-chunk, so accumulation is keyed by index and flushed, in index order, only
+ * once the choice's {@code finish_reason} arrives.
+ *
+ * <p>Usage arrives separately from the finish reason: OpenAI (when {@code
+ * stream_options.include_usage} is set, which {@code OpenAiRequests} always sets) sends a final
+ * chunk with an empty {@code choices} list carrying the completed token counts, after the chunk
+ * that carried {@code finish_reason}. This class waits for the SDK stream to actually end before
+ * emitting {@link ModelEvent.TurnEnded}, folding in whatever usage arrived by then. Some
+ * OpenAI-compatible servers never send that trailing usage chunk at all; that is tolerated and
+ * yields {@link Usage#zero()} rather than a failure.
+ *
+ * <p>{@link #iterator()} is one-shot: each call wraps a fresh {@link Iterator} over the SDK's
+ * {@code Stream}, but that {@code Stream} itself is a standard single-use {@link
+ * java.util.stream.Stream} under the hood — traversing it (fully or partially) and then calling
+ * {@link #iterator()} again throws from the SDK side, not this class.
+ */
+public final class OpenAiStream implements ModelStream {
+
+  private final StreamResponse<ChatCompletionChunk> stream;
+
+  public OpenAiStream(StreamResponse<ChatCompletionChunk> stream) {
+    this.stream = Objects.requireNonNull(stream, "stream must not be null");
+  }
+
+  @Override
+  public Iterator<ModelEvent> iterator() {
+    return new TranslatingIterator(stream.stream().iterator());
+  }
+
+  @Override
+  public void close() {
+    stream.close();
+  }
+
+  // The SDK's finish-reason type (ChatCompletionChunk.Choice.FinishReason) shares its role with
+  // org.jwcarman.nessy.api.StopReason (imported above) but not its simple name, so no collision
+  // forces an FQN here — unlike the tool-call delta type below. Matching on the wire string itself
+  // (rather than the SDK's own Known/Value enums) means a genuinely novel value fails with our
+  // IllegalStateException instead of the SDK's own exception type, which is the contract this
+  // method exists to keep.
+  private static StopReason mapFinishReason(ChatCompletionChunk.Choice.FinishReason reason) {
+    return switch (reason.asString()) {
+      case "stop" -> StopReason.END_TURN;
+      case "length" -> StopReason.MAX_TOKENS;
+      // "function_call" is the deprecated, pre-tool_calls legacy finish reason; mapping it to
+      // TOOL_USE (rather than leaving it unmapped) keeps this harness working against servers
+      // that still emit it.
+      case "tool_calls", "function_call" -> StopReason.TOOL_USE;
+      case "content_filter" -> StopReason.REFUSAL;
+      default ->
+          throw new IllegalStateException(
+              "Unrecognized OpenAI finish_reason: " + reason.asString());
+    };
+  }
+
+  /**
+   * Pulls SDK chunks one at a time and emits translated {@link ModelEvent}s from a small queue, so
+   * a single chunk that maps to zero, one, or (across an accumulating tool call) eventually one
+   * event never forces the whole turn into memory.
+   */
+  private static final class TranslatingIterator implements Iterator<ModelEvent> {
+
+    private final Iterator<ChatCompletionChunk> chunks;
+    private final Deque<ModelEvent> pending = new ArrayDeque<>();
+    private final TreeMap<Long, PendingToolCall> toolCallsByIndex = new TreeMap<>();
+    private Usage usage = Usage.zero();
+    private StopReason stopReason;
+    private boolean finishSeen;
+    private boolean turnEndedEmitted;
+
+    private TranslatingIterator(Iterator<ChatCompletionChunk> chunks) {
+      this.chunks = chunks;
+    }
+
+    @Override
+    public boolean hasNext() {
+      fill();
+      return !pending.isEmpty();
+    }
+
+    @Override
+    public ModelEvent next() {
+      fill();
+      var next = pending.poll();
+      if (next == null) {
+        throw new NoSuchElementException();
+      }
+      return next;
+    }
+
+    /**
+     * Pulls SDK chunks until there's something to hand back, or the SDK stream is exhausted.
+     *
+     * <p>A real stream always carries a {@code finish_reason} on some choice before it ends. If the
+     * underlying chunks run out without one ever having been seen, the turn ended without a stop
+     * reason — silently returning "no more events" here would let the harness treat that as a
+     * normal, successful end of turn, so it fails loudly instead. Once a stream ends having seen a
+     * {@code finish_reason}, {@link ModelEvent.TurnEnded} is queued exactly once, folding in
+     * whatever usage arrived (possibly none, per the class javadoc).
+     */
+    private void fill() {
+      while (pending.isEmpty() && chunks.hasNext()) {
+        translate(chunks.next());
+      }
+      if (pending.isEmpty() && !chunks.hasNext()) {
+        if (!finishSeen) {
+          throw new IllegalStateException("stream ended without a finish_reason");
+        }
+        if (!turnEndedEmitted) {
+          pending.add(new ModelEvent.TurnEnded(stopReason, usage));
+          turnEndedEmitted = true;
+        }
+      }
+    }
+
+    private void translate(ChatCompletionChunk chunk) {
+      for (ChatCompletionChunk.Choice choice : chunk.choices()) {
+        translateChoice(choice);
+      }
+      chunk.usage().ifPresent(this::translateUsage);
+    }
+
+    /**
+     * Translates one choice's delta and, if present, its finish reason.
+     *
+     * <p>Deliberately unmapped: {@code delta.role()} (redundant — every assistant chunk implies the
+     * same role), {@code delta.refusal()} (a distinct field from the {@code content_filter} finish
+     * reason, carrying refusal message text there is no {@link ModelEvent} variant for), the
+     * deprecated {@code delta.functionCall()} (superseded by {@code delta.toolCalls()}, which this
+     * class does translate), and {@code choice.logprobs()}. All fall through as a silent no-op
+     * rather than a crash — content this harness doesn't model is content it drops, not an error —
+     * and are not logged, since this is a per-token hot path.
+     */
+    private void translateChoice(ChatCompletionChunk.Choice choice) {
+      var delta = choice.delta();
+      delta.content().ifPresent(text -> pending.add(new ModelEvent.TextChunk(text)));
+      delta.toolCalls().ifPresent(toolCalls -> toolCalls.forEach(this::accumulateToolCallDelta));
+      choice.finishReason().ifPresent(this::translateFinish);
+    }
+
+    // ChatCompletionChunk.Choice.Delta.ToolCall shares its simple name with
+    // org.jwcarman.nessy.api.ToolCall (the type PendingToolCall assembles into, used throughout
+    // this file), so this one accessor is left fully qualified rather than sprinkling FQNs through
+    // the rest of the class.
+    private void accumulateToolCallDelta(
+        com.openai.models.chat.completions.ChatCompletionChunk.Choice.Delta.ToolCall delta) {
+      var pendingCall =
+          toolCallsByIndex.computeIfAbsent(delta.index(), index -> new PendingToolCall());
+      delta.id().ifPresent(pendingCall::setId);
+      delta
+          .function()
+          .ifPresent(
+              function -> {
+                function.name().ifPresent(pendingCall::setName);
+                function.arguments().ifPresent(pendingCall::appendArguments);
+              });
+    }
+
+    /**
+     * Flushes every accumulating tool call, in index order, then records the turn's stop reason.
+     */
+    private void translateFinish(ChatCompletionChunk.Choice.FinishReason finishReason) {
+      toolCallsByIndex
+          .values()
+          .forEach(call -> pending.add(new ModelEvent.ToolUseEmitted(call.toToolCall())));
+      toolCallsByIndex.clear();
+      stopReason = mapFinishReason(finishReason);
+      finishSeen = true;
+    }
+
+    private void translateUsage(CompletionUsage completionUsage) {
+      usage = new Usage(completionUsage.promptTokens(), completionUsage.completionTokens());
+    }
+  }
+
+  /** Accumulates one tool call's streamed {@code function.arguments} fragments, keyed by index. */
+  private static final class PendingToolCall {
+
+    private String id;
+    private String name;
+    private final StringBuilder arguments = new StringBuilder();
+
+    void setId(String id) {
+      this.id = id;
+    }
+
+    void setName(String name) {
+      this.name = name;
+    }
+
+    void appendArguments(String fragment) {
+      arguments.append(fragment);
+    }
+
+    /**
+     * Parses the accumulated fragments into this tool call's arguments.
+     *
+     * <p>Fails fast rather than truncating or otherwise guessing at a partial call: a stream that
+     * stops mid-call (for example, a {@code length} cutoff) leaves genuinely unusable arguments,
+     * and the harness's finally-save preserves session state up to this point, so the failure is
+     * recoverable by inspection rather than silently corrupting the tool call.
+     */
+    ToolCall toToolCall() {
+      var json = arguments.isEmpty() ? "{}" : arguments.toString();
+      JsonNode parsed;
+      try {
+        parsed = ObjectMappers.jsonMapper().readTree(json);
+      } catch (JsonProcessingException e) {
+        throw new IllegalStateException(describeFailure("did not parse as JSON", json), e);
+      }
+      if (!parsed.isObject()) {
+        throw new IllegalStateException(describeFailure("did not parse to a JSON object", json));
+      }
+      return new ToolCall(id, name, parsed);
+    }
+
+    private String describeFailure(String problem, String json) {
+      var truncated = json.length() <= 200 ? json : json.substring(0, 200);
+      return "tool '" + name + "' (id=" + id + ") streamed arguments " + problem + ": " + truncated;
+    }
+  }
+}
