@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
+import java.util.List;
+
 /**
  * Something that happened.
  *
@@ -23,17 +25,35 @@ package org.jwcarman.nessy.api;
  */
 public sealed interface Event {
 
-  /** A human said something. */
-  record UserSaid(String text) implements Event {}
+  /** A human said something, as arbitrary content blocks rather than plain text. */
+  record UserSaid(List<ContentBlock> content) implements Event {
+
+    public UserSaid {
+      content = List.copyOf(content);
+    }
+
+    /** The common case: a single block of prose. */
+    public static UserSaid of(String text) {
+      return new UserSaid(List.of(new TextBlock(text)));
+    }
+  }
 
   /** A chunk of assistant prose arrived from the stream. */
   record TextDelta(String text) implements Event {}
+
+  /** A chunk of the model's visible reasoning arrived from the stream. */
+  record ThinkingDelta(String text) implements Event {}
 
   /** The model finished emitting one complete tool call. */
   record ToolCallRequested(ToolCall call) implements Event {}
 
   /** The model's turn is over. */
-  record ModelTurnEnded(StopReason reason) implements Event {}
+  record ModelTurnEnded(StopReason reason, Usage usage) implements Event {
+
+    public ModelTurnEnded(StopReason reason) {
+      this(reason, Usage.zero());
+    }
+  }
 
   /** The approval question for one call has been answered. */
   record ApprovalDecided(ToolCall call, Decision decision) implements Event {}

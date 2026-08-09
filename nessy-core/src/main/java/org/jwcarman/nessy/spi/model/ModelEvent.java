@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.spi.model;
 
+import java.util.Objects;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.Usage;
 
 /**
  * Something a provider emitted while streaming one turn.
@@ -29,8 +31,17 @@ public sealed interface ModelEvent {
 
   record TextChunk(String text) implements ModelEvent {}
 
+  /** A chunk of the model's visible reasoning arrived from the stream. */
+  record ThinkingChunk(String text) implements ModelEvent {}
+
   /** Emitted once the provider has assembled a complete tool call. */
   record ToolUseEmitted(ToolCall call) implements ModelEvent {}
 
-  record TurnEnded(StopReason reason) implements ModelEvent {}
+  record TurnEnded(StopReason reason, Usage usage) implements ModelEvent {
+
+    public TurnEnded {
+      Objects.requireNonNull(reason, "reason must not be null");
+      Objects.requireNonNull(usage, "usage must not be null");
+    }
+  }
 }

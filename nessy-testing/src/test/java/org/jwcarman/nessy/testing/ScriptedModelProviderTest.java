@@ -26,6 +26,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -54,7 +55,8 @@ class ScriptedModelProviderTest {
 
     assertThat(events)
         .containsExactly(
-            new ModelEvent.TextChunk("Hello"), new ModelEvent.TurnEnded(StopReason.END_TURN));
+            new ModelEvent.TextChunk("Hello"),
+            new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
   }
 
   @Test
@@ -71,7 +73,8 @@ class ScriptedModelProviderTest {
     assertThat(drain(provider.stream(request()))).hasSize(2);
     assertThat(drain(provider.stream(request())))
         .containsExactly(
-            new ModelEvent.TextChunk("Done"), new ModelEvent.TurnEnded(StopReason.END_TURN));
+            new ModelEvent.TextChunk("Done"),
+            new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
   }
 
   @Test

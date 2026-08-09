@@ -33,6 +33,12 @@ import java.util.Objects;
  * @param pendingResults results collected so far, flushed as one user message when the last pending
  *     call resolves
  * @param consecutiveErrors errored tool results in a row; any success resets it
+ * @param turns model turns completed so far
+ * @param usage tokens spent so far, accumulated across every completed turn
+ * @param failureReason why the session failed, or {@code null} if it has not failed. This is the
+ *     one sanctioned nullable field on this record: most sessions never fail, and forcing every
+ *     caller to thread an empty string through the happy path would be worse than the null check
+ *     the few failure sites already need.
  * @param status lifecycle position
  */
 public record SessionState(
@@ -42,10 +48,14 @@ public record SessionState(
     List<ToolCall> pendingCalls,
     List<ContentBlock> pendingResults,
     int consecutiveErrors,
+    int turns,
+    Usage usage,
+    String failureReason,
     SessionStatus status) {
 
   public SessionState {
     Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(usage, "usage must not be null");
     Objects.requireNonNull(status, "status must not be null");
     messages = List.copyOf(messages);
     pendingBlocks = List.copyOf(pendingBlocks);
@@ -54,38 +64,144 @@ public record SessionState(
   }
 
   public static SessionState newSession(SessionId id) {
-    return new SessionState(id, List.of(), List.of(), List.of(), List.of(), 0, SessionStatus.IDLE);
+    return new SessionState(
+        id,
+        List.of(),
+        List.of(),
+        List.of(),
+        List.of(),
+        0,
+        0,
+        Usage.zero(),
+        null,
+        SessionStatus.IDLE);
   }
 
   public SessionState with(SessionStatus newStatus) {
     return new SessionState(
-        id, messages, pendingBlocks, pendingCalls, pendingResults, consecutiveErrors, newStatus);
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        failureReason,
+        newStatus);
   }
 
   public SessionState withMessageAppended(Message message) {
     List<Message> appended = new ArrayList<>(messages);
     appended.add(message);
     return new SessionState(
-        id, appended, pendingBlocks, pendingCalls, pendingResults, consecutiveErrors, status);
+        id,
+        appended,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        failureReason,
+        status);
   }
 
   public SessionState withPendingBlocks(List<ContentBlock> blocks) {
     return new SessionState(
-        id, messages, blocks, pendingCalls, pendingResults, consecutiveErrors, status);
+        id,
+        messages,
+        blocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        failureReason,
+        status);
   }
 
   public SessionState withPendingCalls(List<ToolCall> calls) {
     return new SessionState(
-        id, messages, pendingBlocks, calls, pendingResults, consecutiveErrors, status);
+        id,
+        messages,
+        pendingBlocks,
+        calls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        failureReason,
+        status);
   }
 
   public SessionState withPendingResults(List<ContentBlock> results) {
     return new SessionState(
-        id, messages, pendingBlocks, pendingCalls, results, consecutiveErrors, status);
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        results,
+        consecutiveErrors,
+        turns,
+        usage,
+        failureReason,
+        status);
   }
 
   public SessionState withConsecutiveErrors(int errors) {
     return new SessionState(
-        id, messages, pendingBlocks, pendingCalls, pendingResults, errors, status);
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        errors,
+        turns,
+        usage,
+        failureReason,
+        status);
+  }
+
+  public SessionState withTurns(int newTurns) {
+    return new SessionState(
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        newTurns,
+        usage,
+        failureReason,
+        status);
+  }
+
+  public SessionState withUsage(Usage newUsage) {
+    return new SessionState(
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        newUsage,
+        failureReason,
+        status);
+  }
+
+  public SessionState withFailureReason(String reason) {
+    return new SessionState(
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        reason,
+        status);
   }
 }

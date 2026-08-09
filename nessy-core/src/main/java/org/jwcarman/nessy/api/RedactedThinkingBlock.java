@@ -15,11 +15,12 @@
  */
 package org.jwcarman.nessy.api;
 
-/** One piece of a message. Messages are lists of these, not strings. */
-public sealed interface ContentBlock
-    permits TextBlock,
-        ToolUseBlock,
-        ToolResultBlock,
-        ThinkingBlock,
-        RedactedThinkingBlock,
-        ImageBlock {}
+import java.util.Objects;
+
+/** Reasoning the provider flagged and encrypted rather than showing. Opaque; replayed verbatim. */
+public record RedactedThinkingBlock(String data) implements ContentBlock {
+
+  public RedactedThinkingBlock {
+    Objects.requireNonNull(data, "data must not be null");
+  }
+}

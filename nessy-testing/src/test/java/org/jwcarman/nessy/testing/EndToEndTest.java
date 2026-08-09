@@ -105,7 +105,7 @@ class EndToEndTest {
             .events(hub)
             .build();
 
-    RunOutcome outcome = engine.run(new SessionId("s1"), new Event.UserSaid("what is 2+2?"));
+    RunOutcome outcome = engine.run(new SessionId("s1"), Event.UserSaid.of("what is 2+2?"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
@@ -122,7 +122,7 @@ class EndToEndTest {
         .model("fake-model")
         .tools(ToolRegistry.of(new AddTool()))
         .build()
-        .run(new SessionId("s1"), new Event.UserSaid("hello"));
+        .run(new SessionId("s1"), Event.UserSaid.of("hello"));
 
     assertThat(provider.requests().getFirst().tools()).hasSize(1);
     assertThat(provider.requests().getFirst().tools().getFirst().name()).isEqualTo("add");
@@ -147,7 +147,7 @@ class EndToEndTest {
         .model("fake-model")
         .capabilities(Set.of(Capability.PROMPT_CACHING))
         .build()
-        .run(new SessionId("s1"), new Event.UserSaid("hello"));
+        .run(new SessionId("s1"), Event.UserSaid.of("hello"));
 
     assertThat(provider.requests().getFirst().requested())
         .containsExactly(Capability.PROMPT_CACHING);

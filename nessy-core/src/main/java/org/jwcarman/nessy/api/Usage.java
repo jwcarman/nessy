@@ -15,11 +15,20 @@
  */
 package org.jwcarman.nessy.api;
 
-/** One piece of a message. Messages are lists of these, not strings. */
-public sealed interface ContentBlock
-    permits TextBlock,
-        ToolUseBlock,
-        ToolResultBlock,
-        ThinkingBlock,
-        RedactedThinkingBlock,
-        ImageBlock {}
+/** Tokens spent on one turn, or accumulated across a session. */
+public record Usage(long inputTokens, long outputTokens) {
+
+  public Usage {
+    if (inputTokens < 0 || outputTokens < 0) {
+      throw new IllegalArgumentException("token counts must be non-negative");
+    }
+  }
+
+  public static Usage zero() {
+    return new Usage(0, 0);
+  }
+
+  public Usage plus(Usage other) {
+    return new Usage(inputTokens + other.inputTokens, outputTokens + other.outputTokens);
+  }
+}

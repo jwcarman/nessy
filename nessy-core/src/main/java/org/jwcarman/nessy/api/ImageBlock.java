@@ -15,11 +15,13 @@
  */
 package org.jwcarman.nessy.api;
 
-/** One piece of a message. Messages are lists of these, not strings. */
-public sealed interface ContentBlock
-    permits TextBlock,
-        ToolUseBlock,
-        ToolResultBlock,
-        ThinkingBlock,
-        RedactedThinkingBlock,
-        ImageBlock {}
+import java.util.Objects;
+
+/** An image attached to a message, base64-encoded with its media type. */
+public record ImageBlock(String mediaType, String base64Data) implements ContentBlock {
+
+  public ImageBlock {
+    Objects.requireNonNull(mediaType, "mediaType must not be null");
+    Objects.requireNonNull(base64Data, "base64Data must not be null");
+  }
+}

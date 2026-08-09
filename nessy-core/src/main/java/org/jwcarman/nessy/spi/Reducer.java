@@ -21,10 +21,12 @@ import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.TextBlock;
+import org.jwcarman.nessy.api.ThinkingBlock;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
@@ -58,6 +60,7 @@ public record Reducer(int maxConsecutiveErrors) {
     return switch (event) {
       case Event.UserSaid e -> userSaid(state, e);
       case Event.TextDelta e -> textDelta(state, e);
+      case Event.ThinkingDelta e -> thinkingDelta(state, e);
       case Event.ModelTurnEnded e -> modelTurnEnded(state, e);
       case Event.ToolCallRequested e -> toolCallRequested(state, e);
       case Event.ApprovalDecided e -> approvalDecided(state, e);
@@ -75,7 +78,7 @@ public record Reducer(int maxConsecutiveErrors) {
   private Step userSaid(SessionState state, Event.UserSaid event) {
     return Step.of(
         state
-            .withMessageAppended(Message.user(event.text()))
+            .withMessageAppended(new Message(Role.USER, event.content()))
             .withConsecutiveErrors(0)
             .with(SessionStatus.AWAITING_MODEL),
         Effect.callModel());
@@ -96,6 +99,21 @@ public record Reducer(int maxConsecutiveErrors) {
   }
 
   /**
+   * Merges a chunk into the trailing thinking block rather than appending a new one, mirroring
+   * {@link #textDelta}.
+   */
+  private Step thinkingDelta(SessionState state, Event.ThinkingDelta event) {
+    List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
+    if (!blocks.isEmpty() && blocks.getLast() instanceof ThinkingBlock last) {
+      blocks.set(
+          blocks.size() - 1, new ThinkingBlock(last.text() + event.text(), last.signature()));
+    } else {
+      blocks.add(new ThinkingBlock(event.text(), ""));
+    }
+    return Step.of(state.withPendingBlocks(blocks));
+  }
+
+  /**
    * Ends the model's turn.
    *
    * <p>A turn cut off at the token ceiling fails the session rather than reporting {@link
@@ -111,9 +129,14 @@ public record Reducer(int maxConsecutiveErrors) {
    * failing.
    */
   private Step modelTurnEnded(SessionState state, Event.ModelTurnEnded event) {
-    SessionState settled = settleAssistantMessage(state);
+    SessionState accounted =
+        state.withTurns(state.turns() + 1).withUsage(state.usage().plus(event.usage()));
+    SessionState settled = settleAssistantMessage(accounted);
     if (event.reason() == StopReason.MAX_TOKENS) {
-      return Step.of(flushResults(abandonPendingCalls(settled)).with(SessionStatus.FAILED));
+      return Step.of(
+          flushResults(abandonPendingCalls(settled))
+              .withFailureReason("model hit the token ceiling (MAX_TOKENS)")
+              .with(SessionStatus.FAILED));
     }
     if (settled.pendingCalls().isEmpty()) {
       return Step.of(settled.with(SessionStatus.COMPLETE));
@@ -167,7 +190,10 @@ public record Reducer(int maxConsecutiveErrors) {
         state.withPendingResults(results).withPendingCalls(remaining).withConsecutiveErrors(errors);
 
     if (errors >= maxConsecutiveErrors) {
-      return Step.of(flushResults(abandonPendingCalls(next)).with(SessionStatus.FAILED));
+      return Step.of(
+          flushResults(abandonPendingCalls(next))
+              .withFailureReason(next.consecutiveErrors() + " consecutive tool errors")
+              .with(SessionStatus.FAILED));
     }
     if (!remaining.isEmpty()) {
       return Step.of(

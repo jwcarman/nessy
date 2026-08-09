@@ -187,8 +187,9 @@ public final class InProcessEngine implements ExecutionEngine {
   private static Event translate(ModelEvent event) {
     return switch (event) {
       case ModelEvent.TextChunk chunk -> new Event.TextDelta(chunk.text());
+      case ModelEvent.ThinkingChunk chunk -> new Event.ThinkingDelta(chunk.text());
       case ModelEvent.ToolUseEmitted emitted -> new Event.ToolCallRequested(emitted.call());
-      case ModelEvent.TurnEnded ended -> new Event.ModelTurnEnded(ended.reason());
+      case ModelEvent.TurnEnded ended -> new Event.ModelTurnEnded(ended.reason(), ended.usage());
     };
   }
 

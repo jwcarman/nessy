@@ -34,7 +34,7 @@ class ReducerTextTest {
 
   @Test
   void userInputIsRecordedAndAsksForTheModel() {
-    Step step = reducer.reduce(initial, new Event.UserSaid("what is 2+2?"));
+    Step step = reducer.reduce(initial, Event.UserSaid.of("what is 2+2?"));
 
     assertThat(step.state().messages()).containsExactly(Message.user("what is 2+2?"));
     assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
@@ -43,7 +43,7 @@ class ReducerTextTest {
 
   @Test
   void textDeltasAccumulateIntoASinglePendingBlock() {
-    SessionState state = reducer.reduce(initial, new Event.UserSaid("hi")).state();
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
 
     state = reducer.reduce(state, new Event.TextDelta("Hel")).state();
     state = reducer.reduce(state, new Event.TextDelta("lo, ")).state();
@@ -61,7 +61,7 @@ class ReducerTextTest {
 
   @Test
   void turnEndWithNoToolCallsSettlesTheMessageAndCompletes() {
-    SessionState state = reducer.reduce(initial, new Event.UserSaid("hi")).state();
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
     state = reducer.reduce(state, new Event.TextDelta("Hello!")).state();
 
     Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN));
@@ -77,7 +77,7 @@ class ReducerTextTest {
   void newUserInputClearsTheErrorStreak() {
     SessionState state = initial.withConsecutiveErrors(2);
 
-    Step step = reducer.reduce(state, new Event.UserSaid("try again"));
+    Step step = reducer.reduce(state, Event.UserSaid.of("try again"));
 
     assertThat(step.state().consecutiveErrors()).isZero();
     assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
@@ -85,7 +85,7 @@ class ReducerTextTest {
 
   @Test
   void aTurnCutOffAtTheTokenCeilingFailsRatherThanReportingCompletion() {
-    SessionState state = reducer.reduce(initial, new Event.UserSaid("hi")).state();
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
     state = reducer.reduce(state, new Event.TextDelta("Half a sen")).state();
 
     Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS));
@@ -99,7 +99,7 @@ class ReducerTextTest {
 
   @Test
   void turnEndWithNothingPendingAddsNoEmptyMessage() {
-    SessionState state = reducer.reduce(initial, new Event.UserSaid("hi")).state();
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
 
     Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN));
 

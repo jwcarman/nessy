@@ -25,12 +25,13 @@ class EventTest {
 
   @Test
   void eventsAreExhaustivelyMatchable() {
-    Event event = new Event.UserSaid("hello");
+    Event event = Event.UserSaid.of("hello");
 
     String described =
         switch (event) {
-          case Event.UserSaid e -> "user:" + e.text();
+          case Event.UserSaid e -> "user:" + ((TextBlock) e.content().getFirst()).text();
           case Event.TextDelta e -> "delta:" + e.text();
+          case Event.ThinkingDelta e -> "thinking:" + e.text();
           case Event.ToolCallRequested e -> "call:" + e.call().name();
           case Event.ModelTurnEnded e -> "end:" + e.reason();
           case Event.ApprovalDecided e -> "approval:" + e.call().name();

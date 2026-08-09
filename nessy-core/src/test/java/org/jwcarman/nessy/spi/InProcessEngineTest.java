@@ -43,6 +43,7 @@ import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
@@ -250,11 +251,11 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.TextChunk("Four."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
     RunOutcome outcome =
         engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
-            .run(ID, new Event.UserSaid("what is 2+2?"));
+            .run(ID, Event.UserSaid.of("what is 2+2?"));
 
     assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -271,10 +272,10 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
     RunOutcome outcome =
         engineWith(
@@ -282,7 +283,7 @@ class InProcessEngineTest {
                 ToolRegistry.of(new EchoTool(true)),
                 Approver.allowAll(),
                 SessionStore.inMemory())
-            .run(ID, new Event.UserSaid("echo hi"));
+            .run(ID, Event.UserSaid.of("echo hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().messages()).hasSize(4);
@@ -299,14 +300,14 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
     CountingApprover approver = new CountingApprover(Approver.allowAll());
 
     engineWith(provider, ToolRegistry.of(new EchoTool(false)), approver, SessionStore.inMemory())
-        .run(ID, new Event.UserSaid("echo hi"));
+        .run(ID, Event.UserSaid.of("echo hi"));
 
     assertThat(approver.calls).isZero();
   }
@@ -318,10 +319,10 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Understood."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
     RunOutcome outcome =
         engineWith(
@@ -329,7 +330,7 @@ class InProcessEngineTest {
                 ToolRegistry.of(new EchoTool(true)),
                 Approver.denyAll("not allowed"),
                 SessionStore.inMemory())
-            .run(ID, new Event.UserSaid("echo hi"));
+            .run(ID, Event.UserSaid.of("echo hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().messages().get(2).content())
@@ -343,14 +344,14 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "missing", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Oh."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
     RunOutcome outcome =
         engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
-            .run(ID, new Event.UserSaid("go"));
+            .run(ID, Event.UserSaid.of("go"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     ToolResultBlock block =
@@ -366,17 +367,17 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "boom", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Oh."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
     Tool<Echo> exploding = new ExplodingTool();
 
     RunOutcome outcome =
         engineWith(
                 provider, ToolRegistry.of(exploding), Approver.allowAll(), SessionStore.inMemory())
-            .run(ID, new Event.UserSaid("go"));
+            .run(ID, Event.UserSaid.of("go"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     ToolResultBlock block =
@@ -393,17 +394,17 @@ class InProcessEngineTest {
                 List.of(
                     new ModelEvent.TextChunk("Fo"),
                     new ModelEvent.TextChunk("ur."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
     EventHub hub = EventHub.synchronous();
     List<Event> events = new ArrayList<>();
     hub.subscribe(SessionEvent.class, sessionEvent -> events.add(sessionEvent.event()));
 
     engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory(), hub)
-        .run(ID, new Event.UserSaid("what is 2+2?"));
+        .run(ID, Event.UserSaid.of("what is 2+2?"));
 
     assertThat(events)
         .containsExactly(
-            new Event.UserSaid("what is 2+2?"),
+            Event.UserSaid.of("what is 2+2?"),
             new Event.TextDelta("Fo"),
             new Event.TextDelta("ur."),
             new Event.ModelTurnEnded(StopReason.END_TURN));
@@ -416,11 +417,11 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.TextChunk("Four."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
     SessionStore store = SessionStore.inMemory();
 
     engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store)
-        .run(ID, new Event.UserSaid("what is 2+2?"));
+        .run(ID, Event.UserSaid.of("what is 2+2?"));
 
     assertThat(store.load(ID)).isPresent();
     assertThat(store.load(ID).orElseThrow().status()).isEqualTo(SessionStatus.COMPLETE);
@@ -440,7 +441,7 @@ class InProcessEngineTest {
                         ToolRegistry.of(),
                         Approver.allowAll(),
                         store)
-                    .run(ID, new Event.UserSaid("what is 2+2?")))
+                    .run(ID, Event.UserSaid.of("what is 2+2?")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("stream blew up");
 
@@ -456,10 +457,10 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "noisy", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
     EventHub hub = EventHub.synchronous();
     List<ToolProgress> progress = new ArrayList<>();
     hub.subscribe(ToolProgress.class, progress::add);
@@ -494,7 +495,7 @@ class InProcessEngineTest {
         };
 
     engineWith(provider, ToolRegistry.of(noisy), Approver.allowAll(), SessionStore.inMemory(), hub)
-        .run(ID, new Event.UserSaid("go"));
+        .run(ID, Event.UserSaid.of("go"));
 
     assertThat(progress).containsExactly(new ToolProgress(ID, "c1", "halfway"));
   }
@@ -507,7 +508,7 @@ class InProcessEngineTest {
             () ->
                 engineWith(
                         provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
-                    .resume(ID, ParkToken.random(), new Event.UserSaid("x")))
+                    .resume(ID, ParkToken.random(), Event.UserSaid.of("x")))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("DurableEngine");
   }
@@ -519,7 +520,7 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "park", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE))));
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
 
     assertThatThrownBy(
             () ->
@@ -528,7 +529,7 @@ class InProcessEngineTest {
                         ToolRegistry.of(new ParkingTool()),
                         Approver.allowAll(),
                         SessionStore.inMemory())
-                    .run(ID, new Event.UserSaid("go")))
+                    .run(ID, Event.UserSaid.of("go")))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("DurableEngine");
   }
@@ -540,15 +541,15 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", malformedArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Oh."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
     SessionStore store = SessionStore.inMemory();
 
     RunOutcome outcome =
         engineWith(provider, ToolRegistry.of(new EchoTool(true)), Approver.allowAll(), store)
-            .run(ID, new Event.UserSaid("echo hi"));
+            .run(ID, Event.UserSaid.of("echo hi"));
 
     assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -565,17 +566,17 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
     engineWith(
             provider,
             ToolRegistry.of(new EchoTool(true)),
             Approver.allowAll(),
             SessionStore.inMemory())
-        .run(ID, new Event.UserSaid("echo hi"));
+        .run(ID, Event.UserSaid.of("echo hi"));
 
     assertThat(provider.closedCount).isEqualTo(2);
     assertThat(provider.openStreams).isZero();
@@ -589,15 +590,15 @@ class InProcessEngineTest {
             List.of(
                 List.of(
                     new ModelEvent.TextChunk("Four."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN)),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Five."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
     SessionStore store = SessionStore.inMemory();
     InProcessEngine engine = engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store);
 
-    engine.run(ID, new Event.UserSaid("what is 2+2?"));
-    RunOutcome outcome = engine.run(ID, new Event.UserSaid("what is 2+3?"));
+    engine.run(ID, Event.UserSaid.of("what is 2+2?"));
+    RunOutcome outcome = engine.run(ID, Event.UserSaid.of("what is 2+3?"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().messages())
@@ -616,10 +617,10 @@ class InProcessEngineTest {
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("a"))),
                     new ModelEvent.ToolUseEmitted(new ToolCall("c2", "echo", echoArgs("b"))),
-                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
     RunOutcome outcome =
         engineWith(
@@ -627,7 +628,7 @@ class InProcessEngineTest {
                 ToolRegistry.of(new EchoTool(false)),
                 Approver.allowAll(),
                 SessionStore.inMemory())
-            .run(ID, new Event.UserSaid("echo a and b"));
+            .run(ID, Event.UserSaid.of("echo a and b"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().messages()).hasSize(4);

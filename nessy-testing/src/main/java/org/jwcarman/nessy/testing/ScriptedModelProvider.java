@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -106,15 +107,19 @@ public final class ScriptedModelProvider implements ModelProvider {
     }
 
     public Builder endTurn() {
-      return end(StopReason.END_TURN);
+      return end(StopReason.END_TURN, Usage.zero());
+    }
+
+    public Builder endTurn(Usage usage) {
+      return end(StopReason.END_TURN, usage);
     }
 
     public Builder endWithToolUse() {
-      return end(StopReason.TOOL_USE);
+      return end(StopReason.TOOL_USE, Usage.zero());
     }
 
-    private Builder end(StopReason reason) {
-      current.add(new ModelEvent.TurnEnded(reason));
+    private Builder end(StopReason reason, Usage usage) {
+      current.add(new ModelEvent.TurnEnded(reason, usage));
       turns.add(List.copyOf(current));
       current = new ArrayList<>();
       return this;
