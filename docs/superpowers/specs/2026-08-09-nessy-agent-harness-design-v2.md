@@ -33,6 +33,32 @@ piece of that default can then be upgraded — a durable store, a distributed en
 a policy engine, tracing backends — by swapping implementations, never by
 restructuring the application.
 
+### 1.1 What a harness is (defined 2026-08-09)
+
+The industry says "harness" constantly and defines it nowhere. Nessy plants the
+flag: **a harness is the model-independent runtime an agent runs inside —
+everything that stays the same when you swap the model or the prompt. An agent
+is an identity — a model binding, a system prompt, granted tools, declared
+authority — running inside a harness.**
+
+A harness is best defined by its service contract. The eight services, each
+mapped to the seams that provide it:
+
+| # | Service | The guarantee | Provided by |
+|---|---|---|---|
+| 1 | Turn-taking | events in, decisions out, effects in order, one coherent transcript | `Reducer`, `ExecutionEngine`, `Transcript` |
+| 2 | Context fit | the conversation always fits the window; compaction and projection are not the agent's concern | `CompactionPolicy`, `Summarizer`, `ContextBuilder`, `TokenEstimator`, `Memory` |
+| 3 | A memory of record | everything durable: snapshots to resume, an append-only journal of every message | `SessionStore`, `TranscriptStore`, the engine's durability contract |
+| 4 | Safe hands | tool calls bound, validated, contained; a throwing tool is a model-visible error, never a dead session | `ToolRegistry`, the invoker (Factor 9) |
+| 5 | Guardrails | no capability exercised past the declared authority; the model has no say in whether it is asked | `ToolGrant`/`UsagePolicy`, `Approver`, the grant principle |
+| 6 | A wallet guard | the loop is bounded — turns, errors, someday cost | `TerminationPolicy` |
+| 7 | Witnesses | every run observable: spans for operators, live events for UIs | Observations, `EventHub` |
+| 8 | A vendor-neutral model line | one grammar to any model; capabilities negotiated, degradation explicit | `ModelProvider` |
+
+Each service is a testable claim, and most are already promises the test suite
+enforces. The services framing, not the parts list, is what the README leads
+with.
+
 ## 2. Who Nessy is for
 
 Three concentric audiences, in priority order:
@@ -149,21 +175,23 @@ already know (`org.slf4j.spi`, JDBC drivers):
 ### 4.2 Package map
 
 ```
-org.jwcarman.nessy               Nessy, Agent, AgentBuilder, Conversation, Reply
+org.jwcarman.nessy               Nessy, Harness [§8.4], Agent, AgentBuilder, Conversation, Reply
 org.jwcarman.nessy.api           Message, Role, ContentBlock (sealed: TextBlock, ThinkingBlock,
                                  RedactedThinkingBlock, ImageBlock, ToolUseBlock, ToolResultBlock),
                                  ToolCall, ToolResult, Usage, StopReason,
                                  SessionId, SessionState, SessionStatus,
                                  Event (sealed), Decision (sealed), Awaited (sealed), ParkToken,
                                  RunOutcome (sealed), TerminationPolicy, Transcript [§10.8]
-org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec
-org.jwcarman.nessy.api.approval  Approver, ApprovalRequest        [Policy lands here, §10.5]
+org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec,
+                                 ToolGrant, UsagePolicy, PolicyDecision (sealed)  [§10.5]
+org.jwcarman.nessy.api.approval  Approver, ApprovalRequest
 org.jwcarman.nessy.api.event     EventEmitter, EventHub, Subscription, SessionEvent, ToolProgress
 org.jwcarman.nessy.spi           ExecutionEngine, Reducer, Effect (sealed), Step, InProcessEngine
 org.jwcarman.nessy.spi.model     ModelProvider, ModelRequest, ModelEvent (sealed), ModelStream,
                                  Capability, ModelSettings
 org.jwcarman.nessy.spi.context   ContextBuilder, TokenEstimator          [amended, §10.8]
 org.jwcarman.nessy.spi.compaction Summarizer                             [amended, §10.8]
+org.jwcarman.nessy.spi.memory    Memory                                  [§10.9]
 org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry  [§10.8]
 org.jwcarman.nessy.internal      ToolInvoker, Schemas, observation conventions, engine machinery
 ```
@@ -390,6 +418,65 @@ subscriber and never will be: approval is synchronous request/response with an
 answer the loop waits on; the hub is one-way exhaust. Keeping those channels
 separate is what keeps "the model cannot route around the gate" provable.
 
+### 8.4 The Harness object and typed agents — settled 2026-08-09
+
+**Reifying the harness.** §13.1's grant principle ("infrastructure is ambient;
+capability is granted; authority is declared") has been structural doctrine
+without a structural home: `AgentBuilder` conflates shared infrastructure with
+per-agent identity, so every agent re-declares the store, hub, and observations.
+Settled: the harness becomes a first-class object.
+
+```java
+Harness harness = Nessy.harness()          // configured once per application
+    .provider(anthropic)                   // the DEFAULT provider, not a constraint
+    .store(store).hub(hub).observations(registry).transcript(journal)
+    .build();
+
+Agent<SupportInput> support = harness.agent(SupportInput.class)
+    .model("claude-sonnet-4-5").systemPrompt("…")
+    .tools(grant(lookupOrder), grant(refund).with(approveOver(500)))
+    .approver(slackApprover)
+    .build();
+```
+
+- Infrastructure lives on the `Harness`; capability grants and authority
+  declarations live on the `Agent`. The three-word principle becomes two
+  builders whose method lists are the principle.
+- **Provider is a harness default, an agent binding.** Agents on one harness may
+  bind different providers (`.provider(ollama)` overrides); the cheap-model
+  `Summarizer` already crosses vendors within a single agent, so provider mixing
+  is a fact of the design, not an accommodation.
+- The *engine instance* is per-agent either way (it binds provider + tools +
+  approver + policies — all identity); the harness holds the shared substrate
+  engines are built on, and the engine *kind* is a harness choice.
+- `Nessy.agent()` survives as the one-liner over an implicit default harness;
+  the front door does not get heavier for the simple case.
+- The Spring story collapses to: the starter auto-configures a `Harness` bean;
+  applications declare `Agent` beans from it. §13.1's "builder pre-wired with
+  infrastructure only" was this concept without its noun.
+
+**Typed agents.** All agents are typed: `Agent<I>` / `Conversation<I>` where `I`
+is the agent's input vocabulary — typically a sealed interface of records the
+application owns (the Akka Typed lesson, learned there the expensive way:
+protocols retrofitted onto an untyped core cost a parallel API and a decade).
+`Conversation.tell(I)` renders the typed input canonically into the outbound
+user message; the sealed `Event` grammar is untouched — typing lives in the
+facade's generics and ends at the wire. `Agent<String>` is the degenerate case
+behind `Nessy.agent()`, and `send(String)` keeps working. Because retrofitting
+generics onto a shipped non-generic front door is source-breaking, **the type
+parameter must be born before 1.0** (gate table, §14). What this buys: triggers
+become compile-checked per agent; non-user stimuli (cron ticks, external
+notifications) arrive as honestly-typed records instead of fake user prose; and
+a typed agent converges with `Tool<I>` — the same record-schema machinery — so
+an `Agent<I>` is trivially adaptable into a `Tool<I>` granted to a parent
+agent: the subagent story falls out of the type system. **The vocabulary binds
+only the front door**: an agent's tools are not related to its input type —
+each `Tool<T>` keeps its own independent input record, exactly as today. The
+`I` in `Agent<I>` is what the *application* may tell the agent; what the
+*model* may call remains the grant list. Rendering rules, schema publication
+into the system prompt, and the `tell`/`send`/tap relationship get their own
+design round before implementation.
+
 ## 9. The event hub
 
 Replaces per-object listeners. Anything may emit; subscribers declare interest by
@@ -516,24 +603,53 @@ policies become possible the moment `usage` accumulates in state (§7), and ship
 when a real provider reports real usage. The seam is earned on day one: two
 genuinely different rules, previously one hard-coded.
 
-### 10.5 Policy — specified now, built in its own plan
+### 10.5 Per-grant authority — `ToolGrant` and `UsagePolicy` (revised 2026-08-09)
 
-Contextual authorization layered over the static boolean:
+The earlier shape here — one agent-level `Policy` dispatching on tool names —
+is superseded. Authority attaches to the *grant*: the binding between one agent
+and one tool. The grant line becomes the complete security statement —
+capability and authority, declared together, per agent, in one reviewable
+place:
 
 ```java
-public interface Policy {
-    PolicyDecision evaluate(ToolCall call, SessionState state);
-    // sealed PolicyDecision: Allow, Deny(reason), RequireApproval
-}
+Agent support = harness.agent()
+    .tools(
+        grant(add),                                   // floor applies: runs freely
+        grant(refund).with(approveOver(500)),         // contextual: HITL past $500
+        grant(deleteAccount).with(requireApproval())  // always a human
+    )
+    .approver(slackApprover).build();
+
+Agent batch = harness.agent()
+    .tools(grant(add), grant(refund).with(allow()))   // same tools, different authority
+    .build();
 ```
 
-`Tool.requiresApproval()` survives as the fail-closed floor — the compile-time
-"answer the question or it doesn't build" property is too valuable to trade — and
-the default policy is derived from it. A contextual policy can then distinguish
-`read_file("./README.md")` from `read_file("~/.ssh/id_rsa")`. `RequireApproval`
-routes to the `Approver`; the deliberately omitted `MODIFY` verb stays omitted —
-silently rewriting model-proposed arguments is an attribution nightmare. Lands
-with its second real implementation (a path/allowlist policy), before 1.0.
+- **`ToolGrant`** (api.tool): a `Tool` plus its `UsagePolicy` for this agent.
+  `tools(…)` accepts grants; a bare `Tool` auto-wraps with the derived default.
+- **`UsagePolicy`** (api.tool): per-grant, so it never dispatches on names —
+  `PolicyDecision evaluate(ToolCall call, SessionState state)` with the
+  decision grammar intact: sealed `Allow` / `Deny(reason)` / `RequireApproval`,
+  and still no `MODIFY` — silently rewriting model-proposed arguments is an
+  attribution nightmare. Factories `allow()`, `requireApproval()`,
+  `deny(reason)`, plus the lambda form for contextual rules over arguments and
+  session state.
+- **`Tool.requiresApproval()` becomes exactly what it always wanted to be: the
+  tool author's default.** No explicit policy on the grant → the derived policy
+  (`true` → `requireApproval()`, `false` → `allow()`). An explicitly declared
+  grant policy may override in either direction. **The loosening ruling**:
+  authority is always the application's own explicit declaration (§13.1), so an
+  application may waive a tool author's caution — but only at a grant site, in
+  reviewable application code, next to the capability it loosens. Loosened by
+  declaration: allowed, visible, attributable. Loosened by omission: never.
+- The reducer/engine chokepoint is unchanged: `RequestApproval` consults the
+  call's grant instead of a monolithic policy. Single enforcement point.
+- Genuinely cross-cutting rules ("this agent never writes") are helpers that
+  decorate a list of grants — keeping even the cross-cutting rule visible at
+  the grant sites. The Spring config-only path gains per-tool authority:
+  `nessy.agents.support.tools: add=allow, refund=approve`.
+
+Lands before 1.0 (the `tools(…)` signature change is breaking after).
 
 ### 10.6 Context management — the settled design (2026-08-09, Plan 4)
 
@@ -728,6 +844,71 @@ cut semantics (relocated, not changed), best-effort failure,
 `CompactionPolicy`'s shape, and the engine's durability contract all stand
 as shipped in Plan 4.
 
+### 10.9 Memory — the recall seam (settled 2026-08-09)
+
+Memory is the third read-path concern, and it needs its own seam for the same
+reason summarization did: `ContextBuilder` is contractually pure, and recalling
+facts from a graph or vector store is I/O. Memory is a sibling of projection,
+not a subtype.
+
+```java
+public interface Memory {
+    List<Message> recall(Transcript context);   // engine-performed; I/O sanctioned
+
+    static Memory none() { … }                  // the default
+}
+```
+
+- **Recall** (`spi.memory`): consulted by the engine at request assembly beside
+  the projection; recalled facts are injected into the request. Best-effort by
+  policy — a downed memory store costs *enrichment*, never the *turn* (failure
+  emits on the hub and the call proceeds without memories; the compaction
+  pattern). Being a separate seam is what makes that per-concern failure policy
+  possible: buried inside a projection, "the graph is down" and "the projection
+  is buggy" would share one fate.
+- **Extraction needs no new seams.** The feedstock supply chain already exists:
+  the `TranscriptStore` journal (offline pipelines — the token-annotated full
+  history), hub subscribers (online extraction), and the compaction moment —
+  the head handed to the `Summarizer` is exactly the material about to leave
+  the context, so the engine's compact arm keeps a "last chance to remember"
+  hook in mind for a memory extractor.
+- The agentic mode (`search_memory`/`save_memory` as granted tools) already
+  works through the tool seam, unchanged.
+- **Documented tradeoff** (same genre as elision's): recalled content changes
+  turn to turn, and front-of-prompt injection churns the prompt-cache prefix.
+  A refresh-on-compaction strategy aligns the churn with the moment the prefix
+  churns anyway; implementors get told this rather than rediscovering it.
+- Why the token-usage claims around memory are credible: distilled facts are
+  radically denser than the verbose history they replace, and recall composes
+  with compaction — aggressive compaction is safe precisely when the facts
+  worth keeping are already durable elsewhere.
+
+The seam ships `none()`-defaulted before the first real implementation; the
+graph-backed implementation arrives when a real backing store drives it.
+
+### 10.10 The context assembler (settled 2026-08-09)
+
+Three different message lists answer to one session id, and the distinction is
+the architecture: the **journal** (`TranscriptStore.read` — everything that
+ever happened), the **working set** (`SessionStore.load(id).messages` — what
+the reducer reasons over, `[summary, …tail]` after compactions), and the
+**assembled context** (working set → `ContextBuilder.project` →
+`Memory.recall` — what one model call sees). With `identity()` and no memory,
+the second and third are the same list; the gap opens only when read-path
+shaping is opted into, and the record never lies to the application
+(`reply.state()`) regardless of what any call was shown.
+
+The assembly line exists but has no name; it gets one. A reified assembler —
+harness-provided machinery binding agent-level choices (this agent's
+projection, this agent's memory) — produces the third list on demand:
+
+- **Engines consume it** for request assembly, so every engine (the in-process
+  one, the durable one) builds requests identically — the §10.8 extraction of
+  engine collaborators, arrived at by a better route.
+- **`agent.contextFor(sessionId)`** exposes it as a debugging affordance:
+  *show me exactly what the model would see right now* — answerable truthfully
+  without a model call because assembly is deterministic over state.
+
 ## 11. Observability
 
 Two channels with a clean division of labor, and no third:
@@ -887,7 +1068,16 @@ the application's own explicit declaration. If none is declared, the starter's
    and `ContextBuilder` (§10.6) shipped in Plan 4, ahead of this sequencing.
    The §10.8 context-collaborator amendment (`Transcript`, `TranscriptStore`,
    `Summarizer`, `TokenEstimator`, domain packaging) is next in line, before
-   `DurableEngine` — it reshapes seams the durable engine will consume.
+   `DurableEngine` — it reshapes seams the durable engine will consume. The
+   2026-08-09 design session extends that queue: the `Harness` reification and
+   typed front door (§8.4), per-grant authority (§10.5), `Memory` (§10.9), and
+   the context assembler (§10.10) — with typed-input details (§8.4) getting
+   their own brainstorm-to-spec round first. One standing DurableEngine note
+   from the same session: pure replay is free, but replaying the imperative
+   shell is not — a replayed reducer re-emits effects (the process-manager
+   replay problem), so the journal must record which effects were performed
+   and elide them on replay; the parked `Compacted` rulings from Plan 4's
+   review are the same issue.
 5. **`nessy-tool-mcp` (unscheduled, acknowledged)**: an adapter exposing MCP
    server tools as `Tool<?>` instances. Deliberately unscheduled: it drags in
    authorization, elicitation, and remote-tool trust — interactions with the
@@ -907,6 +1097,9 @@ the application's own explicit declaration. If none is declared, the starter's
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
    | `Transcript` adoption (`ContextBuilder`/`ModelRequest`/`Effect.Compact` speak `Transcript`) | seam signature + record component types; breaking after 1.0 | open — ships with the §10.8 plan |
+   | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | open — the type parameter must be born pre-1.0; `Agent<String>` is the degenerate case |
+   | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
+   | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | open — ships pre-1.0 |
    | Parallel tool execution | — | ✅ resolved as NOT a gate — needs no sealed change (multi-effect Steps + ordered feed, §10.7) |
 7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should
    migrate to wire-JSON-driven fixtures (through each SDK's own
@@ -944,6 +1137,10 @@ the application's own explicit declaration. If none is declared, the starter's
 | Where is the tool-pairing invariant enforced? (2026-08-09) | Once, in the `Transcript` type, at construction (§10.8) |
 | Is summarization pluggable? (2026-08-09) | Yes — `spi.compaction.Summarizer`, a many-implementations seam; the reducer keeps summary formatting (§10.8) |
 | Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` manufactures the message-level figure, journaled on each `TranscriptEntry` (§10.8) |
+| What is a harness? (2026-08-09) | The model-independent runtime an agent runs inside, defined by its eight-service contract (§1.1); reified as the `Harness` object (§8.4) |
+| Where does authority attach? (2026-08-09) | To the grant — `ToolGrant` + `UsagePolicy` per agent-tool binding; `requiresApproval()` is the tool author's default; explicit grant policy may loosen or tighten (§10.5) |
+| Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
+| Are agents typed? (2026-08-09) | Yes, all of them — `Agent<I>` over an application-owned sealed vocabulary; `Agent<String>` degenerate; born pre-1.0; tools keep their own input types (§8.4) |
 | Test-only interfaces: where? | Internal, unadvertised; promotion on evidence only |
 | `MODIFY` policy verb? | Rejected — attribution nightmare |
 | Grammar additions timing | Pre-1.0, per §7 list; frozen at 1.0 |
