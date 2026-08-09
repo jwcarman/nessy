@@ -16,7 +16,12 @@
 module org.jwcarman.nessy.core {
   requires transitive com.fasterxml.jackson.databind;
   requires com.fasterxml.jackson.annotation;
-  requires transitive micrometer.observation;
+
+  // Not transitive: micrometer-observation is an automatic module (no descriptor),
+  // and promising transitivity over an unstable automatic name is fragile. Module-path
+  // consumers calling AgentBuilder.observations(...) add their own requires — they
+  // need the type to obtain a registry anyway. Revisit when Micrometer modularizes.
+  requires micrometer.observation;
   requires com.github.victools.jsonschema.generator;
   requires com.github.victools.jsonschema.module.jackson;
   requires com.fasterxml.classmate;
