@@ -239,4 +239,34 @@ class ReducerToolResultTest {
         .containsExactly("c1", "c2");
     assertThat(step.effects()).isEmpty();
   }
+
+  @Test
+  void a_user_message_that_trips_the_turn_ceiling_still_answers_every_pending_tool_use() {
+    Reducer limited = new Reducer(TerminationPolicy.maxTurns(1));
+    ToolCall first = call("c1");
+    ToolCall second = call("c2");
+    SessionState state = awaitingApprovalWith(limited, first, second);
+
+    Step step = limited.reduce(state, Event.UserSaid.of("more?"));
+
+    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+    assertThat(step.state().failureReason()).contains("turn");
+    assertThat(step.state().pendingCalls()).isEmpty();
+    assertThat(step.state().messages().getLast().content())
+        .extracting("toolUseId")
+        .containsExactly("c1", "c2");
+    assertThat(step.effects()).isEmpty();
+  }
+
+  @Test
+  void a_fresh_user_message_clears_a_stale_failure_reason_from_a_resumed_session() {
+    Reducer permissive = new Reducer(TerminationPolicy.never());
+    SessionState failed =
+        initial.withConsecutiveErrors(3).withFailureReason("3 consecutive tool errors");
+
+    Step step = permissive.reduce(failed, Event.UserSaid.of("try again"));
+
+    assertThat(step.state().failureReason()).isNull();
+    assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+  }
 }

@@ -43,7 +43,7 @@ public interface TerminationPolicy {
     requireAtLeastOne(max, "maxConsecutiveErrors");
     return state ->
         state.consecutiveErrors() >= max
-            ? Optional.of(max + " consecutive tool errors")
+            ? Optional.of("hit the error ceiling (" + max + " consecutive tool errors)")
             : Optional.empty();
   }
 

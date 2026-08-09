@@ -78,10 +78,14 @@ public record Reducer(TerminationPolicy termination) {
         state
             .withMessageAppended(Message.user(event.content()))
             .withConsecutiveErrors(0)
+            .withFailureReason(null)
             .with(SessionStatus.AWAITING_MODEL);
     Optional<String> halt = termination.shouldHalt(next);
     if (halt.isPresent()) {
-      return Step.of(next.withFailureReason(halt.get()).with(SessionStatus.FAILED));
+      return Step.of(
+          flushResults(abandonPendingCalls(next))
+              .withFailureReason(halt.get())
+              .with(SessionStatus.FAILED));
     }
     return Step.of(next, Effect.callModel());
   }
