@@ -757,9 +757,9 @@ the application's own explicit declaration. If none is declared, the starter's
    |---|---|---|
    | `StopReason` wire audit | sealed enum; new values break exhaustive switches | ✅ cleared — both SDKs' values enumerated; mapped or loudly rejected (Plan 3) |
    | JPMS decision | module descriptor cannot be added/removed compatibly | ✅ cleared — withdrawn with evidence (§4.4) |
-   | Compaction grammar (`Effect.Compact`, `Event.Compacted`, `Event.CompactionSkipped`, `SessionStatus.COMPACTING`, `generation`/`lastInputTokens` on `SessionState`) | sealed additions + record components | in flight — Plan 4 (design settled, §10.6) |
-   | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | in flight — Plan 4 rides it along |
-   | `ModelRequest.responseFormat` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | in flight — Plan 4 ships the slot (nullable, providers ignore until the feature lands) |
+   | Compaction grammar (`Effect.Compact`, `Event.Compacted`, `Event.CompactionSkipped`, `SessionStatus.COMPACTING`, `generation`/`lastInputTokens` on `SessionState`) | sealed additions + record components | ✅ cleared — shipped and tested end to end (§10.6) |
+   | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | ✅ cleared — `Usage` is now `(inputTokens, outputTokens, cachedInputTokens)` |
+   | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
    | Parallel tool execution | — | ✅ resolved as NOT a gate — needs no sealed change (multi-effect Steps + ordered feed, §10.7) |
 7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should

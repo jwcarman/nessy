@@ -21,6 +21,32 @@ changed.
 
 ### Added
 
+- **Stateful compaction** — `CompactionPolicy` (`triggerTokens`,
+  `keepRecentMessages`, `summaryMaxTokens`, `instructions`) is wired into
+  `Reducer` and `InProcessEngine`: once `SessionState.lastInputTokens()` (the
+  model's own measured input-token count) reaches the trigger, the reducer
+  summarizes everything but the most recent messages, cuts only on a
+  message-pair boundary, and bumps `SessionState.generation()`. Default is
+  `CompactionPolicy.defaults()` (100,000 trigger, keep 10 messages, 2,048-token
+  summary); `CompactionPolicy.disabled()` turns it off. Compaction is
+  best-effort — a failed summarization call skips compaction for that turn
+  rather than failing it, and emits `CompactionFailed` on the hub — and
+  instrumented via the `nessy.compaction` observation alongside the engine's
+  other spans.
+- **`ContextBuilder`** — a seam that projects `SessionState` into the messages
+  one model call actually sees, independent of what compaction stores.
+  `ContextBuilder.identity()` (the builder default) hands over the transcript
+  unchanged; `ContextBuilder.elidingToolResults(keepRecentMessages)` replaces
+  the content of older tool results with a placeholder while keeping the
+  recent window verbatim, trading prompt-cache hits for context space. Wired
+  via `.contextBuilder(...)` on the `Agent` builder.
+- **`Usage.cachedInputTokens`** — the third component of `Usage`, reporting the
+  cache-hit split of a turn's input tokens now that both live providers can
+  report it.
+- **`ModelRequest.responseSchema`** — a nullable JSON-Schema slot on
+  `ModelRequest` reserved for structured output (`reply.as(T)`); the slot
+  ships now, the feature lands post-1.0, and providers wired today ignore it
+  entirely.
 - **`nessy-model-anthropic` and `nessy-model-openai`** — real, live-validated
   model providers wrapping each vendor's own Java SDK: native request assembly,
   streaming translation, thinking/caching/usage accounting, and an executable

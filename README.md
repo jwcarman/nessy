@@ -122,7 +122,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `Policy` (pre-1.0) | derived from `requiresApproval()` | path/allowlist rules | OPA, corporate policy |
 | `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
-| `ContextBuilder` (deferred) | identity (unnamed) | compacting | RAG, redaction |
+| `ContextBuilder` | `identity()` | `elidingToolResults(keepRecentMessages)` | RAG, redaction |
 
 Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
 `RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
@@ -170,6 +170,75 @@ Reply reply = conversation.send("what is 2+2?", event -> System.out.println(even
 The tap sees only this conversation's events, in order, for the duration of that
 one `send` call.
 
+## Context management
+
+Compaction is on by default. Every `Agent` carries `CompactionPolicy.defaults()`
+unless you say otherwise: it triggers once `SessionState.lastInputTokens()` —
+the measured input-token count the model itself reported for the previous turn
+— reaches 100,000 measured input tokens, and it works by asking the model to
+summarize everything except the most recent 10 messages, capping that summary
+reply at 2,048 tokens. The cut always lands on a message-pair boundary — the
+reducer never splits a tool call from its result — so what survives is always a
+valid transcript.
+
+Tune the knobs with your own policy:
+
+```java
+CompactionPolicy policy =
+    new CompactionPolicy(
+        50_000, // trigger at 50k measured input tokens
+        20, // keep the last 20 messages verbatim
+        1_024, // cap the summary reply at 1024 tokens
+        "Summarize the conversation so far, focusing on open TODOs.");
+
+Agent agent = Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
+```
+
+Or turn it off entirely:
+
+```java
+Agent agent =
+    Nessy.agent()
+        .provider(provider)
+        .model("fake-model")
+        .compaction(CompactionPolicy.disabled())
+        .build();
+```
+
+Compaction is best-effort: if the summarization call itself fails, the turn
+proceeds uncompacted rather than blocking the conversation, and the hub carries
+a `CompactionFailed(sessionId, reason)` event so you can observe and alert on
+it like any other hub event.
+
+### Shaping what the model sees: `ContextBuilder`
+
+`ContextBuilder` projects `SessionState` into the messages one model call
+actually sees. The default, `ContextBuilder.identity()`, hands over the whole
+transcript unchanged. Where compaction rewrites `SessionState` itself,
+`ContextBuilder` is a per-request lens — nothing it does touches what gets
+stored or resumed.
+
+`ContextBuilder.elidingToolResults(keepRecentMessages)` replaces the content of
+tool results older than the last `keepRecentMessages` messages with a
+placeholder, keeping the recent window verbatim:
+
+```java
+Agent agent =
+    Nessy.agent()
+        .provider(provider)
+        .model("fake-model")
+        .contextBuilder(ContextBuilder.elidingToolResults(2))
+        .build();
+```
+
+Weigh the tradeoff before reaching for it: the sliding window rewrites one old
+message per turn as it advances, and a rewritten message churns the
+prompt-cache prefix from that point forward — you're trading cache hits for
+context space. That's a fine trade when a tool result is enormous and the
+context window is the scarcer resource, and a bad one when you're paying for
+cache misses more than you're saving in tokens. It's why `identity()`, not
+elision, is the default.
+
 ## Testing
 
 **You will never need a mocking library to test a Nessy agent.** The reducer is
@@ -211,8 +280,12 @@ live-validated too, including the empty-system fix (a real empty-system-block
 bug the live run surfaced is fixed, with regression tests). `nessy-examples`
 ships a runnable two-provider chat app — see [Try it](#try-it) below.
 
-Not yet built: a durable execution engine, the contextual `Policy` layer,
-context compaction, the Spring Boot starter, and a TUI. See
+Context management landed too: stateful compaction (`CompactionPolicy`) and the
+`ContextBuilder` seam (`identity()`, `elidingToolResults(...)`) are both
+implemented and tested end to end.
+
+Not yet built: a durable execution engine, the contextual `Policy` layer, the
+Spring Boot starter, and a TUI. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
 

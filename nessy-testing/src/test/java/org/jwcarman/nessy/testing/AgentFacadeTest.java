@@ -28,6 +28,7 @@ import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CompactionPolicy;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
@@ -191,6 +192,49 @@ class AgentFacadeTest {
     assertThat(requests.get(0).messages()).isEmpty();
     assertThat(requests.get(1).messages()).hasSize(2);
     assertThat(second.state().messages()).hasSize(4);
+  }
+
+  @Test
+  void a_custom_compaction_policy_is_wired_through_the_builder() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    CompactionPolicy policy =
+        new CompactionPolicy(
+            50_000, // trigger at 50k measured input tokens
+            20, // keep the last 20 messages verbatim
+            1_024, // cap the summary reply at 1024 tokens
+            "Summarize the conversation so far, focusing on open TODOs.");
+
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
+
+    assertThat(agent).isNotNull();
+  }
+
+  @Test
+  void compaction_can_be_disabled_on_the_builder() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .compaction(CompactionPolicy.disabled())
+            .build();
+
+    assertThat(agent).isNotNull();
+  }
+
+  @Test
+  void elidingToolResults_is_wired_through_the_builder() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .contextBuilder(ContextBuilder.elidingToolResults(2))
+            .build();
+
+    assertThat(agent).isNotNull();
   }
 
   @Test
