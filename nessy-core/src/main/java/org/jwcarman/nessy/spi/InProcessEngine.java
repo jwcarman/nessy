@@ -188,12 +188,16 @@ public final class InProcessEngine implements ExecutionEngine {
    * conversational call sees; a compaction call's messages are already exactly the slice the
    * reducer chose to summarize, and projecting them again would defeat the reducer's own choice of
    * what to keep verbatim versus compact away.
+   *
+   * <p>As in {@link #callModel}, the resulting event is built inside the observation scope but fed
+   * to the reducer only after the scope closes: {@code feed} can trigger the next model turn, and
+   * that follow-on work must not nest under {@code nessy.compaction} or be timed as part of it.
    */
   private SessionState compact(
       AtomicReference<SessionState> progress, SessionState state, Effect.Compact effect) {
     Observation observation = EngineObservations.compaction(observations);
+    Event event;
     try (var _ = observation.openScope()) {
-      Event event;
       try {
         event = new Event.Compacted(summarize(effect));
       } catch (RuntimeException e) {
@@ -202,10 +206,13 @@ public final class InProcessEngine implements ExecutionEngine {
         hub.emit(new CompactionFailed(state.id(), reason));
         event = new Event.CompactionSkipped(reason);
       }
-      return feed(progress, state, event);
+    } catch (RuntimeException e) {
+      observation.error(e);
+      throw e;
     } finally {
       observation.stop();
     }
+    return feed(progress, state, event);
   }
 
   /**

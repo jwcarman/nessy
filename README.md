@@ -179,7 +179,12 @@ the measured input-token count the model itself reported for the previous turn
 summarize everything except the most recent 10 messages, capping that summary
 reply at 2,048 tokens. The cut always lands on a message-pair boundary — the
 reducer never splits a tool call from its result — so what survives is always a
-valid transcript.
+valid transcript. If no such boundary exists old enough to compact — a
+tool-heavy transcript with no plain user-text turn far enough back, for
+example — the reducer leaves the session uncompacted for that turn rather than
+cutting somewhere unsafe. The summarization call's own tokens are not counted
+in `SessionState.usage`; that total tracks conversational model turns, and the
+compaction call is engine-internal.
 
 Tune the knobs with your own policy:
 
@@ -238,6 +243,13 @@ context space. That's a fine trade when a tool result is enormous and the
 context window is the scarcer resource, and a bad one when you're paying for
 cache misses more than you're saving in tokens. It's why `identity()`, not
 elision, is the default.
+
+`ContextBuilder` is a per-request lens, and compaction's summarization call is
+never projected through it: the summarizer always sees the un-elided prefix
+the reducer chose to compact, even when `elidingToolResults` is shaping every
+other request in the session. Combined with a large `keepRecentMessages`
+window, that makes the compaction call the largest single request a session
+sends.
 
 ## Testing
 

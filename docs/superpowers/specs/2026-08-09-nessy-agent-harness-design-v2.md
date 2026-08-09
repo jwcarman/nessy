@@ -471,13 +471,13 @@ not mandate full rewrites. `SessionState.messages` is **append-only** — the
 reducer only ever appends, never edits or removes — and this is a documented
 invariant durable stores may rely on: persist the un-persisted tail plus a small
 mutable header (status, counters, usage, failureReason, pending state), making
-save cost O(new messages) rather than O(history). Compaction will be the one
-licensed violation of append-only; its design adds a generation marker to
-`SessionState` so a store can distinguish "append the tail" (generation
-unchanged) from "rewrite" (generation bumped). The load side is addressed by
-compaction/`ContextBuilder` (summary + tail as the working set); full
-event-sourced journaling remains a `DurableEngine`-plan question, not a seam
-change.
+save cost O(new messages) rather than O(history). Compaction is the one
+licensed violation of append-only, shipped in Plan 4; it adds a generation
+marker to `SessionState` so a store can distinguish "append the tail"
+(generation unchanged) from "rewrite" (generation bumped). The load side is
+addressed by compaction/`ContextBuilder` (summary + tail as the working set);
+full event-sourced journaling remains a `DurableEngine`-plan question, not a
+seam change.
 
 ### 10.4 TerminationPolicy (new, API-zone, consulted by the reducer)
 
@@ -567,8 +567,9 @@ Design rules:
   session never dies because its summarizer hiccuped; if context truly
   overflows, the existing `MAX_TOKENS`/refusal machinery fails it loudly.
 - **Configuration**: `CompactionPolicy(long triggerTokens, int
-  keepRecentMessages, String instructions)` in `api`, with `defaults()`
-  (enabled, 100k trigger) and `disabled()`; `AgentBuilder.compaction(policy)`.
+  keepRecentMessages, int summaryMaxTokens, String instructions)` in `api`,
+  with `defaults()` (enabled, 100k trigger, 10 kept messages, 2,048-token
+  summary cap) and `disabled()`; `AgentBuilder.compaction(policy)`.
   Compaction-by-default replaces v1's "fail loudly on overflow" — the loud
   failure remains the backstop, no longer the plan.
 
@@ -679,7 +680,7 @@ listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
 | `Policy` (pre-1.0) | derived from `requiresApproval()` | path/allowlist rules | OPA, corporate policy |
 | `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
-| `ContextBuilder` (deferred) | identity (unnamed) | compacting | RAG, redaction |
+| `ContextBuilder` | `ContextBuilder.identity()` | `elidingToolResults(keepRecent)` (shipped); stateful compaction (shipped, §10.6) | RAG, redaction |
 
 ### 13.1 Classpath-upgradeable defaults (the Spring starter's defining feature)
 
@@ -737,8 +738,8 @@ the application's own explicit declaration. If none is declared, the starter's
    anything the audit didn't account for.
 3. **Plan 2.5 — Policy**: contextual authorization, second implementation.
 4. Then as previously mapped: OpenAI-wire provider, `DurableEngine` (+ trace
-   continuity, + resume semantics of §6), compactor + `ContextBuilder`, Spring
-   Boot starter, TUI.
+   continuity, + resume semantics of §6), Spring Boot starter, TUI. Compaction
+   and `ContextBuilder` (§10.6) shipped in Plan 4, ahead of this sequencing.
 5. **`nessy-tool-mcp` (unscheduled, acknowledged)**: an adapter exposing MCP
    server tools as `Tool<?>` instances. Deliberately unscheduled: it drags in
    authorization, elicitation, and remote-tool trust — interactions with the
