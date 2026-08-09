@@ -26,6 +26,8 @@ import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -146,5 +148,47 @@ class AgentFacadeTest {
     Reply reply = agent.converse().send("what is 2+2?");
 
     assertThat(reply.text()).isEqualTo("The answer is 4.");
+  }
+
+  @Test
+  void a_conversation_resumes_by_session_id_with_its_history() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .text("Hello!")
+            .endTurn()
+            .text("Still here.")
+            .endTurn()
+            .build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+
+    Conversation first = agent.converse();
+    first.send("hi");
+    SessionId sessionId = first.sessionId();
+
+    Reply second = agent.resume(sessionId).send("you there?");
+
+    assertThat(second.state().messages()).hasSize(4);
+  }
+
+  @Test
+  void failure_reason_surfaces_through_reply() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .termination(TerminationPolicy.maxTurns(1))
+            .build();
+    Conversation chat = agent.converse();
+    chat.send("hi");
+
+    // Turn 1 already reached the ceiling, so this send halts on userSaid before the
+    // reducer would ask the model for a second turn: the scripted provider is never called
+    // again, and the second script entry (if any) would simply go unconsumed.
+    Reply second = chat.send("still there?");
+
+    assertThat(second.failed()).isTrue();
+    assertThat(second.failureReason()).isPresent();
+    assertThat(second.failureReason().orElseThrow()).contains("turn");
   }
 }
