@@ -100,7 +100,7 @@ class ToolRegistryTest {
     }
   }
 
-  private final ToolRegistry registry = MapToolRegistry.of(new GreetTool());
+  private final ToolRegistry registry = ToolRegistry.of(new GreetTool());
   private final ToolInvoker invoker = new ToolInvoker(new ObjectMapper());
 
   private static ToolCall greetCall(String name) {
@@ -111,6 +111,13 @@ class ToolRegistryTest {
 
   @Test
   void findsARegisteredTool() {
+    assertThat(registry.find("greet")).isPresent();
+  }
+
+  @Test
+  void the_interface_is_the_front_door_to_its_default() {
+    ToolRegistry registry = ToolRegistry.of(new GreetTool());
+
     assertThat(registry.find("greet")).isPresent();
   }
 
@@ -148,8 +155,7 @@ class ToolRegistryTest {
   @Test
   void specsPreserveRegistrationOrder() {
     ToolRegistry ordered =
-        MapToolRegistry.of(
-            new NamedTool("charlie"), new NamedTool("alpha"), new NamedTool("bravo"));
+        ToolRegistry.of(new NamedTool("charlie"), new NamedTool("alpha"), new NamedTool("bravo"));
 
     List<String> names = ordered.specs().stream().map(ToolSpec::name).toList();
 
@@ -158,7 +164,7 @@ class ToolRegistryTest {
 
   @Test
   void duplicateNamesAreRejectedAtRegistrationTime() {
-    assertThatThrownBy(() -> MapToolRegistry.of(new GreetTool(), new GreetTool()))
+    assertThatThrownBy(() -> ToolRegistry.of(new GreetTool(), new GreetTool()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("greet");
   }

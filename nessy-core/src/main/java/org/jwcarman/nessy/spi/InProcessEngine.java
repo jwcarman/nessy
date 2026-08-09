@@ -36,10 +36,10 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.internal.ToolInvoker;
-import org.jwcarman.nessy.spi.model.AgentConfig;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 import org.jwcarman.nessy.spi.session.SessionStore;
 
@@ -62,7 +62,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final SessionStore store;
   private final List<AgentEventListener> listeners;
   private final Reducer reducer;
-  private final AgentConfig config;
+  private final ModelSettings config;
   private final ToolInvoker invoker;
 
   public InProcessEngine(
@@ -72,7 +72,7 @@ public final class InProcessEngine implements ExecutionEngine {
       SessionStore store,
       List<AgentEventListener> listeners,
       Reducer reducer,
-      AgentConfig config,
+      ModelSettings config,
       ObjectMapper mapper) {
     this.provider = provider;
     this.tools = tools;

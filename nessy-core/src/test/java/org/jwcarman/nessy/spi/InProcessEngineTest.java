@@ -44,28 +44,24 @@ import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
-import org.jwcarman.nessy.api.approval.ApproveEverything;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.approval.DenyEverything;
 import org.jwcarman.nessy.api.event.AgentEventListener;
-import org.jwcarman.nessy.api.tool.MapToolRegistry;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
-import org.jwcarman.nessy.spi.model.AgentConfig;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.spi.session.InMemorySessionStore;
 import org.jwcarman.nessy.spi.session.SessionStore;
 
 class InProcessEngineTest {
 
   private static final SessionId ID = new SessionId("s1");
-  private static final AgentConfig CONFIG =
-      new AgentConfig("fake-model", "be helpful", 1024, Set.of());
+  private static final ModelSettings CONFIG =
+      new ModelSettings("fake-model", "be helpful", 1024, Set.of());
 
   /** A model that replays scripted turns, one per call, and tracks how its streams are held. */
   private static final class FakeProvider implements ModelProvider {
@@ -257,7 +253,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
     RunOutcome outcome =
-        engine(provider, MapToolRegistry.of(), new ApproveEverything(), new InMemorySessionStore())
+        engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
             .run(ID, new Event.UserSaid("what is 2+2?"));
 
     assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
@@ -283,9 +279,9 @@ class InProcessEngineTest {
     RunOutcome outcome =
         engine(
                 provider,
-                MapToolRegistry.of(new EchoTool(true)),
-                new ApproveEverything(),
-                new InMemorySessionStore())
+                ToolRegistry.of(new EchoTool(true)),
+                Approver.allowAll(),
+                SessionStore.inMemory())
             .run(ID, new Event.UserSaid("echo hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -307,9 +303,9 @@ class InProcessEngineTest {
                 List.of(
                     new ModelEvent.TextChunk("Done."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
-    CountingApprover approver = new CountingApprover(new ApproveEverything());
+    CountingApprover approver = new CountingApprover(Approver.allowAll());
 
-    engine(provider, MapToolRegistry.of(new EchoTool(false)), approver, new InMemorySessionStore())
+    engine(provider, ToolRegistry.of(new EchoTool(false)), approver, SessionStore.inMemory())
         .run(ID, new Event.UserSaid("echo hi"));
 
     assertThat(approver.calls).isZero();
@@ -330,9 +326,9 @@ class InProcessEngineTest {
     RunOutcome outcome =
         engine(
                 provider,
-                MapToolRegistry.of(new EchoTool(true)),
-                new DenyEverything("not allowed"),
-                new InMemorySessionStore())
+                ToolRegistry.of(new EchoTool(true)),
+                Approver.denyAll("not allowed"),
+                SessionStore.inMemory())
             .run(ID, new Event.UserSaid("echo hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -353,7 +349,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
     RunOutcome outcome =
-        engine(provider, MapToolRegistry.of(), new ApproveEverything(), new InMemorySessionStore())
+        engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
             .run(ID, new Event.UserSaid("go"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -378,11 +374,7 @@ class InProcessEngineTest {
     Tool<Echo> exploding = new ExplodingTool();
 
     RunOutcome outcome =
-        engine(
-                provider,
-                MapToolRegistry.of(exploding),
-                new ApproveEverything(),
-                new InMemorySessionStore())
+        engine(provider, ToolRegistry.of(exploding), Approver.allowAll(), SessionStore.inMemory())
             .run(ID, new Event.UserSaid("go"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -403,12 +395,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
     RecordingListener listener = new RecordingListener();
 
-    engine(
-            provider,
-            MapToolRegistry.of(),
-            new ApproveEverything(),
-            new InMemorySessionStore(),
-            listener)
+    engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory(), listener)
         .run(ID, new Event.UserSaid("what is 2+2?"));
 
     assertThat(listener.events)
@@ -427,9 +414,9 @@ class InProcessEngineTest {
                 List.of(
                     new ModelEvent.TextChunk("Four."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
-    SessionStore store = new InMemorySessionStore();
+    SessionStore store = SessionStore.inMemory();
 
-    engine(provider, MapToolRegistry.of(), new ApproveEverything(), store)
+    engine(provider, ToolRegistry.of(), Approver.allowAll(), store)
         .run(ID, new Event.UserSaid("what is 2+2?"));
 
     assertThat(store.load(ID)).isPresent();
@@ -444,14 +431,14 @@ class InProcessEngineTest {
                 List.of(
                     new ModelEvent.TextChunk("Four."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
-    SessionStore store = new InMemorySessionStore();
+    SessionStore store = SessionStore.inMemory();
 
     assertThatThrownBy(
             () ->
                 engine(
                         provider,
-                        MapToolRegistry.of(),
-                        new ApproveEverything(),
+                        ToolRegistry.of(),
+                        Approver.allowAll(),
                         store,
                         new ExplodingListener())
                     .run(ID, new Event.UserSaid("what is 2+2?")))
@@ -469,11 +456,7 @@ class InProcessEngineTest {
 
     assertThatThrownBy(
             () ->
-                engine(
-                        provider,
-                        MapToolRegistry.of(),
-                        new ApproveEverything(),
-                        new InMemorySessionStore())
+                engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
                     .resume(ID, ParkToken.random(), new Event.UserSaid("x")))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("DurableEngine");
@@ -492,9 +475,9 @@ class InProcessEngineTest {
             () ->
                 engine(
                         provider,
-                        MapToolRegistry.of(new ParkingTool()),
-                        new ApproveEverything(),
-                        new InMemorySessionStore())
+                        ToolRegistry.of(new ParkingTool()),
+                        Approver.allowAll(),
+                        SessionStore.inMemory())
                     .run(ID, new Event.UserSaid("go")))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("DurableEngine");
@@ -511,10 +494,10 @@ class InProcessEngineTest {
                 List.of(
                     new ModelEvent.TextChunk("Oh."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
-    SessionStore store = new InMemorySessionStore();
+    SessionStore store = SessionStore.inMemory();
 
     RunOutcome outcome =
-        engine(provider, MapToolRegistry.of(new EchoTool(true)), new ApproveEverything(), store)
+        engine(provider, ToolRegistry.of(new EchoTool(true)), Approver.allowAll(), store)
             .run(ID, new Event.UserSaid("echo hi"));
 
     assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
@@ -539,9 +522,9 @@ class InProcessEngineTest {
 
     engine(
             provider,
-            MapToolRegistry.of(new EchoTool(true)),
-            new ApproveEverything(),
-            new InMemorySessionStore())
+            ToolRegistry.of(new EchoTool(true)),
+            Approver.allowAll(),
+            SessionStore.inMemory())
         .run(ID, new Event.UserSaid("echo hi"));
 
     assertThat(provider.closedCount).isEqualTo(2);
@@ -560,8 +543,8 @@ class InProcessEngineTest {
                 List.of(
                     new ModelEvent.TextChunk("Five."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
-    SessionStore store = new InMemorySessionStore();
-    InProcessEngine engine = engine(provider, MapToolRegistry.of(), new ApproveEverything(), store);
+    SessionStore store = SessionStore.inMemory();
+    InProcessEngine engine = engine(provider, ToolRegistry.of(), Approver.allowAll(), store);
 
     engine.run(ID, new Event.UserSaid("what is 2+2?"));
     RunOutcome outcome = engine.run(ID, new Event.UserSaid("what is 2+3?"));
@@ -591,9 +574,9 @@ class InProcessEngineTest {
     RunOutcome outcome =
         engine(
                 provider,
-                MapToolRegistry.of(new EchoTool(false)),
-                new ApproveEverything(),
-                new InMemorySessionStore())
+                ToolRegistry.of(new EchoTool(false)),
+                Approver.allowAll(),
+                SessionStore.inMemory())
             .run(ID, new Event.UserSaid("echo a and b"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;

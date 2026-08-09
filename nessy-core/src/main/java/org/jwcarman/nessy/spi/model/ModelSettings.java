@@ -24,10 +24,10 @@ import java.util.Set;
  * @param capabilities what the harness asks providers to use; a provider that cannot do one says so
  *     rather than silently degrading
  */
-public record AgentConfig(
+public record ModelSettings(
     String model, String systemPrompt, int maxTokens, Set<Capability> capabilities) {
 
-  public AgentConfig {
+  public ModelSettings {
     Objects.requireNonNull(model, "model must not be null");
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     if (maxTokens < 1) {

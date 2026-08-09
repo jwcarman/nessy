@@ -18,29 +18,37 @@ package org.jwcarman.nessy.api.approval;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.ToolCall;
 
-class ApproverTest {
+class ApproverFactoriesTest {
 
   private final ApprovalRequest request =
       new ApprovalRequest(
           new SessionId("s1"),
-          new ToolCall("c1", "delete_everything", JsonNodeFactory.instance.objectNode()),
-          "delete_everything()");
+          new ToolCall("c1", "anything", JsonNodeFactory.instance.objectNode()),
+          "anything()");
 
-  @Test
-  void approveEverythingAllows() {
-    assertThat(new ApproveEverything().approve(request)).isEqualTo(Awaited.ready(Decision.allow()));
+  @Nested
+  class Allow_all {
+
+    @Test
+    void allows() {
+      assertThat(Approver.allowAll().approve(request)).isEqualTo(Awaited.ready(Decision.allow()));
+    }
   }
 
-  @Test
-  void denyEverythingDeniesWithItsReason() {
-    Awaited<Decision> awaited = new DenyEverything("read-only mode").approve(request);
+  @Nested
+  class Deny_all {
 
-    assertThat(awaited).isEqualTo(Awaited.ready(new Decision.Deny("read-only mode")));
+    @Test
+    void denies_with_its_reason() {
+      assertThat(Approver.denyAll("read-only").approve(request))
+          .isEqualTo(Awaited.ready(new Decision.Deny("read-only")));
+    }
   }
 }

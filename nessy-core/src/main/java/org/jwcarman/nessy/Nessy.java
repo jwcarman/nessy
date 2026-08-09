@@ -19,18 +19,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import org.jwcarman.nessy.api.approval.ApproveEverything;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.AgentEventListener;
-import org.jwcarman.nessy.api.tool.MapToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
-import org.jwcarman.nessy.spi.model.AgentConfig;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.session.InMemorySessionStore;
+import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.session.SessionStore;
 
 /**
@@ -52,27 +49,27 @@ public final class Nessy {
 
     private static final int DEFAULT_MAX_TOKENS = 4096;
 
-    private ModelProvider model;
-    private String modelName;
+    private ModelProvider provider;
+    private String model;
     private String systemPrompt = "";
     private int maxTokens = DEFAULT_MAX_TOKENS;
     private Set<Capability> capabilities = Set.of();
-    private ToolRegistry tools = MapToolRegistry.of();
-    private Approver approver = new ApproveEverything();
-    private SessionStore store = new InMemorySessionStore();
+    private ToolRegistry tools = ToolRegistry.of();
+    private Approver approver = Approver.allowAll();
+    private SessionStore store = SessionStore.inMemory();
     private final List<AgentEventListener> listeners = new ArrayList<>();
     private int maxConsecutiveErrors = Reducer.DEFAULT_MAX_CONSECUTIVE_ERRORS;
     private ObjectMapper mapper = new ObjectMapper();
 
     private Builder() {}
 
-    public Builder model(ModelProvider model) {
-      this.model = model;
+    public Builder provider(ModelProvider provider) {
+      this.provider = provider;
       return this;
     }
 
-    public Builder modelName(String modelName) {
-      this.modelName = modelName;
+    public Builder model(String model) {
+      this.model = model;
       return this;
     }
 
@@ -125,20 +122,20 @@ public final class Nessy {
     }
 
     public ExecutionEngine build() {
-      if (model == null) {
-        throw new IllegalStateException("a model provider is required: call model(...)");
+      if (provider == null) {
+        throw new IllegalStateException("a model provider is required: call provider(...)");
       }
-      if (modelName == null || modelName.isBlank()) {
-        throw new IllegalStateException("a model name is required: call modelName(...)");
+      if (model == null || model.isBlank()) {
+        throw new IllegalStateException("a model name is required: call model(...)");
       }
       return new InProcessEngine(
-          model,
+          provider,
           tools,
           approver,
           store,
           listeners,
           new Reducer(maxConsecutiveErrors),
-          new AgentConfig(modelName, systemPrompt, maxTokens, capabilities),
+          new ModelSettings(model, systemPrompt, maxTokens, capabilities),
           mapper);
     }
   }

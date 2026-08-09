@@ -21,6 +21,11 @@ import java.util.Optional;
 /** Which tools this agent has. */
 public interface ToolRegistry {
 
+  /** The default registry: a fixed, registration-ordered set of tools, resolved by name. */
+  static ToolRegistry of(Tool<?>... tools) {
+    return DefaultToolRegistry.of(tools);
+  }
+
   Optional<Tool<?>> find(String name);
 
   /** Every tool's wire description, for handing to the model. */

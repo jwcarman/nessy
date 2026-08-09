@@ -19,7 +19,8 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
 
 /** Says yes to everything. For tests, sandboxes, and users who have opted in. */
-public final class ApproveEverything implements Approver {
+enum AllowAllApprover implements Approver {
+  INSTANCE;
 
   @Override
   public Awaited<Decision> approve(ApprovalRequest request) {

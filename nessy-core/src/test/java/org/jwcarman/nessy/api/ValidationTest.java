@@ -23,8 +23,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.Reducer;
-import org.jwcarman.nessy.spi.model.AgentConfig;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
  * Pins the validating constructors on the public records.
@@ -74,14 +74,14 @@ class ValidationTest {
   }
 
   @Test
-  void anAgentConfigWithoutAModelIsRejected() {
-    assertThatThrownBy(() -> new AgentConfig(null, "", 1024, Set.of()))
+  void aModelSettingsWithoutAModelIsRejected() {
+    assertThatThrownBy(() -> new ModelSettings(null, "", 1024, Set.of()))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void anAgentConfigWithoutTokensToSpendIsRejected() {
-    assertThatThrownBy(() -> new AgentConfig("fake-model", "", 0, Set.of()))
+  void aModelSettingsWithoutTokensToSpendIsRejected() {
+    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 0, Set.of()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

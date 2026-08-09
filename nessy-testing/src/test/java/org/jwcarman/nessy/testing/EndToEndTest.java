@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.ToolResult;
-import org.jwcarman.nessy.api.approval.ApproveEverything;
-import org.jwcarman.nessy.api.tool.MapToolRegistry;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.model.Capability;
 
@@ -93,11 +93,11 @@ class EndToEndTest {
 
     ExecutionEngine engine =
         Nessy.builder()
-            .model(provider)
-            .modelName("fake-model")
+            .provider(provider)
+            .model("fake-model")
             .systemPrompt("be helpful")
-            .tools(MapToolRegistry.of(new AddTool()))
-            .approver(new ApproveEverything())
+            .tools(ToolRegistry.of(new AddTool()))
+            .approver(Approver.allowAll())
             .listener(listener)
             .build();
 
@@ -114,9 +114,9 @@ class EndToEndTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
     Nessy.builder()
-        .model(provider)
-        .modelName("fake-model")
-        .tools(MapToolRegistry.of(new AddTool()))
+        .provider(provider)
+        .model("fake-model")
+        .tools(ToolRegistry.of(new AddTool()))
         .build()
         .run(new SessionId("s1"), new Event.UserSaid("hello"));
 
@@ -139,8 +139,8 @@ class EndToEndTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
     Nessy.builder()
-        .model(provider)
-        .modelName("fake-model")
+        .provider(provider)
+        .model("fake-model")
         .capabilities(Set.of(Capability.PROMPT_CACHING))
         .build()
         .run(new SessionId("s1"), new Event.UserSaid("hello"));
@@ -151,7 +151,7 @@ class EndToEndTest {
 
   @Test
   void aMissingModelIsRejectedAtBuildTime() {
-    assertThatThrownBy(() -> Nessy.builder().modelName("fake-model").build())
+    assertThatThrownBy(() -> Nessy.builder().model("fake-model").build())
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("model");
   }

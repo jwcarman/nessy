@@ -28,6 +28,20 @@ import org.jwcarman.nessy.api.SessionState;
  */
 public interface SessionStore {
 
+  /**
+   * The zero-configuration default: sessions live in this JVM and die with it.
+   *
+   * <p>Correct for a CLI, a test, or any front-end that owns the whole session. Anything that needs
+   * a session to survive a restart wants a durable store.
+   *
+   * <p>Last write wins: there is no compare-and-set, so two threads running the same session will
+   * clobber each other, and the consumed-token set grows without eviction for the life of the
+   * process. That suits a process that owns its sessions, not a long-lived multi-tenant server.
+   */
+  static SessionStore inMemory() {
+    return new InMemorySessionStore();
+  }
+
   Optional<SessionState> load(SessionId id);
 
   void save(SessionState state);

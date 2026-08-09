@@ -57,4 +57,12 @@ class InMemorySessionStoreTest {
     assertThat(store.consumeToken(token)).isTrue();
     assertThat(store.consumeToken(token)).isFalse();
   }
+
+  @Test
+  void in_memory_factory_returns_a_working_store() {
+    SessionStore store = SessionStore.inMemory();
+    store.save(SessionState.newSession(id));
+
+    assertThat(store.load(id)).isPresent();
+  }
 }

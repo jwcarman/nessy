@@ -36,5 +36,15 @@ import org.jwcarman.nessy.api.Decision;
  */
 public interface Approver {
 
+  /** Says yes to everything. For tests, sandboxes, and users who have opted in. */
+  static Approver allowAll() {
+    return AllowAllApprover.INSTANCE;
+  }
+
+  /** Says no to everything, with a reason the model can read and adapt to. */
+  static Approver denyAll(String reason) {
+    return new DenyAllApprover(reason);
+  }
+
   Awaited<Decision> approve(ApprovalRequest request);
 }

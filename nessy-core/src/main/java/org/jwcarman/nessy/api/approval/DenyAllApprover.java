@@ -19,7 +19,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
 
 /** Says no to everything, with a reason the model can read and adapt to. */
-public record DenyEverything(String reason) implements Approver {
+record DenyAllApprover(String reason) implements Approver {
 
   @Override
   public Awaited<Decision> approve(ApprovalRequest request) {
