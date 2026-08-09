@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolUseBlock;
+import org.jwcarman.nessy.api.Usage;
 
 class ReducerToolCallTest {
 
@@ -62,7 +63,7 @@ class ReducerToolCallTest {
     state = reducer.reduce(state, new Event.ToolCallRequested(first)).state();
     state = reducer.reduce(state, new Event.ToolCallRequested(second)).state();
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE));
+    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero()));
 
     assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_APPROVAL);
     assertThat(step.effects()).containsExactly(new Effect.RequestApproval(first));
@@ -75,7 +76,7 @@ class ReducerToolCallTest {
     SessionState state = reducer.reduce(initial, new Event.TextDelta("Looking.")).state();
     state = reducer.reduce(state, new Event.ToolCallRequested(toolCall)).state();
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE));
+    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero()));
 
     assertThat(step.state().messages())
         .containsExactly(

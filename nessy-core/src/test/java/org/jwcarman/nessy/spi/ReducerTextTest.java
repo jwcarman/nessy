@@ -26,6 +26,7 @@ import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.TextBlock;
+import org.jwcarman.nessy.api.Usage;
 
 class ReducerTextTest {
 
@@ -64,7 +65,7 @@ class ReducerTextTest {
     SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
     state = reducer.reduce(state, new Event.TextDelta("Hello!")).state();
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN));
+    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
 
     assertThat(step.state().messages())
         .containsExactly(Message.user("hi"), Message.assistant(List.of(new TextBlock("Hello!"))));
@@ -88,7 +89,8 @@ class ReducerTextTest {
     SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
     state = reducer.reduce(state, new Event.TextDelta("Half a sen")).state();
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS));
+    Step step =
+        reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS, Usage.zero()));
 
     assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
     assertThat(step.effects()).isEmpty();
@@ -101,7 +103,7 @@ class ReducerTextTest {
   void turnEndWithNothingPendingAddsNoEmptyMessage() {
     SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN));
+    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
 
     assertThat(step.state().messages()).containsExactly(Message.user("hi"));
   }

@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
+import java.util.Objects;
+
 /** Tokens spent on one turn, or accumulated across a session. */
 public record Usage(long inputTokens, long outputTokens) {
 
@@ -29,6 +31,7 @@ public record Usage(long inputTokens, long outputTokens) {
   }
 
   public Usage plus(Usage other) {
+    Objects.requireNonNull(other, "other must not be null");
     return new Usage(inputTokens + other.inputTokens, outputTokens + other.outputTokens);
   }
 }

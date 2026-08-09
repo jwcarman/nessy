@@ -28,7 +28,10 @@ import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionStatus;
+import org.jwcarman.nessy.api.TextBlock;
+import org.jwcarman.nessy.api.ThinkingBlock;
 import org.jwcarman.nessy.api.ToolResult;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.SessionEvent;
@@ -151,6 +154,34 @@ class EndToEndTest {
 
     assertThat(provider.requests().getFirst().requested())
         .containsExactly(Capability.PROMPT_CACHING);
+  }
+
+  @Test
+  void usageAccumulatesFromTheModelIntoTheFinalState() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5)).build();
+
+    ExecutionEngine engine = Nessy.builder().provider(provider).model("fake-model").build();
+
+    RunOutcome outcome = engine.run(new SessionId("s1"), Event.UserSaid.of("hi"));
+
+    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+    assertThat(completed.state().usage()).isEqualTo(new Usage(10, 5));
+    assertThat(completed.state().turns()).isEqualTo(1);
+  }
+
+  @Test
+  void thinkingChunksSettleIntoAThinkingBlockBeforeTheAnswer() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
+
+    ExecutionEngine engine = Nessy.builder().provider(provider).model("fake-model").build();
+
+    RunOutcome outcome = engine.run(new SessionId("s1"), Event.UserSaid.of("hi"));
+
+    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+    assertThat(completed.state().messages().getLast().content())
+        .containsExactly(new ThinkingBlock("Let me think.", ""), new TextBlock("Answer."));
   }
 
   @Test

@@ -101,6 +101,11 @@ public final class ScriptedModelProvider implements ModelProvider {
       return this;
     }
 
+    public Builder thinking(String text) {
+      current.add(new ModelEvent.ThinkingChunk(text));
+      return this;
+    }
+
     public Builder toolUse(String id, String name, ObjectNode arguments) {
       current.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments)));
       return this;

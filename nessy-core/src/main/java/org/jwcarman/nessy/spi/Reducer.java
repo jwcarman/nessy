@@ -21,7 +21,6 @@ import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
@@ -78,7 +77,7 @@ public record Reducer(int maxConsecutiveErrors) {
   private Step userSaid(SessionState state, Event.UserSaid event) {
     return Step.of(
         state
-            .withMessageAppended(new Message(Role.USER, event.content()))
+            .withMessageAppended(Message.user(event.content()))
             .withConsecutiveErrors(0)
             .with(SessionStatus.AWAITING_MODEL),
         Effect.callModel());

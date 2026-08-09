@@ -30,6 +30,10 @@ public record Message(Role role, List<ContentBlock> content) {
     return new Message(Role.USER, List.of(new TextBlock(text)));
   }
 
+  public static Message user(List<ContentBlock> content) {
+    return new Message(Role.USER, content);
+  }
+
   public static Message assistant(List<ContentBlock> content) {
     return new Message(Role.ASSISTANT, content);
   }

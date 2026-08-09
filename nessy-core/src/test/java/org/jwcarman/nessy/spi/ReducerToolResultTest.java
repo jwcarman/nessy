@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.Usage;
 
 class ReducerToolResultTest {
 
@@ -46,7 +47,9 @@ class ReducerToolResultTest {
     for (ToolCall each : calls) {
       state = reducer.reduce(state, new Event.ToolCallRequested(each)).state();
     }
-    return reducer.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE)).state();
+    return reducer
+        .reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero()))
+        .state();
   }
 
   @Test
@@ -160,7 +163,8 @@ class ReducerToolResultTest {
     for (ToolCall each : List.of(first, second)) {
       state = strict.reduce(state, new Event.ToolCallRequested(each)).state();
     }
-    state = strict.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE)).state();
+    state =
+        strict.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero())).state();
     state = strict.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
 
     Step step = strict.reduce(state, new Event.ToolFinished(first, ToolResult.error("boom")));
@@ -183,7 +187,8 @@ class ReducerToolResultTest {
       state = reducer.reduce(state, new Event.ToolCallRequested(each)).state();
     }
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS));
+    Step step =
+        reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS, Usage.zero()));
 
     assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
     assertThat(step.effects()).isEmpty();

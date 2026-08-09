@@ -47,6 +47,20 @@ class ReducerGrammarTest {
   }
 
   @Test
+  void thinking_and_text_deltas_never_merge_across_each_other() {
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+    state = reducer.reduce(state, new Event.ThinkingDelta("First thought.")).state();
+    state = reducer.reduce(state, new Event.TextDelta("Answer.")).state();
+    state = reducer.reduce(state, new Event.ThinkingDelta("Second thought.")).state();
+
+    assertThat(state.pendingBlocks())
+        .containsExactly(
+            new ThinkingBlock("First thought.", ""),
+            new TextBlock("Answer."),
+            new ThinkingBlock("Second thought.", ""));
+  }
+
+  @Test
   void turns_and_usage_accumulate_across_turn_ends() {
     SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
     state =

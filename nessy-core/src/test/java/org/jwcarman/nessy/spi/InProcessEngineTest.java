@@ -407,7 +407,7 @@ class InProcessEngineTest {
             Event.UserSaid.of("what is 2+2?"),
             new Event.TextDelta("Fo"),
             new Event.TextDelta("ur."),
-            new Event.ModelTurnEnded(StopReason.END_TURN));
+            new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
   }
 
   @Test

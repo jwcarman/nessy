@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Something that happened.
@@ -50,8 +51,9 @@ public sealed interface Event {
   /** The model's turn is over. */
   record ModelTurnEnded(StopReason reason, Usage usage) implements Event {
 
-    public ModelTurnEnded(StopReason reason) {
-      this(reason, Usage.zero());
+    public ModelTurnEnded {
+      Objects.requireNonNull(reason, "reason must not be null");
+      Objects.requireNonNull(usage, "usage must not be null");
     }
   }
 
