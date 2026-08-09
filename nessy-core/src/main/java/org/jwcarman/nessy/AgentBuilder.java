@@ -17,7 +17,6 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
-import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.api.CompactionPolicy;
 import org.jwcarman.nessy.api.TerminationPolicy;
@@ -118,7 +117,7 @@ public final class AgentBuilder {
   }
 
   public AgentBuilder compaction(CompactionPolicy compaction) {
-    this.compaction = Objects.requireNonNull(compaction, "compaction must not be null");
+    this.compaction = compaction;
     return this;
   }
 

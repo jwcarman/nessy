@@ -98,8 +98,11 @@ class ReducerCompactionTest {
 
     @Test
     void below_the_trigger_a_user_message_calls_the_model_as_always() {
-      SessionState state = initial.withLastInputTokens(99_999);
-      Reducer reducer = new Reducer(TerminationPolicy.never(), policy(100_000, 10));
+      // Seeded from a state with a genuine safe cut available (see at_the_trigger, below), so
+      // this fails if the trigger comparison were ever loosened to ">" or the threshold drifted:
+      // a broken comparison would compact here even though 99_999 is one token short of 100_000.
+      SessionState state = fivePairsAndToolExchange().withLastInputTokens(99_999);
+      Reducer reducer = new Reducer(TerminationPolicy.never(), policy(100_000, 4));
 
       Step step = reducer.reduce(state, Event.UserSaid.of("hi"));
 
@@ -156,6 +159,23 @@ class ReducerCompactionTest {
       assertThat(step.effects())
           .containsExactly(
               new Effect.Compact(state.messages().subList(0, 2), policy(1, 6).instructions()));
+    }
+
+    @Test
+    void the_cut_lands_exactly_on_the_keep_recent_boundary_when_it_qualifies_there() {
+      // keepRecentMessages=5 puts the naive limit at index 8 of the 13-message post-append
+      // list — u5, itself a genuine user turn — so the cut is accepted on the very first check,
+      // with no walk-down. This pins the limit's own formula (size - keepRecentMessages) as an
+      // inclusive endpoint, distinct from at_the_trigger's one-step walk-down above.
+      SessionState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
+      Reducer reducer = new Reducer(TerminationPolicy.never(), policy(100_000, 5));
+
+      Step step = reducer.reduce(state, Event.UserSaid.of("one more thing"));
+
+      assertThat(step.state().status()).isEqualTo(SessionStatus.COMPACTING);
+      Effect.Compact compact = (Effect.Compact) step.effects().getFirst();
+      assertThat(compact.messages()).isEqualTo(state.messages().subList(0, 8));
+      assertThat(step.state().messages().size() - compact.messages().size()).isEqualTo(5);
     }
 
     @Test

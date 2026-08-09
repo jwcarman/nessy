@@ -75,8 +75,7 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
       case Event.ToolFinished(ToolCall call, ToolResult result) ->
           toolFinished(state, call, result);
       case Event.Compacted e -> compacted(state, e);
-      case Event.CompactionSkipped _ ->
-          Step.of(state.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+      case Event.CompactionSkipped e -> compactionSkipped(state, e);
     };
   }
 
@@ -354,11 +353,21 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
   }
 
   /**
+   * One attempt per decision point: a skipped compaction proceeds to the model as-is rather than
+   * re-checking here, so {@code lastInputTokens} is left untouched and simply retriggers the same
+   * decision naturally at the next {@code CallModel} site.
+   */
+  private Step compactionSkipped(SessionState state, Event.CompactionSkipped event) {
+    return Step.of(state.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+  }
+
+  /**
    * The largest index {@code cut <= messages.size() - compaction.keepRecentMessages()} at which
    * {@code messages.get(cut)} is a genuine user turn — a {@link Role#USER} message whose blocks are
    * all {@link TextBlock}s, never a spot between an assistant {@code tool_use} and the message
-   * carrying its results. Walks downward from the limit; {@code 0} when no index qualifies, which
-   * tells the caller nothing is safe to compact away.
+   * carrying its results. Walks downward from the limit (clamped to {@code messages.size() - 1} so
+   * a {@code keepRecentMessages} of {@code 0} still indexes a real message); {@code 0} when no
+   * index qualifies, which tells the caller nothing is safe to compact away.
    */
   private int pairSafeCut(List<Message> messages) {
     int limit = Math.min(messages.size() - compaction.keepRecentMessages(), messages.size() - 1);
