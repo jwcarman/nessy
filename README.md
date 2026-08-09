@@ -16,9 +16,10 @@ deliberate seam: swap the piece, keep the framework.
 
 This runs with no key, no network, and no real model: `ScriptedModelProvider`
 (from `nessy-testing`) plays back a scripted conversation so the example compiles
-and runs against exactly what ships today. Real providers arrive as
-`nessy-model-*` modules (Anthropic first); swap in one of those and nothing else
-about this shape changes.
+and runs against exactly what ships today. Real providers are `nessy-model-*`
+modules (`nessy-model-anthropic`, `nessy-model-openai`, both live-validated);
+swap in one of those and nothing else about this shape changes — see
+[the real variant](#the-same-example-for-real) below.
 
 ```java
 record Add(int left, int right) {}
@@ -59,6 +60,22 @@ in-process engine, an allow-all approver (replace it before you point real tools
 at anything), a synchronous event hub, no-op observations. The smallest useful
 agent is a provider and a model name.
 
+### The same example, for real
+
+Swap `ScriptedModelProvider` for `AnthropicModelProvider.builder().fromEnv()`
+and nothing else about the shape above changes. Set `ANTHROPIC_API_KEY` first —
+this one makes a real network call and spends real tokens (a couple of cents at
+most for a prompt this size on a small model):
+
+```java
+AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
+
+Agent agent = Nessy.agent().provider(provider).model("claude-haiku-4-5-20251001").build();
+Reply reply = agent.converse().send("what is 2+2?");
+
+System.out.println(reply.text());
+```
+
 ## How it works
 
 The core is an **effectful reducer**. `reduce(SessionState, Event)` is pure,
@@ -98,7 +115,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | Seam | In-core default | Upgrades Nessy provides | Extenders build |
 |---|---|---|---|
 | `ExecutionEngine` | `InProcessEngine` | `DurableEngine`; Temporal/Restate adapters | custom runtimes |
-| `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai`, retry decorator | any vendor |
+| `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai` | any vendor |
 | `SessionStore` | `SessionStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
@@ -106,6 +123,11 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextBuilder` (deferred) | identity (unnamed) | compacting | RAG, redaction |
+
+Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
+`RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
+AnthropicModelProvider.RETRYABLE)` (each provider module publishes its own
+retryable-failure predicate) and nothing about calling it changes.
 
 ## Observability
 
@@ -135,6 +157,17 @@ seams themselves reference Micrometer nowhere. The planned Spring Boot starter
 will wire the registry Boot's Actuator already auto-configures, so observability
 lights up with no configuration at all in a Spring Boot app — that starter does
 not exist yet (see Status).
+
+For streaming a single reply without touching the raw hub, `Conversation.send`
+has a tap overload — a natural fit for pushing tokens over SSE:
+
+```java
+Conversation conversation = agent.converse();
+Reply reply = conversation.send("what is 2+2?", event -> System.out.println(event));
+```
+
+The tap sees only this conversation's events, in order, for the duration of that
+one `send` call.
 
 ## Testing
 
@@ -168,11 +201,44 @@ v2 design: the effectful reducer, the full sealed grammar, the event hub,
 `TerminationPolicy`, Micrometer Observation instrumentation, and the `Agent`
 facade are all implemented and tested end to end against a scripted model.
 
-Not yet built: real model providers (`nessy-model-*`), a durable execution
-engine, the contextual `Policy` layer, context compaction, the Spring Boot
-starter, and a TUI. See
+Real model providers are **built and live-validated**: `nessy-model-anthropic`
+and `nessy-model-openai` wrap each vendor's own Java SDK — native request
+assembly, streaming translation, thinking/caching/usage, and a `StopReason`
+mapping that fails loudly on anything the audit didn't enumerate rather than
+guessing. OpenAI's live suite is fully green against a real key; Anthropic's is
+2 of 3 live-covered (a real empty-system-block bug the live run surfaced is
+fixed, with regression tests). `nessy-examples` ships a runnable two-provider
+chat app — see [Try it](#try-it) below.
+
+Not yet built: a durable execution engine, the contextual `Policy` layer,
+context compaction, the Spring Boot starter, and a TUI. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
+
+## Try it
+
+With a real key, run the example chat app against either provider:
+
+```bash
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.AnthropicChat
+```
+
+```bash
+OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.OpenAiChat
+```
+
+Both providers' `.fromEnv()` delegates to the underlying SDK's own environment
+support, not a hand-rolled subset — `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`,
+auth tokens, and friends all work with no extra wiring.
+
+That same delegation makes OpenAI-compatible endpoints a one-liner: point
+`nessy-model-openai` at OpenRouter, Ollama, or anything else that speaks the
+OpenAI wire format with `baseUrl(...)`:
+
+```java
+ModelProvider provider =
+    OpenAiModelProvider.builder().fromEnv().baseUrl("https://openrouter.ai/api/v1").build();
+```
 
 ## License
 

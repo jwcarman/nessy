@@ -677,6 +677,13 @@ the application's own explicit declaration. If none is declared, the starter's
    should be *born* into `spi.model`, not migrated into it.
 2. **Plan 2 — Anthropic provider**: native SDK, thinking/caching/usage for real,
    retry/backoff (with its internal `Sleeper` test seam), `StopReason` audit.
+   **Delivered as part of Plan 3** (`docs/superpowers/plans/2026-08-09-nessy-providers.md`),
+   which also pulled forward the OpenAI-wire provider from item 4 below:
+   `nessy-model-anthropic` and `nessy-model-openai` both shipped, live-validated,
+   and the `StopReason`/wire audit performed — each SDK's stop/finish-reason
+   enumeration verified complete against its own source, with an executable
+   fail-loudly mapping (Tasks 5 and 8) rather than a silent default for
+   anything the audit didn't account for.
 3. **Plan 2.5 — Policy**: contextual authorization, second implementation.
 4. Then as previously mapped: OpenAI-wire provider, `DurableEngine` (+ trace
    continuity, + resume semantics of §6), compactor + `ContextBuilder`, Spring

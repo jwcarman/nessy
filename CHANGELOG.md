@@ -21,6 +21,36 @@ changed.
 
 ### Added
 
+- **`nessy-model-anthropic` and `nessy-model-openai`** — real, live-validated
+  model providers wrapping each vendor's own Java SDK: native request assembly,
+  streaming translation, thinking/caching/usage accounting, and an executable
+  `StopReason` mapping that fails loudly on any wire value the audit didn't
+  enumerate rather than guessing at it. Both `Builder.fromEnv()` delegate to the
+  underlying SDK's own environment support (`ANTHROPIC_BASE_URL`,
+  `OPENAI_BASE_URL`, auth tokens, etc.), not a hand-rolled subset, and both
+  builders take an explicit `baseUrl(...)` for OpenAI-compatible endpoints
+  (OpenRouter, Ollama, …). OpenAI's live suite is fully green against a real
+  key; Anthropic's is 2 of 3 live-covered, with one real bug the live run
+  surfaced (an empty system block rejected by the API) fixed and pinned by
+  regression tests.
+- **`RetryingModelProvider`** — a decorator that retries only the opening of a
+  model stream, with exponential backoff (`RetryPolicy`); each provider module
+  publishes its own retryable-failure predicate
+  (`AnthropicModelProvider.RETRYABLE`, `OpenAiModelProvider.RETRYABLE`), since
+  which failures are safe to retry is provider-specific.
+- **`nessy-examples`** — a runnable two-provider demo: `DemoAgent` wires an
+  ungated `AddTool` and an approval-gated `ClockTool` behind a
+  `ConsoleApprover`, with `AnthropicChat` and `OpenAiChat` mains demonstrating
+  the raw-event-hub and per-send-tap streaming patterns respectively.
+- **`Conversation.send(String, Consumer<Event>)`** — a per-send tap alongside
+  the existing `send(String)`: scoped to this conversation's events only,
+  delivered synchronously in order, and closed automatically when `send`
+  returns. The SSE-friendly path for pushing a single reply's events without
+  subscribing to the raw hub.
+- **Pre-1.0 grammar completion II**: `StopReason.REFUSAL`, thinking-block
+  signatures (`Event.ThinkingSigned`, `ThinkingBlock.signature`), and redacted
+  thinking (`RedactedThinkingBlock`) round out the vocabulary both live
+  providers need.
 - **Coverage reporting via JaCoCo** (report-only; no gate yet).
 - **Time-ordered UUIDs (v7)** — Session and park identifiers are now time-ordered
   UUIDv7 (sortable by creation time, index-friendly in durable stores).
