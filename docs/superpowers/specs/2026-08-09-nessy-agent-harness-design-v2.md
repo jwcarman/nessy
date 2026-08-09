@@ -605,6 +605,34 @@ listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextBuilder` (deferred) | identity (unnamed) | compacting | RAG, redaction |
 
+### 13.1 Classpath-upgradeable defaults (the Spring starter's defining feature)
+
+In a Spring Boot application, dropping a Nessy module on the classpath makes its
+implementation the default — consuming code knows nothing about what is
+registered; it just asks for an `Agent`:
+
+- The starter auto-configures every seam default with
+  `@ConditionalOnMissingBean`; any contributed bean of a seam type displaces it
+  (`nessy-store-jdbc` + a `DataSource` → the in-memory store stands down).
+  Conflicts resolve with standard Spring means (`@Primary`, `nessy.store=jdbc`).
+- Every `Tool<?>` bean in the context is collected into the `ToolRegistry`
+  automatically — `@Component class ReadFileTool implements Tool<…>` is all an
+  application writes.
+- Consuming code injects a prototype-scoped, pre-wired `AgentBuilder` (set
+  `model` and `systemPrompt`, call `build()`), or declares the whole agent in
+  properties and injects `Agent` directly.
+
+This requires no core changes: the starter pre-applies discovered seams to the
+builder, and explicit user calls still win. Core stays magic-free; the magic
+lives entirely in the Spring layer, per §3.
+
+**The authority rule:** classpath takeover applies to *infrastructure* seams
+only (stores, engines, hubs, observability, providers). No library module may
+auto-contribute an `Approver` or `Policy` bean — a jar silently changing what an
+agent is allowed to do is a supply-chain-shaped footgun. Approval authority is
+always the application's own explicit declaration. Infrastructure swaps in;
+authority is declared.
+
 ## 14. Sequencing
 
 1. **Convergence** (next plan): zones, renames, hub, grammar completion,
