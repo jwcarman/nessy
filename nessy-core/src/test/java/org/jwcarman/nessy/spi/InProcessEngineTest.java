@@ -21,9 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.ArrayDeque;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -66,83 +65,8 @@ class InProcessEngineTest {
   private static final ModelSettings CONFIG =
       new ModelSettings("fake-model", "be helpful", 1024, Set.of());
 
-  /** A model that replays scripted turns, one per call, and tracks how its streams are held. */
-  private static final class FakeProvider implements ModelProvider {
-
-    private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
-    private int closedCount;
-    private int openStreams;
-    private int maxOpenStreams;
-
-    // Takes a List of turns rather than varargs: generic varargs would raise an
-    // unchecked warning, and this project forbids @SuppressWarnings outright.
-    FakeProvider(List<List<ModelEvent>> scripted) {
-      turns.addAll(scripted);
-    }
-
-    @Override
-    public ModelStream stream(ModelRequest request) {
-      Iterator<ModelEvent> events = turns.removeFirst().iterator();
-      openStreams++;
-      maxOpenStreams = Math.max(maxOpenStreams, openStreams);
-      return new ModelStream() {
-        @Override
-        public Iterator<ModelEvent> iterator() {
-          return events;
-        }
-
-        @Override
-        public void close() {
-          openStreams--;
-          closedCount++;
-        }
-      };
-    }
-
-    @Override
-    public Set<Capability> capabilities() {
-      return Set.of();
-    }
-  }
-
-  record Echo(String value) {}
-
-  private static final class EchoTool implements Tool<Echo> {
-
-    private final boolean needsApproval;
-
-    EchoTool(boolean needsApproval) {
-      this.needsApproval = needsApproval;
-    }
-
-    @Override
-    public String name() {
-      return "echo";
-    }
-
-    @Override
-    public String description() {
-      return "Echoes its input";
-    }
-
-    @Override
-    public Class<Echo> inputType() {
-      return Echo.class;
-    }
-
-    @Override
-    public boolean requiresApproval() {
-      return needsApproval;
-    }
-
-    @Override
-    public Awaited<ToolResult> execute(Echo input, ToolContext context) {
-      return Awaited.ready(ToolResult.ok("echoed:" + input.value()));
-    }
-  }
-
   /** A tool that throws, to prove the loop survives a broken tool. */
-  private static final class ExplodingTool implements Tool<Echo> {
+  private static final class ExplodingTool implements Tool<EngineFixtures.Echo> {
 
     @Override
     public String name() {
@@ -155,8 +79,8 @@ class InProcessEngineTest {
     }
 
     @Override
-    public Class<Echo> inputType() {
-      return Echo.class;
+    public Class<EngineFixtures.Echo> inputType() {
+      return EngineFixtures.Echo.class;
     }
 
     @Override
@@ -165,13 +89,13 @@ class InProcessEngineTest {
     }
 
     @Override
-    public Awaited<ToolResult> execute(Echo input, ToolContext context) {
+    public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
       throw new IllegalStateException("kaboom");
     }
   }
 
   /** A tool that always parks, to prove InProcessEngine refuses rather than swallows it. */
-  private static final class ParkingTool implements Tool<Echo> {
+  private static final class ParkingTool implements Tool<EngineFixtures.Echo> {
 
     @Override
     public String name() {
@@ -184,8 +108,8 @@ class InProcessEngineTest {
     }
 
     @Override
-    public Class<Echo> inputType() {
-      return Echo.class;
+    public Class<EngineFixtures.Echo> inputType() {
+      return EngineFixtures.Echo.class;
     }
 
     @Override
@@ -194,7 +118,7 @@ class InProcessEngineTest {
     }
 
     @Override
-    public Awaited<ToolResult> execute(Echo input, ToolContext context) {
+    public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
       return Awaited.parked(ParkToken.random());
     }
   }
@@ -216,13 +140,7 @@ class InProcessEngineTest {
     }
   }
 
-  private static ObjectNode echoArgs(String value) {
-    ObjectNode args = JsonNodeFactory.instance.objectNode();
-    args.put("value", value);
-    return args;
-  }
-
-  /** Arguments that do not bind to {@link Echo}: a typo'd field name. */
+  /** Arguments that do not bind to {@link EngineFixtures.Echo}: a typo'd field name. */
   private static ObjectNode malformedArgs(String value) {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
     args.put("vlaue", value);
@@ -241,13 +159,21 @@ class InProcessEngineTest {
       SessionStore store,
       EventHub hub) {
     return new InProcessEngine(
-        provider, tools, approver, store, hub, Reducer.withDefaults(), CONFIG, new ObjectMapper());
+        provider,
+        tools,
+        approver,
+        store,
+        hub,
+        Reducer.withDefaults(),
+        CONFIG,
+        new ObjectMapper(),
+        ObservationRegistry.NOOP);
   }
 
   @Test
   void aPlainAnswerCompletesTheSession() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
                     new ModelEvent.TextChunk("Four."),
@@ -267,11 +193,12 @@ class InProcessEngineTest {
 
   @Test
   void aToolCallRunsAndFeedsItsResultBack() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
@@ -280,7 +207,7 @@ class InProcessEngineTest {
     RunOutcome outcome =
         engineWith(
                 provider,
-                ToolRegistry.of(new EchoTool(true)),
+                ToolRegistry.of(new EngineFixtures.EchoTool(true)),
                 Approver.allowAll(),
                 SessionStore.inMemory())
             .run(ID, Event.UserSaid.of("echo hi"));
@@ -295,18 +222,23 @@ class InProcessEngineTest {
 
   @Test
   void toolsThatDoNotRequireApprovalNeverReachTheApprover() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
     CountingApprover approver = new CountingApprover(Approver.allowAll());
 
-    engineWith(provider, ToolRegistry.of(new EchoTool(false)), approver, SessionStore.inMemory())
+    engineWith(
+            provider,
+            ToolRegistry.of(new EngineFixtures.EchoTool(false)),
+            approver,
+            SessionStore.inMemory())
         .run(ID, Event.UserSaid.of("echo hi"));
 
     assertThat(approver.calls).isZero();
@@ -314,11 +246,12 @@ class InProcessEngineTest {
 
   @Test
   void aDenialBecomesAnErroredResultRatherThanAnException() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Understood."),
@@ -327,7 +260,7 @@ class InProcessEngineTest {
     RunOutcome outcome =
         engineWith(
                 provider,
-                ToolRegistry.of(new EchoTool(true)),
+                ToolRegistry.of(new EngineFixtures.EchoTool(true)),
                 Approver.denyAll("not allowed"),
                 SessionStore.inMemory())
             .run(ID, Event.UserSaid.of("echo hi"));
@@ -339,11 +272,12 @@ class InProcessEngineTest {
 
   @Test
   void anUnknownToolBecomesAnErroredResultTheModelCanSee() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "missing", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "missing", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Oh."),
@@ -362,17 +296,18 @@ class InProcessEngineTest {
 
   @Test
   void aThrowingToolBecomesAnErroredResultRatherThanKillingTheLoop() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "boom", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "boom", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Oh."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
-    Tool<Echo> exploding = new ExplodingTool();
+    Tool<EngineFixtures.Echo> exploding = new ExplodingTool();
 
     RunOutcome outcome =
         engineWith(
@@ -388,8 +323,8 @@ class InProcessEngineTest {
 
   @Test
   void theHubSeesEveryEventAsItHappens() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
                     new ModelEvent.TextChunk("Fo"),
@@ -412,8 +347,8 @@ class InProcessEngineTest {
 
   @Test
   void theFinalStateIsSaved() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
                     new ModelEvent.TextChunk("Four."),
@@ -452,11 +387,12 @@ class InProcessEngineTest {
 
   @Test
   void tools_can_report_progress_through_the_hub() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "noisy", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "noisy", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
@@ -465,7 +401,7 @@ class InProcessEngineTest {
     List<ToolProgress> progress = new ArrayList<>();
     hub.subscribe(ToolProgress.class, progress::add);
 
-    Tool<Echo> noisy =
+    Tool<EngineFixtures.Echo> noisy =
         new Tool<>() {
           @Override
           public String name() {
@@ -478,8 +414,8 @@ class InProcessEngineTest {
           }
 
           @Override
-          public Class<Echo> inputType() {
-            return Echo.class;
+          public Class<EngineFixtures.Echo> inputType() {
+            return EngineFixtures.Echo.class;
           }
 
           @Override
@@ -488,7 +424,7 @@ class InProcessEngineTest {
           }
 
           @Override
-          public Awaited<ToolResult> execute(Echo input, ToolContext context) {
+          public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
             context.events().emit(new ToolProgress(context.sessionId(), "c1", "halfway"));
             return Awaited.ready(ToolResult.ok("done"));
           }
@@ -502,7 +438,7 @@ class InProcessEngineTest {
 
   @Test
   void resumeIsRefusedBecauseThisEngineNeverParks() {
-    FakeProvider provider = new FakeProvider(List.of());
+    EngineFixtures.FakeProvider provider = new EngineFixtures.FakeProvider(List.of());
 
     assertThatThrownBy(
             () ->
@@ -515,11 +451,12 @@ class InProcessEngineTest {
 
   @Test
   void aParkingToolIsRefusedRatherThanSwallowed() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "park", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "park", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
 
     assertThatThrownBy(
@@ -536,8 +473,8 @@ class InProcessEngineTest {
 
   @Test
   void malformedArgumentsOnAnApprovalRequiringToolAreRecoverable() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
                     new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", malformedArgs("hi"))),
@@ -548,7 +485,11 @@ class InProcessEngineTest {
     SessionStore store = SessionStore.inMemory();
 
     RunOutcome outcome =
-        engineWith(provider, ToolRegistry.of(new EchoTool(true)), Approver.allowAll(), store)
+        engineWith(
+                provider,
+                ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+                Approver.allowAll(),
+                store)
             .run(ID, Event.UserSaid.of("echo hi"));
 
     assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
@@ -561,11 +502,12 @@ class InProcessEngineTest {
 
   @Test
   void theModelStreamIsClosedAfterEachTurn() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("hi"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
@@ -573,7 +515,7 @@ class InProcessEngineTest {
 
     engineWith(
             provider,
-            ToolRegistry.of(new EchoTool(true)),
+            ToolRegistry.of(new EngineFixtures.EchoTool(true)),
             Approver.allowAll(),
             SessionStore.inMemory())
         .run(ID, Event.UserSaid.of("echo hi"));
@@ -585,8 +527,8 @@ class InProcessEngineTest {
 
   @Test
   void aSecondRunContinuesTheSavedSession() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
                     new ModelEvent.TextChunk("Four."),
@@ -611,12 +553,14 @@ class InProcessEngineTest {
 
   @Test
   void twoToolCallsInOneTurnBatchIntoOneResultMessage() {
-    FakeProvider provider =
-        new FakeProvider(
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
             List.of(
                 List.of(
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "echo", echoArgs("a"))),
-                    new ModelEvent.ToolUseEmitted(new ToolCall("c2", "echo", echoArgs("b"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("a"))),
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c2", "echo", EngineFixtures.echoArgs("b"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
                 List.of(
                     new ModelEvent.TextChunk("Done."),
@@ -625,7 +569,7 @@ class InProcessEngineTest {
     RunOutcome outcome =
         engineWith(
                 provider,
-                ToolRegistry.of(new EchoTool(false)),
+                ToolRegistry.of(new EngineFixtures.EchoTool(false)),
                 Approver.allowAll(),
                 SessionStore.inMemory())
             .run(ID, Event.UserSaid.of("echo a and b"));

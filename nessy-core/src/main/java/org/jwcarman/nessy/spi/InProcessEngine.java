@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.spi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -37,6 +39,7 @@ import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -66,6 +69,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final Reducer reducer;
   private final ModelSettings config;
   private final ToolInvoker invoker;
+  private final ObservationRegistry observations;
 
   public InProcessEngine(
       ModelProvider provider,
@@ -75,7 +79,8 @@ public final class InProcessEngine implements ExecutionEngine {
       EventHub hub,
       Reducer reducer,
       ModelSettings config,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      ObservationRegistry observations) {
     this.provider = provider;
     this.tools = tools;
     this.approver = approver;
@@ -84,6 +89,7 @@ public final class InProcessEngine implements ExecutionEngine {
     this.reducer = reducer;
     this.config = config;
     this.invoker = new ToolInvoker(mapper);
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
   /**
@@ -98,12 +104,20 @@ public final class InProcessEngine implements ExecutionEngine {
    */
   @Override
   public RunOutcome run(SessionId id, Event input) {
-    AtomicReference<SessionState> progress =
-        new AtomicReference<>(store.load(id).orElseGet(() -> SessionState.newSession(id)));
-    try {
-      return new RunOutcome.Completed(feed(progress, progress.get(), input));
+    Observation observation = EngineObservations.run(observations, id);
+    try (Observation.Scope scope = observation.openScope()) {
+      AtomicReference<SessionState> progress =
+          new AtomicReference<>(store.load(id).orElseGet(() -> SessionState.newSession(id)));
+      try {
+        return new RunOutcome.Completed(feed(progress, progress.get(), input));
+      } finally {
+        store.save(progress.get());
+      }
+    } catch (RuntimeException e) {
+      observation.error(e);
+      throw e;
     } finally {
-      store.save(progress.get());
+      observation.stop();
     }
   }
 
@@ -155,23 +169,46 @@ public final class InProcessEngine implements ExecutionEngine {
    * live connection per round-trip. The hub is still notified as each chunk arrives, from inside
    * the loop, so streaming stays live; only effects — of which only the terminal event has any —
    * are deferred.
+   *
+   * <p>{@code turn} wraps the whole method; {@code modelCall} wraps only the stream-consumption
+   * try-block, since deferred effects run after the stream has already closed. Deferred effects
+   * that trigger another turn (a tool round-trip) recurse back into this method, so a nested {@code
+   * turn} observation parents under the turn that caused it — the recursion is the causality.
    */
   private SessionState callModel(AtomicReference<SessionState> progress, SessionState state) {
-    SessionState current = state;
-    List<Effect> deferred = new ArrayList<>();
-    try (ModelStream stream = provider.stream(requestFor(current))) {
-      for (ModelEvent modelEvent : stream) {
-        Step step = reduceAndNotify(current, translate(modelEvent));
-        current = step.state();
-        progress.set(current);
-        deferred.addAll(step.effects());
+    Observation turn = EngineObservations.turn(observations);
+    try (Observation.Scope turnScope = turn.openScope()) {
+      SessionState current = state;
+      List<Effect> deferred = new ArrayList<>();
+      Observation modelCall = EngineObservations.modelCall(observations, config.model());
+      try (Observation.Scope modelCallScope = modelCall.openScope();
+          ModelStream stream = provider.stream(requestFor(current))) {
+        for (ModelEvent modelEvent : stream) {
+          Step step = reduceAndNotify(current, translate(modelEvent));
+          current = step.state();
+          progress.set(current);
+          deferred.addAll(step.effects());
+          if (modelEvent instanceof ModelEvent.TurnEnded ended) {
+            EngineObservations.recordUsage(modelCall, ended.usage());
+          }
+        }
+      } catch (RuntimeException e) {
+        modelCall.error(e);
+        throw e;
+      } finally {
+        modelCall.stop();
       }
+      for (Effect effect : deferred) {
+        current = perform(progress, current, effect);
+        progress.set(current);
+      }
+      return current;
+    } catch (RuntimeException e) {
+      turn.error(e);
+      throw e;
+    } finally {
+      turn.stop();
     }
-    for (Effect effect : deferred) {
-      current = perform(progress, current, effect);
-      progress.set(current);
-    }
-    return current;
   }
 
   private ModelRequest requestFor(SessionState state) {
@@ -212,7 +249,17 @@ public final class InProcessEngine implements ExecutionEngine {
     }
     ApprovalRequest request =
         new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
-    return new Event.ApprovalDecided(call, resolve(approver.approve(request), "approver"));
+    Observation observation = EngineObservations.approvalWait(observations, tool.name());
+    Awaited<Decision> decision;
+    try (Observation.Scope scope = observation.openScope()) {
+      decision = approver.approve(request);
+    } catch (RuntimeException e) {
+      observation.error(e);
+      throw e;
+    } finally {
+      observation.stop();
+    }
+    return new Event.ApprovalDecided(call, resolve(decision, "approver"));
   }
 
   /**
@@ -239,17 +286,25 @@ public final class InProcessEngine implements ExecutionEngine {
     if (found.isEmpty()) {
       return new Event.ToolFinished(call, ToolResult.error("No such tool: " + call.name()));
     }
-    Awaited<ToolResult> awaited;
-    try {
-      awaited = invoker.invoke(found.get(), call, new ToolContext(state.id(), hub));
+    Observation observation = EngineObservations.toolCall(observations, call.name(), call.id());
+    try (Observation.Scope scope = observation.openScope()) {
+      Awaited<ToolResult> awaited;
+      try {
+        awaited = invoker.invoke(found.get(), call, new ToolContext(state.id(), hub));
+      } catch (RuntimeException e) {
+        // Factor 9: the model sees a compact error and gets to recover. It
+        // never sees a stack trace, and the loop never dies on a bad tool.
+        return new Event.ToolFinished(call, ToolResult.error(describe(e)));
+      }
+      // Outside the catch: a tool that parks is a configuration error, not a
+      // runtime one, and must fail loudly rather than becoming model-visible noise.
+      return new Event.ToolFinished(call, resolve(awaited, "tool " + call.name()));
     } catch (RuntimeException e) {
-      // Factor 9: the model sees a compact error and gets to recover. It
-      // never sees a stack trace, and the loop never dies on a bad tool.
-      return new Event.ToolFinished(call, ToolResult.error(describe(e)));
+      observation.error(e);
+      throw e;
+    } finally {
+      observation.stop();
     }
-    // Outside the catch: a tool that parks is a configuration error, not a
-    // runtime one, and must fail loudly rather than becoming model-visible noise.
-    return new Event.ToolFinished(call, resolve(awaited, "tool " + call.name()));
   }
 
   private static String describe(RuntimeException e) {
