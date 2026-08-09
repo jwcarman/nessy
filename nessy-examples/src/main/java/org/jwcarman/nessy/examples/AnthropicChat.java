@@ -51,7 +51,9 @@ public final class AnthropicChat {
     IO.println("Nessy demo (Anthropic, " + MODEL + "). Empty line or /quit to exit.");
     while (true) {
       String input = IO.readln("you> ");
-      if (input.isBlank() || input.equals("/quit")) {
+      // IO.readln returns null at EOF (e.g. Ctrl-D on the console); treat that the same as
+      // /quit rather than NPE-ing on the isBlank() check below.
+      if (input == null || input.isBlank() || input.equals("/quit")) {
         return;
       }
       Reply reply = conversation.send(input);

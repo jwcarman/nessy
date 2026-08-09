@@ -49,12 +49,22 @@ public final class AnthropicModelProvider implements ModelProvider {
   /**
    * Which failures {@link org.jwcarman.nessy.spi.model.RetryingModelProvider} should retry.
    *
+   * <p>Grounded in the SDK's own retry classification: the anthropic-java SDK's internal HTTP
+   * client retries a raw {@link java.io.IOException} or {@link AnthropicRetryableException}
+   * unconditionally, and otherwise retries by status code (429, or any 5xx, which includes the 529
+   * "overloaded" status Anthropic uses) <em>before</em> that response is ever translated into one
+   * of the typed exceptions below — so by the time a status-code-driven retry is visible to
+   * application code as an exception, the SDK's own retry budget ({@code maxRetries}, default 2)
+   * has already been exhausted. What remains retryable from here:
+   *
    * <p>Retryable: {@link RateLimitException} (429), {@link InternalServerException} (every 5xx the
    * SDK maps explicitly, which includes the 529 "overloaded" status Anthropic uses — 500..599 is
    * one dispatch branch in the SDK's error handler), {@link AnthropicIoException} (the SDK's
    * wrapper for transport-level failures — connect/read/write errors below the HTTP layer), and
    * {@link AnthropicRetryableException} (the SDK's own marker for a transient failure it identified
-   * internally, e.g. during its own retry bookkeeping).
+   * internally, e.g. during its own retry bookkeeping) — each can still surface after the SDK's own
+   * retry budget runs out, and a further caller-driven retry (e.g. with backoff) is still
+   * appropriate.
    *
    * <p>Not retryable: everything the SDK maps to a specific 4xx ({@code BadRequestException} 400,
    * {@code UnauthorizedException} 401, {@code PermissionDeniedException} 403, {@code
@@ -103,7 +113,12 @@ public final class AnthropicModelProvider implements ModelProvider {
   /** Assembles an {@link AnthropicModelProvider}. */
   public static final class Builder {
 
-    private static final int DEFAULT_THINKING_BUDGET = 8192;
+    // Anthropic's floor for the thinking budget. AgentBuilder.DEFAULT_MAX_TOKENS is 4096, and
+    // AnthropicRequests.toParams requires maxTokens to exceed the thinking budget, so the default
+    // here must stay comfortably under that default headroom — the lowest value the API accepts
+    // is also the only one guaranteed to leave room. A caller who wants a larger default thinking
+    // budget must also raise AgentBuilder.maxTokens(...) to keep the two in the same order.
+    private static final int DEFAULT_THINKING_BUDGET = 1024;
     private static final String API_KEY_ENV_VAR = "ANTHROPIC_API_KEY";
     private static final String AUTH_TOKEN_ENV_VAR = "ANTHROPIC_AUTH_TOKEN";
 
@@ -202,7 +217,7 @@ public final class AnthropicModelProvider implements ModelProvider {
       if (apiKey == null
           && System.getenv(API_KEY_ENV_VAR) == null
           && System.getenv(AUTH_TOKEN_ENV_VAR) == null) {
-        throw missingEnvCredentials(null);
+        throw missingEnvCredentials();
       }
       try {
         var sdkBuilder = AnthropicOkHttpClient.builder().fromEnv();
@@ -214,19 +229,17 @@ public final class AnthropicModelProvider implements ModelProvider {
         }
         return sdkBuilder.build();
       } catch (RuntimeException e) {
-        throw missingEnvCredentials(e);
+        throw new IllegalStateException("could not resolve credentials from the environment", e);
       }
     }
 
-    private static IllegalStateException missingEnvCredentials(Throwable cause) {
+    private static IllegalStateException missingEnvCredentials() {
       var message =
           API_KEY_ENV_VAR
               + " (or "
               + AUTH_TOKEN_ENV_VAR
               + ") environment variable is not set; call apiKey(...) or client(...) instead";
-      return cause == null
-          ? new IllegalStateException(message)
-          : new IllegalStateException(message, cause);
+      return new IllegalStateException(message);
     }
   }
 }

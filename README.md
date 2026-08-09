@@ -127,7 +127,8 @@ Nessy itself will provide, and room for anyone else to extend it.
 Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
 `RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
 AnthropicModelProvider.RETRYABLE)` (each provider module publishes its own
-retryable-failure predicate) and nothing about calling it changes.
+retryable-failure predicate) and nothing about calling it changes (the SDKs
+also retry internally, so outer attempts multiply).
 
 ## Observability
 
@@ -206,9 +207,9 @@ and `nessy-model-openai` wrap each vendor's own Java SDK — native request
 assembly, streaming translation, thinking/caching/usage, and a `StopReason`
 mapping that fails loudly on anything the audit didn't enumerate rather than
 guessing. OpenAI's live suite is fully green against a real key; Anthropic's is
-2 of 3 live-covered (a real empty-system-block bug the live run surfaced is
-fixed, with regression tests). `nessy-examples` ships a runnable two-provider
-chat app — see [Try it](#try-it) below.
+live-validated too, including the empty-system fix (a real empty-system-block
+bug the live run surfaced is fixed, with regression tests). `nessy-examples`
+ships a runnable two-provider chat app — see [Try it](#try-it) below.
 
 Not yet built: a durable execution engine, the contextual `Policy` layer,
 context compaction, the Spring Boot starter, and a TUI. See
@@ -220,11 +221,11 @@ context compaction, the Spring Boot starter, and a TUI. See
 With a real key, run the example chat app against either provider:
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.AnthropicChat
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.AnthropicChat
 ```
 
 ```bash
-OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.OpenAiChat
+OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.OpenAiChat
 ```
 
 Both providers' `.fromEnv()` delegates to the underlying SDK's own environment

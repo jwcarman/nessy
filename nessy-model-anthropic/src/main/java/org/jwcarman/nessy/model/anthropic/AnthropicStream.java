@@ -74,11 +74,21 @@ public final class AnthropicStream implements ModelStream {
   // FQNs through the rest of the file. Matching on the wire string itself (rather than the SDK's
   // own Known/Value enums) means a genuinely novel value fails with our IllegalStateException
   // instead of the SDK's own exception type, which is the contract this method exists to keep.
+  //
+  // "model_context_window_exceeded" maps to StopReason.MAX_TOKENS: semantically it is also "ran
+  // out of room" (context, not output budget), and the reducer already halts cleanly on
+  // MAX_TOKENS, so no new StopReason variant is needed to handle it correctly.
+  //
+  // "pause_turn" is a KNOWN SDK value that this method still deliberately throws on: it is
+  // emitted only for server-side tools (e.g. the built-in web search tool), which this harness
+  // never requests via AnthropicRequests, so it is unreachable through our params today. It will
+  // gain a real mapping when server-tool support ships. Every other value not named above is
+  // genuinely novel to the SDK and also throws.
   private static StopReason mapStopReason(com.anthropic.models.messages.StopReason reason) {
     return switch (reason.asString()) {
       case "end_turn", "stop_sequence" -> StopReason.END_TURN;
       case "tool_use" -> StopReason.TOOL_USE;
-      case "max_tokens" -> StopReason.MAX_TOKENS;
+      case "max_tokens", "model_context_window_exceeded" -> StopReason.MAX_TOKENS;
       case "refusal" -> StopReason.REFUSAL;
       default ->
           throw new IllegalStateException(
@@ -127,13 +137,27 @@ public final class AnthropicStream implements ModelStream {
      * out without one ever having been translated, the turn ended without a stop reason — silently
      * returning "no more events" here would let the harness treat that as a normal, successful end
      * of turn, so it fails loudly instead.
+     *
+     * <p>Mirrors {@code OpenAiStream}'s exhaustion guard: {@code translateContentBlockStop} always
+     * removes an index from {@link #toolUsesByIndex} when its {@code content_block_stop} arrives,
+     * so a non-empty map here can only mean the stream ended with {@code content_block_start}
+     * events that never got a matching {@code content_block_stop} — orphaned {@code tool_use}
+     * accumulation with no closing event left to flush it. Silently dropping it would lose part of
+     * a tool call the caller never finds out about.
      */
     private void fill() {
       while (pending.isEmpty() && events.hasNext()) {
         translate(events.next());
       }
-      if (pending.isEmpty() && !events.hasNext() && !turnEnded) {
-        throw new IllegalStateException("stream ended without a message_delta (no stop_reason)");
+      if (pending.isEmpty() && !events.hasNext()) {
+        if (!turnEnded) {
+          throw new IllegalStateException("stream ended without a message_delta (no stop_reason)");
+        }
+        if (!toolUsesByIndex.isEmpty()) {
+          throw new IllegalStateException(
+              "stream ended with orphaned tool-use fragments at index(es): "
+                  + toolUsesByIndex.keySet());
+        }
       }
     }
 

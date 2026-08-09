@@ -34,6 +34,7 @@ import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.ImageBlock;
 import org.jwcarman.nessy.api.Message;
@@ -92,7 +93,8 @@ public final class OpenAiRequests {
   private static List<ChatCompletionMessageParam> toMessageParams(Message message) {
     return switch (message.role()) {
       case USER -> toUserRoleMessageParams(message.content());
-      case ASSISTANT -> List.of(toAssistantMessageParam(message.content()));
+      case ASSISTANT ->
+          toAssistantMessageParam(message.content()).map(List::of).orElseGet(List::of);
     };
   }
 
@@ -153,18 +155,35 @@ public final class OpenAiRequests {
             .build());
   }
 
-  private static ChatCompletionMessageParam toAssistantMessageParam(List<ContentBlock> content) {
+  /**
+   * Maps an assistant {@link Message}'s content to its param form, or nothing at all if it carries
+   * no text and no tool calls once {@link org.jwcarman.nessy.api.ThinkingBlock} and {@link
+   * org.jwcarman.nessy.api.RedactedThinkingBlock} content (this wire has no home for either, per
+   * the class javadoc) is left behind.
+   *
+   * <p>The scenario this guards is a lone unsigned {@code ThinkingBlock}: a resumed session whose
+   * thinking was cut off before it was signed settles as an assistant message containing only that
+   * one block, which has nothing to translate to here, leaving an otherwise-empty param that would
+   * carry no information for the model to see.
+   */
+  private static Optional<ChatCompletionMessageParam> toAssistantMessageParam(
+      List<ContentBlock> content) {
     var builder = ChatCompletionAssistantMessageParam.builder();
     var text = concatenateText(content);
     if (!text.isEmpty()) {
       builder.content(text);
     }
-    content.stream()
-        .filter(ToolUseBlock.class::isInstance)
-        .map(ToolUseBlock.class::cast)
-        .map(OpenAiRequests::toToolCall)
-        .forEach(builder::addToolCall);
-    return ChatCompletionMessageParam.ofAssistant(builder.build());
+    var toolCalls =
+        content.stream()
+            .filter(ToolUseBlock.class::isInstance)
+            .map(ToolUseBlock.class::cast)
+            .map(OpenAiRequests::toToolCall)
+            .toList();
+    if (text.isEmpty() && toolCalls.isEmpty()) {
+      return Optional.empty();
+    }
+    toolCalls.forEach(builder::addToolCall);
+    return Optional.of(ChatCompletionMessageParam.ofAssistant(builder.build()));
   }
 
   private static String concatenateText(List<ContentBlock> content) {

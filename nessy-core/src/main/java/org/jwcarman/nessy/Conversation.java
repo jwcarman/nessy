@@ -49,6 +49,11 @@ public final class Conversation {
    * calling thread — the same contract {@link EventHub} itself makes; and the subscription is
    * closed when {@code send} returns, whether normally or by exception, so {@code tap} never fires
    * again afterward.
+   *
+   * <p>If {@code tap} throws, the exception is contained by the hub — {@link EventHub}'s delivery
+   * contract catches and discards a subscriber's {@link RuntimeException} rather than letting it
+   * propagate — so a throwing {@code tap} will not abort the send; the loop continues and this
+   * method still returns a normal {@link Reply}.
    */
   public Reply send(String text, Consumer<Event> tap) {
     Objects.requireNonNull(tap, "tap must not be null");

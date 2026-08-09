@@ -180,6 +180,40 @@ class AnthropicRequestsTest {
       assertThat(blocks).hasSize(1);
       assertThat(blocks.get(0).isText()).isTrue();
     }
+
+    /**
+     * Reachable scenario: thinking cut off by {@code max_tokens} before its signature arrived
+     * settles as a single-block assistant message ({@code ThinkingBlock} with an empty signature).
+     * {@code toContentBlockParam} drops that one block, so the message itself must be elided
+     * outright rather than sent as a param with an empty {@code content} array (which Anthropic
+     * rejects).
+     */
+    @Test
+    void an_assistant_message_of_only_an_unsigned_thinking_block_produces_no_message_param() {
+      var unsigned = new ThinkingBlock("cut off before signing", "");
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(Message.assistant(List.of(unsigned)))), THINKING_DISABLED);
+
+      assertThat(params.messages()).isEmpty();
+    }
+
+    @Test
+    void a_mixed_message_keeps_its_surviving_blocks_in_order() {
+      var unsigned = new ThinkingBlock("cut off before signing", "");
+      var toolUse =
+          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+      var text = new TextBlock("the visible answer");
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(Message.assistant(List.of(unsigned, toolUse, text)))),
+              THINKING_DISABLED);
+
+      var blocks = params.messages().get(0).content().asBlockParams();
+      assertThat(blocks).hasSize(2);
+      assertThat(blocks.get(0).isToolUse()).isTrue();
+      assertThat(blocks.get(1).isText()).isTrue();
+    }
   }
 
   @Nested
@@ -347,6 +381,20 @@ class AnthropicRequestsTest {
       var request = new ModelRequest(List.of(), "sys", "claude-sonnet", 513, List.of(), Set.of());
 
       var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 512));
+
+      assertThat(params.thinking()).isPresent();
+    }
+
+    /**
+     * Pins the default-vs-default headroom fix: {@code AnthropicModelProvider}'s default thinking
+     * budget (1024) must leave room under {@code AgentBuilder}'s default {@code maxTokens} (4096),
+     * or THINKING-with-defaults throws on the very first send.
+     */
+    @Test
+    void the_default_thinking_budget_leaves_headroom_under_the_default_max_tokens() {
+      var request = new ModelRequest(List.of(), "sys", "claude-sonnet", 4096, List.of(), Set.of());
+
+      var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 1024));
 
       assertThat(params.thinking()).isPresent();
     }

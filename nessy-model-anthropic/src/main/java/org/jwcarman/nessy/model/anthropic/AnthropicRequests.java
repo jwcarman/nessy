@@ -86,7 +86,11 @@ public final class AnthropicRequests {
           List.of(systemBlock(request.systemPrompt(), cachingRequested)));
     }
 
-    builder.messages(request.messages().stream().map(AnthropicRequests::toMessageParam).toList());
+    builder.messages(
+        request.messages().stream()
+            .map(AnthropicRequests::toMessageParam)
+            .flatMap(Optional::stream)
+            .toList());
 
     addTools(builder, request.tools(), cachingRequested);
 
@@ -126,26 +130,45 @@ public final class AnthropicRequests {
     return CacheControlEphemeral.builder().build();
   }
 
-  private static MessageParam toMessageParam(Message message) {
+  /**
+   * Maps one {@link Message} to its param form, or nothing at all if every one of its content
+   * blocks was itself dropped (see {@link #toContentBlockParam}).
+   *
+   * <p>A message with no representable content is elided outright rather than sent as a param with
+   * an empty block list: Anthropic rejects an empty {@code content} array, and — more to the point
+   * — a message that translated to nothing carries no information for the model to see. The
+   * scenario this guards is a lone unsigned {@link ThinkingBlock}: a resumed session whose thinking
+   * was cut off before it was signed settles as an assistant message containing only that one
+   * block, which {@link #toContentBlockParam} drops, leaving nothing behind.
+   */
+  private static Optional<MessageParam> toMessageParam(Message message) {
     var role = message.role() == Role.USER ? MessageParam.Role.USER : MessageParam.Role.ASSISTANT;
     var blocks = new ArrayList<ContentBlockParam>();
     for (ContentBlock block : message.content()) {
       toContentBlockParam(block).ifPresent(blocks::add);
     }
-    return MessageParam.builder().role(role).contentOfBlockParams(blocks).build();
+    if (blocks.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(MessageParam.builder().role(role).contentOfBlockParams(blocks).build());
   }
 
   /**
    * Maps one {@link ContentBlock} to its param form, or nothing at all.
    *
-   * <p>An unsigned {@link ThinkingBlock} — signature the empty string — is the one block dropped
+   * <p>An unsigned {@link ThinkingBlock} — signature the empty string — is one block dropped
    * outright: it means the transcript predates response signing, and Anthropic rejects unsigned
-   * thinking on replay. Every other block round-trips.
+   * thinking on replay. A blank {@link TextBlock} is dropped for the same reason {@code
+   * systemBlock} never sends one: Anthropic rejects empty text blocks. Every other block
+   * round-trips.
    */
   private static Optional<ContentBlockParam> toContentBlockParam(ContentBlock block) {
     return switch (block) {
       case TextBlock text ->
-          Optional.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text.text()).build()));
+          text.text().isEmpty()
+              ? Optional.empty()
+              : Optional.of(
+                  ContentBlockParam.ofText(TextBlockParam.builder().text(text.text()).build()));
       case ImageBlock image ->
           Optional.of(
               ContentBlockParam.ofImage(

@@ -30,9 +30,9 @@ changed.
   `OPENAI_BASE_URL`, auth tokens, etc.), not a hand-rolled subset, and both
   builders take an explicit `baseUrl(...)` for OpenAI-compatible endpoints
   (OpenRouter, Ollama, …). OpenAI's live suite is fully green against a real
-  key; Anthropic's is 2 of 3 live-covered, with one real bug the live run
-  surfaced (an empty system block rejected by the API) fixed and pinned by
-  regression tests.
+  key; Anthropic's is live-validated too, including the empty-system fix — one
+  real bug the live run surfaced (an empty system block rejected by the API),
+  now fixed and pinned by regression tests.
 - **`RetryingModelProvider`** — a decorator that retries only the opening of a
   model stream, with exponential backoff (`RetryPolicy`); each provider module
   publishes its own retryable-failure predicate

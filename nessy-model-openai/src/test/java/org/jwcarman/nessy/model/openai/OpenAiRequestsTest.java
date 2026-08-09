@@ -244,6 +244,23 @@ class OpenAiRequestsTest {
       assertThat(assistantMessage.content().orElseThrow().asText()).isEqualTo("the visible answer");
       assertThat(assistantMessage.toolCalls()).isEmpty();
     }
+
+    /**
+     * Reachable scenario: thinking cut off by {@code max_tokens} before its signature arrived
+     * settles as a single-block assistant message ({@code ThinkingBlock}). Chat Completions has no
+     * home for a {@code ThinkingBlock} at all (see the class javadoc), so this message translates
+     * to neither text nor tool calls; it must be elided outright rather than sent as an
+     * otherwise-empty assistant param.
+     */
+    @Test
+    void an_assistant_message_of_only_a_thinking_block_produces_no_message_param() {
+      var thinking = new ThinkingBlock("cut off before signing", "");
+      var params = OpenAiRequests.toParams(request(List.of(Message.assistant(List.of(thinking)))));
+
+      // Only the leading system message survives; the assistant message translated to nothing.
+      assertThat(params.messages()).hasSize(1);
+      assertThat(params.messages().get(0).isSystem()).isTrue();
+    }
   }
 
   @Nested

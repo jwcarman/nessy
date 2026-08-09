@@ -27,7 +27,9 @@ final class ConsoleApprover implements Approver {
   public Awaited<Decision> approve(ApprovalRequest request) {
     IO.println("approve: " + request.description());
     String answer = IO.readln("y/n> ");
-    return answer.trim().equalsIgnoreCase("y")
+    // IO.readln returns null at EOF (e.g. Ctrl-D on the console); treated as a denial, same as
+    // any other non-"y" answer, rather than NPE-ing on the trim() below.
+    return answer != null && answer.trim().equalsIgnoreCase("y")
         ? Awaited.ready(Decision.allow())
         : Awaited.ready(new Decision.Deny("declined at the console"));
   }

@@ -220,7 +220,7 @@ public final class OpenAiModelProvider implements ModelProvider {
      */
     private OpenAIClient buildFromEnv() {
       if (apiKey == null && System.getenv(API_KEY_ENV_VAR) == null) {
-        throw missingEnvCredentials(null);
+        throw missingEnvCredentials();
       }
       try {
         var sdkBuilder = OpenAIOkHttpClient.builder().fromEnv();
@@ -235,17 +235,15 @@ public final class OpenAiModelProvider implements ModelProvider {
         }
         return sdkBuilder.build();
       } catch (RuntimeException e) {
-        throw missingEnvCredentials(e);
+        throw new IllegalStateException("could not resolve credentials from the environment", e);
       }
     }
 
-    private static IllegalStateException missingEnvCredentials(Throwable cause) {
+    private static IllegalStateException missingEnvCredentials() {
       var message =
           API_KEY_ENV_VAR
               + " environment variable is not set; call apiKey(...) or client(...) instead";
-      return cause == null
-          ? new IllegalStateException(message)
-          : new IllegalStateException(message, cause);
+      return new IllegalStateException(message);
     }
   }
 }

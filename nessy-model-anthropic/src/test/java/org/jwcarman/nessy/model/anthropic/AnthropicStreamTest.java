@@ -430,6 +430,22 @@ class AnthropicStreamTest {
     }
 
     @Test
+    void model_context_window_exceeded_maps_to_max_tokens() {
+      // "ran out of room" either way: max_tokens is the output budget,
+      // model_context_window_exceeded is the context budget. The reducer already halts cleanly on
+      // MAX_TOKENS, so both fold into the same StopReason rather than needing a new grammar
+      // variant.
+      var modelEvents =
+          drain(
+              List.of(
+                  messageStart(1),
+                  messageDelta("model_context_window_exceeded", 1),
+                  messageStop()));
+      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
+          .isEqualTo(StopReason.MAX_TOKENS);
+    }
+
+    @Test
     void a_stop_reason_the_sdk_itself_knows_but_we_do_not_map_fails_loudly_naming_it() {
       var events = List.of(messageStart(1), messageDelta("pause_turn", 1), messageStop());
       var stream = new AnthropicStream(fakeStream(events, () -> {}));
@@ -512,6 +528,31 @@ class AnthropicStreamTest {
       assertThatThrownBy(() -> stream.forEach(event -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("message_delta");
+    }
+
+    /**
+     * Mirrors {@code OpenAiStream}'s exhaustion guard: a {@code content_block_start} for a {@code
+     * tool_use} block that never gets its matching {@code content_block_stop} leaves an orphaned
+     * entry in {@code toolUsesByIndex}. Silently dropping it on stream exhaustion would lose part
+     * of a tool call the caller never finds out about, so this fails loudly instead, naming the
+     * index.
+     */
+    @Test
+    void a_stream_that_ends_with_an_orphaned_tool_use_fails_loudly_naming_the_index() {
+      var events =
+          List.of(
+              messageStart(1),
+              toolUseStart(0, "toolu_1", "get_weather"),
+              inputJsonDelta(0, "{\"loc"),
+              messageDelta("max_tokens", 1)
+              // no content_block_stop for index 0, no message_stop: the stream just ends here.
+              );
+      var stream = new AnthropicStream(fakeStream(events, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("orphaned")
+          .hasMessageContaining("0");
     }
   }
 }

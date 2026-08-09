@@ -298,6 +298,25 @@ class AgentFacadeTest {
   }
 
   @Test
+  void a_throwing_tap_does_not_abort_the_send() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+
+    Reply reply =
+        agent
+            .converse()
+            .send(
+                "what is 2+2?",
+                event -> {
+                  throw new RuntimeException("tap blew up");
+                });
+
+    assertThat(reply.failed()).isFalse();
+    assertThat(reply.text()).isEqualTo("The answer is 4.");
+  }
+
+  @Test
   void the_tap_is_closed_after_send() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hi").endTurn().text("Hi again").endTurn().build();

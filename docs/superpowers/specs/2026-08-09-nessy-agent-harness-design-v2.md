@@ -335,6 +335,10 @@ free:
 `StopReason` gets a final audit against the real Anthropic and OpenAI wire formats
 during the provider plans — the last gate before freeze.
 
+**Pre-freeze TODO**: `Usage` cache-token component(s) (`cachedInputTokens`) — the
+`PROMPT_CACHING` capability cannot currently report the cache-hit split; adding a
+record component post-1.0 is source-breaking, so decide before freeze.
+
 ## 8. The API surface
 
 ### 8.1 The front door
@@ -697,6 +701,10 @@ the application's own explicit declaration. If none is declared, the starter's
 6. **1.0 gate**: grammar freeze after the `StopReason`/wire audit; JPMS decision
    finalized; artifact-reference design (outputs referenced from state, not
    embedded) resolved before any coding-agent toolset ships.
+7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should
+   migrate to wire-JSON-driven fixtures (through each SDK's own
+   deserialization) — builder-built fixtures validate a model of the wire, not
+   the wire.
 
 ## 15. Risks
 
