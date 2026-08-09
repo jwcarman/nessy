@@ -1730,6 +1730,30 @@ Full green `./mvnw -q clean verify`; CHANGELOG Unreleased gains "Session and par
 
 ---
 
+### Task 13: Coverage measurement (JaCoCo)
+
+**Files:**
+- Modify: `pom.xml` (parent — `jacoco.version` property, plugin in pluginManagement + plugins with `prepare-agent` and `report` executions bound to the default lifecycle)
+- Modify: `CHANGELOG.md` (one line)
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `./mvnw -q clean verify` additionally emits per-module `target/site/jacoco/jacoco.xml` and HTML reports. NO coverage gate/check execution yet — reporting only; the ratchet comes after the backfill so it never lands as a red build. SonarCloud can consume the XML when the repo goes public.
+
+- [ ] **Step 1: Add the plugin**
+
+`<jacoco.version>0.8.13</jacoco.version>` (newest 0.8.x if unresolvable; record it). Standard two executions: `prepare-agent` (default phase) and `report` bound to `verify`. No `check` execution, no thresholds — deliberately.
+
+- [ ] **Step 2: Verify**
+
+Full `./mvnw -q clean verify` green and both modules' `target/site/jacoco/jacoco.xml` exist. Record headline line+branch percentages per module in your report (numbers, not judgment — the final review owns judgment).
+
+- [ ] **Step 3: Changelog + commit**
+
+CHANGELOG Unreleased: "Coverage reporting via JaCoCo (report-only; no gate yet)." Then license:format, spotless:apply, re-verify, commit `build: JaCoCo coverage reporting`.
+
+---
+
 ## Self-Review
 
 **Spec coverage** (spec v2 § → task): zones/package map §4.1–4.2 → Tasks 2–3; naming ledger §5 → Task 3; grammar §7 → Task 5; facade §8.1 → Task 8; `ToolContext.events()` §8.2 → Task 4; hub §9 → Task 4; `TerminationPolicy` §10.4 → Task 6; Observation §11 → Tasks 1, 7; JPMS §4.4 → Task 9; README promise §3/§12 → Task 10; prose test style §12 → Task 1 (generator) + Task 11 (suite convergence), with every test authored by Tasks 1–10 already in style. Deliberately not in this plan, per spec §14: `Policy` (Plan 2.5), `ContextBuilder` (with the compactor), retry decorator and its `Sleeper` test seam (Plan 2), traceparent-in-state (with `DurableEngine`), the run-refusal rule for non-idle sessions (§6 — lands with `DurableEngine`'s resume work, where it can be tested against a real parked state rather than a fabricated one).
