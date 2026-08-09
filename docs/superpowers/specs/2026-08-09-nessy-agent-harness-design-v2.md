@@ -583,6 +583,13 @@ listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
   `nessy.excludedGroups` property; `./mvnw verify` stays green keyless forever.
 - **The promise**: no mocking library, ever, in ours or required of users.
   `TestObservationRegistry` (test scope) joins the doubles for span assertions.
+- **Tests read as prose.** Method names are `snake_case` sentences; related
+  scenarios group into `@Nested` classes named as capitalized phrases; the
+  underscore→space display-name generator is configured module-wide via
+  `junit-platform.properties`, so a failing report reads
+  `TerminationPolicyTest ▸ Max turns ▸ halts at the ceiling and not below`.
+  The discipline is diagnostic as well as cosmetic: a test whose name cannot be
+  written as a sentence is usually testing more than one thing.
 
 ## 13. Modules and the defaults ladder
 
