@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class MessageTest {
@@ -71,5 +72,10 @@ class MessageTest {
   @Test
   void random_session_ids_are_distinct() {
     assertThat(SessionId.random()).isNotEqualTo(SessionId.random());
+  }
+
+  @Test
+  void random_session_ids_are_time_ordered_uuidv7() {
+    assertThat(UUID.fromString(SessionId.random().value()).version()).isEqualTo(7);
   }
 }

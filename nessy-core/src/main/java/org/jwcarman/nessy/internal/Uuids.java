@@ -13,20 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.internal;
 
-import org.jwcarman.nessy.internal.Uuids;
+import com.fasterxml.uuid.Generators;
+import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
+import java.util.UUID;
 
-/** Identifies one conversation. Opaque on purpose: the store chooses what it means. */
-public record SessionId(String value) {
+/** Time-ordered (UUIDv7) identifiers: sortable by creation time, index-friendly in stores. */
+public final class Uuids {
 
-  public SessionId {
-    if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException("session id must not be blank");
-    }
-  }
+  private static final TimeBasedEpochGenerator GENERATOR = Generators.timeBasedEpochGenerator();
 
-  public static SessionId random() {
-    return new SessionId(Uuids.timeOrdered().toString());
+  private Uuids() {}
+
+  public static UUID timeOrdered() {
+    return GENERATOR.generate();
   }
 }

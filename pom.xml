@@ -69,6 +69,7 @@
     <junit.version>6.1.2</junit.version>
     <assertj.version>3.27.7</assertj.version>
     <micrometer.version>1.16.2</micrometer.version>
+    <jug.version>5.1.0</jug.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
 
     <!-- Test groups the default build skips. Override to empty to run them:
@@ -136,6 +137,11 @@
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-simple</artifactId>
         <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.uuid</groupId>
+        <artifactId>java-uuid-generator</artifactId>
+        <version>${jug.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

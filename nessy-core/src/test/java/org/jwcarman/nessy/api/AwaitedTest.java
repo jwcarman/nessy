@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class AwaitedTest {
@@ -46,5 +47,10 @@ class AwaitedTest {
   @Test
   void random_tokens_are_distinct() {
     assertThat(ParkToken.random()).isNotEqualTo(ParkToken.random());
+  }
+
+  @Test
+  void random_park_tokens_are_time_ordered_uuidv7() {
+    assertThat(UUID.fromString(ParkToken.random().value()).version()).isEqualTo(7);
   }
 }
