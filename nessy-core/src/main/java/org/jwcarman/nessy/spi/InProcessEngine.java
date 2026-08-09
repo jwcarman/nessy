@@ -107,7 +107,7 @@ public final class InProcessEngine implements ExecutionEngine {
   @Override
   public RunOutcome run(SessionId id, Event input) {
     Observation observation = EngineObservations.run(observations, id);
-    try (Observation.Scope scope = observation.openScope()) {
+    try (var _ = observation.openScope()) {
       AtomicReference<SessionState> progress =
           new AtomicReference<>(store.load(id).orElseGet(() -> SessionState.newSession(id)));
       try {
@@ -157,7 +157,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private SessionState perform(
       AtomicReference<SessionState> progress, SessionState state, Effect effect) {
     return switch (effect) {
-      case Effect.CallModel ignored -> callModel(progress, state);
+      case Effect.CallModel _ -> callModel(progress, state);
       case Effect.RequestApproval(ToolCall call) -> feed(progress, state, decide(state, call));
       case Effect.ExecuteTool(ToolCall call) -> feed(progress, state, executeTool(state, call));
     };
@@ -179,11 +179,11 @@ public final class InProcessEngine implements ExecutionEngine {
    */
   private SessionState callModel(AtomicReference<SessionState> progress, SessionState state) {
     Observation turn = EngineObservations.turn(observations);
-    try (Observation.Scope turnScope = turn.openScope()) {
+    try (var _ = turn.openScope()) {
       SessionState current = state;
       List<Effect> deferred = new ArrayList<>();
       Observation modelCall = EngineObservations.modelCall(observations, config.model());
-      try (Observation.Scope modelCallScope = modelCall.openScope();
+      try (var _ = modelCall.openScope();
           ModelStream stream = provider.stream(requestFor(current))) {
         for (ModelEvent modelEvent : stream) {
           Step step = reduceAndNotify(current, translate(modelEvent));
@@ -330,7 +330,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private static <T> T resolve(Awaited<T> awaited, String what) {
     return switch (awaited) {
       case Awaited.Ready<T>(T value) -> value;
-      case Awaited.Parked<T> ignored ->
+      case Awaited.Parked<T> _ ->
           throw new UnsupportedOperationException(
               "InProcessEngine cannot park, but the " + what + " asked to. Use DurableEngine.");
     };

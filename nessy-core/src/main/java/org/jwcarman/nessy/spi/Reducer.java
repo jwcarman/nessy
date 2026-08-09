@@ -222,7 +222,7 @@ public record Reducer(TerminationPolicy termination) {
 
   private Step approvalDecided(SessionState state, Event.ApprovalDecided event) {
     return switch (event.decision()) {
-      case Decision.Allow ignored ->
+      case Decision.Allow _ ->
           Step.of(state.with(SessionStatus.EXECUTING_TOOL), new Effect.ExecuteTool(event.call()));
       // A denial is not a special path: it is a result the model can read and
       // adapt to, exactly like a tool that failed.

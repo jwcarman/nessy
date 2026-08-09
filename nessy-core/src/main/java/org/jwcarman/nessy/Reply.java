@@ -36,7 +36,7 @@ public record Reply(RunOutcome outcome) {
   public SessionState state() {
     return switch (outcome) {
       case RunOutcome.Completed(SessionState state) -> state;
-      case RunOutcome.Parked(SessionState state, ParkToken ignored) -> state;
+      case RunOutcome.Parked(SessionState state, ParkToken _) -> state;
     };
   }
 
