@@ -36,4 +36,24 @@
       <artifactId>nessy-core</artifactId>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <!-- nessy-testing is a test-support library consumed from
+                   both module path and classpath; it does not need a full
+                   module-info.java of its own, so it is published as a
+                   named automatic module instead. -->
+              <Automatic-Module-Name>org.jwcarman.nessy.testing</Automatic-Module-Name>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
