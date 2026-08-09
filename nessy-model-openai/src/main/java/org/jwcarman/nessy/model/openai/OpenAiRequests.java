@@ -61,11 +61,18 @@ public final class OpenAiRequests {
 
   private OpenAiRequests() {}
 
+  /**
+   * A blank {@code systemPrompt} omits the leading system message entirely, mirroring the Anthropic
+   * module's precedent: an absent system prompt is the correct encoding of "no system prompt", not
+   * an empty one.
+   */
   public static ChatCompletionCreateParams toParams(ModelRequest request) {
     var messages = new ArrayList<ChatCompletionMessageParam>();
-    messages.add(
-        ChatCompletionMessageParam.ofSystem(
-            ChatCompletionSystemMessageParam.builder().content(request.systemPrompt()).build()));
+    if (!request.systemPrompt().isBlank()) {
+      messages.add(
+          ChatCompletionMessageParam.ofSystem(
+              ChatCompletionSystemMessageParam.builder().content(request.systemPrompt()).build()));
+    }
     for (Message message : request.messages()) {
       messages.addAll(toMessageParams(message));
     }

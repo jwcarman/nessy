@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
@@ -48,6 +49,10 @@ class OpenAiRequestsTest {
         messages, "you are a helpful assistant", "gpt-4o", 1024, tools, Set.of());
   }
 
+  private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
+    return new ModelRequest(List.of(), systemPrompt, "gpt-4o", 1024, List.of(), Set.of());
+  }
+
   @Nested
   class SystemPrompt {
 
@@ -60,6 +65,20 @@ class OpenAiRequestsTest {
       var first = messages.get(0);
       assertThat(first.isSystem()).isTrue();
       assertThat(first.asSystem().content().asText()).isEqualTo("you are a helpful assistant");
+    }
+
+    @Test
+    void a_blank_system_prompt_omits_the_system_message_entirely() {
+      var params = OpenAiRequests.toParams(requestWithSystemPrompt(""));
+
+      assertThat(params.messages()).noneMatch(ChatCompletionMessageParam::isSystem);
+    }
+
+    @Test
+    void a_whitespace_only_system_prompt_omits_the_system_message_entirely() {
+      var params = OpenAiRequests.toParams(requestWithSystemPrompt("   "));
+
+      assertThat(params.messages()).noneMatch(ChatCompletionMessageParam::isSystem);
     }
   }
 
