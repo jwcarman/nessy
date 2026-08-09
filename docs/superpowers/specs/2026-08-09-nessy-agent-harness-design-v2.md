@@ -155,14 +155,16 @@ org.jwcarman.nessy.api           Message, Role, ContentBlock (sealed: TextBlock,
                                  ToolCall, ToolResult, Usage, StopReason,
                                  SessionId, SessionState, SessionStatus,
                                  Event (sealed), Decision (sealed), Awaited (sealed), ParkToken,
-                                 RunOutcome (sealed), TerminationPolicy
+                                 RunOutcome (sealed), TerminationPolicy, Transcript [§10.8]
 org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec
 org.jwcarman.nessy.api.approval  Approver, ApprovalRequest        [Policy lands here, §10.5]
 org.jwcarman.nessy.api.event     EventEmitter, EventHub, Subscription, SessionEvent, ToolProgress
 org.jwcarman.nessy.spi           ExecutionEngine, Reducer, Effect (sealed), Step, InProcessEngine
 org.jwcarman.nessy.spi.model     ModelProvider, ModelRequest, ModelEvent (sealed), ModelStream,
                                  Capability, ModelSettings
-org.jwcarman.nessy.spi.session   SessionStore
+org.jwcarman.nessy.spi.context   ContextBuilder, TokenEstimator          [amended, §10.8]
+org.jwcarman.nessy.spi.compaction Summarizer                             [amended, §10.8]
+org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry  [§10.8]
 org.jwcarman.nessy.internal      ToolInvoker, Schemas, observation conventions, engine machinery
 ```
 
@@ -479,6 +481,12 @@ addressed by compaction/`ContextBuilder` (summary + tail as the working set);
 full event-sourced journaling remains a `DurableEngine`-plan question, not a
 seam change.
 
+**Amended 2026-08-09 (§10.8):** history's durable source of truth moves to
+the append-only `TranscriptStore` journal, fed directly by the engine at
+message birth; `SessionStore` keeps its snapshot role and the semantics
+above, but compaction's rewrite is thereby demoted from information loss to
+working-set trim.
+
 ### 10.4 TerminationPolicy (new, API-zone, consulted by the reducer)
 
 v1's hard-coded consecutive-error ceiling was one termination rule wearing the
@@ -573,6 +581,11 @@ Design rules:
   Compaction-by-default replaces v1's "fail loudly on overflow" — the loud
   failure remains the backstop, no longer the plan.
 
+**Amended 2026-08-09 (§10.8):** the engine's private summarization method is
+extracted into the `Summarizer` seam (`spi.compaction`), the pair-safe cut
+relocates onto the `Transcript` type, and wire-bound message lists become
+`Transcript`s. Semantics above are otherwise unchanged.
+
 ### 10.7 Parallel tool execution — design note (resolved: NOT a freeze gate)
 
 The design pass concluded parallelism requires **no sealed-grammar change**: a
@@ -585,6 +598,135 @@ events back **in effect order** (parallel wall-clock, deterministic event order
 — replayability survives). The reducer's id-keyed result handling already
 tolerates this. Accordingly the freeze-gate table marks this item resolved:
 purely a reducer/engine evolution, schedulable on demand post-1.0.
+
+### 10.8 Context collaborators — the amendment (2026-08-09, post-Plan 4)
+
+Plan 4 shipped compaction as a state rewrite and summarization as a private
+engine method. A design review with the project owner immediately after
+settled the follow-on architecture: the write path becomes sacred, the
+domain collaborators become seams, and the transcript invariant gets exactly
+one home. Four pieces, packaged by the domain they serve.
+
+**The governing invariant: compaction never touches the write path.** The
+engine appends every message to the transcript journal at the moment it is
+born — unconditionally, directly, before anything read-shaped has an
+opinion. Everything context-shaped (compaction, elision, windowing,
+budgeting) lives on the read path. Append-only stops being a discipline
+stores must trust the reducer to honor and becomes structural: nothing in
+the system has an API to rewrite history.
+
+**`Transcript` (api) — the pairing invariant's single home.** The rule that
+an assistant `tool_use` must never be separated from its results was
+enforced in two implicit places (the reducer's private cut method;
+`elidingToolResults` being careful) and in zero places for third-party
+projections — a pair-breaking custom `ContextBuilder` would surface as a
+provider 400. `Transcript` is an immutable value type over an ordered
+message list whose construction validates the invariant: every `tool_use`
+id in an assistant message is answered, completely and immediately, by the
+following results message, and no orphan results exist. The boundary logic
+becomes its behavior — the pair-safe cut (largest index at or below a limit
+that lands before a genuine user text turn) moves out of the reducer's
+private method and onto the type, with head/tail slicing beside it — so the
+reducer, the summarizer's head selection, and any budget-aware projection
+all use one implementation of "where may I cut?". Wire-bound seams speak
+`Transcript`: `ContextBuilder.project` returns one, `ModelRequest` and
+`Effect.Compact` carry one. `SessionState.messages` stays a plain list — a
+mid-turn state legitimately ends with an open `tool_use` awaiting its
+results; the reducer guarantees completeness at every `CallModel`, which is
+where transcripts are minted. An invalid projection now fails loudly at the
+seam, in-process, with a message naming the orphaned id.
+
+**`TranscriptStore` (spi.session) — the append-only journal.**
+
+```java
+public interface TranscriptStore {
+    void append(SessionId id, TranscriptEntry entry);
+    List<TranscriptEntry> read(SessionId id);
+
+    static TranscriptStore inMemory() { … }
+}
+
+public record TranscriptEntry(Message message, long estimatedTokens, Usage turnUsage) { … }
+```
+
+The engine appends at message birth. Providers report usage per *call*,
+never per message — so the entry carries both the honest numbers that
+exist: `estimatedTokens` from the `TokenEstimator` for every message
+(the only message-level figure obtainable at all), and `turnUsage` for
+assistant messages, whose `outputTokens` genuinely are that message's cost
+(every other message appends `Usage.zero()`; its cost surfaces as the next
+turn's input). Metadata rides on the entry rather than on the `Message`
+grammar, which stays wire-pure. The journal is never on the run
+hot path: loads and resumes come from `SessionStore` snapshots exactly as
+today. The journal exists for what snapshots cannot do — audit, debugging a
+bad summary, re-summarizing with a better model later, and memory
+extraction. With the journal as the durable source of truth for history,
+compaction's state rewrite is demoted from information loss to working-set
+trim. `SessionStore` is unchanged and `generation` survives (snapshot
+stores still diff by it). The exemplary durable implementation is
+**`nessy-store-cassandra`**: partition key per session, clustering by append
+sequence — an append-heavy write path with rare sequential reads is
+precisely the workload Cassandra's storage model is built for.
+
+**`Summarizer` (spi.compaction) — the compaction domain's collaborator.**
+
+```java
+public interface Summarizer {
+    String summarize(Transcript head, CompactionPolicy policy);
+}
+```
+
+The head handed in may begin with the previous summary message, so
+summaries fold forward across recompactions instead of nesting. It returns
+prose; the reducer keeps ownership of the summary message's format and
+placement, so replay determinism stays in one place (`Event.Compacted`
+carries the string, as shipped). Failure is a thrown `RuntimeException`,
+and the engine's best-effort path is unchanged: `CompactionFailed` on the
+hub, `CompactionSkipped` fed, turn proceeds. The default,
+`Summarizer.usingProvider(provider)`, is exactly the shipped behavior
+extracted from the engine — tool-free call, the policy's
+`summaryMaxTokens` and `instructions`, blank result treated as failure —
+and the engine keeps the `nessy.compaction` observation wrap. This is
+deliberately a many-implementations seam: a cheap-model variant built over
+a *different* `ModelProvider` (converse with the frontier model, summarize
+with a small one), extractive or heuristic summarizers that never call a
+model, remote summarization services. `AgentBuilder.summarizer(…)`, default
+derived from the configured provider; the scripted double ships in
+`nessy-testing` beside the other doubles.
+
+**`TokenEstimator` (spi.context) — the message-level number that models
+never report.**
+
+```java
+public interface TokenEstimator {
+    long estimate(Message message);
+
+    static TokenEstimator heuristic() { … }  // content characters / 4
+}
+```
+
+Providers report usage per call; nothing reports it per message. This seam
+exists to manufacture that missing figure honestly: the engine estimates
+each message at append time and the estimate rides into the journal on the
+`TranscriptEntry`. The same per-message figures serve the read path —
+budget-aware projections ("keep as many recent messages as fit in 20k
+tokens", an honest upgrade over counting messages) and sizing the head
+handed to a summarizer sum them. It complements the measured trigger and
+never replaces it: compaction keeps triggering on `lastInputTokens`, the
+provider's own exact count. The `heuristic()` default is good enough in a
+lot of cases and says so; anything smarter — a tokenizer-library adapter, a
+provider's count-tokens endpoint — drops in through the seam.
+
+**Packaging is by domain, not by a catch-all.** `spi.context` holds
+`ContextBuilder` (moved from `spi` root, a free rename pre-1.0) and
+`TokenEstimator`; `spi.compaction` holds `Summarizer`; `spi.session` gains
+`TranscriptStore` beside `SessionStore`. Collaborators live next to the
+seam they serve, the way `spi.model` already works.
+
+**What this amendment does not touch:** the measured trigger, the pair-safe
+cut semantics (relocated, not changed), best-effort failure,
+`CompactionPolicy`'s shape, and the engine's durability contract all stand
+as shipped in Plan 4.
 
 ## 11. Observability
 
@@ -680,7 +822,10 @@ listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
 | `Policy` (pre-1.0) | derived from `requiresApproval()` | path/allowlist rules | OPA, corporate policy |
 | `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
-| `ContextBuilder` | `ContextBuilder.identity()` | `elidingToolResults(keepRecent)` (shipped); stateful compaction (shipped, §10.6) | RAG, redaction |
+| `ContextBuilder` | `ContextBuilder.identity()` | `elidingToolResults(keepRecent)` (shipped); stateful compaction (shipped, §10.6); token-budget windowing (§10.8) | RAG, redaction |
+| `TranscriptStore` (§10.8) | `TranscriptStore.inMemory()` | `nessy-store-cassandra` | any append-only journal |
+| `Summarizer` (§10.8) | `usingProvider(…)` — the session's own model | cheap-model variant; extractive | remote services, custom |
+| `TokenEstimator` (§10.8) | `heuristic()` (chars / 4) | tokenizer-library adapter | provider count-tokens APIs |
 
 ### 13.1 Classpath-upgradeable defaults (the Spring starter's defining feature)
 
@@ -740,6 +885,9 @@ the application's own explicit declaration. If none is declared, the starter's
 4. Then as previously mapped: OpenAI-wire provider, `DurableEngine` (+ trace
    continuity, + resume semantics of §6), Spring Boot starter, TUI. Compaction
    and `ContextBuilder` (§10.6) shipped in Plan 4, ahead of this sequencing.
+   The §10.8 context-collaborator amendment (`Transcript`, `TranscriptStore`,
+   `Summarizer`, `TokenEstimator`, domain packaging) is next in line, before
+   `DurableEngine` — it reshapes seams the durable engine will consume.
 5. **`nessy-tool-mcp` (unscheduled, acknowledged)**: an adapter exposing MCP
    server tools as `Tool<?>` instances. Deliberately unscheduled: it drags in
    authorization, elicitation, and remote-tool trust — interactions with the
@@ -758,6 +906,7 @@ the application's own explicit declaration. If none is declared, the starter's
    | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | ✅ cleared — `Usage` is now `(inputTokens, outputTokens, cachedInputTokens)` |
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
+   | `Transcript` adoption (`ContextBuilder`/`ModelRequest`/`Effect.Compact` speak `Transcript`) | seam signature + record component types; breaking after 1.0 | open — ships with the §10.8 plan |
    | Parallel tool execution | — | ✅ resolved as NOT a gate — needs no sealed change (multi-effect Steps + ordered feed, §10.7) |
 7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should
    migrate to wire-JSON-driven fixtures (through each SDK's own
@@ -791,6 +940,10 @@ the application's own explicit declaration. If none is declared, the starter's
 | Events as the observability backbone? | No — hub for narrative and counters; Observation for spans, timers, context |
 | Async or sync event delivery? | Synchronous default; async is a decorator |
 | One front door or two? | One: `Nessy.agent()`; engine reached through `Agent` |
+| Where does history live durably? (2026-08-09) | The append-only `TranscriptStore` journal, fed by the engine at message birth; state is the working set (§10.8) |
+| Where is the tool-pairing invariant enforced? (2026-08-09) | Once, in the `Transcript` type, at construction (§10.8) |
+| Is summarization pluggable? (2026-08-09) | Yes — `spi.compaction.Summarizer`, a many-implementations seam; the reducer keeps summary formatting (§10.8) |
+| Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` manufactures the message-level figure, journaled on each `TranscriptEntry` (§10.8) |
 | Test-only interfaces: where? | Internal, unadvertised; promotion on evidence only |
 | `MODIFY` policy verb? | Rejected — attribution nightmare |
 | Grammar additions timing | Pre-1.0, per §7 list; frozen at 1.0 |
