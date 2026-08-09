@@ -17,6 +17,8 @@ package org.jwcarman.nessy.spi;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
@@ -24,6 +26,7 @@ import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ThinkingBlock;
 import org.jwcarman.nessy.api.ToolCall;
@@ -38,21 +41,17 @@ import org.jwcarman.nessy.api.ToolUseBlock;
  * event it always produces the same step, which is what makes the loop testable without a model and
  * resumable on another machine.
  *
- * @param maxConsecutiveErrors how many errored tool results in a row before the session fails
- *     rather than burning tokens in a loop
+ * @param termination decides when the loop must stop calling the model rather than burning tokens
+ *     in a loop
  */
-public record Reducer(int maxConsecutiveErrors) {
-
-  public static final int DEFAULT_MAX_CONSECUTIVE_ERRORS = 3;
+public record Reducer(TerminationPolicy termination) {
 
   public Reducer {
-    if (maxConsecutiveErrors < 1) {
-      throw new IllegalArgumentException("maxConsecutiveErrors must be at least 1");
-    }
+    Objects.requireNonNull(termination, "termination");
   }
 
   public static Reducer withDefaults() {
-    return new Reducer(DEFAULT_MAX_CONSECUTIVE_ERRORS);
+    return new Reducer(TerminationPolicy.defaults());
   }
 
   public Step reduce(SessionState state, Event event) {
@@ -75,12 +74,16 @@ public record Reducer(int maxConsecutiveErrors) {
    * breaker must not re-fail on its very first errored result.
    */
   private Step userSaid(SessionState state, Event.UserSaid event) {
-    return Step.of(
+    SessionState next =
         state
             .withMessageAppended(Message.user(event.content()))
             .withConsecutiveErrors(0)
-            .with(SessionStatus.AWAITING_MODEL),
-        Effect.callModel());
+            .with(SessionStatus.AWAITING_MODEL);
+    Optional<String> halt = termination.shouldHalt(next);
+    if (halt.isPresent()) {
+      return Step.of(next.withFailureReason(halt.get()).with(SessionStatus.FAILED));
+    }
+    return Step.of(next, Effect.callModel());
   }
 
   /**
@@ -188,10 +191,11 @@ public record Reducer(int maxConsecutiveErrors) {
     SessionState next =
         state.withPendingResults(results).withPendingCalls(remaining).withConsecutiveErrors(errors);
 
-    if (errors >= maxConsecutiveErrors) {
+    Optional<String> halt = termination.shouldHalt(next);
+    if (halt.isPresent()) {
       return Step.of(
           flushResults(abandonPendingCalls(next))
-              .withFailureReason(next.consecutiveErrors() + " consecutive tool errors")
+              .withFailureReason(halt.get())
               .with(SessionStatus.FAILED));
     }
     if (!remaining.isEmpty()) {

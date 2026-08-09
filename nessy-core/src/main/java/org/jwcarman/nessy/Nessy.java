@@ -17,6 +17,7 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Set;
+import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -56,7 +57,7 @@ public final class Nessy {
     private Approver approver = Approver.allowAll();
     private SessionStore store = SessionStore.inMemory();
     private EventHub events = EventHub.synchronous();
-    private int maxConsecutiveErrors = Reducer.DEFAULT_MAX_CONSECUTIVE_ERRORS;
+    private TerminationPolicy termination = TerminationPolicy.defaults();
     private ObjectMapper mapper = new ObjectMapper();
 
     private Builder() {}
@@ -109,8 +110,8 @@ public final class Nessy {
       return this;
     }
 
-    public Builder maxConsecutiveErrors(int maxConsecutiveErrors) {
-      this.maxConsecutiveErrors = maxConsecutiveErrors;
+    public Builder termination(TerminationPolicy termination) {
+      this.termination = termination;
       return this;
     }
 
@@ -132,7 +133,7 @@ public final class Nessy {
           approver,
           store,
           events,
-          new Reducer(maxConsecutiveErrors),
+          new Reducer(termination),
           new ModelSettings(model, systemPrompt, maxTokens, capabilities),
           mapper);
     }

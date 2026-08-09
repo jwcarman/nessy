@@ -45,8 +45,8 @@ class ValidationTest {
   }
 
   @Test
-  void anErrorCeilingBelowOneIsRejected() {
-    assertThatThrownBy(() -> new Reducer(0)).isInstanceOf(IllegalArgumentException.class);
+  void aNullTerminationPolicyIsRejected() {
+    assertThatThrownBy(() -> new Reducer(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test

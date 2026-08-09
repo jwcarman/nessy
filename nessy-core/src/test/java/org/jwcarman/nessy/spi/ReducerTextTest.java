@@ -25,6 +25,7 @@ import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.Usage;
 
@@ -106,5 +107,17 @@ class ReducerTextTest {
     Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
 
     assertThat(step.state().messages()).containsExactly(Message.user("hi"));
+  }
+
+  @Test
+  void a_fresh_user_message_on_a_turn_exhausted_session_halts_instead_of_calling_the_model() {
+    Reducer limited = new Reducer(TerminationPolicy.maxTurns(1));
+    SessionState exhausted = SessionState.newSession(new SessionId("s1")).withTurns(1);
+
+    Step step = limited.reduce(exhausted, Event.UserSaid.of("more?"));
+
+    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+    assertThat(step.state().failureReason()).contains("turn");
+    assertThat(step.effects()).isEmpty();
   }
 }

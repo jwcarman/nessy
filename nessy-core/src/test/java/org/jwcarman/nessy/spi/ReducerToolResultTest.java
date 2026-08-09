@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
@@ -34,7 +35,7 @@ import org.jwcarman.nessy.api.Usage;
 
 class ReducerToolResultTest {
 
-  private final Reducer reducer = new Reducer(2);
+  private final Reducer reducer = new Reducer(TerminationPolicy.maxConsecutiveErrors(2));
   private final SessionState initial = SessionState.newSession(new SessionId("s1"));
 
   private static ToolCall call(String id) {
@@ -43,6 +44,11 @@ class ReducerToolResultTest {
 
   /** Drives the loop to the point where {@code calls} are pending approval. */
   private SessionState awaitingApproval(ToolCall... calls) {
+    return awaitingApprovalWith(reducer, calls);
+  }
+
+  /** Drives {@code reducer} to the point where {@code calls} are pending approval. */
+  private SessionState awaitingApprovalWith(Reducer reducer, ToolCall... calls) {
     SessionState state = initial;
     for (ToolCall each : calls) {
       state = reducer.reduce(state, new Event.ToolCallRequested(each)).state();
@@ -156,7 +162,7 @@ class ReducerToolResultTest {
 
   @Test
   void failingWithCallsStillPendingAnswersEveryOneOfThem() {
-    Reducer strict = new Reducer(1);
+    Reducer strict = new Reducer(TerminationPolicy.maxConsecutiveErrors(1));
     ToolCall first = call("c1");
     ToolCall second = call("c2");
     SessionState state = initial;
@@ -213,5 +219,24 @@ class ReducerToolResultTest {
     assertThat(step.effects()).isEmpty();
     assertThat(step.state().messages().getLast().content())
         .containsExactly(new ToolResultBlock("c1", "boom", true));
+  }
+
+  @Test
+  void halting_mid_batch_still_answers_every_pending_tool_use() {
+    Reducer limited = new Reducer(TerminationPolicy.maxConsecutiveErrors(1));
+    ToolCall first = call("c1");
+    ToolCall second = call("c2");
+    SessionState state = awaitingApprovalWith(limited, first, second);
+    state = limited.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
+
+    Step step = limited.reduce(state, new Event.ToolFinished(first, ToolResult.error("boom")));
+
+    assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+    assertThat(step.state().failureReason()).contains("consecutive");
+    assertThat(step.state().pendingCalls()).isEmpty();
+    assertThat(step.state().messages().getLast().content())
+        .extracting("toolUseId")
+        .containsExactly("c1", "c2");
+    assertThat(step.effects()).isEmpty();
   }
 }
