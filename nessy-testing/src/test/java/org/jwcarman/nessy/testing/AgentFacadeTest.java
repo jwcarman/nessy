@@ -194,6 +194,13 @@ class AgentFacadeTest {
   }
 
   @Test
+  void a_null_compaction_policy_is_rejected() {
+    assertThatThrownBy(() -> Nessy.agent().compaction(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("compaction");
+  }
+
+  @Test
   void reply_text_excludes_thinking_prose() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()

@@ -48,7 +48,14 @@ class ValidationTest {
 
   @Test
   void a_null_termination_policy_is_rejected() {
-    assertThatThrownBy(() -> new Reducer(null)).isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> new Reducer(null, CompactionPolicy.defaults()))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_null_compaction_policy_is_rejected() {
+    assertThatThrownBy(() -> new Reducer(TerminationPolicy.defaults(), null))
+        .isInstanceOf(NullPointerException.class);
   }
 
   @Test

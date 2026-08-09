@@ -19,11 +19,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CompactionPolicy;
 import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
@@ -44,15 +46,20 @@ import org.jwcarman.nessy.api.ToolUseBlock;
  *
  * @param termination decides when the loop must stop calling the model rather than burning tokens
  *     in a loop
+ * @param compaction decides when and how the settled conversation is summarized to keep it inside
+ *     the model's context window
  */
-public record Reducer(TerminationPolicy termination) {
+public record Reducer(TerminationPolicy termination, CompactionPolicy compaction) {
+
+  private static final String SUMMARY_PREFIX = "[Conversation summary — earlier turns compacted]\n";
 
   public Reducer {
     Objects.requireNonNull(termination, "termination must not be null");
+    Objects.requireNonNull(compaction, "compaction must not be null");
   }
 
   public static Reducer defaults() {
-    return new Reducer(TerminationPolicy.defaults());
+    return new Reducer(TerminationPolicy.defaults(), CompactionPolicy.defaults());
   }
 
   public Step reduce(SessionState state, Event event) {
@@ -67,8 +74,9 @@ public record Reducer(TerminationPolicy termination) {
       case Event.ApprovalDecided e -> approvalDecided(state, e);
       case Event.ToolFinished(ToolCall call, ToolResult result) ->
           toolFinished(state, call, result);
-      case Event.Compacted _ -> throw new UnsupportedOperationException("Task 2");
-      case Event.CompactionSkipped _ -> throw new UnsupportedOperationException("Task 2");
+      case Event.Compacted e -> compacted(state, e);
+      case Event.CompactionSkipped _ ->
+          Step.of(state.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
     };
   }
 
@@ -93,7 +101,7 @@ public record Reducer(TerminationPolicy termination) {
               .withFailureReason(halt.get())
               .with(SessionStatus.FAILED));
     }
-    return Step.of(next, Effect.callModel());
+    return proceedOrCompact(next);
   }
 
   /**
@@ -158,10 +166,12 @@ public record Reducer(TerminationPolicy termination) {
    * Ends the model's turn.
    *
    * <p>A turn cut off at the token ceiling, or one the model refused to continue, fails the session
-   * rather than reporting {@link SessionStatus#COMPLETE}. Context compaction is deliberately
-   * deferred, so overflow has to fail loudly: a half-finished sentence reported as a finished
-   * answer is the worse outcome, and it is silent. A refusal gets the same treatment for the same
-   * reason: nothing downstream can tell a refused turn from a finished one except this reducer.
+   * rather than reporting {@link SessionStatus#COMPLETE}. Compaction guards against reaching the
+   * ceiling by shrinking the transcript <em>before</em> the next call, but it cannot rescue a turn
+   * that has already overflowed mid-stream, so overflow still has to fail loudly: a half-finished
+   * sentence reported as a finished answer is the worse outcome, and it is silent. A refusal gets
+   * the same treatment for the same reason: nothing downstream can tell a refused turn from a
+   * finished one except this reducer.
    *
    * <p>A turn can be truncated mid-{@code tool_use}, leaving the just-settled assistant message
    * with {@link ToolUseBlock}s that never got a matching result. Left alone, those pending calls
@@ -172,7 +182,10 @@ public record Reducer(TerminationPolicy termination) {
    */
   private Step modelTurnEnded(SessionState state, Event.ModelTurnEnded event) {
     SessionState accounted =
-        state.withTurns(state.turns() + 1).withUsage(state.usage().plus(event.usage()));
+        state
+            .withTurns(state.turns() + 1)
+            .withUsage(state.usage().plus(event.usage()))
+            .withLastInputTokens(event.usage().inputTokens());
     SessionState settled = settleAssistantMessage(accounted);
     Optional<String> halt = haltReason(event.reason());
     if (halt.isPresent()) {
@@ -257,7 +270,7 @@ public record Reducer(TerminationPolicy termination) {
           next.with(SessionStatus.AWAITING_APPROVAL),
           new Effect.RequestApproval(remaining.getFirst()));
     }
-    return Step.of(flushResults(next).with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+    return proceedOrCompact(flushResults(next).with(SessionStatus.AWAITING_MODEL));
   }
 
   /**
@@ -295,6 +308,72 @@ public record Reducer(TerminationPolicy termination) {
               pending.id(), "Abandoned: the session failed before this tool ran.", true));
     }
     return state.withPendingResults(results).withPendingCalls(List.of());
+  }
+
+  /**
+   * The decision made at every point the loop is about to ask the model to continue: call it, or —
+   * when the most recently measured turn ran at or past {@link CompactionPolicy#triggerTokens()} —
+   * summarize the older half of the transcript first. Termination has already been checked by the
+   * caller; this is the second half of that same decision point, tried at most once per point (a
+   * skipped or completed compaction does not loop back through here).
+   */
+  private Step proceedOrCompact(SessionState state) {
+    if (state.lastInputTokens() < compaction.triggerTokens()) {
+      return Step.of(state, Effect.callModel());
+    }
+    int cut = pairSafeCut(state.messages());
+    if (cut == 0) {
+      // Nothing compactable — a giant tool exchange with no user-text boundary to cut at,
+      // for instance. Calling the model uncompacted beats looping forever chasing a cut
+      // that will never exist.
+      return Step.of(state, Effect.callModel());
+    }
+    return Step.of(
+        state.with(SessionStatus.COMPACTING),
+        new Effect.Compact(state.messages().subList(0, cut), compaction.instructions()));
+  }
+
+  /**
+   * The summarizer's reply lands: the same cut is recomputed (state is unchanged since it was
+   * decided, so determinism holds) and everything before it collapses into one summary message,
+   * with the tail preserved verbatim and in order.
+   */
+  private Step compacted(SessionState state, Event.Compacted event) {
+    List<Message> messages = state.messages();
+    int cut = pairSafeCut(messages);
+    List<Message> rewritten = new ArrayList<>();
+    rewritten.add(Message.user(SUMMARY_PREFIX + event.summary()));
+    rewritten.addAll(messages.subList(cut, messages.size()));
+    SessionState next =
+        state
+            .withMessages(rewritten)
+            .withGeneration(state.generation() + 1)
+            .withLastInputTokens(0)
+            .with(SessionStatus.AWAITING_MODEL);
+    return Step.of(next, Effect.callModel());
+  }
+
+  /**
+   * The largest index {@code cut <= messages.size() - compaction.keepRecentMessages()} at which
+   * {@code messages.get(cut)} is a genuine user turn — a {@link Role#USER} message whose blocks are
+   * all {@link TextBlock}s, never a spot between an assistant {@code tool_use} and the message
+   * carrying its results. Walks downward from the limit; {@code 0} when no index qualifies, which
+   * tells the caller nothing is safe to compact away.
+   */
+  private int pairSafeCut(List<Message> messages) {
+    int limit = Math.min(messages.size() - compaction.keepRecentMessages(), messages.size() - 1);
+    for (int cut = limit; cut > 0; cut--) {
+      if (isGenuineUserTurn(messages.get(cut))) {
+        return cut;
+      }
+    }
+    return 0;
+  }
+
+  private static boolean isGenuineUserTurn(Message message) {
+    return message.role() == Role.USER
+        && !message.content().isEmpty()
+        && message.content().stream().allMatch(TextBlock.class::isInstance);
   }
 
   /**

@@ -125,6 +125,23 @@ public record SessionState(
         status);
   }
 
+  /** Replaces the settled conversation wholesale, as compaction does. */
+  public SessionState withMessages(List<Message> newMessages) {
+    return new SessionState(
+        id,
+        newMessages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        lastInputTokens,
+        generation,
+        failureReason,
+        status);
+  }
+
   public SessionState withPendingBlocks(List<ContentBlock> blocks) {
     return new SessionState(
         id,

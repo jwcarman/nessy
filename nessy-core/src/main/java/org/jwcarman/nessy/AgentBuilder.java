@@ -17,7 +17,9 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.Objects;
 import java.util.Set;
+import org.jwcarman.nessy.api.CompactionPolicy;
 import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
@@ -52,6 +54,7 @@ public final class AgentBuilder {
   private SessionStore store = SessionStore.inMemory();
   private EventHub events = EventHub.synchronous();
   private TerminationPolicy termination = TerminationPolicy.defaults();
+  private CompactionPolicy compaction = CompactionPolicy.defaults();
   private ObjectMapper mapper = new ObjectMapper();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
 
@@ -114,6 +117,11 @@ public final class AgentBuilder {
     return this;
   }
 
+  public AgentBuilder compaction(CompactionPolicy compaction) {
+    this.compaction = Objects.requireNonNull(compaction, "compaction must not be null");
+    return this;
+  }
+
   public AgentBuilder objectMapper(ObjectMapper mapper) {
     this.mapper = mapper;
     return this;
@@ -138,7 +146,7 @@ public final class AgentBuilder {
             approver,
             store,
             events,
-            new Reducer(termination),
+            new Reducer(termination, compaction),
             new ModelSettings(model, systemPrompt, maxTokens, capabilities),
             mapper,
             observations);
