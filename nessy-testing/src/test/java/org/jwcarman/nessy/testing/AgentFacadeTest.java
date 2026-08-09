@@ -123,4 +123,28 @@ class AgentFacadeTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("provider");
   }
+
+  @Test
+  void a_missing_model_is_rejected_at_build_time() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+
+    assertThatThrownBy(() -> Nessy.agent().provider(provider).build())
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("model");
+  }
+
+  @Test
+  void reply_text_excludes_thinking_prose() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .thinking("Let me think.")
+            .text("The answer is 4.")
+            .endTurn()
+            .build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+
+    Reply reply = agent.converse().send("what is 2+2?");
+
+    assertThat(reply.text()).isEqualTo("The answer is 4.");
+  }
 }

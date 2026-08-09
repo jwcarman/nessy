@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ThinkingBlock;
 import org.jwcarman.nessy.api.ToolResult;
@@ -104,6 +105,7 @@ class EndToEndTest {
     Reply reply = agent.converse().send("what is 2+2?");
 
     assertThat(reply.failed()).isFalse();
+    assertThat(reply.state().status()).isEqualTo(SessionStatus.COMPLETE);
     assertThat(reply.state().messages()).hasSize(4);
     assertThat(reply.text()).isEqualTo("The answer is 4.");
     assertThat(subscriber.ofType(SessionEvent.class)).isNotEmpty();
