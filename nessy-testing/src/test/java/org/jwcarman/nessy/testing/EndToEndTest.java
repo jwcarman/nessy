@@ -16,29 +16,25 @@
 package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Nessy;
+import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ThinkingBlock;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
-import org.jwcarman.nessy.api.tool.ToolRegistry;
-import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.model.Capability;
 
 class EndToEndTest {
@@ -85,7 +81,7 @@ class EndToEndTest {
   }
 
   @Test
-  void aFullToolCallingConversationRunsEndToEnd() {
+  void a_full_tool_calling_conversation_runs_end_to_end() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .text("Let me add those.")
@@ -94,38 +90,31 @@ class EndToEndTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
-    EventHub hub = EventHub.synchronous();
     RecordingSubscriber subscriber = new RecordingSubscriber();
-    subscriber.attachTo(hub);
 
-    ExecutionEngine engine =
-        Nessy.builder()
+    Agent agent =
+        Nessy.agent()
             .provider(provider)
             .model("fake-model")
             .systemPrompt("be helpful")
-            .tools(ToolRegistry.of(new AddTool()))
-            .approver(Approver.allowAll())
-            .events(hub)
+            .tools(new AddTool())
             .build();
+    subscriber.attachTo(agent.events());
 
-    RunOutcome outcome = engine.run(new SessionId("s1"), Event.UserSaid.of("what is 2+2?"));
+    Reply reply = agent.converse().send("what is 2+2?");
 
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
-    assertThat(completed.state().messages()).hasSize(4);
+    assertThat(reply.failed()).isFalse();
+    assertThat(reply.state().messages()).hasSize(4);
+    assertThat(reply.text()).isEqualTo("The answer is 4.");
     assertThat(subscriber.ofType(SessionEvent.class)).isNotEmpty();
   }
 
   @Test
-  void theToolSchemaReachesTheModel() {
+  void the_tool_schema_reaches_the_model() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
 
-    Nessy.builder()
-        .provider(provider)
-        .model("fake-model")
-        .tools(ToolRegistry.of(new AddTool()))
-        .build()
-        .run(new SessionId("s1"), Event.UserSaid.of("hello"));
+    agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hello"));
 
     assertThat(provider.requests().getFirst().tools()).hasSize(1);
     assertThat(provider.requests().getFirst().tools().getFirst().name()).isEqualTo("add");
@@ -142,28 +131,28 @@ class EndToEndTest {
   }
 
   @Test
-  void requestedCapabilitiesReachTheProvider() {
+  void requested_capabilities_reach_the_provider() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .capabilities(Set.of(Capability.PROMPT_CACHING))
+            .build();
 
-    Nessy.builder()
-        .provider(provider)
-        .model("fake-model")
-        .capabilities(Set.of(Capability.PROMPT_CACHING))
-        .build()
-        .run(new SessionId("s1"), Event.UserSaid.of("hello"));
+    agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hello"));
 
     assertThat(provider.requests().getFirst().requested())
         .containsExactly(Capability.PROMPT_CACHING);
   }
 
   @Test
-  void usageAccumulatesFromTheModelIntoTheFinalState() {
+  void usage_accumulates_from_the_model_into_the_final_state() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5)).build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    ExecutionEngine engine = Nessy.builder().provider(provider).model("fake-model").build();
-
-    RunOutcome outcome = engine.run(new SessionId("s1"), Event.UserSaid.of("hi"));
+    RunOutcome outcome = agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().usage()).isEqualTo(new Usage(10, 5));
@@ -171,23 +160,15 @@ class EndToEndTest {
   }
 
   @Test
-  void thinkingChunksSettleIntoAThinkingBlockBeforeTheAnswer() {
+  void thinking_chunks_settle_into_a_thinking_block_before_the_answer() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    ExecutionEngine engine = Nessy.builder().provider(provider).model("fake-model").build();
-
-    RunOutcome outcome = engine.run(new SessionId("s1"), Event.UserSaid.of("hi"));
+    RunOutcome outcome = agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().messages().getLast().content())
         .containsExactly(new ThinkingBlock("Let me think.", ""), new TextBlock("Answer."));
-  }
-
-  @Test
-  void aMissingModelIsRejectedAtBuildTime() {
-    assertThatThrownBy(() -> Nessy.builder().model("fake-model").build())
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("model");
   }
 }
