@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 
 /**
  * Converts a {@link ToolSpec}'s wire-neutral {@link ObjectNode} schema into the SDK's {@link
