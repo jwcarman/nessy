@@ -329,15 +329,11 @@ free:
 | `ContentBlock.RedactedThinkingBlock(data)` | Anthropic redacted thinking round-trip |
 | `ContentBlock.ImageBlock(mediaType, base64Data)` | `Capability.IMAGE_INPUT` is already declared; the grammar must be able to say it |
 | `ModelEvent.ThinkingChunk(text)` + `Event.ThinkingDelta(text)` | streamed thinking accumulates like text; the reducer merges deltas into a trailing `ThinkingBlock`. Signature delivery (Anthropic requires the signature to round-trip) is finalized in Plan 2 against the real wire — still pre-freeze |
-| `Usage(inputTokens, outputTokens)` + `ModelEvent.TurnEnded(reason, usage)` | cost-budget termination and `gen_ai.usage.*` span attributes |
+| `Usage(inputTokens, outputTokens, cachedInputTokens)` + `ModelEvent.TurnEnded(reason, usage)` | cost-budget termination, `gen_ai.usage.*` span attributes, and the `PROMPT_CACHING` cache-hit split |
 | `Event.UserSaid` canonicalizes to `List<ContentBlock>` with `UserSaid.of(String)` | multimodal input needs an entry path; one variant, not two |
 
 `StopReason` gets a final audit against the real Anthropic and OpenAI wire formats
 during the provider plans — the last gate before freeze.
-
-**Pre-freeze TODO** (tracked in the §14 freeze-gate table): `Usage` cache-token component(s) (`cachedInputTokens`) — the
-`PROMPT_CACHING` capability cannot currently report the cache-hit split; adding a
-record component post-1.0 is source-breaking, so decide before freeze.
 
 ## 8. The API surface
 
