@@ -335,7 +335,7 @@ free:
 `StopReason` gets a final audit against the real Anthropic and OpenAI wire formats
 during the provider plans — the last gate before freeze.
 
-**Pre-freeze TODO**: `Usage` cache-token component(s) (`cachedInputTokens`) — the
+**Pre-freeze TODO** (tracked in the §14 freeze-gate table): `Usage` cache-token component(s) (`cachedInputTokens`) — the
 `PROMPT_CACHING` capability cannot currently report the cache-hit split; adding a
 record component post-1.0 is source-breaking, so decide before freeze.
 
@@ -698,9 +698,19 @@ the application's own explicit declaration. If none is declared, the starter's
    grant principle (§13.1) and the `Approver` that deserve their own design
    round, not a footnote. Recorded here so the seam review for `Tool`/`Policy`
    keeps remote tools in mind as a future implementor.
-6. **1.0 gate**: grammar freeze after the `StopReason`/wire audit; JPMS decision
-   finalized; artifact-reference design (outputs referenced from state, not
-   embedded) resolved before any coding-agent toolset ships.
+6. **The freeze gates** — decisions that must clear before 1.0, because each
+   becomes a breaking change afterward. A gate clears by shipping the change or
+   by a recorded decision that deferral is safe:
+
+   | Gate | Why it gates | Status |
+   |---|---|---|
+   | `StopReason` wire audit | sealed enum; new values break exhaustive switches | ✅ cleared — both SDKs' values enumerated; mapped or loudly rejected (Plan 3) |
+   | JPMS decision | module descriptor cannot be added/removed compatibly | ✅ cleared — withdrawn with evidence (§4.4) |
+   | Compaction grammar (`Effect.Compact`, `Event.Compacted`, generation marker on `SessionState`) | sealed additions + record component | open — lands with the compaction plan |
+   | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | open — may ship populated only by providers that report it |
+   | `ModelRequest.responseFormat` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | open — may ship as an empty `Optional` with the feature following post-1.0 |
+   | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
+   | Parallel tool execution (design note, not strictly a gate) | reducer semantics are ours to evolve, but approval-ordering interactions are cheapest to design while the grammar is warm | open — design pass scheduled with the compaction round |
 7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should
    migrate to wire-JSON-driven fixtures (through each SDK's own
    deserialization) — builder-built fixtures validate a model of the wire, not
