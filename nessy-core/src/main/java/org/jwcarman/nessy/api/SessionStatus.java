@@ -30,6 +30,9 @@ public enum SessionStatus {
   /** An approved tool is running. */
   EXECUTING_TOOL,
 
+  /** A summarization call is in flight. */
+  COMPACTING,
+
   /** The model ended its turn with nothing left to do. */
   COMPLETE,
 

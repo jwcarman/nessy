@@ -38,6 +38,8 @@ class EventTest {
           case Event.ModelTurnEnded e -> "end:" + e.reason();
           case Event.ApprovalDecided e -> "approval:" + e.call().name();
           case Event.ToolFinished e -> "finished:" + e.call().name();
+          case Event.Compacted e -> "compacted:" + e.summary();
+          case Event.CompactionSkipped e -> "skipped:" + e.reason();
         };
 
     assertThat(described).isEqualTo("user:hello");

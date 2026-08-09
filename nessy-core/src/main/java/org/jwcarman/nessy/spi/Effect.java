@@ -15,7 +15,10 @@
  */
 package org.jwcarman.nessy.spi;
 
+import java.util.List;
+import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.ToolCall;
 
 /**
@@ -43,6 +46,16 @@ public sealed interface Effect {
 
   /** Run an approved tool. */
   record ExecuteTool(ToolCall call) implements Effect {}
+
+  /** Summarize {@code messages} as an ordinary model call, no tools, per {@code instructions}. */
+  record Compact(List<Message> messages, String instructions) implements Effect {
+
+    public Compact {
+      Objects.requireNonNull(messages, "messages must not be null");
+      messages = List.copyOf(messages);
+      Objects.requireNonNull(instructions, "instructions must not be null");
+    }
+  }
 
   /** The one instance of {@link CallModel}; the record has no state, so one is enough. */
   static Effect callModel() {

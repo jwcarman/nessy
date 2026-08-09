@@ -35,6 +35,10 @@ import java.util.Objects;
  * @param consecutiveErrors errored tool results in a row; any success resets it
  * @param turns model turns completed so far
  * @param usage tokens spent so far, accumulated across every completed turn
+ * @param lastInputTokens the provider's own measurement of what the most recent model call cost;
+ *     compared against {@code CompactionPolicy.triggerTokens()} to decide when to compact
+ * @param generation bumped whenever compaction rewrites the settled conversation; the store's
+ *     signal that it must rewrite rather than append
  * @param failureReason why the session failed, or {@code null} if it has not failed. This is the
  *     one sanctioned nullable field on this record: most sessions never fail, and forcing every
  *     caller to thread an empty string through the happy path would be worse than the null check
@@ -50,6 +54,8 @@ public record SessionState(
     int consecutiveErrors,
     int turns,
     Usage usage,
+    long lastInputTokens,
+    int generation,
     String failureReason,
     SessionStatus status) {
 
@@ -57,6 +63,12 @@ public record SessionState(
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(usage, "usage must not be null");
     Objects.requireNonNull(status, "status must not be null");
+    if (lastInputTokens < 0) {
+      throw new IllegalArgumentException("lastInputTokens must be at least 0");
+    }
+    if (generation < 0) {
+      throw new IllegalArgumentException("generation must be at least 0");
+    }
     messages = List.copyOf(messages);
     pendingBlocks = List.copyOf(pendingBlocks);
     pendingCalls = List.copyOf(pendingCalls);
@@ -73,6 +85,8 @@ public record SessionState(
         0,
         0,
         Usage.zero(),
+        0,
+        0,
         null,
         SessionStatus.IDLE);
   }
@@ -87,6 +101,8 @@ public record SessionState(
         consecutiveErrors,
         turns,
         usage,
+        lastInputTokens,
+        generation,
         failureReason,
         newStatus);
   }
@@ -103,6 +119,8 @@ public record SessionState(
         consecutiveErrors,
         turns,
         usage,
+        lastInputTokens,
+        generation,
         failureReason,
         status);
   }
@@ -117,6 +135,8 @@ public record SessionState(
         consecutiveErrors,
         turns,
         usage,
+        lastInputTokens,
+        generation,
         failureReason,
         status);
   }
@@ -131,6 +151,8 @@ public record SessionState(
         consecutiveErrors,
         turns,
         usage,
+        lastInputTokens,
+        generation,
         failureReason,
         status);
   }
@@ -145,6 +167,8 @@ public record SessionState(
         consecutiveErrors,
         turns,
         usage,
+        lastInputTokens,
+        generation,
         failureReason,
         status);
   }
@@ -159,6 +183,8 @@ public record SessionState(
         errors,
         turns,
         usage,
+        lastInputTokens,
+        generation,
         failureReason,
         status);
   }
@@ -173,6 +199,8 @@ public record SessionState(
         consecutiveErrors,
         newTurns,
         usage,
+        lastInputTokens,
+        generation,
         failureReason,
         status);
   }
@@ -187,6 +215,40 @@ public record SessionState(
         consecutiveErrors,
         turns,
         newUsage,
+        lastInputTokens,
+        generation,
+        failureReason,
+        status);
+  }
+
+  public SessionState withLastInputTokens(long newLastInputTokens) {
+    return new SessionState(
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        newLastInputTokens,
+        generation,
+        failureReason,
+        status);
+  }
+
+  public SessionState withGeneration(int newGeneration) {
+    return new SessionState(
+        id,
+        messages,
+        pendingBlocks,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        turns,
+        usage,
+        lastInputTokens,
+        newGeneration,
         failureReason,
         status);
   }
@@ -201,6 +263,8 @@ public record SessionState(
         consecutiveErrors,
         turns,
         usage,
+        lastInputTokens,
+        generation,
         reason,
         status);
   }

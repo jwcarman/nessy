@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -34,7 +35,41 @@ class SessionStateTest {
     assertThat(state.pendingCalls()).isEmpty();
     assertThat(state.pendingResults()).isEmpty();
     assertThat(state.consecutiveErrors()).isZero();
+    assertThat(state.lastInputTokens()).isZero();
+    assertThat(state.generation()).isZero();
     assertThat(state.status()).isEqualTo(SessionStatus.IDLE);
+  }
+
+  @Test
+  void with_last_input_tokens_returns_a_new_instance() {
+    SessionState original = SessionState.newSession(ID);
+
+    SessionState changed = original.withLastInputTokens(42);
+
+    assertThat(changed.lastInputTokens()).isEqualTo(42);
+    assertThat(original.lastInputTokens()).isZero();
+  }
+
+  @Test
+  void with_generation_returns_a_new_instance() {
+    SessionState original = SessionState.newSession(ID);
+
+    SessionState changed = original.withGeneration(3);
+
+    assertThat(changed.generation()).isEqualTo(3);
+    assertThat(original.generation()).isZero();
+  }
+
+  @Test
+  void a_negative_last_input_tokens_is_rejected() {
+    assertThatThrownBy(() -> SessionState.newSession(ID).withLastInputTokens(-1))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_negative_generation_is_rejected() {
+    assertThatThrownBy(() -> SessionState.newSession(ID).withGeneration(-1))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

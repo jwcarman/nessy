@@ -67,6 +67,8 @@ public record Reducer(TerminationPolicy termination) {
       case Event.ApprovalDecided e -> approvalDecided(state, e);
       case Event.ToolFinished(ToolCall call, ToolResult result) ->
           toolFinished(state, call, result);
+      case Event.Compacted _ -> throw new UnsupportedOperationException("Task 2");
+      case Event.CompactionSkipped _ -> throw new UnsupportedOperationException("Task 2");
     };
   }
 

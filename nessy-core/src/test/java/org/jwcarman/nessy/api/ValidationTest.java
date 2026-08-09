@@ -21,7 +21,9 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.spi.Effect;
 import org.jwcarman.nessy.spi.Reducer;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -101,5 +103,64 @@ class ValidationTest {
   @Test
   void negative_token_counts_are_rejected() {
     assertThatThrownBy(() -> new Usage(-1, 0)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_compaction_policy_with_a_trigger_below_one_is_rejected() {
+    assertThatThrownBy(() -> new CompactionPolicy(0, 5, 1_024, "summarize"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_compaction_policy_with_negative_keep_recent_messages_is_rejected() {
+    assertThatThrownBy(() -> new CompactionPolicy(50_000, -1, 1_024, "summarize"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_compaction_policy_with_a_summary_ceiling_below_one_is_rejected() {
+    assertThatThrownBy(() -> new CompactionPolicy(50_000, 5, 0, "summarize"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_compaction_policy_without_instructions_is_rejected() {
+    assertThatThrownBy(() -> new CompactionPolicy(50_000, 5, 1_024, null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compacted_event_without_a_summary_is_rejected() {
+    assertThatThrownBy(() -> new Event.Compacted(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compaction_skipped_event_without_a_reason_is_rejected() {
+    assertThatThrownBy(() -> new Event.CompactionSkipped(null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compact_effect_without_instructions_is_rejected() {
+    assertThatThrownBy(() -> new Effect.Compact(List.of(), null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compact_effect_without_messages_is_rejected() {
+    assertThatThrownBy(() -> new Effect.Compact(null, "summarize"))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compaction_failed_event_without_a_session_id_is_rejected() {
+    assertThatThrownBy(() -> new CompactionFailed(null, "boom"))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compaction_failed_event_without_a_reason_is_rejected() {
+    assertThatThrownBy(() -> new CompactionFailed(new SessionId("s1"), null))
+        .isInstanceOf(NullPointerException.class);
   }
 }

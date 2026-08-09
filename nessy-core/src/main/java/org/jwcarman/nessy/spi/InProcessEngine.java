@@ -160,6 +160,7 @@ public final class InProcessEngine implements ExecutionEngine {
       case Effect.CallModel _ -> callModel(progress, state);
       case Effect.RequestApproval(ToolCall call) -> feed(progress, state, decide(state, call));
       case Effect.ExecuteTool(ToolCall call) -> feed(progress, state, executeTool(state, call));
+      case Effect.Compact _ -> throw new UnsupportedOperationException("Task 3");
     };
   }
 

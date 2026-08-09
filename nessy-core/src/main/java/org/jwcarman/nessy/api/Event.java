@@ -78,4 +78,20 @@ public sealed interface Event {
 
   /** A tool ran to completion, successfully or not. */
   record ToolFinished(ToolCall call, ToolResult result) implements Event {}
+
+  /** The summarizer finished; {@code summary} replaces the compacted prefix. */
+  record Compacted(String summary) implements Event {
+
+    public Compacted {
+      Objects.requireNonNull(summary, "summary must not be null");
+    }
+  }
+
+  /** Compaction was attempted but did not happen; the turn proceeds uncompacted. */
+  record CompactionSkipped(String reason) implements Event {
+
+    public CompactionSkipped {
+      Objects.requireNonNull(reason, "reason must not be null");
+    }
+  }
 }
