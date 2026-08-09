@@ -30,7 +30,9 @@ import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.TerminationPolicy;
+import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -72,6 +74,59 @@ class AgentFacadeTest {
     args.put("left", left);
     args.put("right", right);
     return args;
+  }
+
+  /** Test-only: while running, emits a {@link SessionEvent} for a session that is not its own. */
+  record NoArgs() {}
+
+  static final class EmitForeignEventTool implements Tool<NoArgs> {
+
+    private final SessionId foreignSessionId;
+
+    EmitForeignEventTool(SessionId foreignSessionId) {
+      this.foreignSessionId = foreignSessionId;
+    }
+
+    @Override
+    public String name() {
+      return "emit-foreign";
+    }
+
+    @Override
+    public String description() {
+      return "Test-only: emits a SessionEvent belonging to a different session.";
+    }
+
+    @Override
+    public Class<NoArgs> inputType() {
+      return NoArgs.class;
+    }
+
+    @Override
+    public boolean requiresApproval() {
+      return false;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(NoArgs input, ToolContext context) {
+      context
+          .events()
+          .emit(
+              new SessionEvent(
+                  foreignSessionId,
+                  Event.UserSaid.of("foreign"),
+                  SessionState.newSession(foreignSessionId)));
+      return Awaited.ready(ToolResult.ok("emitted"));
+    }
+  }
+
+  private static String textOf(Event.UserSaid userSaid) {
+    return userSaid.content().stream()
+        .filter(TextBlock.class::isInstance)
+        .map(TextBlock.class::cast)
+        .map(TextBlock::text)
+        .findFirst()
+        .orElse("");
   }
 
   @Test
@@ -213,25 +268,33 @@ class AgentFacadeTest {
 
   @Test
   void a_send_tap_never_sees_another_conversations_events() {
+    // A foreign SessionEvent is emitted mid-turn — while A's tap is still subscribed — rather than
+    // by a second, later send. A synchronous hub delivers events the instant they're emitted, so a
+    // foreign event published after A's turn ends would never reach a tap that closes when send
+    // returns; the only way to prove the sessionId filter (rather than timing) is what protects the
+    // tap is to have the foreign event arrive while the subscription is demonstrably still live.
+    SessionId foreignSessionId = SessionId.generate();
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
-            .text("Hello from A.")
-            .endTurn()
-            .text("Hello from B.")
+            .toolUse("c1", "emit-foreign", JsonNodeFactory.instance.objectNode())
+            .endWithToolUse()
+            .text("done")
             .endTurn()
             .build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
-    List<Event> tappedFromA = new ArrayList<>();
-    Conversation a = agent.converse();
-    Conversation b = agent.converse();
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .tools(new EmitForeignEventTool(foreignSessionId))
+            .build();
+    List<Event> tapped = new ArrayList<>();
 
-    a.send("hi", tappedFromA::add);
-    b.send("hi");
+    agent.converse().send("hi", tapped::add);
 
-    assertThat(tappedFromA)
-        .filteredOn(Event.TextDelta.class::isInstance)
-        .extracting(event -> ((Event.TextDelta) event).text())
-        .allSatisfy(text -> assertThat(text).doesNotContain("Hello from B."));
+    assertThat(tapped)
+        .filteredOn(Event.UserSaid.class::isInstance)
+        .extracting(event -> textOf((Event.UserSaid) event))
+        .noneMatch(text -> text.contains("foreign"));
   }
 
   @Test

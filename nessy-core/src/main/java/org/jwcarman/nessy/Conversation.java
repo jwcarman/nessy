@@ -38,11 +38,17 @@ public final class Conversation {
   }
 
   public Reply send(String text) {
-    return send(text, ignored -> {});
+    return new Reply(engine.run(sessionId, Event.UserSaid.of(text)));
   }
 
   /**
    * Sends, delivering this conversation's loop events to {@code tap} for the duration of the send.
+   *
+   * <p>Three guarantees: {@code tap} sees only this conversation's events (every other session's
+   * traffic on the same hub is filtered out); delivery is synchronous, in loop order, on the
+   * calling thread — the same contract {@link EventHub} itself makes; and the subscription is
+   * closed when {@code send} returns, whether normally or by exception, so {@code tap} never fires
+   * again afterward.
    */
   public Reply send(String text, Consumer<Event> tap) {
     Objects.requireNonNull(tap, "tap must not be null");
