@@ -36,8 +36,14 @@ public interface ContextBuilder {
     return SessionState::messages;
   }
 
-  /** Staged for Task 5: elides older tool results, keeping the most recent messages verbatim. */
+  /**
+   * Elides the content of tool results older than the last {@code keepRecentMessages} messages,
+   * keeping the recent window verbatim.
+   *
+   * @param keepRecentMessages how many of the most recent messages survive projection untouched;
+   *     must be at least 0
+   */
   static ContextBuilder elidingToolResults(int keepRecentMessages) {
-    throw new UnsupportedOperationException("Task 5");
+    return new ElidingToolResults(keepRecentMessages);
   }
 }
