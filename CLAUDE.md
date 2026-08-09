@@ -1,0 +1,41 @@
+# Nessy project rules
+
+## Model policy — the right model for the job, every time
+
+Activities in this repository pin model families. Subagent dispatches MUST
+specify the model explicitly (an omitted model silently inherits the session's,
+usually the most expensive). Agent definitions in `.claude/agents/` carry the
+defaults; the table is the law:
+
+| Activity | Model | How |
+|---|---|---|
+| Writing or revising specifications | Fable | main session (`/model`) |
+| Writing implementation plans | Opus, or the session model if Opus-tier or above | main session |
+| Executing plan tasks | Sonnet | `implementer` agent |
+| Verbatim transcription tasks (the brief contains the complete code) | Haiku | `implementer` + model override |
+| Per-task review | Sonnet | `task-reviewer` agent |
+| High-risk review (reducer semantics, engine concurrency, transcript invariants) | Opus | `task-reviewer` + model override |
+| Scoped re-review of a small fix diff | Haiku | `task-reviewer` + model override |
+| Final whole-branch review | Opus | `final-reviewer` agent |
+| Fix-loop rounds 4–5 | one tier above the stuck implementer | model override |
+
+These are defaults with a judgment clause, not absolutes: downshift when the
+work is mechanical, escalate when it is stuck or risky, and say which model was
+used and why in the ledger. Never pay Opus prices for transcription; never send
+Haiku to review concurrency.
+
+## Build
+
+- Full verification: `./mvnw -q clean verify` — must pass with no API key and
+  no model-provider network access, always.
+- Before every commit: `./mvnw license:format -Plicense && ./mvnw spotless:apply`.
+- Live (token-spending) tests: excluded by default; run with
+  `./mvnw test -Dnessy.excludedGroups=`.
+
+## Design of record
+
+`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md` is the
+design of record. Its decisions (zones, naming conventions, the grant
+principle, sealed-grammar etiquette, the no-mocking-library promise, prose test
+style) bind all work here; propose spec amendments rather than quietly
+diverging.
