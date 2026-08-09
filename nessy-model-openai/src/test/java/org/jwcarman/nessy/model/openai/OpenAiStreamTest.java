@@ -138,11 +138,30 @@ class OpenAiStreamTest {
   private static ChatCompletionChunk usageChunk(long promptTokens, long completionTokens) {
     return chunkBuilder()
         .choices(List.of())
-        .usage(
-            CompletionUsage.builder()
-                .promptTokens(promptTokens)
-                .completionTokens(completionTokens)
-                .totalTokens(promptTokens + completionTokens)
+        .usage(completionUsage(promptTokens, completionTokens))
+        .build();
+  }
+
+  private static CompletionUsage completionUsage(long promptTokens, long completionTokens) {
+    return CompletionUsage.builder()
+        .promptTokens(promptTokens)
+        .completionTokens(completionTokens)
+        .totalTokens(promptTokens + completionTokens)
+        .build();
+  }
+
+  /**
+   * The real wire shape of a turn's very first delta: an assistant-role announcement with no text.
+   */
+  private static ChatCompletionChunk roleAnnouncementChunk() {
+    return chunkBuilder()
+        .addChoice(
+            choiceBuilder(0)
+                .delta(
+                    ChatCompletionChunk.Choice.Delta.builder()
+                        .role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
+                        .content("")
+                        .build())
                 .build())
         .build();
   }
@@ -152,8 +171,16 @@ class OpenAiStreamTest {
 
     @Test
     void content_deltas_become_text_chunks_and_the_turn_ends_with_folded_usage() {
+      // Leads with the real wire shape: the role-announcing first delta (role: assistant,
+      // content: "") that a live server sends before any text. It must not surface as a spurious
+      // empty TextChunk.
       var chunks =
-          List.of(textChunk("Hello"), textChunk(" world"), finishChunk("stop"), usageChunk(10, 5));
+          List.of(
+              roleAnnouncementChunk(),
+              textChunk("Hello"),
+              textChunk(" world"),
+              finishChunk("stop"),
+              usageChunk(10, 5));
 
       var modelEvents = drain(chunks);
 
@@ -162,6 +189,97 @@ class OpenAiStreamTest {
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
               new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5)));
+      assertThat(modelEvents)
+          .noneMatch(
+              event -> event instanceof ModelEvent.TextChunk chunk && chunk.text().isEmpty());
+    }
+
+    @Test
+    void a_content_delta_after_the_finish_chunk_still_emits_with_turn_ended_strictly_last() {
+      var chunks = List.of(finishChunk("stop"), textChunk("trailing"));
+
+      var modelEvents = drain(chunks);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("trailing"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+    }
+
+    @Test
+    void usage_carried_on_the_same_chunk_as_finish_reason_folds_correctly() {
+      // The Azure/vLLM shape: some OpenAI-compatible servers put usage directly on the
+      // finish_reason chunk instead of a separate trailing chunk.
+      var combinedChunk =
+          chunkBuilder()
+              .addChoice(
+                  choiceBuilder(0)
+                      .finishReason(ChatCompletionChunk.Choice.FinishReason.of("stop"))
+                      .build())
+              .usage(completionUsage(7, 3))
+              .build();
+
+      var modelEvents = drain(List.of(textChunk("hi"), combinedChunk));
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("hi"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(7, 3)));
+    }
+
+    @Test
+    void a_single_delta_carrying_both_content_and_a_tool_call_fragment_emits_both() {
+      var combinedChunk =
+          chunkBuilder()
+              .addChoice(
+                  choiceBuilder(0)
+                      .delta(
+                          ChatCompletionChunk.Choice.Delta.builder()
+                              .content("thinking...")
+                              .addToolCall(
+                                  ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+                                      .index(0)
+                                      .id("call_7")
+                                      .function(
+                                          ChatCompletionChunk.Choice.Delta.ToolCall.Function
+                                              .builder()
+                                              .name("ping")
+                                              .build())
+                                      .build())
+                              .build())
+                      .build())
+              .build();
+
+      var modelEvents = drain(List.of(combinedChunk, finishChunk("tool_calls")));
+
+      assertThat(modelEvents).hasSize(3);
+      assertThat(modelEvents.get(0)).isEqualTo(new ModelEvent.TextChunk("thinking..."));
+      assertThat(modelEvents.get(1)).isInstanceOf(ModelEvent.ToolUseEmitted.class);
+      var call = ((ModelEvent.ToolUseEmitted) modelEvents.get(1)).call();
+      assertThat(call.id()).isEqualTo("call_7");
+      assertThat(call.name()).isEqualTo("ping");
+      assertThat(modelEvents.get(2)).isInstanceOf(ModelEvent.TurnEnded.class);
+    }
+  }
+
+  @Nested
+  class MultipleChoicesIgnored {
+
+    @Test
+    void a_second_choice_at_a_non_zero_index_produces_nothing() {
+      var chunkWithTwoChoices =
+          chunkBuilder()
+              .addChoice(choiceBuilder(0).build())
+              .addChoice(
+                  choiceBuilder(1)
+                      .delta(ChatCompletionChunk.Choice.Delta.builder().content("ignored").build())
+                      .build())
+              .build();
+
+      var modelEvents = drain(List.of(chunkWithTwoChoices, finishChunk("stop")));
+
+      assertThat(modelEvents)
+          .containsExactly(new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
     }
   }
 
@@ -259,6 +377,34 @@ class OpenAiStreamTest {
           .hasMessageContaining("get_weather")
           .hasMessageContaining("call_6")
           .hasMessageContaining("null");
+    }
+
+    @Test
+    void a_fragment_that_never_carried_an_id_or_name_fails_loudly_naming_the_index() {
+      // No toolCallStart(...) ever ran for this index — only an arguments-only fragment, the
+      // shape a stream produces if it drops or reorders the opening fragment.
+      var chunks = List.of(toolCallArguments(3, "{\"a\":1}"), finishChunk("tool_calls"));
+
+      var stream = new OpenAiStream(fakeStream(chunks, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("index 3")
+          .hasMessageContaining("id");
+    }
+
+    @Test
+    void fragments_arriving_after_the_finish_chunk_fail_loudly_naming_the_orphaned_index() {
+      // finish_reason flushes and clears the accumulation map; a fragment landing after that has
+      // no finish event left to flush it, so it must not be silently dropped.
+      var chunks = List.of(finishChunk("tool_calls"), toolCallArguments(2, "{\"a\":1}"));
+
+      var stream = new OpenAiStream(fakeStream(chunks, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("orphaned")
+          .hasMessageContaining("2");
     }
   }
 
@@ -364,7 +510,7 @@ class OpenAiStreamTest {
       var first = iterator.next();
 
       assertThat(first).isEqualTo(new ModelEvent.TextChunk("one"));
-      assertThat(pulled[0]).isLessThan(chunks.size());
+      assertThat(pulled[0]).isEqualTo(1);
     }
   }
 

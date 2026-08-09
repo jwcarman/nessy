@@ -49,10 +49,19 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * <p>Usage arrives separately from the finish reason: OpenAI (when {@code
  * stream_options.include_usage} is set, which {@code OpenAiRequests} always sets) sends a final
  * chunk with an empty {@code choices} list carrying the completed token counts, after the chunk
- * that carried {@code finish_reason}. This class waits for the SDK stream to actually end before
- * emitting {@link ModelEvent.TurnEnded}, folding in whatever usage arrived by then. Some
- * OpenAI-compatible servers never send that trailing usage chunk at all; that is tolerated and
+ * that carried {@code finish_reason} — though some OpenAI-compatible servers (Azure, vLLM) instead
+ * put usage directly on the same chunk that carries {@code finish_reason}; both shapes fold
+ * correctly since usage is read independently of the choices loop. This class waits for the SDK
+ * stream to actually end before emitting {@link ModelEvent.TurnEnded}, folding in whatever usage
+ * arrived by then. Some OpenAI-compatible servers never send usage at all; that is tolerated and
  * yields {@link Usage#zero()} rather than a failure.
+ *
+ * <p>Only choice index {@code 0} is translated. {@code OpenAiRequests} never sets {@code n}, so a
+ * well-behaved server only ever populates index {@code 0}; a second choice (from a caller-set
+ * {@code n > 1}) is a distinct, independent completion with its own text and tool-call streams, and
+ * folding it into the same accumulation state as index 0 would silently interleave two unrelated
+ * turns into one. Any choice at a non-zero index is therefore ignored outright rather than
+ * translated.
  *
  * <p>{@link #iterator()} is one-shot: each call wraps a fresh {@link Iterator} over the SDK's
  * {@code Stream}, but that {@code Stream} itself is a standard single-use {@link
@@ -151,6 +160,15 @@ public final class OpenAiStream implements ModelStream {
         if (!finishSeen) {
           throw new IllegalStateException("stream ended without a finish_reason");
         }
+        if (!toolCallsByIndex.isEmpty()) {
+          // finish_reason always flushes and clears toolCallsByIndex (see translateFinish), so a
+          // non-empty map here can only mean fragments arrived for these indexes *after* the
+          // finish chunk — orphaned input with no finish event left to flush them. Silently
+          // dropping them would lose part of a tool call the caller never finds out about.
+          throw new IllegalStateException(
+              "stream ended with orphaned tool-call fragments at index(es): "
+                  + toolCallsByIndex.keySet());
+        }
         if (!turnEndedEmitted) {
           pending.add(new ModelEvent.TurnEnded(stopReason, usage));
           turnEndedEmitted = true;
@@ -158,15 +176,26 @@ public final class OpenAiStream implements ModelStream {
       }
     }
 
+    /**
+     * Translates one chunk's choices (index {@code 0} only — see the class javadoc) and, if
+     * present, its usage.
+     */
     private void translate(ChatCompletionChunk chunk) {
       for (ChatCompletionChunk.Choice choice : chunk.choices()) {
-        translateChoice(choice);
+        if (choice.index() == 0) {
+          translateChoice(choice);
+        }
       }
       chunk.usage().ifPresent(this::translateUsage);
     }
 
     /**
      * Translates one choice's delta and, if present, its finish reason.
+     *
+     * <p>An empty-string {@code content} (as opposed to absent) is suppressed rather than emitted
+     * as an empty {@link ModelEvent.TextChunk}: the role-announcing first delta of a turn (({@code
+     * role: "assistant", content: ""}) carries no actual text, and a downstream consumer gains
+     * nothing from a zero-length chunk.
      *
      * <p>Deliberately unmapped: {@code delta.role()} (redundant — every assistant chunk implies the
      * same role), {@code delta.refusal()} (a distinct field from the {@code content_filter} finish
@@ -178,7 +207,10 @@ public final class OpenAiStream implements ModelStream {
      */
     private void translateChoice(ChatCompletionChunk.Choice choice) {
       var delta = choice.delta();
-      delta.content().ifPresent(text -> pending.add(new ModelEvent.TextChunk(text)));
+      delta
+          .content()
+          .filter(text -> !text.isEmpty())
+          .ifPresent(text -> pending.add(new ModelEvent.TextChunk(text)));
       delta.toolCalls().ifPresent(toolCalls -> toolCalls.forEach(this::accumulateToolCallDelta));
       choice.finishReason().ifPresent(this::translateFinish);
     }
@@ -189,8 +221,7 @@ public final class OpenAiStream implements ModelStream {
     // the rest of the class.
     private void accumulateToolCallDelta(
         com.openai.models.chat.completions.ChatCompletionChunk.Choice.Delta.ToolCall delta) {
-      var pendingCall =
-          toolCallsByIndex.computeIfAbsent(delta.index(), index -> new PendingToolCall());
+      var pendingCall = toolCallsByIndex.computeIfAbsent(delta.index(), PendingToolCall::new);
       delta.id().ifPresent(pendingCall::setId);
       delta
           .function()
@@ -209,6 +240,9 @@ public final class OpenAiStream implements ModelStream {
           .values()
           .forEach(call -> pending.add(new ModelEvent.ToolUseEmitted(call.toToolCall())));
       toolCallsByIndex.clear();
+      // A second finish_reason (e.g. a malformed or replayed stream) simply overwrites stopReason
+      // rather than erroring — last-wins is deliberate, not an oversight; only a genuinely novel
+      // finish_reason value is worth failing loudly over, and mapFinishReason already does that.
       stopReason = mapFinishReason(finishReason);
       finishSeen = true;
     }
@@ -221,9 +255,14 @@ public final class OpenAiStream implements ModelStream {
   /** Accumulates one tool call's streamed {@code function.arguments} fragments, keyed by index. */
   private static final class PendingToolCall {
 
+    private final long index;
     private String id;
     private String name;
     private final StringBuilder arguments = new StringBuilder();
+
+    PendingToolCall(long index) {
+      this.index = index;
+    }
 
     void setId(String id) {
       this.id = id;
@@ -244,9 +283,22 @@ public final class OpenAiStream implements ModelStream {
      * stops mid-call (for example, a {@code length} cutoff) leaves genuinely unusable arguments,
      * and the harness's finally-save preserves session state up to this point, so the failure is
      * recoverable by inspection rather than silently corrupting the tool call.
+     *
+     * <p>{@code id}/{@code name} are guarded explicitly before ever reaching {@link ToolCall}'s
+     * constructor: that constructor rejects a blank id or name too, but with a message that names
+     * neither the stream index nor the fragments that got this far — undiagnosable for a call that
+     * never received its opening fragment (the one that carries {@code id} and {@code
+     * function.name}).
      */
     ToolCall toToolCall() {
       var json = arguments.isEmpty() ? "{}" : arguments.toString();
+      if (id == null || name == null) {
+        throw new IllegalStateException(
+            "tool-call fragment(s) at index "
+                + index
+                + " never carried an id/function name; accumulated arguments: "
+                + truncate(json));
+      }
       JsonNode parsed;
       try {
         parsed = ObjectMappers.jsonMapper().readTree(json);
@@ -260,8 +312,18 @@ public final class OpenAiStream implements ModelStream {
     }
 
     private String describeFailure(String problem, String json) {
-      var truncated = json.length() <= 200 ? json : json.substring(0, 200);
-      return "tool '" + name + "' (id=" + id + ") streamed arguments " + problem + ": " + truncated;
+      return "tool '"
+          + name
+          + "' (id="
+          + id
+          + ") streamed arguments "
+          + problem
+          + ": "
+          + truncate(json);
+    }
+
+    private static String truncate(String json) {
+      return json.length() <= 200 ? json : json.substring(0, 200);
     }
   }
 }
