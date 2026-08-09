@@ -1,6 +1,8 @@
 # Nessy — An AI Agent Harness Framework for Java
 
-**Status:** approved design
+**Status:** SUPERSEDED by [2026-08-09-nessy-agent-harness-design-v2.md](2026-08-09-nessy-agent-harness-design-v2.md).
+Retained for history. The reducer architecture described here carries forward; the
+packaging, naming, eventing, and observability decisions were revised in v2.
 **Date:** 2026-08-08
 
 ## What Nessy is
