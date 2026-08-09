@@ -531,12 +531,63 @@ routes to the `Approver`; the deliberately omitted `MODIFY` verb stays omitted �
 silently rewriting model-proposed arguments is an attribution nightmare. Lands
 with its second real implementation (a path/allowlist policy), before 1.0.
 
-### 10.6 ContextBuilder — deferred, by rule
+### 10.6 Context management — the settled design (2026-08-09, Plan 4)
 
-Context-as-projection-of-state is right, and today's engine performs the identity
-projection. The interface arrives in the same plan as the compactor — the second
-genuinely different implementation — not before. Recorded so nobody mistakes the
-deferral for an oversight.
+Two mechanisms, two layers, per the original analysis — now fully specified:
+
+**Layer 1 — `ContextBuilder` (spi): pure projection.** `List<Message>
+project(SessionState state)`, consulted by engines wherever a `ModelRequest` is
+assembled. State remains the full source of truth; the projection decides what
+this request's model call sees. The seam is earned by two genuinely different
+implementations: `ContextBuilder.identity()` (the default — today's behavior)
+and `ContextBuilder.elidingToolResults(keepRecent)` — old tool-result contents
+replaced with an elision marker while ids and pairing survive, so a 40KB file
+read from twelve turns ago stops costing tokens. **Documented tradeoff**: a
+sliding elision boundary rewrites one old message per turn, churning the prompt-
+cache prefix; elision trades cache hits for context space, which is why identity
+stays the default and the javadoc says so.
+
+**Layer 2 — stateful compaction, through the reducer.** Triggered by *measured*
+context size — no tokenizer: `TurnEnded.usage.inputTokens` is the provider's own
+measurement of what the last call cost, captured into
+`SessionState.lastInputTokens`. At the points where the reducer would emit
+`CallModel`, if `lastInputTokens >= policy.triggerTokens()` it instead emits
+`Effect.Compact(messagesToSummarize, instructions)` and enters
+`SessionStatus.COMPACTING`. The engine performs it as an ordinary model call
+(same provider, no tools, instrumented as `nessy.compaction`); the result
+returns as `Event.Compacted(summary)`, and the reducer replaces the summarized
+prefix with one summary message, keeps the recent tail verbatim, bumps
+`SessionState.generation` (the store signal: unchanged generation → append the
+tail; bumped → rewrite), and proceeds to `CallModel`.
+
+Design rules:
+- **Survivors**: summary + recent tail (`CompactionPolicy.keepRecentMessages`,
+  pair-safe — the cut boundary only falls before a genuine user text turn, never
+  between an assistant `tool_use` and its results, preserving the transcript
+  invariant). The summary ships as a clearly-prefixed user message.
+- **Failure is best-effort**: a failed summarization call emits a
+  `CompactionFailed` event on the hub, feeds `Event.CompactionSkipped(reason)`,
+  and the turn proceeds uncompacted — retried naturally at the next trigger. The
+  session never dies because its summarizer hiccuped; if context truly
+  overflows, the existing `MAX_TOKENS`/refusal machinery fails it loudly.
+- **Configuration**: `CompactionPolicy(long triggerTokens, int
+  keepRecentMessages, String instructions)` in `api`, with `defaults()`
+  (enabled, 100k trigger) and `disabled()`; `AgentBuilder.compaction(policy)`.
+  Compaction-by-default replaces v1's "fail loudly on overflow" — the loud
+  failure remains the backstop, no longer the plan.
+
+### 10.7 Parallel tool execution — design note (resolved: NOT a freeze gate)
+
+The design pass concluded parallelism requires **no sealed-grammar change**: a
+`Step` already carries a `List<Effect>` — the batch container has existed since
+v1. The future shape: the reducer approves calls serially as today (human
+attention is serial; batch-approval UX is a separate question), then emits ALL
+`ExecuteTool` effects in one `Step`; an engine MAY execute such a batch
+concurrently on virtual threads but MUST feed the resulting `ToolFinished`
+events back **in effect order** (parallel wall-clock, deterministic event order
+— replayability survives). The reducer's id-keyed result handling already
+tolerates this. Accordingly the freeze-gate table marks this item resolved:
+purely a reducer/engine evolution, schedulable on demand post-1.0.
 
 ## 11. Observability
 
@@ -706,11 +757,11 @@ the application's own explicit declaration. If none is declared, the starter's
    |---|---|---|
    | `StopReason` wire audit | sealed enum; new values break exhaustive switches | ✅ cleared — both SDKs' values enumerated; mapped or loudly rejected (Plan 3) |
    | JPMS decision | module descriptor cannot be added/removed compatibly | ✅ cleared — withdrawn with evidence (§4.4) |
-   | Compaction grammar (`Effect.Compact`, `Event.Compacted`, generation marker on `SessionState`) | sealed additions + record component | open — lands with the compaction plan |
-   | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | open — may ship populated only by providers that report it |
-   | `ModelRequest.responseFormat` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | open — may ship as an empty `Optional` with the feature following post-1.0 |
+   | Compaction grammar (`Effect.Compact`, `Event.Compacted`, `Event.CompactionSkipped`, `SessionStatus.COMPACTING`, `generation`/`lastInputTokens` on `SessionState`) | sealed additions + record components | in flight — Plan 4 (design settled, §10.6) |
+   | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | in flight — Plan 4 rides it along |
+   | `ModelRequest.responseFormat` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | in flight — Plan 4 ships the slot (nullable, providers ignore until the feature lands) |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
-   | Parallel tool execution (design note, not strictly a gate) | reducer semantics are ours to evolve, but approval-ordering interactions are cheapest to design while the grammar is warm | open — design pass scheduled with the compaction round |
+   | Parallel tool execution | — | ✅ resolved as NOT a gate — needs no sealed change (multi-effect Steps + ordered feed, §10.7) |
 7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should
    migrate to wire-JSON-driven fixtures (through each SDK's own
    deserialization) — builder-built fixtures validate a model of the wire, not
