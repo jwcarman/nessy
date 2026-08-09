@@ -22,10 +22,7 @@ changed.
 ### Added
 
 - **Time-ordered UUIDs (v7)** — Session and park identifiers are now time-ordered
-  UUIDv7, generated via `com.fasterxml.uuid:java-uuid-generator`. The `Uuids`
-  internal helper exposes `timeOrdered()` for sortable, index-friendly identifier
-  generation. `SessionId.random()` and `ParkToken.random()` delegate to it while
-  keeping signatures unchanged.
+  UUIDv7 (sortable by creation time, index-friendly in durable stores).
 - **The `Agent` facade** — `Nessy.agent().provider(...).model(...).tools(...).build()`
   is now the framework's one front door. `Agent.converse()` opens a `Conversation`;
   `Conversation.send(String)` returns a `Reply` whose `text()` extracts the
