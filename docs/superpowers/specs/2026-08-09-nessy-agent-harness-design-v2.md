@@ -199,13 +199,17 @@ this repository may depend on `internal`, and JPMS enforces it:
 
 ### 4.4 JPMS
 
-`nessy-core` ships a `module-info.java` exporting the front door, `api…`, and
-`spi…` packages and **not** exporting `internal` — the strongest structural
-statement Java can make that the SPI is the extension surface and internals are
-nobody's contract. Contingency: if victools' or Micrometer's automatic-module
-metadata makes a full module graph impractical, the module descriptor is deferred
-to a pre-1.0 task and the zoning stands on package convention alone; the decision
-and evidence get recorded in the CHANGELOG either way.
+**Resolved 2026-08-09: the fallback exit was taken.** A full `module-info.java`
+was built and green under Maven, but white-box tests (same-package, reflectively
+instantiated by JUnit) fail on the module path in IDEs
+(`InaccessibleObjectException … does not "opens" … to org.junit.platform.commons`),
+and every remedy — per-developer IDE configuration, or test-only `opens` in the
+production descriptor — costs contributors more than the descriptor buys. Both
+jars ship `Automatic-Module-Name` (`org.jwcarman.nessy.core` / `.testing`); the
+api/spi/internal boundary stands on package convention, with a lightweight
+architecture test (asserting `api` never imports `spi`/`internal`) as the
+enforcement candidate for a later plan. Revisit only if the JPMS testing story
+materially improves.
 
 ### 4.5 Module ladder
 
