@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
+import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.internal.ToolInvoker;
 
 class ToolRegistryTest {
@@ -140,7 +141,8 @@ class ToolRegistryTest {
     Tool<?> tool = registry.find("greet").orElseThrow();
 
     Awaited<ToolResult> awaited =
-        invoker.invoke(tool, greetCall("Ada"), new ToolContext(new SessionId("s1")));
+        invoker.invoke(
+            tool, greetCall("Ada"), new ToolContext(new SessionId("s1"), EventHub.synchronous()));
 
     assertThat(awaited).isEqualTo(Awaited.ready(ToolResult.ok("Hello, Ada")));
   }

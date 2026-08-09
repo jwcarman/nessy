@@ -30,6 +30,8 @@ import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -89,7 +91,9 @@ class EndToEndTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
-    RecordingEventListener listener = new RecordingEventListener();
+    EventHub hub = EventHub.synchronous();
+    RecordingSubscriber subscriber = new RecordingSubscriber();
+    subscriber.attachTo(hub);
 
     ExecutionEngine engine =
         Nessy.builder()
@@ -98,7 +102,7 @@ class EndToEndTest {
             .systemPrompt("be helpful")
             .tools(ToolRegistry.of(new AddTool()))
             .approver(Approver.allowAll())
-            .listener(listener)
+            .events(hub)
             .build();
 
     RunOutcome outcome = engine.run(new SessionId("s1"), new Event.UserSaid("what is 2+2?"));
@@ -106,7 +110,7 @@ class EndToEndTest {
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().status()).isEqualTo(SessionStatus.COMPLETE);
     assertThat(completed.state().messages()).hasSize(4);
-    assertThat(listener.events()).isNotEmpty();
+    assertThat(subscriber.ofType(SessionEvent.class)).isNotEmpty();
   }
 
   @Test

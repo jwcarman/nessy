@@ -13,17 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.tool;
+package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.SessionState;
 
-/** What a tool learns about the invocation it is serving. */
-public record ToolContext(SessionId sessionId, EventEmitter events) {
+/** One reduced loop event, re-published for observers. Exhaust, never intake. */
+public record SessionEvent(SessionId sessionId, Event event, SessionState state) {
 
-  public ToolContext {
-    Objects.requireNonNull(sessionId, "sessionId must not be null");
-    Objects.requireNonNull(events, "events must not be null");
+  public SessionEvent {
+    Objects.requireNonNull(sessionId, "sessionId");
+    Objects.requireNonNull(event, "event");
+    Objects.requireNonNull(state, "state");
   }
 }

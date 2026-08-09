@@ -16,11 +16,9 @@
 package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.event.AgentEventListener;
+import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
@@ -57,7 +55,7 @@ public final class Nessy {
     private ToolRegistry tools = ToolRegistry.of();
     private Approver approver = Approver.allowAll();
     private SessionStore store = SessionStore.inMemory();
-    private final List<AgentEventListener> listeners = new ArrayList<>();
+    private EventHub events = EventHub.synchronous();
     private int maxConsecutiveErrors = Reducer.DEFAULT_MAX_CONSECUTIVE_ERRORS;
     private ObjectMapper mapper = new ObjectMapper();
 
@@ -106,8 +104,8 @@ public final class Nessy {
       return this;
     }
 
-    public Builder listener(AgentEventListener listener) {
-      this.listeners.add(listener);
+    public Builder events(EventHub events) {
+      this.events = events;
       return this;
     }
 
@@ -133,7 +131,7 @@ public final class Nessy {
           tools,
           approver,
           store,
-          listeners,
+          events,
           new Reducer(maxConsecutiveErrors),
           new ModelSettings(model, systemPrompt, maxTokens, capabilities),
           mapper);

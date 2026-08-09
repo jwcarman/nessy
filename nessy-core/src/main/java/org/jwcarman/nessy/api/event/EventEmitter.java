@@ -15,18 +15,8 @@
  */
 package org.jwcarman.nessy.api.event;
 
-import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
+/** The emit-only face of the hub. Anything holding one may announce; nothing more. */
+public interface EventEmitter {
 
-/**
- * Every front-end's window into the loop.
- *
- * <p>Called synchronously as each event is reduced, so a TUI paints tokens as they arrive.
- * Implementations must be quick and must not throw: this is a notification channel, not a control
- * point. The approver is where control lives.
- */
-public interface AgentEventListener {
-
-  void onEvent(SessionId id, Event event, SessionState state);
+  void emit(Object event);
 }

@@ -45,7 +45,9 @@ import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.event.AgentEventListener;
+import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.SessionEvent;
+import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -226,21 +228,19 @@ class InProcessEngineTest {
     return args;
   }
 
-  private static InProcessEngine engine(
+  private static InProcessEngine engineWith(
+      ModelProvider provider, ToolRegistry tools, Approver approver, SessionStore store) {
+    return engineWith(provider, tools, approver, store, EventHub.synchronous());
+  }
+
+  private static InProcessEngine engineWith(
       ModelProvider provider,
       ToolRegistry tools,
       Approver approver,
       SessionStore store,
-      AgentEventListener... listeners) {
+      EventHub hub) {
     return new InProcessEngine(
-        provider,
-        tools,
-        approver,
-        store,
-        List.of(listeners),
-        Reducer.withDefaults(),
-        CONFIG,
-        new ObjectMapper());
+        provider, tools, approver, store, hub, Reducer.withDefaults(), CONFIG, new ObjectMapper());
   }
 
   @Test
@@ -253,7 +253,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
     RunOutcome outcome =
-        engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
+        engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
             .run(ID, new Event.UserSaid("what is 2+2?"));
 
     assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
@@ -277,7 +277,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
     RunOutcome outcome =
-        engine(
+        engineWith(
                 provider,
                 ToolRegistry.of(new EchoTool(true)),
                 Approver.allowAll(),
@@ -305,7 +305,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
     CountingApprover approver = new CountingApprover(Approver.allowAll());
 
-    engine(provider, ToolRegistry.of(new EchoTool(false)), approver, SessionStore.inMemory())
+    engineWith(provider, ToolRegistry.of(new EchoTool(false)), approver, SessionStore.inMemory())
         .run(ID, new Event.UserSaid("echo hi"));
 
     assertThat(approver.calls).isZero();
@@ -324,7 +324,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
     RunOutcome outcome =
-        engine(
+        engineWith(
                 provider,
                 ToolRegistry.of(new EchoTool(true)),
                 Approver.denyAll("not allowed"),
@@ -349,7 +349,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
     RunOutcome outcome =
-        engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
+        engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
             .run(ID, new Event.UserSaid("go"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -374,7 +374,8 @@ class InProcessEngineTest {
     Tool<Echo> exploding = new ExplodingTool();
 
     RunOutcome outcome =
-        engine(provider, ToolRegistry.of(exploding), Approver.allowAll(), SessionStore.inMemory())
+        engineWith(
+                provider, ToolRegistry.of(exploding), Approver.allowAll(), SessionStore.inMemory())
             .run(ID, new Event.UserSaid("go"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -385,7 +386,7 @@ class InProcessEngineTest {
   }
 
   @Test
-  void listenersSeeEveryEventAsItHappens() {
+  void theHubSeesEveryEventAsItHappens() {
     FakeProvider provider =
         new FakeProvider(
             List.of(
@@ -393,12 +394,14 @@ class InProcessEngineTest {
                     new ModelEvent.TextChunk("Fo"),
                     new ModelEvent.TextChunk("ur."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
-    RecordingListener listener = new RecordingListener();
+    EventHub hub = EventHub.synchronous();
+    List<Event> events = new ArrayList<>();
+    hub.subscribe(SessionEvent.class, sessionEvent -> events.add(sessionEvent.event()));
 
-    engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory(), listener)
+    engineWith(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory(), hub)
         .run(ID, new Event.UserSaid("what is 2+2?"));
 
-    assertThat(listener.events)
+    assertThat(events)
         .containsExactly(
             new Event.UserSaid("what is 2+2?"),
             new Event.TextDelta("Fo"),
@@ -416,7 +419,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
     SessionStore store = SessionStore.inMemory();
 
-    engine(provider, ToolRegistry.of(), Approver.allowAll(), store)
+    engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store)
         .run(ID, new Event.UserSaid("what is 2+2?"));
 
     assertThat(store.load(ID)).isPresent();
@@ -425,29 +428,75 @@ class InProcessEngineTest {
 
   @Test
   void progressIsSavedEvenWhenTheRunBlowsUp() {
-    FakeProvider provider =
-        new FakeProvider(
-            List.of(
-                List.of(
-                    new ModelEvent.TextChunk("Four."),
-                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+    // The hub contains subscriber exceptions (see EventHubTest), so a throwing
+    // observer can no longer be the source of a blown-up run. The failure has
+    // to come from the provider itself instead.
     SessionStore store = SessionStore.inMemory();
 
     assertThatThrownBy(
             () ->
-                engine(
-                        provider,
+                engineWith(
+                        new ExplodingStreamProvider(),
                         ToolRegistry.of(),
                         Approver.allowAll(),
-                        store,
-                        new ExplodingListener())
+                        store)
                     .run(ID, new Event.UserSaid("what is 2+2?")))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("listener blew up");
+        .hasMessageContaining("stream blew up");
 
     SessionState saved = store.load(ID).orElseThrow();
     assertThat(saved.messages()).containsExactly(Message.user("what is 2+2?"));
     assertThat(saved.pendingBlocks()).containsExactly(new TextBlock("Four."));
+  }
+
+  @Test
+  void tools_can_report_progress_through_the_hub() {
+    FakeProvider provider =
+        new FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.ToolUseEmitted(new ToolCall("c1", "noisy", echoArgs("hi"))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE)),
+                List.of(
+                    new ModelEvent.TextChunk("Done."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN))));
+    EventHub hub = EventHub.synchronous();
+    List<ToolProgress> progress = new ArrayList<>();
+    hub.subscribe(ToolProgress.class, progress::add);
+
+    Tool<Echo> noisy =
+        new Tool<>() {
+          @Override
+          public String name() {
+            return "noisy";
+          }
+
+          @Override
+          public String description() {
+            return "Reports progress";
+          }
+
+          @Override
+          public Class<Echo> inputType() {
+            return Echo.class;
+          }
+
+          @Override
+          public boolean requiresApproval() {
+            return false;
+          }
+
+          @Override
+          public Awaited<ToolResult> execute(Echo input, ToolContext context) {
+            context.events().emit(new ToolProgress(context.sessionId(), "c1", "halfway"));
+            return Awaited.ready(ToolResult.ok("done"));
+          }
+        };
+
+    engineWith(provider, ToolRegistry.of(noisy), Approver.allowAll(), SessionStore.inMemory(), hub)
+        .run(ID, new Event.UserSaid("go"));
+
+    assertThat(progress).containsExactly(new ToolProgress(ID, "c1", "halfway"));
   }
 
   @Test
@@ -456,7 +505,8 @@ class InProcessEngineTest {
 
     assertThatThrownBy(
             () ->
-                engine(provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
+                engineWith(
+                        provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
                     .resume(ID, ParkToken.random(), new Event.UserSaid("x")))
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("DurableEngine");
@@ -473,7 +523,7 @@ class InProcessEngineTest {
 
     assertThatThrownBy(
             () ->
-                engine(
+                engineWith(
                         provider,
                         ToolRegistry.of(new ParkingTool()),
                         Approver.allowAll(),
@@ -497,7 +547,7 @@ class InProcessEngineTest {
     SessionStore store = SessionStore.inMemory();
 
     RunOutcome outcome =
-        engine(provider, ToolRegistry.of(new EchoTool(true)), Approver.allowAll(), store)
+        engineWith(provider, ToolRegistry.of(new EchoTool(true)), Approver.allowAll(), store)
             .run(ID, new Event.UserSaid("echo hi"));
 
     assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
@@ -520,7 +570,7 @@ class InProcessEngineTest {
                     new ModelEvent.TextChunk("Done."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
-    engine(
+    engineWith(
             provider,
             ToolRegistry.of(new EchoTool(true)),
             Approver.allowAll(),
@@ -544,7 +594,7 @@ class InProcessEngineTest {
                     new ModelEvent.TextChunk("Five."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
     SessionStore store = SessionStore.inMemory();
-    InProcessEngine engine = engine(provider, ToolRegistry.of(), Approver.allowAll(), store);
+    InProcessEngine engine = engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store);
 
     engine.run(ID, new Event.UserSaid("what is 2+2?"));
     RunOutcome outcome = engine.run(ID, new Event.UserSaid("what is 2+3?"));
@@ -572,7 +622,7 @@ class InProcessEngineTest {
                     new ModelEvent.TurnEnded(StopReason.END_TURN))));
 
     RunOutcome outcome =
-        engine(
+        engineWith(
                 provider,
                 ToolRegistry.of(new EchoTool(false)),
                 Approver.allowAll(),
@@ -587,24 +637,41 @@ class InProcessEngineTest {
             new ToolResultBlock("c2", "echoed:b", false));
   }
 
-  /** A listener that fails mid-turn, to prove the run still persists what it reached. */
-  private static final class ExplodingListener implements AgentEventListener {
+  /** A model stream that fails mid-turn, to prove the run still persists what it reached. */
+  private static final class ExplodingStreamProvider implements ModelProvider {
 
     @Override
-    public void onEvent(SessionId id, Event event, SessionState state) {
-      if (event instanceof Event.ModelTurnEnded) {
-        throw new IllegalStateException("listener blew up");
-      }
+    public ModelStream stream(ModelRequest request) {
+      return new ModelStream() {
+        @Override
+        public Iterator<ModelEvent> iterator() {
+          return new Iterator<>() {
+            private int calls;
+
+            @Override
+            public boolean hasNext() {
+              return true;
+            }
+
+            @Override
+            public ModelEvent next() {
+              calls++;
+              if (calls == 1) {
+                return new ModelEvent.TextChunk("Four.");
+              }
+              throw new IllegalStateException("stream blew up");
+            }
+          };
+        }
+
+        @Override
+        public void close() {}
+      };
     }
-  }
-
-  private static final class RecordingListener implements AgentEventListener {
-
-    private final List<Event> events = new ArrayList<>();
 
     @Override
-    public void onEvent(SessionId id, Event event, SessionState state) {
-      events.add(event);
+    public Set<Capability> capabilities() {
+      return Set.of();
     }
   }
 }

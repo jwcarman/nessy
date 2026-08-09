@@ -13,17 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.tool;
+package org.jwcarman.nessy.api.event;
 
-import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.event.EventEmitter;
+/** An open subscription. Closing it stops delivery; closing twice is harmless. */
+public interface Subscription extends AutoCloseable {
 
-/** What a tool learns about the invocation it is serving. */
-public record ToolContext(SessionId sessionId, EventEmitter events) {
-
-  public ToolContext {
-    Objects.requireNonNull(sessionId, "sessionId must not be null");
-    Objects.requireNonNull(events, "events must not be null");
-  }
+  @Override
+  void close();
 }

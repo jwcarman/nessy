@@ -18,6 +18,7 @@ package org.jwcarman.nessy.spi;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
@@ -31,7 +32,8 @@ import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.event.AgentEventListener;
+import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -60,7 +62,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final ToolRegistry tools;
   private final Approver approver;
   private final SessionStore store;
-  private final List<AgentEventListener> listeners;
+  private final EventHub hub;
   private final Reducer reducer;
   private final ModelSettings config;
   private final ToolInvoker invoker;
@@ -70,7 +72,7 @@ public final class InProcessEngine implements ExecutionEngine {
       ToolRegistry tools,
       Approver approver,
       SessionStore store,
-      List<AgentEventListener> listeners,
+      EventHub hub,
       Reducer reducer,
       ModelSettings config,
       ObjectMapper mapper) {
@@ -78,7 +80,7 @@ public final class InProcessEngine implements ExecutionEngine {
     this.tools = tools;
     this.approver = approver;
     this.store = store;
-    this.listeners = List.copyOf(listeners);
+    this.hub = Objects.requireNonNull(hub, "hub must not be null");
     this.reducer = reducer;
     this.config = config;
     this.invoker = new ToolInvoker(mapper);
@@ -88,11 +90,11 @@ public final class InProcessEngine implements ExecutionEngine {
    * Runs one turn to completion and persists it.
    *
    * <p>Durability contract: the most recent state the run reached is saved on <em>every</em> exit
-   * path, including an exception. A provider socket reset, a throwing listener, or a tool that asks
-   * to park would otherwise unwind past the save and discard the user's message along with every
-   * token streamed before the failure, while the store still held pre-run state. Progress is
-   * published into a holder as the run advances, so what survives is what actually happened rather
-   * than only what was already durable.
+   * path, including an exception. A provider socket reset or a tool that asks to park would
+   * otherwise unwind past the save and discard the user's message along with every token streamed
+   * before the failure, while the store still held pre-run state. Progress is published into a
+   * holder as the run advances, so what survives is what actually happened rather than only what
+   * was already durable.
    */
   @Override
   public RunOutcome run(SessionId id, Event input) {
@@ -111,17 +113,15 @@ public final class InProcessEngine implements ExecutionEngine {
         "InProcessEngine never parks, so there is nothing to resume. Use DurableEngine.");
   }
 
-  /** Reduces one event and tells the listeners, without performing its effects. */
+  /** Reduces one event and tells the hub, without performing its effects. */
   private Step reduceAndNotify(SessionState state, Event event) {
     Step step = reducer.reduce(state, event);
-    for (AgentEventListener listener : listeners) {
-      listener.onEvent(step.state().id(), event, step.state());
-    }
+    hub.emit(new SessionEvent(step.state().id(), event, step.state()));
     return step;
   }
 
   /**
-   * Reduces one event, tells the listeners, then performs whatever it asked for.
+   * Reduces one event, tells the hub, then performs whatever it asked for.
    *
    * <p>{@code progress} is the run's latest-known-state holder. Every advance publishes into it so
    * {@link #run} can persist partial work even when the recursion unwinds on an exception.
@@ -152,7 +152,7 @@ public final class InProcessEngine implements ExecutionEngine {
    *
    * <p>A tool round-trip triggered by the terminal event would otherwise open the next {@code
    * ModelStream} while this one is still held open by the enclosing try-with-resources, leaking a
-   * live connection per round-trip. Listeners are still notified as each chunk arrives, from inside
+   * live connection per round-trip. The hub is still notified as each chunk arrives, from inside
    * the loop, so streaming stays live; only effects — of which only the terminal event has any —
    * are deferred.
    */
@@ -240,7 +240,7 @@ public final class InProcessEngine implements ExecutionEngine {
     }
     Awaited<ToolResult> awaited;
     try {
-      awaited = invoker.invoke(found.get(), call, new ToolContext(state.id()));
+      awaited = invoker.invoke(found.get(), call, new ToolContext(state.id(), hub));
     } catch (RuntimeException e) {
       // Factor 9: the model sees a compact error and gets to recover. It
       // never sees a stack trace, and the loop never dies on a bad tool.
