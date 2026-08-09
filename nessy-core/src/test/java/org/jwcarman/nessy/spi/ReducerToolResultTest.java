@@ -123,6 +123,21 @@ class ReducerToolResultTest {
     }
 
     @Test
+    void a_result_for_a_call_id_not_among_the_pending_calls_is_still_recorded_and_drops_nothing() {
+      ToolCall first = call("c1");
+      ToolCall second = call("c2");
+      SessionState state = awaitingApproval(first, second);
+      state = reducer.reduce(state, new Event.ApprovalDecided(first, Decision.allow())).state();
+
+      ToolCall unknown = call("unknown-id");
+      Step step = reducer.reduce(state, new Event.ToolFinished(unknown, ToolResult.ok("stray")));
+
+      assertThat(step.state().pendingResults())
+          .containsExactly(new ToolResultBlock("unknown-id", "stray", false));
+      assertThat(step.state().pendingCalls()).containsExactly(first, second);
+    }
+
+    @Test
     void results_are_batched_into_one_message_when_several_calls_are_pending() {
       ToolCall first = call("c1");
       ToolCall second = call("c2");

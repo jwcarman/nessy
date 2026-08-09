@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionState;
@@ -29,13 +30,13 @@ import org.jwcarman.nessy.api.TextBlock;
 public record Reply(RunOutcome outcome) {
 
   public Reply {
-    Objects.requireNonNull(outcome, "outcome");
+    Objects.requireNonNull(outcome, "outcome must not be null");
   }
 
   public SessionState state() {
     return switch (outcome) {
-      case RunOutcome.Completed completed -> completed.state();
-      case RunOutcome.Parked parked -> parked.state();
+      case RunOutcome.Completed(SessionState state) -> state;
+      case RunOutcome.Parked(SessionState state, ParkToken ignored) -> state;
     };
   }
 

@@ -24,8 +24,8 @@ import org.jwcarman.nessy.api.SessionState;
 public record SessionEvent(SessionId sessionId, Event event, SessionState state) {
 
   public SessionEvent {
-    Objects.requireNonNull(sessionId, "sessionId");
-    Objects.requireNonNull(event, "event");
-    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(sessionId, "sessionId must not be null");
+    Objects.requireNonNull(event, "event must not be null");
+    Objects.requireNonNull(state, "state must not be null");
   }
 }

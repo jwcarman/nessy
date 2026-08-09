@@ -71,11 +71,11 @@ class MessageTest {
 
   @Test
   void random_session_ids_are_distinct() {
-    assertThat(SessionId.random()).isNotEqualTo(SessionId.random());
+    assertThat(SessionId.generate()).isNotEqualTo(SessionId.generate());
   }
 
   @Test
-  void random_session_ids_are_time_ordered_uuidv7() {
-    assertThat(UUID.fromString(SessionId.random().value()).version()).isEqualTo(7);
+  void generated_session_ids_are_time_ordered_uuidv7() {
+    assertThat(UUID.fromString(SessionId.generate().value()).version()).isEqualTo(7);
   }
 }

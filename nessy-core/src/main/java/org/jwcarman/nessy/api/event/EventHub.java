@@ -23,8 +23,11 @@ import java.util.function.Consumer;
  * <p>Three commitments, all load-bearing. Delivery is synchronous, in subscription order, on the
  * emitting thread — live streaming and deterministic tests depend on it; asynchronous delivery is a
  * decorator's job. The hub is exhaust, never intake: no return values, no vetoes, and input reaches
- * the reducer only through the engine. Subscriber exceptions are contained here, so no observer can
- * alter or abort execution.
+ * the reducer only through the engine. A subscriber's {@link RuntimeException} is contained here —
+ * logged nowhere, swallowed, and never allowed to alter or abort execution — but an {@link Error}
+ * is not: it propagates, because a broken subscriber is a bug to route around, while a JVM-level
+ * error (an {@code OutOfMemoryError}, say) is not something the hub can safely pretend didn't
+ * happen.
  *
  * <p>The vocabulary is open on purpose: any module may publish its own event records, and
  * subscribers select by type. The reducer's sealed {@code Event} grammar stays closed; the hub

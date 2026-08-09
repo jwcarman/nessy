@@ -30,8 +30,10 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
@@ -81,14 +83,14 @@ public final class InProcessEngine implements ExecutionEngine {
       ModelSettings config,
       ObjectMapper mapper,
       ObservationRegistry observations) {
-    this.provider = provider;
-    this.tools = tools;
-    this.approver = approver;
-    this.store = store;
+    this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    this.tools = Objects.requireNonNull(tools, "tools must not be null");
+    this.approver = Objects.requireNonNull(approver, "approver must not be null");
+    this.store = Objects.requireNonNull(store, "store must not be null");
     this.hub = Objects.requireNonNull(hub, "hub must not be null");
-    this.reducer = reducer;
-    this.config = config;
-    this.invoker = new ToolInvoker(mapper);
+    this.reducer = Objects.requireNonNull(reducer, "reducer must not be null");
+    this.config = Objects.requireNonNull(config, "config must not be null");
+    this.invoker = new ToolInvoker(Objects.requireNonNull(mapper, "mapper must not be null"));
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
@@ -156,8 +158,8 @@ public final class InProcessEngine implements ExecutionEngine {
       AtomicReference<SessionState> progress, SessionState state, Effect effect) {
     return switch (effect) {
       case Effect.CallModel ignored -> callModel(progress, state);
-      case Effect.RequestApproval request -> feed(progress, state, decide(state, request.call()));
-      case Effect.ExecuteTool execute -> feed(progress, state, executeTool(state, execute.call()));
+      case Effect.RequestApproval(ToolCall call) -> feed(progress, state, decide(state, call));
+      case Effect.ExecuteTool(ToolCall call) -> feed(progress, state, executeTool(state, call));
     };
   }
 
@@ -223,10 +225,11 @@ public final class InProcessEngine implements ExecutionEngine {
 
   private static Event translate(ModelEvent event) {
     return switch (event) {
-      case ModelEvent.TextChunk chunk -> new Event.TextDelta(chunk.text());
-      case ModelEvent.ThinkingChunk chunk -> new Event.ThinkingDelta(chunk.text());
-      case ModelEvent.ToolUseEmitted emitted -> new Event.ToolCallRequested(emitted.call());
-      case ModelEvent.TurnEnded ended -> new Event.ModelTurnEnded(ended.reason(), ended.usage());
+      case ModelEvent.TextChunk(String text) -> new Event.TextDelta(text);
+      case ModelEvent.ThinkingChunk(String text) -> new Event.ThinkingDelta(text);
+      case ModelEvent.ToolUseEmitted(ToolCall call) -> new Event.ToolCallRequested(call);
+      case ModelEvent.TurnEnded(StopReason reason, Usage usage) ->
+          new Event.ModelTurnEnded(reason, usage);
     };
   }
 
@@ -293,12 +296,19 @@ public final class InProcessEngine implements ExecutionEngine {
         awaited = invoker.invoke(found.get(), call, new ToolContext(state.id(), hub));
       } catch (RuntimeException e) {
         // Factor 9: the model sees a compact error and gets to recover. It
-        // never sees a stack trace, and the loop never dies on a bad tool.
-        return new Event.ToolFinished(call, ToolResult.error(describe(e)));
+        // never sees a stack trace, and the loop never dies on a bad tool. The
+        // span still has to say so: without this, every tool failure reports
+        // as a success to anything watching the span.
+        observation.error(e);
+        ToolResult result = ToolResult.error(describe(e));
+        EngineObservations.recordOutcome(observation, result);
+        return new Event.ToolFinished(call, result);
       }
       // Outside the catch: a tool that parks is a configuration error, not a
       // runtime one, and must fail loudly rather than becoming model-visible noise.
-      return new Event.ToolFinished(call, resolve(awaited, "tool " + call.name()));
+      ToolResult result = resolve(awaited, "tool " + call.name());
+      EngineObservations.recordOutcome(observation, result);
+      return new Event.ToolFinished(call, result);
     } catch (RuntimeException e) {
       observation.error(e);
       throw e;
@@ -316,7 +326,7 @@ public final class InProcessEngine implements ExecutionEngine {
 
   private static <T> T resolve(Awaited<T> awaited, String what) {
     return switch (awaited) {
-      case Awaited.Ready<T> ready -> ready.value();
+      case Awaited.Ready<T>(T value) -> value;
       case Awaited.Parked<T> ignored ->
           throw new UnsupportedOperationException(
               "InProcessEngine cannot park, but the " + what + " asked to. Use DurableEngine.");

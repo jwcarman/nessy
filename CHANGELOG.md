@@ -75,6 +75,15 @@ changed.
   | `RecordingEventListener` | `RecordingSubscriber` (nessy-testing) |
   | `ToolInvoker`, `Schemas` | moved to `internal` |
   | `Reducer(int maxConsecutiveErrors)` | `Reducer(TerminationPolicy)` |
+  | `Reducer.withDefaults()` | `Reducer.defaults()` |
+  | `SessionId.random()` | `SessionId.generate()` |
+  | `ParkToken.random()` | `ParkToken.generate()` |
+
+- **`Reducer.defaults()`, `SessionId.generate()`, `ParkToken.generate()`** — renamed
+  from `withDefaults()`/`random()`. The identifiers mint time-ordered UUIDv7
+  values now, not random ones; the old names claimed a property that no
+  longer holds, and `defaults()` matches the factory idiom already used by
+  `TerminationPolicy.defaults()`.
 
 - **Tests read as prose**: method names are `snake_case` sentences, related
   scenarios group into `@Nested` classes, and the underscore-to-space

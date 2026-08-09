@@ -37,7 +37,23 @@ final class SynchronousEventHub implements EventHub {
     return () -> registrations.remove(registration);
   }
 
-  private record Registration<E>(Class<E> type, Consumer<E> subscriber) {
+  /**
+   * A private, identity-equality class rather than a record.
+   *
+   * <p>Two subscriptions of the same consumer to the same type would be {@code equals} as a record,
+   * so closing one would remove whichever registration the list happened to hold — possibly the
+   * other one. Identity equality (the default for a plain class) makes every subscription its own
+   * registration, closable independently of any other subscription that looks just like it.
+   */
+  private static final class Registration<E> {
+
+    private final Class<E> type;
+    private final Consumer<E> subscriber;
+
+    Registration(Class<E> type, Consumer<E> subscriber) {
+      this.type = type;
+      this.subscriber = subscriber;
+    }
 
     void deliver(Object event) {
       if (!type.isInstance(event)) {

@@ -21,7 +21,7 @@ import java.util.Objects;
 /**
  * Something that happened.
  *
- * <p>Events are the only input to {@link Reducer}. Streaming text arrives as ordinary events, which
+ * <p>Events are the only input to {@code Reducer}. Streaming text arrives as ordinary events, which
  * is why the loop streams natively instead of growing a second code path for it.
  */
 public sealed interface Event {

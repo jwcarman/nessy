@@ -46,11 +46,11 @@ class AwaitedTest {
 
   @Test
   void random_tokens_are_distinct() {
-    assertThat(ParkToken.random()).isNotEqualTo(ParkToken.random());
+    assertThat(ParkToken.generate()).isNotEqualTo(ParkToken.generate());
   }
 
   @Test
-  void random_park_tokens_are_time_ordered_uuidv7() {
-    assertThat(UUID.fromString(ParkToken.random().value()).version()).isEqualTo(7);
+  void generated_park_tokens_are_time_ordered_uuidv7() {
+    assertThat(UUID.fromString(ParkToken.generate().value()).version()).isEqualTo(7);
   }
 }

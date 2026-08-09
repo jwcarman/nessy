@@ -96,5 +96,65 @@ class EventHubTest {
 
       assertThat(pings).isEmpty();
     }
+
+    @Test
+    void
+        closing_one_of_two_subscriptions_for_the_same_consumer_twice_still_delivers_via_the_other() {
+      List<Ping> pings = new ArrayList<>();
+      Subscription first = hub.subscribe(Ping.class, pings::add);
+      Subscription second = hub.subscribe(Ping.class, pings::add);
+
+      first.close();
+      first.close();
+      hub.emit(new Ping("a"));
+
+      assertThat(pings).containsExactly(new Ping("a"));
+
+      second.close();
+      hub.emit(new Ping("b"));
+
+      assertThat(pings).containsExactly(new Ping("a"));
+    }
+
+    @Test
+    void a_subscriber_added_during_an_emit_does_not_receive_the_in_flight_event() {
+      List<Ping> lateArrivals = new ArrayList<>();
+      hub.subscribe(
+          Ping.class,
+          p -> {
+            if (lateArrivals.isEmpty()) {
+              hub.subscribe(Ping.class, lateArrivals::add);
+            }
+          });
+
+      hub.emit(new Ping("a"));
+
+      assertThat(lateArrivals).isEmpty();
+
+      hub.emit(new Ping("b"));
+
+      assertThat(lateArrivals).containsExactly(new Ping("b"));
+    }
+
+    @Test
+    void a_subscription_closed_during_an_emit_still_receives_the_in_flight_event() {
+      List<Ping> pings = new ArrayList<>();
+      Subscription[] holder = new Subscription[1];
+      holder[0] =
+          hub.subscribe(
+              Ping.class,
+              p -> {
+                pings.add(p);
+                holder[0].close();
+              });
+
+      hub.emit(new Ping("a"));
+
+      assertThat(pings).containsExactly(new Ping("a"));
+
+      hub.emit(new Ping("b"));
+
+      assertThat(pings).containsExactly(new Ping("a"));
+    }
   }
 }

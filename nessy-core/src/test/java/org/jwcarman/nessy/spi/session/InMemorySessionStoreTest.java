@@ -52,7 +52,7 @@ class InMemorySessionStoreTest {
 
   @Test
   void a_token_can_be_consumed_exactly_once() {
-    ParkToken token = ParkToken.random();
+    ParkToken token = ParkToken.generate();
 
     assertThat(store.consumeToken(token)).isTrue();
     assertThat(store.consumeToken(token)).isFalse();

@@ -32,7 +32,7 @@ public record ParkToken(String value) {
     }
   }
 
-  public static ParkToken random() {
+  public static ParkToken generate() {
     return new ParkToken(Identifiers.next());
   }
 }

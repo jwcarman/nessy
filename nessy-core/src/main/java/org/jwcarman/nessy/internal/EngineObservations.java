@@ -18,6 +18,7 @@ package org.jwcarman.nessy.internal;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.Usage;
 
 /** Span names and attribute assembly for the engine's phases. GenAI-semconv attribute keys. */
@@ -59,6 +60,12 @@ public final class EngineObservations {
         .lowCardinalityKeyValue("gen_ai.operation.name", "execute_tool")
         .lowCardinalityKeyValue("gen_ai.tool.name", toolName)
         .highCardinalityKeyValue("gen_ai.tool.call.id", callId);
+  }
+
+  /** Tags a tool-call observation with its resolved outcome, low cardinality by construction. */
+  public static void recordOutcome(Observation observation, ToolResult result) {
+    observation.lowCardinalityKeyValue(
+        "nessy.tool.outcome", result.isError() ? "error" : "success");
   }
 
   // No semconv concept exists for a human approval gate; this one is ours.

@@ -27,8 +27,8 @@ public final class Conversation {
   private final SessionId sessionId;
 
   Conversation(ExecutionEngine engine, SessionId sessionId) {
-    this.engine = Objects.requireNonNull(engine, "engine");
-    this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
+    this.engine = Objects.requireNonNull(engine, "engine must not be null");
+    this.sessionId = Objects.requireNonNull(sessionId, "sessionId must not be null");
   }
 
   public Reply send(String text) {

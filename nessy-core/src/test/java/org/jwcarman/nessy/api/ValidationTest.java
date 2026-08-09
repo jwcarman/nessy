@@ -90,4 +90,16 @@ class ValidationTest {
     assertThatThrownBy(() -> new ModelRequest(List.of(), "system", " ", 1024, List.of(), Set.of()))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void a_model_request_without_tokens_to_spend_is_rejected() {
+    assertThatThrownBy(
+            () -> new ModelRequest(List.of(), "system", "fake-model", 0, List.of(), Set.of()))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void negative_token_counts_are_rejected() {
+    assertThatThrownBy(() -> new Usage(-1, 0)).isInstanceOf(IllegalArgumentException.class);
+  }
 }

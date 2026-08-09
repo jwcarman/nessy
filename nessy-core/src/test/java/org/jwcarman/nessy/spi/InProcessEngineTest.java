@@ -120,7 +120,45 @@ class InProcessEngineTest {
 
     @Override
     public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
-      return Awaited.parked(ParkToken.random());
+      return Awaited.parked(ParkToken.generate());
+    }
+  }
+
+  /** A tool that throws with no message, to prove the errored result names the exception type. */
+  private static final class MessagelessExplodingTool implements Tool<EngineFixtures.Echo> {
+
+    @Override
+    public String name() {
+      return "boom";
+    }
+
+    @Override
+    public String description() {
+      return "Always throws without a message";
+    }
+
+    @Override
+    public Class<EngineFixtures.Echo> inputType() {
+      return EngineFixtures.Echo.class;
+    }
+
+    @Override
+    public boolean requiresApproval() {
+      return false;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
+      throw new RuntimeException();
+    }
+  }
+
+  /** An approver that always throws, to prove the exception is not swallowed by the engine. */
+  private static final class ThrowingApprover implements Approver {
+
+    @Override
+    public Awaited<Decision> approve(ApprovalRequest request) {
+      throw new IllegalStateException("approver blew up");
     }
   }
 
@@ -165,10 +203,32 @@ class InProcessEngineTest {
         approver,
         store,
         hub,
-        Reducer.withDefaults(),
+        Reducer.defaults(),
         CONFIG,
         new ObjectMapper(),
         ObservationRegistry.NOOP);
+  }
+
+  @Nested
+  class Construction {
+
+    @Test
+    void a_null_provider_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  new InProcessEngine(
+                      null,
+                      ToolRegistry.of(),
+                      Approver.allowAll(),
+                      SessionStore.inMemory(),
+                      EventHub.synchronous(),
+                      Reducer.defaults(),
+                      CONFIG,
+                      new ObjectMapper(),
+                      ObservationRegistry.NOOP))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("provider");
+    }
   }
 
   @Nested
@@ -372,6 +432,60 @@ class InProcessEngineTest {
     }
 
     @Test
+    void a_tool_that_throws_with_no_message_reports_its_class_name_rather_than_null() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "boom", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                  List.of(
+                      new ModelEvent.TextChunk("Oh."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+
+      RunOutcome outcome =
+          engineWith(
+                  provider,
+                  ToolRegistry.of(new MessagelessExplodingTool()),
+                  Approver.allowAll(),
+                  SessionStore.inMemory())
+              .run(ID, Event.UserSaid.of("go"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(block.content()).isEqualTo("RuntimeException");
+    }
+
+    @Test
+    void a_throwing_approver_propagates_but_still_leaves_progress_persisted() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
+      SessionStore store = SessionStore.inMemory();
+
+      assertThatThrownBy(
+              () ->
+                  engineWith(
+                          provider,
+                          ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+                          new ThrowingApprover(),
+                          store)
+                      .run(ID, Event.UserSaid.of("echo hi")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("approver blew up");
+
+      SessionState saved = store.load(ID).orElseThrow();
+      assertThat(saved.messages()).contains(Message.user("echo hi"));
+    }
+
+    @Test
     void progress_is_saved_even_when_the_run_blows_up() {
       // The hub contains subscriber exceptions (see EventHubTest), so a throwing
       // observer can no longer be the source of a blown-up run. The failure has
@@ -402,7 +516,7 @@ class InProcessEngineTest {
               () ->
                   engineWith(
                           provider, ToolRegistry.of(), Approver.allowAll(), SessionStore.inMemory())
-                      .resume(ID, ParkToken.random(), Event.UserSaid.of("x")))
+                      .resume(ID, ParkToken.generate(), Event.UserSaid.of("x")))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("DurableEngine");
     }

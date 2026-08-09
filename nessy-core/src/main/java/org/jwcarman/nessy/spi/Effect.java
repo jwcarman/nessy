@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spi;
 
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ToolCall;
 
 /**

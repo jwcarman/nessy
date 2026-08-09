@@ -16,19 +16,26 @@
 package org.jwcarman.nessy.spi;
 
 import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -71,6 +78,119 @@ class InProcessEngineObservationTest {
     assertThat(observations).hasObservationWithNameEqualTo("nessy.approval.wait");
   }
 
+  @Test
+  void a_throwing_approver_records_an_error_on_the_approval_wait_span() {
+    TestObservationRegistry observations = TestObservationRegistry.create();
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
+
+    InProcessEngine engine =
+        new InProcessEngine(
+            provider,
+            ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+            new ThrowingApprover(),
+            SessionStore.inMemory(),
+            EventHub.synchronous(),
+            Reducer.defaults(),
+            CONFIG,
+            new ObjectMapper(),
+            observations);
+
+    assertThatThrownBy(() -> engine.run(ID, Event.UserSaid.of("echo hi")))
+        .isInstanceOf(IllegalStateException.class);
+
+    assertThat(observations).hasObservationWithNameEqualTo("nessy.approval.wait").that().hasError();
+  }
+
+  /** An approver that always throws, to prove the failure reaches the approval-wait span. */
+  private static final class ThrowingApprover implements Approver {
+
+    @Override
+    public Awaited<Decision> approve(ApprovalRequest request) {
+      throw new IllegalStateException("approver blew up");
+    }
+  }
+
+  @Test
+  void a_succeeding_tool_call_carries_a_success_outcome() {
+    TestObservationRegistry observations = TestObservationRegistry.create();
+    runToolCallingConversation(observations);
+
+    assertThat(observations)
+        .hasObservationWithNameEqualTo("nessy.tool.call")
+        .that()
+        .hasLowCardinalityKeyValue("nessy.tool.outcome", "success");
+  }
+
+  @Test
+  void a_throwing_tool_produces_an_errored_span_with_an_error_outcome() {
+    TestObservationRegistry observations = TestObservationRegistry.create();
+    EngineFixtures.FakeProvider provider =
+        new EngineFixtures.FakeProvider(
+            List.of(
+                List.of(
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall("c1", "boom", EngineFixtures.echoArgs("hi"))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+                List.of(
+                    new ModelEvent.TextChunk("Oh."),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+
+    InProcessEngine engine =
+        new InProcessEngine(
+            provider,
+            ToolRegistry.of(new ExplodingTool()),
+            Approver.allowAll(),
+            SessionStore.inMemory(),
+            EventHub.synchronous(),
+            Reducer.defaults(),
+            CONFIG,
+            new ObjectMapper(),
+            observations);
+
+    engine.run(ID, Event.UserSaid.of("go"));
+
+    assertThat(observations)
+        .hasObservationWithNameEqualTo("nessy.tool.call")
+        .that()
+        .hasError()
+        .hasLowCardinalityKeyValue("nessy.tool.outcome", "error");
+  }
+
+  /** A tool that throws, to prove a tool failure is visible on its span. */
+  private static final class ExplodingTool implements Tool<EngineFixtures.Echo> {
+
+    @Override
+    public String name() {
+      return "boom";
+    }
+
+    @Override
+    public String description() {
+      return "Always throws";
+    }
+
+    @Override
+    public Class<EngineFixtures.Echo> inputType() {
+      return EngineFixtures.Echo.class;
+    }
+
+    @Override
+    public boolean requiresApproval() {
+      return false;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
+      throw new IllegalStateException("kaboom");
+    }
+  }
+
   private static void runToolCallingConversation(TestObservationRegistry observations) {
     runToolCallingConversation(observations, false);
   }
@@ -100,7 +220,7 @@ class InProcessEngineObservationTest {
             Approver.allowAll(),
             SessionStore.inMemory(),
             EventHub.synchronous(),
-            Reducer.withDefaults(),
+            Reducer.defaults(),
             CONFIG,
             new ObjectMapper(),
             observations);

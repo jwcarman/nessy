@@ -26,7 +26,7 @@ public record SessionId(String value) {
     }
   }
 
-  public static SessionId random() {
+  public static SessionId generate() {
     return new SessionId(Identifiers.next());
   }
 }

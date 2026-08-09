@@ -22,8 +22,8 @@ import org.jwcarman.nessy.api.SessionId;
 public record ToolProgress(SessionId sessionId, String toolCallId, String message) {
 
   public ToolProgress {
-    Objects.requireNonNull(sessionId, "sessionId");
-    Objects.requireNonNull(toolCallId, "toolCallId");
-    Objects.requireNonNull(message, "message");
+    Objects.requireNonNull(sessionId, "sessionId must not be null");
+    Objects.requireNonNull(toolCallId, "toolCallId must not be null");
+    Objects.requireNonNull(message, "message must not be null");
   }
 }

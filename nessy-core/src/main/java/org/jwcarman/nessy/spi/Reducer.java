@@ -47,10 +47,10 @@ import org.jwcarman.nessy.api.ToolUseBlock;
 public record Reducer(TerminationPolicy termination) {
 
   public Reducer {
-    Objects.requireNonNull(termination, "termination");
+    Objects.requireNonNull(termination, "termination must not be null");
   }
 
-  public static Reducer withDefaults() {
+  public static Reducer defaults() {
     return new Reducer(TerminationPolicy.defaults());
   }
 
@@ -62,7 +62,8 @@ public record Reducer(TerminationPolicy termination) {
       case Event.ModelTurnEnded e -> modelTurnEnded(state, e);
       case Event.ToolCallRequested e -> toolCallRequested(state, e);
       case Event.ApprovalDecided e -> approvalDecided(state, e);
-      case Event.ToolFinished e -> toolFinished(state, e.call(), e.result());
+      case Event.ToolFinished(ToolCall call, ToolResult result) ->
+          toolFinished(state, call, result);
     };
   }
 
@@ -178,8 +179,8 @@ public record Reducer(TerminationPolicy termination) {
           Step.of(state.with(SessionStatus.EXECUTING_TOOL), new Effect.ExecuteTool(event.call()));
       // A denial is not a special path: it is a result the model can read and
       // adapt to, exactly like a tool that failed.
-      case Decision.Deny deny ->
-          toolFinished(state, event.call(), ToolResult.error("Denied by user: " + deny.reason()));
+      case Decision.Deny(String reason) ->
+          toolFinished(state, event.call(), ToolResult.error("Denied by user: " + reason));
     };
   }
 

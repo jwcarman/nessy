@@ -32,6 +32,19 @@ import org.jwcarman.nessy.api.SessionId;
  */
 public interface ExecutionEngine {
 
+  /**
+   * Runs one turn to completion (or until it parks) and persists the result.
+   *
+   * <p><strong>§6 resume-refusal contract:</strong> an implementation must refuse to {@code run} on
+   * a session whose status is not {@code IDLE}, {@code COMPLETE}, or {@code FAILED} — it must
+   * throw, naming the offending status, rather than silently overwrite an in-flight turn. A session
+   * that crashed mid-turn is completed via {@link #resume}, inspected, or abandoned deliberately;
+   * it is never resumed by a second call to {@code run} landing on top of it. {@link
+   * org.jwcarman.nessy.spi.InProcessEngine InProcessEngine} does not yet enforce this — it owns the
+   * whole run on one thread and has no concurrent caller to guard against — but the contract lives
+   * at this seam and lands with {@code DurableEngine}, where a session can be resumed from another
+   * process while a stale caller still holds the old one.
+   */
   RunOutcome run(SessionId id, Event input);
 
   RunOutcome resume(SessionId id, ParkToken token, Event resolution);

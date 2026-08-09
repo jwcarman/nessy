@@ -32,7 +32,7 @@ import org.jwcarman.nessy.api.Usage;
 
 class ReducerTextTest {
 
-  private final Reducer reducer = Reducer.withDefaults();
+  private final Reducer reducer = Reducer.defaults();
   private final SessionState initial = SessionState.newSession(new SessionId("s1"));
 
   @Nested

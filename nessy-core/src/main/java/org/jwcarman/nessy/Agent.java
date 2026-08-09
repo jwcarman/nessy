@@ -29,13 +29,13 @@ public final class Agent {
   private final EventHub events;
 
   Agent(ExecutionEngine engine, EventHub events) {
-    this.engine = Objects.requireNonNull(engine, "engine");
-    this.events = Objects.requireNonNull(events, "events");
+    this.engine = Objects.requireNonNull(engine, "engine must not be null");
+    this.events = Objects.requireNonNull(events, "events must not be null");
   }
 
   /** Opens a fresh conversation. */
   public Conversation converse() {
-    return new Conversation(engine, SessionId.random());
+    return new Conversation(engine, SessionId.generate());
   }
 
   /** Reopens a stored session. The engine loads its state on the next send. */

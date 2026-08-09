@@ -34,7 +34,7 @@ import org.jwcarman.nessy.api.Usage;
 
 class ReducerToolCallTest {
 
-  private final Reducer reducer = Reducer.withDefaults();
+  private final Reducer reducer = Reducer.defaults();
   private final SessionState initial = SessionState.newSession(new SessionId("s1"));
 
   private static ToolCall call(String id, String name) {

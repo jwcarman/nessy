@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/nessy-hero.png" width="360" alt="Nessy — a friendly sea monster wearing a harness"/>
+</p>
+
 # Nessy
 
 An AI agent harness framework for Java.
