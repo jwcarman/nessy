@@ -534,20 +534,26 @@ gives span assertions in tests without an OTel SDK — the ship-the-double promi
 fulfilled by an artifact that already exists. Building our own facade here would
 be re-abstracting the converged thing.
 
-The engine instruments the phases only it can see:
+The engine instruments the phases only it can see, and exploits Micrometer's
+name/contextual-name split: the **observation name** is Nessy's stable,
+low-cardinality metric identity, while the **contextual name** follows the
+OpenTelemetry GenAI *agent* span conventions (span names
+`invoke_agent` / `chat {model}` / `execute_tool {tool}`), so metrics stay stable
+even as span conventions evolve:
 
-```
-nessy.run
- └─ nessy.turn                     one per model round-trip
-     ├─ nessy.model.call           gen_ai.* attributes, token usage
-     ├─ nessy.approval.wait        non-lexical: may start and end on different machines
-     └─ nessy.tool.call            per tool execution
-```
+| Observation (metric name) | Span (contextual name) | Key attributes |
+|---|---|---|
+| `nessy.run` | `invoke_agent` | `gen_ai.operation.name=invoke_agent`, `gen_ai.conversation.id` (session) |
+| `nessy.turn` | `nessy.turn` | ours — semconv has no turn concept |
+| `nessy.model.call` | `chat {model}` | `gen_ai.operation.name=chat`, `gen_ai.request.model`, `gen_ai.usage.*` |
+| `nessy.tool.call` | `execute_tool {tool}` | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id` |
+| `nessy.approval.wait` | `nessy.approval.wait` | `gen_ai.tool.name` — ours; semconv has no human-approval concept |
 
-Conventions carry the **OpenTelemetry GenAI semantic-convention attribute names**
-(`gen_ai.request.model`, `gen_ai.usage.input_tokens`, …) via overridable
-`ObservationConvention`s, so any OTel-speaking backend renders an agent run as a
-proper waterfall with zero bespoke configuration. In a Spring Boot app with
+The GenAI agent conventions are explicitly pre-1.0 (split into their own
+`semantic-conventions-genai` repository mid-2026, still moving). The hedge is
+already in the design: all names and attributes ship through overridable
+`ObservationConvention`s, and Nessy commits to re-aligning with the conventions'
+final form before its own 1.0. In a Spring Boot app with
 Actuator, **observability lights up with no configuration at all** — Boot already
 auto-configures the registry and handlers; the starter injects it.
 

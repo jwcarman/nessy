@@ -1064,7 +1064,7 @@ git commit -m "feat: generalize termination into TerminationPolicy"
 
 **Interfaces:**
 - Consumes: Tasks 1–6.
-- Produces (relied on by Task 8): `InProcessEngine` constructor order `(ModelProvider, ToolRegistry, Approver, SessionStore, EventHub, Reducer, ModelSettings, ObjectMapper, ObservationRegistry)`; builder method `observations(ObservationRegistry)` defaulting to `ObservationRegistry.NOOP`. Span names: `nessy.run`, `nessy.turn`, `nessy.model.call`, `nessy.tool.call`, `nessy.approval.wait`.
+- Produces (relied on by Task 8): `InProcessEngine` constructor order `(ModelProvider, ToolRegistry, Approver, SessionStore, EventHub, Reducer, ModelSettings, ObjectMapper, ObservationRegistry)`; builder method `observations(ObservationRegistry)` defaulting to `ObservationRegistry.NOOP`. Observation names (stable metric identity): `nessy.run`, `nessy.turn`, `nessy.model.call`, `nessy.tool.call`, `nessy.approval.wait`; contextual (span) names follow the OTel GenAI agent conventions: `invoke_agent`, `chat {model}`, `execute_tool {tool}`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1091,16 +1091,19 @@ class InProcessEngineObservationTest {
     assertThat(observations)
         .hasObservationWithNameEqualTo("nessy.run")
         .that()
-        .hasHighCardinalityKeyValueWithKey("nessy.session.id");
+        .hasContextualNameEqualTo("invoke_agent")
+        .hasHighCardinalityKeyValueWithKey("gen_ai.conversation.id");
     assertThat(observations)
         .hasObservationWithNameEqualTo("nessy.model.call")
         .that()
+        .hasContextualNameEqualTo("chat fake-model")
         .hasLowCardinalityKeyValue("gen_ai.request.model", "fake-model");
     assertThat(observations).hasObservationWithNameEqualTo("nessy.turn");
     assertThat(observations)
         .hasObservationWithNameEqualTo("nessy.tool.call")
         .that()
-        .hasLowCardinalityKeyValue("nessy.tool.name", "echo");
+        .hasContextualNameEqualTo("execute_tool echo")
+        .hasLowCardinalityKeyValue("gen_ai.tool.name", "echo");
   }
 
   @Test
@@ -1134,9 +1137,15 @@ public final class EngineObservations {
 
   private EngineObservations() {}
 
+  // Observation names are Nessy's stable metric identity; contextual names follow
+  // the (pre-1.0) OTel GenAI agent span conventions: invoke_agent / chat {model} /
+  // execute_tool {tool}. Metrics stay stable even as span conventions evolve.
+
   public static Observation run(ObservationRegistry registry, SessionId id) {
     return Observation.start("nessy.run", registry)
-        .highCardinalityKeyValue("nessy.session.id", id.value());
+        .contextualName("invoke_agent")
+        .lowCardinalityKeyValue("gen_ai.operation.name", "invoke_agent")
+        .highCardinalityKeyValue("gen_ai.conversation.id", id.value());
   }
 
   public static Observation turn(ObservationRegistry registry) {
@@ -1145,6 +1154,7 @@ public final class EngineObservations {
 
   public static Observation modelCall(ObservationRegistry registry, String model) {
     return Observation.start("nessy.model.call", registry)
+        .contextualName("chat " + model)
         .lowCardinalityKeyValue("gen_ai.operation.name", "chat")
         .lowCardinalityKeyValue("gen_ai.request.model", model);
   }
@@ -1155,14 +1165,18 @@ public final class EngineObservations {
         .highCardinalityKeyValue("gen_ai.usage.output_tokens", Long.toString(usage.outputTokens()));
   }
 
-  public static Observation toolCall(ObservationRegistry registry, String toolName) {
+  public static Observation toolCall(ObservationRegistry registry, String toolName, String callId) {
     return Observation.start("nessy.tool.call", registry)
-        .lowCardinalityKeyValue("nessy.tool.name", toolName);
+        .contextualName("execute_tool " + toolName)
+        .lowCardinalityKeyValue("gen_ai.operation.name", "execute_tool")
+        .lowCardinalityKeyValue("gen_ai.tool.name", toolName)
+        .highCardinalityKeyValue("gen_ai.tool.call.id", callId);
   }
 
+  // No semconv concept exists for a human approval gate; this one is ours.
   public static Observation approvalWait(ObservationRegistry registry, String toolName) {
     return Observation.start("nessy.approval.wait", registry)
-        .lowCardinalityKeyValue("nessy.tool.name", toolName);
+        .lowCardinalityKeyValue("gen_ai.tool.name", toolName);
   }
 }
 ```
@@ -1183,7 +1197,7 @@ try (Observation.Scope scope = observation.openScope()) {
 
 - `run(...)`: wraps the whole body (around the existing progress-holder try/finally).
 - `callModel(...)`: `turn` wraps the method body; `modelCall` wraps the stream-consumption `try (ModelStream …)` block only, capturing the `TurnEnded` usage as it passes through the loop and calling `recordUsage` before its `stop()`. Turns caused by tool round-trips nest under the turn that caused them — accepted and documented in the method javadoc (the recursion is the causality).
-- `executeTool(...)`: `toolCall` wraps invoke-through-resolve.
+- `executeTool(...)`: `toolCall` wraps invoke-through-resolve, passing `call.name()` and `call.id()`.
 - `decide(...)`: `approvalWait` wraps only the `approver.approve(request)` call (not the fast requiresApproval-false path — no span for a decision that involves no waiting).
 
 `Nessy.Builder`: `private ObservationRegistry observations = ObservationRegistry.NOOP;` + `observations(ObservationRegistry)` setter; passed to the engine.
