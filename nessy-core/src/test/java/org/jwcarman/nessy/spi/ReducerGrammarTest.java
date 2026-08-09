@@ -106,6 +106,18 @@ class ReducerGrammarTest {
   }
 
   @Test
+  void a_delta_after_a_signature_starts_a_fresh_thinking_block() {
+    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+    state = reducer.reduce(state, new Event.ThinkingDelta("first")).state();
+    state = reducer.reduce(state, new Event.ThinkingSigned("sig-1")).state();
+    state = reducer.reduce(state, new Event.ThinkingDelta("second")).state();
+    state = reducer.reduce(state, new Event.ThinkingSigned("sig-2")).state();
+
+    assertThat(state.pendingBlocks())
+        .containsExactly(new ThinkingBlock("first", "sig-1"), new ThinkingBlock("second", "sig-2"));
+  }
+
+  @Test
   void redacted_thinking_appends_its_block_in_order() {
     SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
     state = reducer.reduce(state, new Event.RedactedThinkingArrived("opaque-bytes")).state();

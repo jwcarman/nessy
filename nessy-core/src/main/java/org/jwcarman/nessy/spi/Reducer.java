@@ -111,12 +111,17 @@ public record Reducer(TerminationPolicy termination) {
   /**
    * Merges a chunk into the trailing thinking block rather than appending a new one, mirroring
    * {@link #textDelta}.
+   *
+   * <p>A signed block is closed: its signature covers its exact text, so a later delta must start a
+   * fresh block rather than growing text the signature no longer matches. The empty-signature check
+   * is what tells an unsigned (still-open) block apart from a signed (closed) one.
    */
   private Step thinkingDelta(SessionState state, Event.ThinkingDelta event) {
     List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
-    if (!blocks.isEmpty() && blocks.getLast() instanceof ThinkingBlock last) {
-      blocks.set(
-          blocks.size() - 1, new ThinkingBlock(last.text() + event.text(), last.signature()));
+    if (!blocks.isEmpty()
+        && blocks.getLast() instanceof ThinkingBlock last
+        && last.signature().isEmpty()) {
+      blocks.set(blocks.size() - 1, new ThinkingBlock(last.text() + event.text(), ""));
     } else {
       blocks.add(new ThinkingBlock(event.text(), ""));
     }
@@ -167,14 +172,11 @@ public record Reducer(TerminationPolicy termination) {
     SessionState accounted =
         state.withTurns(state.turns() + 1).withUsage(state.usage().plus(event.usage()));
     SessionState settled = settleAssistantMessage(accounted);
-    if (event.reason() == StopReason.MAX_TOKENS || event.reason() == StopReason.REFUSAL) {
-      String reason =
-          event.reason() == StopReason.MAX_TOKENS
-              ? "model hit the token ceiling (MAX_TOKENS)"
-              : "model refused to continue (REFUSAL)";
+    Optional<String> halt = haltReason(event.reason());
+    if (halt.isPresent()) {
       return Step.of(
           flushResults(abandonPendingCalls(settled))
-              .withFailureReason(reason)
+              .withFailureReason(halt.get())
               .with(SessionStatus.FAILED));
     }
     if (settled.pendingCalls().isEmpty()) {
@@ -183,6 +185,19 @@ public record Reducer(TerminationPolicy termination) {
     return Step.of(
         settled.with(SessionStatus.AWAITING_APPROVAL),
         new Effect.RequestApproval(settled.pendingCalls().getFirst()));
+  }
+
+  /**
+   * The failure reason for a stop reason that must halt the session, or empty for one that lets the
+   * turn conclude normally. Keeping each reason string beside the constant it explains avoids a
+   * chain of equality checks drifting out of sync with the strings they produce.
+   */
+  private static Optional<String> haltReason(StopReason reason) {
+    return switch (reason) {
+      case MAX_TOKENS -> Optional.of("model hit the token ceiling (MAX_TOKENS)");
+      case REFUSAL -> Optional.of("model refused to continue (REFUSAL)");
+      case END_TURN, TOOL_USE -> Optional.empty();
+    };
   }
 
   private Step toolCallRequested(SessionState state, Event.ToolCallRequested event) {

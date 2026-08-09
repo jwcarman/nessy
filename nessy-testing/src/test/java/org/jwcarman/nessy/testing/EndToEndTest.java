@@ -26,6 +26,7 @@ import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionStatus;
@@ -190,5 +191,21 @@ class EndToEndTest {
     assertThat(reply.state().messages().getLast().content())
         .containsExactly(
             new ThinkingBlock("Let me think.", "sig-abc"), new TextBlock("The answer is 4."));
+  }
+
+  @Test
+  void redacted_thinking_round_trips_through_the_final_state() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .redactedThinking("opaque-bytes")
+            .text("Answer.")
+            .endTurn()
+            .build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+
+    Reply reply = agent.converse().send("hi");
+
+    assertThat(reply.state().messages().getLast().content())
+        .containsExactly(new RedactedThinkingBlock("opaque-bytes"), new TextBlock("Answer."));
   }
 }
