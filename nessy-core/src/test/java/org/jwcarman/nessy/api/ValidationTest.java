@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -96,20 +97,51 @@ class ValidationTest {
 
   @Test
   void a_model_request_without_a_model_is_rejected() {
-    assertThatThrownBy(() -> new ModelRequest(List.of(), "system", " ", 1024, List.of(), Set.of()))
+    assertThatThrownBy(
+            () -> new ModelRequest(List.of(), "system", " ", 1024, List.of(), Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_model_request_without_tokens_to_spend_is_rejected() {
     assertThatThrownBy(
-            () -> new ModelRequest(List.of(), "system", "fake-model", 0, List.of(), Set.of()))
+            () -> new ModelRequest(List.of(), "system", "fake-model", 0, List.of(), Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void negative_token_counts_are_rejected() {
-    assertThatThrownBy(() -> new Usage(-1, 0)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new Usage(-1, 0, 0)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_negative_cached_input_token_count_is_rejected() {
+    assertThatThrownBy(() -> new Usage(0, 0, -1)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void plus_sums_all_three_usage_components() {
+    var sum = new Usage(1, 2, 3).plus(new Usage(10, 20, 30));
+
+    assertThat(sum).isEqualTo(new Usage(11, 22, 33));
+  }
+
+  @Test
+  void a_model_request_accepts_a_null_response_schema() {
+    var request =
+        new ModelRequest(List.of(), "system", "fake-model", 1024, List.of(), Set.of(), null);
+
+    assertThat(request.responseSchema()).isNull();
+  }
+
+  @Test
+  void a_model_request_carries_a_non_null_response_schema() {
+    var schema = JsonNodeFactory.instance.objectNode().put("type", "object");
+
+    var request =
+        new ModelRequest(List.of(), "system", "fake-model", 1024, List.of(), Set.of(), schema);
+
+    assertThat(request.responseSchema()).isSameAs(schema);
   }
 
   @Test

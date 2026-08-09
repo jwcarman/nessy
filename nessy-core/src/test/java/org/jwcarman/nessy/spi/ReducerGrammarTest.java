@@ -66,11 +66,11 @@ class ReducerGrammarTest {
     SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
     state =
         reducer
-            .reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, new Usage(100, 50)))
+            .reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, new Usage(100, 50, 0)))
             .state();
 
     assertThat(state.turns()).isEqualTo(1);
-    assertThat(state.usage()).isEqualTo(new Usage(100, 50));
+    assertThat(state.usage()).isEqualTo(new Usage(100, 50, 0));
   }
 
   @Test
@@ -138,7 +138,7 @@ class ReducerGrammarTest {
 
   @Test
   void usage_addition_is_componentwise() {
-    assertThat(Usage.zero().plus(new Usage(3, 4)).plus(new Usage(10, 20)))
-        .isEqualTo(new Usage(13, 24));
+    assertThat(Usage.zero().plus(new Usage(3, 4, 0)).plus(new Usage(10, 20, 0)))
+        .isEqualTo(new Usage(13, 24, 0));
   }
 }

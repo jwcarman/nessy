@@ -18,20 +18,23 @@ package org.jwcarman.nessy.api;
 import java.util.Objects;
 
 /** Tokens spent on one turn, or accumulated across a session. */
-public record Usage(long inputTokens, long outputTokens) {
+public record Usage(long inputTokens, long outputTokens, long cachedInputTokens) {
 
   public Usage {
-    if (inputTokens < 0 || outputTokens < 0) {
+    if (inputTokens < 0 || outputTokens < 0 || cachedInputTokens < 0) {
       throw new IllegalArgumentException("token counts must be non-negative");
     }
   }
 
   public static Usage zero() {
-    return new Usage(0, 0);
+    return new Usage(0, 0, 0);
   }
 
   public Usage plus(Usage other) {
     Objects.requireNonNull(other, "other must not be null");
-    return new Usage(inputTokens + other.inputTokens, outputTokens + other.outputTokens);
+    return new Usage(
+        inputTokens + other.inputTokens,
+        outputTokens + other.outputTokens,
+        cachedInputTokens + other.cachedInputTokens);
   }
 }

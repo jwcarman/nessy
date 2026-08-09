@@ -72,7 +72,8 @@ class RetryingModelProviderTest {
   }
 
   private static ModelRequest request() {
-    return new ModelRequest(List.of(Message.user("hi")), "sys", "m", 100, List.of(), Set.of());
+    return new ModelRequest(
+        List.of(Message.user("hi")), "sys", "m", 100, List.of(), Set.of(), null);
   }
 
   @Nested

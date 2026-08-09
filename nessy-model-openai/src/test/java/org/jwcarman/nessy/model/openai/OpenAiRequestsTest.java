@@ -41,16 +41,16 @@ class OpenAiRequestsTest {
 
   private static ModelRequest request(List<Message> messages) {
     return new ModelRequest(
-        messages, "you are a helpful assistant", "gpt-4o", 1024, List.of(), Set.of());
+        messages, "you are a helpful assistant", "gpt-4o", 1024, List.of(), Set.of(), null);
   }
 
   private static ModelRequest request(List<Message> messages, List<ToolSpec> tools) {
     return new ModelRequest(
-        messages, "you are a helpful assistant", "gpt-4o", 1024, tools, Set.of());
+        messages, "you are a helpful assistant", "gpt-4o", 1024, tools, Set.of(), null);
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(List.of(), systemPrompt, "gpt-4o", 1024, List.of(), Set.of());
+    return new ModelRequest(List.of(), systemPrompt, "gpt-4o", 1024, List.of(), Set.of(), null);
   }
 
   @Nested

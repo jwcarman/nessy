@@ -33,7 +33,7 @@ class ModelRequestTest {
     Set<Capability> requested = EnumSet.of(Capability.PROMPT_CACHING);
 
     ModelRequest request =
-        new ModelRequest(messages, "be helpful", "some-model", 1024, List.of(), requested);
+        new ModelRequest(messages, "be helpful", "some-model", 1024, List.of(), requested, null);
 
     messages.add(Message.user("sneaked in"));
     requested.add(Capability.THINKING);
@@ -51,7 +51,8 @@ class ModelRequestTest {
             "some-model",
             1024,
             List.of(),
-            Set.of(Capability.PROMPT_CACHING, Capability.THINKING));
+            Set.of(Capability.PROMPT_CACHING, Capability.THINKING),
+            null);
 
     Set<Capability> unsupported = request.unsupportedBy(Set.of(Capability.THINKING));
 

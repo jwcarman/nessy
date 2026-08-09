@@ -79,13 +79,17 @@ class AnthropicStreamTest {
   }
 
   private static RawMessageStreamEvent messageStart(long inputTokens) {
+    return messageStart(inputTokens, 0);
+  }
+
+  private static RawMessageStreamEvent messageStart(long inputTokens, long cacheReadInputTokens) {
     return parseEvent(
         """
         {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant",
         "content":[],"model":"claude-test","stop_reason":null,"stop_sequence":null,
-        "usage":{"input_tokens":%d,"output_tokens":1}}}
+        "usage":{"input_tokens":%d,"output_tokens":1,"cache_read_input_tokens":%d}}}
         """
-            .formatted(inputTokens));
+            .formatted(inputTokens, cacheReadInputTokens));
   }
 
   private static RawMessageStreamEvent messageDelta(String stopReason, long outputTokens) {
@@ -206,7 +210,49 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
+    }
+  }
+
+  @Nested
+  class CachedTokens {
+
+    @Test
+    void a_message_start_carrying_cache_read_input_tokens_lands_in_turn_ended_usage() {
+      var events =
+          List.of(
+              messageStart(10, 7),
+              textBlockStart(0),
+              textDelta(0, "Hello"),
+              contentBlockStop(0),
+              messageDelta("end_turn", 5),
+              messageStop());
+
+      var modelEvents = drain(events);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("Hello"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 7)));
+    }
+
+    @Test
+    void a_message_start_without_cache_read_input_tokens_yields_zero() {
+      var events =
+          List.of(
+              messageStart(10),
+              textBlockStart(0),
+              textDelta(0, "Hello"),
+              contentBlockStop(0),
+              messageDelta("end_turn", 5),
+              messageStop());
+
+      var modelEvents = drain(events);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("Hello"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
     }
   }
 
@@ -231,7 +277,7 @@ class AnthropicStreamTest {
           .containsExactly(
               new ModelEvent.ThinkingChunk("Let me think"),
               new ModelEvent.ThinkingSigned("sig-123"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 8)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(20, 8, 0)));
     }
   }
 
@@ -253,7 +299,7 @@ class AnthropicStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.RedactedThinkingEmitted("opaque-data"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(6, 2)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(6, 2, 0)));
     }
   }
 
@@ -292,7 +338,7 @@ class AnthropicStreamTest {
       assertThat(secondCall.arguments().get("zone").asText()).isEqualTo("EST");
 
       assertThat(modelEvents.get(2))
-          .isEqualTo(new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(15, 12)));
+          .isEqualTo(new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(15, 12, 0)));
     }
 
     @Test
@@ -385,7 +431,7 @@ class AnthropicStreamTest {
       var modelEvents = drain(events);
 
       assertThat(modelEvents)
-          .containsExactly(new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(37, 9)));
+          .containsExactly(new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(37, 9, 0)));
     }
   }
 

@@ -46,7 +46,7 @@ class AnthropicRequestsTest {
 
   private static ModelRequest request(List<Message> messages, Set<Capability> requested) {
     return new ModelRequest(
-        messages, "you are a helpful assistant", "claude-sonnet", 1024, List.of(), requested);
+        messages, "you are a helpful assistant", "claude-sonnet", 1024, List.of(), requested, null);
   }
 
   private static ModelRequest request(List<Message> messages) {
@@ -54,7 +54,8 @@ class AnthropicRequestsTest {
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(List.of(), systemPrompt, "claude-sonnet", 1024, List.of(), Set.of());
+    return new ModelRequest(
+        List.of(), systemPrompt, "claude-sonnet", 1024, List.of(), Set.of(), null);
   }
 
   @Nested
@@ -296,7 +297,13 @@ class AnthropicRequestsTest {
     void convert_via_anthropic_schemas() {
       var request =
           new ModelRequest(
-              List.of(), "sys", "claude-sonnet", 1024, List.of(toolSpec("read_file")), Set.of());
+              List.of(),
+              "sys",
+              "claude-sonnet",
+              1024,
+              List.of(toolSpec("read_file")),
+              Set.of(),
+              null);
       var params = AnthropicRequests.toParams(request, THINKING_DISABLED);
 
       var tools = params.tools().orElseThrow();
@@ -316,7 +323,8 @@ class AnthropicRequestsTest {
               "claude-sonnet",
               1024,
               List.of(toolSpec("read_file"), toolSpec("write_file")),
-              Set.of(Capability.PROMPT_CACHING));
+              Set.of(Capability.PROMPT_CACHING),
+              null);
       var params = AnthropicRequests.toParams(request, THINKING_DISABLED);
 
       var tools = params.tools().orElseThrow();
@@ -333,7 +341,8 @@ class AnthropicRequestsTest {
               "claude-sonnet",
               1024,
               List.of(toolSpec("read_file"), toolSpec("write_file")),
-              Set.of());
+              Set.of(),
+              null);
       var params = AnthropicRequests.toParams(request, THINKING_DISABLED);
 
       var tools = params.tools().orElseThrow();
@@ -362,7 +371,8 @@ class AnthropicRequestsTest {
 
     @Test
     void rejects_a_budget_that_leaves_no_headroom_under_max_tokens() {
-      var request = new ModelRequest(List.of(), "sys", "claude-sonnet", 512, List.of(), Set.of());
+      var request =
+          new ModelRequest(List.of(), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
 
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, new ThinkingConfig(true, 512)))
           .isInstanceOf(IllegalArgumentException.class);
@@ -370,7 +380,8 @@ class AnthropicRequestsTest {
 
     @Test
     void rejects_a_budget_larger_than_max_tokens() {
-      var request = new ModelRequest(List.of(), "sys", "claude-sonnet", 512, List.of(), Set.of());
+      var request =
+          new ModelRequest(List.of(), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
 
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, new ThinkingConfig(true, 1024)))
           .isInstanceOf(IllegalArgumentException.class);
@@ -378,7 +389,8 @@ class AnthropicRequestsTest {
 
     @Test
     void accepts_a_budget_strictly_below_max_tokens() {
-      var request = new ModelRequest(List.of(), "sys", "claude-sonnet", 513, List.of(), Set.of());
+      var request =
+          new ModelRequest(List.of(), "sys", "claude-sonnet", 513, List.of(), Set.of(), null);
 
       var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 512));
 
@@ -392,7 +404,8 @@ class AnthropicRequestsTest {
      */
     @Test
     void the_default_thinking_budget_leaves_headroom_under_the_default_max_tokens() {
-      var request = new ModelRequest(List.of(), "sys", "claude-sonnet", 4096, List.of(), Set.of());
+      var request =
+          new ModelRequest(List.of(), "sys", "claude-sonnet", 4096, List.of(), Set.of(), null);
 
       var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 1024));
 

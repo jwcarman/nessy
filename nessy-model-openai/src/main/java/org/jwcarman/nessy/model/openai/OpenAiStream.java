@@ -248,7 +248,16 @@ public final class OpenAiStream implements ModelStream {
     }
 
     private void translateUsage(CompletionUsage completionUsage) {
-      usage = new Usage(completionUsage.promptTokens(), completionUsage.completionTokens());
+      long cachedInputTokens =
+          completionUsage
+              .promptTokensDetails()
+              .flatMap(CompletionUsage.PromptTokensDetails::cachedTokens)
+              .orElse(0L);
+      usage =
+          new Usage(
+              completionUsage.promptTokens(),
+              completionUsage.completionTokens(),
+              cachedInputTokens);
     }
   }
 

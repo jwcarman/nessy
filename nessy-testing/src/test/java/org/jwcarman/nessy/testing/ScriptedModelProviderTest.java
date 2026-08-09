@@ -35,7 +35,7 @@ class ScriptedModelProviderTest {
 
   private static ModelRequest request() {
     return new ModelRequest(
-        List.of(Message.user("hi")), "system", "fake-model", 1024, List.of(), Set.of());
+        List.of(Message.user("hi")), "system", "fake-model", 1024, List.of(), Set.of(), null);
   }
 
   private static List<ModelEvent> drain(ModelStream stream) {

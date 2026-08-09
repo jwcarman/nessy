@@ -142,11 +142,30 @@ class OpenAiStreamTest {
         .build();
   }
 
+  private static ChatCompletionChunk usageChunk(
+      long promptTokens, long completionTokens, long cachedTokens) {
+    return chunkBuilder()
+        .choices(List.of())
+        .usage(completionUsage(promptTokens, completionTokens, cachedTokens))
+        .build();
+  }
+
   private static CompletionUsage completionUsage(long promptTokens, long completionTokens) {
     return CompletionUsage.builder()
         .promptTokens(promptTokens)
         .completionTokens(completionTokens)
         .totalTokens(promptTokens + completionTokens)
+        .build();
+  }
+
+  private static CompletionUsage completionUsage(
+      long promptTokens, long completionTokens, long cachedTokens) {
+    return CompletionUsage.builder()
+        .promptTokens(promptTokens)
+        .completionTokens(completionTokens)
+        .totalTokens(promptTokens + completionTokens)
+        .promptTokensDetails(
+            CompletionUsage.PromptTokensDetails.builder().cachedTokens(cachedTokens).build())
         .build();
   }
 
@@ -188,10 +207,34 @@ class OpenAiStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
       assertThat(modelEvents)
           .noneMatch(
               event -> event instanceof ModelEvent.TextChunk chunk && chunk.text().isEmpty());
+    }
+
+    @Test
+    void usage_carrying_cached_prompt_tokens_lands_in_turn_ended_usage() {
+      var chunks = List.of(textChunk("Hello"), finishChunk("stop"), usageChunk(10, 5, 4));
+
+      var modelEvents = drain(chunks);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("Hello"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 4)));
+    }
+
+    @Test
+    void usage_without_prompt_tokens_details_yields_zero_cached_tokens() {
+      var chunks = List.of(textChunk("Hello"), finishChunk("stop"), usageChunk(10, 5));
+
+      var modelEvents = drain(chunks);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("Hello"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
     }
 
     @Test
@@ -224,7 +267,7 @@ class OpenAiStreamTest {
       assertThat(modelEvents)
           .containsExactly(
               new ModelEvent.TextChunk("hi"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(7, 3)));
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(7, 3, 0)));
     }
 
     @Test
@@ -315,7 +358,7 @@ class OpenAiStreamTest {
       assertThat(secondCall.arguments().get("zone").asText()).isEqualTo("EST");
 
       assertThat(modelEvents.get(2))
-          .isEqualTo(new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(20, 12)));
+          .isEqualTo(new ModelEvent.TurnEnded(StopReason.TOOL_USE, new Usage(20, 12, 0)));
     }
 
     @Test

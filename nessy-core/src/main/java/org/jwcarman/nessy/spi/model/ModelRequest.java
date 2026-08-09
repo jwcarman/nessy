@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spi.model;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -30,6 +31,11 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
  *
  * @param requested capabilities the harness would like used, not a guarantee any provider offers
  *     them
+ * @param responseSchema a JSON Schema the model's final response should conform to, or {@code null}
+ *     if the caller has no structured-output requirement. This is the second sanctioned nullable
+ *     field in this codebase (see {@code SessionState.failureReason} for the first): it is a slot
+ *     the providers wired today ignore entirely, reserved for structured output arriving in a later
+ *     change.
  */
 public record ModelRequest(
     List<Message> messages,
@@ -37,7 +43,8 @@ public record ModelRequest(
     String model,
     int maxTokens,
     List<ToolSpec> tools,
-    Set<Capability> requested) {
+    Set<Capability> requested,
+    ObjectNode responseSchema) {
 
   public ModelRequest {
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");

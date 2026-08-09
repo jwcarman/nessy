@@ -91,7 +91,7 @@ class ReducerCompactionTest {
     void a_turn_end_records_the_measured_input_tokens() {
       Step step =
           builder.reduce(
-              initial, new Event.ModelTurnEnded(StopReason.END_TURN, new Usage(120_000, 50)));
+              initial, new Event.ModelTurnEnded(StopReason.END_TURN, new Usage(120_000, 50, 0)));
 
       assertThat(step.state().lastInputTokens()).isEqualTo(120_000);
     }

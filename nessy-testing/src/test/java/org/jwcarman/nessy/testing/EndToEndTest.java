@@ -168,13 +168,13 @@ class EndToEndTest {
   @Test
   void usage_accumulates_from_the_model_into_the_final_state() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5)).build();
+        ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5, 0)).build();
     Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
 
     RunOutcome outcome = agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().usage()).isEqualTo(new Usage(10, 5));
+    assertThat(completed.state().usage()).isEqualTo(new Usage(10, 5, 0));
     assertThat(completed.state().turns()).isEqualTo(1);
   }
 
@@ -285,7 +285,7 @@ class EndToEndTest {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder()
               .text("First answer.")
-              .endTurn(new Usage(150_000, 20))
+              .endTurn(new Usage(150_000, 20, 0))
               .text("Summary of earlier turns.")
               .endTurn()
               .text("Second answer.")
@@ -329,7 +329,7 @@ class EndToEndTest {
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("First answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 20))),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 20, 0))),
                   List.of(
                       new ModelEvent.TextChunk("Second answer."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));

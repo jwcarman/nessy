@@ -130,7 +130,7 @@ class InProcessEngineCompactionTest {
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("First answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10))),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10, 0))),
                   List.of(
                       new ModelEvent.TextChunk("Summary of earlier turns."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())),
@@ -165,7 +165,7 @@ class InProcessEngineCompactionTest {
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("First answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10))),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10, 0))),
                   List.of(
                       new ModelEvent.TextChunk("Normal answer."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
@@ -198,7 +198,7 @@ class InProcessEngineCompactionTest {
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("First answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10))),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10, 0))),
                   List.of(
                       new ModelEvent.TextChunk("Summary."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())),
@@ -229,7 +229,7 @@ class InProcessEngineCompactionTest {
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("First answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10))),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10, 0))),
                   List.of(
                       new ModelEvent.TextChunk("Summary."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())),
@@ -256,7 +256,7 @@ class InProcessEngineCompactionTest {
               List.of(
                   List.of(
                       new ModelEvent.TextChunk("First answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10))),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 10, 0))),
                   List.of(
                       new ModelEvent.TextChunk("Normal answer."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));

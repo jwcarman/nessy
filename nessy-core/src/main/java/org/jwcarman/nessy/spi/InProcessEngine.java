@@ -225,7 +225,8 @@ public final class InProcessEngine implements ExecutionEngine {
             config.model(),
             reducer.compaction().summaryMaxTokens(),
             List.of(),
-            Set.of());
+            Set.of(),
+            null);
     StringBuilder summary = new StringBuilder();
     try (ModelStream stream = provider.stream(request)) {
       for (ModelEvent modelEvent : stream) {
@@ -298,7 +299,8 @@ public final class InProcessEngine implements ExecutionEngine {
         config.model(),
         config.maxTokens(),
         tools.specs(),
-        config.capabilities());
+        config.capabilities(),
+        null);
   }
 
   private static Event translate(ModelEvent event) {
