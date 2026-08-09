@@ -73,4 +73,9 @@ public final class EngineObservations {
     return Observation.start("nessy.approval.wait", registry)
         .lowCardinalityKeyValue("gen_ai.tool.name", toolName);
   }
+
+  // No GenAI semconv concept exists for summarization-as-context-management either; ours again.
+  public static Observation compaction(ObservationRegistry registry) {
+    return Observation.start("nessy.compaction", registry).contextualName("compact");
+  }
 }

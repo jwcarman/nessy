@@ -18,6 +18,7 @@ package org.jwcarman.nessy.spi;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -43,6 +44,7 @@ final class EngineFixtures {
   static final class FakeProvider implements ModelProvider {
 
     private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
+    private final List<ModelRequest> requests = new ArrayList<>();
     int closedCount;
     int openStreams;
     int maxOpenStreams;
@@ -53,8 +55,14 @@ final class EngineFixtures {
       turns.addAll(scripted);
     }
 
+    /** Every request this provider was handed, oldest first. */
+    List<ModelRequest> requests() {
+      return List.copyOf(requests);
+    }
+
     @Override
     public ModelStream stream(ModelRequest request) {
+      requests.add(request);
       Iterator<ModelEvent> events = turns.removeFirst().iterator();
       openStreams++;
       maxOpenStreams = Math.max(maxOpenStreams, openStreams);

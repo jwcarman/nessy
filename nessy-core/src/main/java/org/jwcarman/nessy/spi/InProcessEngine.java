@@ -22,10 +22,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
@@ -36,6 +38,7 @@ import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -160,8 +163,77 @@ public final class InProcessEngine implements ExecutionEngine {
       case Effect.CallModel _ -> callModel(progress, state);
       case Effect.RequestApproval(ToolCall call) -> feed(progress, state, decide(state, call));
       case Effect.ExecuteTool(ToolCall call) -> feed(progress, state, executeTool(state, call));
-      case Effect.Compact _ -> throw new UnsupportedOperationException("Task 3");
+      case Effect.Compact compaction -> compact(progress, state, compaction);
     };
+  }
+
+  /**
+   * Performs a compaction as an ordinary, tool-free model call, then feeds the one event it
+   * produces.
+   *
+   * <p>Unlike {@link #callModel}, nothing here streams live into the hub: the summarizer's prose is
+   * not conversation the model or a listener needs to see chunk by chunk, only the finished summary
+   * the reducer folds into the transcript. The whole attempt — request, stream, and the resulting
+   * {@link Event#Compacted} or {@link Event#CompactionSkipped} feed — runs inside one {@code
+   * nessy.compaction} observation, matching the F2 convention used everywhere else in this engine:
+   * a caught failure marks the observation with {@link Observation#error(Throwable)} rather than
+   * letting it escape, since a failed compaction is recoverable and the turn must proceed
+   * uncompacted.
+   *
+   * <p>{@code effect.messages()} is sent to the provider exactly as the reducer packaged it; it is
+   * not projected through a context-builder seam (that seam does not exist yet — see the
+   * context-management plan's later tasks).
+   */
+  private SessionState compact(
+      AtomicReference<SessionState> progress, SessionState state, Effect.Compact effect) {
+    Observation observation = EngineObservations.compaction(observations);
+    try (var _ = observation.openScope()) {
+      Event event;
+      try {
+        event = new Event.Compacted(summarize(effect));
+      } catch (RuntimeException e) {
+        observation.error(e);
+        String reason = describe(e);
+        hub.emit(new CompactionFailed(state.id(), reason));
+        event = new Event.CompactionSkipped(reason);
+      }
+      return feed(progress, state, event);
+    } finally {
+      observation.stop();
+    }
+  }
+
+  /**
+   * Asks the model to summarize {@code effect.messages()} per {@code effect.instructions()},
+   * collecting only the assistant's text (thinking, if any, is discarded) into one string.
+   *
+   * <p>A blank result is treated as a failure rather than a valid, if useless, summary: an empty
+   * summary would still replace the compacted prefix, silently discarding history for nothing.
+   */
+  private String summarize(Effect.Compact effect) {
+    List<Message> messages = new ArrayList<>(effect.messages());
+    messages.add(Message.user(effect.instructions()));
+    ModelRequest request =
+        new ModelRequest(
+            messages,
+            config.systemPrompt(),
+            config.model(),
+            reducer.compaction().summaryMaxTokens(),
+            List.of(),
+            Set.of());
+    StringBuilder summary = new StringBuilder();
+    try (ModelStream stream = provider.stream(request)) {
+      for (ModelEvent modelEvent : stream) {
+        if (modelEvent instanceof ModelEvent.TextChunk(String text)) {
+          summary.append(text);
+        }
+      }
+    }
+    String text = summary.toString();
+    if (text.isBlank()) {
+      throw new IllegalStateException("summarizer returned no text");
+    }
+    return text;
   }
 
   /**
