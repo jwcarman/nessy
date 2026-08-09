@@ -702,6 +702,31 @@ extracted into the `Summarizer` seam (`spi.compaction`), the pair-safe cut
 relocates onto the `Transcript` type, and wire-bound message lists become
 `Transcript`s. Semantics above are otherwise unchanged.
 
+**The declared window (amended 2026-08-09).** The static `defaults()`
+trigger is safe for 200k-class models and silently wrong for small-window
+ones (a 32k local model sails past its real ceiling without ever
+triggering; only the loud overflow backstop catches it). No fix can be
+measured or queried: per-turn `usage` reports spend, never allowance, and
+neither major vendor's models endpoint returns context length — the
+ceiling exists only in documentation. So the three numbers are sourced
+where each truthfully lives:
+
+- **Declared**: `ModelSettings` gains an optional `contextWindow`, set
+  where the model is set (`.model("llama-3").contextWindow(32_000)`) —
+  a fact about the binding. Provider modules that genuinely can query it
+  (OpenRouter's `context_length`, Ollama metadata) may pre-fill;
+  application declaration always wins. No model→window table ships in
+  core — hardcoded facts about other vendors' products rot on arrival.
+- **Derived**: `CompactionPolicy.forWindow(window, maxTokens)` computes
+  the trigger as roughly `0.8 × (window − maxTokens)` — reserving the
+  reply's room, with the margin absorbing between-measurement growth
+  (the new user turn, tool-result spikes, recall drift). The builder
+  uses the derived form automatically when a window is declared;
+  absolute `defaults()` remains the zero-config path.
+- **Measured**: `lastInputTokens` stays the position gauge, unchanged —
+  and because it measures the wire (post-projection, post-recall), memory
+  enrichment is automatically inside the number.
+
 ### 10.7 Parallel tool execution — design note (resolved: NOT a freeze gate)
 
 The design pass concluded parallelism requires **no sealed-grammar change**: a
