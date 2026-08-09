@@ -17,16 +17,27 @@ package org.jwcarman.nessy.internal;
 
 import com.fasterxml.uuid.Generators;
 import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
-import java.util.UUID;
 
-/** Time-ordered (UUIDv7) identifiers: sortable by creation time, index-friendly in stores. */
-public final class Uuids {
+/**
+ * The single place identifier generation lives. Presently generates time-ordered UUIDv7 via
+ * java-uuid-generator (JUG), sortable by creation time and index-friendly for durable stores.
+ *
+ * <p><strong>Design note:</strong> v7 identifiers deliberately embed their mint timestamp, trading
+ * some entropy for temporal locality. This is the single place any future identifier kind should
+ * draw from: add a new method here, never a new UUID source elsewhere.
+ */
+public final class Identifiers {
 
   private static final TimeBasedEpochGenerator GENERATOR = Generators.timeBasedEpochGenerator();
 
-  private Uuids() {}
+  private Identifiers() {}
 
-  public static UUID timeOrdered() {
-    return GENERATOR.generate();
+  /**
+   * Generate the next identifier.
+   *
+   * @return a time-ordered UUIDv7 as a string, never null
+   */
+  public static String next() {
+    return GENERATOR.generate().toString();
   }
 }

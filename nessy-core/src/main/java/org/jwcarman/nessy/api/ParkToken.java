@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.internal.Uuids;
+import org.jwcarman.nessy.internal.Identifiers;
 
 /**
  * Names one parked wait so a later resume can find it.
@@ -33,6 +33,6 @@ public record ParkToken(String value) {
   }
 
   public static ParkToken random() {
-    return new ParkToken(Uuids.timeOrdered().toString());
+    return new ParkToken(Identifiers.next());
   }
 }

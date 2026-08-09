@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.internal.Uuids;
+import org.jwcarman.nessy.internal.Identifiers;
 
 /** Identifies one conversation. Opaque on purpose: the store chooses what it means. */
 public record SessionId(String value) {
@@ -27,6 +27,6 @@ public record SessionId(String value) {
   }
 
   public static SessionId random() {
-    return new SessionId(Uuids.timeOrdered().toString());
+    return new SessionId(Identifiers.next());
   }
 }
