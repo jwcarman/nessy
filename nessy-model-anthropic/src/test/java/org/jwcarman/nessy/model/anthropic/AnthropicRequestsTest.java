@@ -53,6 +53,10 @@ class AnthropicRequestsTest {
     return request(messages, Set.of());
   }
 
+  private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
+    return new ModelRequest(List.of(), systemPrompt, "claude-sonnet", 1024, List.of(), Set.of());
+  }
+
   @Nested
   class SystemPrompt {
 
@@ -81,6 +85,20 @@ class AnthropicRequestsTest {
 
       var systemBlock = params.system().orElseThrow().asTextBlockParams().get(0);
       assertThat(systemBlock.cacheControl()).isPresent();
+    }
+
+    @Test
+    void a_blank_system_prompt_omits_the_system_field_entirely() {
+      var params = AnthropicRequests.toParams(requestWithSystemPrompt(""), THINKING_DISABLED);
+
+      assertThat(params.system()).isEmpty();
+    }
+
+    @Test
+    void a_whitespace_only_system_prompt_omits_the_system_field_entirely() {
+      var params = AnthropicRequests.toParams(requestWithSystemPrompt("   "), THINKING_DISABLED);
+
+      assertThat(params.system()).isEmpty();
     }
   }
 

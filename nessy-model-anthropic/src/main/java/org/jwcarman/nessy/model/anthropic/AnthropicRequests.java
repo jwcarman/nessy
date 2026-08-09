@@ -64,6 +64,11 @@ public final class AnthropicRequests {
    */
   public record ThinkingConfig(boolean enabled, int budgetTokens) {}
 
+  /**
+   * A blank {@code systemPrompt} omits the {@code system} field entirely rather than sending an
+   * empty text block: Anthropic rejects empty text blocks, and an absent system is the correct
+   * encoding of "no system prompt".
+   */
   public static MessageCreateParams toParams(ModelRequest request, ThinkingConfig thinking) {
     if (thinking.enabled() && request.maxTokens() <= thinking.budgetTokens()) {
       throw new IllegalArgumentException(
@@ -74,11 +79,12 @@ public final class AnthropicRequests {
     var cachingRequested = request.requested().contains(Capability.PROMPT_CACHING);
 
     var builder =
-        MessageCreateParams.builder()
-            .model(request.model())
-            .maxTokens(request.maxTokens())
-            .systemOfTextBlockParams(
-                List.of(systemBlock(request.systemPrompt(), cachingRequested)));
+        MessageCreateParams.builder().model(request.model()).maxTokens(request.maxTokens());
+
+    if (!request.systemPrompt().isBlank()) {
+      builder.systemOfTextBlockParams(
+          List.of(systemBlock(request.systemPrompt(), cachingRequested)));
+    }
 
     builder.messages(request.messages().stream().map(AnthropicRequests::toMessageParam).toList());
 
