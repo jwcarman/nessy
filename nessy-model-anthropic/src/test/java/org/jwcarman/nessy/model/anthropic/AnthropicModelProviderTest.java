@@ -61,12 +61,38 @@ class AnthropicModelProviderTest {
 
     @Test
     void from_env_fails_clearly_when_the_variable_is_unset() {
+      // fromEnv() itself no longer reads the environment eagerly — it only sets a flag, so the
+      // SDK's own environment table (API key, auth token, base URL, profiles, ...) is honored in
+      // full at build() time. The failure this test cares about — nothing at all is configured —
+      // moves to build() accordingly.
       assumeTrue(
-          System.getenv("ANTHROPIC_API_KEY") == null, "ANTHROPIC_API_KEY is set in this shell");
+          System.getenv("ANTHROPIC_API_KEY") == null
+              && System.getenv("ANTHROPIC_AUTH_TOKEN") == null,
+          "ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is set in this shell");
 
-      assertThatThrownBy(() -> AnthropicModelProvider.builder().fromEnv())
+      assertThatThrownBy(() -> AnthropicModelProvider.builder().fromEnv().build())
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("ANTHROPIC_API_KEY");
+    }
+
+    @Test
+    void an_explicit_api_key_set_after_from_env_still_builds_without_needing_the_environment() {
+      // Demonstrates the "explicit beats ambient" precedence from the caller's side: apiKey(...)
+      // unblocks build() even though fromEnv() was also requested and this shell may have no
+      // ANTHROPIC_API_KEY at all. What this cannot verify offline — since AnthropicClient exposes
+      // no accessor for its resolved key/base URL — is that the SDK actually preferred our
+      // explicit values over ones an environment variable might also supply; that end-to-end
+      // delegation (env baseUrl/auth-token support, explicit override winning) is exercised live
+      // by AnthropicLiveTest, whose a_real_conversation_answers test builds exclusively via
+      // fromEnv().
+      AnthropicModelProvider provider =
+          AnthropicModelProvider.builder()
+              .fromEnv()
+              .apiKey("sk-explicit-wins")
+              .baseUrl("https://example.invalid")
+              .build();
+
+      assertThat(provider).isNotNull();
     }
 
     @Test
