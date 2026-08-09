@@ -122,8 +122,10 @@ test dependencies are JUnit and AssertJ. A seam that cannot be given a first-cla
 double is a design smell in the seam.
 
 **Plain Java core, Java 25.** `nessy-core` depends on the JDK, Jackson, victools,
-and `micrometer-observation` (§11 records why that fourth dependency is
-principled). Records, sealed interfaces, pattern matching, and virtual threads are
+`micrometer-observation` (§11 records why that fourth dependency is
+principled), and `java-uuid-generator` — session and park identifiers are
+time-ordered UUIDv7, sortable by creation time and index-friendly in durable
+stores. Records, sealed interfaces, pattern matching, and virtual threads are
 load-bearing. Every seam is a plain blocking interface — no `CompletableFuture`,
 no `Flow.Publisher`, no reactive types anywhere.
 

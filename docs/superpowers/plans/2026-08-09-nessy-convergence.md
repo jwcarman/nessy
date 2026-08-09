@@ -1667,6 +1667,69 @@ git commit -m "test: converge the suite to prose naming and nested grouping"
 
 ---
 
+### Task 12: Time-ordered UUIDs (v7)
+
+**Files:**
+- Modify: `pom.xml` (parent — `jug.version` property + dependencyManagement), `nessy-core/pom.xml` (dependency)
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/internal/Uuids.java`
+- Modify: `api/SessionId.java`, `api/ParkToken.java` (`random()` implementations only — signatures unchanged), `module-info.java` if Task 9 produced one (`requires com.fasterxml.uuid`)
+- Modify: `CHANGELOG.md` (one Unreleased line)
+- Test: additions to `ValidationTest` (or the ids' own test homes)
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: `SessionId.random()` and `ParkToken.random()` now yield UUIDv7 (time-ordered) values via `com.fasterxml.uuid:java-uuid-generator`; `Uuids.timeOrdered()` internal helper. Public signatures unchanged.
+
+- [ ] **Step 1: Write the failing tests**
+
+```java
+@Test
+void random_session_ids_are_time_ordered_uuidv7() {
+  assertThat(UUID.fromString(SessionId.random().value()).version()).isEqualTo(7);
+}
+
+@Test
+void random_park_tokens_are_time_ordered_uuidv7() {
+  assertThat(UUID.fromString(ParkToken.random().value()).version()).isEqualTo(7);
+}
+```
+
+- [ ] **Step 2: Run to verify they fail** — versions currently report 4.
+
+- [ ] **Step 3: Implement**
+
+Parent pom: `<jug.version>5.1.0</jug.version>` (newest 5.x if unresolvable; record it) and manage `com.fasterxml.uuid:java-uuid-generator`; `nessy-core` declares it (compile). JUG's own transitive slf4j-api is already satisfied/aligned in the tree — verify with `dependency:tree` and note the outcome.
+
+`internal/Uuids.java`:
+
+```java
+package org.jwcarman.nessy.internal;
+
+import com.fasterxml.uuid.Generators;
+import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
+import java.util.UUID;
+
+/** Time-ordered (UUIDv7) identifiers: sortable by creation time, index-friendly in stores. */
+public final class Uuids {
+
+  private static final TimeBasedEpochGenerator GENERATOR = Generators.timeBasedEpochGenerator();
+
+  private Uuids() {}
+
+  public static UUID timeOrdered() {
+    return GENERATOR.generate();
+  }
+}
+```
+
+`SessionId.random()` / `ParkToken.random()` delegate to `Uuids.timeOrdered().toString()`. Existing distinctness tests must still pass unchanged. If Task 9 shipped `module-info.java`, add `requires com.fasterxml.uuid;` (verify the module name from the jar manifest as Task 9 did).
+
+- [ ] **Step 4: Verify, changelog, commit**
+
+Full green `./mvnw -q clean verify`; CHANGELOG Unreleased gains "Session and park identifiers are now time-ordered UUIDv7". Then license:format, spotless:apply, re-verify, commit `feat: time-ordered UUIDv7 identifiers`.
+
+---
+
 ## Self-Review
 
 **Spec coverage** (spec v2 § → task): zones/package map §4.1–4.2 → Tasks 2–3; naming ledger §5 → Task 3; grammar §7 → Task 5; facade §8.1 → Task 8; `ToolContext.events()` §8.2 → Task 4; hub §9 → Task 4; `TerminationPolicy` §10.4 → Task 6; Observation §11 → Tasks 1, 7; JPMS §4.4 → Task 9; README promise §3/§12 → Task 10; prose test style §12 → Task 1 (generator) + Task 11 (suite convergence), with every test authored by Tasks 1–10 already in style. Deliberately not in this plan, per spec §14: `Policy` (Plan 2.5), `ContextBuilder` (with the compactor), retry decorator and its `Sleeper` test seam (Plan 2), traceparent-in-state (with `DurableEngine`), the run-refusal rule for non-idle sessions (§6 — lands with `DurableEngine`'s resume work, where it can be tested against a real parked state rather than a fabricated one).
