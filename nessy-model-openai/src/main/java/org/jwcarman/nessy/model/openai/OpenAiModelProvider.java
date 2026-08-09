@@ -206,14 +206,17 @@ public final class OpenAiModelProvider implements ModelProvider {
      * {@code baseUrl} / {@code organization} (if set) layered on top afterward so they win over
      * whatever the environment supplied.
      *
-     * <p>The SDK's {@code fromEnv()}/{@code build()} do not themselves throw when no credential
-     * source resolves — a client-less-of-credentials still builds, and the failure only surfaces as
-     * an authentication error on the first real request. {@value #API_KEY_ENV_VAR} is checked
-     * directly here so the common "nothing is configured" case still fails fast at {@code build()}
-     * with a message naming the variable, matching the friendly-error behavior of the {@code
-     * apiKey}-only path above. Any other failure the SDK does raise while resolving (e.g. both
-     * {@value #API_KEY_ENV_VAR} and {@code AZURE_OPENAI_KEY} set at once) is caught and rethrown in
-     * the same friendly shape.
+     * <p>Unlike the Anthropic SDK (which defers a missing-credential failure to the first real
+     * request), this SDK's own {@code ClientOptions.Builder.build()} already fails fast: it
+     * resolves an {@code effectiveCredential()} synchronously and throws {@code
+     * IllegalStateException} immediately when no credential source (API key, workload identity, or
+     * admin key) is configured. {@value #API_KEY_ENV_VAR} is still checked directly here, ahead of
+     * calling the SDK, so that common "nothing is configured" case produces our own friendly,
+     * consistently shaped message naming the variable and the {@code apiKey(...)}/{@code
+     * client(...)} alternatives — the same shape as the {@code apiKey}-only path above — rather
+     * than the SDK's generic credential-source message. Any other failure the SDK does raise while
+     * resolving (e.g. both {@value #API_KEY_ENV_VAR} and {@code AZURE_OPENAI_KEY} set at once) is
+     * caught and rethrown in that same friendly shape.
      */
     private OpenAIClient buildFromEnv() {
       if (apiKey == null && System.getenv(API_KEY_ENV_VAR) == null) {
