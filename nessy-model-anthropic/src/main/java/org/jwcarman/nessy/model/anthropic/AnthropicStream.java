@@ -1,0 +1,209 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.model.anthropic;
+
+import com.anthropic.core.ObjectMappers;
+import com.anthropic.core.http.StreamResponse;
+import com.anthropic.models.messages.RawContentBlockDeltaEvent;
+import com.anthropic.models.messages.RawContentBlockStartEvent;
+import com.anthropic.models.messages.RawContentBlockStopEvent;
+import com.anthropic.models.messages.RawMessageDeltaEvent;
+import com.anthropic.models.messages.RawMessageStreamEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import java.io.UncheckedIOException;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.model.ModelStream;
+
+/**
+ * Lazily translates the anthropic-java SDK's raw stream events into {@link ModelEvent}s.
+ *
+ * <p>Each call to {@link Iterator#next()} pulls only as many SDK events as needed to produce the
+ * next {@link ModelEvent}; the turn is never buffered in full. {@code tool_use} content blocks are
+ * the one case that spans several SDK events ({@code content_block_start} through {@code
+ * content_block_stop}): their id, name, and streamed JSON fragments are accumulated internally and
+ * surfaced as a single {@link ModelEvent.ToolUseEmitted} once the block closes.
+ */
+public final class AnthropicStream implements ModelStream {
+
+  private final StreamResponse<RawMessageStreamEvent> stream;
+
+  public AnthropicStream(StreamResponse<RawMessageStreamEvent> stream) {
+    this.stream = Objects.requireNonNull(stream, "stream must not be null");
+  }
+
+  @Override
+  public Iterator<ModelEvent> iterator() {
+    return new TranslatingIterator(stream.stream().iterator());
+  }
+
+  @Override
+  public void close() {
+    stream.close();
+  }
+
+  // The SDK's stop-reason type shares its simple name with org.jwcarman.nessy.api.StopReason
+  // (imported above), so the parameter type here is left fully qualified rather than sprinkling
+  // FQNs through the rest of the file. Matching on the wire string itself (rather than the SDK's
+  // own Known/Value enums) means a genuinely novel value fails with our IllegalStateException
+  // instead of the SDK's own exception type, which is the contract this method exists to keep.
+  private static StopReason mapStopReason(com.anthropic.models.messages.StopReason reason) {
+    return switch (reason.asString()) {
+      case "end_turn", "stop_sequence" -> StopReason.END_TURN;
+      case "tool_use" -> StopReason.TOOL_USE;
+      case "max_tokens" -> StopReason.MAX_TOKENS;
+      case "refusal" -> StopReason.REFUSAL;
+      default ->
+          throw new IllegalStateException(
+              "Unrecognized Anthropic stop_reason: " + reason.asString());
+    };
+  }
+
+  /**
+   * Pulls SDK events one at a time and emits translated {@link ModelEvent}s from a small queue, so
+   * a single SDK event that maps to zero, one, or (across a tool-use block) eventually one
+   * accumulated event never forces the whole turn into memory.
+   */
+  private static final class TranslatingIterator implements Iterator<ModelEvent> {
+
+    private final Iterator<RawMessageStreamEvent> events;
+    private final Deque<ModelEvent> pending = new ArrayDeque<>();
+    private final Map<Long, PendingToolUse> toolUsesByIndex = new HashMap<>();
+    private long inputTokens;
+
+    private TranslatingIterator(Iterator<RawMessageStreamEvent> events) {
+      this.events = events;
+    }
+
+    @Override
+    public boolean hasNext() {
+      fill();
+      return !pending.isEmpty();
+    }
+
+    @Override
+    public ModelEvent next() {
+      fill();
+      var next = pending.poll();
+      if (next == null) {
+        throw new NoSuchElementException();
+      }
+      return next;
+    }
+
+    private void fill() {
+      while (pending.isEmpty() && events.hasNext()) {
+        translate(events.next());
+      }
+    }
+
+    private void translate(RawMessageStreamEvent event) {
+      if (event.isMessageStart()) {
+        inputTokens = event.asMessageStart().message().usage().inputTokens();
+      } else if (event.isContentBlockStart()) {
+        translateContentBlockStart(event.asContentBlockStart());
+      } else if (event.isContentBlockDelta()) {
+        translateContentBlockDelta(event.asContentBlockDelta());
+      } else if (event.isContentBlockStop()) {
+        translateContentBlockStop(event.asContentBlockStop());
+      } else if (event.isMessageDelta()) {
+        translateMessageDelta(event.asMessageDelta());
+      }
+      // message_stop carries nothing the translation table maps; TurnEnded already went out
+      // when message_delta arrived.
+    }
+
+    private void translateContentBlockStart(RawContentBlockStartEvent start) {
+      var block = start.contentBlock();
+      if (block.isToolUse()) {
+        var toolUse = block.asToolUse();
+        toolUsesByIndex.put(start.index(), new PendingToolUse(toolUse.id(), toolUse.name()));
+      } else if (block.isRedactedThinking()) {
+        pending.add(new ModelEvent.RedactedThinkingEmitted(block.asRedactedThinking().data()));
+      }
+    }
+
+    private void translateContentBlockDelta(RawContentBlockDeltaEvent event) {
+      var delta = event.delta();
+      if (delta.isText()) {
+        pending.add(new ModelEvent.TextChunk(delta.asText().text()));
+      } else if (delta.isThinking()) {
+        pending.add(new ModelEvent.ThinkingChunk(delta.asThinking().thinking()));
+      } else if (delta.isSignature()) {
+        pending.add(new ModelEvent.ThinkingSigned(delta.asSignature().signature()));
+      } else if (delta.isInputJson()) {
+        var toolUse = toolUsesByIndex.get(event.index());
+        if (toolUse != null) {
+          toolUse.appendPartialJson(delta.asInputJson().partialJson());
+        }
+      }
+    }
+
+    private void translateContentBlockStop(RawContentBlockStopEvent event) {
+      var toolUse = toolUsesByIndex.remove(event.index());
+      if (toolUse != null) {
+        pending.add(new ModelEvent.ToolUseEmitted(toolUse.toToolCall()));
+      }
+    }
+
+    private void translateMessageDelta(RawMessageDeltaEvent event) {
+      var delta = event.delta();
+      var stopReason =
+          delta
+              .stopReason()
+              .orElseThrow(
+                  () -> new IllegalStateException("message_delta event is missing stop_reason"));
+      var usage = new Usage(inputTokens, event.usage().outputTokens());
+      pending.add(new ModelEvent.TurnEnded(mapStopReason(stopReason), usage));
+    }
+  }
+
+  /** Accumulates one {@code tool_use} content block's streamed {@code input_json_delta} parts. */
+  private static final class PendingToolUse {
+
+    private final String id;
+    private final String name;
+    private final StringBuilder partialJson = new StringBuilder();
+
+    private PendingToolUse(String id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+
+    void appendPartialJson(String fragment) {
+      partialJson.append(fragment);
+    }
+
+    ToolCall toToolCall() {
+      var json = partialJson.isEmpty() ? "{}" : partialJson.toString();
+      try {
+        return new ToolCall(id, name, ObjectMappers.jsonMapper().readTree(json));
+      } catch (JsonProcessingException e) {
+        throw new UncheckedIOException(
+            "invalid streamed JSON arguments for tool '" + name + "'", e);
+      }
+    }
+  }
+}
