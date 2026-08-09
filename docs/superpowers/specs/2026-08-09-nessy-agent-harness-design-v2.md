@@ -762,17 +762,21 @@ public interface TranscriptStore {
     static TranscriptStore inMemory() { … }
 }
 
-public record TranscriptEntry(Message message, long estimatedTokens, Usage turnUsage) { … }
+public record TranscriptEntry(Message message, Usage turnUsage) { … }
 ```
 
-The engine appends at message birth. Providers report usage per *call*,
-never per message — so the entry carries both the honest numbers that
-exist: `estimatedTokens` from the `TokenEstimator` for every message
-(the only message-level figure obtainable at all), and `turnUsage` for
-assistant messages, whose `outputTokens` genuinely are that message's cost
-(every other message appends `Usage.zero()`; its cost surfaces as the next
-turn's input). Metadata rides on the entry rather than on the `Message`
-grammar, which stays wire-pure. The journal is never on the run
+The engine appends at message birth. The entry carries the one number that
+is exact and non-derivable: `turnUsage` for assistant messages, whose
+`outputTokens` genuinely are that message's cost — captured at the only
+moment it exists (every other message appends `Usage.zero()`; its cost
+surfaces as the next turn's input). Token *estimates* are deliberately NOT
+journaled: an estimate is a cheap pure function of content the journal
+already stores, so it is computed on demand by whatever `TokenEstimator`
+is current — storing it would freeze one estimator's guess into the
+permanent record and couple the write path to a read-path collaborator.
+Store facts, compute derivations. Metadata rides on the entry rather than
+on the `Message` grammar, which stays wire-pure. The journal is never on
+the run
 hot path: loads and resumes come from `SessionStore` snapshots exactly as
 today. The journal exists for what snapshots cannot do — audit, debugging a
 bad summary, re-summarizing with a better model later, and memory
@@ -822,16 +826,17 @@ public interface TokenEstimator {
 ```
 
 Providers report usage per call; nothing reports it per message. This seam
-exists to manufacture that missing figure honestly: the engine estimates
-each message at append time and the estimate rides into the journal on the
-`TranscriptEntry`. The same per-message figures serve the read path —
-budget-aware projections ("keep as many recent messages as fit in 20k
-tokens", an honest upgrade over counting messages) and sizing the head
-handed to a summarizer sum them. It complements the measured trigger and
-never replaces it: compaction keeps triggering on `lastInputTokens`, the
-provider's own exact count. The `heuristic()` default is good enough in a
-lot of cases and says so; anything smarter — a tokenizer-library adapter, a
-provider's count-tokens endpoint — drops in through the seam.
+manufactures that missing figure honestly, *on demand, on the read path
+only*: budget-aware projections ("keep as many recent messages as fit in
+20k tokens", an honest upgrade over counting messages), sizing the head
+handed to a summarizer, and any offline analysis over journal content —
+all recompute estimates from stored messages with whatever estimator is
+current, rather than reading a frozen guess out of the record. It
+complements the measured trigger and never replaces it: compaction keeps
+triggering on `lastInputTokens`, the provider's own exact count. The
+`heuristic()` default is good enough in a lot of cases and says so;
+anything smarter — a tokenizer-library adapter, a provider's count-tokens
+endpoint — drops in through the seam.
 
 **Packaging is by domain, not by a catch-all.** `spi.context` holds
 `ContextBuilder` (moved from `spi` root, a free rename pre-1.0) and
@@ -1136,7 +1141,7 @@ the application's own explicit declaration. If none is declared, the starter's
 | Where does history live durably? (2026-08-09) | The append-only `TranscriptStore` journal, fed by the engine at message birth; state is the working set (§10.8) |
 | Where is the tool-pairing invariant enforced? (2026-08-09) | Once, in the `Transcript` type, at construction (§10.8) |
 | Is summarization pluggable? (2026-08-09) | Yes — `spi.compaction.Summarizer`, a many-implementations seam; the reducer keeps summary formatting (§10.8) |
-| Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` manufactures the message-level figure, journaled on each `TranscriptEntry` (§10.8) |
+| Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` computes the message-level figure on demand, read-path only — the journal stores facts (`turnUsage`), never derivations (§10.8) |
 | What is a harness? (2026-08-09) | The model-independent runtime an agent runs inside, defined by its eight-service contract (§1.1); reified as the `Harness` object (§8.4) |
 | Where does authority attach? (2026-08-09) | To the grant — `ToolGrant` + `UsagePolicy` per agent-tool binding; `requiresApproval()` is the tool author's default; explicit grant policy may loosen or tighten (§10.5) |
 | Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
