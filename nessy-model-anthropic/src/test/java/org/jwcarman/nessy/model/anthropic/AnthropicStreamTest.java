@@ -97,6 +97,30 @@ class AnthropicStreamTest {
             .formatted(stopReason, outputTokens));
   }
 
+  private static RawMessageStreamEvent messageStop() {
+    return parseEvent(
+        """
+        {"type":"message_stop"}
+        """);
+  }
+
+  private static RawMessageStreamEvent textBlockStart(long index) {
+    return parseEvent(
+        """
+        {"type":"content_block_start","index":%d,"content_block":{"type":"text","text":""}}
+        """
+            .formatted(index));
+  }
+
+  private static RawMessageStreamEvent thinkingBlockStart(long index) {
+    return parseEvent(
+        """
+        {"type":"content_block_start","index":%d,
+        "content_block":{"type":"thinking","thinking":"","signature":""}}
+        """
+            .formatted(index));
+  }
+
   private static RawMessageStreamEvent textDelta(long index, String text) {
     return RawMessageStreamEvent.ofContentBlockDelta(
         RawContentBlockDeltaEvent.builder()
@@ -169,10 +193,12 @@ class AnthropicStreamTest {
       var events =
           List.of(
               messageStart(10),
+              textBlockStart(0),
               textDelta(0, "Hello"),
               textDelta(0, " world"),
               contentBlockStop(0),
-              messageDelta("end_turn", 5));
+              messageDelta("end_turn", 5),
+              messageStop());
 
       var modelEvents = drain(events);
 
@@ -192,10 +218,12 @@ class AnthropicStreamTest {
       var events =
           List.of(
               messageStart(20),
+              thinkingBlockStart(0),
               thinkingDelta(0, "Let me think"),
               signatureDelta(0, "sig-123"),
               contentBlockStop(0),
-              messageDelta("end_turn", 8));
+              messageDelta("end_turn", 8),
+              messageStop());
 
       var modelEvents = drain(events);
 
@@ -217,7 +245,8 @@ class AnthropicStreamTest {
               messageStart(6),
               redactedThinkingStart(0, "opaque-data"),
               contentBlockStop(0),
-              messageDelta("end_turn", 2));
+              messageDelta("end_turn", 2),
+              messageStop());
 
       var modelEvents = drain(events);
 
@@ -244,7 +273,8 @@ class AnthropicStreamTest {
               inputJsonDelta(1, "{\"zone"),
               inputJsonDelta(1, "\":\"EST\"}"),
               contentBlockStop(1),
-              messageDelta("tool_use", 12));
+              messageDelta("tool_use", 12),
+              messageStop());
 
       var modelEvents = drain(events);
 
@@ -272,7 +302,8 @@ class AnthropicStreamTest {
               messageStart(5),
               toolUseStart(0, "toolu_3", "ping"),
               contentBlockStop(0),
-              messageDelta("tool_use", 3));
+              messageDelta("tool_use", 3),
+              messageStop());
 
       var modelEvents = drain(events);
 
@@ -282,6 +313,66 @@ class AnthropicStreamTest {
           .isEqualTo(new ToolCall("toolu_3", "ping", JsonNodeFactory.instance.objectNode()));
       assertThat(call.arguments().size()).isZero();
     }
+
+    @Test
+    void a_tool_with_one_empty_input_json_delta_also_gets_empty_object_arguments() {
+      // The wire shape a real zero-arg tool actually sends: one input_json_delta whose
+      // partial_json is the empty string, not simply no deltas at all.
+      var events =
+          List.of(
+              messageStart(5),
+              toolUseStart(0, "toolu_4", "ping"),
+              inputJsonDelta(0, ""),
+              contentBlockStop(0),
+              messageDelta("tool_use", 3),
+              messageStop());
+
+      var modelEvents = drain(events);
+
+      var call = ((ModelEvent.ToolUseEmitted) modelEvents.get(0)).call();
+      assertThat(call)
+          .isEqualTo(new ToolCall("toolu_4", "ping", JsonNodeFactory.instance.objectNode()));
+    }
+
+    @Test
+    void truncated_json_from_a_stream_cut_off_mid_tool_use_fails_loudly_with_diagnosis() {
+      var events =
+          List.of(
+              messageStart(5),
+              toolUseStart(0, "toolu_5", "get_weather"),
+              inputJsonDelta(0, "{\"le"),
+              contentBlockStop(0),
+              messageDelta("max_tokens", 3),
+              messageStop());
+
+      var stream = new AnthropicStream(fakeStream(events, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("get_weather")
+          .hasMessageContaining("toolu_5")
+          .hasMessageContaining("{\"le");
+    }
+
+    @Test
+    void arguments_that_parse_to_something_other_than_a_json_object_fail_loudly() {
+      var events =
+          List.of(
+              messageStart(5),
+              toolUseStart(0, "toolu_6", "get_weather"),
+              inputJsonDelta(0, "null"),
+              contentBlockStop(0),
+              messageDelta("tool_use", 3),
+              messageStop());
+
+      var stream = new AnthropicStream(fakeStream(events, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("get_weather")
+          .hasMessageContaining("toolu_6")
+          .hasMessageContaining("null");
+    }
   }
 
   @Nested
@@ -289,7 +380,7 @@ class AnthropicStreamTest {
 
     @Test
     void input_tokens_from_message_start_combine_with_output_tokens_from_message_delta() {
-      var events = List.of(messageStart(37), messageDelta("end_turn", 9));
+      var events = List.of(messageStart(37), messageDelta("end_turn", 9), messageStop());
 
       var modelEvents = drain(events);
 
@@ -303,47 +394,62 @@ class AnthropicStreamTest {
 
     @Test
     void end_turn_maps_to_end_turn() {
-      var modelEvents = drain(List.of(messageStart(1), messageDelta("end_turn", 1)));
+      var modelEvents = drain(List.of(messageStart(1), messageDelta("end_turn", 1), messageStop()));
       assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.END_TURN);
     }
 
     @Test
     void tool_use_maps_to_tool_use() {
-      var modelEvents = drain(List.of(messageStart(1), messageDelta("tool_use", 1)));
+      var modelEvents = drain(List.of(messageStart(1), messageDelta("tool_use", 1), messageStop()));
       assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.TOOL_USE);
     }
 
     @Test
     void max_tokens_maps_to_max_tokens() {
-      var modelEvents = drain(List.of(messageStart(1), messageDelta("max_tokens", 1)));
+      var modelEvents =
+          drain(List.of(messageStart(1), messageDelta("max_tokens", 1), messageStop()));
       assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.MAX_TOKENS);
     }
 
     @Test
     void stop_sequence_maps_to_end_turn() {
-      var modelEvents = drain(List.of(messageStart(1), messageDelta("stop_sequence", 1)));
+      var modelEvents =
+          drain(List.of(messageStart(1), messageDelta("stop_sequence", 1), messageStop()));
       assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.END_TURN);
     }
 
     @Test
     void refusal_maps_to_refusal() {
-      var modelEvents = drain(List.of(messageStart(1), messageDelta("refusal", 1)));
+      var modelEvents = drain(List.of(messageStart(1), messageDelta("refusal", 1), messageStop()));
       assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.REFUSAL);
     }
 
     @Test
-    void an_unrecognized_stop_reason_fails_loudly_naming_it() {
-      var events = List.of(messageStart(1), messageDelta("pause_turn", 1));
+    void a_stop_reason_the_sdk_itself_knows_but_we_do_not_map_fails_loudly_naming_it() {
+      var events = List.of(messageStart(1), messageDelta("pause_turn", 1), messageStop());
       var stream = new AnthropicStream(fakeStream(events, () -> {}));
 
       assertThatThrownBy(() -> stream.forEach(event -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("pause_turn");
+    }
+
+    @Test
+    void a_stop_reason_the_sdk_has_never_seen_also_fails_loudly_naming_it() {
+      // Pins that mapStopReason() dispatches on the wire string itself (reason.asString()) rather
+      // than the SDK's own Known/Value enum: a value the SDK has genuinely never heard of must
+      // still land in our IllegalStateException, not the SDK's own exception type.
+      var events = List.of(messageStart(1), messageDelta("some_future_reason", 1), messageStop());
+      var stream = new AnthropicStream(fakeStream(events, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("some_future_reason");
     }
   }
 
@@ -373,7 +479,8 @@ class AnthropicStreamTest {
               textDelta(0, "one"),
               textDelta(0, "two"),
               contentBlockStop(0),
-              messageDelta("end_turn", 1));
+              messageDelta("end_turn", 1),
+              messageStop());
       var countingStream =
           new StreamResponse<RawMessageStreamEvent>() {
             @Override
@@ -391,6 +498,20 @@ class AnthropicStreamTest {
 
       assertThat(first).isEqualTo(new ModelEvent.TextChunk("one"));
       assertThat(pulled[0]).isLessThan(events.size());
+    }
+  }
+
+  @Nested
+  class StreamIntegrity {
+
+    @Test
+    void a_stream_that_ends_without_ever_seeing_a_message_delta_fails_loudly() {
+      var events = List.of(messageStart(1), textDelta(0, "partial"));
+      var stream = new AnthropicStream(fakeStream(events, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("message_delta");
     }
   }
 }

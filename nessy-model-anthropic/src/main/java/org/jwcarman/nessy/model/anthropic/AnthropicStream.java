@@ -23,7 +23,7 @@ import com.anthropic.models.messages.RawContentBlockStopEvent;
 import com.anthropic.models.messages.RawMessageDeltaEvent;
 import com.anthropic.models.messages.RawMessageStreamEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import java.io.UncheckedIOException;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
@@ -45,6 +45,11 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * the one case that spans several SDK events ({@code content_block_start} through {@code
  * content_block_stop}): their id, name, and streamed JSON fragments are accumulated internally and
  * surfaced as a single {@link ModelEvent.ToolUseEmitted} once the block closes.
+ *
+ * <p>{@link #iterator()} is one-shot: each call wraps a fresh {@link Iterator} over the SDK's
+ * {@code Stream}, but that {@code Stream} itself is a standard single-use {@link
+ * java.util.stream.Stream} under the hood — traversing it (fully or partially) and then calling
+ * {@link #iterator()} again throws from the SDK side, not this class.
  */
 public final class AnthropicStream implements ModelStream {
 
@@ -92,6 +97,7 @@ public final class AnthropicStream implements ModelStream {
     private final Deque<ModelEvent> pending = new ArrayDeque<>();
     private final Map<Long, PendingToolUse> toolUsesByIndex = new HashMap<>();
     private long inputTokens;
+    private boolean turnEnded;
 
     private TranslatingIterator(Iterator<RawMessageStreamEvent> events) {
       this.events = events;
@@ -113,9 +119,21 @@ public final class AnthropicStream implements ModelStream {
       return next;
     }
 
+    /**
+     * Pulls SDK events until there's something to hand back, or the SDK stream is exhausted.
+     *
+     * <p>A real stream always closes with {@code message_delta} (which is where {@link
+     * ModelEvent.TurnEnded} comes from) before {@code message_stop}. If the underlying events run
+     * out without one ever having been translated, the turn ended without a stop reason — silently
+     * returning "no more events" here would let the harness treat that as a normal, successful end
+     * of turn, so it fails loudly instead.
+     */
     private void fill() {
       while (pending.isEmpty() && events.hasNext()) {
         translate(events.next());
+      }
+      if (pending.isEmpty() && !events.hasNext() && !turnEnded) {
+        throw new IllegalStateException("stream ended without a message_delta (no stop_reason)");
       }
     }
 
@@ -135,6 +153,19 @@ public final class AnthropicStream implements ModelStream {
       // when message_delta arrived.
     }
 
+    /**
+     * Translates the two {@code content_block_start} variants that need one: {@code tool_use}
+     * (which opens accumulation, keyed by block index) and {@code redacted_thinking} (which is
+     * complete in one shot, so it's emitted immediately). {@code text} and {@code thinking} blocks
+     * carry nothing to translate here — their content arrives via {@code content_block_delta}.
+     *
+     * <p>Deliberately unmapped: {@code server_tool_use} and the various {@code *_tool_result} block
+     * variants (server-side tools this harness never declares, so they never appear when this
+     * stream is driven by {@code AnthropicRequests}-built params), plus any future block variant
+     * the SDK adds. All fall through as a silent no-op rather than a crash — content this harness
+     * doesn't model is content it drops, not an error — and are not logged, since this is a
+     * per-token hot path.
+     */
     private void translateContentBlockStart(RawContentBlockStartEvent start) {
       var block = start.contentBlock();
       if (block.isToolUse()) {
@@ -145,6 +176,16 @@ public final class AnthropicStream implements ModelStream {
       }
     }
 
+    /**
+     * Translates the four {@code content_block_delta} variants the mapping table covers: {@code
+     * text_delta}, {@code thinking_delta}, {@code signature_delta}, and {@code input_json_delta}
+     * (which appends to whichever tool-use block is accumulating at that index, if any).
+     *
+     * <p>Deliberately unmapped: {@code citations_delta} — there's no {@link ModelEvent} variant for
+     * citation metadata, so it falls through as a silent no-op rather than a crash, same as the
+     * unmapped content-block-start variants above and for the same reason (dropped, not an error;
+     * not logged, since this is a per-token hot path).
+     */
     private void translateContentBlockDelta(RawContentBlockDeltaEvent event) {
       var delta = event.delta();
       if (delta.isText()) {
@@ -177,6 +218,7 @@ public final class AnthropicStream implements ModelStream {
                   () -> new IllegalStateException("message_delta event is missing stop_reason"));
       var usage = new Usage(inputTokens, event.usage().outputTokens());
       pending.add(new ModelEvent.TurnEnded(mapStopReason(stopReason), usage));
+      turnEnded = true;
     }
   }
 
@@ -196,14 +238,31 @@ public final class AnthropicStream implements ModelStream {
       partialJson.append(fragment);
     }
 
+    /**
+     * Parses the accumulated fragments into this tool call's arguments.
+     *
+     * <p>Fails fast rather than truncating or otherwise guessing at a partial call: a stream that
+     * stops mid-{@code tool_use} (for example, a {@code max_tokens} cutoff) leaves genuinely
+     * unusable arguments, and the harness's finally-save preserves session state up to this point,
+     * so the failure is recoverable by inspection rather than silently corrupting the tool call.
+     */
     ToolCall toToolCall() {
       var json = partialJson.isEmpty() ? "{}" : partialJson.toString();
+      JsonNode arguments;
       try {
-        return new ToolCall(id, name, ObjectMappers.jsonMapper().readTree(json));
+        arguments = ObjectMappers.jsonMapper().readTree(json);
       } catch (JsonProcessingException e) {
-        throw new UncheckedIOException(
-            "invalid streamed JSON arguments for tool '" + name + "'", e);
+        throw new IllegalStateException(describeFailure("did not parse as JSON", json), e);
       }
+      if (!arguments.isObject()) {
+        throw new IllegalStateException(describeFailure("did not parse to a JSON object", json));
+      }
+      return new ToolCall(id, name, arguments);
+    }
+
+    private String describeFailure(String problem, String json) {
+      var truncated = json.length() <= 200 ? json : json.substring(0, 200);
+      return "tool '" + name + "' (id=" + id + ") streamed arguments " + problem + ": " + truncated;
     }
   }
 }
