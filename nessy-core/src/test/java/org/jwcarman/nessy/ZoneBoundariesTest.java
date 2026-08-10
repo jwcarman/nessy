@@ -46,7 +46,9 @@ class ZoneBoundariesTest {
 
   @Test
   void no_file_under_api_imports_spi() {
-    for (JavaFile file : filesUnder("api")) {
+    List<JavaFile> filesUnderApi = filesUnder("api");
+    assertThat(filesUnderApi).isNotEmpty();
+    for (JavaFile file : filesUnderApi) {
       assertThat(file.importsPackage("org.jwcarman.nessy.spi"))
           .as(
               "%s imports org.jwcarman.nessy.spi, but api may not depend on spi",
@@ -57,7 +59,9 @@ class ZoneBoundariesTest {
 
   @Test
   void files_under_api_importing_internal_are_exactly_the_sanctioned_set() {
-    for (JavaFile file : filesUnder("api")) {
+    List<JavaFile> filesUnderApi = filesUnder("api");
+    assertThat(filesUnderApi).isNotEmpty();
+    for (JavaFile file : filesUnderApi) {
       if (file.importsPackage("org.jwcarman.nessy.internal")) {
         assertThat(SANCTIONED_API_TO_INTERNAL_IMPORTS)
             .as(
@@ -89,7 +93,7 @@ class ZoneBoundariesTest {
    */
   @Test
   void no_file_under_spi_context_imports_internal() {
-    List<JavaFile> filesUnderSpiContext = filesUnderSegment("spi/context");
+    List<JavaFile> filesUnderSpiContext = filesUnder("spi/context");
     assertThat(filesUnderSpiContext).isNotEmpty();
     for (JavaFile file : filesUnderSpiContext) {
       assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
@@ -103,7 +107,9 @@ class ZoneBoundariesTest {
   /** The api-to-spi ban (see {@link #no_file_under_api_imports_spi}) covers spi.context too. */
   @Test
   void no_file_under_api_imports_spi_context() {
-    for (JavaFile file : filesUnder("api")) {
+    List<JavaFile> filesUnderApi = filesUnder("api");
+    assertThat(filesUnderApi).isNotEmpty();
+    for (JavaFile file : filesUnderApi) {
       assertThat(file.importsPackage("org.jwcarman.nessy.spi.context"))
           .as(
               "%s imports org.jwcarman.nessy.spi.context, but api may not depend on spi",
@@ -112,19 +118,14 @@ class ZoneBoundariesTest {
     }
   }
 
-  private static List<JavaFile> filesUnder(String zone) {
-    return allJavaFiles().stream()
-        .filter(file -> file.relativePath().contains("/" + zone + "/"))
-        .toList();
-  }
-
   /**
-   * Files whose relative path is under the given slash-separated package segment, matching both the
-   * segment's direct children and anything nested deeper — unlike {@link #filesUnder}, which only
-   * matches a segment appearing with a leading slash and so never matches a zone's own top-level
-   * files.
+   * Files whose relative path is under the given slash-separated package segment — matching both
+   * the segment's direct children and anything nested deeper. A zone name is the leading path
+   * segment (paths start {@code "api/..."}, not {@code "/api/..."}), so this checks a leading
+   * prefix rather than a substring wrapped in slashes; the substring form matches nothing, ever,
+   * for a top-level zone.
    */
-  private static List<JavaFile> filesUnderSegment(String segment) {
+  private static List<JavaFile> filesUnder(String segment) {
     String prefix = segment + "/";
     return allJavaFiles().stream().filter(file -> file.relativePath().startsWith(prefix)).toList();
   }
