@@ -48,6 +48,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
@@ -103,6 +104,7 @@ public final class InProcessEngine implements ExecutionEngine {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.grants = Map.copyOf(Objects.requireNonNull(grants, "grants must not be null"));
+    requireEveryRegisteredToolIsGranted(this.tools, this.grants);
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.hub = Objects.requireNonNull(hub, "hub must not be null");
@@ -112,6 +114,24 @@ public final class InProcessEngine implements ExecutionEngine {
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     this.contextBuilder = Objects.requireNonNull(contextBuilder, "contextBuilder must not be null");
     this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
+  }
+
+  /**
+   * The wiring-time belt for the {@code tools}/{@code grants} pair: every tool {@code
+   * tools.specs()} advertises to the model must have a grant, or the model could be offered a tool
+   * whose authority was never decided. This is the ordinary desync — {@code AgentBuilder} always
+   * derives one map from the other, so only hand-rolled engine construction can trip it — caught
+   * loudly at construction rather than silently at the chokepoint. It does not catch an exotic
+   * {@link ToolRegistry} whose {@code find(name)} resolves names {@code specs()} never advertised;
+   * {@link #decide} carries its own guard for that case.
+   */
+  private static void requireEveryRegisteredToolIsGranted(
+      ToolRegistry tools, Map<String, ToolGrant> grants) {
+    for (ToolSpec spec : tools.specs()) {
+      if (!grants.containsKey(spec.name())) {
+        throw new IllegalArgumentException("no grant for tool: " + spec.name());
+      }
+    }
   }
 
   /**
@@ -359,13 +379,24 @@ public final class InProcessEngine implements ExecutionEngine {
    * <p>{@link Tool#requiresApproval()} plays no part here: {@link ToolGrant#grant} is the only
    * place that reads it, deriving the default policy at grant construction. From here on the
    * grant's {@link org.jwcarman.nessy.api.tool.UsagePolicy} alone decides whether the approver is
-   * ever asked. A call with no grant is treated exactly like a call to an unregistered tool — the
-   * same allow-through {@link #executeTool} then turns into a model-visible "no such tool" error,
-   * so a missing grant never surfaces as a second, different failure here.
+   * ever asked.
+   *
+   * <p>A missing grant splits into two cases. A call to a tool {@link #tools} does not know at all
+   * is allowed through here — {@link #executeTool} then turns it into the one, model-visible "no
+   * such tool" error, so a missing grant never surfaces as a second, different failure. A call to a
+   * tool {@link #tools} <em>does</em> know — registered, but with no entry in {@link #grants} — is
+   * a wiring error, not something the model did: {@link #requireEveryRegisteredToolIsGranted}
+   * catches the ordinary version of this at construction, but an exotic registry whose {@code
+   * find(name)} resolves beyond its own {@code specs()} can still reach here, so it is denied
+   * outright rather than allowed to run ungated.
    */
   private Event decide(SessionState state, ToolCall call) {
     ToolGrant grant = grants.get(call.name());
     if (grant == null) {
+      if (tools.find(call.name()).isPresent()) {
+        return new Event.ApprovalDecided(
+            call, new Decision.Deny("no grant for tool: " + call.name()));
+      }
       return new Event.ApprovalDecided(call, Decision.allow());
     }
     PolicyDecision decision = evaluate(grant.policy(), call, state);
@@ -378,14 +409,17 @@ public final class InProcessEngine implements ExecutionEngine {
   }
 
   /**
-   * Runs one policy, fail-closed: a policy is supposed to be pure, but a broken one must never
-   * become an allow, so a thrown {@link RuntimeException} becomes a {@link PolicyDecision.Deny}
-   * carrying the same description {@link #describe(RuntimeException)} gives every other
-   * harness-caught failure.
+   * Runs one policy, fail-closed: a policy is supposed to be pure and total, but a broken or
+   * incomplete one must never become an allow. A thrown {@link RuntimeException} becomes a {@link
+   * PolicyDecision.Deny} carrying the same description {@link #describe(RuntimeException)} gives
+   * every other harness-caught failure; a {@code null} result — a policy that returns nothing
+   * rather than throwing — is treated the same way, with its own reason, since a silently missing
+   * decision is just as much a broken policy as a thrown exception.
    */
   private static PolicyDecision evaluate(UsagePolicy policy, ToolCall call, SessionState state) {
     try {
-      return policy.evaluate(call, state);
+      PolicyDecision decision = policy.evaluate(call, state);
+      return decision != null ? decision : new PolicyDecision.Deny("policy returned no decision");
     } catch (RuntimeException e) {
       return new PolicyDecision.Deny(describe(e));
     }

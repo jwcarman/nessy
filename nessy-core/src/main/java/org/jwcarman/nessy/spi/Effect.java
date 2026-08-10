@@ -20,6 +20,7 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 
 /**
  * Something that should happen.
@@ -37,10 +38,11 @@ public sealed interface Effect {
   /**
    * Resolve the approval question for a call.
    *
-   * <p>Note this says <em>resolve</em>, not <em>prompt</em>. For a tool whose {@code
-   * requiresApproval()} is false the engine answers {@link Decision#allow()} itself without
-   * troubling the approver. The reducer stays tool-agnostic and the model still cannot route around
-   * the gate.
+   * <p>Note this says <em>resolve</em>, not <em>prompt</em>. The engine consults the call's grant —
+   * its {@link UsagePolicy} — before ever asking a human: a policy that resolves to {@code Allow}
+   * makes the engine answer {@link Decision#allow()} itself, without troubling the approver, and
+   * only {@code RequireApproval} ever reaches it. The reducer stays tool-agnostic and the model
+   * still cannot route around the gate.
    */
   record RequestApproval(ToolCall call) implements Effect {}
 

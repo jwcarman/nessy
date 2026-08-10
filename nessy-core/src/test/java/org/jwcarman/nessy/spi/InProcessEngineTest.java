@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -274,6 +276,29 @@ class InProcessEngineTest {
                       TranscriptStore.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants");
+    }
+
+    @Test
+    void a_grant_map_missing_a_registered_tool_is_rejected() {
+      ToolRegistry tools = ToolRegistry.of(new EngineFixtures.EchoTool(false));
+
+      assertThatThrownBy(
+              () ->
+                  new InProcessEngine(
+                      new EngineFixtures.FakeProvider(List.of()),
+                      tools,
+                      Map.of(),
+                      Approver.allowAll(),
+                      SessionStore.inMemory(),
+                      EventHub.synchronous(),
+                      Reducer.defaults(),
+                      CONFIG,
+                      new ObjectMapper(),
+                      ObservationRegistry.NOOP,
+                      ContextBuilder.identity(),
+                      TranscriptStore.none()))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("echo");
     }
 
     @Test
@@ -591,12 +616,28 @@ class InProcessEngineTest {
     }
 
     @Test
-    void a_call_with_no_grant_is_allowed_through_like_an_unregistered_tool() {
+    void a_policy_returning_null_fails_closed() {
+      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(false);
+      ToolGrant grant = new ToolGrant(tool, (call, state) -> null);
+
+      RunOutcome outcome =
+          engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(block.content()).contains("policy returned no decision");
+    }
+
+    @Test
+    void a_call_to_a_truly_unregistered_tool_is_allowed_through_to_the_no_such_tool_error() {
       EngineFixtures.FakeProvider provider = toolCallingProvider();
       InProcessEngine engine =
           new InProcessEngine(
               provider,
-              ToolRegistry.of(new EngineFixtures.EchoTool(false)),
+              ToolRegistry.of(),
               Map.of(),
               new ThrowingApprover(),
               SessionStore.inMemory(),
@@ -611,8 +652,63 @@ class InProcessEngineTest {
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-      assertThat(completed.state().messages().get(2).content())
-          .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(block.content()).contains("echo");
+    }
+
+    /**
+     * A registry that resolves a tool via {@link #find} without ever advertising it in {@link
+     * #specs}. {@code AgentBuilder} never builds one of these — it always derives its grants from
+     * the same registry's {@code specs()} — but the constructor belt only walks {@code specs()}, so
+     * a registry shaped like this is the one way to reach {@code decide()} with a tool that is
+     * registered-but-ungranted, exercising the guard the belt cannot.
+     */
+    private static final class UndeclaredToolRegistry implements ToolRegistry {
+      private final Tool<?> hidden;
+
+      UndeclaredToolRegistry(Tool<?> hidden) {
+        this.hidden = hidden;
+      }
+
+      @Override
+      public Optional<Tool<?>> find(String name) {
+        return hidden.name().equals(name) ? Optional.of(hidden) : Optional.empty();
+      }
+
+      @Override
+      public List<ToolSpec> specs() {
+        return List.of();
+      }
+    }
+
+    @Test
+    void a_registered_but_ungranted_tool_is_denied_at_the_chokepoint() {
+      EngineFixtures.FakeProvider provider = toolCallingProvider();
+      ToolRegistry undeclared = new UndeclaredToolRegistry(new EngineFixtures.EchoTool(false));
+      InProcessEngine engine =
+          new InProcessEngine(
+              provider,
+              undeclared,
+              Map.of(),
+              new ThrowingApprover(),
+              SessionStore.inMemory(),
+              EventHub.synchronous(),
+              Reducer.defaults(),
+              CONFIG,
+              new ObjectMapper(),
+              ObservationRegistry.NOOP,
+              ContextBuilder.identity(),
+              TranscriptStore.none());
+
+      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(block.content()).isEqualTo("Denied by user: no grant for tool: echo");
     }
   }
 

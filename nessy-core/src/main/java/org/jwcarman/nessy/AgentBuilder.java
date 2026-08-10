@@ -146,9 +146,11 @@ public final class AgentBuilder {
    * granted here uses exactly the policy its grant carries rather than a derived default.
    */
   public AgentBuilder tools(ToolGrant... grants) {
+    Objects.requireNonNull(grants, "grants must not be null");
     Tool<?>[] granted = new Tool<?>[grants.length];
     Map<String, ToolGrant> byName = new LinkedHashMap<>();
     for (int i = 0; i < grants.length; i++) {
+      Objects.requireNonNull(grants[i], "grants[" + i + "] must not be null");
       granted[i] = grants[i].tool();
       byName.put(grants[i].tool().name(), grants[i]);
     }

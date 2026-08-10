@@ -190,6 +190,13 @@ changed.
   call is now ambiguous between the two overloads and requires an explicit
   cast, e.g. `.compaction((CompactionPolicy) null)`. Source using the
   single-overload form to explicitly pass a null policy must add the cast.
+- **`AgentBuilder.tools(...)` source-compat note (pre-1.0 breaking)** — adding
+  the `ToolGrant...` overload alongside the existing `Tool...` one means a
+  bare `.tools()` call (zero arguments) no longer resolves: it is now
+  ambiguous between the two varargs overloads, since an empty array satisfies
+  either equally well. Source relying on the zero-arg form must either drop
+  the call (`tools` already defaults to `ToolRegistry.of()`) or cast, e.g.
+  `.tools((Tool<?>[]) null)`.
 - **Zones**: the codebase is reorganized from `org.jwcarman.nessy.core.*` into
   `org.jwcarman.nessy` (front door), `.api` (application developers: `Tool`,
   `Approver`, the message/event grammar), `.spi` (infrastructure extenders:

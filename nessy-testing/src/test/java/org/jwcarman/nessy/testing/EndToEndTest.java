@@ -301,9 +301,10 @@ class EndToEndTest {
               .provider(freeProvider)
               .model("fake-model")
               .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
-              // If the approver were consulted at all, this would deny the call and the
-              // reply would carry an error instead of "The answer is 4." — proving allow()
-              // really does skip it.
+              // The approver denies everything, but it must never be asked: the tool-result
+              // assertion below checks the sum actually ran rather than being denied, which
+              // "The answer is 4." alone would not prove — that text comes from the script
+              // either way, denied or not.
               .approver(Approver.denyAll("would fail if ever asked"))
               .build();
 
@@ -328,6 +329,9 @@ class EndToEndTest {
 
       assertThat(freeReply.failed()).isFalse();
       assertThat(freeReply.text()).isEqualTo("The answer is 4.");
+      ToolResultBlock freeBlock =
+          (ToolResultBlock) freeReply.state().messages().get(2).content().getFirst();
+      assertThat(freeBlock).isEqualTo(new ToolResultBlock("c1", "4", false));
 
       assertThat(gatedReply.failed()).isFalse();
       ToolResultBlock deniedBlock =
