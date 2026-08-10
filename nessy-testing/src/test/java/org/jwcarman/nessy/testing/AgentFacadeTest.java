@@ -651,9 +651,9 @@ class AgentFacadeTest {
   }
 
   /**
-   * A tap is just another hub subscriber, so the synchronous spine's veto-by-throw (design §9.1)
-   * applies to it exactly as it does to any other subscriber: a throwing tap propagates and aborts
-   * the {@code tell}, rather than being contained.
+   * A tap is just another hub subscriber, so the registry's veto-by-throw (design §9.1) applies to
+   * it exactly as it does to any other subscriber: a throwing tap propagates and aborts the {@code
+   * tell}, rather than being contained.
    */
   @Test
   void a_throwing_tap_propagates_and_aborts_the_tell() {

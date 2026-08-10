@@ -22,7 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.ListenerRegistration;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
@@ -39,7 +40,7 @@ public final class HarnessBuilder {
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ObjectMapper mapper = new ObjectMapper();
   private String defaultModel;
-  private final List<ListenerDeclaration> declarations = new ArrayList<>();
+  private final List<ListenerRegistration> registrations = new ArrayList<>();
 
   HarnessBuilder(ModelProvider provider) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
@@ -79,12 +80,12 @@ public final class HarnessBuilder {
 
   /**
    * Declares a synchronous listener seeded into every agent this harness builds — before that
-   * agent's own declarations, in the order declared here. Frozen at {@link #build()}: no mutation
+   * agent's own registrations, in the order declared here. Frozen at {@link #build()}: no mutation
    * path exists afterward. A throw from {@code listener} propagates and stops the emitting
    * operation — the veto is the throw.
    */
   public <T> HarnessBuilder listen(Class<T> type, Consumer<T> listener) {
-    declarations.add(ListenerDeclaration.sync(type, listener));
+    registrations.add(ListenerRegistration.sync(type, listener));
     return this;
   }
 
@@ -95,7 +96,7 @@ public final class HarnessBuilder {
    */
   public <T> HarnessBuilder listenAsync(
       Class<T> type, Consumer<T> listener, Consumer<Throwable> onError) {
-    declarations.add(ListenerDeclaration.async(type, listener, onError));
+    registrations.add(ListenerRegistration.async(type, listener, onError));
     return this;
   }
 
@@ -111,7 +112,7 @@ public final class HarnessBuilder {
   }
 
   public Harness build() {
-    List<ListenerDeclaration> frozen = new ArrayList<>(declarations);
-    return new Harness(provider, store, observations, mapper, defaultModel, List.copyOf(frozen));
+    return new Harness(
+        provider, store, observations, mapper, defaultModel, ListenerRegistry.of(registrations));
   }
 }

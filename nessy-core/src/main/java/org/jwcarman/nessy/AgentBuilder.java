@@ -27,9 +27,8 @@ import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
-import org.jwcarman.nessy.api.event.EventSpine;
-import org.jwcarman.nessy.api.event.EventSpines;
-import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.ListenerRegistration;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -70,8 +69,8 @@ public final class AgentBuilder<I> {
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
   private final String defaultModel;
-  private final List<ListenerDeclaration> seededDeclarations;
-  private final List<ListenerDeclaration> declarations = new ArrayList<>();
+  private final ListenerRegistry seededRegistry;
+  private final List<ListenerRegistration> registrations = new ArrayList<>();
 
   private String model;
   private String systemPrompt = "";
@@ -92,7 +91,8 @@ public final class AgentBuilder<I> {
   /**
    * Seeded from a {@link Harness}: the infrastructure four (provider, store, observations, mapper)
    * come straight from the harness, with no override here; {@code defaultModel} and the harness's
-   * declared listeners are seeded instead, layered under whatever this builder declares itself.
+   * {@link ListenerRegistry} are seeded instead, layered under whatever this builder declares
+   * itself via {@link ListenerRegistry#extendedWith}.
    *
    * <p>{@code defaultRenderer} is the vocabulary-driven default — {@link InputRenderer#text()} for
    * {@code String}, {@link InputRenderer#json(ObjectMapper)} over the harness mapper otherwise —
@@ -107,7 +107,7 @@ public final class AgentBuilder<I> {
     this.observations = harness.observations();
     this.mapper = harness.mapper();
     this.defaultModel = harness.defaultModel();
-    this.seededDeclarations = harness.declarations();
+    this.seededRegistry = harness.registry();
   }
 
   /**
@@ -267,12 +267,13 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Declares a synchronous listener for this agent, after the harness's own seeded declarations, in
-   * the order declared here. Frozen at {@link #build()}: no mutation path exists afterward. A throw
-   * from {@code listener} propagates and stops the emitting operation — the veto is the throw.
+   * Declares a synchronous listener for this agent, after the harness's own seeded registrations,
+   * in the order declared here. Frozen at {@link #build()}: no mutation path exists afterward. A
+   * throw from {@code listener} propagates and stops the emitting operation — the veto is the
+   * throw.
    */
   public <T> AgentBuilder<I> listen(Class<T> type, Consumer<T> listener) {
-    declarations.add(ListenerDeclaration.sync(type, listener));
+    registrations.add(ListenerRegistration.sync(type, listener));
     return this;
   }
 
@@ -283,7 +284,7 @@ public final class AgentBuilder<I> {
    */
   public <T> AgentBuilder<I> listenAsync(
       Class<T> type, Consumer<T> listener, Consumer<Throwable> onError) {
-    declarations.add(ListenerDeclaration.async(type, listener, onError));
+    registrations.add(ListenerRegistration.async(type, listener, onError));
     return this;
   }
 
@@ -320,7 +321,7 @@ public final class AgentBuilder<I> {
         new ModelSettings(resolvedModel, systemPrompt, maxTokens, capabilities, contextWindow);
     Compactor resolvedCompactor =
         compactor != null ? compactor : assembleDefaultCompactor(settings);
-    EventSpine events = EventSpines.of(frozenDeclarations());
+    ListenerRegistry events = seededRegistry.extendedWith(registrations);
     // Constructed once here and handed to both the engine and the Agent: the invariant is one
     // ContextPipeline instance per agent, so requestFor and contextFor never disagree about what
     // a call sees.
@@ -341,18 +342,6 @@ public final class AgentBuilder<I> {
             observations,
             contextPipeline);
     return new Agent<>(engine, events, store, contextPipeline, renderer);
-  }
-
-  /**
-   * The harness's declarations first, in order, then this builder's own — the seeded-provider
-   * pattern applied to listeners (design §17).
-   */
-  private List<ListenerDeclaration> frozenDeclarations() {
-    List<ListenerDeclaration> frozen =
-        new ArrayList<>(seededDeclarations.size() + declarations.size());
-    frozen.addAll(seededDeclarations);
-    frozen.addAll(declarations);
-    return frozen;
   }
 
   /**

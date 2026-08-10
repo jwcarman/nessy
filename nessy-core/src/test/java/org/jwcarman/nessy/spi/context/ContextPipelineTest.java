@@ -26,9 +26,8 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
 import org.jwcarman.nessy.api.event.EventEmitter;
-import org.jwcarman.nessy.api.event.EventSpine;
-import org.jwcarman.nessy.api.event.EventSpines;
-import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.ListenerRegistration;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -120,8 +119,9 @@ class ContextPipelineTest {
         };
     ContextEnricher succeeding = state -> List.of(Message.user("fact B"));
     List<EnrichmentFailed> failures = new ArrayList<>();
-    EventSpine hub =
-        EventSpines.of(List.of(ListenerDeclaration.sync(EnrichmentFailed.class, failures::add)));
+    ListenerRegistry hub =
+        ListenerRegistry.of(
+            List.of(ListenerRegistration.sync(EnrichmentFailed.class, failures::add)));
     ContextPipeline pipeline =
         ContextPipeline.builder()
             .enrich(failing)

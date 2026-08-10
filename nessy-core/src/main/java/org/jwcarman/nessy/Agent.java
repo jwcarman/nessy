@@ -18,7 +18,7 @@ package org.jwcarman.nessy;
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
-import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.spi.ExecutionEngine;
@@ -38,14 +38,14 @@ import org.jwcarman.nessy.spi.conversation.ConversationStore;
 public final class Agent<I> {
 
   private final ExecutionEngine engine;
-  private final EventSpine events;
+  private final ListenerRegistry events;
   private final ConversationStore store;
   private final ContextPipeline contextPipeline;
   private final InputRenderer<I> renderer;
 
   Agent(
       ExecutionEngine engine,
-      EventSpine events,
+      ListenerRegistry events,
       ConversationStore store,
       ContextPipeline contextPipeline,
       InputRenderer<I> renderer) {

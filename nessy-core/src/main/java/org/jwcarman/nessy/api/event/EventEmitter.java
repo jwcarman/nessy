@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.api.event;
 
-/** The emit-only face of the delivery spine. Anything holding one may announce; nothing more. */
+/** The emit-only face of the listener registry. Anything holding one may announce; nothing more. */
 public interface EventEmitter {
 
   void emit(Object event);

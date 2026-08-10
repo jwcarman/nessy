@@ -17,9 +17,8 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
-import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -31,8 +30,9 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  * Harness} owns the substrate — the model provider, session store, observation registry, and object
  * mapper — that make sense once per application, not once per agent; none of it is overridable from
  * {@link AgentBuilder}, which owns identity instead. {@link #defaultModel()} and this harness's
- * declared listeners are <em>seeded</em> rather than owned outright: an agent may supply its own
- * model, and always gets its own declarations appended after the harness's.
+ * {@link org.jwcarman.nessy.api.event.ListenerRegistry} are <em>seeded</em> rather than owned
+ * outright: an agent may supply its own model, and always gets its own registrations appended after
+ * the harness's, via {@link org.jwcarman.nessy.api.event.ListenerRegistry#extendedWith}.
  *
  * <p>{@link #agent()} returns an {@link AgentBuilder} pre-wired with this harness's shared pieces,
  * ready to be given the identity — model, system prompt, tools, policies — that makes it a
@@ -46,7 +46,7 @@ public final class Harness {
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
   private final String defaultModel;
-  private final List<ListenerDeclaration> declarations;
+  private final ListenerRegistry registry;
 
   Harness(
       ModelProvider provider,
@@ -54,13 +54,13 @@ public final class Harness {
       ObservationRegistry observations,
       ObjectMapper mapper,
       String defaultModel,
-      List<ListenerDeclaration> declarations) {
+      ListenerRegistry registry) {
     this.provider = provider;
     this.store = store;
     this.observations = observations;
     this.mapper = mapper;
     this.defaultModel = defaultModel;
-    this.declarations = declarations;
+    this.registry = registry;
   }
 
   /**
@@ -102,7 +102,7 @@ public final class Harness {
     return defaultModel;
   }
 
-  List<ListenerDeclaration> declarations() {
-    return declarations;
+  ListenerRegistry registry() {
+    return registry;
   }
 }

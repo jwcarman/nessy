@@ -210,10 +210,10 @@ public final class InProcessEngine implements ExecutionEngine {
    * </ul>
    *
    * <p>No {@code try}/{@code catch} here on purpose: {@link EventEmitter#emit} propagates whatever
-   * an inline subscriber throws (the synchronous spine's veto-by-throw), and that propagation is
-   * exactly how a strict journaling subscriber fails the run. A throwing subscriber propagates out
-   * of this method, out of {@link #reduceAndNotify}, and ultimately out of {@link #run} — {@code
-   * run}'s own {@code finally} still saves whatever progress reached the holder before this reduce.
+   * an inline subscriber throws (the registry's veto-by-throw), and that propagation is exactly how
+   * a strict journaling subscriber fails the run. A throwing subscriber propagates out of this
+   * method, out of {@link #reduceAndNotify}, and ultimately out of {@link #run} — {@code run}'s own
+   * {@code finally} still saves whatever progress reached the holder before this reduce.
    */
   private void announceNewborns(
       ConversationState before, ConversationState after, ConversationEvent event) {

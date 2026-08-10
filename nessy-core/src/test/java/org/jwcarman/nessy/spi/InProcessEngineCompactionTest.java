@@ -38,9 +38,8 @@ import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventEmitter;
-import org.jwcarman.nessy.api.event.EventSpine;
-import org.jwcarman.nessy.api.event.EventSpines;
-import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.ListenerRegistration;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
@@ -171,8 +170,9 @@ class InProcessEngineCompactionTest {
             throw new IllegalStateException("summarizer exploded");
           };
       List<CompactionFailed> failures = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(CompactionFailed.class, failures::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(CompactionFailed.class, failures::add)));
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
@@ -195,8 +195,9 @@ class InProcessEngineCompactionTest {
       List<Message> broken = List.of(Message.assistant(List.of(new ToolUseBlock(orphan))));
       Compactor compactor = triggeringAt(100_000, new Compactor.Result(broken));
       List<CompactionFailed> failures = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(CompactionFailed.class, failures::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(CompactionFailed.class, failures::add)));
       InProcessEngine engine =
           engineWith(provider, reducerUsing(compactor), hub, ObservationRegistry.create());
 
@@ -224,8 +225,9 @@ class InProcessEngineCompactionTest {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer = (head) -> "Summary.";
       List<MessageAppended> journal = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(MessageAppended.class, journal::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(MessageAppended.class, journal::add)));
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 

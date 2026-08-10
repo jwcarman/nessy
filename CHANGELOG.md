@@ -21,6 +21,11 @@ changed.
 
 ### Added
 
+- **The event delivery machinery is named `ListenerRegistry`/`ListenerRegistration`**
+  (pre-1.0, never released under any interim name) — `ListenerDeclaration` is
+  `ListenerRegistration`; `EventSpine`/`EventSpines`/`SynchronousEventSpine`
+  collapse into one final `ListenerRegistry`, whose `extendedWith(...)` builds
+  an agent's registry from its harness's (`harnessRegistry.extendedWith(agentRegistrations)`).
 - **The razor-bound harness — `Nessy.harness(ModelProvider)` (design §17,
   2026-08-10 evening ruling, pre-1.0 breaking)** — `Nessy.harness(provider)`
   is now THE front door; the provider is the harness's one required thing,

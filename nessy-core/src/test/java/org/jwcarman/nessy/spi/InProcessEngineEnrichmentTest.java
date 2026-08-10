@@ -36,9 +36,8 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
 import org.jwcarman.nessy.api.event.EventEmitter;
-import org.jwcarman.nessy.api.event.EventSpine;
-import org.jwcarman.nessy.api.event.EventSpines;
-import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.ListenerRegistration;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -126,8 +125,9 @@ class InProcessEngineEnrichmentTest {
             throw new IllegalStateException("enricher exploded");
           };
       List<EnrichmentFailed> failures = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(EnrichmentFailed.class, failures::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(EnrichmentFailed.class, failures::add)));
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
       RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
@@ -147,8 +147,9 @@ class InProcessEngineEnrichmentTest {
       Message orphan = Message.toolResults(List.of(new ToolResultBlock("orphan", "oops", false)));
       ContextEnricher enricher = state -> List.of(orphan);
       List<EnrichmentFailed> failures = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(EnrichmentFailed.class, failures::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(EnrichmentFailed.class, failures::add)));
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
       RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));

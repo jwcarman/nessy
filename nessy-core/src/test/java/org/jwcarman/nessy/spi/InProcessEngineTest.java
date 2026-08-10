@@ -43,9 +43,8 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EventEmitter;
-import org.jwcarman.nessy.api.event.EventSpine;
-import org.jwcarman.nessy.api.event.EventSpines;
-import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.ListenerRegistration;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.message.Message;
@@ -961,8 +960,9 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("ur."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
       List<ConversationEvent> events = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(ConversationEvent.class, events::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(ConversationEvent.class, events::add)));
 
       engineWith(
               provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory(), hub)
@@ -989,8 +989,9 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("Done."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
       List<ToolProgress> progress = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(ToolProgress.class, progress::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(ToolProgress.class, progress::add)));
 
       Tool<EngineFixtures.Echo> noisy =
           new Tool<>() {
@@ -1057,8 +1058,9 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("Done."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, finalTurnUsage))));
       List<MessageAppended> journal = new ArrayList<>();
-      EventSpine hub =
-          EventSpines.of(List.of(ListenerDeclaration.sync(MessageAppended.class, journal::add)));
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(MessageAppended.class, journal::add)));
 
       engineWith(
               provider,
@@ -1101,10 +1103,10 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("Four."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
       ConversationStore store = ConversationStore.inMemory();
-      EventSpine hub =
-          EventSpines.of(
+      ListenerRegistry hub =
+          ListenerRegistry.of(
               List.of(
-                  ListenerDeclaration.sync(
+                  ListenerRegistration.sync(
                       MessageAppended.class,
                       event -> {
                         throw new IllegalStateException("journal blew up");

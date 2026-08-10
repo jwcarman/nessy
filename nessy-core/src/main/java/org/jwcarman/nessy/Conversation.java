@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.ConversationEvents;
-import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.InputRenderer;
@@ -36,13 +36,13 @@ public final class Conversation<I> {
 
   private final ExecutionEngine engine;
   private final ConversationId conversationId;
-  private final EventSpine events;
+  private final ListenerRegistry events;
   private final InputRenderer<I> renderer;
 
   Conversation(
       ExecutionEngine engine,
       ConversationId conversationId,
-      EventSpine events,
+      ListenerRegistry events,
       InputRenderer<I> renderer) {
     this.engine = Objects.requireNonNull(engine, "engine must not be null");
     this.conversationId = Objects.requireNonNull(conversationId, "conversationId must not be null");
