@@ -16,14 +16,28 @@
 package org.jwcarman.nessy;
 
 /**
- * The front door. {@code Nessy.agent()} is the only way in; everything else is reachable from what
- * it builds.
+ * The front door. {@code Nessy.agent()} is the fast path for a single agent; {@code
+ * Nessy.harness()} is where an application with more than one agent starts, since a {@link Harness}
+ * is the infrastructure they share.
  */
 public final class Nessy {
 
   private Nessy() {}
 
+  /**
+   * Sugar for the common, single-agent case: an implicit default {@link Harness} — every knob at
+   * its default — seeding a fresh {@link AgentBuilder}. Equivalent to {@code
+   * Nessy.harness().build().agent()}.
+   */
   public static AgentBuilder agent() {
-    return new AgentBuilder();
+    return harness().build().agent();
+  }
+
+  /**
+   * Starts assembling the infrastructure — provider, store, transcript, hub, observations, mapper —
+   * that every agent built from the resulting {@link Harness} will share.
+   */
+  public static HarnessBuilder harness() {
+    return new HarnessBuilder();
   }
 }

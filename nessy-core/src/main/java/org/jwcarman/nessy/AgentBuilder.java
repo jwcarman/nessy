@@ -40,11 +40,13 @@ import org.jwcarman.nessy.spi.session.SessionStore;
 import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
- * Assembles an {@link Agent}.
+ * Assembles an {@link Agent}: the identity — model, system prompt, tools, policies — layered on top
+ * of a {@link Harness}'s shared infrastructure.
  *
  * <p>Everything except the model has a default that works, so the smallest useful agent is a
  * provider and a model name. Every default here is a seam you can replace, which is the whole point
- * of the framework.
+ * of the framework. Instances come from {@link Harness#agent()} (or, for the common single-agent
+ * case, {@link Nessy#agent()}), never from a public constructor.
  */
 public final class AgentBuilder {
 
@@ -57,21 +59,39 @@ public final class AgentBuilder {
   private Set<Capability> capabilities = Set.of();
   private ToolRegistry tools = ToolRegistry.of();
   private Approver approver = Approver.allowAll();
-  private SessionStore store = SessionStore.inMemory();
-  private EventHub events = EventHub.synchronous();
+  private SessionStore store;
+  private EventHub events;
   private TerminationPolicy termination = TerminationPolicy.defaults();
   private CompactionPolicy compaction = CompactionPolicy.defaults();
   private boolean compactionExplicit;
   private CompactionStrategy compactionStrategy;
   private Summarizer summarizer;
   private Long contextWindow;
-  private ObjectMapper mapper = new ObjectMapper();
-  private ObservationRegistry observations = ObservationRegistry.NOOP;
+  private ObjectMapper mapper;
+  private ObservationRegistry observations;
   private ContextBuilder contextBuilder = ContextBuilder.identity();
-  private TranscriptStore transcript = TranscriptStore.none();
+  private TranscriptStore transcript;
 
-  AgentBuilder() {}
+  /**
+   * Seeded from a {@link Harness}: the infrastructure six start out at the harness's values, and
+   * this builder layers identity — model, system prompt, tools, policies — on top. Every infra
+   * setter below (store, transcript, events, mapper, observations) is an escape hatch that
+   * overrides the harness for this one agent; the harness is the normal home for those values.
+   */
+  AgentBuilder(Harness harness) {
+    this.provider = harness.provider();
+    this.store = harness.store();
+    this.transcript = harness.transcript();
+    this.events = harness.hub();
+    this.observations = harness.observations();
+    this.mapper = harness.mapper();
+  }
 
+  /**
+   * Overrides the harness's default model provider for this one agent. Unusual: the harness is the
+   * normal home for the provider every agent shares; reach for this only when a particular agent
+   * genuinely needs a different model line.
+   */
   public AgentBuilder provider(ModelProvider provider) {
     this.provider = provider;
     return this;
@@ -114,11 +134,19 @@ public final class AgentBuilder {
     return this;
   }
 
+  /**
+   * Overrides the harness's session store for this one agent. Unusual: the harness is the normal
+   * home for the store every agent shares.
+   */
   public AgentBuilder store(SessionStore store) {
     this.store = store;
     return this;
   }
 
+  /**
+   * Overrides the harness's event hub for this one agent. Unusual: the harness is the normal home
+   * for the hub every agent shares.
+   */
   public AgentBuilder events(EventHub events) {
     this.events = events;
     return this;
@@ -179,19 +207,28 @@ public final class AgentBuilder {
     return this;
   }
 
+  /**
+   * Overrides the harness's Jackson mapper for this one agent. Unusual: the harness is the normal
+   * home for the mapper every agent shares.
+   */
   public AgentBuilder objectMapper(ObjectMapper mapper) {
     this.mapper = mapper;
     return this;
   }
 
+  /**
+   * Overrides the harness's observation registry for this one agent. Unusual: the harness is the
+   * normal home for the registry every agent shares.
+   */
   public AgentBuilder observations(ObservationRegistry observations) {
     this.observations = observations;
     return this;
   }
 
   /**
-   * Where every message is journaled the moment it is born. Default: {@link TranscriptStore#none()}
-   * — retention is a deliberate declaration, not a silent default.
+   * Overrides the harness's transcript store for this one agent. Unusual: the harness is the normal
+   * home for the transcript every agent shares. Harness default: {@link TranscriptStore#none()} —
+   * retention is a deliberate declaration, not a silent default.
    */
   public AgentBuilder transcript(TranscriptStore transcript) {
     this.transcript = transcript;
