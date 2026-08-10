@@ -308,6 +308,61 @@ class AgentFacadeTest {
     assertThat(agent).isNotNull();
   }
 
+  /**
+   * Verbatim mirror of the README's "Compaction" tuning snippet: {@code .summaryMaxTokens(...)} and
+   * {@code .summaryInstructions(...)} feed the assembled default summarizer's own model call
+   * without needing a hand-built {@link Compactor}. Same six-pairs-plus-seventh arithmetic as
+   * {@link #a_declared_window_derives_the_trigger()}: the default trigger (100k) and default {@code
+   * keepRecent} (10) need eleven settled messages before a safe cut exists.
+   */
+  @Test
+  void summary_knobs_on_the_builder_reach_the_wire() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .text("a1")
+            .endTurn()
+            .text("a2")
+            .endTurn()
+            .text("a3")
+            .endTurn()
+            .text("a4")
+            .endTurn()
+            .text("a5")
+            .endTurn()
+            .text("a6")
+            .endTurn(new Usage(100_000, 10, 0))
+            .text("Summary of earlier turns.")
+            .endTurn()
+            .text("a7")
+            .endTurn()
+            .build();
+
+    Agent<String> agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .summaryMaxTokens(1_024) // cap the summary reply at 1024 tokens
+            .summaryInstructions("Summarize the conversation so far, focusing on open TODOs.")
+            .build();
+
+    Conversation<String> conversation = agent.converse();
+    for (int i = 1; i <= 6; i++) {
+      conversation.tell("u" + i);
+    }
+    Reply seventhReply = conversation.tell("u7");
+
+    assertThat(seventhReply.failed()).isFalse();
+    assertThat(seventhReply.state().generation()).isEqualTo(1);
+    ModelRequest summarizationRequest =
+        provider.requests().stream()
+            .filter(request -> request.maxTokens() == 1_024)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no summarization request captured"));
+    assertThat(summarizationRequest.context().messages())
+        .last()
+        .isEqualTo(Message.user("Summarize the conversation so far, focusing on open TODOs."));
+  }
+
   @Test
   void a_declared_window_derives_the_trigger() {
     // window 110_000, maxTokens 10_000 -> forWindow trigger at 0.8 * (110_000 - 10_000) = 80_000.

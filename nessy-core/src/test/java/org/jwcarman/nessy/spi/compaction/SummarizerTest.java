@@ -143,6 +143,40 @@ class SummarizerTest {
   }
 
   @Nested
+  class Validation {
+
+    @Test
+    void a_summary_max_tokens_below_one_is_rejected() {
+      FakeProvider provider = new FakeProvider(List.of());
+
+      assertThatThrownBy(() -> Summarizer.usingProvider(provider, CONFIG, 0, INSTRUCTIONS))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void null_instructions_are_rejected() {
+      FakeProvider provider = new FakeProvider(List.of());
+
+      assertThatThrownBy(() -> Summarizer.usingProvider(provider, CONFIG, 500, null))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_null_provider_is_rejected() {
+      assertThatThrownBy(() -> Summarizer.usingProvider(null, CONFIG, 500, INSTRUCTIONS))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_null_config_is_rejected() {
+      FakeProvider provider = new FakeProvider(List.of());
+
+      assertThatThrownBy(() -> Summarizer.usingProvider(provider, null, 500, INSTRUCTIONS))
+          .isInstanceOf(NullPointerException.class);
+    }
+  }
+
+  @Nested
   class The_convenience_factory {
 
     @Test

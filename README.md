@@ -319,16 +319,31 @@ enough to compact — a tool-heavy transcript with no plain user-text turn far
 enough back, for example — the compactor leaves the working set unchanged for
 that turn rather than cutting somewhere unsafe.
 
-`.compaction(Compactor)` is the one overload. Tune the summarizing default's
-own knobs — each owned by whichever piece of the default actually reads it —
-by building one explicitly:
+`.compaction(Compactor)` is the one overload. The two knobs the default
+summarizer itself owns — its reply's token cap and its instructions — sit
+directly on `AgentBuilder`, no `Compactor` assembly required:
 
 ```java
-// Tune the summarizing default: trigger, how much survives verbatim, and
-// (baked into the Summarizer) the summary's own token cap and instructions.
+Agent<String> agent =
+    Nessy.agent()
+        .provider(provider)
+        .model("fake-model")
+        .summaryMaxTokens(1_024) // cap the summary reply at 1024 tokens
+        .summaryInstructions("Summarize the conversation so far, focusing on open TODOs.")
+        .build();
+```
+
+Trigger and keep-recent tuning reach past the agent-level knobs into the
+`Compactor` itself — build one explicitly with `Compactors.summarizing(...)`
+and hand it to `.compaction(...)`:
+
+```java
 Summarizer summarizer =
     Summarizer.usingProvider(
-        provider, settings, 1_024, "Summarize the conversation so far, focusing on open TODOs.");
+        provider,
+        new ModelSettings("fake-model", "", 4_096, Set.of(), null),
+        1_024, // cap the summary reply at 1024 tokens
+        "Summarize the conversation so far, focusing on open TODOs.");
 Compactor compactor =
     Compactors.summarizing(summarizer)
         .triggerTokens(50_000) // trigger at 50k measured input tokens

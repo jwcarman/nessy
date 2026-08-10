@@ -72,6 +72,8 @@ public final class AgentBuilder<I> {
   private TerminationPolicy termination = TerminationPolicy.defaults();
   private Compactor compactor;
   private Summarizer summarizer;
+  private int summaryMaxTokens = 2_048;
+  private String summaryInstructions = Summarizer.DEFAULT_INSTRUCTIONS;
   private Long contextWindow;
   private ObjectMapper mapper;
   private ObservationRegistry observations;
@@ -212,11 +214,38 @@ public final class AgentBuilder<I> {
 
   /**
    * What performs the default summarizing compactor's model call. Default: {@link
-   * Summarizer#usingProvider(ModelProvider, ModelSettings)} over this builder's {@link
-   * #provider(ModelProvider)} and settings. Ignored when {@link #compaction(Compactor)} is called.
+   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String)} over this builder's {@link
+   * #provider(ModelProvider)}, settings, {@link #summaryMaxTokens(int)}, and {@link
+   * #summaryInstructions(String)}. Wins over both of those knobs — an explicit summarizer needs
+   * nothing this builder would otherwise bake in for it. Ignored when {@link
+   * #compaction(Compactor)} is called.
    */
   public AgentBuilder<I> summarizer(Summarizer summarizer) {
     this.summarizer = summarizer;
+    return this;
+  }
+
+  /**
+   * Caps the default summarizer's own reply. Default 2,048. Ignored once {@link
+   * #summarizer(Summarizer)} or {@link #compaction(Compactor)} replaces the default summarizer
+   * entirely.
+   */
+  public AgentBuilder<I> summaryMaxTokens(int summaryMaxTokens) {
+    if (summaryMaxTokens < 1) {
+      throw new IllegalArgumentException("summaryMaxTokens must be at least 1");
+    }
+    this.summaryMaxTokens = summaryMaxTokens;
+    return this;
+  }
+
+  /**
+   * What the default summarizer asks the model for. Default {@link
+   * Summarizer#DEFAULT_INSTRUCTIONS}. Ignored once {@link #summarizer(Summarizer)} or {@link
+   * #compaction(Compactor)} replaces the default summarizer entirely.
+   */
+  public AgentBuilder<I> summaryInstructions(String summaryInstructions) {
+    this.summaryInstructions =
+        Objects.requireNonNull(summaryInstructions, "summaryInstructions must not be null");
     return this;
   }
 
@@ -351,14 +380,17 @@ public final class AgentBuilder<I> {
 
   /**
    * Assembles the default, summarizing compactor from {@link #summarizer(Summarizer)} (or {@link
-   * Summarizer#usingProvider(ModelProvider, ModelSettings)} over this builder's provider, by
-   * default) and a declared {@link #contextWindow(long)}, when there is one, to derive the trigger
-   * from. No window declared means the builder's own default trigger (100k measured input tokens)
-   * stands.
+   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String)} over this builder's
+   * provider, settings, {@link #summaryMaxTokens(int)}, and {@link #summaryInstructions(String)},
+   * by default) and a declared {@link #contextWindow(long)}, when there is one, to derive the
+   * trigger from. No window declared means the builder's own default trigger (100k measured input
+   * tokens) stands.
    */
   private Compactor assembleDefaultCompactor(ModelSettings settings) {
     Summarizer resolvedSummarizer =
-        summarizer != null ? summarizer : Summarizer.usingProvider(provider, settings);
+        summarizer != null
+            ? summarizer
+            : Summarizer.usingProvider(provider, settings, summaryMaxTokens, summaryInstructions);
     Compactors.SummarizingBuilder builder = Compactors.summarizing(resolvedSummarizer);
     if (contextWindow != null) {
       builder = builder.window(contextWindow, maxTokens);

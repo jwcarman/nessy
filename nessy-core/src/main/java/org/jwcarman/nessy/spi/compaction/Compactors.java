@@ -48,7 +48,10 @@ public final class Compactors {
       this.summarizer = Objects.requireNonNull(summarizer, "summarizer must not be null");
     }
 
-    /** Fires once {@code SessionState.lastInputTokens()} reaches {@code triggerTokens}. */
+    /**
+     * Fires once {@code SessionState.lastInputTokens()} reaches {@code triggerTokens}. Shares one
+     * underlying value with {@link #window}; whichever of the two is called last wins.
+     */
     public SummarizingBuilder triggerTokens(long triggerTokens) {
       if (triggerTokens < 1) {
         throw new IllegalArgumentException("triggerTokens must be at least 1");
@@ -60,7 +63,8 @@ public final class Compactors {
     /**
      * Derives {@link #triggerTokens} from a declared context window: fires at roughly 80% of the
      * room left over after reserving {@code maxTokens} for the model's reply, so the summarization
-     * call itself still fits.
+     * call itself still fits. Shares one underlying value with {@link #triggerTokens}; whichever of
+     * the two is called last wins.
      */
     public SummarizingBuilder window(long window, long maxTokens) {
       if (window <= maxTokens) {

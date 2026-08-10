@@ -40,6 +40,9 @@ record SummarizingCompaction(Summarizer summarizer, long triggerTokens, int keep
    */
   static final String SUMMARY_PREFIX = "[Conversation summary — earlier turns compacted]\n";
 
+  // SummarizingBuilder is the only construction path (see the class javadoc) and already
+  // validates every one of these before build() ever calls this constructor; the checks stay
+  // here anyway as this record's own house-validation guard, independent of its one caller.
   SummarizingCompaction {
     Objects.requireNonNull(summarizer, "summarizer must not be null");
     if (triggerTokens < 1) {
