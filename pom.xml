@@ -71,6 +71,7 @@
     <victools.version>4.38.0</victools.version>
     <!-- Matches the slf4j-api version victools pulls transitively. -->
     <slf4j.version>2.0.16</slf4j.version>
+    <logback.version>1.5.34</logback.version>
     <junit.version>6.1.2</junit.version>
     <assertj.version>3.27.7</assertj.version>
     <micrometer.version>1.16.2</micrometer.version>
@@ -155,9 +156,9 @@
         <version>${slf4j.version}</version>
       </dependency>
       <dependency>
-        <groupId>org.slf4j</groupId>
-        <artifactId>slf4j-simple</artifactId>
-        <version>${slf4j.version}</version>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
       </dependency>
       <dependency>
         <groupId>com.fasterxml.uuid</groupId>
@@ -179,10 +180,14 @@
       <scope>test</scope>
     </dependency>
     <!-- Test-classpath-only SLF4J provider: victools brings slf4j-api transitively,
-         and without a provider every log line in a test run is silently dropped. -->
+         and without a provider every log line in a test run is silently dropped.
+         logback-classic (not slf4j-simple), managed once here, so build output shows our own
+         warnings; each consuming module's src/test/resources/logback-test.xml configures the
+         pattern. nessy-examples adds it compile-scope instead, below, and supplies its own
+         logback.xml — examples are apps, and apps pick their own provider. -->
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-simple</artifactId>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

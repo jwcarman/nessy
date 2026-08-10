@@ -42,18 +42,23 @@ public sealed interface ConversationEvent extends ConversationScoped {
   @Override
   ConversationId conversationId();
 
-  /** A human said something, as arbitrary content blocks rather than plain text. */
-  record UserSaid(ConversationId conversationId, List<ContentBlock> content)
+  /**
+   * The agent was told something, as arbitrary content blocks rather than plain text.
+   *
+   * <p>The name matches the verb: you {@code tell} the agent, and this is the fact that it was
+   * told. The teller need not be human — triggers include webhooks and crons.
+   */
+  record AgentTold(ConversationId conversationId, List<ContentBlock> content)
       implements ConversationEvent {
 
-    public UserSaid {
+    public AgentTold {
       Objects.requireNonNull(conversationId, "conversationId must not be null");
       content = List.copyOf(content);
     }
 
     /** The common case: a single block of prose. */
-    public static UserSaid of(ConversationId conversationId, String text) {
-      return new UserSaid(conversationId, List.of(new TextBlock(text)));
+    public static AgentTold of(ConversationId conversationId, String text) {
+      return new AgentTold(conversationId, List.of(new TextBlock(text)));
     }
   }
 

@@ -145,8 +145,8 @@ class InProcessEngineCompactionTest {
               EventEmitter.noop(),
               ObservationRegistry.create());
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().generation()).isEqualTo(1);
@@ -176,8 +176,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question"));
 
       assertThat(failures).hasSize(1);
       assertThat(failures.getFirst().conversationId()).isEqualTo(ID);
@@ -201,8 +201,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(compactor), hub, ObservationRegistry.create());
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question"));
 
       assertThat(failures).hasSize(1);
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -231,8 +231,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question"));
 
       assertThat(journal).hasSize(5);
       assertThat(journal.get(0).message()).isEqualTo(Message.user("first question"));
@@ -264,8 +264,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), EventEmitter.noop(), observations);
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question"));
 
       assertThat(observations)
           .hasObservationWithNameEqualTo("nessy.compaction")
@@ -284,8 +284,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), EventEmitter.noop(), observations);
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question"));
 
       assertThat(observations).hasObservationWithNameEqualTo("nessy.compaction").that().hasError();
     }

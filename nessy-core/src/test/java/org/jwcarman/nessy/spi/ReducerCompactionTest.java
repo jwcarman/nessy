@@ -74,7 +74,7 @@ class ReducerCompactionTest {
   /** Drives one plain user/assistant text turn to completion, via {@link #builder}. */
   private ConversationState pair(ConversationState state, String userText, String assistantText) {
     ConversationState afterUser =
-        builder.reduce(state, ConversationEvent.UserSaid.of(ID, userText)).state();
+        builder.reduce(state, ConversationEvent.AgentTold.of(ID, userText)).state();
     ConversationState afterDelta =
         builder.reduce(afterUser, new ConversationEvent.TextDelta(ID, assistantText)).state();
     return builder
@@ -119,7 +119,7 @@ class ReducerCompactionTest {
       ConversationState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
       Reducer reducer = new Reducer(TerminationPolicy.never(), triggeringAt(100_000));
 
-      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "one more thing"));
+      Step step = reducer.reduce(state, ConversationEvent.AgentTold.of(ID, "one more thing"));
 
       assertThat(step.state().status()).isEqualTo(ConversationStatus.COMPACTING);
       assertThat(step.effects()).containsExactly(Effect.compact());
@@ -130,7 +130,7 @@ class ReducerCompactionTest {
       ConversationState state = fivePairsAndToolExchange().withLastInputTokens(99_999);
       Reducer reducer = new Reducer(TerminationPolicy.never(), triggeringAt(100_000));
 
-      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "hi"));
+      Step step = reducer.reduce(state, ConversationEvent.AgentTold.of(ID, "hi"));
 
       assertThat(step.effects()).containsExactly(Effect.callModel());
     }
@@ -140,14 +140,14 @@ class ReducerCompactionTest {
       ConversationState state = initial.withTurns(1).withLastInputTokens(100_000);
       Reducer reducer = new Reducer(TerminationPolicy.maxTurns(1), triggeringAt(100_000));
 
-      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "more?"));
+      Step step = reducer.reduce(state, ConversationEvent.AgentTold.of(ID, "more?"));
 
       assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(step.effects()).isEmpty();
     }
 
     /**
-     * {@code userSaid} isn't the only decision point: {@code toolFinished} reaches the same {@code
+     * {@code agentTold} isn't the only decision point: {@code toolFinished} reaches the same {@code
      * proceedOrCompact} once the last pending call's result lands and the pending lane is empty
      * again. This pins that second site independently, so a change that wires triggering into only
      * one of the two call sites fails loudly here rather than only in an end-to-end test.

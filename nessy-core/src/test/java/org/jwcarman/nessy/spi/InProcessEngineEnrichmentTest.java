@@ -101,7 +101,7 @@ class InProcessEngineEnrichmentTest {
           engineWith(provider, enricher, EventEmitter.noop(), ObservationRegistry.create());
 
       RunOutcome outcome =
-          engine.run(ID, ConversationEvent.UserSaid.of(ID, "what color is the sky?"));
+          engine.run(ID, ConversationEvent.AgentTold.of(ID, "what color is the sky?"));
 
       List<ModelRequest> requests = provider.requests();
       assertThat(requests).hasSize(1);
@@ -130,7 +130,7 @@ class InProcessEngineEnrichmentTest {
               List.of(ListenerRegistration.sync(EnrichmentFailed.class, failures::add)));
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "hi"));
 
       assertThat(failures).hasSize(1);
       assertThat(failures.getFirst().conversationId()).isEqualTo(ID);
@@ -152,7 +152,7 @@ class InProcessEngineEnrichmentTest {
               List.of(ListenerRegistration.sync(EnrichmentFailed.class, failures::add)));
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "hi"));
 
       assertThat(failures).hasSize(1);
       List<ModelRequest> requests = provider.requests();
@@ -171,7 +171,7 @@ class InProcessEngineEnrichmentTest {
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       InProcessEngine engine = engineWith(provider, null, EventEmitter.noop(), observations);
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "hi"));
 
       // Zero declared enrichment contributors is identity-skipped:
       // nessy.run/nessy.turn/nessy.model.call
@@ -191,7 +191,7 @@ class InProcessEngineEnrichmentTest {
       ContextEnricher enricher = state -> List.of(Message.user("a fact"));
       InProcessEngine engine = engineWith(provider, enricher, EventEmitter.noop(), observations);
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "hi"));
 
       assertThat(observations)
           .hasObservationWithNameEqualTo("nessy.context.enrich")
@@ -209,7 +209,7 @@ class InProcessEngineEnrichmentTest {
           };
       InProcessEngine engine = engineWith(provider, enricher, EventEmitter.noop(), observations);
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "hi"));
 
       assertThat(observations)
           .hasObservationWithNameEqualTo("nessy.context.enrich")

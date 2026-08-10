@@ -56,9 +56,17 @@ public final class Compactors {
   /** Builds the summarizing default, one knob per owner. */
   public static final class SummarizingBuilder {
 
+    /**
+     * {@link #keepRecent}'s default: how many of the most recent messages survive compaction
+     * verbatim when nobody overrides it. Exposed so callers who only want to announce or match the
+     * default — {@code AgentBuilder}'s unconfigured-compactor warning among them — read it rather
+     * than hardcoding it and risking drift.
+     */
+    public static final int DEFAULT_KEEP_RECENT = 10;
+
     private final Summarizer summarizer;
     private long triggerTokens = 100_000;
-    private int keepRecent = 10;
+    private int keepRecent = DEFAULT_KEEP_RECENT;
 
     private SummarizingBuilder(Summarizer summarizer) {
       this.summarizer = Objects.requireNonNull(summarizer, "summarizer must not be null");
@@ -90,7 +98,10 @@ public final class Compactors {
       return this;
     }
 
-    /** How many of the most recent messages survive compaction verbatim. Default 10. */
+    /**
+     * How many of the most recent messages survive compaction verbatim. Default {@link
+     * #DEFAULT_KEEP_RECENT}.
+     */
     public SummarizingBuilder keepRecent(int keepRecent) {
       if (keepRecent < 0) {
         throw new IllegalArgumentException("keepRecent must be at least 0");

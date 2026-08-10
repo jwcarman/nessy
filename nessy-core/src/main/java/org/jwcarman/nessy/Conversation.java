@@ -53,7 +53,7 @@ public final class Conversation<I> {
   /**
    * Tells this conversation something from its input vocabulary. {@code input} is rendered into
    * content blocks by this agent's {@link InputRenderer} and carried into the loop as the same
-   * {@code UserSaid} event {@code send(String)} used to build directly — typing dissolves at the
+   * {@code AgentTold} event {@code send(String)} used to build directly — typing dissolves at the
    * wire, the sealed {@link ConversationEvent} grammar never changes shape.
    *
    * @throws IllegalArgumentException if the renderer produces a null or empty block list
@@ -87,7 +87,7 @@ public final class Conversation<I> {
    */
   public Reply tell(I input, Consumer<ConversationEvent> tap) {
     Objects.requireNonNull(tap, "tap must not be null");
-    ConversationEvent.UserSaid event = render(input);
+    ConversationEvent.AgentTold event = render(input);
     try (Subscription subscription = events().subscribe(ConversationEvent.class, tap)) {
       return new Reply(engine.run(conversationId, event));
     }
@@ -110,13 +110,13 @@ public final class Conversation<I> {
    * throws simply propagates, since it is the caller's own code running on the caller's own thread
    * — there is no session state to protect yet.
    */
-  private ConversationEvent.UserSaid render(I input) {
+  private ConversationEvent.AgentTold render(I input) {
     List<ContentBlock> blocks = renderer.render(input);
     if (blocks == null || blocks.isEmpty()) {
       throw new IllegalArgumentException(
           "InputRenderer produced no content blocks for input: " + input);
     }
-    return new ConversationEvent.UserSaid(conversationId, blocks);
+    return new ConversationEvent.AgentTold(conversationId, blocks);
   }
 
   public ConversationId conversationId() {

@@ -43,7 +43,7 @@ class ReducerTextTest {
 
     @Test
     void user_input_is_recorded_and_asks_for_the_model() {
-      Step step = reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "what is 2+2?"));
+      Step step = reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "what is 2+2?"));
 
       assertThat(step.state().messages()).containsExactly(Message.user("what is 2+2?"));
       assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
@@ -54,7 +54,7 @@ class ReducerTextTest {
     void new_user_input_clears_the_error_streak() {
       ConversationState state = initial.withConsecutiveErrors(2);
 
-      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "try again"));
+      Step step = reducer.reduce(state, ConversationEvent.AgentTold.of(ID, "try again"));
 
       assertThat(step.state().consecutiveErrors()).isZero();
       assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
@@ -65,7 +65,7 @@ class ReducerTextTest {
       Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), Compactor.disabled());
       ConversationState exhausted = ConversationState.newConversation(ID).withTurns(1);
 
-      Step step = limited.reduce(exhausted, ConversationEvent.UserSaid.of(ID, "more?"));
+      Step step = limited.reduce(exhausted, ConversationEvent.AgentTold.of(ID, "more?"));
 
       assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(step.state().failureReason()).contains("turn");
@@ -79,7 +79,7 @@ class ReducerTextTest {
     @Test
     void text_deltas_accumulate_into_a_single_pending_block() {
       ConversationState state =
-          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+          reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
 
       state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Hel")).state();
       state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "lo, ")).state();
@@ -102,7 +102,7 @@ class ReducerTextTest {
     @Test
     void turn_end_with_no_tool_calls_settles_the_message_and_completes() {
       ConversationState state =
-          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+          reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
       state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Hello!")).state();
 
       Step step =
@@ -119,7 +119,7 @@ class ReducerTextTest {
     @Test
     void a_turn_cut_off_at_the_token_ceiling_fails_rather_than_reporting_completion() {
       ConversationState state =
-          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+          reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
       state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Half a sen")).state();
 
       Step step =
@@ -136,7 +136,7 @@ class ReducerTextTest {
     @Test
     void turn_end_with_nothing_pending_adds_no_empty_message() {
       ConversationState state =
-          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+          reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
 
       Step step =
           reducer.reduce(

@@ -28,11 +28,11 @@ class ConversationEventTest {
 
   @Test
   void events_are_exhaustively_matchable() {
-    ConversationEvent event = ConversationEvent.UserSaid.of(new ConversationId("s1"), "hello");
+    ConversationEvent event = ConversationEvent.AgentTold.of(new ConversationId("s1"), "hello");
 
     String described =
         switch (event) {
-          case ConversationEvent.UserSaid e ->
+          case ConversationEvent.AgentTold e ->
               "user:" + ((TextBlock) e.content().getFirst()).text();
           case ConversationEvent.TextDelta e -> "delta:" + e.text();
           case ConversationEvent.ThinkingDelta e -> "thinking:" + e.text();

@@ -105,7 +105,7 @@ class InProcessEngineObservationTest {
             observations,
             ContextPipeline.builder().build(EventEmitter.noop(), observations));
 
-    assertThatThrownBy(() -> engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi")))
+    assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "echo hi")))
         .isInstanceOf(IllegalStateException.class);
 
     assertThat(observations).hasObservationWithNameEqualTo("nessy.approval.wait").that().hasError();
@@ -160,7 +160,7 @@ class InProcessEngineObservationTest {
             observations,
             ContextPipeline.builder().build(EventEmitter.noop(), observations));
 
-    engine.run(ID, ConversationEvent.UserSaid.of(ID, "go"));
+    engine.run(ID, ConversationEvent.AgentTold.of(ID, "go"));
 
     assertThat(observations)
         .hasObservationWithNameEqualTo("nessy.tool.call")
@@ -230,6 +230,6 @@ class InProcessEngineObservationTest {
             observations,
             ContextPipeline.builder().build(EventEmitter.noop(), observations));
 
-    engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+    engine.run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
   }
 }

@@ -78,7 +78,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
           "misdelivered fact: event for " + event.conversationId() + " folded into " + state.id());
     }
     return switch (event) {
-      case ConversationEvent.UserSaid e -> userSaid(state, e);
+      case ConversationEvent.AgentTold e -> agentTold(state, e);
       case ConversationEvent.TextDelta e -> textDelta(state, e);
       case ConversationEvent.ThinkingDelta e -> thinkingDelta(state, e);
       case ConversationEvent.ThinkingSigned e -> thinkingSigned(state, e.signature());
@@ -94,13 +94,13 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
   }
 
   /**
-   * A new human turn starts a fresh error streak.
+   * A new told turn starts a fresh error streak.
    *
-   * <p>The circuit breaker counts <em>consecutive</em> errored tool results. A person typing again
-   * is by definition not part of the previous streak, so resuming a session that tripped the
-   * breaker must not re-fail on its very first errored result.
+   * <p>The circuit breaker counts <em>consecutive</em> errored tool results. A fresh tell — from a
+   * person, a webhook, or a cron — is by definition not part of the previous streak, so resuming a
+   * session that tripped the breaker must not re-fail on its very first errored result.
    */
-  private Step userSaid(ConversationState state, ConversationEvent.UserSaid event) {
+  private Step agentTold(ConversationState state, ConversationEvent.AgentTold event) {
     ConversationState next =
         state
             .withMessageAppended(Message.user(event.content()))
@@ -355,7 +355,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * {@code ConversationEvent.Compacted} can land here with tool debt outstanding: a durably
    * replayed run can replay a stale {@code Compacted} against a state that has since moved on, and
    * nothing stops a hostile or buggy {@code Compactor} from answering late. {@link
-   * #proceedOrCompact} is itself reached from more than one caller — including {@link #userSaid},
+   * #proceedOrCompact} is itself reached from more than one caller — including {@link #agentTold},
    * which performs no pending-lane check of its own — so this belt cannot lean on an apply-time
    * guarantee that was never actually enforced at every call site. Splicing a rewritten working set
    * underneath an assistant message that still has unanswered {@code tool_use} blocks would strand

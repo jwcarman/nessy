@@ -384,15 +384,17 @@ public final class AgentBuilder<I> {
       LOGGER.warn(
           "no compactor configured for this agent: defaulting to a summarizing compactor"
               + " (algorithm=summarizing, trigger=derived from contextWindow={} and"
-              + " maxTokens={}, keepRecent=10, model={}); call .compaction(...) to configure",
+              + " maxTokens={}, keepRecent={}, model={}); call .compaction(...) to configure",
           contextWindow,
           resolvedMaxTokens,
+          Compactors.SummarizingBuilder.DEFAULT_KEEP_RECENT,
           resolvedModel);
     } else {
       LOGGER.warn(
           "no compactor configured for this agent: defaulting to a summarizing compactor"
-              + " (algorithm=summarizing, trigger=100000 input tokens, keepRecent=10,"
+              + " (algorithm=summarizing, trigger=100000 input tokens, keepRecent={},"
               + " model={}); call .compaction(...) to configure",
+          Compactors.SummarizingBuilder.DEFAULT_KEEP_RECENT,
           resolvedModel);
     }
     return builder.build();

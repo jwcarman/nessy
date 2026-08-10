@@ -52,6 +52,14 @@
       <artifactId>nessy-model-openai</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- Compile-scope, unlike every other module's test-only provider: examples are runnable
+         apps, and an app picks its own SLF4J provider rather than inheriting the build's
+         test-classpath default. -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>compile</scope>
+    </dependency>
   </dependencies>
 
   <build>

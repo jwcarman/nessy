@@ -306,7 +306,7 @@ class InProcessEngineTest {
 
       RunOutcome outcome =
           engineWith(provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "what is 2+2?"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"));
 
       assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -339,7 +339,7 @@ class InProcessEngineTest {
                   ToolRegistry.of(new EngineFixtures.EchoTool(true)),
                   Approver.allowAll(),
                   ConversationStore.inMemory())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().messages()).hasSize(4);
@@ -370,7 +370,7 @@ class InProcessEngineTest {
                   ToolRegistry.of(new EngineFixtures.EchoTool(false)),
                   Approver.allowAll(),
                   ConversationStore.inMemory())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo a and b"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().messages()).hasSize(4);
@@ -403,7 +403,7 @@ class InProcessEngineTest {
               ToolRegistry.of(new EngineFixtures.EchoTool(false)),
               approver,
               ConversationStore.inMemory())
-          .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+          .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       assertThat(approver.calls).isZero();
     }
@@ -427,7 +427,7 @@ class InProcessEngineTest {
                   ToolRegistry.of(new EngineFixtures.EchoTool(true)),
                   Approver.denyAll("not allowed"),
                   ConversationStore.inMemory())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().messages().get(2).content())
@@ -486,7 +486,7 @@ class InProcessEngineTest {
 
       RunOutcome outcome =
           engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().messages().get(2).content())
@@ -500,7 +500,7 @@ class InProcessEngineTest {
 
       RunOutcome outcome =
           engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().messages().get(2).content())
@@ -515,7 +515,7 @@ class InProcessEngineTest {
 
       RunOutcome outcome =
           engineWithGrant(toolCallingProvider(), grant, approver)
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       assertThat(approver.calls).isEqualTo(1);
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -530,7 +530,7 @@ class InProcessEngineTest {
 
       RunOutcome outcome =
           engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       ToolResultBlock block =
@@ -546,7 +546,7 @@ class InProcessEngineTest {
 
       RunOutcome outcome =
           engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       ToolResultBlock block =
@@ -572,7 +572,7 @@ class InProcessEngineTest {
               ObservationRegistry.NOOP,
               EngineFixtures.contextPipeline());
 
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       ToolResultBlock block =
@@ -624,7 +624,7 @@ class InProcessEngineTest {
               ObservationRegistry.NOOP,
               EngineFixtures.contextPipeline());
 
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       ToolResultBlock block =
@@ -652,7 +652,7 @@ class InProcessEngineTest {
 
       RunOutcome outcome =
           engineWith(provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "go"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "go"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       ToolResultBlock block =
@@ -682,7 +682,7 @@ class InProcessEngineTest {
                   ToolRegistry.of(exploding),
                   Approver.allowAll(),
                   ConversationStore.inMemory())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "go"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "go"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       ToolResultBlock block =
@@ -710,7 +710,7 @@ class InProcessEngineTest {
                   ToolRegistry.of(new MessagelessExplodingTool()),
                   Approver.allowAll(),
                   ConversationStore.inMemory())
-              .run(ID, ConversationEvent.UserSaid.of(ID, "go"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "go"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       ToolResultBlock block =
@@ -737,7 +737,7 @@ class InProcessEngineTest {
                           ToolRegistry.of(new EngineFixtures.EchoTool(true)),
                           new ThrowingApprover(),
                           store)
-                      .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi")))
+                      .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("approver blew up");
 
@@ -759,7 +759,7 @@ class InProcessEngineTest {
                           ToolRegistry.of(),
                           Approver.allowAll(),
                           store)
-                      .run(ID, ConversationEvent.UserSaid.of(ID, "what is 2+2?")))
+                      .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("stream blew up");
 
@@ -779,7 +779,7 @@ class InProcessEngineTest {
                           ToolRegistry.of(),
                           Approver.allowAll(),
                           ConversationStore.inMemory())
-                      .resume(ID, ParkToken.generate(), ConversationEvent.UserSaid.of(ID, "x")))
+                      .resume(ID, ParkToken.generate(), ConversationEvent.AgentTold.of(ID, "x")))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("DurableEngine");
     }
@@ -801,7 +801,7 @@ class InProcessEngineTest {
                           ToolRegistry.of(new ParkingTool()),
                           Approver.allowAll(),
                           ConversationStore.inMemory())
-                      .run(ID, ConversationEvent.UserSaid.of(ID, "go")))
+                      .run(ID, ConversationEvent.AgentTold.of(ID, "go")))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("DurableEngine");
     }
@@ -826,7 +826,7 @@ class InProcessEngineTest {
                   ToolRegistry.of(new EngineFixtures.EchoTool(true)),
                   Approver.allowAll(),
                   store)
-              .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+              .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -851,7 +851,7 @@ class InProcessEngineTest {
       ConversationStore store = ConversationStore.inMemory();
 
       engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store)
-          .run(ID, ConversationEvent.UserSaid.of(ID, "what is 2+2?"));
+          .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"));
 
       assertThat(store.load(ID)).isPresent();
       assertThat(store.load(ID).orElseThrow().status()).isEqualTo(ConversationStatus.COMPLETE);
@@ -875,7 +875,7 @@ class InProcessEngineTest {
               ToolRegistry.of(new EngineFixtures.EchoTool(true)),
               Approver.allowAll(),
               ConversationStore.inMemory())
-          .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+          .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       assertThat(provider.closedCount).isEqualTo(2);
       assertThat(provider.openStreams).isZero();
@@ -896,8 +896,8 @@ class InProcessEngineTest {
       ConversationStore store = ConversationStore.inMemory();
       InProcessEngine engine = engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store);
 
-      engine.run(ID, ConversationEvent.UserSaid.of(ID, "what is 2+2?"));
-      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "what is 2+3?"));
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+3?"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().messages())
@@ -928,11 +928,11 @@ class InProcessEngineTest {
 
       engineWith(
               provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory(), hub)
-          .run(ID, ConversationEvent.UserSaid.of(ID, "what is 2+2?"));
+          .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"));
 
       assertThat(events)
           .containsExactly(
-              ConversationEvent.UserSaid.of(ID, "what is 2+2?"),
+              ConversationEvent.AgentTold.of(ID, "what is 2+2?"),
               new ConversationEvent.TextDelta(ID, "Fo"),
               new ConversationEvent.TextDelta(ID, "ur."),
               new ConversationEvent.ModelTurnEnded(ID, StopReason.END_TURN, Usage.zero()));
@@ -985,7 +985,7 @@ class InProcessEngineTest {
               Approver.allowAll(),
               ConversationStore.inMemory(),
               hub)
-          .run(ID, ConversationEvent.UserSaid.of(ID, "go"));
+          .run(ID, ConversationEvent.AgentTold.of(ID, "go"));
 
       assertThat(progress).containsExactly(new ToolProgress(ID, "c1", "halfway"));
     }
@@ -1025,7 +1025,7 @@ class InProcessEngineTest {
               Approver.allowAll(),
               ConversationStore.inMemory(),
               hub)
-          .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
+          .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi"));
 
       assertThat(journal).hasSize(4);
       assertThat(journal.get(0).message()).isEqualTo(Message.user("echo hi"));
@@ -1072,7 +1072,7 @@ class InProcessEngineTest {
       assertThatThrownBy(
               () ->
                   engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store, hub)
-                      .run(ID, ConversationEvent.UserSaid.of(ID, "what is 2+2?")))
+                      .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("journal blew up");
 

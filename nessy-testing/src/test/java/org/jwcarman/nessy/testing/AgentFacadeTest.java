@@ -119,13 +119,13 @@ class AgentFacadeTest {
 
     @Override
     public Awaited<ToolResult> execute(NoArgs input, ToolContext context) {
-      context.events().emit(ConversationEvent.UserSaid.of(foreignConversationId, "foreign"));
+      context.events().emit(ConversationEvent.AgentTold.of(foreignConversationId, "foreign"));
       return Awaited.ready(ToolResult.ok("emitted"));
     }
   }
 
-  private static String textOf(ConversationEvent.UserSaid userSaid) {
-    return userSaid.content().stream()
+  private static String textOf(ConversationEvent.AgentTold agentTold) {
+    return agentTold.content().stream()
         .filter(TextBlock.class::isInstance)
         .map(TextBlock.class::cast)
         .map(TextBlock::text)
@@ -649,7 +649,7 @@ class AgentFacadeTest {
     Conversation<String> chat = agent.converse();
     chat.tell("hi");
 
-    // Turn 1 already reached the ceiling, so this tell halts on userSaid before the
+    // Turn 1 already reached the ceiling, so this tell halts on agentTold before the
     // reducer would ask the model for a second turn: the scripted provider is never called
     // again, and the second script entry (if any) would simply go unconsumed.
     Reply second = chat.tell("still there?");
@@ -706,8 +706,8 @@ class AgentFacadeTest {
     agent.converse().tell("hi", tapped::add);
 
     assertThat(tapped)
-        .filteredOn(ConversationEvent.UserSaid.class::isInstance)
-        .extracting(event -> textOf((ConversationEvent.UserSaid) event))
+        .filteredOn(ConversationEvent.AgentTold.class::isInstance)
+        .extracting(event -> textOf((ConversationEvent.AgentTold) event))
         .noneMatch(text -> text.contains("foreign"));
   }
 

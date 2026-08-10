@@ -42,7 +42,7 @@ class ReducerGrammarTest {
   @Test
   void thinking_deltas_accumulate_into_a_single_thinking_block() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "Let me ")).state();
     state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "think.")).state();
     state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Answer.")).state();
@@ -54,7 +54,7 @@ class ReducerGrammarTest {
   @Test
   void thinking_and_text_deltas_never_merge_across_each_other() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state =
         reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "First thought.")).state();
     state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Answer.")).state();
@@ -71,7 +71,7 @@ class ReducerGrammarTest {
   @Test
   void turns_and_usage_accumulate_across_turn_ends() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state =
         reducer
             .reduce(
@@ -87,7 +87,7 @@ class ReducerGrammarTest {
   @Test
   void token_ceiling_failure_records_its_reason() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state =
         reducer
             .reduce(
@@ -102,7 +102,7 @@ class ReducerGrammarTest {
   @Test
   void a_signature_lands_on_the_trailing_thinking_block() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "Let me think.")).state();
     state = reducer.reduce(state, new ConversationEvent.ThinkingSigned(ID, "sig-abc")).state();
 
@@ -113,7 +113,7 @@ class ReducerGrammarTest {
   @Test
   void a_signature_with_no_trailing_thinking_block_changes_nothing() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Answer.")).state();
     Step step = reducer.reduce(state, new ConversationEvent.ThinkingSigned(ID, "sig-abc"));
 
@@ -124,7 +124,7 @@ class ReducerGrammarTest {
   @Test
   void a_delta_after_a_signature_starts_a_fresh_thinking_block() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "first")).state();
     state = reducer.reduce(state, new ConversationEvent.ThinkingSigned(ID, "sig-1")).state();
     state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "second")).state();
@@ -137,7 +137,7 @@ class ReducerGrammarTest {
   @Test
   void redacted_thinking_appends_its_block_in_order() {
     ConversationState state =
-        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+        reducer.reduce(initial, ConversationEvent.AgentTold.of(ID, "hi")).state();
     state =
         reducer
             .reduce(state, new ConversationEvent.RedactedThinkingArrived(ID, "opaque-bytes"))
@@ -149,10 +149,10 @@ class ReducerGrammarTest {
   }
 
   @Test
-  void user_said_carries_arbitrary_content_blocks() {
+  void agent_told_carries_arbitrary_content_blocks() {
     Step step =
         reducer.reduce(
-            initial, new ConversationEvent.UserSaid(ID, List.of(new TextBlock("describe this"))));
+            initial, new ConversationEvent.AgentTold(ID, List.of(new TextBlock("describe this"))));
 
     assertThat(step.state().messages())
         .containsExactly(new Message(Role.USER, List.of(new TextBlock("describe this"))));
@@ -167,7 +167,7 @@ class ReducerGrammarTest {
   void a_misdelivered_fact_is_rejected_loudly() {
     ConversationId foreign = new ConversationId("s2");
 
-    assertThatThrownBy(() -> reducer.reduce(initial, ConversationEvent.UserSaid.of(foreign, "hi")))
+    assertThatThrownBy(() -> reducer.reduce(initial, ConversationEvent.AgentTold.of(foreign, "hi")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining(foreign.toString())
         .hasMessageContaining(ID.toString());

@@ -351,7 +351,7 @@ class ReducerToolResultTest {
     ToolCall second = call("c2");
     ConversationState state = awaitingApprovalWith(limited, first, second);
 
-    Step step = limited.reduce(state, ConversationEvent.UserSaid.of(ID, "more?"));
+    Step step = limited.reduce(state, ConversationEvent.AgentTold.of(ID, "more?"));
 
     assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
     assertThat(step.state().failureReason()).contains("turn");
@@ -368,7 +368,7 @@ class ReducerToolResultTest {
     ConversationState failed =
         initial.withConsecutiveErrors(3).withFailureReason("3 consecutive tool errors");
 
-    Step step = permissive.reduce(failed, ConversationEvent.UserSaid.of(ID, "try again"));
+    Step step = permissive.reduce(failed, ConversationEvent.AgentTold.of(ID, "try again"));
 
     assertThat(step.state().failureReason()).isNull();
     assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);

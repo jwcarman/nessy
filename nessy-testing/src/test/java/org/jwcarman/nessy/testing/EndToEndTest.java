@@ -148,7 +148,7 @@ class EndToEndTest {
         .engine()
         .run(
             new ConversationId("s1"),
-            ConversationEvent.UserSaid.of(new ConversationId("s1"), "hello"));
+            ConversationEvent.AgentTold.of(new ConversationId("s1"), "hello"));
 
     assertThat(provider.requests().getFirst().tools()).hasSize(1);
     assertThat(provider.requests().getFirst().tools().getFirst().name()).isEqualTo("add");
@@ -179,7 +179,7 @@ class EndToEndTest {
         .engine()
         .run(
             new ConversationId("s1"),
-            ConversationEvent.UserSaid.of(new ConversationId("s1"), "hello"));
+            ConversationEvent.AgentTold.of(new ConversationId("s1"), "hello"));
 
     assertThat(provider.requests().getFirst().requested())
         .containsExactly(Capability.PROMPT_CACHING);
@@ -196,7 +196,7 @@ class EndToEndTest {
             .engine()
             .run(
                 new ConversationId("s1"),
-                ConversationEvent.UserSaid.of(new ConversationId("s1"), "hi"));
+                ConversationEvent.AgentTold.of(new ConversationId("s1"), "hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().usage()).isEqualTo(new Usage(10, 5, 0));
@@ -214,7 +214,7 @@ class EndToEndTest {
             .engine()
             .run(
                 new ConversationId("s1"),
-                ConversationEvent.UserSaid.of(new ConversationId("s1"), "hi"));
+                ConversationEvent.AgentTold.of(new ConversationId("s1"), "hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().messages().getLast().content())
@@ -365,14 +365,15 @@ class EndToEndTest {
     /**
      * Arithmetic: a compactor with {@code keepRecent = 0} and the default trigger is what {@code
      * InProcessEngineCompactionTest} uses, because {@code keepRecent = 10} would leave a short
-     * transcript with no safe cut (cut == 0, compaction silently skipped). {@code Reducer.userSaid}
-     * appends the new user message <em>before</em> deciding whether to compact, so by the time send
-     * 2's "second question" is appended, the transcript is {@code [user1, asst1, user2]} (size 3).
-     * {@code pairSafeCut} then computes {@code limit = min(3 - 0, 3 - 1) = 2}, and {@code
-     * messages.get(2)} is {@code user2} — a genuine user-text turn — so {@code cut = 2}. {@code
-     * [user1, asst1]} collapses into the summary, {@code [user2]} survives as the tail, and the
-     * model is then called with the rewritten context to answer send 2. A third send, with {@code
-     * lastInputTokens} reset to 0 by compaction, proceeds without triggering compaction again.
+     * transcript with no safe cut (cut == 0, compaction silently skipped). {@code
+     * Reducer.agentTold} appends the new user message <em>before</em> deciding whether to compact,
+     * so by the time send 2's "second question" is appended, the transcript is {@code [user1,
+     * asst1, user2]} (size 3). {@code pairSafeCut} then computes {@code limit = min(3 - 0, 3 - 1) =
+     * 2}, and {@code messages.get(2)} is {@code user2} — a genuine user-text turn — so {@code cut =
+     * 2}. {@code [user1, asst1]} collapses into the summary, {@code [user2]} survives as the tail,
+     * and the model is then called with the rewritten context to answer send 2. A third send, with
+     * {@code lastInputTokens} reset to 0 by compaction, proceeds without triggering compaction
+     * again.
      */
     @Test
     void a_long_conversation_compacts_and_keeps_answering() {
@@ -669,12 +670,12 @@ class EndToEndTest {
     /**
      * Arithmetic: after send 1, the settled transcript is {@code [user1, asst1(tool_use), user2
      * (tool_results), asst2]} (size 4, matching {@code
-     * a_full_tool_calling_conversation_runs_end_to_end}). {@code Reducer.userSaid} appends send 2's
-     * user message before the model is called, so the state projected for send 2 has 5 messages.
-     * With {@code elideToolResults(2)}, {@code firstRecentIndex = max(0, 5 - 2) = 3}: index 2 (the
-     * tool-results message) falls before that window and is elided on the wire, while indices 3 and
-     * 4 (asst2, user3) stay verbatim. {@code ConversationState} itself is never touched — elision
-     * is a per-request projection.
+     * a_full_tool_calling_conversation_runs_end_to_end}). {@code Reducer.agentTold} appends send
+     * 2's user message before the model is called, so the state projected for send 2 has 5
+     * messages. With {@code elideToolResults(2)}, {@code firstRecentIndex = max(0, 5 - 2) = 3}:
+     * index 2 (the tool-results message) falls before that window and is elided on the wire, while
+     * indices 3 and 4 (asst2, user3) stay verbatim. {@code ConversationState} itself is never
+     * touched — elision is a per-request projection.
      */
     @Test
     void shrinks_what_the_model_sees_not_what_the_state_keeps() {

@@ -35,13 +35,13 @@ import java.util.Objects;
 @FunctionalInterface
 public interface InputRenderer<I> {
 
-  /** Renders {@code input} into the content blocks its outbound {@code UserSaid} event carries. */
+  /** Renders {@code input} into the content blocks its outbound {@code AgentTold} event carries. */
   List<ContentBlock> render(I input);
 
   /**
    * The pass-through renderer for {@code String} agents: raw text becomes exactly one {@link
    * TextBlock}, byte-for-byte what {@link Message#user(String)} and {@code
-   * ConversationEvent.UserSaid.of} already produce. The default for a {@code String} vocabulary.
+   * ConversationEvent.AgentTold.of} already produce. The default for a {@code String} vocabulary.
    */
   static InputRenderer<String> text() {
     return text -> List.of(new TextBlock(text));
