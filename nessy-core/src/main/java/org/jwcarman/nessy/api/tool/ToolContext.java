@@ -16,14 +16,14 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.EventEmitter;
-import org.jwcarman.nessy.api.session.SessionId;
 
 /** What a tool learns about the invocation it is serving. */
-public record ToolContext(SessionId sessionId, EventEmitter events) {
+public record ToolContext(ConversationId conversationId, EventEmitter events) {
 
   public ToolContext {
-    Objects.requireNonNull(sessionId, "sessionId must not be null");
+    Objects.requireNonNull(conversationId, "conversationId must not be null");
     Objects.requireNonNull(events, "events must not be null");
   }
 }

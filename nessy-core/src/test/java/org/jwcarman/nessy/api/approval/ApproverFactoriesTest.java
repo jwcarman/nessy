@@ -22,14 +22,14 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 class ApproverFactoriesTest {
 
   private final ApprovalRequest request =
       new ApprovalRequest(
-          new SessionId("s1"),
+          new ConversationId("s1"),
           new ToolCall("c1", "anything", JsonNodeFactory.instance.objectNode()),
           "anything()");
 

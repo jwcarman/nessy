@@ -13,29 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.session;
+package org.jwcarman.nessy.spi.conversation;
 
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 
-/** The default {@link SessionStore#inMemory()} implementation. */
-final class InMemorySessionStore implements SessionStore {
+/** The default {@link ConversationStore#inMemory()} implementation. */
+final class InMemoryConversationStore implements ConversationStore {
 
-  private final Map<SessionId, SessionState> sessions = new ConcurrentHashMap<>();
+  private final Map<ConversationId, ConversationState> sessions = new ConcurrentHashMap<>();
   private final Set<ParkToken> consumed = ConcurrentHashMap.newKeySet();
 
   @Override
-  public Optional<SessionState> load(SessionId id) {
+  public Optional<ConversationState> load(ConversationId id) {
     return Optional.ofNullable(sessions.get(id));
   }
 
   @Override
-  public void save(SessionState state) {
+  public void save(ConversationState state) {
     sessions.put(state.id(), state);
   }
 

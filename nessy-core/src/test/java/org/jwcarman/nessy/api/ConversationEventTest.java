@@ -18,31 +18,32 @@ package org.jwcarman.nessy.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.spi.Effect;
 import org.jwcarman.nessy.spi.Step;
 
-class EventTest {
+class ConversationEventTest {
 
   @Test
   void events_are_exhaustively_matchable() {
-    Event event = Event.UserSaid.of("hello");
+    ConversationEvent event = ConversationEvent.UserSaid.of(new ConversationId("s1"), "hello");
 
     String described =
         switch (event) {
-          case Event.UserSaid e -> "user:" + ((TextBlock) e.content().getFirst()).text();
-          case Event.TextDelta e -> "delta:" + e.text();
-          case Event.ThinkingDelta e -> "thinking:" + e.text();
-          case Event.ThinkingSigned e -> "signed:" + e.signature();
-          case Event.RedactedThinkingArrived e -> "redacted:" + e.data();
-          case Event.ToolCallRequested e -> "call:" + e.call().name();
-          case Event.ModelTurnEnded e -> "end:" + e.reason();
-          case Event.ApprovalDecided e -> "approval:" + e.call().name();
-          case Event.ToolFinished e -> "finished:" + e.call().name();
-          case Event.Compacted e -> "compacted:" + e.workingSet().size();
-          case Event.CompactionSkipped e -> "skipped:" + e.reason();
+          case ConversationEvent.UserSaid e ->
+              "user:" + ((TextBlock) e.content().getFirst()).text();
+          case ConversationEvent.TextDelta e -> "delta:" + e.text();
+          case ConversationEvent.ThinkingDelta e -> "thinking:" + e.text();
+          case ConversationEvent.ThinkingSigned e -> "signed:" + e.signature();
+          case ConversationEvent.RedactedThinkingArrived e -> "redacted:" + e.data();
+          case ConversationEvent.ToolCallRequested e -> "call:" + e.call().name();
+          case ConversationEvent.ModelTurnEnded e -> "end:" + e.reason();
+          case ConversationEvent.ApprovalDecided e -> "approval:" + e.call().name();
+          case ConversationEvent.ToolFinished e -> "finished:" + e.call().name();
+          case ConversationEvent.Compacted e -> "compacted:" + e.workingSet().size();
+          case ConversationEvent.CompactionSkipped e -> "skipped:" + e.reason();
         };
 
     assertThat(described).isEqualTo("user:hello");
@@ -63,7 +64,7 @@ class EventTest {
 
   @Test
   void step_of_collects_its_effects() {
-    SessionState state = SessionState.newSession(new SessionId("s1"));
+    ConversationState state = ConversationState.newConversation(new ConversationId("s1"));
 
     Step step = Step.of(state, Effect.callModel());
 
@@ -73,7 +74,7 @@ class EventTest {
 
   @Test
   void step_effects_are_unmodifiable() {
-    SessionState state = SessionState.newSession(new SessionId("s1"));
+    ConversationState state = ConversationState.newConversation(new ConversationId("s1"));
 
     assertThat(Step.of(state).effects()).isUnmodifiable();
   }

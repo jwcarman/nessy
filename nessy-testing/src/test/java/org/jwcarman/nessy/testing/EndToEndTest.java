@@ -32,22 +32,21 @@ import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
-import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -56,15 +55,15 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
+import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
+import org.jwcarman.nessy.spi.conversation.TranscriptEntry;
+import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.session.TranscriptEntry;
-import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 class EndToEndTest {
 
@@ -133,10 +132,10 @@ class EndToEndTest {
     Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.failed()).isFalse();
-    assertThat(reply.state().status()).isEqualTo(SessionStatus.COMPLETE);
+    assertThat(reply.state().status()).isEqualTo(ConversationStatus.COMPLETE);
     assertThat(reply.state().messages()).hasSize(4);
     assertThat(reply.text()).isEqualTo("The answer is 4.");
-    assertThat(subscriber.ofType(SessionEvent.class)).isNotEmpty();
+    assertThat(subscriber.ofType(ConversationEvent.class)).isNotEmpty();
   }
 
   @Test
@@ -145,7 +144,11 @@ class EndToEndTest {
     Agent<String> agent =
         Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
 
-    agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hello"));
+    agent
+        .engine()
+        .run(
+            new ConversationId("s1"),
+            ConversationEvent.UserSaid.of(new ConversationId("s1"), "hello"));
 
     assertThat(provider.requests().getFirst().tools()).hasSize(1);
     assertThat(provider.requests().getFirst().tools().getFirst().name()).isEqualTo("add");
@@ -171,7 +174,11 @@ class EndToEndTest {
             .capabilities(Set.of(Capability.PROMPT_CACHING))
             .build();
 
-    agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hello"));
+    agent
+        .engine()
+        .run(
+            new ConversationId("s1"),
+            ConversationEvent.UserSaid.of(new ConversationId("s1"), "hello"));
 
     assertThat(provider.requests().getFirst().requested())
         .containsExactly(Capability.PROMPT_CACHING);
@@ -183,7 +190,12 @@ class EndToEndTest {
         ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5, 0)).build();
     Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    RunOutcome outcome = agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hi"));
+    RunOutcome outcome =
+        agent
+            .engine()
+            .run(
+                new ConversationId("s1"),
+                ConversationEvent.UserSaid.of(new ConversationId("s1"), "hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().usage()).isEqualTo(new Usage(10, 5, 0));
@@ -196,7 +208,12 @@ class EndToEndTest {
         ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
     Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    RunOutcome outcome = agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hi"));
+    RunOutcome outcome =
+        agent
+            .engine()
+            .run(
+                new ConversationId("s1"),
+                ConversationEvent.UserSaid.of(new ConversationId("s1"), "hi"));
 
     RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
     assertThat(completed.state().messages().getLast().content())
@@ -517,12 +534,12 @@ class EndToEndTest {
       Compactor keepOnlyTheNewestMessage =
           new Compactor() {
             @Override
-            public boolean requiresCompaction(SessionState state) {
+            public boolean requiresCompaction(ConversationState state) {
               return state.lastInputTokens() >= 1;
             }
 
             @Override
-            public Result compact(SessionState state) {
+            public Result compact(ConversationState state) {
               List<Message> workingSet = state.messages();
               List<Message> tail = workingSet.subList(workingSet.size() - 1, workingSet.size());
               return new Result(tail);
@@ -599,13 +616,13 @@ class EndToEndTest {
       var conversation = agent.converse();
       conversation.tell("first question");
       Reply secondReply = conversation.tell("second question");
-      SessionId sessionId = conversation.sessionId();
+      ConversationId conversationId = conversation.conversationId();
 
       assertThat(secondReply.failed()).isFalse();
       assertThat(secondReply.state().generation()).isEqualTo(1);
       assertThat(secondReply.state().messages()).hasSize(3);
 
-      List<TranscriptEntry> entries = journal.entries(sessionId);
+      List<TranscriptEntry> entries = journal.entries(conversationId);
       assertThat(entries).hasSize(5);
       Message originalUser1 = Message.user("first question");
       Message originalAssistant1 = Message.assistant(List.of(new TextBlock("First answer.")));
@@ -633,8 +650,8 @@ class EndToEndTest {
      * user message before the model is called, so the state projected for send 2 has 5 messages.
      * With {@code elideToolResults(2)}, {@code firstRecentIndex = max(0, 5 - 2) = 3}: index 2 (the
      * tool-results message) falls before that window and is elided on the wire, while indices 3 and
-     * 4 (asst2, user3) stay verbatim. {@code SessionState} itself is never touched — elision is a
-     * per-request projection.
+     * 4 (asst2, user3) stay verbatim. {@code ConversationState} itself is never touched — elision
+     * is a per-request projection.
      */
     @Test
     void shrinks_what_the_model_sees_not_what_the_state_keeps() {

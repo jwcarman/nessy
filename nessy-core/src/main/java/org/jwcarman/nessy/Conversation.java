@@ -18,13 +18,12 @@ package org.jwcarman.nessy;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.EventHub;
-import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.InputRenderer;
-import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 
 /**
@@ -35,14 +34,17 @@ import org.jwcarman.nessy.spi.ExecutionEngine;
 public final class Conversation<I> {
 
   private final ExecutionEngine engine;
-  private final SessionId sessionId;
+  private final ConversationId conversationId;
   private final EventHub events;
   private final InputRenderer<I> renderer;
 
   Conversation(
-      ExecutionEngine engine, SessionId sessionId, EventHub events, InputRenderer<I> renderer) {
+      ExecutionEngine engine,
+      ConversationId conversationId,
+      EventHub events,
+      InputRenderer<I> renderer) {
     this.engine = Objects.requireNonNull(engine, "engine must not be null");
-    this.sessionId = Objects.requireNonNull(sessionId, "sessionId must not be null");
+    this.conversationId = Objects.requireNonNull(conversationId, "conversationId must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
   }
@@ -51,14 +53,14 @@ public final class Conversation<I> {
    * Tells this conversation something from its input vocabulary. {@code input} is rendered into
    * content blocks by this agent's {@link InputRenderer} and carried into the loop as the same
    * {@code UserSaid} event {@code send(String)} used to build directly — typing dissolves at the
-   * wire, the sealed {@link Event} grammar never changes shape.
+   * wire, the sealed {@link ConversationEvent} grammar never changes shape.
    *
    * @throws IllegalArgumentException if the renderer produces a null or empty block list
    * @throws RuntimeException whatever the renderer itself throws, unwrapped — a renderer is the
    *     application's own code, failing on its own thread, with the caller present to see it
    */
   public Reply tell(I input) {
-    return new Reply(engine.run(sessionId, render(input)));
+    return new Reply(engine.run(conversationId, render(input)));
   }
 
   /**
@@ -78,16 +80,20 @@ public final class Conversation<I> {
    * not be allowed to do that catches its own exceptions, or hands its own work off to another
    * thread, rather than relying on this method to protect it.
    *
+   * <p>The envelope is gone: this subscribes to the raw, self-attributing {@link ConversationEvent}
+   * directly and filters by {@link ConversationEvent#conversationId()} rather than unwrapping a
+   * publishing record.
+   *
    * @throws IllegalArgumentException if the renderer produces a null or empty block list
    * @throws RuntimeException whatever the renderer itself throws, unwrapped, or whatever {@code
    *     tap} itself throws
    */
-  public Reply tell(I input, Consumer<Event> tap) {
+  public Reply tell(I input, Consumer<ConversationEvent> tap) {
     Objects.requireNonNull(tap, "tap must not be null");
-    Event.UserSaid event = render(input);
+    ConversationEvent.UserSaid event = render(input);
     try (Subscription subscription =
-        events.subscribe(SessionEvent.class, sessionEvent -> deliver(sessionEvent, tap))) {
-      return new Reply(engine.run(sessionId, event));
+        events.subscribe(ConversationEvent.class, e -> deliver(e, tap))) {
+      return new Reply(engine.run(conversationId, event));
     }
   }
 
@@ -97,22 +103,22 @@ public final class Conversation<I> {
    * throws simply propagates, since it is the caller's own code running on the caller's own thread
    * — there is no session state to protect yet.
    */
-  private Event.UserSaid render(I input) {
+  private ConversationEvent.UserSaid render(I input) {
     List<ContentBlock> blocks = renderer.render(input);
     if (blocks == null || blocks.isEmpty()) {
       throw new IllegalArgumentException(
           "InputRenderer produced no content blocks for input: " + input);
     }
-    return new Event.UserSaid(blocks);
+    return new ConversationEvent.UserSaid(conversationId, blocks);
   }
 
-  private void deliver(SessionEvent sessionEvent, Consumer<Event> tap) {
-    if (sessionEvent.sessionId().equals(sessionId)) {
-      tap.accept(sessionEvent.event());
+  private void deliver(ConversationEvent event, Consumer<ConversationEvent> tap) {
+    if (event.conversationId().equals(conversationId)) {
+      tap.accept(event);
     }
   }
 
-  public SessionId sessionId() {
-    return sessionId;
+  public ConversationId conversationId() {
+    return conversationId;
   }
 }

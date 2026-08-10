@@ -42,8 +42,8 @@ public final class MessageJson {
 
   /**
    * A copy of {@code base} configured to serialize and deserialize {@link ContentBlock}. The
-   * argument is untouched; every {@link org.jwcarman.nessy.spi.session.MessageCodec} gets its own
-   * configured copy rather than mutating a mapper the caller might be using for something else.
+   * argument is untouched; every {@link org.jwcarman.nessy.spi.conversation.MessageCodec} gets its
+   * own configured copy rather than mutating a mapper the caller might be using for something else.
    */
   public static ObjectMapper mapperFor(ObjectMapper base) {
     ObjectMapper mapper = base.copy();

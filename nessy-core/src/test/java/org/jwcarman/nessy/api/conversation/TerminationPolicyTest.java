@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.session;
+package org.jwcarman.nessy.api.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,8 +22,8 @@ import org.junit.jupiter.api.Test;
 
 class TerminationPolicyTest {
 
-  private static SessionState stateWith(int turns, int consecutiveErrors) {
-    return SessionState.newSession(new SessionId("s1"))
+  private static ConversationState stateWith(int turns, int consecutiveErrors) {
+    return ConversationState.newConversation(new ConversationId("s1"))
         .withTurns(turns)
         .withConsecutiveErrors(consecutiveErrors);
   }

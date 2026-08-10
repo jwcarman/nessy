@@ -13,19 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.event;
+package org.jwcarman.nessy.api.conversation;
 
-import java.util.Objects;
-import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.internal.Identifiers;
 
-/** One reduced loop event, re-published for observers. Exhaust, never intake. */
-public record SessionEvent(SessionId sessionId, Event event, SessionState state) {
+/** Identifies one conversation. Opaque on purpose: the store chooses what it means. */
+public record ConversationId(String value) {
 
-  public SessionEvent {
-    Objects.requireNonNull(sessionId, "sessionId must not be null");
-    Objects.requireNonNull(event, "event must not be null");
-    Objects.requireNonNull(state, "state must not be null");
+  public ConversationId {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException("session id must not be blank");
+    }
+  }
+
+  public static ConversationId generate() {
+    return new ConversationId(Identifiers.next());
   }
 }

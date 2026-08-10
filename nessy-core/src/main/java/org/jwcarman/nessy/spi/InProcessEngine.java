@@ -25,22 +25,21 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.MessageAppended;
-import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -54,12 +53,12 @@ import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
 import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.spi.session.SessionStore;
 
 /**
  * The default engine: blocking calls on whatever thread you hand it, and it never parks.
@@ -78,7 +77,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final ToolRegistry tools;
   private final Map<String, ToolGrant> grants;
   private final Approver approver;
-  private final SessionStore store;
+  private final ConversationStore store;
   private final EventHub hub;
   private final Reducer reducer;
   private final ModelSettings config;
@@ -91,7 +90,7 @@ public final class InProcessEngine implements ExecutionEngine {
       ToolRegistry tools,
       Map<String, ToolGrant> grants,
       Approver approver,
-      SessionStore store,
+      ConversationStore store,
       EventHub hub,
       Reducer reducer,
       ModelSettings config,
@@ -142,11 +141,12 @@ public final class InProcessEngine implements ExecutionEngine {
    * was already durable.
    */
   @Override
-  public RunOutcome run(SessionId id, Event input) {
+  public RunOutcome run(ConversationId id, ConversationEvent input) {
     Observation observation = EngineObservations.run(observations, id);
     try (var _ = observation.openScope()) {
-      AtomicReference<SessionState> progress =
-          new AtomicReference<>(store.load(id).orElseGet(() -> SessionState.newSession(id)));
+      AtomicReference<ConversationState> progress =
+          new AtomicReference<>(
+              store.load(id).orElseGet(() -> ConversationState.newConversation(id)));
       try {
         return new RunOutcome.Completed(feed(progress, progress.get(), input));
       } finally {
@@ -161,16 +161,23 @@ public final class InProcessEngine implements ExecutionEngine {
   }
 
   @Override
-  public RunOutcome resume(SessionId id, ParkToken token, Event resolution) {
+  public RunOutcome resume(ConversationId id, ParkToken token, ConversationEvent resolution) {
     throw new UnsupportedOperationException(
         "InProcessEngine never parks, so there is nothing to resume. Use DurableEngine.");
   }
 
-  /** Reduces one event and tells the hub, without performing its effects. */
-  private Step reduceAndNotify(SessionState state, Event event) {
+  /**
+   * Reduces one event and tells the hub, without performing its effects.
+   *
+   * <p>The envelope is gone: {@code event} is self-attributing ({@link
+   * ConversationEvent#conversationId()}), so the hub publishes it directly rather than wrapping it
+   * in a re-publishing record. Order preserved from the envelope era: after adopting the new state
+   * (newborns announced first), before any effect runs.
+   */
+  private Step reduceAndNotify(ConversationState state, ConversationEvent event) {
     Step step = reducer.reduce(state, event);
     announceNewborns(state, step.state(), event);
-    hub.emit(new SessionEvent(step.state().id(), event, step.state()));
+    hub.emit(event);
     return step;
   }
 
@@ -188,8 +195,9 @@ public final class InProcessEngine implements ExecutionEngine {
    * <ul>
    *   <li>Normal growth — {@code before.messages()} is a proper prefix of {@code after.messages()}
    *       — emits the tail delta. The flushed assistant message of a completed model turn carries
-   *       that turn's usage ({@code event} is {@link Event.ModelTurnEnded}); every other newborn
-   *       message (a user message, a flushed tool-results message) carries {@link Usage#zero()}.
+   *       that turn's usage ({@code event} is {@link ConversationEvent.ModelTurnEnded}); every
+   *       other newborn message (a user message, a flushed tool-results message) carries {@link
+   *       Usage#zero()}.
    *   <li>Compaction — {@code after.generation()} advanced — emits whatever messages of {@code
    *       after} are not present (by value) in {@code before}, comparing by equality rather than
    *       position since a custom compactor is free to keep some originals and drop others. For the
@@ -206,7 +214,8 @@ public final class InProcessEngine implements ExecutionEngine {
    * of this method, out of {@link #reduceAndNotify}, and ultimately out of {@link #run} — {@code
    * run}'s own {@code finally} still saves whatever progress reached the holder before this reduce.
    */
-  private void announceNewborns(SessionState before, SessionState after, Event event) {
+  private void announceNewborns(
+      ConversationState before, ConversationState after, ConversationEvent event) {
     if (after.generation() != before.generation()) {
       List<Message> survivors = new ArrayList<>(before.messages());
       for (Message message : after.messages()) {
@@ -219,7 +228,8 @@ public final class InProcessEngine implements ExecutionEngine {
     if (after.messages().size() <= before.messages().size()) {
       return;
     }
-    Usage usage = event instanceof Event.ModelTurnEnded ended ? ended.usage() : Usage.zero();
+    Usage usage =
+        event instanceof ConversationEvent.ModelTurnEnded ended ? ended.usage() : Usage.zero();
     for (Message message :
         after.messages().subList(before.messages().size(), after.messages().size())) {
       hub.emit(new MessageAppended(after.id(), message, usage));
@@ -232,10 +242,12 @@ public final class InProcessEngine implements ExecutionEngine {
    * <p>{@code progress} is the run's latest-known-state holder. Every advance publishes into it so
    * {@link #run} can persist partial work even when the recursion unwinds on an exception.
    */
-  private SessionState feed(
-      AtomicReference<SessionState> progress, SessionState state, Event event) {
+  private ConversationState feed(
+      AtomicReference<ConversationState> progress,
+      ConversationState state,
+      ConversationEvent event) {
     Step step = reduceAndNotify(state, event);
-    SessionState next = step.state();
+    ConversationState next = step.state();
     progress.set(next);
     for (Effect effect : step.effects()) {
       next = perform(progress, next, effect);
@@ -244,8 +256,8 @@ public final class InProcessEngine implements ExecutionEngine {
     return next;
   }
 
-  private SessionState perform(
-      AtomicReference<SessionState> progress, SessionState state, Effect effect) {
+  private ConversationState perform(
+      AtomicReference<ConversationState> progress, ConversationState state, Effect effect) {
     return switch (effect) {
       case Effect.CallModel _ -> callModel(progress, state);
       case Effect.RequestApproval(ToolCall call) -> feed(progress, state, decide(state, call));
@@ -262,11 +274,11 @@ public final class InProcessEngine implements ExecutionEngine {
    * does internally (a model call, for the summarizing default) is not conversation the model or a
    * listener needs to see chunk by chunk, only the finished result the reducer folds into the
    * transcript. The whole attempt — the compactor's {@code compact()}, the result's validation, and
-   * the resulting {@link Event#Compacted} or {@link Event#CompactionSkipped} feed — runs inside one
-   * {@code nessy.compaction} observation, matching the F2 convention used everywhere else in this
-   * engine: a caught failure marks the observation with {@link Observation#error(Throwable)} rather
-   * than letting it escape, since a failed compaction is recoverable and the turn must proceed
-   * uncompacted.
+   * the resulting {@link ConversationEvent#Compacted} or {@link
+   * ConversationEvent#CompactionSkipped} feed — runs inside one {@code nessy.compaction}
+   * observation, matching the F2 convention used everywhere else in this engine: a caught failure
+   * marks the observation with {@link Observation#error(Throwable)} rather than letting it escape,
+   * since a failed compaction is recoverable and the turn must proceed uncompacted.
    *
    * <p>{@link Context#of} validates the compactor's result before it ever reaches the reducer: a
    * compactor that hands back a pair-breaking working set is treated as a failure here, not a
@@ -276,19 +288,20 @@ public final class InProcessEngine implements ExecutionEngine {
    * to the reducer only after the scope closes: {@code feed} can trigger the next model turn, and
    * that follow-on work must not nest under {@code nessy.compaction} or be timed as part of it.
    */
-  private SessionState compact(AtomicReference<SessionState> progress, SessionState state) {
+  private ConversationState compact(
+      AtomicReference<ConversationState> progress, ConversationState state) {
     Observation observation = EngineObservations.compaction(observations);
-    Event event;
+    ConversationEvent event;
     try (var _ = observation.openScope()) {
       try {
         Compactor.Result result = reducer.compaction().compact(state);
         Context.of(result.workingSet());
-        event = new Event.Compacted(result.workingSet());
+        event = new ConversationEvent.Compacted(state.id(), result.workingSet());
       } catch (RuntimeException e) {
         observation.error(e);
         String reason = describe(e);
         hub.emit(new CompactionFailed(state.id(), reason));
-        event = new Event.CompactionSkipped(reason);
+        event = new ConversationEvent.CompactionSkipped(state.id(), reason);
       }
     } catch (RuntimeException e) {
       observation.error(e);
@@ -313,16 +326,17 @@ public final class InProcessEngine implements ExecutionEngine {
    * that trigger another turn (a tool round-trip) recurse back into this method, so a nested {@code
    * turn} observation parents under the turn that caused it — the recursion is the causality.
    */
-  private SessionState callModel(AtomicReference<SessionState> progress, SessionState state) {
+  private ConversationState callModel(
+      AtomicReference<ConversationState> progress, ConversationState state) {
     Observation turn = EngineObservations.turn(observations);
     try (var _ = turn.openScope()) {
-      SessionState current = state;
+      ConversationState current = state;
       List<Effect> deferred = new ArrayList<>();
       Observation modelCall = EngineObservations.modelCall(observations, config.model());
       try (var _ = modelCall.openScope();
           ModelStream stream = provider.stream(requestFor(current))) {
         for (ModelEvent modelEvent : stream) {
-          Step step = reduceAndNotify(current, translate(modelEvent));
+          Step step = reduceAndNotify(current, translate(current.id(), modelEvent));
           current = step.state();
           progress.set(current);
           deferred.addAll(step.effects());
@@ -358,7 +372,7 @@ public final class InProcessEngine implements ExecutionEngine {
    * hands the compactor the ledger directly, so enrichment and projection are never consulted for
    * that call.
    */
-  private ModelRequest requestFor(SessionState state) {
+  private ModelRequest requestFor(ConversationState state) {
     Context projected = contextPipeline.assemble(state);
     return new ModelRequest(
         projected,
@@ -370,16 +384,18 @@ public final class InProcessEngine implements ExecutionEngine {
         null);
   }
 
-  private static Event translate(ModelEvent event) {
+  private static ConversationEvent translate(ConversationId id, ModelEvent event) {
     return switch (event) {
-      case ModelEvent.TextChunk(String text) -> new Event.TextDelta(text);
-      case ModelEvent.ThinkingChunk(String text) -> new Event.ThinkingDelta(text);
-      case ModelEvent.ThinkingSigned(String signature) -> new Event.ThinkingSigned(signature);
+      case ModelEvent.TextChunk(String text) -> new ConversationEvent.TextDelta(id, text);
+      case ModelEvent.ThinkingChunk(String text) -> new ConversationEvent.ThinkingDelta(id, text);
+      case ModelEvent.ThinkingSigned(String signature) ->
+          new ConversationEvent.ThinkingSigned(id, signature);
       case ModelEvent.RedactedThinkingEmitted(String data) ->
-          new Event.RedactedThinkingArrived(data);
-      case ModelEvent.ToolUseEmitted(ToolCall call) -> new Event.ToolCallRequested(call);
+          new ConversationEvent.RedactedThinkingArrived(id, data);
+      case ModelEvent.ToolUseEmitted(ToolCall call) ->
+          new ConversationEvent.ToolCallRequested(id, call);
       case ModelEvent.TurnEnded(StopReason reason, Usage usage) ->
-          new Event.ModelTurnEnded(reason, usage);
+          new ConversationEvent.ModelTurnEnded(id, reason, usage);
     };
   }
 
@@ -401,20 +417,21 @@ public final class InProcessEngine implements ExecutionEngine {
    * find(name)} resolves beyond its own {@code specs()} can still reach here, so it is denied
    * outright rather than allowed to run ungated.
    */
-  private Event decide(SessionState state, ToolCall call) {
+  private ConversationEvent decide(ConversationState state, ToolCall call) {
     ToolGrant grant = grants.get(call.name());
     if (grant == null) {
       if (tools.find(call.name()).isPresent()) {
-        return new Event.ApprovalDecided(
-            call, new Decision.Deny("no grant for tool: " + call.name()));
+        return new ConversationEvent.ApprovalDecided(
+            state.id(), call, new Decision.Deny("no grant for tool: " + call.name()));
       }
-      return new Event.ApprovalDecided(call, Decision.allow());
+      return new ConversationEvent.ApprovalDecided(state.id(), call, Decision.allow());
     }
     PolicyDecision decision = evaluate(grant.policy(), call, state);
     return switch (decision) {
-      case PolicyDecision.Allow _ -> new Event.ApprovalDecided(call, Decision.allow());
+      case PolicyDecision.Allow _ ->
+          new ConversationEvent.ApprovalDecided(state.id(), call, Decision.allow());
       case PolicyDecision.Deny(String reason) ->
-          new Event.ApprovalDecided(call, new Decision.Deny(reason));
+          new ConversationEvent.ApprovalDecided(state.id(), call, new Decision.Deny(reason));
       case PolicyDecision.RequireApproval _ -> requestApproval(state, grant.tool(), call);
     };
   }
@@ -427,7 +444,8 @@ public final class InProcessEngine implements ExecutionEngine {
    * rather than throwing — is treated the same way, with its own reason, since a silently missing
    * decision is just as much a broken policy as a thrown exception.
    */
-  private static PolicyDecision evaluate(UsagePolicy policy, ToolCall call, SessionState state) {
+  private static PolicyDecision evaluate(
+      UsagePolicy policy, ToolCall call, ConversationState state) {
     try {
       PolicyDecision decision = policy.evaluate(call, state);
       return decision != null ? decision : new PolicyDecision.Deny("policy returned no decision");
@@ -437,7 +455,7 @@ public final class InProcessEngine implements ExecutionEngine {
   }
 
   /** The existing human-approval flow, unchanged: only {@link #decide} routes into it now. */
-  private Event requestApproval(SessionState state, Tool<?> tool, ToolCall call) {
+  private ConversationEvent requestApproval(ConversationState state, Tool<?> tool, ToolCall call) {
     ApprovalRequest request =
         new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
     Observation observation = EngineObservations.approvalWait(observations, tool.name());
@@ -450,7 +468,7 @@ public final class InProcessEngine implements ExecutionEngine {
     } finally {
       observation.stop();
     }
-    return new Event.ApprovalDecided(call, resolve(decision, "approver"));
+    return new ConversationEvent.ApprovalDecided(state.id(), call, resolve(decision, "approver"));
   }
 
   /**
@@ -472,10 +490,11 @@ public final class InProcessEngine implements ExecutionEngine {
     }
   }
 
-  private Event executeTool(SessionState state, ToolCall call) {
+  private ConversationEvent executeTool(ConversationState state, ToolCall call) {
     Optional<Tool<?>> found = tools.find(call.name());
     if (found.isEmpty()) {
-      return new Event.ToolFinished(call, ToolResult.error("No such tool: " + call.name()));
+      return new ConversationEvent.ToolFinished(
+          state.id(), call, ToolResult.error("No such tool: " + call.name()));
     }
     Observation observation = EngineObservations.toolCall(observations, call.name(), call.id());
     try (Observation.Scope scope = observation.openScope()) {
@@ -490,13 +509,13 @@ public final class InProcessEngine implements ExecutionEngine {
         observation.error(e);
         ToolResult result = ToolResult.error(describe(e));
         EngineObservations.recordOutcome(observation, result);
-        return new Event.ToolFinished(call, result);
+        return new ConversationEvent.ToolFinished(state.id(), call, result);
       }
       // Outside the catch: a tool that parks is a configuration error, not a
       // runtime one, and must fail loudly rather than becoming model-visible noise.
       ToolResult result = resolve(awaited, "tool " + call.name());
       EngineObservations.recordOutcome(observation, result);
-      return new Event.ToolFinished(call, result);
+      return new ConversationEvent.ToolFinished(state.id(), call, result);
     } catch (RuntimeException e) {
       observation.error(e);
       throw e;

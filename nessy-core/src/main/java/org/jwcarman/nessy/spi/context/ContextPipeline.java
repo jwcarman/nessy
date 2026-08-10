@@ -20,11 +20,11 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * The Contextualize phase (§6.1), Maven-style: bindings declared once, at build time, in reviewable
@@ -47,7 +47,7 @@ import org.jwcarman.nessy.api.session.SessionState;
  * and {@code Agent.contextFor} on demand. Sharing the instance (rather than each consumer
  * re-deriving the same choreography) is what keeps the two answers from ever drifting apart.
  *
- * <p>{@link #assemble(SessionState)} runs the pipeline in three stages:
+ * <p>{@link #assemble(ConversationState)} runs the pipeline in three stages:
  *
  * <ol>
  *   <li><b>Project</b>: mints {@code Context.of(state.messages())} and applies every declared
@@ -110,10 +110,10 @@ public final class ContextPipeline {
 
   /**
    * Assembles the {@link Context} one call against {@code state} sees. {@code state} carries both
-   * the messages to project and the session id ({@link SessionState#id()}) that names the session
-   * for the {@link EnrichmentFailed} event a failed enrichment contributor emits.
+   * the messages to project and the session id ({@link ConversationState#id()}) that names the
+   * session for the {@link EnrichmentFailed} event a failed enrichment contributor emits.
    */
-  public Context assemble(SessionState state) {
+  public Context assemble(ConversationState state) {
     Context projected = applyProjections(Context.of(state.messages()));
     if (enrichers.isEmpty()) {
       return projected;
@@ -145,7 +145,7 @@ public final class ContextPipeline {
    * folding in the next one breaks {@link Context}'s pairing invariant, the new contributor is the
    * only thing that changed.
    */
-  private List<Message> collectEnrichmentContributions(SessionState state) {
+  private List<Message> collectEnrichmentContributions(ConversationState state) {
     List<Message> accepted = List.of();
     for (ContextEnricher enricher : enrichers) {
       Observation observation =
@@ -183,8 +183,8 @@ public final class ContextPipeline {
    * Where a pipeline's enriched contributions land relative to the projected transcript.
    *
    * <p>There was never science behind project-then-enrich ordering; both contributors key on the
-   * ledger ({@link SessionState}), so composition order is a declared policy, not an accident of
-   * implementation order.
+   * ledger ({@link ConversationState}), so composition order is a declared policy, not an accident
+   * of implementation order.
    */
   public enum Placement {
 

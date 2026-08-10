@@ -16,32 +16,36 @@
 package org.jwcarman.nessy.spi;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
-import org.jwcarman.nessy.api.session.Usage;
 
 class ReducerGrammarTest {
 
+  private static final ConversationId ID = new ConversationId("s1");
+
   private final Reducer reducer = Reducer.defaults();
-  private final SessionState initial = SessionState.newSession(new SessionId("s1"));
+  private final ConversationState initial = ConversationState.newConversation(ID);
 
   @Test
   void thinking_deltas_accumulate_into_a_single_thinking_block() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-    state = reducer.reduce(state, new Event.ThinkingDelta("Let me ")).state();
-    state = reducer.reduce(state, new Event.ThinkingDelta("think.")).state();
-    state = reducer.reduce(state, new Event.TextDelta("Answer.")).state();
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "Let me ")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "think.")).state();
+    state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Answer.")).state();
 
     assertThat(state.pendingBlocks())
         .containsExactly(new ThinkingBlock("Let me think.", ""), new TextBlock("Answer."));
@@ -49,10 +53,13 @@ class ReducerGrammarTest {
 
   @Test
   void thinking_and_text_deltas_never_merge_across_each_other() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-    state = reducer.reduce(state, new Event.ThinkingDelta("First thought.")).state();
-    state = reducer.reduce(state, new Event.TextDelta("Answer.")).state();
-    state = reducer.reduce(state, new Event.ThinkingDelta("Second thought.")).state();
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+    state =
+        reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "First thought.")).state();
+    state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Answer.")).state();
+    state =
+        reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "Second thought.")).state();
 
     assertThat(state.pendingBlocks())
         .containsExactly(
@@ -63,10 +70,14 @@ class ReducerGrammarTest {
 
   @Test
   void turns_and_usage_accumulate_across_turn_ends() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
     state =
         reducer
-            .reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, new Usage(100, 50, 0)))
+            .reduce(
+                state,
+                new ConversationEvent.ModelTurnEnded(
+                    ID, StopReason.END_TURN, new Usage(100, 50, 0)))
             .state();
 
     assertThat(state.turns()).isEqualTo(1);
@@ -75,21 +86,25 @@ class ReducerGrammarTest {
 
   @Test
   void token_ceiling_failure_records_its_reason() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
     state =
         reducer
-            .reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS, Usage.zero()))
+            .reduce(
+                state,
+                new ConversationEvent.ModelTurnEnded(ID, StopReason.MAX_TOKENS, Usage.zero()))
             .state();
 
-    assertThat(state.status()).isEqualTo(SessionStatus.FAILED);
+    assertThat(state.status()).isEqualTo(ConversationStatus.FAILED);
     assertThat(state.failureReason()).contains("MAX_TOKENS");
   }
 
   @Test
   void a_signature_lands_on_the_trailing_thinking_block() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-    state = reducer.reduce(state, new Event.ThinkingDelta("Let me think.")).state();
-    state = reducer.reduce(state, new Event.ThinkingSigned("sig-abc")).state();
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "Let me think.")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingSigned(ID, "sig-abc")).state();
 
     assertThat(state.pendingBlocks())
         .containsExactly(new ThinkingBlock("Let me think.", "sig-abc"));
@@ -97,9 +112,10 @@ class ReducerGrammarTest {
 
   @Test
   void a_signature_with_no_trailing_thinking_block_changes_nothing() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-    state = reducer.reduce(state, new Event.TextDelta("Answer.")).state();
-    Step step = reducer.reduce(state, new Event.ThinkingSigned("sig-abc"));
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+    state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Answer.")).state();
+    Step step = reducer.reduce(state, new ConversationEvent.ThinkingSigned(ID, "sig-abc"));
 
     assertThat(step.state().pendingBlocks()).containsExactly(new TextBlock("Answer."));
     assertThat(step.effects()).isEmpty();
@@ -107,11 +123,12 @@ class ReducerGrammarTest {
 
   @Test
   void a_delta_after_a_signature_starts_a_fresh_thinking_block() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-    state = reducer.reduce(state, new Event.ThinkingDelta("first")).state();
-    state = reducer.reduce(state, new Event.ThinkingSigned("sig-1")).state();
-    state = reducer.reduce(state, new Event.ThinkingDelta("second")).state();
-    state = reducer.reduce(state, new Event.ThinkingSigned("sig-2")).state();
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "first")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingSigned(ID, "sig-1")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingDelta(ID, "second")).state();
+    state = reducer.reduce(state, new ConversationEvent.ThinkingSigned(ID, "sig-2")).state();
 
     assertThat(state.pendingBlocks())
         .containsExactly(new ThinkingBlock("first", "sig-1"), new ThinkingBlock("second", "sig-2"));
@@ -119,9 +136,13 @@ class ReducerGrammarTest {
 
   @Test
   void redacted_thinking_appends_its_block_in_order() {
-    SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-    state = reducer.reduce(state, new Event.RedactedThinkingArrived("opaque-bytes")).state();
-    state = reducer.reduce(state, new Event.TextDelta("Answer.")).state();
+    ConversationState state =
+        reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+    state =
+        reducer
+            .reduce(state, new ConversationEvent.RedactedThinkingArrived(ID, "opaque-bytes"))
+            .state();
+    state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Answer.")).state();
 
     assertThat(state.pendingBlocks())
         .containsExactly(new RedactedThinkingBlock("opaque-bytes"), new TextBlock("Answer."));
@@ -130,10 +151,26 @@ class ReducerGrammarTest {
   @Test
   void user_said_carries_arbitrary_content_blocks() {
     Step step =
-        reducer.reduce(initial, new Event.UserSaid(List.of(new TextBlock("describe this"))));
+        reducer.reduce(
+            initial, new ConversationEvent.UserSaid(ID, List.of(new TextBlock("describe this"))));
 
     assertThat(step.state().messages())
         .containsExactly(new Message(Role.USER, List.of(new TextBlock("describe this"))));
+  }
+
+  /**
+   * The misdelivery guard (design §17): a fact addressed to one conversation must never fold into
+   * another's state, so this fails loudly, before any variant-specific handling runs, rather than
+   * silently corrupting the wrong conversation's state.
+   */
+  @Test
+  void a_misdelivered_fact_is_rejected_loudly() {
+    ConversationId foreign = new ConversationId("s2");
+
+    assertThatThrownBy(() -> reducer.reduce(initial, ConversationEvent.UserSaid.of(foreign, "hi")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining(foreign.toString())
+        .hasMessageContaining(ID.toString());
   }
 
   @Test

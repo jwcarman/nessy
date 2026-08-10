@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.session;
+package org.jwcarman.nessy.api.conversation;
 
 import java.util.List;
 import java.util.Optional;
@@ -29,7 +29,7 @@ import java.util.Optional;
 public interface TerminationPolicy {
 
   /** A human-readable reason to halt, or empty to continue. */
-  Optional<String> shouldHalt(SessionState state);
+  Optional<String> shouldHalt(ConversationState state);
 
   static TerminationPolicy maxTurns(int max) {
     requireAtLeastOne(max, "maxTurns");

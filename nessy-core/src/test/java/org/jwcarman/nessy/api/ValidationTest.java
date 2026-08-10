@@ -23,13 +23,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.TerminationPolicy;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.TerminationPolicy;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.Reducer;
@@ -47,7 +47,7 @@ class ValidationTest {
 
   @Test
   void a_blank_session_id_is_rejected() {
-    assertThatThrownBy(() -> new SessionId("")).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ConversationId("")).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
@@ -192,14 +192,16 @@ class ValidationTest {
 
   @Test
   void a_compacted_event_without_a_working_set_is_rejected() {
-    assertThatThrownBy(() -> new Event.Compacted(null)).isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> new ConversationEvent.Compacted(new ConversationId("s1"), null))
+        .isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_compacted_events_working_set_is_defensively_copied() {
     List<Message> mutable = new ArrayList<>();
     mutable.add(Message.user("hi"));
-    Event.Compacted event = new Event.Compacted(mutable);
+    ConversationEvent.Compacted event =
+        new ConversationEvent.Compacted(new ConversationId("s1"), mutable);
 
     mutable.add(Message.user("surprise"));
 
@@ -208,7 +210,8 @@ class ValidationTest {
 
   @Test
   void a_compaction_skipped_event_without_a_reason_is_rejected() {
-    assertThatThrownBy(() -> new Event.CompactionSkipped(null))
+    assertThatThrownBy(
+            () -> new ConversationEvent.CompactionSkipped(new ConversationId("s1"), null))
         .isInstanceOf(NullPointerException.class);
   }
 
@@ -225,7 +228,7 @@ class ValidationTest {
 
   @Test
   void a_compaction_failed_event_without_a_reason_is_rejected() {
-    assertThatThrownBy(() -> new CompactionFailed(new SessionId("s1"), null))
+    assertThatThrownBy(() -> new CompactionFailed(new ConversationId("s1"), null))
         .isInstanceOf(NullPointerException.class);
   }
 }

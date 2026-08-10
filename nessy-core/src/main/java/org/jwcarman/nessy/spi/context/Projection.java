@@ -22,8 +22,8 @@ import org.jwcarman.nessy.api.message.Context;
  *
  * <p>Pure and total: no I/O, no mutation, same output for the same input, every time. A {@link
  * ContextPipeline} applies its declared projections in declaration order to the {@link Context}
- * minted from {@link org.jwcarman.nessy.api.session.SessionState#messages()}, before any enriched
- * messages are composed in. Because a projection is pure, a throwing projection is the
+ * minted from {@link org.jwcarman.nessy.api.conversation.ConversationState#messages()}, before any
+ * enriched messages are composed in. Because a projection is pure, a throwing projection is the
  * application's own bug, not a runtime condition to absorb — {@link ContextPipeline#assemble} lets
  * it propagate rather than catching it, in contrast to {@link ContextEnricher#enrich}, which is
  * I/O-sanctioned and best-effort.

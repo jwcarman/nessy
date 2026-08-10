@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.spi.context;
 
 import java.util.List;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Adds messages worth composing into one conversational request, from outside the session's own
@@ -30,9 +30,9 @@ import org.jwcarman.nessy.api.session.SessionState;
  * is also why each contributor is best-effort: {@link ContextPipeline} runs it under its own
  * observation and treats any {@link RuntimeException} as an enrichment failure, never a turn
  * failure. Enrichment never touches the ledger — what it returns is additional material for one
- * request, not something the reducer folds into {@link SessionState}.
+ * request, not something the reducer folds into {@link ConversationState}.
  *
- * <p>Enrichers key on {@link SessionState}, not on the projected {@link
+ * <p>Enrichers key on {@link ConversationState}, not on the projected {@link
  * org.jwcarman.nessy.api.message.Context}: the context is the thing that will *include* the
  * enrichment, so keying on it would be circular, and projection is a wire concern — an elided tool
  * result is {@code "[elided]"} in the projected context but full text in the working set, and
@@ -54,5 +54,5 @@ import org.jwcarman.nessy.api.session.SessionState;
 public interface ContextEnricher {
 
   /** Adds whatever messages are relevant to {@code state}, oldest first. */
-  List<Message> enrich(SessionState state);
+  List<Message> enrich(ConversationState state);
 }

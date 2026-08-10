@@ -16,13 +16,13 @@
 package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /** A summarization call failed; compaction was skipped and the turn proceeds uncompacted. */
-public record CompactionFailed(SessionId sessionId, String reason) {
+public record CompactionFailed(ConversationId conversationId, String reason) {
 
   public CompactionFailed {
-    Objects.requireNonNull(sessionId, "sessionId must not be null");
+    Objects.requireNonNull(conversationId, "conversationId must not be null");
     Objects.requireNonNull(reason, "reason must not be null");
   }
 }

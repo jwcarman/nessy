@@ -21,9 +21,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -43,7 +43,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * #recordUsage} use for the engine's own conversational calls. Those conventions are duplicated
  * here rather than shared because {@code spi.compaction} may not import {@code internal} (see
  * {@code ZoneBoundariesTest}); this is the jurisdiction rule (design §10.6) in code — this call's
- * spend is telemetry's, never {@code SessionState.usage()}'s.
+ * spend is telemetry's, never {@code ConversationState.usage()}'s.
  */
 final class ProviderSummarizer implements Summarizer {
 
@@ -95,6 +95,9 @@ final class ProviderSummarizer implements Summarizer {
       for (ModelEvent event : stream) {
         switch (event) {
           case ModelEvent.TextChunk(String chunk) -> text.append(chunk);
+          // recordUsage only ever runs from this arm: a stream that ends without a TurnEnded
+          // (a provider bug, or the stream closing early) leaves the span with no
+          // gen_ai.usage.* key-values at all, rather than a zeroed or partial usage report.
           case ModelEvent.TurnEnded(var _, Usage turnUsage) -> recordUsage(observation, turnUsage);
           // Thinking, redacted-thinking, and tool-use chunks are not part of the summary;
           // this is a tool-free call, so a ToolUseEmitted here would be a provider bug this
@@ -111,6 +114,9 @@ final class ProviderSummarizer implements Summarizer {
     } finally {
       observation.stop();
     }
+    // Checked after the observation has already stopped, on purpose: the model call itself
+    // succeeded, so a blank result is this summarizer's own failure, not the call's — the span
+    // reports a clean model call, and the thrown IllegalStateException is what Compactor sees.
     String summary = text.toString();
     if (summary.isBlank()) {
       throw new IllegalStateException("summarizer returned no text");

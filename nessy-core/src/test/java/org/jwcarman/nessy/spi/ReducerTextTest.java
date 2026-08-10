@@ -20,52 +20,54 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.TerminationPolicy;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
-import org.jwcarman.nessy.api.session.TerminationPolicy;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.spi.compaction.Compactor;
 
 class ReducerTextTest {
 
+  private static final ConversationId ID = new ConversationId("s1");
+
   private final Reducer reducer = Reducer.defaults();
-  private final SessionState initial = SessionState.newSession(new SessionId("s1"));
+  private final ConversationState initial = ConversationState.newConversation(ID);
 
   @Nested
   class User_input {
 
     @Test
     void user_input_is_recorded_and_asks_for_the_model() {
-      Step step = reducer.reduce(initial, Event.UserSaid.of("what is 2+2?"));
+      Step step = reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "what is 2+2?"));
 
       assertThat(step.state().messages()).containsExactly(Message.user("what is 2+2?"));
-      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
     }
 
     @Test
     void new_user_input_clears_the_error_streak() {
-      SessionState state = initial.withConsecutiveErrors(2);
+      ConversationState state = initial.withConsecutiveErrors(2);
 
-      Step step = reducer.reduce(state, Event.UserSaid.of("try again"));
+      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "try again"));
 
       assertThat(step.state().consecutiveErrors()).isZero();
-      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
     }
 
     @Test
     void a_fresh_user_message_on_a_turn_exhausted_session_halts_instead_of_calling_the_model() {
       Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), Compactor.disabled());
-      SessionState exhausted = SessionState.newSession(new SessionId("s1")).withTurns(1);
+      ConversationState exhausted = ConversationState.newConversation(ID).withTurns(1);
 
-      Step step = limited.reduce(exhausted, Event.UserSaid.of("more?"));
+      Step step = limited.reduce(exhausted, ConversationEvent.UserSaid.of(ID, "more?"));
 
-      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(step.state().failureReason()).contains("turn");
       assertThat(step.effects()).isEmpty();
     }
@@ -76,18 +78,19 @@ class ReducerTextTest {
 
     @Test
     void text_deltas_accumulate_into_a_single_pending_block() {
-      SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+      ConversationState state =
+          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
 
-      state = reducer.reduce(state, new Event.TextDelta("Hel")).state();
-      state = reducer.reduce(state, new Event.TextDelta("lo, ")).state();
-      state = reducer.reduce(state, new Event.TextDelta("world")).state();
+      state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Hel")).state();
+      state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "lo, ")).state();
+      state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "world")).state();
 
       assertThat(state.pendingBlocks()).containsExactly(new TextBlock("Hello, world"));
     }
 
     @Test
     void text_deltas_produce_no_effects() {
-      Step step = reducer.reduce(initial, new Event.TextDelta("anything"));
+      Step step = reducer.reduce(initial, new ConversationEvent.TextDelta(ID, "anything"));
 
       assertThat(step.effects()).isEmpty();
     }
@@ -98,28 +101,32 @@ class ReducerTextTest {
 
     @Test
     void turn_end_with_no_tool_calls_settles_the_message_and_completes() {
-      SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-      state = reducer.reduce(state, new Event.TextDelta("Hello!")).state();
+      ConversationState state =
+          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+      state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Hello!")).state();
 
       Step step =
-          reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
+          reducer.reduce(
+              state, new ConversationEvent.ModelTurnEnded(ID, StopReason.END_TURN, Usage.zero()));
 
       assertThat(step.state().messages())
           .containsExactly(Message.user("hi"), Message.assistant(List.of(new TextBlock("Hello!"))));
       assertThat(step.state().pendingBlocks()).isEmpty();
-      assertThat(step.state().status()).isEqualTo(SessionStatus.COMPLETE);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.COMPLETE);
       assertThat(step.effects()).isEmpty();
     }
 
     @Test
     void a_turn_cut_off_at_the_token_ceiling_fails_rather_than_reporting_completion() {
-      SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
-      state = reducer.reduce(state, new Event.TextDelta("Half a sen")).state();
+      ConversationState state =
+          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
+      state = reducer.reduce(state, new ConversationEvent.TextDelta(ID, "Half a sen")).state();
 
       Step step =
-          reducer.reduce(state, new Event.ModelTurnEnded(StopReason.MAX_TOKENS, Usage.zero()));
+          reducer.reduce(
+              state, new ConversationEvent.ModelTurnEnded(ID, StopReason.MAX_TOKENS, Usage.zero()));
 
-      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(step.effects()).isEmpty();
       assertThat(step.state().messages())
           .containsExactly(
@@ -128,10 +135,12 @@ class ReducerTextTest {
 
     @Test
     void turn_end_with_nothing_pending_adds_no_empty_message() {
-      SessionState state = reducer.reduce(initial, Event.UserSaid.of("hi")).state();
+      ConversationState state =
+          reducer.reduce(initial, ConversationEvent.UserSaid.of(ID, "hi")).state();
 
       Step step =
-          reducer.reduce(state, new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()));
+          reducer.reduce(
+              state, new ConversationEvent.ModelTurnEnded(ID, StopReason.END_TURN, Usage.zero()));
 
       assertThat(step.state().messages()).containsExactly(Message.user("hi"));
     }
@@ -144,7 +153,9 @@ class ReducerTextTest {
     void a_turn_end_records_the_measured_input_tokens() {
       Step step =
           reducer.reduce(
-              initial, new Event.ModelTurnEnded(StopReason.END_TURN, new Usage(120_000, 50, 0)));
+              initial,
+              new ConversationEvent.ModelTurnEnded(
+                  ID, StopReason.END_TURN, new Usage(120_000, 50, 0)));
 
       assertThat(step.state().lastInputTokens()).isEqualTo(120_000);
     }

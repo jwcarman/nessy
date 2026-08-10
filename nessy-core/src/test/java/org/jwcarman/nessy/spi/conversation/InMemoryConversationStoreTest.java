@@ -13,20 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.session;
+package org.jwcarman.nessy.spi.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 
-class InMemorySessionStoreTest {
+class InMemoryConversationStoreTest {
 
-  private final SessionStore store = new InMemorySessionStore();
-  private final SessionId id = new SessionId("s1");
+  private final ConversationStore store = new InMemoryConversationStore();
+  private final ConversationId id = new ConversationId("s1");
 
   @Test
   void loading_an_unknown_session_is_empty() {
@@ -35,7 +35,8 @@ class InMemorySessionStoreTest {
 
   @Test
   void saved_state_comes_back() {
-    SessionState state = SessionState.newSession(id).with(SessionStatus.COMPLETE);
+    ConversationState state =
+        ConversationState.newConversation(id).with(ConversationStatus.COMPLETE);
 
     store.save(state);
 
@@ -44,10 +45,10 @@ class InMemorySessionStoreTest {
 
   @Test
   void saving_again_replaces() {
-    store.save(SessionState.newSession(id).with(SessionStatus.AWAITING_MODEL));
-    store.save(SessionState.newSession(id).with(SessionStatus.COMPLETE));
+    store.save(ConversationState.newConversation(id).with(ConversationStatus.AWAITING_MODEL));
+    store.save(ConversationState.newConversation(id).with(ConversationStatus.COMPLETE));
 
-    assertThat(store.load(id).orElseThrow().status()).isEqualTo(SessionStatus.COMPLETE);
+    assertThat(store.load(id).orElseThrow().status()).isEqualTo(ConversationStatus.COMPLETE);
   }
 
   @Test
@@ -60,8 +61,8 @@ class InMemorySessionStoreTest {
 
   @Test
   void in_memory_factory_returns_a_working_store() {
-    SessionStore store = SessionStore.inMemory();
-    store.save(SessionState.newSession(id));
+    ConversationStore store = ConversationStore.inMemory();
+    store.save(ConversationState.newConversation(id));
 
     assertThat(store.load(id)).isPresent();
   }

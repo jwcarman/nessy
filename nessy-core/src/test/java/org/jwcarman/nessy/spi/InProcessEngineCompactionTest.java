@@ -28,32 +28,32 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.TerminationPolicy;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.TerminationPolicy;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
+import org.jwcarman.nessy.spi.conversation.TranscriptEntry;
+import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.session.SessionStore;
-import org.jwcarman.nessy.spi.session.TranscriptEntry;
-import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * Compaction performed by {@link InProcessEngine}: the compactor's {@code compact()} runs under its
@@ -64,7 +64,7 @@ import org.jwcarman.nessy.spi.session.TranscriptStore;
  */
 class InProcessEngineCompactionTest {
 
-  private static final SessionId ID = new SessionId("s1");
+  private static final ConversationId ID = new ConversationId("s1");
   private static final ModelSettings CONFIG =
       new ModelSettings("fake-model", "be helpful", 1024, Set.of(), null);
 
@@ -92,7 +92,7 @@ class InProcessEngineCompactionTest {
         ToolRegistry.of(),
         Map.of(),
         Approver.allowAll(),
-        SessionStore.inMemory(),
+        ConversationStore.inMemory(),
         hub,
         reducer,
         CONFIG,
@@ -120,12 +120,12 @@ class InProcessEngineCompactionTest {
   private static Compactor triggeringAt(long tokens, Compactor.Result result) {
     return new Compactor() {
       @Override
-      public boolean requiresCompaction(SessionState state) {
+      public boolean requiresCompaction(ConversationState state) {
         return state.lastInputTokens() >= tokens;
       }
 
       @Override
-      public Result compact(SessionState state) {
+      public Result compact(ConversationState state) {
         return result;
       }
     };
@@ -145,8 +145,8 @@ class InProcessEngineCompactionTest {
               EventHub.synchronous(),
               ObservationRegistry.create());
 
-      engine.run(ID, Event.UserSaid.of("first question"));
-      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("second question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().generation()).isEqualTo(1);
@@ -175,11 +175,11 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
-      engine.run(ID, Event.UserSaid.of("first question"));
-      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("second question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
 
       assertThat(failures).hasSize(1);
-      assertThat(failures.getFirst().sessionId()).isEqualTo(ID);
+      assertThat(failures.getFirst().conversationId()).isEqualTo(ID);
       assertThat(failures.getFirst().reason()).contains("summarizer exploded");
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().generation()).isZero();
@@ -199,8 +199,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(compactor), hub, ObservationRegistry.create());
 
-      engine.run(ID, Event.UserSaid.of("first question"));
-      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("second question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
 
       assertThat(failures).hasSize(1);
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
@@ -228,8 +228,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
-      engine.run(ID, Event.UserSaid.of("first question"));
-      engine.run(ID, Event.UserSaid.of("second question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
 
       List<TranscriptEntry> entries = transcriptStore.entries(ID);
       assertThat(entries).hasSize(5);
@@ -262,8 +262,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), EventHub.synchronous(), observations);
 
-      engine.run(ID, Event.UserSaid.of("first question"));
-      engine.run(ID, Event.UserSaid.of("second question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
 
       assertThat(observations)
           .hasObservationWithNameEqualTo("nessy.compaction")
@@ -282,8 +282,8 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), EventHub.synchronous(), observations);
 
-      engine.run(ID, Event.UserSaid.of("first question"));
-      engine.run(ID, Event.UserSaid.of("second question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
 
       assertThat(observations).hasObservationWithNameEqualTo("nessy.compaction").that().hasError();
     }

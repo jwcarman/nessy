@@ -13,30 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.session;
+package org.jwcarman.nessy.spi.conversation;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /**
  * The default {@link TranscriptStore#inMemory()} implementation: every session's transcript lives
  * in this JVM and dies with it.
  *
- * <p>Public, unlike {@code InMemorySessionStore}: {@link #entries} is how tests (and any other
+ * <p>Public, unlike {@code InMemoryConversationStore}: {@link #entries} is how tests (and any other
  * caller that constructed this type directly) read back what was journaled. It is deliberately not
  * part of the {@link TranscriptStore} seam — the framework itself never reads a transcript, only
  * writes to one.
  */
 public final class InMemoryTranscriptStore implements TranscriptStore {
 
-  private final Map<SessionId, List<TranscriptEntry>> entries = new ConcurrentHashMap<>();
+  private final Map<ConversationId, List<TranscriptEntry>> entries = new ConcurrentHashMap<>();
 
   @Override
-  public void append(SessionId id, TranscriptEntry entry) {
+  public void append(ConversationId id, TranscriptEntry entry) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(entry, "entry must not be null");
     synchronized (entries) {
@@ -45,7 +45,7 @@ public final class InMemoryTranscriptStore implements TranscriptStore {
   }
 
   /** This session's entries, in append order. Empty for an unknown session. A defensive copy. */
-  public List<TranscriptEntry> entries(SessionId id) {
+  public List<TranscriptEntry> entries(ConversationId id) {
     Objects.requireNonNull(id, "id must not be null");
     synchronized (entries) {
       List<TranscriptEntry> existing = entries.get(id);

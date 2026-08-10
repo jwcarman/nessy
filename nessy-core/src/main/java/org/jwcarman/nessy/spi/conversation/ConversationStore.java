@@ -13,20 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.session;
+package org.jwcarman.nessy.spi.conversation;
 
 import java.util.Optional;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 
 /**
  * Where a session lives between steps.
  *
- * <p>Because {@code SessionState} is a plain serializable record, durable resume is an
+ * <p>Because {@code ConversationState} is a plain serializable record, durable resume is an
  * implementation of this interface rather than a change to the engine.
  */
-public interface SessionStore {
+public interface ConversationStore {
 
   /**
    * The zero-configuration default: sessions live in this JVM and die with it.
@@ -38,13 +38,13 @@ public interface SessionStore {
    * clobber each other, and the consumed-token set grows without eviction for the life of the
    * process. That suits a process that owns its sessions, not a long-lived multi-tenant server.
    */
-  static SessionStore inMemory() {
-    return new InMemorySessionStore();
+  static ConversationStore inMemory() {
+    return new InMemoryConversationStore();
   }
 
-  Optional<SessionState> load(SessionId id);
+  Optional<ConversationState> load(ConversationId id);
 
-  void save(SessionState state);
+  void save(ConversationState state);
 
   /**
    * Claims a park token, returning {@code false} if it was already claimed.

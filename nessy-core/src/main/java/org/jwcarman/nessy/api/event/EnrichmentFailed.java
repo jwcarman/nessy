@@ -16,13 +16,13 @@
 package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /** A context enricher failed; the request proceeds without that contributor's messages. */
-public record EnrichmentFailed(SessionId sessionId, String reason) {
+public record EnrichmentFailed(ConversationId conversationId, String reason) {
 
   public EnrichmentFailed {
-    Objects.requireNonNull(sessionId, "sessionId must not be null");
+    Objects.requireNonNull(conversationId, "conversationId must not be null");
     Objects.requireNonNull(reason, "reason must not be null");
   }
 }

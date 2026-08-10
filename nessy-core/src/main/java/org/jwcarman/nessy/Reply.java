@@ -20,23 +20,23 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
 
-/** What came back. Sugar over the final {@link SessionState}. */
+/** What came back. Sugar over the final {@link ConversationState}. */
 public record Reply(RunOutcome outcome) {
 
   public Reply {
     Objects.requireNonNull(outcome, "outcome must not be null");
   }
 
-  public SessionState state() {
+  public ConversationState state() {
     return switch (outcome) {
-      case RunOutcome.Completed(SessionState state) -> state;
-      case RunOutcome.Parked(SessionState state, ParkToken _) -> state;
+      case RunOutcome.Completed(ConversationState state) -> state;
+      case RunOutcome.Parked(ConversationState state, ParkToken _) -> state;
     };
   }
 
@@ -50,7 +50,7 @@ public record Reply(RunOutcome outcome) {
   }
 
   public boolean failed() {
-    return state().status() == SessionStatus.FAILED;
+    return state().status() == ConversationStatus.FAILED;
   }
 
   public Optional<String> failureReason() {

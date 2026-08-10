@@ -28,32 +28,32 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.context.ContextEnricher;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.spi.session.SessionStore;
 
 /**
  * Enrichment performed by {@link InProcessEngine} at request assembly: {@link
  * ContextEnricher#enrich} enriches one conversational request, under its own observation, never the
- * ledger {@link org.jwcarman.nessy.api.session.SessionState} carries forward.
+ * ledger {@link org.jwcarman.nessy.api.conversation.ConversationState} carries forward.
  */
 class InProcessEngineEnrichmentTest {
 
-  private static final SessionId ID = new SessionId("s1");
+  private static final ConversationId ID = new ConversationId("s1");
   private static final ModelSettings CONFIG =
       new ModelSettings("fake-model", "be helpful", 1024, Set.of(), null);
 
@@ -70,7 +70,7 @@ class InProcessEngineEnrichmentTest {
         ToolRegistry.of(),
         Map.of(),
         Approver.allowAll(),
-        SessionStore.inMemory(),
+        ConversationStore.inMemory(),
         hub,
         Reducer.defaults(),
         CONFIG,
@@ -98,7 +98,8 @@ class InProcessEngineEnrichmentTest {
       InProcessEngine engine =
           engineWith(provider, enricher, EventHub.synchronous(), ObservationRegistry.create());
 
-      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("what color is the sky?"));
+      RunOutcome outcome =
+          engine.run(ID, ConversationEvent.UserSaid.of(ID, "what color is the sky?"));
 
       List<ModelRequest> requests = provider.requests();
       assertThat(requests).hasSize(1);
@@ -126,10 +127,10 @@ class InProcessEngineEnrichmentTest {
       hub.subscribe(EnrichmentFailed.class, failures::add);
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
-      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("hi"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 
       assertThat(failures).hasSize(1);
-      assertThat(failures.getFirst().sessionId()).isEqualTo(ID);
+      assertThat(failures.getFirst().conversationId()).isEqualTo(ID);
       assertThat(failures.getFirst().reason()).contains("enricher exploded");
       List<ModelRequest> requests = provider.requests();
       assertThat(requests).hasSize(1);
@@ -147,7 +148,7 @@ class InProcessEngineEnrichmentTest {
       hub.subscribe(EnrichmentFailed.class, failures::add);
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
-      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("hi"));
+      RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 
       assertThat(failures).hasSize(1);
       List<ModelRequest> requests = provider.requests();
@@ -166,7 +167,7 @@ class InProcessEngineEnrichmentTest {
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       InProcessEngine engine = engineWith(provider, null, EventHub.synchronous(), observations);
 
-      engine.run(ID, Event.UserSaid.of("hi"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 
       // Zero declared enrichment contributors is identity-skipped:
       // nessy.run/nessy.turn/nessy.model.call
@@ -186,7 +187,7 @@ class InProcessEngineEnrichmentTest {
       ContextEnricher enricher = state -> List.of(Message.user("a fact"));
       InProcessEngine engine = engineWith(provider, enricher, EventHub.synchronous(), observations);
 
-      engine.run(ID, Event.UserSaid.of("hi"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 
       assertThat(observations)
           .hasObservationWithNameEqualTo("nessy.context.enrich")
@@ -204,7 +205,7 @@ class InProcessEngineEnrichmentTest {
           };
       InProcessEngine engine = engineWith(provider, enricher, EventHub.synchronous(), observations);
 
-      engine.run(ID, Event.UserSaid.of("hi"));
+      engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 
       assertThat(observations)
           .hasObservationWithNameEqualTo("nessy.context.enrich")

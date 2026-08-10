@@ -16,9 +16,9 @@
 package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.Usage;
 
 /**
  * One message, at the moment it was born into a session's transcript.
@@ -30,17 +30,17 @@ import org.jwcarman.nessy.api.session.Usage;
  * journaling, memory extraction, transcription mirrors, streaming UIs. The journal is no longer a
  * privileged engine dependency; it is simply the first subscriber.
  *
- * @param sessionId the session this message belongs to
+ * @param conversationId the session this message belongs to
  * @param message the settled message, exactly as born
  * @param turnUsage the usage to attribute to this message: the flushed assistant message of a model
  *     turn carries that turn's usage; every other newborn message, including a compaction's
  *     summary, carries {@link Usage#zero()} — the jurisdiction rule (design §10.6) reserves this
  *     field for the loop's own spend, so a compactor's own call cost is telemetry's, never here
  */
-public record MessageAppended(SessionId sessionId, Message message, Usage turnUsage) {
+public record MessageAppended(ConversationId conversationId, Message message, Usage turnUsage) {
 
   public MessageAppended {
-    Objects.requireNonNull(sessionId, "sessionId must not be null");
+    Objects.requireNonNull(conversationId, "conversationId must not be null");
     Objects.requireNonNull(message, "message must not be null");
     Objects.requireNonNull(turnUsage, "turnUsage must not be null");
   }

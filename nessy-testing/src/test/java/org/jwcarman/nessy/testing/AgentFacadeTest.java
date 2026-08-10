@@ -30,17 +30,15 @@ import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.event.SessionEvent;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.TerminationPolicy;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.TerminationPolicy;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -50,10 +48,10 @@ import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.context.ContextEnricher;
 import org.jwcarman.nessy.spi.context.Projection;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
+import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.session.SessionStore;
-import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 class AgentFacadeTest {
 
@@ -93,15 +91,18 @@ class AgentFacadeTest {
     return args;
   }
 
-  /** Test-only: while running, emits a {@link SessionEvent} for a session that is not its own. */
+  /**
+   * Test-only: while running, emits a {@link ConversationEvent} self-attributed to a conversation
+   * that is not its own.
+   */
   record NoArgs() {}
 
   static final class EmitForeignEventTool implements Tool<NoArgs> {
 
-    private final SessionId foreignSessionId;
+    private final ConversationId foreignConversationId;
 
-    EmitForeignEventTool(SessionId foreignSessionId) {
-      this.foreignSessionId = foreignSessionId;
+    EmitForeignEventTool(ConversationId foreignConversationId) {
+      this.foreignConversationId = foreignConversationId;
     }
 
     @Override
@@ -111,7 +112,7 @@ class AgentFacadeTest {
 
     @Override
     public String description() {
-      return "Test-only: emits a SessionEvent belonging to a different session.";
+      return "Test-only: emits a ConversationEvent belonging to a different conversation.";
     }
 
     @Override
@@ -126,18 +127,12 @@ class AgentFacadeTest {
 
     @Override
     public Awaited<ToolResult> execute(NoArgs input, ToolContext context) {
-      context
-          .events()
-          .emit(
-              new SessionEvent(
-                  foreignSessionId,
-                  Event.UserSaid.of("foreign"),
-                  SessionState.newSession(foreignSessionId)));
+      context.events().emit(ConversationEvent.UserSaid.of(foreignConversationId, "foreign"));
       return Awaited.ready(ToolResult.ok("emitted"));
     }
   }
 
-  private static String textOf(Event.UserSaid userSaid) {
+  private static String textOf(ConversationEvent.UserSaid userSaid) {
     return userSaid.content().stream()
         .filter(TextBlock.class::isInstance)
         .map(TextBlock.class::cast)
@@ -270,9 +265,9 @@ class AgentFacadeTest {
 
     Conversation<String> chat = agent.converse();
     chat.tell("what is 2+2?"); // a tool round trip: two model calls inside this one tell
-    SessionId sessionId = chat.sessionId();
+    ConversationId conversationId = chat.conversationId();
 
-    Context preview = agent.contextFor(sessionId);
+    Context preview = agent.contextFor(conversationId);
 
     chat.tell("anything else?"); // the subsequent tell
 
@@ -287,7 +282,7 @@ class AgentFacadeTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    assertThatThrownBy(() -> agent.contextFor(SessionId.generate()))
+    assertThatThrownBy(() -> agent.contextFor(ConversationId.generate()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown session");
   }
@@ -494,7 +489,7 @@ class AgentFacadeTest {
 
     agent.converse().tell("hello");
 
-    assertThat(recorder.ofType(SessionEvent.class)).isNotEmpty();
+    assertThat(recorder.ofType(ConversationEvent.class)).isNotEmpty();
   }
 
   @Test
@@ -551,9 +546,9 @@ class AgentFacadeTest {
 
     Conversation<String> first = agent.converse();
     first.tell("hi");
-    SessionId sessionId = first.sessionId();
+    ConversationId conversationId = first.conversationId();
 
-    Reply second = agent.resume(sessionId).tell("you there?");
+    Reply second = agent.resume(conversationId).tell("you there?");
 
     assertThat(second.state().messages()).hasSize(4);
   }
@@ -585,25 +580,27 @@ class AgentFacadeTest {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
     Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
-    List<Event> tapped = new ArrayList<>();
+    List<ConversationEvent> tapped = new ArrayList<>();
 
     agent.converse().tell("what is 2+2?", tapped::add);
 
     assertThat(tapped)
-        .filteredOn(Event.TextDelta.class::isInstance)
+        .filteredOn(ConversationEvent.TextDelta.class::isInstance)
         .isNotEmpty()
-        .allSatisfy(event -> assertThat(((Event.TextDelta) event).text()).isNotEmpty());
-    assertThat(tapped.getLast()).isInstanceOf(Event.ModelTurnEnded.class);
+        .allSatisfy(event -> assertThat(((ConversationEvent.TextDelta) event).text()).isNotEmpty());
+    assertThat(tapped.getLast()).isInstanceOf(ConversationEvent.ModelTurnEnded.class);
   }
 
   @Test
   void a_tell_tap_never_sees_another_conversations_events() {
-    // A foreign SessionEvent is emitted mid-turn — while A's tap is still subscribed — rather than
+    // A foreign ConversationEvent is emitted mid-turn — while A's tap is still subscribed — rather
+    // than
     // by a second, later tell. A synchronous hub delivers events the instant they're emitted, so a
     // foreign event published after A's turn ends would never reach a tap that closes when tell
-    // returns; the only way to prove the sessionId filter (rather than timing) is what protects the
+    // returns; the only way to prove the conversationId filter (rather than timing) is what
+    // protects the
     // tap is to have the foreign event arrive while the subscription is demonstrably still live.
-    SessionId foreignSessionId = SessionId.generate();
+    ConversationId foreignConversationId = ConversationId.generate();
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .toolUse("c1", "emit-foreign", JsonNodeFactory.instance.objectNode())
@@ -615,15 +612,15 @@ class AgentFacadeTest {
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
-            .tools(new EmitForeignEventTool(foreignSessionId))
+            .tools(new EmitForeignEventTool(foreignConversationId))
             .build();
-    List<Event> tapped = new ArrayList<>();
+    List<ConversationEvent> tapped = new ArrayList<>();
 
     agent.converse().tell("hi", tapped::add);
 
     assertThat(tapped)
-        .filteredOn(Event.UserSaid.class::isInstance)
-        .extracting(event -> textOf((Event.UserSaid) event))
+        .filteredOn(ConversationEvent.UserSaid.class::isInstance)
+        .extracting(event -> textOf((ConversationEvent.UserSaid) event))
         .noneMatch(text -> text.contains("foreign"));
   }
 
@@ -656,7 +653,7 @@ class AgentFacadeTest {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hi").endTurn().text("Hi again").endTurn().build();
     Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
-    List<Event> tapped = new ArrayList<>();
+    List<ConversationEvent> tapped = new ArrayList<>();
     Conversation<String> chat = agent.converse();
 
     chat.tell("hi", tapped::add);
@@ -743,7 +740,7 @@ class AgentFacadeTest {
     void a_broken_renderer_fails_at_the_front_door() {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder().text("never reached").endTurn().build();
-      SessionStore store = SessionStore.inMemory();
+      ConversationStore store = ConversationStore.inMemory();
       Harness harness = Nessy.harness().provider(provider).store(store).build();
       InputRenderer<String> throwing =
           input -> {
@@ -755,7 +752,7 @@ class AgentFacadeTest {
 
       assertThatThrownBy(() -> chat.tell("hi")).isInstanceOf(IllegalStateException.class);
 
-      assertThat(store.load(chat.sessionId())).isEmpty();
+      assertThat(store.load(chat.conversationId())).isEmpty();
       assertThat(provider.requests()).isEmpty();
     }
 
@@ -763,7 +760,7 @@ class AgentFacadeTest {
     void a_renderer_that_produces_no_blocks_also_fails_at_the_front_door() {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder().text("never reached").endTurn().build();
-      SessionStore store = SessionStore.inMemory();
+      ConversationStore store = ConversationStore.inMemory();
       Harness harness = Nessy.harness().provider(provider).store(store).build();
       InputRenderer<String> empty = input -> List.of();
       Agent<String> agent = harness.agent(String.class).model("fake-model").renderer(empty).build();
@@ -771,7 +768,7 @@ class AgentFacadeTest {
 
       assertThatThrownBy(() -> chat.tell("hi")).isInstanceOf(IllegalArgumentException.class);
 
-      assertThat(store.load(chat.sessionId())).isEmpty();
+      assertThat(store.load(chat.conversationId())).isEmpty();
       assertThat(provider.requests()).isEmpty();
     }
   }

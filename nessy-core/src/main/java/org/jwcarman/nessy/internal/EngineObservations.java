@@ -17,8 +17,8 @@ package org.jwcarman.nessy.internal;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /** Span names and attribute assembly for the engine's phases. GenAI-semconv attribute keys. */
@@ -30,7 +30,7 @@ public final class EngineObservations {
   // the (pre-1.0) OTel GenAI agent span conventions: invoke_agent / chat {model} /
   // execute_tool {tool}. Metrics stay stable even as span conventions evolve.
 
-  public static Observation run(ObservationRegistry registry, SessionId id) {
+  public static Observation run(ObservationRegistry registry, ConversationId id) {
     return Observation.start("nessy.run", registry)
         .contextualName("invoke_agent")
         .lowCardinalityKeyValue("gen_ai.operation.name", "invoke_agent")

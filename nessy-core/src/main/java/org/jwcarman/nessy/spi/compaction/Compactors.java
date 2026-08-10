@@ -49,8 +49,8 @@ public final class Compactors {
     }
 
     /**
-     * Fires once {@code SessionState.lastInputTokens()} reaches {@code triggerTokens}. Shares one
-     * underlying value with {@link #window}; whichever of the two is called last wins.
+     * Fires once {@code ConversationState.lastInputTokens()} reaches {@code triggerTokens}. Shares
+     * one underlying value with {@link #window}; whichever of the two is called last wins.
      */
     public SummarizingBuilder triggerTokens(long triggerTokens) {
       if (triggerTokens < 1) {

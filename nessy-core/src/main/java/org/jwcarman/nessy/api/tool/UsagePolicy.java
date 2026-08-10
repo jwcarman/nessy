@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 
 /**
  * The authority half of a {@link ToolGrant}: whether one call to a granted tool may proceed.
@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.session.SessionState;
 public interface UsagePolicy {
 
   /** Decides {@code call}'s fate, purely from the call and the session state it arrived in. */
-  PolicyDecision evaluate(ToolCall call, SessionState state);
+  PolicyDecision evaluate(ToolCall call, ConversationState state);
 
   /** Every call proceeds; the approver is never consulted. */
   static UsagePolicy allow() {

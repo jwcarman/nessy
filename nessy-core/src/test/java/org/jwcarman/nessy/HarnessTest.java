@@ -25,19 +25,19 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EventHub;
-import org.jwcarman.nessy.api.event.SessionEvent;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
+import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
-import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.session.SessionStore;
-import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * Pins the two-builder split: a {@link Harness} is infrastructure, once per application; {@link
@@ -87,18 +87,19 @@ class HarnessTest {
   @Test
   void two_agents_share_the_harness_substrate() {
     FakeProvider provider = new FakeProvider("hi from A", "hi from B");
-    SessionStore store = SessionStore.inMemory();
+    ConversationStore store = ConversationStore.inMemory();
     EventHub hub = EventHub.synchronous();
     Harness harness = Nessy.harness().provider(provider).store(store).hub(hub).build();
-    List<SessionEvent> observed = new ArrayList<>();
-    hub.subscribe(SessionEvent.class, observed::add);
+    List<ConversationEvent> observed = new ArrayList<>();
+    hub.subscribe(ConversationEvent.class, observed::add);
 
     Agent<String> agentA = harness.agent().model("model-a").build();
     Agent<String> agentB = harness.agent().model("model-b").build();
-    SessionId sessionA = agentA.converse().tell("hello").state().id();
-    SessionId sessionB = agentB.converse().tell("hello").state().id();
+    ConversationId sessionA = agentA.converse().tell("hello").state().id();
+    ConversationId sessionB = agentB.converse().tell("hello").state().id();
 
-    assertThat(observed.stream().map(SessionEvent::sessionId)).contains(sessionA, sessionB);
+    assertThat(observed.stream().map(ConversationEvent::conversationId))
+        .contains(sessionA, sessionB);
     assertThat(store.load(sessionA)).isPresent();
     assertThat(store.load(sessionB)).isPresent();
   }
@@ -117,8 +118,8 @@ class HarnessTest {
 
     Agent<String> agentA = harness.agent().model("model-a").build();
     Agent<String> agentB = harness.agent().model("model-b").build();
-    SessionId sessionA = agentA.converse().tell("hello").state().id();
-    SessionId sessionB = agentB.converse().tell("hello").state().id();
+    ConversationId sessionA = agentA.converse().tell("hello").state().id();
+    ConversationId sessionB = agentB.converse().tell("hello").state().id();
 
     // One user message plus one assistant reply per session; a duplicate registration would
     // journal each newborn message twice.

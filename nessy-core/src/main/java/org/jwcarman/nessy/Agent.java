@@ -16,14 +16,14 @@
 package org.jwcarman.nessy;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
-import org.jwcarman.nessy.spi.session.SessionStore;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
 
 /**
  * A configured agent: a reusable factory of conversations, with the full machinery one call away.
@@ -35,14 +35,14 @@ public final class Agent<I> {
 
   private final ExecutionEngine engine;
   private final EventHub events;
-  private final SessionStore store;
+  private final ConversationStore store;
   private final ContextPipeline contextPipeline;
   private final InputRenderer<I> renderer;
 
   Agent(
       ExecutionEngine engine,
       EventHub events,
-      SessionStore store,
+      ConversationStore store,
       ContextPipeline contextPipeline,
       InputRenderer<I> renderer) {
     this.engine = Objects.requireNonNull(engine, "engine must not be null");
@@ -55,12 +55,12 @@ public final class Agent<I> {
 
   /** Opens a fresh conversation. */
   public Conversation<I> converse() {
-    return new Conversation<>(engine, SessionId.generate(), events, renderer);
+    return new Conversation<>(engine, ConversationId.generate(), events, renderer);
   }
 
   /** Reopens a stored session. The engine loads its state on the next send. */
-  public Conversation<I> resume(SessionId sessionId) {
-    return new Conversation<>(engine, sessionId, events, renderer);
+  public Conversation<I> resume(ConversationId conversationId) {
+    return new Conversation<>(engine, conversationId, events, renderer);
   }
 
   /** The event-level API, for anything the facade does not say. */
@@ -81,8 +81,8 @@ public final class Agent<I> {
    *
    * @throws IllegalArgumentException if no session {@code id} is stored
    */
-  public Context contextFor(SessionId id) {
-    SessionState state =
+  public Context contextFor(ConversationId id) {
+    ConversationState state =
         store.load(id).orElseThrow(() -> new IllegalArgumentException("unknown session: " + id));
     return contextPipeline.assemble(state);
   }

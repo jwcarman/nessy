@@ -23,8 +23,8 @@ import java.util.Objects;
 /**
  * Renders one application-typed input, {@code I}, into the {@link ContentBlock}s a {@code tell}
  * puts on the wire. Typing lives in the facade's generics and ends here — everything downstream
- * (the sealed {@link org.jwcarman.nessy.api.Event} grammar, the reducer, the engine) only ever sees
- * content blocks.
+ * (the sealed {@link org.jwcarman.nessy.api.ConversationEvent} grammar, the reducer, the engine)
+ * only ever sees content blocks.
  *
  * <p>A renderer that returns {@code null} or an empty list, or that throws, fails the {@code tell}
  * call outright rather than degrading silently — see {@code Conversation#tell} for the exact
@@ -40,8 +40,8 @@ public interface InputRenderer<I> {
 
   /**
    * The pass-through renderer for {@code String} agents: raw text becomes exactly one {@link
-   * TextBlock}, byte-for-byte what {@link Message#user(String)} and {@code Event.UserSaid.of}
-   * already produce. The default for a {@code String} vocabulary.
+   * TextBlock}, byte-for-byte what {@link Message#user(String)} and {@code
+   * ConversationEvent.UserSaid.of} already produce. The default for a {@code String} vocabulary.
    */
   static InputRenderer<String> text() {
     return text -> List.of(new TextBlock(text));

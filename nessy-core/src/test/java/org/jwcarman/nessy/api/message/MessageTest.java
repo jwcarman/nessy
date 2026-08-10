@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 class MessageTest {
@@ -73,11 +73,11 @@ class MessageTest {
 
   @Test
   void random_session_ids_are_distinct() {
-    assertThat(SessionId.generate()).isNotEqualTo(SessionId.generate());
+    assertThat(ConversationId.generate()).isNotEqualTo(ConversationId.generate());
   }
 
   @Test
   void generated_session_ids_are_time_ordered_uuidv7() {
-    assertThat(UUID.fromString(SessionId.generate().value()).version()).isEqualTo(7);
+    assertThat(UUID.fromString(ConversationId.generate().value()).version()).isEqualTo(7);
   }
 }

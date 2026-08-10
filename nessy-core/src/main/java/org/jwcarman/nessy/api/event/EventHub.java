@@ -42,8 +42,9 @@ import java.util.function.Consumer;
  * watching is the exception it throws — and only a sync subscriber's throw reaches anything.
  *
  * <p>The vocabulary is open on purpose: any module may publish its own event records, and
- * subscribers select by type. The reducer's sealed {@code Event} grammar stays closed; the hub
- * re-publishes loop activity wrapped in {@link SessionEvent} and never feeds the loop.
+ * subscribers select by type. The reducer's sealed {@code ConversationEvent} grammar stays closed;
+ * the hub publishes each self-attributing {@code ConversationEvent} directly — no envelope — and
+ * never feeds the loop.
  */
 public interface EventHub extends EventEmitter {
 

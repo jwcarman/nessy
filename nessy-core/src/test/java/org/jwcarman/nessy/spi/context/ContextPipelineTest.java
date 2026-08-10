@@ -22,14 +22,14 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -40,8 +40,9 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  */
 class ContextPipelineTest {
 
-  private static SessionState stateWith(Message... messages) {
-    return SessionState.newSession(SessionId.generate()).withMessages(List.of(messages));
+  private static ConversationState stateWith(Message... messages) {
+    return ConversationState.newConversation(ConversationId.generate())
+        .withMessages(List.of(messages));
   }
 
   private static List<Message> concat(List<Message> head, List<Message> tail) {

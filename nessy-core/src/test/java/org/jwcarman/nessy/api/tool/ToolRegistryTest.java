@@ -25,8 +25,8 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.EventHub;
-import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.internal.ToolInvoker;
 
 class ToolRegistryTest {
@@ -169,7 +169,9 @@ class ToolRegistryTest {
 
       Awaited<ToolResult> awaited =
           invoker.invoke(
-              tool, greetCall("Ada"), new ToolContext(new SessionId("s1"), EventHub.synchronous()));
+              tool,
+              greetCall("Ada"),
+              new ToolContext(new ConversationId("s1"), EventHub.synchronous()));
 
       assertThat(awaited).isEqualTo(Awaited.ready(ToolResult.ok("Hello, Ada")));
     }

@@ -18,7 +18,7 @@ package org.jwcarman.nessy.examples;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Reply;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 
 /**
@@ -60,10 +60,10 @@ public final class OpenAiChat {
     }
   }
 
-  private static void render(Event event) {
+  private static void render(ConversationEvent event) {
     switch (event) {
-      case Event.TextDelta textDelta -> IO.print(textDelta.text());
-      case Event.ToolCallRequested toolCallRequested ->
+      case ConversationEvent.TextDelta textDelta -> IO.print(textDelta.text());
+      case ConversationEvent.ToolCallRequested toolCallRequested ->
           IO.println("\n⚙ tool: " + toolCallRequested.call().name());
       default -> {}
     }

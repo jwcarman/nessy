@@ -18,9 +18,9 @@ package org.jwcarman.nessy.spi.compaction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * The default {@link Compactor}: cuts the working set at the last pair-safe boundary that still
@@ -53,12 +53,12 @@ record SummarizingCompaction(Summarizer summarizer, long triggerTokens, int keep
   }
 
   @Override
-  public boolean requiresCompaction(SessionState state) {
+  public boolean requiresCompaction(ConversationState state) {
     return state.lastInputTokens() >= triggerTokens;
   }
 
   @Override
-  public Result compact(SessionState state) {
+  public Result compact(ConversationState state) {
     List<Message> workingSet = state.messages();
     Context context = Context.of(workingSet);
     int cut = context.pairSafeCut(keepRecent);

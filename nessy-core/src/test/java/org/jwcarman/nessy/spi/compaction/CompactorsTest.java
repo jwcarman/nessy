@@ -22,11 +22,11 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * {@link Compactors#summarizing}'s builder: its own validation, the 0.8 window-derivation
@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.session.SessionState;
  */
 class CompactorsTest {
 
-  private static final SessionId SESSION_ID = new SessionId("s1");
+  private static final ConversationId CONVERSATION_ID = new ConversationId("s1");
 
   /**
    * Never actually invoked by these tests — every scenario here only checks construction or the
@@ -46,8 +46,8 @@ class CompactorsTest {
         throw new UnsupportedOperationException("this test never calls compact()");
       };
 
-  private static SessionState stateWith(long lastInputTokens) {
-    return SessionState.newSession(SESSION_ID).withLastInputTokens(lastInputTokens);
+  private static ConversationState stateWith(long lastInputTokens) {
+    return ConversationState.newConversation(CONVERSATION_ID).withLastInputTokens(lastInputTokens);
   }
 
   @Nested
@@ -178,8 +178,8 @@ class CompactorsTest {
       return messages;
     }
 
-    private SessionState stateWithMessages(List<Message> messages) {
-      return SessionState.newSession(SESSION_ID).withMessages(messages);
+    private ConversationState stateWithMessages(List<Message> messages) {
+      return ConversationState.newConversation(CONVERSATION_ID).withMessages(messages);
     }
   }
 

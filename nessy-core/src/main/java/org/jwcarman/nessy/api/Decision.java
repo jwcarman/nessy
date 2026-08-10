@@ -18,8 +18,8 @@ package org.jwcarman.nessy.api;
 /**
  * The answer to an approval question.
  *
- * <p>Lives in {@code api} rather than {@code api.approval} so {@link Event} can reference it
- * without the api package depending on the approval package.
+ * <p>Lives in {@code api} rather than {@code api.approval} so {@link ConversationEvent} can
+ * reference it without the api package depending on the approval package.
  */
 public sealed interface Decision {
 

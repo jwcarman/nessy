@@ -20,9 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
 
 class ContextEnricherTest {
 
@@ -33,8 +33,8 @@ class ContextEnricherTest {
     void a_lambda_enricher_enriches_with_whatever_it_is_given() {
       Message fact = Message.user("the sky is blue");
       ContextEnricher enricher = state -> List.of(fact);
-      SessionState state =
-          SessionState.newSession(SessionId.generate())
+      ConversationState state =
+          ConversationState.newConversation(ConversationId.generate())
               .withMessages(List.of(Message.user("what color is the sky?")));
 
       assertThat(enricher.enrich(state)).containsExactly(fact);

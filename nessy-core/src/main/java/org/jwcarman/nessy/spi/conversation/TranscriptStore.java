@@ -13,19 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.session;
+package org.jwcarman.nessy.spi.conversation;
 
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.event.Subscription;
-import org.jwcarman.nessy.api.session.SessionId;
 
 /**
  * Where a session's messages go the moment they are born, in the order they were born.
  *
  * <p>A pure sink: append is the only operation. This is deliberately not a second read model —
- * {@link SessionStore} already answers "what is the session's current state", and a store here that
- * also answered "what did the session ever say" would tempt the framework into reading its own
+ * {@link ConversationStore} already answers "what is the session's current state", and a store here
+ * that also answered "what did the session ever say" would tempt the framework into reading its own
  * audit log, which is exactly the coupling this interface exists to avoid. Nothing in this package
  * or the engine ever calls anything but {@link #append}; a reader, where one exists (see {@link
  * InMemoryTranscriptStore#entries}), belongs to the concrete implementation, not the seam.
@@ -52,7 +52,7 @@ public interface TranscriptStore {
    * EventHub#subscribeAsync(Class, java.util.function.Consumer, java.util.function.Consumer)}
    * isolates it instead.
    */
-  void append(SessionId id, TranscriptEntry entry);
+  void append(ConversationId id, TranscriptEntry entry);
 
   /**
    * Subscribes this store to {@code hub}'s {@link MessageAppended} stream, inline: each event is
@@ -67,7 +67,8 @@ public interface TranscriptStore {
     return hub.subscribe(
         MessageAppended.class,
         event ->
-            append(event.sessionId(), new TranscriptEntry(event.message(), event.turnUsage())));
+            append(
+                event.conversationId(), new TranscriptEntry(event.message(), event.turnUsage())));
   }
 
   /** An in-process, in-memory transcript, with its own reader for tests to inspect. */

@@ -19,9 +19,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
@@ -29,9 +33,6 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
-import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.compaction.Compactor;
@@ -65,20 +66,30 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
     return new Reducer(TerminationPolicy.defaults(), Compactor.disabled());
   }
 
-  public Step reduce(SessionState state, Event event) {
+  /**
+   * The misdelivery guard (design §17): a fact addressed to one conversation can never fold into
+   * another's state. Checked first, before any variant-specific handling, so a misrouted event
+   * fails loudly here rather than corrupting state in a way that would be near-impossible to
+   * diagnose at runtime.
+   */
+  public Step reduce(ConversationState state, ConversationEvent event) {
+    if (!event.conversationId().equals(state.id())) {
+      throw new IllegalArgumentException(
+          "misdelivered fact: event for " + event.conversationId() + " folded into " + state.id());
+    }
     return switch (event) {
-      case Event.UserSaid e -> userSaid(state, e);
-      case Event.TextDelta e -> textDelta(state, e);
-      case Event.ThinkingDelta e -> thinkingDelta(state, e);
-      case Event.ThinkingSigned(String signature) -> thinkingSigned(state, signature);
-      case Event.RedactedThinkingArrived(String data) -> redactedThinkingArrived(state, data);
-      case Event.ModelTurnEnded e -> modelTurnEnded(state, e);
-      case Event.ToolCallRequested e -> toolCallRequested(state, e);
-      case Event.ApprovalDecided e -> approvalDecided(state, e);
-      case Event.ToolFinished(ToolCall call, ToolResult result) ->
+      case ConversationEvent.UserSaid e -> userSaid(state, e);
+      case ConversationEvent.TextDelta e -> textDelta(state, e);
+      case ConversationEvent.ThinkingDelta e -> thinkingDelta(state, e);
+      case ConversationEvent.ThinkingSigned e -> thinkingSigned(state, e.signature());
+      case ConversationEvent.RedactedThinkingArrived e -> redactedThinkingArrived(state, e.data());
+      case ConversationEvent.ModelTurnEnded e -> modelTurnEnded(state, e);
+      case ConversationEvent.ToolCallRequested e -> toolCallRequested(state, e);
+      case ConversationEvent.ApprovalDecided e -> approvalDecided(state, e);
+      case ConversationEvent.ToolFinished(ConversationId _, ToolCall call, ToolResult result) ->
           toolFinished(state, call, result);
-      case Event.Compacted e -> compacted(state, e);
-      case Event.CompactionSkipped e -> compactionSkipped(state, e);
+      case ConversationEvent.Compacted e -> compacted(state, e);
+      case ConversationEvent.CompactionSkipped e -> compactionSkipped(state, e);
     };
   }
 
@@ -89,19 +100,19 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * is by definition not part of the previous streak, so resuming a session that tripped the
    * breaker must not re-fail on its very first errored result.
    */
-  private Step userSaid(SessionState state, Event.UserSaid event) {
-    SessionState next =
+  private Step userSaid(ConversationState state, ConversationEvent.UserSaid event) {
+    ConversationState next =
         state
             .withMessageAppended(Message.user(event.content()))
             .withConsecutiveErrors(0)
             .withFailureReason(null)
-            .with(SessionStatus.AWAITING_MODEL);
+            .with(ConversationStatus.AWAITING_MODEL);
     Optional<String> halt = termination.shouldHalt(next);
     if (halt.isPresent()) {
       return Step.of(
           flushResults(abandonPendingCalls(next))
               .withFailureReason(halt.get())
-              .with(SessionStatus.FAILED));
+              .with(ConversationStatus.FAILED));
     }
     return proceedOrCompact(next);
   }
@@ -110,7 +121,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * Merges a chunk into the trailing text block rather than appending a new one, so a hundred
    * deltas become one block instead of a hundred.
    */
-  private Step textDelta(SessionState state, Event.TextDelta event) {
+  private Step textDelta(ConversationState state, ConversationEvent.TextDelta event) {
     List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
     if (!blocks.isEmpty() && blocks.getLast() instanceof TextBlock last) {
       blocks.set(blocks.size() - 1, new TextBlock(last.text() + event.text()));
@@ -128,7 +139,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * fresh block rather than growing text the signature no longer matches. The empty-signature check
    * is what tells an unsigned (still-open) block apart from a signed (closed) one.
    */
-  private Step thinkingDelta(SessionState state, Event.ThinkingDelta event) {
+  private Step thinkingDelta(ConversationState state, ConversationEvent.ThinkingDelta event) {
     List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
     if (!blocks.isEmpty()
         && blocks.getLast() instanceof ThinkingBlock last
@@ -147,7 +158,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * emits a {@code ThinkingChunk} before a signature, so a signature with nothing trailing it to
    * sign is not a shape this reducer needs to guard against loudly.
    */
-  private Step thinkingSigned(SessionState state, String signature) {
+  private Step thinkingSigned(ConversationState state, String signature) {
     List<ContentBlock> blocks = state.pendingBlocks();
     if (blocks.isEmpty() || !(blocks.getLast() instanceof ThinkingBlock last)) {
       return Step.of(state);
@@ -158,7 +169,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
   }
 
   /** Appends a complete redacted-thinking block; its contents stay opaque by design. */
-  private Step redactedThinkingArrived(SessionState state, String data) {
+  private Step redactedThinkingArrived(ConversationState state, String data) {
     List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
     blocks.add(new RedactedThinkingBlock(data));
     return Step.of(state.withPendingBlocks(blocks));
@@ -168,12 +179,12 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * Ends the model's turn.
    *
    * <p>A turn cut off at the token ceiling, or one the model refused to continue, fails the session
-   * rather than reporting {@link SessionStatus#COMPLETE}. Compaction guards against reaching the
-   * ceiling by shrinking the transcript <em>before</em> the next call, but it cannot rescue a turn
-   * that has already overflowed mid-stream, so overflow still has to fail loudly: a half-finished
-   * sentence reported as a finished answer is the worse outcome, and it is silent. A refusal gets
-   * the same treatment for the same reason: nothing downstream can tell a refused turn from a
-   * finished one except this reducer.
+   * rather than reporting {@link ConversationStatus#COMPLETE}. Compaction guards against reaching
+   * the ceiling by shrinking the transcript <em>before</em> the next call, but it cannot rescue a
+   * turn that has already overflowed mid-stream, so overflow still has to fail loudly: a
+   * half-finished sentence reported as a finished answer is the worse outcome, and it is silent. A
+   * refusal gets the same treatment for the same reason: nothing downstream can tell a refused turn
+   * from a finished one except this reducer.
    *
    * <p>A turn can be truncated mid-{@code tool_use}, leaving the just-settled assistant message
    * with {@link ToolUseBlock}s that never got a matching result. Left alone, those pending calls
@@ -182,25 +193,25 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * same way the error ceiling does: answer every pending call and flush the results before
    * failing.
    */
-  private Step modelTurnEnded(SessionState state, Event.ModelTurnEnded event) {
-    SessionState accounted =
+  private Step modelTurnEnded(ConversationState state, ConversationEvent.ModelTurnEnded event) {
+    ConversationState accounted =
         state
             .withTurns(state.turns() + 1)
             .withUsage(state.usage().plus(event.usage()))
             .withLastInputTokens(event.usage().inputTokens());
-    SessionState settled = settleAssistantMessage(accounted);
+    ConversationState settled = settleAssistantMessage(accounted);
     Optional<String> halt = haltReason(event.reason());
     if (halt.isPresent()) {
       return Step.of(
           flushResults(abandonPendingCalls(settled))
               .withFailureReason(halt.get())
-              .with(SessionStatus.FAILED));
+              .with(ConversationStatus.FAILED));
     }
     if (settled.pendingCalls().isEmpty()) {
-      return Step.of(settled.with(SessionStatus.COMPLETE));
+      return Step.of(settled.with(ConversationStatus.COMPLETE));
     }
     return Step.of(
-        settled.with(SessionStatus.AWAITING_APPROVAL),
+        settled.with(ConversationStatus.AWAITING_APPROVAL),
         new Effect.RequestApproval(settled.pendingCalls().getFirst()));
   }
 
@@ -217,7 +228,8 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
     };
   }
 
-  private Step toolCallRequested(SessionState state, Event.ToolCallRequested event) {
+  private Step toolCallRequested(
+      ConversationState state, ConversationEvent.ToolCallRequested event) {
     List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
     blocks.add(new ToolUseBlock(event.call()));
 
@@ -228,7 +240,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
   }
 
   /** Moves the in-flight blocks into the settled conversation. */
-  private SessionState settleAssistantMessage(SessionState state) {
+  private ConversationState settleAssistantMessage(ConversationState state) {
     if (state.pendingBlocks().isEmpty()) {
       return state;
     }
@@ -237,10 +249,11 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
         .withPendingBlocks(List.of());
   }
 
-  private Step approvalDecided(SessionState state, Event.ApprovalDecided event) {
+  private Step approvalDecided(ConversationState state, ConversationEvent.ApprovalDecided event) {
     return switch (event.decision()) {
       case Decision.Allow _ ->
-          Step.of(state.with(SessionStatus.EXECUTING_TOOL), new Effect.ExecuteTool(event.call()));
+          Step.of(
+              state.with(ConversationStatus.EXECUTING_TOOL), new Effect.ExecuteTool(event.call()));
       // A denial is not a special path: it is a result the model can read and
       // adapt to, exactly like a tool that failed.
       case Decision.Deny(String reason) ->
@@ -248,7 +261,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
     };
   }
 
-  private Step toolFinished(SessionState state, ToolCall call, ToolResult result) {
+  private Step toolFinished(ConversationState state, ToolCall call, ToolResult result) {
     List<ToolResultBlock> results = new ArrayList<>(state.pendingResults());
     results.add(new ToolResultBlock(call.id(), result.content(), result.isError()));
 
@@ -257,7 +270,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
 
     int errors = result.isError() ? state.consecutiveErrors() + 1 : 0;
 
-    SessionState next =
+    ConversationState next =
         state.withPendingResults(results).withPendingCalls(remaining).withConsecutiveErrors(errors);
 
     Optional<String> halt = termination.shouldHalt(next);
@@ -265,14 +278,14 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
       return Step.of(
           flushResults(abandonPendingCalls(next))
               .withFailureReason(halt.get())
-              .with(SessionStatus.FAILED));
+              .with(ConversationStatus.FAILED));
     }
     if (!remaining.isEmpty()) {
       return Step.of(
-          next.with(SessionStatus.AWAITING_APPROVAL),
+          next.with(ConversationStatus.AWAITING_APPROVAL),
           new Effect.RequestApproval(remaining.getFirst()));
     }
-    return proceedOrCompact(flushResults(next).with(SessionStatus.AWAITING_MODEL));
+    return proceedOrCompact(flushResults(next).with(ConversationStatus.AWAITING_MODEL));
   }
 
   /**
@@ -299,7 +312,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * failing the session closes the shape it opened, whether that's the error ceiling or a turn
    * truncated at the token limit.
    */
-  private static SessionState abandonPendingCalls(SessionState state) {
+  private static ConversationState abandonPendingCalls(ConversationState state) {
     if (state.pendingCalls().isEmpty()) {
       return state;
     }
@@ -322,11 +335,11 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * <p>The reducer no longer computes what to keep versus summarize away: the compactor sees the
    * whole ledger and decides for itself.
    */
-  private Step proceedOrCompact(SessionState state) {
+  private Step proceedOrCompact(ConversationState state) {
     if (!compaction.requiresCompaction(state)) {
       return Step.of(state, Effect.callModel());
     }
-    return Step.of(state.with(SessionStatus.COMPACTING), Effect.compact());
+    return Step.of(state.with(ConversationStatus.COMPACTING), Effect.compact());
   }
 
   /**
@@ -334,40 +347,39 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * the messages wholesale, bumps the generation (a compacted transcript is a new shape the rest of
    * the system — transcripts, resumed sessions — must be able to tell apart from the one before
    * it), and resets {@code lastInputTokens} since the next call's measured usage will reflect the
-   * new, smaller transcript. A result no smaller than what went in is a skip in every way that
-   * matters: the spend still happened and is still accounted for, but the messages are untouched
-   * and the generation does not bump.
+   * new, smaller transcript. A result no smaller than what went in is a skip: the messages are
+   * untouched and the generation does not bump.
    *
    * <p>Compaction only ever applies against a settled transcript, but that is a claim about the
    * state at emission time, not at apply time — durable replay makes the two different moments.
-   * {@code Event.Compacted} can land here with tool debt outstanding: a durably replayed run can
-   * replay a stale {@code Compacted} against a state that has since moved on, and nothing stops a
-   * hostile or buggy {@code Compactor} from answering late. {@link #proceedOrCompact} is itself
-   * reached from more than one caller — including {@link #userSaid}, which performs no pending-lane
-   * check of its own — so this belt cannot lean on an apply-time guarantee that was never actually
-   * enforced at every call site. Splicing a rewritten working set underneath an assistant message
-   * that still has unanswered {@code tool_use} blocks would strand the pending lane — the tail the
-   * compactor dropped might be exactly the messages those calls belong to. So a {@code Compacted}
-   * arriving with {@code pendingCalls} or {@code pendingResults} non-empty is always treated as a
-   * skip, regardless of what the working set's size says.
+   * {@code ConversationEvent.Compacted} can land here with tool debt outstanding: a durably
+   * replayed run can replay a stale {@code Compacted} against a state that has since moved on, and
+   * nothing stops a hostile or buggy {@code Compactor} from answering late. {@link
+   * #proceedOrCompact} is itself reached from more than one caller — including {@link #userSaid},
+   * which performs no pending-lane check of its own — so this belt cannot lean on an apply-time
+   * guarantee that was never actually enforced at every call site. Splicing a rewritten working set
+   * underneath an assistant message that still has unanswered {@code tool_use} blocks would strand
+   * the pending lane — the tail the compactor dropped might be exactly the messages those calls
+   * belong to. So a {@code Compacted} arriving with {@code pendingCalls} or {@code pendingResults}
+   * non-empty is always treated as a skip, regardless of what the working set's size says.
    *
    * <p>No usage accounting happens here, shrink or skip: the jurisdiction rule (design §10.6) bills
    * the ledger only for the loop's own spend, reported via {@code ModelTurnEnded}. Whatever a
    * compactor's own call cost is telemetry's jurisdiction, instrumented on its own span — never
-   * folded into {@code SessionState.usage()}.
+   * folded into {@code ConversationState.usage()}.
    */
-  private Step compacted(SessionState state, Event.Compacted event) {
+  private Step compacted(ConversationState state, ConversationEvent.Compacted event) {
     boolean settled = state.pendingCalls().isEmpty() && state.pendingResults().isEmpty();
     if (settled && event.workingSet().size() < state.messages().size()) {
-      SessionState next =
+      ConversationState next =
           state
               .withMessages(event.workingSet())
               .withGeneration(state.generation() + 1)
               .withLastInputTokens(0)
-              .with(SessionStatus.AWAITING_MODEL);
+              .with(ConversationStatus.AWAITING_MODEL);
       return Step.of(next, Effect.callModel());
     }
-    return Step.of(state.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+    return Step.of(state.with(ConversationStatus.AWAITING_MODEL), Effect.callModel());
   }
 
   /**
@@ -375,8 +387,9 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * re-checking here, so {@code lastInputTokens} is left untouched and simply retriggers the same
    * decision naturally at the next {@code CallModel} site.
    */
-  private Step compactionSkipped(SessionState state, Event.CompactionSkipped event) {
-    return Step.of(state.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+  private Step compactionSkipped(
+      ConversationState state, ConversationEvent.CompactionSkipped event) {
+    return Step.of(state.with(ConversationStatus.AWAITING_MODEL), Effect.callModel());
   }
 
   /**
@@ -384,7 +397,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * because the providers we target require every result for a turn to arrive together in the
    * message that follows it.
    */
-  private SessionState flushResults(SessionState state) {
+  private ConversationState flushResults(ConversationState state) {
     if (state.pendingResults().isEmpty()) {
       return state;
     }

@@ -15,10 +15,10 @@
  */
 package org.jwcarman.nessy.spi;
 
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
-import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /**
  * Drives the reducer and performs its effects.
@@ -45,7 +45,7 @@ public interface ExecutionEngine {
    * at this seam and lands with {@code DurableEngine}, where a session can be resumed from another
    * process while a stale caller still holds the old one.
    */
-  RunOutcome run(SessionId id, Event input);
+  RunOutcome run(ConversationId id, ConversationEvent input);
 
-  RunOutcome resume(SessionId id, ParkToken token, Event resolution);
+  RunOutcome resume(ConversationId id, ParkToken token, ConversationEvent resolution);
 }

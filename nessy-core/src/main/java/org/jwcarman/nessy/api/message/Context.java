@@ -31,7 +31,7 @@ import java.util.function.Predicate;
  * {@link ToolResultBlock}s answer exactly that set of ids — every id answered, no unknown ids, and
  * nothing in between. A {@link ToolResultBlock} may appear only in such an answering message. A
  * trailing assistant message with unanswered tool-use ids is rejected: a {@code Context} is
- * wire-bound, so an open tail belongs in {@code SessionState}, never here.
+ * wire-bound, so an open tail belongs in {@code ConversationState}, never here.
  *
  * <p><b>The edit algebra (§10.8).</b> {@code Context} owns not just the pairing invariant but the
  * safe edits over it — raw list surgery is where pairing bugs breed, so user code never does any.

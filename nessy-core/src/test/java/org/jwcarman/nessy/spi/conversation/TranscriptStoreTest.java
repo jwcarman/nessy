@@ -13,22 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.session;
+package org.jwcarman.nessy.spi.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.Usage;
 
 class TranscriptStoreTest {
 
-  private static final SessionId ID = new SessionId("s1");
+  private static final ConversationId ID = new ConversationId("s1");
 
   @Test
   void appends_read_back_in_order() {
@@ -46,7 +46,7 @@ class TranscriptStoreTest {
   void an_unknown_session_reads_empty() {
     InMemoryTranscriptStore store = new InMemoryTranscriptStore();
 
-    assertThat(store.entries(new SessionId("unknown"))).isEmpty();
+    assertThat(store.entries(new ConversationId("unknown"))).isEmpty();
   }
 
   @Test

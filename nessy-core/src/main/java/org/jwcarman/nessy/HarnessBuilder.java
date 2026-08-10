@@ -18,9 +18,9 @@ package org.jwcarman.nessy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.session.SessionStore;
-import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * Assembles a {@link Harness}: the six pieces of infrastructure an application sets up once and
@@ -33,7 +33,7 @@ import org.jwcarman.nessy.spi.session.TranscriptStore;
 public final class HarnessBuilder {
 
   private ModelProvider provider;
-  private SessionStore store = SessionStore.inMemory();
+  private ConversationStore store = ConversationStore.inMemory();
   private TranscriptStore transcript;
   private EventHub hub = EventHub.synchronous();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
@@ -52,8 +52,8 @@ public final class HarnessBuilder {
     return this;
   }
 
-  /** Where session state lives. Default: {@link SessionStore#inMemory()}. */
-  public HarnessBuilder store(SessionStore store) {
+  /** Where session state lives. Default: {@link ConversationStore#inMemory()}. */
+  public HarnessBuilder store(ConversationStore store) {
     this.store = store;
     return this;
   }
@@ -74,8 +74,8 @@ public final class HarnessBuilder {
   }
 
   /**
-   * Where {@link org.jwcarman.nessy.api.event.SessionEvent}s are published. Default: {@link
-   * EventHub#synchronous()}.
+   * Where each loop's {@link org.jwcarman.nessy.api.ConversationEvent}s are published. Default:
+   * {@link EventHub#synchronous()}.
    */
   public HarnessBuilder hub(EventHub hub) {
     this.hub = hub;

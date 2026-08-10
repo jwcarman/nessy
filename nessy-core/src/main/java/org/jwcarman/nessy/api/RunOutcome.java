@@ -15,12 +15,12 @@
  */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 
 /** How a run ended: finished, or waiting for something that outlives this process. */
 public sealed interface RunOutcome {
 
-  record Completed(SessionState state) implements RunOutcome {}
+  record Completed(ConversationState state) implements RunOutcome {}
 
-  record Parked(SessionState state, ParkToken token) implements RunOutcome {}
+  record Parked(ConversationState state, ParkToken token) implements RunOutcome {}
 }

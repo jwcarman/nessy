@@ -17,8 +17,8 @@ package org.jwcarman.nessy.spi.compaction;
 
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Decides when the settled conversation needs shrinking, and shrinks it.
@@ -42,7 +42,7 @@ import org.jwcarman.nessy.api.session.SessionState;
 public interface Compactor {
 
   /** Pure — the reducer consults this at every {@code CallModel} decision point. */
-  boolean requiresCompaction(SessionState state);
+  boolean requiresCompaction(ConversationState state);
 
   /**
    * Effectful — the ENGINE performs this, never the reducer. Sees the ledger it is compacting and
@@ -54,7 +54,7 @@ public interface Compactor {
    * call itself, on its own span, as telemetry rather than as a bill the reducer accumulates; see
    * {@link Summarizer#usingProvider} for the default's own instrumentation.
    */
-  Result compact(SessionState state);
+  Result compact(ConversationState state);
 
   /**
    * The outcome of one compaction attempt.
@@ -79,12 +79,12 @@ public interface Compactor {
   static Compactor disabled() {
     return new Compactor() {
       @Override
-      public boolean requiresCompaction(SessionState state) {
+      public boolean requiresCompaction(ConversationState state) {
         return false;
       }
 
       @Override
-      public Result compact(SessionState state) {
+      public Result compact(ConversationState state) {
         throw new IllegalStateException(
             "compaction is disabled: requiresCompaction() always returns false, so the reducer"
                 + " should never have emitted Effect.Compact for this compactor");

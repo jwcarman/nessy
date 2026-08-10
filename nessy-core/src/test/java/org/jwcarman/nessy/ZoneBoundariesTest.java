@@ -39,7 +39,7 @@ class ZoneBoundariesTest {
   /** The only api types allowed to reach into internal machinery, and why. */
   private static final Set<String> SANCTIONED_API_TO_INTERNAL_IMPORTS =
       Set.of(
-          "SessionId.java", // -> Identifiers, for UUIDv7 generation
+          "ConversationId.java", // -> Identifiers, for UUIDv7 generation
           "ParkToken.java", // -> Identifiers, for UUIDv7 generation
           "Tool.java" // -> Schemas, to derive its wire ToolSpec
           );

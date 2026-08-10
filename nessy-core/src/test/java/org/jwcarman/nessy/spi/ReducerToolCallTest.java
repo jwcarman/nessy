@@ -21,21 +21,23 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 class ReducerToolCallTest {
 
+  private static final ConversationId ID = new ConversationId("s1");
+
   private final Reducer reducer = Reducer.defaults();
-  private final SessionState initial = SessionState.newSession(new SessionId("s1"));
+  private final ConversationState initial = ConversationState.newConversation(ID);
 
   private static ToolCall call(String id, String name) {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
@@ -47,7 +49,7 @@ class ReducerToolCallTest {
   void a_requested_call_is_recorded_as_a_block_and_as_pending_work() {
     ToolCall toolCall = call("c1", "read_file");
 
-    Step step = reducer.reduce(initial, new Event.ToolCallRequested(toolCall));
+    Step step = reducer.reduce(initial, new ConversationEvent.ToolCallRequested(ID, toolCall));
 
     assertThat(step.state().pendingBlocks()).containsExactly(new ToolUseBlock(toolCall));
     assertThat(step.state().pendingCalls()).containsExactly(toolCall);
@@ -59,13 +61,16 @@ class ReducerToolCallTest {
     ToolCall first = call("c1", "read_file");
     ToolCall second = call("c2", "grep");
 
-    SessionState state = reducer.reduce(initial, new Event.TextDelta("Let me look.")).state();
-    state = reducer.reduce(state, new Event.ToolCallRequested(first)).state();
-    state = reducer.reduce(state, new Event.ToolCallRequested(second)).state();
+    ConversationState state =
+        reducer.reduce(initial, new ConversationEvent.TextDelta(ID, "Let me look.")).state();
+    state = reducer.reduce(state, new ConversationEvent.ToolCallRequested(ID, first)).state();
+    state = reducer.reduce(state, new ConversationEvent.ToolCallRequested(ID, second)).state();
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero()));
+    Step step =
+        reducer.reduce(
+            state, new ConversationEvent.ModelTurnEnded(ID, StopReason.TOOL_USE, Usage.zero()));
 
-    assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_APPROVAL);
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_APPROVAL);
     assertThat(step.effects()).containsExactly(new Effect.RequestApproval(first));
   }
 
@@ -73,10 +78,13 @@ class ReducerToolCallTest {
   void turn_end_settles_text_and_tool_use_blocks_into_one_assistant_message() {
     ToolCall toolCall = call("c1", "read_file");
 
-    SessionState state = reducer.reduce(initial, new Event.TextDelta("Looking.")).state();
-    state = reducer.reduce(state, new Event.ToolCallRequested(toolCall)).state();
+    ConversationState state =
+        reducer.reduce(initial, new ConversationEvent.TextDelta(ID, "Looking.")).state();
+    state = reducer.reduce(state, new ConversationEvent.ToolCallRequested(ID, toolCall)).state();
 
-    Step step = reducer.reduce(state, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero()));
+    Step step =
+        reducer.reduce(
+            state, new ConversationEvent.ModelTurnEnded(ID, StopReason.TOOL_USE, Usage.zero()));
 
     assertThat(step.state().messages())
         .containsExactly(

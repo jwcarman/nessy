@@ -24,12 +24,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 
 class UsagePolicyTest {
 
-  private static final SessionState STATE = SessionState.newSession(new SessionId("s1"));
+  private static final ConversationState STATE =
+      ConversationState.newConversation(new ConversationId("s1"));
 
   private static ToolCall spendCall(int amount) {
     ObjectNode args = JsonNodeFactory.instance.objectNode();

@@ -32,7 +32,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelStream;

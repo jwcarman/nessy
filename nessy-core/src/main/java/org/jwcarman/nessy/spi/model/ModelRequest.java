@@ -33,9 +33,9 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
  *     them
  * @param responseSchema a JSON Schema the model's final response should conform to, or {@code null}
  *     if the caller has no structured-output requirement. This is the second sanctioned nullable
- *     field in this codebase (see {@code SessionState.failureReason} for the first): it is a slot
- *     the providers wired today ignore entirely, reserved for structured output arriving in a later
- *     change.
+ *     field in this codebase (see {@code ConversationState.failureReason} for the first): it is a
+ *     slot the providers wired today ignore entirely, reserved for structured output arriving in a
+ *     later change.
  */
 public record ModelRequest(
     Context context,

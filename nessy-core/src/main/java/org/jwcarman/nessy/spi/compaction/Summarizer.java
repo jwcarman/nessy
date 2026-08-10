@@ -28,9 +28,9 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
  * much room the reply gets are facts about the summarizer, not about any one summarization.
  *
  * <p>What a summarization call costs is not part of this seam's contract: the jurisdiction rule
- * (design §10.6) reserves {@code SessionState.usage()} for the loop's own spend, so a summarizer
- * that calls a model instruments that call itself as telemetry rather than returning a bill for the
- * reducer to accumulate. {@link #usingProvider} shows the convention.
+ * (design §10.6) reserves {@code ConversationState.usage()} for the loop's own spend, so a
+ * summarizer that calls a model instruments that call itself as telemetry rather than returning a
+ * bill for the reducer to accumulate. {@link #usingProvider} shows the convention.
  */
 public interface Summarizer {
 

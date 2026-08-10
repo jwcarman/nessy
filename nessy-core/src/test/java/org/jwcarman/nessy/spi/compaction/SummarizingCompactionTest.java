@@ -24,13 +24,13 @@ import java.util.Deque;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -41,14 +41,14 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  */
 class SummarizingCompactionTest {
 
-  private static final SessionId SESSION_ID = new SessionId("s1");
+  private static final ConversationId CONVERSATION_ID = new ConversationId("s1");
 
   private static Compactor compactorFor(Summarizer summarizer, int keepRecent) {
     return Compactors.summarizing(summarizer).triggerTokens(1).keepRecent(keepRecent).build();
   }
 
-  private static SessionState stateWith(List<Message> messages) {
-    return SessionState.newSession(SESSION_ID).withMessages(messages);
+  private static ConversationState stateWith(List<Message> messages) {
+    return ConversationState.newConversation(CONVERSATION_ID).withMessages(messages);
   }
 
   /** Six user/assistant text pairs — twelve messages, every even index a genuine user turn. */
@@ -149,7 +149,8 @@ class SummarizingCompactionTest {
 
       assertThat(
               neverTriggers.requiresCompaction(
-                  SessionState.newSession(SESSION_ID).withLastInputTokens(Long.MAX_VALUE - 1)))
+                  ConversationState.newConversation(CONVERSATION_ID)
+                      .withLastInputTokens(Long.MAX_VALUE - 1)))
           .isFalse();
     }
   }

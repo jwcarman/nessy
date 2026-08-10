@@ -20,8 +20,8 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.InputRenderer;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.session.SessionStore;
 
 /**
  * The application's infrastructure, assembled once and shared by every agent it builds.
@@ -45,14 +45,14 @@ import org.jwcarman.nessy.spi.session.SessionStore;
 public final class Harness {
 
   private final ModelProvider provider;
-  private final SessionStore store;
+  private final ConversationStore store;
   private final EventHub hub;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
 
   Harness(
       ModelProvider provider,
-      SessionStore store,
+      ConversationStore store,
       EventHub hub,
       ObservationRegistry observations,
       ObjectMapper mapper) {
@@ -86,7 +86,7 @@ public final class Harness {
     return provider;
   }
 
-  SessionStore store() {
+  ConversationStore store() {
     return store;
   }
 

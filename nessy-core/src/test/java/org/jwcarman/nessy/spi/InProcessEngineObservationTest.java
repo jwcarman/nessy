@@ -24,27 +24,27 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EventHub;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.spi.session.SessionStore;
 
 class InProcessEngineObservationTest {
 
-  private static final SessionId ID = new SessionId("s1");
+  private static final ConversationId ID = new ConversationId("s1");
   private static final ModelSettings CONFIG =
       new ModelSettings("fake-model", "be helpful", 1024, Set.of(), null);
 
@@ -97,7 +97,7 @@ class InProcessEngineObservationTest {
             tools,
             EngineFixtures.defaultGrants(tools),
             new ThrowingApprover(),
-            SessionStore.inMemory(),
+            ConversationStore.inMemory(),
             EventHub.synchronous(),
             Reducer.defaults(),
             CONFIG,
@@ -105,7 +105,7 @@ class InProcessEngineObservationTest {
             observations,
             ContextPipeline.builder().build(EventHub.synchronous(), observations));
 
-    assertThatThrownBy(() -> engine.run(ID, Event.UserSaid.of("echo hi")))
+    assertThatThrownBy(() -> engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi")))
         .isInstanceOf(IllegalStateException.class);
 
     assertThat(observations).hasObservationWithNameEqualTo("nessy.approval.wait").that().hasError();
@@ -152,7 +152,7 @@ class InProcessEngineObservationTest {
             tools,
             EngineFixtures.defaultGrants(tools),
             Approver.allowAll(),
-            SessionStore.inMemory(),
+            ConversationStore.inMemory(),
             EventHub.synchronous(),
             Reducer.defaults(),
             CONFIG,
@@ -160,7 +160,7 @@ class InProcessEngineObservationTest {
             observations,
             ContextPipeline.builder().build(EventHub.synchronous(), observations));
 
-    engine.run(ID, Event.UserSaid.of("go"));
+    engine.run(ID, ConversationEvent.UserSaid.of(ID, "go"));
 
     assertThat(observations)
         .hasObservationWithNameEqualTo("nessy.tool.call")
@@ -227,7 +227,7 @@ class InProcessEngineObservationTest {
             tools,
             EngineFixtures.defaultGrants(tools),
             Approver.allowAll(),
-            SessionStore.inMemory(),
+            ConversationStore.inMemory(),
             EventHub.synchronous(),
             Reducer.defaults(),
             CONFIG,
@@ -235,6 +235,6 @@ class InProcessEngineObservationTest {
             observations,
             ContextPipeline.builder().build(EventHub.synchronous(), observations));
 
-    engine.run(ID, Event.UserSaid.of("echo hi"));
+    engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
   }
 }

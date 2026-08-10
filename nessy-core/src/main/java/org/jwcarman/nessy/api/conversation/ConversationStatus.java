@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.session;
+package org.jwcarman.nessy.api.conversation;
 
 /** Where a session is in its lifecycle. */
-public enum SessionStatus {
+public enum ConversationStatus {
 
   /** Nothing has happened yet, or the last turn finished and we are waiting on a human. */
   IDLE,

@@ -17,15 +17,15 @@ package org.jwcarman.nessy.spi.model;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * Something a provider emitted while streaming one turn.
  *
- * <p>Distinct from {@code Event} on purpose: a provider should be able to report what the model
- * did, and nothing else. Reusing the core event type would let a provider inject a user message or
- * an approval decision into the loop.
+ * <p>Distinct from {@code ConversationEvent} on purpose: a provider should be able to report what
+ * the model did, and nothing else. Reusing the core event type would let a provider inject a user
+ * message or an approval decision into the loop.
  */
 public sealed interface ModelEvent {
 

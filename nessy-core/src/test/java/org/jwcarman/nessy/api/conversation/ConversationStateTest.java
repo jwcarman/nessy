@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.session;
+package org.jwcarman.nessy.api.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,13 +23,13 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 
-class SessionStateTest {
+class ConversationStateTest {
 
-  private static final SessionId ID = new SessionId("s1");
+  private static final ConversationId ID = new ConversationId("s1");
 
   @Test
   void new_session_starts_empty_and_idle() {
-    SessionState state = SessionState.newSession(ID);
+    ConversationState state = ConversationState.newConversation(ID);
 
     assertThat(state.id()).isEqualTo(ID);
     assertThat(state.messages()).isEmpty();
@@ -39,14 +39,14 @@ class SessionStateTest {
     assertThat(state.consecutiveErrors()).isZero();
     assertThat(state.lastInputTokens()).isZero();
     assertThat(state.generation()).isZero();
-    assertThat(state.status()).isEqualTo(SessionStatus.IDLE);
+    assertThat(state.status()).isEqualTo(ConversationStatus.IDLE);
   }
 
   @Test
   void with_last_input_tokens_returns_a_new_instance() {
-    SessionState original = SessionState.newSession(ID);
+    ConversationState original = ConversationState.newConversation(ID);
 
-    SessionState changed = original.withLastInputTokens(42);
+    ConversationState changed = original.withLastInputTokens(42);
 
     assertThat(changed.lastInputTokens()).isEqualTo(42);
     assertThat(original.lastInputTokens()).isZero();
@@ -54,9 +54,9 @@ class SessionStateTest {
 
   @Test
   void with_generation_returns_a_new_instance() {
-    SessionState original = SessionState.newSession(ID);
+    ConversationState original = ConversationState.newConversation(ID);
 
-    SessionState changed = original.withGeneration(3);
+    ConversationState changed = original.withGeneration(3);
 
     assertThat(changed.generation()).isEqualTo(3);
     assertThat(original.generation()).isZero();
@@ -64,38 +64,38 @@ class SessionStateTest {
 
   @Test
   void a_negative_last_input_tokens_is_rejected() {
-    assertThatThrownBy(() -> SessionState.newSession(ID).withLastInputTokens(-1))
+    assertThatThrownBy(() -> ConversationState.newConversation(ID).withLastInputTokens(-1))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_negative_generation_is_rejected() {
-    assertThatThrownBy(() -> SessionState.newSession(ID).withGeneration(-1))
+    assertThatThrownBy(() -> ConversationState.newConversation(ID).withGeneration(-1))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void withers_return_new_instances_and_leave_the_original_alone() {
-    SessionState original = SessionState.newSession(ID);
+    ConversationState original = ConversationState.newConversation(ID);
 
-    SessionState changed =
+    ConversationState changed =
         original
             .withMessageAppended(Message.user("hi"))
-            .with(SessionStatus.AWAITING_MODEL)
+            .with(ConversationStatus.AWAITING_MODEL)
             .withConsecutiveErrors(2);
 
     assertThat(changed.messages()).hasSize(1);
-    assertThat(changed.status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+    assertThat(changed.status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
     assertThat(changed.consecutiveErrors()).isEqualTo(2);
 
     assertThat(original.messages()).isEmpty();
-    assertThat(original.status()).isEqualTo(SessionStatus.IDLE);
+    assertThat(original.status()).isEqualTo(ConversationStatus.IDLE);
     assertThat(original.consecutiveErrors()).isZero();
   }
 
   @Test
   void all_lists_are_unmodifiable() {
-    SessionState state = SessionState.newSession(ID);
+    ConversationState state = ConversationState.newConversation(ID);
 
     assertThat(state.messages()).isUnmodifiable();
     assertThat(state.pendingBlocks()).isUnmodifiable();
@@ -105,8 +105,8 @@ class SessionStateTest {
 
   @Test
   void with_pending_blocks_replaces_rather_than_appends() {
-    SessionState state =
-        SessionState.newSession(ID)
+    ConversationState state =
+        ConversationState.newConversation(ID)
             .withPendingBlocks(List.of(new TextBlock("a")))
             .withPendingBlocks(List.of(new TextBlock("b")));
 

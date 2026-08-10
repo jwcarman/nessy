@@ -23,9 +23,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.InputRenderer;
-import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -37,11 +37,11 @@ import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
-import org.jwcarman.nessy.spi.session.SessionStore;
-import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * Assembles an {@link Agent}: the identity — model, system prompt, tools, policies — layered on top
@@ -67,7 +67,7 @@ public final class AgentBuilder<I> {
   private ToolRegistry tools = ToolRegistry.of();
   private Map<String, ToolGrant> explicitGrants;
   private Approver approver = Approver.allowAll();
-  private SessionStore store;
+  private ConversationStore store;
   private EventHub events;
   private TerminationPolicy termination = TerminationPolicy.defaults();
   private Compactor compactor;
@@ -178,7 +178,7 @@ public final class AgentBuilder<I> {
    * Overrides the harness's session store for this one agent. Unusual: the harness is the normal
    * home for the store every agent shares.
    */
-  public AgentBuilder<I> store(SessionStore store) {
+  public AgentBuilder<I> store(ConversationStore store) {
     this.store = store;
     return this;
   }
@@ -269,7 +269,7 @@ public final class AgentBuilder<I> {
    *
    * <p>Default: no projections, no enrichers, {@link ContextPipeline.Placement#ENRICHMENTS_FIRST} —
    * the model sees the full working set unchanged, scoped to this one agent, never a harness-level
-   * default the way {@link #store(SessionStore)} or {@link #events(EventHub)} are.
+   * default the way {@link #store(ConversationStore)} or {@link #events(EventHub)} are.
    *
    * <pre>{@code
    * builder.context(pipeline -> pipeline

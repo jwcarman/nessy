@@ -22,15 +22,15 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.TerminationPolicy;
+import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.SessionStatus;
-import org.jwcarman.nessy.api.session.TerminationPolicy;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.compaction.Compactor;
@@ -43,10 +43,12 @@ import org.jwcarman.nessy.spi.compaction.Compactor;
  */
 class ReducerCompactionTest {
 
+  private static final ConversationId ID = new ConversationId("s1");
+
   /** Builds seed states without ever triggering compaction itself. */
   private final Reducer builder = new Reducer(TerminationPolicy.never(), Compactor.disabled());
 
-  private final SessionState initial = SessionState.newSession(new SessionId("s1"));
+  private final ConversationState initial = ConversationState.newConversation(ID);
 
   private static ToolCall call(String id) {
     return new ToolCall(id, "read_file", JsonNodeFactory.instance.objectNode());
@@ -56,48 +58,56 @@ class ReducerCompactionTest {
   private static Compactor triggeringAt(long triggerTokens) {
     return new Compactor() {
       @Override
-      public boolean requiresCompaction(SessionState state) {
+      public boolean requiresCompaction(ConversationState state) {
         return state.lastInputTokens() >= triggerTokens;
       }
 
       @Override
-      public Result compact(SessionState state) {
+      public Result compact(ConversationState state) {
         throw new UnsupportedOperationException(
             "the reducer never calls compact() itself; these tests drive compact()'s result"
-                + " through Event.Compacted directly");
+                + " through ConversationEvent.Compacted directly");
       }
     };
   }
 
   /** Drives one plain user/assistant text turn to completion, via {@link #builder}. */
-  private SessionState pair(SessionState state, String userText, String assistantText) {
-    SessionState afterUser = builder.reduce(state, Event.UserSaid.of(userText)).state();
-    SessionState afterDelta = builder.reduce(afterUser, new Event.TextDelta(assistantText)).state();
+  private ConversationState pair(ConversationState state, String userText, String assistantText) {
+    ConversationState afterUser =
+        builder.reduce(state, ConversationEvent.UserSaid.of(ID, userText)).state();
+    ConversationState afterDelta =
+        builder.reduce(afterUser, new ConversationEvent.TextDelta(ID, assistantText)).state();
     return builder
-        .reduce(afterDelta, new Event.ModelTurnEnded(StopReason.END_TURN, Usage.zero()))
+        .reduce(
+            afterDelta, new ConversationEvent.ModelTurnEnded(ID, StopReason.END_TURN, Usage.zero()))
         .state();
   }
 
   /** Drives {@code toolCall} up to the point where it is approved but not yet finished. */
-  private SessionState pendingToolCall(SessionState state, ToolCall toolCall) {
-    SessionState requested = builder.reduce(state, new Event.ToolCallRequested(toolCall)).state();
-    SessionState turnEnded =
+  private ConversationState pendingToolCall(ConversationState state, ToolCall toolCall) {
+    ConversationState requested =
+        builder.reduce(state, new ConversationEvent.ToolCallRequested(ID, toolCall)).state();
+    ConversationState turnEnded =
         builder
-            .reduce(requested, new Event.ModelTurnEnded(StopReason.TOOL_USE, Usage.zero()))
+            .reduce(
+                requested,
+                new ConversationEvent.ModelTurnEnded(ID, StopReason.TOOL_USE, Usage.zero()))
             .state();
-    return builder.reduce(turnEnded, new Event.ApprovalDecided(toolCall, Decision.allow())).state();
+    return builder
+        .reduce(turnEnded, new ConversationEvent.ApprovalDecided(ID, toolCall, Decision.allow()))
+        .state();
   }
 
   /** Ten plain-text messages (five user/assistant pairs) followed by one finished tool exchange. */
-  private SessionState fivePairsAndToolExchange() {
-    SessionState state = initial;
+  private ConversationState fivePairsAndToolExchange() {
+    ConversationState state = initial;
     for (int i = 1; i <= 5; i++) {
       state = pair(state, "u" + i, "a" + i);
     }
     ToolCall toolCall = call("c1");
     state = pendingToolCall(state, toolCall);
     return builder
-        .reduce(state, new Event.ToolFinished(toolCall, ToolResult.ok("contents")))
+        .reduce(state, new ConversationEvent.ToolFinished(ID, toolCall, ToolResult.ok("contents")))
         .state();
   }
 
@@ -106,33 +116,33 @@ class ReducerCompactionTest {
 
     @Test
     void at_the_trigger_compaction_is_emitted_as_a_bare_marker() {
-      SessionState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
+      ConversationState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
       Reducer reducer = new Reducer(TerminationPolicy.never(), triggeringAt(100_000));
 
-      Step step = reducer.reduce(state, Event.UserSaid.of("one more thing"));
+      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "one more thing"));
 
-      assertThat(step.state().status()).isEqualTo(SessionStatus.COMPACTING);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.COMPACTING);
       assertThat(step.effects()).containsExactly(Effect.compact());
     }
 
     @Test
     void below_the_trigger_a_user_message_calls_the_model_as_always() {
-      SessionState state = fivePairsAndToolExchange().withLastInputTokens(99_999);
+      ConversationState state = fivePairsAndToolExchange().withLastInputTokens(99_999);
       Reducer reducer = new Reducer(TerminationPolicy.never(), triggeringAt(100_000));
 
-      Step step = reducer.reduce(state, Event.UserSaid.of("hi"));
+      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "hi"));
 
       assertThat(step.effects()).containsExactly(Effect.callModel());
     }
 
     @Test
     void termination_still_beats_compaction() {
-      SessionState state = initial.withTurns(1).withLastInputTokens(100_000);
+      ConversationState state = initial.withTurns(1).withLastInputTokens(100_000);
       Reducer reducer = new Reducer(TerminationPolicy.maxTurns(1), triggeringAt(100_000));
 
-      Step step = reducer.reduce(state, Event.UserSaid.of("more?"));
+      Step step = reducer.reduce(state, ConversationEvent.UserSaid.of(ID, "more?"));
 
-      assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(step.effects()).isEmpty();
     }
 
@@ -145,13 +155,15 @@ class ReducerCompactionTest {
     @Test
     void a_tool_result_at_the_trigger_also_compacts() {
       ToolCall toolCall = call("c2");
-      SessionState pending =
+      ConversationState pending =
           pendingToolCall(fivePairsAndToolExchange(), toolCall).withLastInputTokens(100_000);
       Reducer reducer = new Reducer(TerminationPolicy.never(), triggeringAt(100_000));
 
-      Step step = reducer.reduce(pending, new Event.ToolFinished(toolCall, ToolResult.ok("more")));
+      Step step =
+          reducer.reduce(
+              pending, new ConversationEvent.ToolFinished(ID, toolCall, ToolResult.ok("more")));
 
-      assertThat(step.state().status()).isEqualTo(SessionStatus.COMPACTING);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.COMPACTING);
       assertThat(step.effects()).containsExactly(Effect.compact());
     }
   }
@@ -161,13 +173,13 @@ class ReducerCompactionTest {
 
     @Test
     void a_shrinking_result_replaces_the_working_set() {
-      SessionState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
+      ConversationState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
       List<Message> tail = state.messages().subList(6, state.messages().size());
       List<Message> shrunk = new ArrayList<>();
       shrunk.add(Message.user("[Conversation summary — earlier turns compacted]\nthe gist"));
       shrunk.addAll(tail);
 
-      Step step = builder.reduce(state, new Event.Compacted(shrunk));
+      Step step = builder.reduce(state, new ConversationEvent.Compacted(ID, shrunk));
 
       assertThat(step.state().messages()).isEqualTo(shrunk);
       assertThat(step.state().generation()).isEqualTo(state.generation() + 1);
@@ -175,46 +187,46 @@ class ReducerCompactionTest {
       // result never changes the ledger's usage.
       assertThat(step.state().usage()).isEqualTo(state.usage());
       assertThat(step.state().lastInputTokens()).isZero();
-      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
     }
 
     @Test
     void a_non_shrinking_result_is_a_skip() {
-      SessionState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
+      ConversationState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
 
-      Step step = builder.reduce(state, new Event.Compacted(state.messages()));
+      Step step = builder.reduce(state, new ConversationEvent.Compacted(ID, state.messages()));
 
       assertThat(step.state().messages()).isEqualTo(state.messages());
       assertThat(step.state().generation()).isEqualTo(state.generation());
       assertThat(step.state().usage()).isEqualTo(state.usage());
       assertThat(step.state().lastInputTokens()).isEqualTo(state.lastInputTokens());
-      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
     }
 
     /**
-     * {@code Effect.Compact} is only ever emitted from a settled state, but {@code Event.Compacted}
-     * is not guaranteed to land against one: a durably replayed run can replay a stale result
-     * against a state that has since moved on, and nothing at this layer stops a compactor from
-     * answering late. A shrinking result that would otherwise replace the messages must still be
-     * treated as a skip once tool debt is outstanding — the tail a shrink drops might be exactly
-     * the messages a pending call belongs to, and splicing underneath it would strand the pending
-     * lane.
+     * {@code Effect.Compact} is only ever emitted from a settled state, but {@code
+     * ConversationEvent.Compacted} is not guaranteed to land against one: a durably replayed run
+     * can replay a stale result against a state that has since moved on, and nothing at this layer
+     * stops a compactor from answering late. A shrinking result that would otherwise replace the
+     * messages must still be treated as a skip once tool debt is outstanding — the tail a shrink
+     * drops might be exactly the messages a pending call belongs to, and splicing underneath it
+     * would strand the pending lane.
      */
     @Test
     void a_result_while_tool_debt_is_outstanding_is_a_skip() {
       ToolCall toolCall = call("c3");
-      SessionState state = pendingToolCall(fivePairsAndToolExchange(), toolCall);
+      ConversationState state = pendingToolCall(fivePairsAndToolExchange(), toolCall);
       List<Message> shrunk =
           List.of(Message.user("[Conversation summary — earlier turns compacted]\nthe gist"));
 
-      Step step = builder.reduce(state, new Event.Compacted(shrunk));
+      Step step = builder.reduce(state, new ConversationEvent.Compacted(ID, shrunk));
 
       assertThat(step.state().messages()).isEqualTo(state.messages());
       assertThat(step.state().generation()).isEqualTo(state.generation());
       assertThat(step.state().usage()).isEqualTo(state.usage());
-      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
       assertThat(step.state().pendingCalls()).containsExactly(toolCall);
     }
@@ -225,12 +237,12 @@ class ReducerCompactionTest {
 
     @Test
     void a_skip_proceeds_to_the_model_without_retrying_in_place() {
-      SessionState state = initial.withLastInputTokens(42);
+      ConversationState state = initial.withLastInputTokens(42);
       Reducer reducer = new Reducer(TerminationPolicy.never(), Compactor.disabled());
 
-      Step step = reducer.reduce(state, new Event.CompactionSkipped("429"));
+      Step step = reducer.reduce(state, new ConversationEvent.CompactionSkipped(ID, "429"));
 
-      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
       assertThat(step.state().lastInputTokens()).isEqualTo(42);
       assertThat(step.effects()).containsExactly(Effect.callModel());
     }

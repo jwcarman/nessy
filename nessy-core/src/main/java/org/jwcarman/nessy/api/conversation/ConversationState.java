@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.session;
+package org.jwcarman.nessy.api.conversation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,8 +56,8 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  *     the few failure sites already need.
  * @param status lifecycle position
  */
-public record SessionState(
-    SessionId id,
+public record ConversationState(
+    ConversationId id,
     List<Message> messages,
     List<ContentBlock> pendingBlocks,
     List<ToolCall> pendingCalls,
@@ -68,9 +68,9 @@ public record SessionState(
     long lastInputTokens,
     int generation,
     String failureReason,
-    SessionStatus status) {
+    ConversationStatus status) {
 
-  public SessionState {
+  public ConversationState {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(usage, "usage must not be null");
     Objects.requireNonNull(status, "status must not be null");
@@ -86,8 +86,8 @@ public record SessionState(
     pendingResults = List.copyOf(pendingResults);
   }
 
-  public static SessionState newSession(SessionId id) {
-    return new SessionState(
+  public static ConversationState newConversation(ConversationId id) {
+    return new ConversationState(
         id,
         List.of(),
         List.of(),
@@ -99,11 +99,11 @@ public record SessionState(
         0,
         0,
         null,
-        SessionStatus.IDLE);
+        ConversationStatus.IDLE);
   }
 
-  public SessionState with(SessionStatus newStatus) {
-    return new SessionState(
+  public ConversationState with(ConversationStatus newStatus) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -118,10 +118,10 @@ public record SessionState(
         newStatus);
   }
 
-  public SessionState withMessageAppended(Message message) {
+  public ConversationState withMessageAppended(Message message) {
     List<Message> appended = new ArrayList<>(messages);
     appended.add(message);
-    return new SessionState(
+    return new ConversationState(
         id,
         appended,
         pendingBlocks,
@@ -137,8 +137,8 @@ public record SessionState(
   }
 
   /** Replaces the settled conversation wholesale, as compaction does. */
-  public SessionState withMessages(List<Message> newMessages) {
-    return new SessionState(
+  public ConversationState withMessages(List<Message> newMessages) {
+    return new ConversationState(
         id,
         newMessages,
         pendingBlocks,
@@ -153,8 +153,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withPendingBlocks(List<ContentBlock> blocks) {
-    return new SessionState(
+  public ConversationState withPendingBlocks(List<ContentBlock> blocks) {
+    return new ConversationState(
         id,
         messages,
         blocks,
@@ -169,8 +169,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withPendingCalls(List<ToolCall> calls) {
-    return new SessionState(
+  public ConversationState withPendingCalls(List<ToolCall> calls) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -185,8 +185,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withPendingResults(List<ToolResultBlock> results) {
-    return new SessionState(
+  public ConversationState withPendingResults(List<ToolResultBlock> results) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -201,8 +201,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withConsecutiveErrors(int errors) {
-    return new SessionState(
+  public ConversationState withConsecutiveErrors(int errors) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -217,8 +217,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withTurns(int newTurns) {
-    return new SessionState(
+  public ConversationState withTurns(int newTurns) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -233,8 +233,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withUsage(Usage newUsage) {
-    return new SessionState(
+  public ConversationState withUsage(Usage newUsage) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -249,8 +249,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withLastInputTokens(long newLastInputTokens) {
-    return new SessionState(
+  public ConversationState withLastInputTokens(long newLastInputTokens) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -265,8 +265,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withGeneration(int newGeneration) {
-    return new SessionState(
+  public ConversationState withGeneration(int newGeneration) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
@@ -281,8 +281,8 @@ public record SessionState(
         status);
   }
 
-  public SessionState withFailureReason(String reason) {
-    return new SessionState(
+  public ConversationState withFailureReason(String reason) {
+    return new ConversationState(
         id,
         messages,
         pendingBlocks,
