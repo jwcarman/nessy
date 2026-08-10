@@ -222,6 +222,15 @@ changed.
 
 ### Changed
 
+- **`Memory.recall(Context)` → `Memory.recall(SessionState)` (pre-1.0 breaking)** —
+  recall now cues on the ledger, not the projected `Context`: the context is
+  the thing that will *include* the recalled messages, and projection is a
+  wire concern (an elided tool result reads `"[elided]"` in the projection but
+  full text in the working set), so recall relevance should key on the
+  conversation's truth. `recall(SessionState)` mirrors
+  `ContextBuilder.project(SessionState)`, and `ContextAssembler` concatenates
+  their outputs. Custom `Memory` implementations must update their lambda
+  parameter's type.
 - **`api` reorganized into domain families (pre-1.0 breaking, imports-only)** —
   the root `api` package now holds only the sealed grammar (`Event`,
   `Decision`, `Awaited`, `RunOutcome`, `ParkToken`, `StopReason`); everything

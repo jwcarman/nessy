@@ -93,7 +93,7 @@ class InProcessEngineMemoryTest {
     void recall_enriches_the_request_but_never_the_ledger() {
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       Message fact = Message.user("the sky is blue");
-      Memory memory = context -> List.of(fact);
+      Memory memory = state -> List.of(fact);
       InProcessEngine engine =
           engineWith(provider, memory, EventHub.synchronous(), ObservationRegistry.create());
 
@@ -117,7 +117,7 @@ class InProcessEngineMemoryTest {
     void a_failing_memory_costs_enrichment_not_the_turn() {
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       Memory memory =
-          context -> {
+          state -> {
             throw new IllegalStateException("memory exploded");
           };
       EventHub hub = EventHub.synchronous();
@@ -140,7 +140,7 @@ class InProcessEngineMemoryTest {
     void a_pair_breaking_memory_is_a_recall_failure() {
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       Message orphan = Message.toolResults(List.of(new ToolResultBlock("orphan", "oops", false)));
-      Memory memory = context -> List.of(orphan);
+      Memory memory = state -> List.of(orphan);
       EventHub hub = EventHub.synchronous();
       List<RecallFailed> failures = new ArrayList<>();
       hub.subscribe(RecallFailed.class, failures::add);
@@ -182,7 +182,7 @@ class InProcessEngineMemoryTest {
     void memory_produces_its_own_observation() {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = oneTurnProvider();
-      Memory memory = context -> List.of(Message.user("a fact"));
+      Memory memory = state -> List.of(Message.user("a fact"));
       InProcessEngine engine = engineWith(provider, memory, EventHub.synchronous(), observations);
 
       engine.run(ID, Event.UserSaid.of("hi"));
@@ -198,7 +198,7 @@ class InProcessEngineMemoryTest {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       Memory memory =
-          context -> {
+          state -> {
             throw new IllegalStateException("memory exploded");
           };
       InProcessEngine engine = engineWith(provider, memory, EventHub.synchronous(), observations);

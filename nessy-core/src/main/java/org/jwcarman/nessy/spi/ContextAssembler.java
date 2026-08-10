@@ -84,7 +84,7 @@ public final class ContextAssembler {
     if (memory != Memory.NONE) {
       Observation observation = EngineObservations.recall(observations);
       try (var _ = observation.openScope()) {
-        List<Message> recalled = memory.recall(projected);
+        List<Message> recalled = memory.recall(state);
         projected = Context.of(concat(recalled, projected.messages()));
       } catch (RuntimeException e) {
         observation.error(e);

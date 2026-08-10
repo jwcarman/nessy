@@ -16,21 +16,30 @@
 package org.jwcarman.nessy.spi.memory;
 
 import java.util.List;
-import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Recalls messages worth prepending to one conversational request, from outside the session's own
  * transcript — a long-term store, a knowledge base, whatever a caller wires up.
  *
  * <p>Engine-performed and I/O-sanctioned: unlike {@link
- * org.jwcarman.nessy.spi.context.ContextBuilder}, which is pure and total over {@link
- * org.jwcarman.nessy.api.session.SessionState} alone, {@link #recall} is free to call out — a
- * vector search, a network fetch, whatever finding relevant memories actually costs. That freedom
- * is also why it is best-effort: the engine runs it under its own observation and treats any {@link
- * RuntimeException} as a recall failure, never a turn failure. Recall never touches the ledger —
- * what it returns is enrichment for one request, not something the reducer folds into {@link
- * org.jwcarman.nessy.api.session.SessionState}.
+ * org.jwcarman.nessy.spi.context.ContextBuilder}, which is pure and total over {@link SessionState}
+ * alone, {@link #recall} is free to call out — a vector search, a network fetch, whatever finding
+ * relevant memories actually costs. That freedom is also why it is best-effort: the engine runs it
+ * under its own observation and treats any {@link RuntimeException} as a recall failure, never a
+ * turn failure. Recall never touches the ledger — what it returns is enrichment for one request,
+ * not something the reducer folds into {@link SessionState}.
+ *
+ * <p>Recall cues on {@link SessionState}, not on the projected {@link
+ * org.jwcarman.nessy.api.message.Context}: the context is the thing that will *include* the
+ * memories, so keying recall on it would be circular, and projection is a wire concern — an elided
+ * tool result is {@code "[elided]"} in the projection but full text in the working set, and
+ * relevance should key on the conversation's truth, not on what one call happens to send. {@link
+ * #recall(SessionState)} mirrors {@link
+ * org.jwcarman.nessy.spi.context.ContextBuilder#project(SessionState)} exactly: the two read-path
+ * collaborators are symmetric peers over the ledger, and {@link
+ * org.jwcarman.nessy.spi.ContextAssembler} concatenates their outputs.
  *
  * <p>Consulted only for conversational requests. The compaction/summarization path builds its own
  * working set and is never memory-enriched — the strategy's request is its own business.
@@ -44,10 +53,10 @@ public interface Memory {
    * and zero observations, the same load-bearing trick {@link
    * org.jwcarman.nessy.api.compaction.CompactionTrigger#NEVER} uses.
    */
-  Memory NONE = context -> List.of();
+  Memory NONE = state -> List.of();
 
-  /** Recalls whatever messages are relevant to {@code context}, oldest first. */
-  List<Message> recall(Context context);
+  /** Recalls whatever messages are relevant to {@code state}, oldest first. */
+  List<Message> recall(SessionState state);
 
   /** The default: recalls nothing. */
   static Memory none() {

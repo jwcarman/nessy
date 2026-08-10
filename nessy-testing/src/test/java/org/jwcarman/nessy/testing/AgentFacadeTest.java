@@ -249,7 +249,7 @@ class AgentFacadeTest {
             .endTurn()
             .build();
     Message fact = Message.user("remembered fact");
-    Memory memory = context -> List.of(fact);
+    Memory memory = state -> List.of(fact);
     // keepRecentMessages is large enough that nothing in this short transcript is ever old
     // enough to elide: the point of this test is that contextFor consults the same
     // ContextBuilder and Memory the engine does, not eliding's own cut-point behavior.

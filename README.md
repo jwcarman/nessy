@@ -382,13 +382,17 @@ sends.
 
 `ContextBuilder` is contractually pure — no I/O, same output for the same
 state — so recalling facts from a graph or vector store outside the session's
-own transcript is a sibling seam, not a projection. `Memory.recall(Context)`
+own transcript is a sibling seam, not a projection. `Memory.recall(SessionState)`
 runs beside `ContextBuilder`, engine-performed and I/O-sanctioned, and
 whatever it returns is prepended ahead of the projected messages for that one
-request:
+request. Recall cues on the ledger, not the projection — the same
+`SessionState` argument `ContextBuilder.project` takes — because the context
+is the thing that will *include* the memories, and projection is a wire
+concern (an elided tool result is `"[elided]"` in the projection but full text
+in the working set):
 
 ```java
-Memory memory = context -> vectorStore.recall(context);
+Memory memory = state -> vectorStore.recall(state);
 Agent agent = Nessy.agent().provider(provider).model("fake-model").memory(memory).build();
 ```
 

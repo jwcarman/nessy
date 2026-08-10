@@ -20,8 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
 
 class MemoryTest {
 
@@ -32,7 +33,7 @@ class MemoryTest {
     void none_recalls_nothing() {
       Memory memory = Memory.none();
 
-      assertThat(memory.recall(Context.of(List.of(Message.user("hi"))))).isEmpty();
+      assertThat(memory.recall(SessionState.newSession(SessionId.generate()))).isEmpty();
     }
 
     /**
@@ -53,10 +54,12 @@ class MemoryTest {
     @Test
     void a_lambda_memory_recalls_whatever_it_is_given() {
       Message fact = Message.user("the sky is blue");
-      Memory memory = context -> List.of(fact);
+      Memory memory = state -> List.of(fact);
+      SessionState state =
+          SessionState.newSession(SessionId.generate())
+              .withMessages(List.of(Message.user("what color is the sky?")));
 
-      assertThat(memory.recall(Context.of(List.of(Message.user("what color is the sky?")))))
-          .containsExactly(fact);
+      assertThat(memory.recall(state)).containsExactly(fact);
     }
   }
 }
