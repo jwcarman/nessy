@@ -1573,3 +1573,12 @@ fail-closed property relocates to the grant: a grant does not exist until
 its authority is answered. `AgentBuilder.tools(Tool...)` dies with the
 derivation — every tool attachment is a grant that states its policy. The
 grant line is the complete security statement, structurally.
+
+**Addendum (ruled 2026-08-10): the entry fact matches the verb.**
+`UserSaid` → **`AgentTold`** — you `tell` the agent; the fact is that the
+agent was told. Kills the false presumption that the teller is a human
+(triggers include webhooks and crons). The wire's `Role.USER` is vendor
+protocol and unaffected. Also ruled: logback-classic joins as the
+TEST-scope logging provider (build output shows our warnings) and a
+COMPILE-scope dependency of nessy-examples; the CHANGELOG's unreleased
+archaeology is pruned to the final shapes only.
