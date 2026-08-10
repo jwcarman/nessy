@@ -203,8 +203,9 @@ class CompactorsTest {
     @Test
     void compact_still_throws_rather_than_silently_doing_nothing_if_ever_invoked_directly() {
       Compactor compactor = Compactor.disabled();
+      ConversationState state = stateWith(0);
 
-      assertThatThrownBy(() -> compactor.compact(stateWith(0)))
+      assertThatThrownBy(() -> compactor.compact(state))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("compaction is disabled");
     }

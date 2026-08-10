@@ -104,7 +104,9 @@ class AnthropicModelProviderTest {
       }
 
       @Override
-      public void close() {}
+      public void close() {
+        // no-op: this fake never holds a resource, so there is nothing to release
+      }
     };
   }
 

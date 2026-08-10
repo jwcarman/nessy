@@ -214,9 +214,10 @@ class InProcessEngineCompactionTest {
       InProcessEngine engine = engineWith(provider, reducerUsing(summarizer), hub, observations);
 
       engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+      ConversationEvent.AgentTold secondQuestion =
+          ConversationEvent.AgentTold.of(ID, "second question");
 
-      assertThatThrownBy(
-              () -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question")))
+      assertThatThrownBy(() -> engine.run(ID, secondQuestion))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("listener blew up too");
       assertThat(observations).hasObservationWithNameEqualTo("nessy.compaction").that().hasError();

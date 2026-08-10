@@ -87,8 +87,9 @@ class ScriptedSummarizerTest {
   void running_out_of_script_is_a_loud_failure() {
     ScriptedSummarizer summarizer = ScriptedSummarizer.builder().summary("only one").build();
     summarizer.summarize(head("turn one"));
+    Context secondHead = head("turn two");
 
-    assertThatThrownBy(() -> summarizer.summarize(head("turn two")))
+    assertThatThrownBy(() -> summarizer.summarize(secondHead))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("script exhausted");
   }

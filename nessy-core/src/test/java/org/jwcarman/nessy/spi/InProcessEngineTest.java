@@ -767,8 +767,9 @@ class InProcessEngineTest {
               ToolRegistry.of(new EngineFixtures.EchoTool(true)),
               new ThrowingApprover(),
               store);
+      ConversationEvent.AgentTold echoHi = ConversationEvent.AgentTold.of(ID, "echo hi");
 
-      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "echo hi")))
+      assertThatThrownBy(() -> engine.run(ID, echoHi))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("approver blew up");
 
@@ -784,8 +785,9 @@ class InProcessEngineTest {
       ConversationStore store = ConversationStore.inMemory();
       InProcessEngine engine =
           engineWith(new ExplodingStreamProvider(), ToolRegistry.of(), Approver.allowAll(), store);
+      ConversationEvent.AgentTold whatIs2Plus2 = ConversationEvent.AgentTold.of(ID, "what is 2+2?");
 
-      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
+      assertThatThrownBy(() -> engine.run(ID, whatIs2Plus2))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("stream blew up");
 
@@ -800,10 +802,10 @@ class InProcessEngineTest {
       InProcessEngine engine =
           engineWith(
               provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory());
+      ParkToken token = ParkToken.generate();
+      ConversationEvent.AgentTold x = ConversationEvent.AgentTold.of(ID, "x");
 
-      assertThatThrownBy(
-              () ->
-                  engine.resume(ID, ParkToken.generate(), ConversationEvent.AgentTold.of(ID, "x")))
+      assertThatThrownBy(() -> engine.resume(ID, token, x))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("DurableEngine");
     }
@@ -823,8 +825,9 @@ class InProcessEngineTest {
               ToolRegistry.of(new ParkingTool()),
               Approver.allowAll(),
               ConversationStore.inMemory());
+      ConversationEvent.AgentTold go = ConversationEvent.AgentTold.of(ID, "go");
 
-      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "go")))
+      assertThatThrownBy(() -> engine.run(ID, go))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("DurableEngine");
     }
@@ -1130,8 +1133,9 @@ class InProcessEngineTest {
                       })));
       InProcessEngine engine =
           engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store, hub);
+      ConversationEvent.AgentTold whatIs2Plus2 = ConversationEvent.AgentTold.of(ID, "what is 2+2?");
 
-      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
+      assertThatThrownBy(() -> engine.run(ID, whatIs2Plus2))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("journal blew up");
 

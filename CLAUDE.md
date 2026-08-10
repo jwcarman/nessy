@@ -32,6 +32,14 @@ Haiku to review concurrency.
 - Live (token-spending) tests: excluded by default; run with
   `./mvnw test -Dnessy.excludedGroups=`.
 
+## Test conventions
+
+- Exception-assertion lambdas (`assertThatThrownBy`, etc.) contain exactly ONE
+  invocation that can throw; arrange all setup — construction, lookups — outside
+  the lambda (Sonar S5778).
+- Assert emptiness before any all/none-match-style assertion predicate on the
+  same collection, so the predicate can't pass vacuously (S5841-family).
+
 ## Design of record
 
 `docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md` is the

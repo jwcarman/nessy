@@ -100,8 +100,8 @@ class ConversationTest {
       Reply reply = conversation.tell("hi", observed::add);
 
       assertThat(reply.text()).isEqualTo("hi");
-      assertThat(observed).isNotEmpty();
       assertThat(observed)
+          .isNotEmpty()
           .allSatisfy(e -> assertThat(e.conversationId()).isEqualTo(conversation.conversationId()));
     }
 
@@ -162,7 +162,9 @@ class ConversationTest {
               .renderer(emptyRenderer)
               .build();
 
-      assertThatThrownBy(() -> agent.converse().tell("hi"))
+      Conversation<String> conversation = agent.converse();
+
+      assertThatThrownBy(() -> conversation.tell("hi"))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("hi");
     }
@@ -177,8 +179,9 @@ class ConversationTest {
               .model("m")
               .renderer(nullRenderer)
               .build();
+      Conversation<String> conversation = agent.converse();
 
-      assertThatThrownBy(() -> agent.converse().tell("hi", e -> {}))
+      assertThatThrownBy(() -> conversation.tell("hi", e -> {}))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("hi");
     }

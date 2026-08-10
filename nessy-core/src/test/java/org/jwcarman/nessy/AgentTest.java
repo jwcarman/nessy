@@ -107,7 +107,9 @@ class AgentTest {
       Agent<String> agent =
           Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
 
-      assertThatThrownBy(() -> agent.contextFor(new ConversationId("never-stored")))
+      var unknownId = new ConversationId("never-stored");
+
+      assertThatThrownBy(() -> agent.contextFor(unknownId))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("never-stored");
     }

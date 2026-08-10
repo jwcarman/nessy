@@ -60,9 +60,9 @@ class MessageTest {
   void content_is_unmodifiable() {
     Message message = Message.user("hello");
     List<ContentBlock> content = message.content();
+    TextBlock block = new TextBlock("nope");
 
-    assertThatThrownBy(() -> content.add(new TextBlock("nope")))
-        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> content.add(block)).isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Test
