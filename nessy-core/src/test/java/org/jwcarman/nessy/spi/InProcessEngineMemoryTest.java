@@ -74,9 +74,8 @@ class InProcessEngineMemoryTest {
         CONFIG,
         new ObjectMapper(),
         observations,
-        ContextBuilder.identity(),
-        TranscriptStore.none(),
-        memory);
+        new ContextAssembler(ContextBuilder.identity(), memory, hub, observations),
+        TranscriptStore.none());
   }
 
   private static EngineFixtures.FakeProvider oneTurnProvider() {

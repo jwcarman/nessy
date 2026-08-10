@@ -33,16 +33,21 @@ import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
 import org.jwcarman.nessy.spi.session.TranscriptStore;
@@ -199,6 +204,84 @@ class AgentFacadeTest {
     assertThat(requests.get(0).context().messages()).isEmpty();
     assertThat(requests.get(1).context().messages()).hasSize(2);
     assertThat(second.state().messages()).hasSize(4);
+  }
+
+  /**
+   * The grant line is the security statement: {@code ToolGrant.grant(tool).with(policy)} declares
+   * capability and authority together. The README's "The harness" section mirrors this builder
+   * chain verbatim.
+   */
+  @Test
+  void a_grant_line_declares_capability_and_authority_together() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .toolUse("c1", "add", addArgs(2, 2))
+            .endWithToolUse()
+            .text("The answer is 4.")
+            .endTurn()
+            .build();
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
+            // The approver denies everything, but it must never be asked: the reply below
+            // proves the sum actually ran (via the tool) rather than being silently denied.
+            .approver(Approver.denyAll("would fail if ever asked"))
+            .build();
+
+    Reply reply = agent.converse().send("what is 2+2?");
+
+    assertThat(reply.text()).isEqualTo("The answer is 4.");
+  }
+
+  @Test
+  void contextFor_shows_exactly_what_a_call_would_see() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .toolUse("c1", "add", addArgs(2, 2))
+            .endWithToolUse()
+            .text("4")
+            .endTurn()
+            .text("Sure, still here.")
+            .endTurn()
+            .build();
+    Message fact = Message.user("remembered fact");
+    Memory memory = context -> List.of(fact);
+    // keepRecentMessages is large enough that nothing in this short transcript is ever old
+    // enough to elide: the point of this test is that contextFor consults the same
+    // ContextBuilder and Memory the engine does, not eliding's own cut-point behavior.
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .tools(new AddTool())
+            .contextBuilder(ContextBuilder.elidingToolResults(50))
+            .memory(memory)
+            .build();
+
+    Conversation chat = agent.converse();
+    chat.send("what is 2+2?"); // a tool round trip: two model calls inside this one send
+    SessionId sessionId = chat.sessionId();
+
+    Context preview = agent.contextFor(sessionId);
+
+    chat.send("anything else?"); // the subsequent send
+
+    List<Message> expected = new ArrayList<>(preview.messages());
+    expected.add(Message.user("anything else?"));
+    assertThat(provider.requests().getLast().context().messages()).isEqualTo(expected);
+    assertThat(preview.messages()).contains(fact);
+  }
+
+  @Test
+  void contextFor_rejects_an_unknown_session() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+
+    assertThatThrownBy(() -> agent.contextFor(SessionId.generate()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown session");
   }
 
   @Test

@@ -230,9 +230,9 @@ class InProcessEngineTest {
         CONFIG,
         new ObjectMapper(),
         ObservationRegistry.NOOP,
-        ContextBuilder.identity(),
-        transcript,
-        Memory.none());
+        new ContextAssembler(
+            ContextBuilder.identity(), Memory.none(), hub, ObservationRegistry.NOOP),
+        transcript);
   }
 
   @Nested
@@ -253,9 +253,8 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      ContextBuilder.identity(),
-                      TranscriptStore.none(),
-                      Memory.none()))
+                      EngineFixtures.contextAssembler(),
+                      TranscriptStore.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("provider");
     }
@@ -275,9 +274,8 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      ContextBuilder.identity(),
-                      TranscriptStore.none(),
-                      Memory.none()))
+                      EngineFixtures.contextAssembler(),
+                      TranscriptStore.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants");
     }
@@ -299,15 +297,14 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      ContextBuilder.identity(),
-                      TranscriptStore.none(),
-                      Memory.none()))
+                      EngineFixtures.contextAssembler(),
+                      TranscriptStore.none()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("echo");
     }
 
     @Test
-    void a_null_context_builder_is_rejected() {
+    void a_null_context_assembler_is_rejected() {
       assertThatThrownBy(
               () ->
                   new InProcessEngine(
@@ -322,10 +319,9 @@ class InProcessEngineTest {
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
                       null,
-                      TranscriptStore.none(),
-                      Memory.none()))
+                      TranscriptStore.none()))
           .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("contextBuilder");
+          .hasMessageContaining("contextAssembler");
     }
 
     @Test
@@ -343,9 +339,8 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      ContextBuilder.identity(),
-                      null,
-                      Memory.none()))
+                      EngineFixtures.contextAssembler(),
+                      null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("transcript");
     }
@@ -524,9 +519,8 @@ class InProcessEngineTest {
           CONFIG,
           new ObjectMapper(),
           ObservationRegistry.NOOP,
-          ContextBuilder.identity(),
-          TranscriptStore.none(),
-          Memory.none());
+          EngineFixtures.contextAssembler(),
+          TranscriptStore.none());
     }
 
     private static EngineFixtures.FakeProvider toolCallingProvider() {
@@ -654,9 +648,8 @@ class InProcessEngineTest {
               CONFIG,
               new ObjectMapper(),
               ObservationRegistry.NOOP,
-              ContextBuilder.identity(),
-              TranscriptStore.none(),
-              Memory.none());
+              EngineFixtures.contextAssembler(),
+              TranscriptStore.none());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 
@@ -708,9 +701,8 @@ class InProcessEngineTest {
               CONFIG,
               new ObjectMapper(),
               ObservationRegistry.NOOP,
-              ContextBuilder.identity(),
-              TranscriptStore.none(),
-              Memory.none());
+              EngineFixtures.contextAssembler(),
+              TranscriptStore.none());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 

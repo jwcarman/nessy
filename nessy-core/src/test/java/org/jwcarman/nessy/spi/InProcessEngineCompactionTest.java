@@ -111,9 +111,8 @@ class InProcessEngineCompactionTest {
         CONFIG,
         new ObjectMapper(),
         observations,
-        ContextBuilder.identity(),
-        transcript,
-        Memory.none());
+        new ContextAssembler(ContextBuilder.identity(), Memory.none(), hub, observations),
+        transcript);
   }
 
   /** A two-turn provider: a big-usage first answer, then a plain second answer once resumed. */

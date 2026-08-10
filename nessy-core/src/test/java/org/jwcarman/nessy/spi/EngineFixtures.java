@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spi;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -27,11 +28,14 @@ import java.util.Map;
 import java.util.Set;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ToolResult;
+import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -142,5 +146,11 @@ final class EngineFixtures {
       tools.find(spec.name()).ifPresent(tool -> grants.put(spec.name(), ToolGrant.grant(tool)));
     }
     return grants;
+  }
+
+  /** A plain, identity/none-backed {@link ContextAssembler} for tests that don't exercise it. */
+  static ContextAssembler contextAssembler() {
+    return new ContextAssembler(
+        ContextBuilder.identity(), Memory.none(), EventHub.synchronous(), ObservationRegistry.NOOP);
   }
 }

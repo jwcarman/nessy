@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.spi.ContextAssembler;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
@@ -288,6 +289,11 @@ public final class AgentBuilder {
         new ModelSettings(model, systemPrompt, maxTokens, capabilities, contextWindow);
     CompactionStrategy resolvedStrategy =
         compactionStrategy != null ? compactionStrategy : assembleCompactionStrategy(settings);
+    // Constructed once here and handed to both the engine and the Agent: the invariant is one
+    // ContextAssembler implementation, one instance per agent, so requestFor and contextFor never
+    // disagree about what a call sees.
+    ContextAssembler contextAssembler =
+        new ContextAssembler(contextBuilder, memory, events, observations);
     ExecutionEngine engine =
         new InProcessEngine(
             provider,
@@ -300,10 +306,9 @@ public final class AgentBuilder {
             settings,
             mapper,
             observations,
-            contextBuilder,
-            transcript,
-            memory);
-    return new Agent(engine, events);
+            contextAssembler,
+            transcript);
+    return new Agent(engine, events, store, contextAssembler);
   }
 
   /**

@@ -439,6 +439,15 @@ separate is what keeps "the model cannot route around the gate" provable.
 
 ### 8.4 The Harness object and typed agents — settled 2026-08-09
 
+**Shipped status:** the `Harness` reification below shipped un-generic —
+`Agent`, not `Agent<I>` — ahead of the typed-front-door decision. That is
+deliberate, not a partial implementation of this section: the harness/agent
+split (infrastructure vs. identity) and the type parameter are separable
+decisions, and only the latter is source-breaking to retrofit later. The type
+parameter itself remains **open**, gated pre-1.0 (§14), and arrives with its
+own brainstorm-to-spec round covering the input vocabulary, rendering rules,
+and the `tell`/`send`/tap relationship.
+
 **Reifying the harness.** §13.1's grant principle ("infrastructure is ambient;
 capability is granted; authority is declared") has been structural doctrine
 without a structural home: `AgentBuilder` conflates shared infrastructure with
@@ -1244,16 +1253,21 @@ the application's own explicit declaration. If none is declared, the starter's
    `Summarizer`, `TokenEstimator`, domain packaging) is **done** — shipped and
    tested end to end (the context-collaborators convergence plan) — it
    reshapes seams the durable engine will consume, so it landed before
-   `DurableEngine` as planned. **Next: Plan 6**, the remainder of the
-   2026-08-09 design session's queue — the `Harness` reification and typed
-   front door (§8.4), per-grant authority (§10.5), `Memory` (§10.9), and the
-   context assembler (§10.10) — with typed-input details (§8.4) getting their
-   own brainstorm-to-spec round first. One standing DurableEngine note from
-   the same session: pure replay is free, but replaying the imperative shell
-   is not — a replayed reducer re-emits effects (the process-manager replay
-   problem), so the journal must record which effects were performed and
-   elide them on replay; the parked `Compacted` rulings from Plan 4's review
-   are the same issue.
+   `DurableEngine` as planned. **Plan 6 delivered**, the remainder of the
+   2026-08-09 design session's queue except its typed front door: the
+   `Harness` reification (§8.4, minus the type parameter), per-grant
+   authority (§10.5), `Memory` (§10.9), and the context assembler plus
+   `Agent.contextFor` (§10.10) all shipped and are tested end to end. **Still
+   open: the typed front door** (`Agent<I>`/`Conversation<I>`, §8.4) —
+   deliberately deferred to its own brainstorm-to-spec round rather than
+   folded in here, since retrofitting generics onto a shipped non-generic
+   facade is source-breaking and the vocabulary/rendering questions deserve
+   their own design pass (gate table below). One standing DurableEngine note
+   from the same session: pure replay is free, but replaying the imperative
+   shell is not — a replayed reducer re-emits effects (the process-manager
+   replay problem), so the journal must record which effects were performed
+   and elide them on replay; the parked `Compacted` rulings from Plan 4's
+   review are the same issue.
 5. **`nessy-tool-mcp` (unscheduled, acknowledged)**: an adapter exposing MCP
    server tools as `Tool<?>` instances. Deliberately unscheduled: it drags in
    authorization, elicitation, and remote-tool trust — interactions with the
@@ -1275,7 +1289,7 @@ the application's own explicit declaration. If none is declared, the starter's
    | `Context` adoption (`ModelRequest`/`ContextBuilder.project` speak `Context`; `Effect.Compact`/`CompactionStrategy.compact` carry `List<Message>`, validated as a `Context` at the engine's compact-result check) | seam signature + record component types; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
    | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | open — the type parameter must be born pre-1.0; `Agent<String>` is the degenerate case |
    | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
-   | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | open — ships pre-1.0 |
+   | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
    | Parallel tool execution | — | ✅ resolved as NOT a gate — needs no sealed change (multi-effect Steps + ordered feed, §10.7) |
 7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should
    migrate to wire-JSON-driven fixtures (through each SDK's own

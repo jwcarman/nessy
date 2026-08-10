@@ -76,6 +76,60 @@ Reply reply = agent.converse().send("what is 2+2?");
 System.out.println(reply.text());
 ```
 
+## The harness
+
+A **harness** is the model-independent runtime an agent runs inside —
+everything that stays the same when you swap the model or the prompt. An
+**agent** is an identity — a model binding, a system prompt, granted tools,
+declared authority — running inside a harness. Nessy's front door is a
+two-builder story that says exactly that: a `Harness` holds the infrastructure
+every agent shares, and `AgentBuilder` (reached via `Harness#agent()`, or
+`Nessy.agent()` for the common single-agent case) layers one agent's identity
+on top of it.
+
+```java
+Harness harness = Nessy.harness().provider(anthropic).build(); // once per app
+
+Agent agent =
+    harness
+        .agent()
+        .model("claude-sonnet-4-5")
+        .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
+        .approver(Approver.denyAll("would fail if ever asked"))
+        .build();
+```
+
+Two agents built from the same harness share its session store and event hub
+by construction — one hub subscriber sees every agent's traffic, one store
+holds every agent's sessions. `.tools(ToolGrant.grant(tool).with(policy))` is
+the security statement: a grant declares which tool an agent may call and the
+`UsagePolicy` the engine consults before it runs, together, per agent, per
+tool — the same pairing `AgentFacadeTest`'s
+`a_grant_line_declares_capability_and_authority_together` exercises end to
+end. `tools(Tool...)` still works as sugar over the derived default policy;
+reach for the grant form when an agent needs to loosen or tighten it.
+
+A harness is best understood by the eight services it guarantees, each backed
+by one or more seams:
+
+| # | Service | Provided by |
+|---|---|---|
+| 1 | Turn-taking | `Reducer`, `ExecutionEngine`, `Context` |
+| 2 | Context fit | `CompactionPolicy`, `Summarizer`, `ContextBuilder`, `TokenEstimator`, `Memory` |
+| 3 | A memory of record | `SessionStore`, `TranscriptStore` |
+| 4 | Safe hands | `ToolRegistry`, the invoker (Factor 9) |
+| 5 | Guardrails | `ToolGrant`/`UsagePolicy`, `Approver` |
+| 6 | A wallet guard | `TerminationPolicy` |
+| 7 | Witnesses | Observations, `EventHub` |
+| 8 | A vendor-neutral model line | `ModelProvider` |
+
+`agent.contextFor(sessionId)` is the debugging affordance that comes with
+service #2: it answers *what would a call made against this session see right
+now*, truthfully and without spending a model call, by running the exact same
+projection-and-recall choreography the engine runs on every send. See
+[Context management](#context-management) below for what it does and doesn't
+show.
+
 ## How it works
 
 The core is an **effectful reducer**. `reduce(SessionState, Event)` is pure,
@@ -119,10 +173,11 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `SessionStore` | `SessionStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
-| `Policy` (pre-1.0) | derived from `requiresApproval()` | path/allowlist rules | OPA, corporate policy |
+| `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
 | `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextBuilder` | `identity()` | `elidingToolResults(keepRecentMessages)` | RAG, redaction |
+| `Memory` | `none()` | graph-backed recall | vector stores, custom retrieval |
 
 Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
 `RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
@@ -320,6 +375,41 @@ the reducer chose to compact, even when `elidingToolResults` is shaping every
 other request in the session. Combined with a large `keepRecentMessages`
 window, that makes the compaction call the largest single request a session
 sends.
+
+### Recalling from outside the session: `Memory`
+
+`ContextBuilder` is contractually pure — no I/O, same output for the same
+state — so recalling facts from a graph or vector store outside the session's
+own transcript is a sibling seam, not a projection. `Memory.recall(Context)`
+runs beside `ContextBuilder`, engine-performed and I/O-sanctioned, and
+whatever it returns is prepended ahead of the projected messages for that one
+request:
+
+```java
+Memory memory = context -> vectorStore.recall(context);
+Agent agent = Nessy.agent().provider(provider).model("fake-model").memory(memory).build();
+```
+
+The default is `Memory.none()`: recall is opt-in, scoped to one agent, never a
+harness-level default. Recall is best-effort, matching the compaction pattern
+— a downed memory store or a memory that hands back pairing-invariant-breaking
+messages costs the request its *enrichment*, never the *turn*: the hub carries
+a `RecallFailed(sessionId, reason)` event you can observe and alert on, and the
+call proceeds with no recalled messages.
+
+Weigh the same cache tradeoff `elidingToolResults` carries: recalled content
+changes turn to turn, and front-of-prompt injection churns the prompt-cache
+prefix every time it changes. A refresh-on-compaction strategy — recalling
+only at the moment compaction already churns the prefix — aligns the two
+churns instead of adding a second, independent one.
+
+`agent.contextFor(sessionId)` runs the exact projection-and-recall
+choreography above — the same `ContextBuilder` and `Memory` instance the
+engine consults on every send — against a session's current stored state, and
+hands back the resulting `Context`: *exactly what a call made right now would
+see*, truthfully and without a model call. It still performs recall's I/O to
+answer, so a configured `Memory` is genuinely consulted, not skipped for the
+preview.
 
 ## Testing
 

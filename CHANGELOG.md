@@ -21,6 +21,44 @@ changed.
 
 ### Added
 
+- **`Harness`** (root) — infrastructure reified. `Nessy.harness()` assembles
+  the six pieces of substrate an application shares across every agent it
+  builds — provider default, session store, transcript store, event hub,
+  observation registry, object mapper — once; `Harness#agent()` then returns
+  an `AgentBuilder` seeded with those pieces, ready to be given one agent's
+  identity: model, system prompt, tools, policies. Two agents built from the
+  same harness share its session store and event hub by construction.
+  `Nessy.agent()` survives unchanged as sugar over an implicit default
+  harness — the front door does not get heavier for the single-agent case.
+- **`ToolGrant`/`UsagePolicy`** (`api.tool`) — capability and authority,
+  declared together, per tool, per agent. A `ToolGrant(tool, policy)` pairs a
+  granted `Tool` with the `UsagePolicy` the engine's one authority chokepoint
+  consults before it runs; `ToolGrant.grant(tool)` derives the same default
+  `Tool#requiresApproval()` always drew, so `tools(Tool...)` behaves exactly
+  as before. `tools(ToolGrant...)` supersedes it when a grant's policy needs
+  to loosen or tighten past that default — `ToolGrant#with(UsagePolicy)`
+  reuses the tool with a different policy. A policy that throws or returns
+  `null` fails closed (`PolicyDecision.Deny`), never an accidental allow.
+- **`Memory`** (`spi.memory`) — the recall seam: `Memory.recall(Context)`
+  fetches messages from outside a session's own transcript — a graph, a
+  vector store, whatever a caller wires up — and the engine prepends whatever
+  comes back ahead of the projected request. Sibling to `ContextBuilder`, not
+  a subtype: projection stays pure and total, recall is I/O and best-effort
+  — a downed store or a pairing-invariant-breaking result costs the request
+  its enrichment, never the turn, and emits `RecallFailed` on the hub.
+  Default is `Memory.none()`, recognized by identity so the default path
+  allocates and observes nothing. Wired via `.memory(...)` on `AgentBuilder`.
+- **`RecallFailed(SessionId, String)`** (`api.event`) — the hub event a
+  failed recall emits, mirroring `CompactionFailed` exactly: the reason a
+  turn's memory enrichment was skipped, for observability and alerting.
+- **`Agent.contextFor(SessionId)`** and the internal `ContextAssembler` — the
+  debugging affordance that answers *what would a call made against this
+  session see right now*, truthfully and without spending a model call:
+  `contextFor` loads the session's stored state and runs it through the same
+  `ContextAssembler` instance — one implementation of "project, then recall"
+  — that `InProcessEngine.requestFor` consults on every conversational send,
+  so the preview and the real thing can never drift apart. Still performs
+  recall's I/O to answer, so a configured `Memory` is genuinely consulted.
 - **`Context`** (`api`) — the pairing invariant's single home: an immutable,
   validated message sequence bound for the wire, whose construction rejects an
   orphan `tool_use`/results pair. `ModelRequest` and `ContextBuilder.project`

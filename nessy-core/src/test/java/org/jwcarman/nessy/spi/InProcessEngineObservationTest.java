@@ -105,9 +105,9 @@ class InProcessEngineObservationTest {
             CONFIG,
             new ObjectMapper(),
             observations,
-            ContextBuilder.identity(),
-            TranscriptStore.none(),
-            Memory.none());
+            new ContextAssembler(
+                ContextBuilder.identity(), Memory.none(), EventHub.synchronous(), observations),
+            TranscriptStore.none());
 
     assertThatThrownBy(() -> engine.run(ID, Event.UserSaid.of("echo hi")))
         .isInstanceOf(IllegalStateException.class);
@@ -162,9 +162,9 @@ class InProcessEngineObservationTest {
             CONFIG,
             new ObjectMapper(),
             observations,
-            ContextBuilder.identity(),
-            TranscriptStore.none(),
-            Memory.none());
+            new ContextAssembler(
+                ContextBuilder.identity(), Memory.none(), EventHub.synchronous(), observations),
+            TranscriptStore.none());
 
     engine.run(ID, Event.UserSaid.of("go"));
 
@@ -239,9 +239,9 @@ class InProcessEngineObservationTest {
             CONFIG,
             new ObjectMapper(),
             observations,
-            ContextBuilder.identity(),
-            TranscriptStore.none(),
-            Memory.none());
+            new ContextAssembler(
+                ContextBuilder.identity(), Memory.none(), EventHub.synchronous(), observations),
+            TranscriptStore.none());
 
     engine.run(ID, Event.UserSaid.of("echo hi"));
   }
