@@ -220,12 +220,14 @@ changed.
   `AgentBuilder` replaces the old `.contextBuilder(...)`/`.memory(...)` pair
   outright. `Projection` (`Context apply(Context context)`) is pure and
   total, applied in declaration order to the `Context` minted from the
-  session's messages; `Projection.elidingToolResults(keepRecentMessages)`
-  (formerly `ContextBuilder.elidingToolResults`) is the first standard
-  projection, replacing the content of older tool results with a placeholder
-  while keeping the recent window verbatim, trading prompt-cache hits for
-  context space. The empty projection list is identity — there is no
-  dedicated `Projection.identity()` factory, the empty list already says it.
+  session's messages; the standard elision idiom is a lambda over `Context`'s
+  own edit algebra (see "The `Context` edit algebra" above) —
+  `ctx -> ctx.elideToolResults(keepRecentMessages)` (formerly
+  `ContextBuilder.elidingToolResults`) — replacing the content of older tool
+  results with a placeholder while keeping the recent window verbatim,
+  trading prompt-cache hits for context space. The empty projection list is
+  identity — there is no dedicated `Projection.identity()` factory, the
+  empty list already says it.
   `ContextEnricher` contributors run after projection, each independently
   best-effort under its own `nessy.context.enrich` observation, concatenating
   in declaration order; `ContextPipeline.Placement` (`ENRICHMENTS_FIRST`, the

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
@@ -238,10 +239,48 @@ class ContextTest {
 
       assertThat(dropped).isEqualTo(context);
     }
+
+    @Test
+    void consecutive_exchanges_do_not_cross_contaminate() {
+      // Pins the i += 2 step: matching only the first exchange's results message must not spill
+      // over into the second exchange.
+      Message assistant1 = toolUse("c1");
+      Message results1 = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message assistant2 = toolUse("c2");
+      Message results2 = Message.toolResults(List.of(new ToolResultBlock("c2", "ok", false)));
+      Context context = Context.of(List.of(assistant1, results1, assistant2, results2));
+
+      Context dropped = context.drop(message -> message == results1);
+
+      assertThat(dropped.messages()).containsExactly(assistant2, results2);
+    }
+
+    @Test
+    void a_plain_message_between_exchanges_drops_alone() {
+      Message assistant1 = toolUse("c1");
+      Message results1 = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message plain = Message.user("in between");
+      Message assistant2 = toolUse("c2");
+      Message results2 = Message.toolResults(List.of(new ToolResultBlock("c2", "ok", false)));
+      Context context = Context.of(List.of(assistant1, results1, plain, assistant2, results2));
+
+      Context dropped = context.drop(message -> message == plain);
+
+      assertThat(dropped.messages()).containsExactly(assistant1, results1, assistant2, results2);
+    }
+
+    @Test
+    void a_null_predicate_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.drop(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("predicate must not be null");
+    }
   }
 
   @Nested
-  class Rewriting {
+  class Map {
 
     @Test
     void a_rewrite_that_breaks_pairing_throws_naming_the_orphan() {
@@ -264,6 +303,24 @@ class ContextTest {
       Context rewritten = context.map(Function.identity());
 
       assertThat(rewritten).isEqualTo(context);
+    }
+
+    @Test
+    void a_null_rewriter_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.map(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("rewriter must not be null");
+    }
+
+    @Test
+    void a_rewriter_returning_null_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.map(message -> null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("rewriter must not return a null message");
     }
   }
 
@@ -289,6 +346,38 @@ class ContextTest {
       assertThatThrownBy(() -> context.enrich(List.of()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("blocks must not be empty");
+    }
+
+    @Test
+    void a_null_varargs_array_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.enrich((ContentBlock[]) null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("blocks must not be null");
+    }
+
+    @Test
+    void a_null_block_list_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.enrich((List<ContentBlock>) null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("blocks must not be null");
+    }
+
+    @Test
+    void enrich_defensively_copies_the_block_list() {
+      Context context = Context.of(List.of(Message.user("hi")));
+      List<ContentBlock> mutable = new ArrayList<>();
+      mutable.add(new TextBlock("original"));
+
+      Context enriched = context.enrich(mutable);
+      mutable.add(new TextBlock("added after the fact"));
+      mutable.set(0, new TextBlock("mutated after the fact"));
+
+      assertThat(enriched.messages().getLast().content())
+          .containsExactly(new TextBlock("original"));
     }
   }
 
@@ -434,6 +523,15 @@ class ContextTest {
 
       assertThat(kept).isSameAs(context);
     }
+
+    @Test
+    void a_negative_n_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.keepRecent(-1))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("n must be at least 0");
+    }
   }
 
   @Nested
@@ -475,6 +573,51 @@ class ContextTest {
       assertThat(limited).isSameAs(context);
       assertThat(limited.tokens(estimator)).isGreaterThan(1);
     }
+
+    @Test
+    void a_budget_below_one_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.limitTokens(0, TokenEstimator.heuristic()))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("budget must be at least 1");
+    }
+
+    @Test
+    void a_null_estimator_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.limitTokens(10, null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("estimator must not be null");
+    }
+
+    @Test
+    void every_message_is_estimated_at_most_twice() {
+      // Same shape as dropping_boundaries_until_the_budget_fits: the single real cut lands at
+      // index 4, dropping [u1,a1,u2,a2]. Linear behavior pinned by call count: the initial sum
+      // estimates all 6 messages once, then the subtracted prefix re-estimates only the 4 dropped
+      // messages — 10 calls total, never the O(n^2) blowup of re-summing the whole remainder every
+      // iteration.
+      Message u1 = Message.user("uuuuuuuuuuuuuuuu");
+      Message a1 = assistantText("aaaaaaaaaaaaaaaa");
+      Message u2 = Message.user("uuuuuuuuuuuuuuuu");
+      Message a2 = assistantText("aaaaaaaaaaaaaaaa");
+      Message u3 = Message.user("uuuuuuuuuuuuuuuu");
+      Message a3 = assistantText("aaaaaaaaaaaaaaaa");
+      Context context = Context.of(List.of(u1, a1, u2, a2, u3, a3));
+      int[] calls = {0};
+      TokenEstimator counting =
+          message -> {
+            calls[0]++;
+            return TokenEstimator.heuristic().estimate(message);
+          };
+
+      Context limited = context.limitTokens(10, counting);
+
+      assertThat(limited.messages()).containsExactly(u3, a3);
+      assertThat(calls[0]).isEqualTo(10);
+    }
   }
 
   @Nested
@@ -487,6 +630,15 @@ class ContextTest {
       long tokens = context.tokens(TokenEstimator.heuristic());
 
       assertThat(tokens).isEqualTo(1 + 2);
+    }
+
+    @Test
+    void a_null_estimator_is_rejected() {
+      Context context = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> context.tokens(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("estimator must not be null");
     }
   }
 }

@@ -123,7 +123,9 @@ public record Context(List<Message> messages) {
    * unconstructible, so leaving one half behind is never an option. A plain message (no {@code
    * tool_use}, not an answering message) drops on its own when matched. The result is minted
    * through the validating constructor, which is the belt to this method's braces: a {@code
-   * Context} built by construction this way is already valid.
+   * Context} built by construction this way is already valid. Dropping every message is legal — an
+   * empty {@code Context} is a valid one — but no provider will accept an empty message list, so
+   * that is the caller's problem, not this method's.
    */
   public Context drop(Predicate<Message> predicate) {
     Objects.requireNonNull(predicate, "predicate must not be null");
@@ -152,10 +154,12 @@ public record Context(List<Message> messages) {
   }
 
   /**
-   * Rewrites every message with {@code rewriter}, then revalidates the result. A rewrite that
-   * breaks the pairing invariant (renaming a {@code tool_use} id without renaming its answering
-   * {@code tool_result}, for example) propagates the validating constructor's {@link
-   * IllegalArgumentException}, naming the orphaned id — {@code map} never swallows that failure.
+   * Rewrites every message with {@code rewriter}, then revalidates the result. Applies {@code
+   * rewriter} exactly once per message, in list order — a contract {@link #elideToolResults} relies
+   * on to index its own rewrite by position. A rewrite that breaks the pairing invariant (renaming
+   * a {@code tool_use} id without renaming its answering {@code tool_result}, for example)
+   * propagates the validating constructor's {@link IllegalArgumentException}, naming the orphaned
+   * id — {@code map} never swallows that failure.
    *
    * @throws NullPointerException if {@code rewriter} is null, or if it returns a null message
    */
@@ -247,7 +251,10 @@ public record Context(List<Message> messages) {
    * {@link #tokens(TokenEstimator)} exceeds {@code budget} AND a pair-safe boundary still exists.
    * When the boundaries run out before the budget does, the result is returned over budget,
    * honestly — {@code limitTokens} never fabricates a cut that would break pairing to hit the
-   * number.
+   * number. Sums the whole context once, then subtracts each dropped boundary's own estimates as it
+   * goes, rather than re-summing the shrinking remainder every iteration — every message is
+   * estimated at most twice (once in the initial sum, once more only if it is later dropped), never
+   * once per remaining iteration.
    *
    * @param budget the token ceiling; must be at least 1
    * @param estimator the message-level token figure models never report
@@ -258,10 +265,14 @@ public record Context(List<Message> messages) {
     }
     Objects.requireNonNull(estimator, "estimator must not be null");
     Context current = this;
-    while (current.tokens(estimator) > budget) {
+    long remaining = tokens(estimator);
+    while (remaining > budget) {
       int cut = current.pairSafeCut(0);
       if (cut == 0) {
         break;
+      }
+      for (int i = 0; i < cut; i++) {
+        remaining -= estimator.estimate(current.messages.get(i));
       }
       current = new Context(current.messages.subList(cut, current.messages.size()));
     }

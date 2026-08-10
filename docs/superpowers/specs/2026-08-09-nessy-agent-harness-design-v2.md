@@ -180,7 +180,8 @@ org.jwcarman.nessy.api           Event (sealed), Decision (sealed), Awaited (sea
                                  RunOutcome (sealed), StopReason — the sealed grammar only
 org.jwcarman.nessy.api.message   Message, Role, Context [§10.8], ContentBlock (sealed: TextBlock,
                                  ThinkingBlock, RedactedThinkingBlock, ImageBlock, ToolUseBlock,
-                                 ToolResultBlock)
+                                 ToolResultBlock), TokenEstimator [§10.8 — beside Context, which
+                                 takes it directly; api may not depend on spi]
 org.jwcarman.nessy.api.session   SessionId, SessionState, SessionStatus, Usage, TerminationPolicy
 org.jwcarman.nessy.api.compaction CompactionStrategy, CompactionTrigger, CompactionPolicy [§10.6]
 org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec, ToolCall, ToolResult,
@@ -190,7 +191,7 @@ org.jwcarman.nessy.api.event     EventEmitter, EventHub, Subscription, SessionEv
 org.jwcarman.nessy.spi           ExecutionEngine, Reducer, Effect (sealed), Step, InProcessEngine
 org.jwcarman.nessy.spi.model     ModelProvider, ModelRequest, ModelEvent (sealed), ModelStream,
                                  Capability, ModelSettings
-org.jwcarman.nessy.spi.context   ContextPipeline, Projection, ContextEnricher, TokenEstimator  [§10.9]
+org.jwcarman.nessy.spi.context   ContextPipeline, Projection, ContextEnricher  [§10.9]
 org.jwcarman.nessy.spi.compaction Summarizer                             [amended, §10.8]
 org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry, MessageCodec  [§10.8]
 org.jwcarman.nessy.internal      ToolInvoker, Schemas, observation conventions, engine machinery
@@ -1121,8 +1122,9 @@ model, remote summarization services. `AgentBuilder.summarizer(…)`, default
 derived from the configured provider; the scripted double ships in
 `nessy-testing` beside the other doubles.
 
-**`TokenEstimator` (spi.context) — the message-level number that models
-never report.**
+**`TokenEstimator` (api.message, moved from spi.context by the edit-algebra
+amendment below — see "Packaging is by domain") — the message-level number
+that models never report.**
 
 ```java
 public interface TokenEstimator {
@@ -1146,10 +1148,13 @@ anything smarter — a tokenizer-library adapter, a provider's count-tokens
 endpoint — drops in through the seam.
 
 **Packaging is by domain, not by a catch-all.** `spi.context` holds
-`ContextBuilder` (moved from `spi` root, a free rename pre-1.0) and
-`TokenEstimator`; `spi.compaction` holds `Summarizer`; `spi.session` gains
-`TranscriptStore` beside `SessionStore`. Collaborators live next to the
-seam they serve, the way `spi.model` already works.
+`ContextBuilder` (moved from `spi` root, a free rename pre-1.0);
+`spi.compaction` holds `Summarizer`; `spi.session` gains `TranscriptStore`
+beside `SessionStore`. Collaborators live next to the seam they serve, the way
+`spi.model` already works — with one exception: `TokenEstimator` lives in
+`api.message`, beside `Context`, not in `spi.context` — the edit algebra's
+`Context.tokens`/`Context.limitTokens` (§10.8) take it directly in `Context`'s
+own public signature, and `api` may not depend on `spi`.
 
 **What this amendment does not touch:** the measured trigger, the pair-safe
 cut semantics (relocated, not changed), best-effort failure,
@@ -1300,7 +1305,7 @@ listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
 | `UsagePolicy` (per grant) | derived from `requiresApproval()` via `ToolGrant.grant` | path/allowlist rules; upgrades are contextual lambdas | OPA, corporate policy |
 | `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
-| `ContextBuilder` | `ContextBuilder.identity()` | `elidingToolResults(keepRecent)` (shipped); stateful compaction (shipped, §10.6); token-budget windowing (§10.8) | RAG, redaction |
+| `Context` edit algebra (§10.8) / `ContextPipeline` (§10.9) | no projections, no enrichers — the working set unchanged | `ctx -> ctx.elideToolResults(keepRecent)`, `ctx -> ctx.limitTokens(budget, estimator)` as lambda projections (shipped); stateful compaction (shipped, §10.6) | RAG, redaction, custom `Projection`/`ContextEnricher` lambdas |
 | `TranscriptStore` (§10.8) | `TranscriptStore.inMemory()` | `nessy-store-cassandra` | any append-only journal |
 | `Summarizer` (§10.8) | `usingProvider(…)` — the session's own model | cheap-model variant; extractive | remote services, custom |
 | `TokenEstimator` (§10.8) | `heuristic()` (chars / 4) | tokenizer-library adapter | provider count-tokens APIs |
