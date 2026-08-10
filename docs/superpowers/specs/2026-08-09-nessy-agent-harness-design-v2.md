@@ -47,7 +47,7 @@ mapped to the seams that provide it:
 | # | Service | The guarantee | Provided by |
 |---|---|---|---|
 | 1 | Turn-taking | events in, decisions out, effects in order, one coherent transcript | `Reducer`, `ExecutionEngine`, `Context` |
-| 2 | Context fit | the conversation always fits the window; compaction and projection are not the agent's concern | `CompactionPolicy`, `Summarizer`, `ContextBuilder`, `TokenEstimator`, `Memory` |
+| 2 | Context fit | the conversation always fits the window; compaction and projection are not the agent's concern | `Compactor`, `Summarizer`, the context pipeline |
 | 3 | A memory of record | everything durable: snapshots to resume, an append-only journal of every message | `SessionStore`, `TranscriptStore`, the engine's durability contract |
 | 4 | Safe hands | tool calls bound, validated, contained; a throwing tool is a model-visible error, never a dead session | `ToolRegistry`, the invoker (Factor 9) |
 | 5 | Guardrails | no capability exercised past the declared authority; the model has no say in whether it is asked | `ToolGrant`/`UsagePolicy`, `Approver`, the grant principle |
@@ -183,7 +183,6 @@ org.jwcarman.nessy.api.message   Message, Role, Context [§10.8], ContentBlock (
                                  ToolResultBlock), TokenEstimator [§10.8 — beside Context, which
                                  takes it directly; api may not depend on spi]
 org.jwcarman.nessy.api.session   SessionId, SessionState, SessionStatus, Usage, TerminationPolicy
-org.jwcarman.nessy.api.compaction CompactionStrategy, CompactionTrigger, CompactionPolicy [§10.6]
 org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec, ToolCall, ToolResult,
                                  ToolGrant, UsagePolicy, PolicyDecision (sealed)  [§10.5]
 org.jwcarman.nessy.api.approval  Approver, ApprovalRequest
@@ -192,7 +191,7 @@ org.jwcarman.nessy.spi           ExecutionEngine, Reducer, Effect (sealed), Step
 org.jwcarman.nessy.spi.model     ModelProvider, ModelRequest, ModelEvent (sealed), ModelStream,
                                  Capability, ModelSettings
 org.jwcarman.nessy.spi.context   ContextPipeline, Projection, ContextEnricher  [§10.9]
-org.jwcarman.nessy.spi.compaction Summarizer                             [amended, §10.8]
+org.jwcarman.nessy.spi.compaction Compactor, Compactors, Summarizer   [§10.6 consolidation]
 org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry, MessageCodec  [§10.8]
 org.jwcarman.nessy.internal      ToolInvoker, Schemas, observation conventions, engine machinery
 ```
@@ -374,7 +373,7 @@ the table is normative about openness:
 | Execute | wishes → outcomes | tools, through the grant chokepoint | open through the chokepoint only |
 | Integrate | facts → ledger | the reducer, sole author of succession | **closed — the ledger never lies** |
 | Checkpoint | ledger → durable | `SessionStore` + `MessageAppended` subscribers | seam + spine |
-| Evaluate | continue? | `TerminationPolicy`, `CompactionStrategy` | strategy objects |
+| Evaluate | continue? | `TerminationPolicy`, `Compactor` | strategy objects |
 | Complete | → `Reply` / `RunOutcome` | facade | fixed |
 
 The repeating agent cycle is Contextualize → Invoke → Interpret → Execute →
@@ -855,8 +854,8 @@ reserves `nessy-compactor-<implementation>` for algorithms that bring
 dependencies (extractive/NLP, embeddings, remote services).
 
 - **The choreography.** Reducer: `requiresCompaction` true at a decision
-  point → emit `Effect.Compact(workingSet)` (the whole working set; the
-  strategy owns where and how to shrink), enter `COMPACTING`. Engine:
+  point → emit the bare `Effect.Compact` marker (the engine hands the compactor
+  the ledger it holds; the compactor owns where and how to shrink), enter `COMPACTING`. Engine:
   perform `compact(…)` under the `nessy.compaction` observation, validate
   the result (`Context.of(replacement)` — a pair-breaking strategy takes
   the existing best-effort failure path), feed
@@ -895,20 +894,12 @@ dependencies (extractive/NLP, embeddings, remote services).
   instructions)`, `defaults()` = `atTokens(100_000)`, `disabled()` =
   `never()` — and `CompactionTrigger` is the pluggable decision half:
 
-  ```java
-  public interface CompactionTrigger {
-      boolean shouldCompact(SessionState state);
-      static CompactionTrigger atTokens(long trigger) { … }
-      static CompactionTrigger forWindow(long window, long maxTokens) { … } // ≈ 0.8 × (window − maxTokens)
-      static CompactionTrigger never() { … }
-  }
-  ```
 
   Constants bake at construction; the builder wires `forWindow(…)`
   automatically when a `contextWindow` is declared on the model binding.
-  `AgentBuilder.compaction(…)` overloads: pass a `CompactionPolicy` to
-  tune the default strategy, or a `CompactionStrategy` to replace it
-  wholesale. Alternative strategies (structured-facts digest, episodic
+  `AgentBuilder.compaction(Compactor)` is the single knob; the default
+  summarizing compactor is tuned through `Compactors.summarizing`'s builder
+  and the agent-level summarizer knobs. Alternative strategies (structured-facts digest, episodic
   cuts, rebuild-from-journal) implement the seam with no grammar change —
   the grammar freezes over outcomes, which are stable, not mechanisms,
   which are not.
