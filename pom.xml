@@ -65,17 +65,27 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
-    <anthropic.version>2.52.0</anthropic.version>
+    <anthropic.version>2.53.0</anthropic.version>
     <openai.version>4.50.0</openai.version>
-    <jackson.version>2.19.2</jackson.version>
+    <jackson.version>2.22.0</jackson.version>
+    <!-- jackson-annotations diverged from jackson-databind's version scheme
+         starting with the 2.22 line (no patch digit) — kept as a separate
+         property so each artifact resolves to a version that actually
+         exists. -->
+    <jackson-annotations.version>2.22</jackson-annotations.version>
+    <!-- victools 5 migrated jsonschema-generator's ObjectNode return types from
+         com.fasterxml.jackson.databind to tools.jackson.databind (Jackson 3),
+         breaking Schemas.java's direct assignment to a Jackson 2 ObjectNode.
+         Held at 4.38: victools 5 breaks Schemas.java (Jackson 2 -> 3 node type
+         migration) -->
     <victools.version>4.38.0</victools.version>
     <!-- Matches the slf4j-api version victools pulls transitively. -->
     <slf4j.version>2.0.16</slf4j.version>
-    <logback.version>1.5.34</logback.version>
-    <junit.version>6.1.2</junit.version>
+    <logback.version>1.6.1</logback.version>
+    <junit.version>6.1.3</junit.version>
     <assertj.version>3.27.7</assertj.version>
     <micrometer.version>1.16.2</micrometer.version>
-    <jug.version>5.1.0</jug.version>
+    <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
 
     <!-- Test groups the default build skips. Override to empty to run them:
@@ -84,16 +94,27 @@
 
     <!-- Build plugin versions (pinned explicitly since this POM has no parent
          to inherit plugin management from) -->
-    <spotless.version>3.4.0</spotless.version>
-    <license.plugin.version>5.0.0</license.plugin.version>
+    <spotless.version>3.9.0</spotless.version>
+    <license.plugin.version>5.1.1</license.plugin.version>
     <source.plugin.version>3.4.0</source.plugin.version>
     <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
     <gpg.plugin.version>3.2.8</gpg.plugin.version>
-    <sonatype.plugin.version>0.10.0</sonatype.plugin.version>
-    <jacoco.version>0.8.13</jacoco.version>
+    <sonatype.plugin.version>0.11.0</sonatype.plugin.version>
+    <jacoco.version>0.8.15</jacoco.version>
+    <sonar.plugin.version>5.5.0.6356</sonar.plugin.version>
+    <!-- Populated by the jacoco-maven-plugin prepare-agent execution in the
+         ci profile; empty by default so surefire's argLine stays valid when
+         the profile is inactive. -->
+    <jacocoArgLine></jacocoArgLine>
 
     <!-- License Header Configuration -->
     <license.owner>James Carman</license.owner>
+
+    <!-- SonarCloud -->
+    <sonar.organization>jwcarman</sonar.organization>
+    <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+    <sonar.projectKey>jwcarman_nessy</sonar.projectKey>
+    <sonar.coverage.exclusions>nessy-examples/**</sonar.coverage.exclusions>
   </properties>
 
   <dependencyManagement>
@@ -128,7 +149,7 @@
       <dependency>
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-annotations</artifactId>
-        <version>${jackson.version}</version>
+        <version>${jackson-annotations.version}</version>
       </dependency>
       <dependency>
         <groupId>com.github.victools</groupId>
@@ -203,28 +224,8 @@
             <!-- Tests that spend real tokens are tagged `live`. The default
                  build stays green with no API key and no network. -->
             <excludedGroups>${nessy.excludedGroups}</excludedGroups>
+            <argLine>@{jacocoArgLine}</argLine>
           </configuration>
-        </plugin>
-        <plugin>
-          <groupId>org.jacoco</groupId>
-          <artifactId>jacoco-maven-plugin</artifactId>
-          <version>${jacoco.version}</version>
-          <executions>
-            <execution>
-              <id>prepare-agent</id>
-              <phase>initialize</phase>
-              <goals>
-                <goal>prepare-agent</goal>
-              </goals>
-            </execution>
-            <execution>
-              <id>report</id>
-              <phase>verify</phase>
-              <goals>
-                <goal>report</goal>
-              </goals>
-            </execution>
-          </executions>
         </plugin>
       </plugins>
     </pluginManagement>
@@ -234,8 +235,9 @@
         <artifactId>maven-surefire-plugin</artifactId>
       </plugin>
       <plugin>
-        <groupId>org.jacoco</groupId>
-        <artifactId>jacoco-maven-plugin</artifactId>
+        <groupId>org.sonarsource.scanner.maven</groupId>
+        <artifactId>sonar-maven-plugin</artifactId>
+        <version>${sonar.plugin.version}</version>
       </plugin>
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
@@ -324,6 +326,42 @@
                 <arg>loopback</arg>
               </gpgArguments>
             </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!-- CI profile for JaCoCo coverage -->
+    <profile>
+      <id>ci</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+            <version>${jacoco.version}</version>
+            <configuration>
+              <propertyName>jacocoArgLine</propertyName>
+            </configuration>
+            <executions>
+              <execution>
+                <id>prepare-agent</id>
+                <goals>
+                  <goal>prepare-agent</goal>
+                </goals>
+              </execution>
+              <execution>
+                <id>report</id>
+                <goals>
+                  <goal>report</goal>
+                </goals>
+                <configuration>
+                  <formats>
+                    <format>XML</format>
+                  </formats>
+                </configuration>
+              </execution>
+            </executions>
           </plugin>
         </plugins>
       </build>
