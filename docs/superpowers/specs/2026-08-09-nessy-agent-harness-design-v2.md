@@ -574,6 +574,36 @@ overrides it, `agent.events()` subscribes and unsubscribes at any time — inclu
 mid-session, which the old design could not do. `nessy-testing` ships
 `RecordingSubscriber`.
 
+### 9.1 The synchronous spine (ruled 2026-08-10)
+
+The hub's contract, sharpened by the project owner: **delivery is
+synchronous, in order, on the emitting thread — and a throwing subscriber
+stops the operation that emitted.** That is not an accident to be guarded
+against; it is the point. A subscriber that needs to stand in the way of
+something (an audit write that must not be lost, an invariant check) writes
+inline and lets its exception propagate — the veto is the throw. A
+subscriber that has no business stopping anything spawns a virtual thread
+and goes about its business elsewhere; the helper
+`EventHub.async(listener)` (or equivalent) wraps any listener in exactly
+that — one virtual thread per event, errors handed to an error handler
+(JDK `System.Logger` convenience, no new dependencies) instead of the
+emitting thread.
+
+Consequences:
+- The **async hub decorator is retired** as an upgrade path. Asynchrony is
+  a per-subscriber choice, not a hub flavor — all-or-nothing async was the
+  wrong granularity, and it silently destroyed any subscriber's ability to
+  be strict.
+- The hub remains no-return-values. A veto is an *exception* — the
+  vocabulary of failure — never a returned decision; approval authority
+  still belongs exclusively to the `Approver`/grant chokepoint.
+- **`MessageAppended(sessionId, message, turnUsage)`** joins the hub
+  vocabulary (`api.event`): the engine emits it at the newborn choke point
+  — every message, at birth, with the turn usage where one exists. It is
+  the subscription point for everything that wants to follow the
+  transcript: journaling, memory extraction, transcription mirrors,
+  streaming UIs.
+
 ## 10. The SPI surface
 
 ### 10.1 ExecutionEngine
@@ -942,13 +972,18 @@ permanent record and couple the write path to a read-path collaborator.
 Store facts, compute derivations. Metadata rides on the entry rather than
 on the `Message` grammar, which stays wire-pure.
 
-**Append failure is strict (ruled 2026-08-09).** The journal is
-audit-grade truth: a silent gap is worse than a failed turn, so a failed
-append fails the run, loudly. The in-memory default cannot fail, so the
-zero-config posture is untouched; strictness bites only where someone
-deliberately wired a durable journal — which is exactly when they mean it.
-(A best-effort mode, if ever demanded, would be a declared posture, never
-a default.)
+**The journal rides the hub (re-ruled 2026-08-10, superseding the direct
+feed).** The engine no longer holds a `TranscriptStore`; it emits
+`MessageAppended` on the hub at the newborn choke point (§9.1), and the
+journal is a *subscriber*. Wiring `.transcript(store)` on the harness is
+sugar: it registers the inline journaling subscriber. **Strictness
+survives, relocated**: the inline subscriber writes on the emitting thread
+and lets a failed append propagate — the run fails, loudly, exactly as
+before; the audit guarantee now lives in the subscriber's inline-ness
+rather than in an engine dependency. An application that prefers
+best-effort journaling wraps the same subscriber in the async helper —
+a declared posture, per subscriber, never a default. `TranscriptStore.none()`
+is retired: absence of a journal is simply the absence of a subscriber.
 
 **At-rest encoding — `MessageCodec` (ruled 2026-08-09).** Durable stores
 persist opaque bytes, never message structure: a `MessageCodec` owns the
@@ -1342,8 +1377,11 @@ the application's own explicit declaration. If none is declared, the starter's
   moment it grows semantics of its own, it is rejected in review.
 - **JPMS friction**: automatic-module dependencies may fight the module graph;
   the contingency in §4.4 keeps it from blocking convergence.
-- **Hub misuse as a control plane**: mitigated structurally (no return values) and
-  by documentation; the Approver-stays-blocking rule is the line that must hold.
+- **Hub misuse as a control plane**: partially re-scoped 2026-08-10 — the
+  synchronous spine (§9.1) *sanctions* veto-by-exception, so the remaining
+  line to hold is: no return values, and approval authority never moves off
+  the `Approver`/grant chokepoint. A subscriber may stop the world; it may
+  not decide anything.
 
 ## 16. Decisions resolved in this revision
 
