@@ -79,11 +79,13 @@ public final class Agent<I> {
    * because assembly is deterministic over state; not free, because a configured {@link
    * org.jwcarman.nessy.spi.context.ContextEnricher} still performs enrichment I/O to answer.
    *
-   * @throws IllegalArgumentException if no session {@code id} is stored
+   * @throws IllegalArgumentException if no conversation {@code id} is stored
    */
   public Context contextFor(ConversationId id) {
     ConversationState state =
-        store.load(id).orElseThrow(() -> new IllegalArgumentException("unknown session: " + id));
+        store
+            .load(id)
+            .orElseThrow(() -> new IllegalArgumentException("unknown conversation: " + id));
     return contextPipeline.assemble(state);
   }
 }

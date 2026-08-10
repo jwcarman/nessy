@@ -48,11 +48,11 @@ mapped to the seams that provide it:
 |---|---|---|---|
 | 1 | Turn-taking | events in, decisions out, effects in order, one coherent transcript | `Reducer`, `ExecutionEngine`, `Context` |
 | 2 | Context fit | the conversation always fits the window; compaction and projection are not the agent's concern | `Compactor`, `Summarizer`, the context pipeline |
-| 3 | A memory of record | everything durable: snapshots to resume, an append-only journal of every message | `SessionStore`, `TranscriptStore`, the engine's durability contract |
+| 3 | A memory of record | everything durable: snapshots to resume, plus an opt-in journal of every message | `ConversationStore`, a declared `MessageAppended` listener (§17 — the journal is a listener, not a store) |
 | 4 | Safe hands | tool calls bound, validated, contained; a throwing tool is a model-visible error, never a dead session | `ToolRegistry`, the invoker (Factor 9) |
 | 5 | Guardrails | no capability exercised past the declared authority; the model has no say in whether it is asked | `ToolGrant`/`UsagePolicy`, `Approver`, the grant principle |
 | 6 | A wallet guard | the loop is bounded — turns, errors, someday cost | `TerminationPolicy` |
-| 7 | Witnesses | every run observable: spans for operators, live events for UIs | Observations, `EventHub` |
+| 7 | Witnesses | every run observable: spans for operators, declared listeners for UIs | Observations, declared listening (`listen`/`listenAsync`, `Conversation#events()`) — §9, §17 |
 | 8 | A vendor-neutral model line | one grammar to any model; capabilities negotiated, degradation explicit | `ModelProvider` |
 
 Each service is a testable claim, and most are already promises the test suite
@@ -77,7 +77,7 @@ Three concentric audiences, in priority order:
 **The zone rule** that sorts every type: *if writing an agent requires it, it is
 API; if hosting or backing agents requires it, it is SPI.* By this rule `Tool` is
 API — writing tools is everyday application development, the way implementing a
-`Servlet` was — while `SessionStore` is SPI, the way implementing a JDBC `Driver`
+`Servlet` was — while `ConversationStore` is SPI, the way implementing a JDBC `Driver`
 is vendor work.
 
 ## 3. Guiding principles
@@ -124,7 +124,7 @@ not-invented-here failure mode is re-abstracting the converged thing.
 Anything not earning its interface either way ships as a concrete default with no
 interface. The guard against seam-itis is a preference hierarchy applied in order:
 *purity first* (the best test seam is no seam — the reducer proves it), *cheap real
-objects second* (`InMemorySessionStore` needs no fake because the real thing is
+objects second* (`InMemoryConversationStore` needs no fake because the real thing is
 zero-ceremony), *a dedicated internal test seam third*.
 
 **No magic in core.** Explicit builder wiring only. Every object is traceable from
@@ -135,7 +135,7 @@ layers — the Spring starter discovers via DI; a CLI may use `ServiceLoader` to
 
 **Dogfood the SPI.** Every upgrade Nessy itself ships goes through the same public
 seams with zero privileged hooks. Retry ships as a `ModelProvider` decorator.
-Tracing of a specific store ships as a `SessionStore` decorator. If we need a
+Tracing of a specific store ships as a `ConversationStore` decorator. If we need a
 private hook to build a feature, the seam is wrong and gets fixed first.
 
 **Ship the double.** For every extension seam, `nessy-testing` provides a
@@ -149,11 +149,20 @@ double is a design smell in the seam.
 
 **Plain Java core, Java 25.** `nessy-core` depends on the JDK, Jackson, victools,
 `micrometer-observation` (§11 records why that fourth dependency is
-principled), and `java-uuid-generator` — session and park identifiers are
+principled), `java-uuid-generator` — conversation and park identifiers are
 time-ordered UUIDv7, sortable by creation time and index-friendly in durable
-stores. Records, sealed interfaces, pattern matching, and virtual threads are
+stores — and `slf4j-api` for warnings (the unconfigured-approver and
+unconfigured-compactor warnings, §13.1, §10.6, log through it rather than
+`System.err`). Records, sealed interfaces, pattern matching, and virtual threads are
 load-bearing. Every seam is a plain blocking interface — no `CompletableFuture`,
 no `Flow.Publisher`, no reactive types anywhere.
+
+**Logging provider (added 2026-08-10).** `logback-classic` joins as the
+TEST-scope logging provider across the build — chosen over `slf4j-simple` so
+build output shows the framework's own warnings clearly — and as a
+COMPILE-scope dependency of `nessy-examples` specifically: examples are
+runnable applications, and an application picks its own SLF4J provider rather
+than inheriting the build's test-classpath default.
 
 **Coordinates.** groupId `org.jwcarman.nessy`, base package `org.jwcarman.nessy`,
 matching the sibling `substrate` project's convention. Apache License 2.0.
@@ -175,24 +184,29 @@ already know (`org.slf4j.spi`, JDBC drivers):
 ### 4.2 Package map
 
 ```
-org.jwcarman.nessy               Nessy, Harness [§8.4], Agent, AgentBuilder, Conversation, Reply
-org.jwcarman.nessy.api           Event (sealed), Decision (sealed), Awaited (sealed), ParkToken,
+org.jwcarman.nessy               Nessy, Harness, HarnessBuilder, Agent, AgentBuilder, Conversation,
+                                 Reply, AgentConfigurationException [§17]
+org.jwcarman.nessy.api           ConversationEvent (sealed), Decision (sealed), Awaited (sealed), ParkToken,
                                  RunOutcome (sealed), StopReason — the sealed grammar only
 org.jwcarman.nessy.api.message   Message, Role, Context [§10.8], ContentBlock (sealed: TextBlock,
                                  ThinkingBlock, RedactedThinkingBlock, ImageBlock, ToolUseBlock,
                                  ToolResultBlock), TokenEstimator [§10.8 — beside Context, which
                                  takes it directly; api may not depend on spi]
-org.jwcarman.nessy.api.session   SessionId, SessionState, SessionStatus, Usage, TerminationPolicy
+org.jwcarman.nessy.api.conversation   ConversationId, ConversationState, ConversationStatus, Usage, TerminationPolicy
 org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec, ToolCall, ToolResult,
                                  ToolGrant, UsagePolicy, PolicyDecision (sealed)  [§10.5]
 org.jwcarman.nessy.api.approval  Approver, ApprovalRequest
-org.jwcarman.nessy.api.event     EventEmitter, EventHub, Subscription, SessionEvent, ToolProgress
+org.jwcarman.nessy.api.event     EventEmitter, ListenerRegistration, ListenerRegistry,
+                                 ConversationEvents, ConversationScoped, Subscription,
+                                 MessageAppended, ToolProgress, CompactionFailed, EnrichmentFailed
 org.jwcarman.nessy.spi           ExecutionEngine, Reducer, Effect (sealed), Step, InProcessEngine
 org.jwcarman.nessy.spi.model     ModelProvider, ModelRequest, ModelEvent (sealed), ModelStream,
                                  Capability, ModelSettings
 org.jwcarman.nessy.spi.context   ContextPipeline, Projection, ContextEnricher  [§10.9]
 org.jwcarman.nessy.spi.compaction Compactor, Compactors, Summarizer   [§10.6 consolidation]
-org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry, MessageCodec  [§10.8]
+org.jwcarman.nessy.spi.conversation   ConversationStore, MessageCodec  [§10.8; the journal is a
+                                 listener now (§17), not a store — TranscriptStore/TranscriptEntry
+                                 are gone]
 org.jwcarman.nessy.internal      ToolInvoker, Schemas, observation conventions, engine machinery
 ```
 
@@ -205,7 +219,7 @@ Placement decisions worth their reasoning:
   because `Tool.execute` returns `Awaited<ToolResult>` and tools are everyday
   code; `RunOutcome.Parked` hands users a `ParkToken`. The SPI references them
   inward (`spi → api` is the allowed direction).
-- **`TerminationPolicy` is API** (`api.session`, beside the rest of the session's
+- **`TerminationPolicy` is API** (`api.conversation`, beside the rest of the session's
   lifecycle state): configuring budgets is everyday agent-writing, not hosting.
 - **Default implementations live beside their seams**, reachable through static
   factories on the seam interface itself (§5). Only non-contractual machinery goes
@@ -253,14 +267,25 @@ one builder.
 
 ## 5. Naming
 
-### 5.0 Glossary (added 2026-08-09) — one word, one meaning
+### 5.0 Glossary (added 2026-08-09; made conversation-centric §17, 2026-08-10) — one word, one meaning
 
-- **The transcript** — a session's entire message history, forever.
-  Append-only; lives in the `TranscriptStore` journal.
-- **A session** — the continuing interaction, known by its `SessionId`,
-  persisting across runs, parks, and resumptions.
-- **The ledger** — `SessionState`: a value snapshot of everything true
-  about a session right now — working messages, accounting, in-flight
+**Everything centers on a conversation** (§17): "session" has left the vocabulary
+entirely — every type, package, and doc sentence that used to say it now says
+"conversation." "The transcript" and "a run" below are deliberately *concepts*,
+not types — nothing in the codebase is named `Transcript` or `Run`; they name
+what a declared listener or a `RunOutcome` is *about*.
+
+- **A conversation** — the continuing interaction, known by its
+  `ConversationId`, persisting across runs, parks, and resumptions. Nessy's
+  one organizing unit: every `ConversationEvent` names the conversation it
+  belongs to (`conversationId()`), every listening level is scoped to it, and
+  every store, status, and state type is named after it.
+- **The transcript** (a concept, not a type) — a conversation's entire message
+  history, forever, append-only. There is no dedicated store type for it: the
+  journal is simply whatever a declared `MessageAppended` listener chooses to
+  keep (§17; see §10.8 below, "the journal is a listener").
+- **The ledger** — `ConversationState`: a value snapshot of everything true
+  about a conversation right now — working messages, accounting, in-flight
   machinery.
 - **The working set** — the ledger's message aspect: the compacted
   transcript (`[summary, …tail]` after compactions) that the reducer
@@ -268,27 +293,28 @@ one builder.
 - **A `Context`** — a validated, pairing-legal message sequence bound for
   the wire: what one model call sees, minted per request by projection and
   recall.
-- **A run** — one drive of the loop: an entry fact in, effects performed
-  to quiescence, a `RunOutcome` out.
+- **A run** (a concept, not a type) — one drive of the loop: an entry fact in,
+  effects performed to quiescence, a `RunOutcome` out.
 
 The conventions, uniformly applied:
 
 - **No `I`-prefixes, no `-Impl` suffixes, ever.**
-- **Defaults are named by strategy, not by data structure**: `InMemorySessionStore`,
+- **Defaults are named by strategy, not by data structure**: `InMemoryConversationStore`,
   `InProcessEngine`, `ScriptedModelProvider`. (`MapToolRegistry` violated this and
   is renamed away — see ledger.)
 - **The seam interface is the front door to its own defaults** via static
   factories: `ToolRegistry.of(tools…)`, `Approver.allowAll()`,
-  `Approver.denyAll(reason)`, `SessionStore.inMemory()`, `EventHub.synchronous()`,
+  `Approver.denyAll(reason)`, `ConversationStore.inMemory()`,
   `TerminationPolicy.maxTurns(n)`. One obvious place to look; core default classes
   may be package-private behind them. External modules ship public classes
-  (`JdbcSessionStore`) — the asymmetry is deliberate: core defaults are reachable
+  (`JdbcConversationStore`) — the asymmetry is deliberate: core defaults are reachable
   without knowing a class name, external implementations are named products.
 - **Events are facts, named in the past tense or as observations** (`ToolFinished`,
-  `UserSaid`, `TextDelta`); **effects are orders, named imperatively**
+  `AgentTold`, `TextDelta`); **effects are orders, named imperatively**
   (`CallModel`, `ExecuteTool`); **statuses are states** (`AWAITING_MODEL`).
-- **One front door.** `Nessy.agent()` is the only entry point. There is no second
-  `Nessy.builder()`; the engine-level API is reached *through* the built `Agent`.
+- **One front door.** `Nessy.harness(provider)` is the only entry point
+  (§17 supersedes the earlier `Nessy.agent()`, which is retired); the
+  engine-level API is reached *through* the built `Agent`.
 
 ### Rename ledger (v1 → v2)
 
@@ -312,19 +338,19 @@ That asymmetry is why convergence precedes the provider plans.
 
 Unchanged in substance; restated for self-containment, with v2's state additions.
 
-The loop performs no I/O. `reduce(SessionState, Event) → Step` is pure,
+The loop performs no I/O. `reduce(ConversationState, ConversationEvent) → Step` is pure,
 synchronous, and total; `Step` is the next state plus a list of `Effect`s. An
-`ExecutionEngine` performs effects and feeds every result back as an `Event`.
+`ExecutionEngine` performs effects and feeds every result back as an `ConversationEvent`.
 Streaming tokens are ordinary events — that is why the loop streams natively.
 Every seam is a plain blocking interface on virtual threads; an interactive
 approval parks a thread, a durable one parks a *session* via `Awaited.Parked` and
 a single-use `ParkToken`.
 
-`SessionState` is a plain serializable record and the whole of the agent's memory:
+`ConversationState` is a plain serializable record and the whole of the agent's memory:
 
 ```
-SessionState
- ├── id                  SessionId
+ConversationState
+ ├── id                  ConversationId
  ├── messages            settled conversation
  ├── pendingBlocks       assistant message being streamed in
  ├── pendingCalls        tool calls not yet resolved
@@ -365,14 +391,14 @@ the table is normative about openness:
 
 | Phase | Contract | How you participate | Openness |
 |---|---|---|---|
-| Load | snapshot → ledger | `SessionStore` | seam |
+| Load | snapshot → ledger | `ConversationStore` | seam |
 | Prepare | wiring | build time, on purpose — harness + grants, reviewable | closed at runtime (the grant principle) |
 | Contextualize | ledger → `Context` | the context pipeline: `project`/`enrich` bindings (§10.9) | fully open |
 | Invoke | `Context` → stream | provider decorators (retry, routing); observations | decorate |
 | Interpret | wire → facts | sealed grammar + reducer | **closed — determinism is the product** |
 | Execute | wishes → outcomes | tools, through the grant chokepoint | open through the chokepoint only |
 | Integrate | facts → ledger | the reducer, sole author of succession | **closed — the ledger never lies** |
-| Checkpoint | ledger → durable | `SessionStore` + `MessageAppended` subscribers | seam + spine |
+| Checkpoint | ledger → durable | `ConversationStore` + `MessageAppended` subscribers | seam + spine |
 | Evaluate | continue? | `TerminationPolicy`, `Compactor` | strategy objects |
 | Complete | → `Reply` / `RunOutcome` | facade | fixed |
 
@@ -393,7 +419,7 @@ phases should find this paragraph.
 
 ## 7. The grammar
 
-The sealed hierarchies — `ContentBlock`, `Event`, `Effect`, `Decision`, `Awaited`,
+The sealed hierarchies — `ContentBlock`, `ConversationEvent`, `Effect`, `Decision`, `Awaited`,
 `RunOutcome`, `ModelEvent`, `StopReason` — are Nessy's grammar. Sealing is a
 promise with teeth in both directions:
 
@@ -415,67 +441,86 @@ free:
 | `ContentBlock.ThinkingBlock(text, signature)` | Anthropic extended thinking; the signature must round-trip for replay |
 | `ContentBlock.RedactedThinkingBlock(data)` | Anthropic redacted thinking round-trip |
 | `ContentBlock.ImageBlock(mediaType, base64Data)` | `Capability.IMAGE_INPUT` is already declared; the grammar must be able to say it |
-| `ModelEvent.ThinkingChunk(text)` + `Event.ThinkingDelta(text)` | streamed thinking accumulates like text; the reducer merges deltas into a trailing `ThinkingBlock`. Signature delivery (Anthropic requires the signature to round-trip) is finalized in Plan 2 against the real wire — still pre-freeze |
+| `ModelEvent.ThinkingChunk(text)` + `ConversationEvent.ThinkingDelta(text)` | streamed thinking accumulates like text; the reducer merges deltas into a trailing `ThinkingBlock`. Signature delivery (Anthropic requires the signature to round-trip) is finalized in Plan 2 against the real wire — still pre-freeze |
 | `Usage(inputTokens, outputTokens, cachedInputTokens)` + `ModelEvent.TurnEnded(reason, usage)` | cost-budget termination, `gen_ai.usage.*` span attributes, and the `PROMPT_CACHING` cache-hit split |
-| `Event.UserSaid` canonicalizes to `List<ContentBlock>` with `UserSaid.of(String)` | multimodal input needs an entry path; one variant, not two |
+| `ConversationEvent.AgentTold` canonicalizes to `List<ContentBlock>` with `AgentTold.of(ConversationId, String)` | multimodal input needs an entry path; one variant, not two |
 
 `StopReason` gets a final audit against the real Anthropic and OpenAI wire formats
 during the provider plans — the last gate before freeze.
 
 ## 8. The API surface
 
-### 8.1 The front door
+### 8.1 The front door (superseded by §17 — `Nessy.harness(provider)` is the door now)
 
 The first five minutes decide whether people love a framework. The event-level API
 (`engine.run(id, event)` → pattern-match `RunOutcome` → spelunk content blocks) is
 architecturally honest and ergonomically hostile as a first encounter. The facade
-fixes that — sugar over the engine, zero new semantics:
+fixes that — sugar over the engine, zero new semantics. The shape below is the
+one shipped and tested (§17 supersedes `Nessy.agent()`, shown historically in the
+rest of this section, with `Nessy.harness(provider)` as the sole front door):
 
 ```java
-Agent agent = Nessy.agent()
-    .provider(anthropic)                   // where tokens come from   (required)
-    .model("claude-sonnet-4-5")            // which model              (required)
-    .systemPrompt("You are a helpful assistant.")
-    .tools(new ReadFileTool(), new GrepTool())
-    .approver(Approver.denyAll("read-only demo"))
-    .build();
+Agent<String> agent =
+    Nessy.harness(anthropic)               // where tokens come from   (required, by signature)
+        .build()
+        .agent()
+        .model("claude-sonnet-4-5")        // which model              (required)
+        .systemPrompt("You are a helpful assistant.")
+        .tools(ToolGrant.grant(new ReadFileTool(), UsagePolicy.allow()),
+               ToolGrant.grant(new GrepTool(), UsagePolicy.allow()))
+        .approver(Approver.denyAll("read-only demo"))
+        .build();
 
-Conversation chat = agent.converse();
-Reply reply = chat.send("What does the build file declare?");
+Conversation<String> chat = agent.converse();
+Reply reply = chat.tell("What does the build file declare?");
 reply.text();                              // the assistant's prose, extracted
 ```
 
-- `Agent` — a configured, reusable handle; `converse()` opens a fresh session,
-  `resume(SessionId)` reopens a stored one, `engine()` and `events()` expose the
-  full machinery. The escape hatch is one method away, so the facade never traps.
-- `Conversation` — one session: `send(String) → Reply`, `sessionId()`.
-- `Reply` — wraps the final `SessionState`: `text()` (concatenated text blocks of
+- `Agent<I>` — a configured, reusable handle; `converse()` opens a fresh
+  conversation, `resume(ConversationId)` reopens a stored one, `engine()` expose
+  the full machinery; `Conversation#events()` is the one dynamic listening level
+  (§17). The escape hatch is one method away, so the facade never traps.
+- `Conversation<I>` — one conversation: `tell(I) → Reply`, `conversationId()`.
+- `Reply` — wraps the final `ConversationState`: `text()` (concatenated text blocks of
   the final assistant message), `failed()`, `state()`.
 - Every builder default works out of the box: in-memory store, in-process engine,
   allow-all approver (with the safety note that real tools deserve a real
-  approver), synchronous hub, no-op observations, default termination (§10.4).
+  approver), no-op observations, default termination (§10.4).
   The smallest useful agent is a provider and a model name.
 
 `Agent` and friends are final classes, not seams: users who want a fake agent in
 tests use a real `Agent` over `ScriptedModelProvider` — the classicist testing
 stance, and the reason the no-mocking promise holds.
 
-### 8.2 Tools
+### 8.2 Tools (superseded by §17's tool-authority addendum)
 
-Unchanged in substance: `Tool<T>` with record-derived schemas, `requiresApproval()`
-deliberately abstract so a new tool fails closed at compile time, `describe(T)`
-for honest approval prompts. `ToolRegistry.of(tools…)` is the everyday
-construction. `ToolContext` gains `events()` (§9) so long-running tools can report
-progress.
+`Tool<T>` keeps record-derived schemas and `describe(T)` for honest approval
+prompts, but `requiresApproval()` is DELETED (§17 addendum, "one path for tool
+authority"): a tool is pure capability — name, schema, execution — and carries
+zero authority content. `ToolRegistry.of(tools…)` remains the everyday
+construction of a registry from bare tools; attaching a tool to an *agent*,
+however, always goes through a grant (§10.5). `ToolContext` gains `events()`
+(§9) so long-running tools can report progress.
 
 ### 8.3 Approval
 
-`Approver` remains the blocking, harness-side interceptor. It is *not* an event
-subscriber and never will be: approval is synchronous request/response with an
-answer the loop waits on; the hub is one-way exhaust. Keeping those channels
-separate is what keeps "the model cannot route around the gate" provable.
+`Approver` remains the blocking, harness-side interceptor. It is *not* a
+declared listener and never will be: approval is synchronous request/response
+with an answer the loop waits on; declared listening (§9) is one-way exhaust.
+Keeping those channels separate is what keeps "the model cannot route around
+the gate" provable.
 
-### 8.4 The Harness object and typed agents — settled 2026-08-09
+### 8.4 The Harness object and typed agents — settled 2026-08-09 (harness shape superseded by §17)
+
+**Superseded by §17**: the harness/agent split proposed and reified in this
+section is real and shipped, but its exact builder shape — the `.hub(…)`/
+`.transcript(…)` wiring, `Nessy.agent()` as a no-harness one-liner — is
+superseded by §17's razor-bound harness: `Nessy.harness(provider)` is now the
+sole front door, `Nessy.agent()` is retired, `.hub(...)` and `.transcript(...)`
+are both gone (declared listening replaces the hub; the journal is a listener,
+not a knob). The typed-agent material below (`Agent<I>`, `InputRenderer<I>`,
+`tell`) stands as shipped. This section is retained for the reasoning history;
+§17 governs the current shape.
 
 **Shipped status:** the `Harness` reification below shipped un-generic —
 `Agent`, not `Agent<I>` — ahead of the typed-front-door decision. That is
@@ -492,15 +537,19 @@ without a structural home: `AgentBuilder` conflates shared infrastructure with
 per-agent identity, so every agent re-declares the store, hub, and observations.
 Settled: the harness becomes a first-class object.
 
+Illustrative only — see §17 for the shipped shape (`Nessy.harness(provider)` is
+required by signature, `.hub(...)`/`.transcript(...)` don't exist, and every
+grant states its policy explicitly, per the tool-authority addendum):
+
 ```java
-Harness harness = Nessy.harness()          // configured once per application
+Harness harness = Nessy.harness()          // superseded: provider is required by signature (§17)
     .provider(anthropic)                   // the DEFAULT provider, not a constraint
-    .store(store).hub(hub).observations(registry).transcript(journal)
+    .store(store).hub(hub).observations(registry).transcript(journal)  // hub/transcript retired (§17)
     .build();
 
 Agent<SupportInput> support = harness.agent(SupportInput.class)
     .model("claude-sonnet-4-5").systemPrompt("…")
-    .tools(grant(lookupOrder), grant(refund).with(approveOver(500)))
+    .tools(grant(lookupOrder, allow()), grant(refund, approveOver(500)))  // every grant states its policy (§17 addendum)
     .approver(slackApprover)
     .build();
 ```
@@ -526,7 +575,7 @@ is the agent's input vocabulary — typically a sealed interface of records the
 application owns (the Akka Typed lesson, learned there the expensive way:
 protocols retrofitted onto an untyped core cost a parallel API and a decade).
 `Conversation.tell(I)` renders the typed input canonically into the outbound
-user message; the sealed `Event` grammar is untouched — typing lives in the
+user message; the sealed `ConversationEvent` grammar is untouched — typing lives in the
 facade's generics and ends at the wire. `Agent<String>` is the degenerate case
 behind `Nessy.agent()`, and `send(String)` keeps working. Because retrofitting
 generics onto a shipped non-generic front door is source-breaking, **the type
@@ -542,7 +591,7 @@ each `Tool<T>` keeps its own independent input record, exactly as today. The
 *model* may call remains the grant list.**Typed details (settled 2026-08-10, landed):** `tell(I)` is the
 only verb — `send(String)` is removed, not kept beside it (a typed front
 door with an untyped side entrance isn't typed). `Conversation<I>.tell(I)`
-plus the tap variant `tell(I, Consumer<Event>)`. `InputRenderer<I>` lives
+plus the tap variant `tell(I, Consumer<ConversationEvent>)`. `InputRenderer<I>` lives
 in `api.message` (`List<ContentBlock> render(I input)`); builder defaults:
 a `String` vocabulary installs a pass-through renderer (raw text → one
 text block), a typed vocabulary defaults the tagged-JSON renderer
@@ -550,8 +599,9 @@ text block), a typed vocabulary defaults the tagged-JSON renderer
 mapper), both overridable via `.renderer(...)`. The sealed-switch renderer
 is the documented recommended idiom. Shipped and tested end to end:
 `Agent`/`Conversation`/`AgentBuilder` all carry the `<I>` parameter,
-`Harness#agent(Class<I>)` joins `Harness#agent()`/`Nessy.agent()`
-(`AgentBuilder<String>`), and every call site across the codebase converted
+`Harness#agent(Class<I>)` joins `Harness#agent()` (`AgentBuilder<String>`,
+reached via `Nessy.harness(provider).build().agent()` — §17 supersedes
+`Nessy.agent()`), and every call site across the codebase converted
 from `send` to `tell` — see `InputRendererTest` and `AgentFacadeTest`'s
 `Typed_front_door` nested class. Deferred with intent: schema
 publication into the system prompt (opt-in, later) and the agent-as-a-tool
@@ -560,19 +610,24 @@ tool for a parent makes that wrapper's input record `I`, because calling
 the agent means telling it something from its vocabulary; it implies
 nothing about any other tool's type).
 
-## 9. The event hub
+## 9. Declared listening (rewritten 2026-08-10, §17 — the hub is retired)
 
-Replaces per-object listeners. Anything may emit; subscribers declare interest by
-type; no component maintains listener lists.
+**Superseded, in full, by §17.** The general-purpose, runtime-subscribable
+`EventHub` this section originally specified shipped, then was demoted and
+finally retired outright: its pluggability threatened the load-bearing
+semantics (seeding order, freeze-at-build, veto-by-throw) that declared
+listening now guarantees structurally instead of by convention. `EventHub`
+and `HarnessBuilder.hub(...)` no longer exist in any form, public or internal.
+What ships today:
 
 ```java
 public interface EventEmitter {
     void emit(Object event);
+    static EventEmitter noop() { … }
 }
 
-public interface EventHub extends EventEmitter {
-    <E> Subscription subscribe(Class<E> type, Consumer<E> subscriber);
-    static EventHub synchronous() { … }
+public interface ConversationEvents {
+    <T> Subscription subscribe(Class<T> type, Consumer<T> listener);
 }
 
 public interface Subscription extends AutoCloseable {
@@ -580,73 +635,65 @@ public interface Subscription extends AutoCloseable {
 }
 ```
 
-Three commitments, each load-bearing:
+Listening now has exactly two tiers, both described fully in §17:
 
-1. **Synchronous, in-order, same-thread by default.** Emission dispatches
-   subscribers on the emitting thread, in subscription order, before returning —
-   the guarantee live streaming and deterministic tests already rely on.
-   Asynchronous delivery is an upgrade (a decorating hub or async subscriber
-   wrapper), never the default; backpressure and slow consumers are explicitly the
-   decorator's problem.
-2. **Exhaust, never intake.** One-way, no return values, no vetoes. Input reaches
-   the reducer only through `ExecutionEngine.run`; control lives only in blocking
-   seams. The hub catches subscriber exceptions so no observer can alter or abort
-   execution — the contract v1 documented but could not enforce. (Failures during
-   failure reporting are dropped, not recursed.)
-3. **Open vocabulary, typed subscription, no magic.** Hub events are plain
-   records; dispatch is by class assignability; extension modules publish their
-   own event types (`SessionPersisted`, `CallRetried`) without asking us. The
-   *reducer's* sealed `Event` stays closed — the hub re-publishes loop activity
-   wrapped in an envelope, it never feeds the loop.
+1. **Declared, frozen, seeded (the default tier).** `listen(Class<T>,
+   Consumer<T>)` and `listenAsync(Class<T>, Consumer<T>[, Consumer<Throwable>])`
+   are builder verbs on both `HarnessBuilder` and `AgentBuilder` — Prepare is a
+   build-time phase, so there is no runtime `subscribe` at this level at all. A
+   harness's declarations seed into every agent it builds, ahead of that
+   agent's own, in declaration order; frozen at `build()`, with no mutation
+   path afterward. `ListenerRegistry` (`api.event`) is the frozen chain plus
+   the one dynamic view described next; `ListenerRegistration` is one
+   declaration (sync or async).
+2. **Conversation-local subscription (the one dynamic level).**
+   `conversation.events().subscribe(type, listener) → Subscription` —
+   in-memory, per-handle, non-durable, already scoped to that one
+   conversation. This is the sole place runtime attach/detach still happens —
+   the UI/SSE-attachment case.
 
-Shipped event types: `SessionEvent(SessionId, Event, SessionState)` — every
-reduced loop event, the migration of the old listener signature — and
-`ToolProgress(SessionId, String toolCallId, String message)`, emitted by tools via
-`ToolContext.events()` so a TUI can finally render progress from inside a
-long-running tool. Infrastructure events (engine lifecycle, store activity, retry
-attempts) arrive with the modules that emit them; the open hierarchy is what makes
-that possible without grammar changes.
+Delivery order per emitted event: this conversation's dynamic subscribers
+first, then the frozen chain (harness declarations, then the agent's own, in
+declaration order). Three commitments carried forward from the old hub
+design, now enforced by this shape rather than merely documented by it:
 
-Wiring: the builder owns a `synchronous()` hub by default, `.events(EventHub)`
-overrides it, `agent.events()` subscribes and unsubscribes at any time — including
-mid-session, which the old design could not do. `nessy-testing` ships
-`RecordingSubscriber`.
+1. **Synchronous, in-order, same-thread by default.** Delivery dispatches
+   listeners on the emitting thread, in the order above, before returning —
+   the guarantee live streaming and deterministic tests rely on.
+2. **A throw is a veto, and only a throw.** A synchronous listener that
+   throws propagates straight out of `EventEmitter.emit` and stops delivery
+   to everything after it, aborting whatever operation emitted — never a
+   returned decision; approval authority still belongs exclusively to the
+   `Approver`/grant chokepoint. An async declaration never gets that power:
+   its listener already runs on its own virtual thread by the time delivery
+   reaches it, and whatever it throws reaches its own `onError` handler
+   instead (a `Logger`-backed overload needs no explicit handler).
+3. **Open vocabulary, typed dispatch, no magic.** Declared events are plain
+   records; dispatch is by class assignability, including registering
+   directly at `ConversationEvent.class` and switching internally. The
+   *reducer's* sealed `ConversationEvent` stays closed and is now emitted
+   directly — no envelope (§17: `SessionEvent`/`ConversationAdvanced` is
+   DELETED) — alongside the open notices `MessageAppended`, `CompactionFailed`,
+   `EnrichmentFailed`, `ToolProgress` (all `ConversationScoped`, each carrying
+   its own `ConversationId`).
 
-### 9.1 The synchronous spine (ruled 2026-08-10)
+Shipped event types: every `ConversationEvent` variant, self-attributing
+(`conversationId()` on the sealed interface itself); `MessageAppended`
+(`ConversationId, Message, Usage turnUsage`), emitted at the engine's newborn
+choke point — the declaration point for journaling (§10.8); `ToolProgress`
+(`ConversationId, String toolCallId, String message)`, emitted by tools via
+`ToolContext.events()`; `CompactionFailed`/`EnrichmentFailed`
+(`ConversationId, String reason`).
 
-The hub's contract, sharpened by the project owner: **delivery is
-synchronous, in order, on the emitting thread — and a throwing subscriber
-stops the operation that emitted.** That is not an accident to be guarded
-against; it is the point. A subscriber that needs to stand in the way of
-something (an audit write that must not be lost, an invariant check) writes
-inline and lets its exception propagate — the veto is the throw. A
-subscriber that has no business stopping anything spawns a virtual thread
-and goes about its business elsewhere; the helper
-`EventHub.async(listener)` (or equivalent) wraps any listener in exactly
-that — one virtual thread per event, errors handed to an error handler
-(JDK `System.Logger` convenience, no new dependencies) instead of the
-emitting thread.
-
-Consequences:
-- The **async hub decorator is retired** as an upgrade path. Asynchrony is
-  a per-subscriber choice, not a hub flavor — all-or-nothing async was the
-  wrong granularity, and it silently destroyed any subscriber's ability to
-  be strict.
-- The hub remains no-return-values. A veto is an *exception* — the
-  vocabulary of failure — never a returned decision; approval authority
-  still belongs exclusively to the `Approver`/grant chokepoint.
-- **`MessageAppended(sessionId, message, turnUsage)`** joins the hub
-  vocabulary (`api.event`): the engine emits it at the newborn choke point
-  — every message, at birth, with the turn usage where one exists. It is
-  the subscription point for everything that wants to follow the
-  transcript: journaling, memory extraction, transcription mirrors,
-  streaming UIs.
+`nessy-testing` ships recording listeners (plain `List`-collecting
+`Consumer`s) rather than a dedicated subscriber type — declared listening has
+no special subscriber contract left to double for.
 
 ## 10. The SPI surface
 
 ### 10.1 ExecutionEngine
 
-Unchanged: `run(SessionId, Event)` / `resume(SessionId, ParkToken, Event)` →
+Unchanged: `run(ConversationId, ConversationEvent)` / `resume(ConversationId, ParkToken, ConversationEvent)` →
 `RunOutcome`, two methods on purpose. The engine owns effect dispatch, parking,
 persistence timing (including the mid-turn progress publication shipped in v1's
 final fix wave), and instrumentation of the phases only it can see (§11).
@@ -662,30 +709,34 @@ tokens, requested capabilities). Wire-format details from v1 stand: providers
 normalize the `Optional`-as-nullable-union schema shape for strict function
 calling; providers with capability gaps degrade explicitly, never silently.
 
-### 10.3 SessionStore
+### 10.3 ConversationStore
 
 Unchanged: `load` / `save` / `consumeToken`, with single-use token consumption as
-the at-least-once-delivery defense. In-memory default via `SessionStore.inMemory()`;
+the at-least-once-delivery defense. In-memory default via `ConversationStore.inMemory()`;
 last-write-wins and non-evicting-token semantics documented on it.
 
 **Incremental persistence (added 2026-08-09).** The snapshot-shaped contract does
-not mandate full rewrites. `SessionState.messages` is **append-only** — the
+not mandate full rewrites. `ConversationState.messages` is **append-only** — the
 reducer only ever appends, never edits or removes — and this is a documented
 invariant durable stores may rely on: persist the un-persisted tail plus a small
 mutable header (status, counters, usage, failureReason, pending state), making
 save cost O(new messages) rather than O(history). Compaction is the one
 licensed violation of append-only, shipped in Plan 4; it adds a generation
-marker to `SessionState` so a store can distinguish "append the tail"
+marker to `ConversationState` so a store can distinguish "append the tail"
 (generation unchanged) from "rewrite" (generation bumped). The load side is
 addressed by compaction/`ContextBuilder` (summary + tail as the working set);
 full event-sourced journaling remains a `DurableEngine`-plan question, not a
 seam change.
 
-**Amended 2026-08-09 (§10.8):** history's durable source of truth moves to
-the append-only `TranscriptStore` journal, fed directly by the engine at
-message birth; `SessionStore` keeps its snapshot role and the semantics
-above, but compaction's rewrite is thereby demoted from information loss to
-working-set trim.
+**Amended 2026-08-09 (§10.8), superseded 2026-08-10 (§17):** history's durable
+source of truth moved to an append-only journal, first specified as a
+dedicated `TranscriptStore` seam; §17 deletes that type entirely — the
+journal is finally and fully a declared `MessageAppended` listener, no store
+type, no builder knob (§10.8's journal subsection below is superseded
+accordingly). `ConversationStore` keeps its snapshot role and the semantics
+above regardless; compaction's rewrite remains a working-set trim, never
+information loss, because whatever journal a declared listener keeps is
+unaffected by it.
 
 ### 10.4 TerminationPolicy (new, API-zone, consulted by the reducer)
 
@@ -696,7 +747,7 @@ and independently by an outside architecture review. Generalized:
 ```java
 public interface TerminationPolicy {
     /** A reason to halt, or empty to continue. Pure; consulted by the reducer. */
-    Optional<String> shouldHalt(SessionState state);
+    Optional<String> shouldHalt(ConversationState state);
 
     static TerminationPolicy maxTurns(int max) { … }
     static TerminationPolicy maxConsecutiveErrors(int max) { … }
@@ -716,50 +767,63 @@ policies become possible the moment `usage` accumulates in state (§7), and ship
 when a real provider reports real usage. The seam is earned on day one: two
 genuinely different rules, previously one hard-coded.
 
-### 10.5 Per-grant authority — `ToolGrant` and `UsagePolicy` (revised 2026-08-09)
+### 10.5 Per-grant authority — `ToolGrant` and `UsagePolicy` (rewritten 2026-08-10, §17 addendum — one path for tool authority)
 
-The earlier shape here — one agent-level `Policy` dispatching on tool names —
-is superseded. Authority attaches to the *grant*: the binding between one agent
-and one tool. The grant line becomes the complete security statement —
-capability and authority, declared together, per agent, in one reviewable
-place:
+**This section is fully rewritten to the shipped, final shape.** Two earlier
+revisions are superseded in sequence: a v1 agent-level `Policy` dispatching on
+tool names, then a v2 per-grant `ToolGrant` that still allowed a *bare* grant
+deriving its policy from `Tool.requiresApproval()`. The 2026-08-10 addendum
+("one path for tool authority") deletes that derivation entirely:
+`Tool.requiresApproval()` is DELETED — a tool is pure capability (name,
+schema, execution) and carries zero authority content; whether an application
+wants a human in the loop is a deployment decision no tool author can make.
+The policy is now MANDATORY on every grant, with exactly one construction
+path — `ToolGrant.grant(tool, policy)` — no bare grants, no derived floors, no
+`.with(...)` re-dressing of an existing grant, no defaults:
 
 ```java
-Agent support = harness.agent()
-    .tools(
-        grant(add),                                   // floor applies: runs freely
-        grant(refund).with(approveOver(500)),         // contextual: HITL past $500
-        grant(deleteAccount).with(requireApproval())  // always a human
-    )
-    .approver(slackApprover).build();
+Agent<String> support =
+    harness.agent()
+        .tools(
+            ToolGrant.grant(add, UsagePolicy.allow()),               // runs freely
+            ToolGrant.grant(refund, approveOver(500)),                // contextual: HITL past $500
+            ToolGrant.grant(deleteAccount, UsagePolicy.requireApproval())) // always a human
+        .approver(slackApprover)
+        .build();
 
-Agent batch = harness.agent()
-    .tools(grant(add), grant(refund).with(allow()))   // same tools, different authority
-    .build();
+Agent<String> batch =
+    harness.agent()
+        .tools(ToolGrant.grant(add, UsagePolicy.allow()), ToolGrant.grant(refund, UsagePolicy.allow()))
+        .build();
 ```
 
-- **`ToolGrant`** (api.tool): a `Tool` plus its `UsagePolicy` for this agent.
-  `tools(…)` accepts grants; a bare `Tool` auto-wraps with the derived default.
-- **`UsagePolicy`** (api.tool): per-grant, so it never dispatches on names —
-  `PolicyDecision evaluate(ToolCall call, SessionState state)` with the
+- **`ToolGrant`** (`api.tool`): a `Tool` plus the `UsagePolicy` this agent
+  consults for it, constructed only via the static `grant(Tool, UsagePolicy)`
+  factory — the record's canonical constructor is not itself the public
+  surface a caller reaches for; `grant(...)` is. `AgentBuilder.tools(...)`
+  takes `ToolGrant...` — `tools(Tool...)` and `tools(ToolRegistry)` are GONE;
+  every tool attachment is a grant that states its policy, or it does not
+  compile.
+- **`UsagePolicy`** (`api.tool`): per-grant, so it never dispatches on names —
+  `PolicyDecision evaluate(ToolCall call, ConversationState state)` with the
   decision grammar intact: sealed `Allow` / `Deny(reason)` / `RequireApproval`,
   and still no `MODIFY` — silently rewriting model-proposed arguments is an
   attribution nightmare. Factories `allow()`, `requireApproval()`,
   `deny(reason)`, plus the lambda form for contextual rules over arguments and
-  session state.
-- **`Tool.requiresApproval()` becomes exactly what it always wanted to be: the
-  tool author's default.** No explicit policy on the grant → the derived policy
-  (`true` → `requireApproval()`, `false` → `allow()`). An explicitly declared
-  grant policy may override in either direction. **The loosening ruling**:
-  authority is always the application's own explicit declaration (§13.1), so an
-  application may waive a tool author's caution — but only at a grant site, in
-  reviewable application code, next to the capability it loosens. Loosened by
-  declaration: allowed, visible, attributable. Loosened by omission: never.
+  conversation state.
+- **The compile-time fail-closed property now lives at the grant, not at the
+  tool.** A grant does not exist until its authority is answered — there is no
+  way to write `grant(deleteAccount)` and have anything silently derive a
+  policy for it, the way `requiresApproval()` used to. The grant line is the
+  complete security statement, structurally: capability and authority,
+  declared together, per agent, per tool, in one reviewable place, with no
+  path around it.
 - The reducer/engine chokepoint is unchanged: `RequestApproval` consults the
-  call's grant instead of a monolithic policy. Single enforcement point.
+  call's grant. Single enforcement point.
 - Genuinely cross-cutting rules ("this agent never writes") are helpers that
-  decorate a list of grants — keeping even the cross-cutting rule visible at
-  the grant sites. The Spring config-only path gains per-tool authority:
+  build a list of grants, each still stating its own policy explicitly —
+  keeping even the cross-cutting rule visible at the grant sites. The Spring
+  config-only path gains per-tool authority:
   `nessy.agents.support.tools: add=allow, refund=approve`.
 
 Lands before 1.0 (the `tools(…)` signature change is breaking after).
@@ -769,7 +833,7 @@ Lands before 1.0 (the `tools(…)` signature change is breaking after).
 Two mechanisms, two layers, per the original analysis — now fully specified:
 
 **Layer 1 — `ContextBuilder` (spi): pure projection.** `List<Message>
-project(SessionState state)`, consulted by engines wherever a `ModelRequest` is
+project(ConversationState state)`, consulted by engines wherever a `ModelRequest` is
 assembled. State remains the full source of truth; the projection decides what
 this request's model call sees. The seam is earned by two genuinely different
 implementations: `ContextBuilder.identity()` (the default — today's behavior)
@@ -783,14 +847,14 @@ stays the default and the javadoc says so.
 **Layer 2 — stateful compaction, through the reducer.** Triggered by *measured*
 context size — no tokenizer: `TurnEnded.usage.inputTokens` is the provider's own
 measurement of what the last call cost, captured into
-`SessionState.lastInputTokens`. At the points where the reducer would emit
+`ConversationState.lastInputTokens`. At the points where the reducer would emit
 `CallModel`, if `lastInputTokens >= policy.triggerTokens()` it instead emits
 `Effect.Compact(messagesToSummarize, instructions)` and enters
-`SessionStatus.COMPACTING`. The engine performs it as an ordinary model call
+`ConversationStatus.COMPACTING`. The engine performs it as an ordinary model call
 (same provider, no tools, instrumented as `nessy.compaction`); the result
-returns as `Event.Compacted(summary)`, and the reducer replaces the summarized
+returns as `ConversationEvent.Compacted(summary)`, and the reducer replaces the summarized
 prefix with one summary message, keeps the recent tail verbatim, bumps
-`SessionState.generation` (the store signal: unchanged generation → append the
+`ConversationState.generation` (the store signal: unchanged generation → append the
 tail; bumped → rewrite), and proceeds to `CallModel`.
 
 Design rules:
@@ -799,11 +863,12 @@ Design rules:
   between an assistant `tool_use` and its results, preserving the transcript
   invariant). The summary ships as a clearly-prefixed user message.
 - **Failure is best-effort**: a failed summarization call emits a
-  `CompactionFailed` event on the hub, feeds `Event.CompactionSkipped(reason)`,
+  `CompactionFailed` event on the hub, feeds `ConversationEvent.CompactionSkipped(reason)`,
   and the turn proceeds uncompacted — retried naturally at the next trigger. The
   session never dies because its summarizer hiccuped; if context truly
   overflows, the existing `MAX_TOKENS`/refusal machinery fails it loudly.
-- **Configuration**: `Compactors.summarizing(summarizer)` with builder
+- **Configuration (superseded in detail by the 2026-08-10 unbleed below;
+  shape stands)**: `Compactors.summarizing(summarizer)` with builder
   knobs `triggerTokens` (default 100k), `keepRecent` (default 10),
   `.window(w, maxTokens)`; the summarizer bakes `summaryMaxTokens` (default
   2,048) and `instructions`; `Compactor.disabled()`;
@@ -822,11 +887,11 @@ reducer keeps every scrap of bookkeeping authority:
 ```java
 public interface Compactor {                       // spi.compaction — renamed & consolidated 2026-08-10
     /** Pure — the reducer consults this at CallModel decision points. */
-    boolean requiresCompaction(SessionState state);
+    boolean requiresCompaction(ConversationState state);
 
     /** Effectful — the ENGINE performs this. May call models, may not.
      *  Decides on the ledger, transforms with the ledger in view. */
-    Result compact(SessionState state);
+    Result compact(ConversationState state);
 
     record Result(List<Message> workingSet) { }   // spend stripped 2026-08-10 — see the jurisdiction rule
 
@@ -860,7 +925,7 @@ dependencies (extractive/NLP, embeddings, remote services).
   perform `compact(…)` under the `nessy.compaction` observation, validate
   the result (`Context.of(replacement)` — a pair-breaking strategy takes
   the existing best-effort failure path), feed
-  `Event.Compacted(result.workingSet())`. Reducer: apply — replace
+  `ConversationEvent.Compacted(result.workingSet())`. Reducer: apply — replace
   messages wholesale, bump `generation`, proceed to `CallModel`. **The strategy proposes; the reducer
   disposes.** A result that does not *shrink* the working set is applied
   as a skip (no bump — the reducer's belt to the engine's suspenders). A
@@ -879,20 +944,74 @@ dependencies (extractive/NLP, embeddings, remote services).
   `Usage.zero()` a truncating compactor wrote was the abstraction
   apologizing. Wallet-guard integrity survives: compaction frequency is
   coupled to loop progress, which is exactly what the guard bounds.
-- **Replay hardens for free.** `Event.Compacted` now carries the entire
+- **Replay hardens for free.** `ConversationEvent.Compacted` now carries the entire
   replacement working set — the *outcome*, not ingredients for re-deriving
   it. The recompute-the-cut hazard parked by Plan 4's review dissolves: a
   replayed `Compacted` reproduces state by construction.
 - **The earlier pieces demote into the default strategy, not the trash.**
 
-  Constants bake at construction; the builder wires `forWindow(…)`
-  automatically when a `contextWindow` is declared on the model binding.
-  `AgentBuilder.compaction(Compactor)` is the single knob; the default
-  summarizing compactor is tuned through `Compactors.summarizing`'s builder
-  and the agent-level summarizer knobs. Alternative strategies (structured-facts digest, episodic
+  Constants bake at construction; `AgentBuilder.compaction(Compactor)` is
+  the single knob; the default summarizing compactor is tuned through
+  `Compactors.summarizing`'s own builder — see the unbleed below for exactly
+  where each knob now lives. Alternative strategies (structured-facts digest, episodic
   cuts, rebuild-from-journal) implement the seam with no grammar change —
   the grammar freezes over outcomes, which are stable, not mechanisms,
   which are not.
+
+**The unbleed (ruled 2026-08-10): no agent-level summary knobs, ever.** An
+earlier draft let `AgentBuilder` itself expose summary-shaped setters
+(`summaryMaxTokens(...)`, `summaryInstructions(...)`) as sugar over the
+default compactor — the agent-level surface bleeding into what belongs to
+the compactor's own builder. That sugar is REJECTED: `.compaction(Compactor)`
+is the ONE compaction-related method `AgentBuilder` exposes, full stop. Every
+knob the default summarizing compactor has — the summary reply's token cap,
+its instructions, the trigger, how many recent messages survive verbatim —
+belongs to a `Summarizer` and a `Compactors.summarizing(...)` builder,
+assembled explicitly and handed to `.compaction(...)` when an application
+wants anything other than the build-time default:
+
+```java
+Summarizer summarizer =
+    Summarizer.usingProvider(
+        provider, "fake-model", 1_024, "Summarize the conversation so far, focusing on open TODOs.",
+        observations);
+Compactor compactor =
+    Compactors.summarizing(summarizer).triggerTokens(50_000).keepRecent(20).build();
+
+Agent<String> agent = harness.agent().model("fake-model").compaction(compactor).build();
+```
+
+`Summarizer.usingProvider(ModelProvider, String model, int summaryMaxTokens,
+String instructions, ObservationRegistry)` is the production summarizer's one
+construction path; a four-argument overload defaults `summaryMaxTokens` to
+2,048 and `instructions` to `Summarizer.DEFAULT_INSTRUCTIONS`. **No persona
+in summaries**: every request `usingProvider` builds carries an empty system
+prompt — an agent's own `.systemPrompt(...)` is never forwarded to a
+summarization call, even though the summarizer shares the agent's provider
+and model; a persona quietly steering how its own history gets summarized was
+exactly the bleed this ruling closes.
+
+**`Compactors.window(int keepRecent)` joins `Compactors.summarizing(...)` as
+a second named strategy** — a zero-spend, lossy alternative: once triggered,
+it drops the working set's head at the nearest pair-safe boundary that still
+leaves `keepRecent` messages verbatim, no model call, no summary. Same
+trigger knobs (`triggerTokens`, `.window(window, maxTokens)`) as the
+summarizing builder, so switching between them is a one-line change. Use it
+when a compaction call's cost is unacceptable and losing the earliest turns
+outright (rather than condensing them) is an acceptable trade.
+
+**Build-time defaults + the warning doctrine.** An agent that never calls
+`.compaction(...)` still gets a working, summarizing compactor — assembled
+entirely internally by `AgentBuilder.build()` from the harness's own
+provider and the agent's resolved model, plus a declared `contextWindow`
+when there is one to derive the trigger from. That default is never silent:
+`AgentBuilder.build()` logs a warning once per agent naming the algorithm,
+the trigger, `keepRecent`, and the summarizing model, and pointing at
+`.compaction(...)` to configure something else — the same doctrine
+`Approver.allowAll()`'s unconfigured-approver default follows (§13.1): a
+zero-config posture is fine, a *silent* one is not, because trading tokens
+for fidelity is a real cost an application should choose, not inherit
+without being told.
 
 Semantics above (measured trigger via the default, pair-safe cut inside
 the default, best-effort failure, `COMPACTING`) are otherwise unchanged.
@@ -970,9 +1089,9 @@ the type, with head/tail slicing beside it — so the reducer, the
 summarizer's head selection, and any budget-aware projection all use one
 implementation of "where may I cut?". Wire-bound seams speak `Context`:
 `ModelRequest` and `ContextBuilder.project` speak `Context`; `Effect.Compact`/
-`Compactor.compact(SessionState)` receives the ledger; `Effect.Compact` is a bare marker (a pure
+`Compactor.compact(ConversationState)` receives the ledger; `Effect.Compact` is a bare marker (a pure
 reducer must not mint a throwing type), validated as a `Context` at the
-engine's compact-result check. `SessionState.messages` stays a plain list — a mid-turn state
+engine's compact-result check. `ConversationState.messages` stays a plain list — a mid-turn state
 legitimately ends with an open `tool_use` awaiting its results; the
 reducer guarantees completeness at every `CallModel`, which is where
 contexts are minted. An invalid projection now fails loudly at the seam,
@@ -1018,11 +1137,25 @@ verbs are for derivations.
   `Compactor`'s job on the ledger); reordering (order is meaning;
   inexpressible on purpose); raw positional insert (pairing's graveyard).
 
-**`TranscriptStore` (spi.session) — the append-only journal.**
+**Superseded in full by §17: `TranscriptStore` is DELETED, along with
+`TranscriptEntry`, `InMemoryTranscriptStore`, `NoOpTranscriptStore`, and the
+`.transcript(...)` builder knob.** The dedicated-seam design below was a real,
+shipped intermediate step — first a direct engine dependency, then (the "rides
+the hub" ruling just below) a hub subscriber — but §17 goes one step further
+and finishes the thought: there is no store type for the journal at all.
+`MessageAppended(ConversationId, Message, Usage turnUsage)` is the only
+first-class thing; journaling is simply a `.listen(MessageAppended.class,
+...)` (or `.listenAsync`) declaration like any other, with sync giving the
+strict/veto posture this section argues for and async giving the best-effort
+one. A future `nessy-store-cassandra` ships a listener class, not a store.
+`MessageCodec` survives, unchanged in role, in `spi.conversation`. Retained
+below for the reasoning history that led here.
+
+**`TranscriptStore` (spi.conversation) — the append-only journal (historical; deleted by §17).**
 
 ```java
 public interface TranscriptStore {
-    void append(SessionId id, TranscriptEntry entry);   // a pure sink — the ONLY method
+    void append(ConversationId id, TranscriptEntry entry);   // a pure sink — the ONLY method
 
     static TranscriptStore none() { … }                 // the default: auditability is opt-in
     static InMemoryTranscriptStore inMemory() { … }     // concrete type; exposes entries(id) for tests/hosts
@@ -1035,7 +1168,7 @@ public record TranscriptEntry(Message message, Usage turnUsage) { … }
 the journal — there is no `read` on the interface at all. Reading is the
 backing store's native business (CQL, SQL, the concrete in-memory type's
 own accessor); a combined implementation may physically rebuild
-`SessionStore` snapshots from journal rows, but that is its private
+`ConversationStore` snapshots from journal rows, but that is its private
 affair — the seam contracts stay independent. **The default is `none()`**
 — a noop sink, so the zero-config posture stays lean and compaction
 genuinely bounds memory; retaining full history (in-memory for tests,
@@ -1074,17 +1207,17 @@ persist opaque bytes, never message structure: a `MessageCodec` owns the
 codec *decorator* —
 `MessageCodec.encrypted(json, keyProvider)` — composing over any store
 implementation rather than being rebuilt per vendor. The seam serves
-`SessionStore` equally (encrypting the journal but not the snapshots would
+`ConversationStore` equally (encrypting the journal but not the snapshots would
 be theater). Key management is the application's; `nessy-core` ships no
 cryptography — the encrypting codec lives with the durable-store modules
 that need it. The in-memory defaults hold live objects and use no codec at
 all. The journal is never on the run
-hot path: loads and resumes come from `SessionStore` snapshots exactly as
+hot path: loads and resumes come from `ConversationStore` snapshots exactly as
 today. The journal exists for what snapshots cannot do — audit, debugging a
 bad summary, re-summarizing with a better model later, and memory
 extraction. With the journal as the durable source of truth for history,
 compaction's state rewrite is demoted from information loss to working-set
-trim. `SessionStore` is unchanged and `generation` survives (snapshot
+trim. `ConversationStore` is unchanged and `generation` survives (snapshot
 stores still diff by it). The exemplary durable implementation is
 **`nessy-store-cassandra`**: partition key per session, clustering by append
 sequence — an append-heavy write path with rare sequential reads is
@@ -1104,13 +1237,13 @@ public interface Summarizer {
 ```
 
 (The `Summary` pair exists because of the usage ruling: the engine needs
-the summarization call's spend to put on `Event.Compacted`.)
+the summarization call's spend to put on `ConversationEvent.Compacted`.)
 
 The head handed in may begin with the previous summary message, so
 summaries fold forward across recompactions instead of nesting. It returns
 prose plus the call's measured usage; the summary message's format and
 placement (the `SUMMARY_PREFIX` marker) live in `SummarizingCompaction`, not
-the reducer, so replay determinism stays in one place (`Event.Compacted`
+the reducer, so replay determinism stays in one place (`ConversationEvent.Compacted`
 carries the replacement working set and the spend, as shipped — never a raw
 string). Failure is a thrown `RuntimeException`,
 and the engine's best-effort path is unchanged: `CompactionFailed` on the
@@ -1153,8 +1286,10 @@ endpoint — drops in through the seam.
 
 **Packaging is by domain, not by a catch-all.** `spi.context` holds
 `ContextBuilder` (moved from `spi` root, a free rename pre-1.0);
-`spi.compaction` holds `Summarizer`; `spi.session` gains `TranscriptStore`
-beside `SessionStore`. Collaborators live next to the seam they serve, the way
+`spi.compaction` holds `Summarizer`; `spi.conversation` holds `ConversationStore`
+and `MessageCodec` (originally alongside `TranscriptStore` too, before §17
+deleted that type — the journal is a listener now, not a seam member here).
+Collaborators live next to the seam they serve, the way
 `spi.model` already works — with one exception: `TokenEstimator` lives in
 `api.message`, beside `Context`, not in `spi.context` — the edit algebra's
 `Context.tokens`/`Context.limitTokens` (§10.8) take it directly in `Context`'s
@@ -1169,7 +1304,7 @@ as shipped in Plan 4.
 
 The Contextualize phase is the one lifecycle phase with fully open,
 Maven-style binding. Its vocabulary, in the owner's words: **compact**
-happens conditionally and actually succeeds the `SessionState` (an
+happens conditionally and actually succeeds the `ConversationState` (an
 Evaluate decision, not part of this pipeline); **project** creates a
 projection of the working set (dropping, eliding, modifying); **enrich**
 adds new messages to the projection. Memory is just a `ContextEnricher`.
@@ -1188,7 +1323,7 @@ harness.agent(SupportInput.class)
   pure, total, applied in declaration order to the working set's minted
   `Context`. A projection's failure is the application's own bug and fails
   loud. Standard projections are written as lambdas over `Context`'s edit algebra (§10.8) — `ctx -> ctx.elideToolResults(2)` — proving the algebra sufficient; there are no opaque projection classes to import.
-- **`ContextEnricher`** (`spi.context`): `List<Message> enrich(SessionState
+- **`ContextEnricher`** (`spi.context`): `List<Message> enrich(ConversationState
   state)` — I/O sanctioned, each contributor individually best-effort (its
   own `nessy.context.enrich` observation and `EnrichmentFailed` hub event;
   a failed enricher costs its contribution, never the turn). Contributions
@@ -1271,7 +1406,7 @@ operation, no reliable parentage under concurrency), which is why there are two
 channels and not one.
 
 **Trace continuity across parking**: trace context is data, so it goes where data
-goes — the W3C `traceparent` rides in `SessionState`, and resume opens a
+goes — the W3C `traceparent` rides in `ConversationState`, and resume opens a
 continuation observation with a remote parent. Distributed trace continuity across
 park/resume falls out of the explicit-state architecture; it is a story
 listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
@@ -1299,19 +1434,23 @@ listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
 
 ## 13. Modules and the defaults ladder
 
+Rows below reflect §17's final shapes: the `EventHub` row is removed (the seam
+is retired, not upgraded — see §9); the journal row is now a declared
+listener, not a store.
+
 | Seam | In-core default | Upgrades Nessy provides | Extenders build |
 |---|---|---|---|
 | `ExecutionEngine` | `InProcessEngine` | `DurableEngine`; Temporal/Restate adapters | custom runtimes |
 | `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai`, retry decorator | any vendor |
-| `SessionStore` | `SessionStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
+| `ConversationStore` | `ConversationStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
-| `UsagePolicy` (per grant) | derived from `requiresApproval()` via `ToolGrant.grant` | path/allowlist rules; upgrades are contextual lambdas | OPA, corporate policy |
-| `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
+| `UsagePolicy` (per grant) | none — mandatory on every grant, stated explicitly via `ToolGrant.grant(tool, policy)` (§17 addendum; no derivation from the tool) | path/allowlist rules; upgrades are contextual lambdas | OPA, corporate policy |
+| Declared listening (§9, §17) | `listen(type, listener)` sync, build-time, frozen | `listenAsync(type, listener[, onError])` per listener | bridges (SSE, message bus) via `Conversation#events()` |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `Context` edit algebra (§10.8) / `ContextPipeline` (§10.9) | no projections, no enrichers — the working set unchanged | `ctx -> ctx.elideToolResults(keepRecent)`, `ctx -> ctx.limitTokens(budget, estimator)` as lambda projections (shipped); stateful compaction (shipped, §10.6) | RAG, redaction, custom `Projection`/`ContextEnricher` lambdas |
-| `TranscriptStore` (§10.8) | `TranscriptStore.inMemory()` | `nessy-store-cassandra` | any append-only journal |
-| `Summarizer` (§10.8) | `usingProvider(…)` — the session's own model | cheap-model variant; extractive | remote services, custom |
+| The journal (§10.8, §17) | absent — a declared `MessageAppended` listener is opt-in | `nessy-store-cassandra` ships a `MessageAppended` listener class, not a store | any listener that follows the transcript |
+| `Summarizer` (§10.8) | `usingProvider(…)` — the agent's own model, no persona forwarded | cheap-model variant; extractive | remote services, custom |
 | `TokenEstimator` (§10.8) | `heuristic()` (chars / 4) | tokenizer-library adapter | provider count-tokens APIs |
 | `Memory` (§10.9) | `Memory.none()` | graph-backed recall | vector stores, custom retrieval |
 
@@ -1408,15 +1547,16 @@ the application's own explicit declaration. If none is declared, the starter's
    |---|---|---|
    | `StopReason` wire audit | sealed enum; new values break exhaustive switches | ✅ cleared — both SDKs' values enumerated; mapped or loudly rejected (Plan 3) |
    | JPMS decision | module descriptor cannot be added/removed compatibly | ✅ cleared — withdrawn with evidence (§4.4) |
-   | Compaction grammar (`Effect.Compact`, `Event.Compacted`, `Event.CompactionSkipped`, `SessionStatus.COMPACTING`, `generation`/`lastInputTokens` on `SessionState`) | sealed additions + record components | ✅ cleared — shipped and tested end to end (§10.6) |
+   | Compaction grammar (`Effect.Compact`, `ConversationEvent.Compacted`, `ConversationEvent.CompactionSkipped`, `ConversationStatus.COMPACTING`, `generation`/`lastInputTokens` on `ConversationState`) | sealed additions + record components | ✅ cleared — shipped and tested end to end (§10.6) |
    | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | ✅ cleared — `Usage` is now `(inputTokens, outputTokens, cachedInputTokens)` |
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
-   | `Context` adoption (`ModelRequest` and the pipeline speak `Context`; `Compactor.compact(SessionState)` receives the ledger, its result validated as a `Context` at the engine) | seam signature + record component types; breaking after 1.0 | ✅ cleared — landed and tested end to end |
+   | `Context` adoption (`ModelRequest` and the pipeline speak `Context`; `Compactor.compact(ConversationState)` receives the ledger, its result validated as a `Context` at the engine) | seam signature + record component types; breaking after 1.0 | ✅ cleared — landed and tested end to end |
    | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | ✅ cleared — landed; `Agent<String>` is the degenerate case behind `Nessy.agent()` |
-   | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
+   | Entry-event vocabulary | sealed `ConversationEvent`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
    | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
    | Parallel tool execution | — | ✅ resolved as NOT a gate — needs no sealed change (multi-effect Steps + ordered feed, §10.7) |
+   | `Context.systemPrompt` (system-channel dynamics) | whether the system prompt gets its own place in the `Context` edit algebra, distinct from message content, is a shape decision breaking after 1.0 | open — interpolation itself is declined (§16); this gate is specifically about a future dynamic system-channel seam, not reopening interpolation |
 7. **Hardening (pre-1.0, non-blocking)**: Stream-translation tests should
    migrate to wire-JSON-driven fixtures (through each SDK's own
    deserialization) — builder-built fixtures validate a model of the wire, not
@@ -1435,11 +1575,11 @@ the application's own explicit declaration. If none is declared, the starter's
   moment it grows semantics of its own, it is rejected in review.
 - **JPMS friction**: automatic-module dependencies may fight the module graph;
   the contingency in §4.4 keeps it from blocking convergence.
-- **Hub misuse as a control plane**: partially re-scoped 2026-08-10 — the
-  synchronous spine (§9.1) *sanctions* veto-by-exception, so the remaining
-  line to hold is: no return values, and approval authority never moves off
-  the `Approver`/grant chokepoint. A subscriber may stop the world; it may
-  not decide anything.
+- **Declared listening misuse as a control plane**: re-scoped 2026-08-10 (§9,
+  §17) — the synchronous spine *sanctions* veto-by-exception, so the
+  remaining line to hold is: no return values, and approval authority never
+  moves off the `Approver`/grant chokepoint. A listener may stop the world;
+  it may not decide anything.
 
 ## 16. Decisions resolved in this revision
 
@@ -1449,27 +1589,28 @@ the application's own explicit declaration. If none is declared, the starter's
 | How is the extension surface identified? | A literal `spi` package zone; JPMS non-export of `internal` |
 | Is `Tool` API or SPI? | API — tools are the everyday programming model |
 | Own instrumentation facade or Micrometer? | Micrometer Observation, adopted directly |
-| Events as the observability backbone? | No — hub for narrative and counters; Observation for spans, timers, context |
-| Async or sync event delivery? | Synchronous default; async is a decorator |
-| One front door or two? | One: `Nessy.agent()`; engine reached through `Agent` |
-| Where does history live durably? (2026-08-09) | The append-only `TranscriptStore` journal, fed by the engine at message birth; state is the working set (§10.8) |
+| Events as the observability backbone? | No — declared listening for narrative and counters (§9); Observation for spans, timers, context |
+| Async or sync event delivery? | Synchronous default per listener; async is a per-listener declaration (`listenAsync`), not a hub flavor (§9, §17) |
+| One front door or two? | One: `Nessy.harness(provider)` (§17 supersedes the earlier `Nessy.agent()`); engine reached through `Agent` |
+| Where does history live durably? (2026-08-09; superseded 2026-08-10) | State is the working set (`ConversationStore`); the transcript itself is whatever a declared `MessageAppended` listener chooses to keep — no dedicated journal store exists (§10.8, §17) |
 | Where is the tool-pairing invariant enforced? (2026-08-09) | Once, in the `Context` type, at construction (§10.8) |
 | Is summarization pluggable? (2026-08-09) | Yes — `spi.compaction.Summarizer`, a many-implementations seam; summary formatting (the `SUMMARY_PREFIX` marker) lives in `SummarizingCompaction`, not the reducer (§10.8) |
 | Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` computes the message-level figure on demand, read-path only — the journal stores facts (`turnUsage`), never derivations (§10.8) |
 | What is a harness? (2026-08-09) | The model-independent runtime an agent runs inside, defined by its eight-service contract (§1.1); reified as the `Harness` object (§8.4) |
-| Where does authority attach? (2026-08-09) | To the grant — `ToolGrant` + `UsagePolicy` per agent-tool binding; `requiresApproval()` is the tool author's default; explicit grant policy may loosen or tighten (§10.5) |
+| Where does authority attach? (2026-08-09; tightened 2026-08-10) | To the grant, exclusively — `ToolGrant.grant(tool, policy)` per agent-tool binding, policy mandatory; `Tool.requiresApproval()` is DELETED, so there is no tool-author default left to loosen or tighten (§10.5, §17 addendum) |
 | Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
 | Are agents typed? (2026-08-09) | Yes, all of them — `Agent<I>` over an application-owned sealed vocabulary; `Agent<String>` degenerate; born pre-1.0; tools keep their own input types (§8.4) |
 | Whose spend does the ledger bill? (2026-08-10, supersedes 2026-08-09) | The loop's own — `TurnEnded` for conversational turns; auxiliary spend (compaction, tool-internal) is telemetry's jurisdiction; `Compacted` carries only the working set (§10.6) |
 | Is compaction pluggable? (2026-08-09; consolidated 2026-08-10) | Wholesale — `Compactor.requiresCompaction(state)` + `compact(state) → Result(workingSet)`; the compactor proposes, the reducer disposes; trigger/policy dissolved into `Compactors.summarizing`'s builder; `Summarizer` is its sub-seam (§10.6) |
-| Journal append failure? (2026-08-09) | Strict — audit-grade truth; a failed append fails the run; in-memory default cannot fail (§10.8) |
+| Journal append failure? (2026-08-09; relocated 2026-08-10) | Strict by default — a synchronous journal listener's throw fails the run, same as any other sync listener's veto; an application that prefers best-effort journaling declares `listenAsync` instead; there is no engine dependency left to be strict or lenient on the journal's behalf (§10.8, §17) |
 | At-rest encoding? (2026-08-09) | `MessageCodec` (`Message ↔ byte[]`): JSON-as-UTF-8 default, encryption as codec decorator, serving both stores; core ships no cryptography (§10.8) |
-| Is the journal readable through the seam? (2026-08-09) | No — `TranscriptStore` is a pure sink; the framework never reads it; default is `none()`, retention is opt-in (§10.8) |
-| Transcript vs Context? (2026-08-09) | The transcript is the journal's full history; `Context` is the validated wire-bound sequence; glossary §5.0 |
+| Is the journal readable through the seam? (2026-08-09; superseded 2026-08-10) | There is no journal seam any more to be readable or not — a declared `MessageAppended` listener is opt-in application code, not a framework-owned store (§10.8, §17) |
+| Transcript vs Context? (2026-08-09; glossary re-cast 2026-08-10) | The transcript is a *concept*, not a type — whatever a declared `MessageAppended` listener keeps; `Context` is the validated wire-bound sequence; glossary §5.0 |
 | Test-only interfaces: where? | Internal, unadvertised; promotion on evidence only |
 | `MODIFY` policy verb? | Rejected — attribution nightmare |
 | Grammar additions timing | Pre-1.0, per §7 list; frozen at 1.0 |
 | Termination defaults | `anyOf(maxConsecutiveErrors(3), maxTurns(100))` |
+| System-prompt interpolation? (2026-08-10) | Declined — static composes in userland (string concatenation ahead of `.systemPrompt(...)` needs no framework feature); dynamic is enrichment, and enrichment already has a seam (`ContextEnricher`, §10.9); system-channel dynamics (a system prompt that itself varies per request, not just per agent) await the `Context.systemPrompt` gate (§14) rather than being decided by default |
 
 
 ## 17. The conversation convergence (ruled 2026-08-10, evening)

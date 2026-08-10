@@ -221,7 +221,7 @@ class ValidationTest {
   }
 
   @Test
-  void a_compaction_failed_event_without_a_session_id_is_rejected() {
+  void a_compaction_failed_event_without_a_conversation_id_is_rejected() {
     assertThatThrownBy(() -> new CompactionFailed(null, "boom"))
         .isInstanceOf(NullPointerException.class);
   }

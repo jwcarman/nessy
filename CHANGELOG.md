@@ -19,7 +19,7 @@ sequence of renames and interim shapes that produced it.
 
 - **The front door.** `Nessy.harness(ModelProvider)` builds a `Harness`: the
   infrastructure an application shares across every agent it builds — model
-  provider, session store, observation registry, object mapper, declared
+  provider, conversation store, observation registry, object mapper, declared
   listeners — assembled once. `Harness#agent()` (untyped, `Agent<String>`) /
   `Harness#agent(Class<I>)` (typed) then return an `AgentBuilder` seeded with
   that infrastructure, ready for one agent's identity: model, system prompt,
@@ -74,7 +74,7 @@ sequence of renames and interim shapes that produced it.
   pipeline.project(...).enrich(...).placement(...))` on `AgentBuilder` wires
   the Contextualize phase (design §10.9): `Projection` (pure, total,
   `Context apply(Context)`) runs in declaration order over the `Context`
-  minted from the session's messages, then `ContextEnricher` contributors
+  minted from the conversation's messages, then `ContextEnricher` contributors
   (I/O, independently best-effort, emitting `EnrichmentFailed` on failure)
   concatenate in, placed by `ContextPipeline.Placement` relative to the
   projected transcript. `Context` (`api.message`) owns the pairing
@@ -83,12 +83,12 @@ sequence of renames and interim shapes that produced it.
   `map(Function<Message, Message>)` (revalidating), and
   `enrich(ContentBlock...)`; built on that kernel are `elideToolResults(int)`,
   `keepRecent(int)`, and `limitTokens(long, TokenEstimator)`. `Agent.contextFor
-  (SessionId)` answers "what would a call against this session see right now"
+  (ConversationId)` answers "what would a call against this conversation see right now"
   through the exact same pipeline instance the engine consults, so the
   preview and the real thing can never drift apart.
 - **`Compactor`/`Compactors`.** `Compactor` (`spi.compaction`) is the one
-  compaction seam: `requiresCompaction(SessionState)` (pure) and
-  `compact(SessionState)` (effectful, engine-only) — the compactor proposes a
+  compaction seam: `requiresCompaction(ConversationState)` (pure) and
+  `compact(ConversationState)` (effectful, engine-only) — the compactor proposes a
   replacement working set, the reducer disposes. `Compactors.summarizing(...)`
   is the default, assembled automatically from the harness's own provider
   unless `.compaction(Compactor)` replaces it outright: triggers once measured
@@ -101,7 +101,7 @@ sequence of renames and interim shapes that produced it.
   defaulted, once per agent `build()` (design §13.1). Compaction stays
   best-effort: a failed summarization call skips that turn's compaction and
   emits `CompactionFailed` rather than failing the turn. The jurisdiction
-  rule keeps a compactor's own spend out of `SessionState.usage()` — the
+  rule keeps a compactor's own spend out of `ConversationState.usage()` — the
   ledger bills only the loop's own conversational turns; a compactor's cost
   is telemetry's business, instrumented as its own `nessy.model.call`
   observation nested under `nessy.compaction`.
@@ -158,7 +158,7 @@ sequence of renames and interim shapes that produced it.
   ungated `AddTool` and an approval-gated `ClockTool` behind a
   `ConsoleApprover`, with `AnthropicChat` and `OpenAiChat` mains demonstrating
   the raw-event and per-tell-tap streaming patterns respectively.
-- **Time-ordered UUIDs (v7)** — session and park identifiers are time-ordered
+- **Time-ordered UUIDs (v7)** — conversation and park identifiers are time-ordered
   UUIDv7, sortable by creation time and index-friendly in durable stores.
 - Tests read as prose: method names are `snake_case` sentences, related
   scenarios group into `@Nested` classes, and the underscore-to-space

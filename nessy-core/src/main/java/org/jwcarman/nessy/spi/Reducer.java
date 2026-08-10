@@ -320,7 +320,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
     for (ToolCall pending : state.pendingCalls()) {
       results.add(
           new ToolResultBlock(
-              pending.id(), "Abandoned: the session failed before this tool ran.", true));
+              pending.id(), "Abandoned: the conversation failed before this tool ran.", true));
     }
     return state.withPendingResults(results).withPendingCalls(List.of());
   }

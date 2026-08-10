@@ -277,13 +277,13 @@ class AgentFacadeTest {
   }
 
   @Test
-  void contextFor_rejects_an_unknown_session() {
+  void contextFor_rejects_an_unknown_conversation() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
 
     assertThatThrownBy(() -> agent.contextFor(ConversationId.generate()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("unknown session");
+        .hasMessageContaining("unknown conversation");
   }
 
   @Test
@@ -748,6 +748,66 @@ class AgentFacadeTest {
     chat.tell("still there?");
 
     assertThat(tapped).hasSize(sizeAfterTappedTell);
+  }
+
+  /**
+   * The plan's facade proof for design §17: every listening level fires for one {@code tell}, in
+   * the pinned delivery order (conversation-local first, then the frozen chain — harness seed
+   * before the agent's own), and every event each level sees carries the {@code conversationId} of
+   * the conversation that produced it.
+   */
+  @Test
+  void everything_centers_on_a_conversation() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
+    List<String> order = new ArrayList<>();
+    List<ConversationEvent> seenByHarness = new ArrayList<>();
+    List<ConversationEvent> seenByAgent = new ArrayList<>();
+    List<ConversationEvent> seenByConversation = new ArrayList<>();
+
+    Harness harness =
+        Nessy.harness(provider)
+            .listen(
+                ConversationEvent.class,
+                event -> {
+                  order.add("harness");
+                  seenByHarness.add(event);
+                })
+            .build();
+    Agent<String> agent =
+        harness
+            .agent()
+            .model("fake-model")
+            .listen(
+                ConversationEvent.class,
+                event -> {
+                  order.add("agent");
+                  seenByAgent.add(event);
+                })
+            .build();
+    Conversation<String> chat = agent.converse();
+    chat.events()
+        .subscribe(
+            ConversationEvent.class,
+            event -> {
+              order.add("conversation");
+              seenByConversation.add(event);
+            });
+
+    chat.tell("what is 2+2?");
+
+    assertThat(seenByHarness).isNotEmpty();
+    assertThat(seenByAgent).isNotEmpty();
+    assertThat(seenByConversation).isNotEmpty();
+    // Pinned delivery order (design §17): this conversation's dynamic subscriber first, then the
+    // frozen chain — the harness's declaration, then the agent's own.
+    assertThat(order.subList(0, 3)).containsExactly("conversation", "harness", "agent");
+    assertThat(seenByHarness)
+        .allSatisfy(event -> assertThat(event.conversationId()).isEqualTo(chat.conversationId()));
+    assertThat(seenByAgent)
+        .allSatisfy(event -> assertThat(event.conversationId()).isEqualTo(chat.conversationId()));
+    assertThat(seenByConversation)
+        .allSatisfy(event -> assertThat(event.conversationId()).isEqualTo(chat.conversationId()));
   }
 
   /**

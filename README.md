@@ -7,7 +7,7 @@
 An AI agent harness framework for Java.
 
 Nessy supplies the machinery that turns a model API into an agent — the effectful
-loop, the tool plumbing, an approval gate the model cannot route around, sessions
+loop, the tool plumbing, an approval gate the model cannot route around, conversations
 that pause and resume across processes, streaming as a first-class citizen, and
 observability built in rather than bolted on. Every one of those parts is a
 deliberate seam: swap the piece, keep the framework.
@@ -60,12 +60,12 @@ reply.text(); // "The answer is 4."
 `Nessy.harness(provider)` is the only front door — the provider is the
 harness's one required thing, enforced by signature rather than discovered
 later at `build()`. `Agent<I>` is a configured, reusable handle over its input
-vocabulary `I`; `converse()` opens a session and returns a `Conversation<I>`,
+vocabulary `I`; `converse()` opens a conversation and returns a `Conversation<I>`,
 whose `tell(I)` returns a `Reply` wrapping the final state — `text()` is the
 assistant's prose, extracted. `.agent()` gives you `Agent<String>`, the
 degenerate case where `I` is plain text — see [Typed agents](#typed-agents)
 below for an application's own input vocabulary. Every builder default already
-works: in-memory session store, an allow-all approver (replace it before you
+works: in-memory conversation store, an allow-all approver (replace it before you
 point real tools at anything), no-op observations. The smallest useful agent
 is a provider and a model name.
 
@@ -102,7 +102,7 @@ does not belong on the harness.
 
 | | Owned by the harness | Seeded (agent may extend) | Granted (agent-only) |
 |---|---|---|---|
-| What | provider, session store, observations, object mapper | `defaultModel`, declared listeners | tools |
+| What | provider, conversation store, observations, object mapper | `defaultModel`, declared listeners | tools |
 | Override on `AgentBuilder`? | never — a second harness, not an override | `.model(...)` wins; `.listen`/`.listenAsync` append after the harness's own | no harness toolkit API at all — `tools(...)` accepts a userland constant handed to whichever agents need it |
 
 ```java
@@ -117,8 +117,8 @@ Agent<String> agent =
         .build();
 ```
 
-Two agents built from the same harness share its session store by
-construction — one store holds every agent's sessions. Cross-agent
+Two agents built from the same harness share its conversation store by
+construction — one store holds every agent's conversations. Cross-agent
 observability is a harness-declared listener (see
 [Declared listening](#declared-listening) below): declare it once on the
 harness and it is seeded into every agent's own frozen chain, so the same
@@ -201,8 +201,8 @@ ever sees another conversation's traffic, so no manual id filtering is ever
 needed. `Conversation#tell(input, tap)` is sugar over exactly this: a
 subscription wired for the duration of one call and closed when it returns.
 
-`agent.contextFor(sessionId)` is the debugging affordance that comes with
-service #2: it answers *what would a call made against this session see right
+`agent.contextFor(conversationId)` is the debugging affordance that comes with
+service #2: it answers *what would a call made against this conversation see right
 now*, truthfully and without spending a model call, by running the exact same
 `ContextPipeline` (project-then-enrich) choreography the engine runs on every
 send. See [Context management](#context-management) below for what it does
@@ -257,12 +257,12 @@ before the engine ever sees it — rather than silently degrading.
 
 ## How it works
 
-The core is an **effectful reducer**. `reduce(SessionState, Event)` is pure,
+The core is an **effectful reducer**. `reduce(ConversationState, ConversationEvent)` is pure,
 synchronous, and total — it returns the next state plus a list of `Effect`s
 describing what should happen, and never performs I/O itself. An
-`ExecutionEngine` performs those effects and feeds every result back in as an
-`Event`, so streaming tokens are ordinary events rather than a retrofit, and
-`SessionState` is a plain serializable record — pausing is "stop feeding events,"
+`ExecutionEngine` performs those effects and feeds every result back in as a
+`ConversationEvent`, so streaming tokens are ordinary events rather than a retrofit, and
+`ConversationState` is a plain serializable record — pausing is "stop feeding events,"
 resuming is "load the state and keep feeding," whether the gap is 200
 milliseconds or two days. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
@@ -279,11 +279,11 @@ it's SPI.**
 |---|---|---|
 | Front door | `org.jwcarman.nessy` | everyone's first five minutes — `Nessy`, `Agent`, `Conversation`, `Reply` |
 | API | `org.jwcarman.nessy.api…` | application developers: `Tool`, `Approver`, the message/event grammar |
-| SPI | `org.jwcarman.nessy.spi…` | infrastructure extenders: `ExecutionEngine`, `ModelProvider`, `SessionStore` |
+| SPI | `org.jwcarman.nessy.spi…` | infrastructure extenders: `ExecutionEngine`, `ModelProvider`, `ConversationStore` |
 | Internal | `org.jwcarman.nessy.internal` | nobody outside this repo — changes freely, never exported as a contract |
 
 By this rule `Tool` is API — writing tools is everyday application development,
-the way implementing a `Servlet` was — while `SessionStore` is SPI, the way
+the way implementing a `Servlet` was — while `ConversationStore` is SPI, the way
 implementing a JDBC `Driver` is vendor work.
 
 ## The seams and their defaults
@@ -295,7 +295,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 |---|---|---|---|
 | `ExecutionEngine` | `InProcessEngine` | `DurableEngine`; Temporal/Restate adapters | custom runtimes |
 | `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai` | any vendor |
-| `SessionStore` | `SessionStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
+| `ConversationStore` | `ConversationStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
 | `UsagePolicy` | `allow()` / `requireApproval()` stated per `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
@@ -353,7 +353,7 @@ so metrics stay stable even as those still-evolving conventions do not:
 The default summarizing `Compactor` reuses the `nessy.model.call` / `chat
 {model}` convention for its own summarization call, nested under
 `nessy.compaction` — see "Compaction" below for why that spend surfaces as
-telemetry rather than in `SessionState.usage()`.
+telemetry rather than in `ConversationState.usage()`.
 
 Wiring is `.observations(ObservationRegistry)` on the builder, default `NOOP`; the
 seams themselves reference Micrometer nowhere. The planned Spring Boot starter
@@ -374,10 +374,10 @@ one `send` call.
 
 ## Context management
 
-Three words, three meanings. **The transcript** is a session's entire message
+Three words, three meanings. **The transcript** is a conversation's entire message
 history, forever — append-only, held by whatever `MessageAppended` listener
 you declare as a journal, if you declare one. **The working set** is
-`SessionState.messages()`: the ledger's
+`ConversationState.messages()`: the ledger's
 current, possibly-compacted view — `[summary, …tail]` once compaction has run.
 **A `Context`** is what one model call actually sees: a validated, pairing-legal
 message sequence minted per request, never smaller in scope than what the
@@ -386,11 +386,11 @@ message sequence minted per request, never smaller in scope than what the
 ### Compaction: one seam, `Compactor`
 
 Compaction is on by default. Every `Agent` runs a `Compactor` —
-`requiresCompaction(SessionState)` decides when the working set needs
-shrinking, `compact(SessionState)` shrinks it, seeing the whole ledger rather
+`requiresCompaction(ConversationState)` decides when the working set needs
+shrinking, `compact(ConversationState)` shrinks it, seeing the whole ledger rather
 than just a message list — and unless you say otherwise that compactor is the
 summarizing default assembled by `Compactors.summarizing(summarizer)`: it
-triggers once `SessionState.lastInputTokens()` (the measured input-token count
+triggers once `ConversationState.lastInputTokens()` (the measured input-token count
 the model itself reported for the previous turn) reaches 100,000 tokens, and
 shrinks by asking the model to summarize everything except the most recent 10
 messages, capping that summary reply at 2,048 tokens. The cut always lands on
@@ -455,14 +455,14 @@ proceeds uncompacted rather than blocking the conversation, and every declared
 listener sees a `CompactionFailed(conversationId, reason)` event so you can
 observe and alert on it like any other emitted event.
 
-**The jurisdiction rule.** `SessionState.usage()` only ever bills the loop's
+**The jurisdiction rule.** `ConversationState.usage()` only ever bills the loop's
 own spend — what each conversational turn's `TurnEnded` reports. Whatever a
 compactor's own call costs is auxiliary spend, and auxiliary spend is
 telemetry's jurisdiction, not the ledger's: the summarizing default
 instruments its own model call as a `nessy.model.call` observation (see
 "Observability" above), the same convention the engine's own conversational
 calls use, nested under `nessy.compaction`. It never shows up in
-`SessionState.usage()` — a custom `Compactor` that calls a model should follow
+`ConversationState.usage()` — a custom `Compactor` that calls a model should follow
 the same convention rather than inventing a new one.
 
 ### Declaring a small model's window
@@ -531,7 +531,7 @@ whichever backing store you choose.
 
 ### Projecting and enriching what the model sees: the context pipeline
 
-The Contextualize phase turns the ledger (`SessionState`) into the `Context`
+The Contextualize phase turns the ledger (`ConversationState`) into the `Context`
 one model call actually sees, and it is the one phase of the lifecycle that is
 fully open, Maven-style: bindings declared once, at build time, in reviewable
 code, never registered at runtime through the hub. `.context(...)` configures
@@ -554,7 +554,7 @@ A `ContextPipeline` runs in two stages, both in declaration order:
 
 **PROJECT** transforms are `Projection` (`spi.context`): `Context apply(Context
 context)` — pure and total, no I/O, same output for the same input. Applied to
-the `Context` minted from the session's messages, before any enrichment.
+the `Context` minted from the conversation's messages, before any enrichment.
 Standard projections are written as lambdas over `Context`'s own edit algebra
 (`drop`, `map`, `enrich`, and the structural verbs built on them) rather than
 opaque classes: `ctx -> ctx.elideToolResults(keepRecentMessages)` replaces the
@@ -574,11 +574,11 @@ context window is the scarcer resource, and a bad one when you're paying for
 cache misses more than you're saving in tokens. Projection never touches
 compaction's summarization call either: the summarizer always sees the
 un-elided prefix the reducer chose to compact, even when `elideToolResults`
-is projecting every other request in the session.
+is projecting every other request in the conversation.
 
 **ENRICH** contributors are `ContextEnricher` (`spi.context`): `List<Message>
-enrich(SessionState state)` — I/O sanctioned, so pulling facts from a graph or
-vector store outside the session's own transcript is a sibling concern to
+enrich(ConversationState state)` — I/O sanctioned, so pulling facts from a graph or
+vector store outside the conversation's own transcript is a sibling concern to
 projection, not a projection itself. Memory is just a `ContextEnricher`.
 Enrichers key on the ledger, not the projected `Context` — the context is the
 thing that will *include* the enrichment, and projection is a wire concern (an
@@ -608,8 +608,8 @@ enrichment strategy — enriching only at the moment compaction already churns
 the prefix — aligns the two churns instead of adding a second, independent
 one.
 
-`agent.contextFor(sessionId)` runs the exact same `ContextPipeline` instance
-the engine consults on every send — against a session's current stored state
+`agent.contextFor(conversationId)` runs the exact same `ContextPipeline` instance
+the engine consults on every send — against a conversation's current stored state
 — and hands back the resulting `Context`: *exactly what a call made right now
 would see*, truthfully and without a model call. It still performs
 enrichment's I/O to answer, so configured `ContextEnricher` contributors are
@@ -642,10 +642,14 @@ exclusion:
 
 ## Status
 
-Early, and honest about it. `nessy-core` and `nessy-testing` are converged to the
-v2 design: the effectful reducer, the full sealed grammar, declared listening,
-`TerminationPolicy`, Micrometer Observation instrumentation, and the `Agent`
-facade are all implemented and tested end to end against a scripted model.
+Early, public, and honest about both. `nessy-core` and `nessy-testing` are
+converged to the v2 design, including its §17 conversation convergence: the
+effectful reducer, the full self-attributing sealed grammar (the misdelivery
+guard rejects a fact addressed to one conversation but folded into another's
+state), declared listening (frozen, seeded, scoped — no runtime-subscribable
+hub), `TerminationPolicy`, Micrometer Observation instrumentation, and the
+`Agent` facade are all implemented and tested end to end against a scripted
+model.
 
 Real model providers are **built and live-validated**: `nessy-model-anthropic`
 and `nessy-model-openai` wrap each vendor's own Java SDK — native request
@@ -677,8 +681,10 @@ application-owned input vocabulary, `tell` is the only verb (`send` is gone),
 and `InputRenderer<I>` renders that vocabulary onto the wire — see
 [Typed agents](#typed-agents) above.
 
-Not yet built: a durable execution engine, the Spring Boot starter, and a TUI.
-See
+Not yet built: a durable execution engine (`DurableEngine`), the Spring Boot
+starter, a TUI, the agent-as-a-tool adapter (wrapping an `Agent<I>` as one
+tool for a parent agent), and publishing a typed agent's input schema into
+the system prompt. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
 

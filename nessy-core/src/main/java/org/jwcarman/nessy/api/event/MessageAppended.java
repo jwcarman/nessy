@@ -21,7 +21,7 @@ import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
 
 /**
- * One message, at the moment it was born into a session's transcript.
+ * One message, at the moment it was born into a conversation's transcript.
  *
  * <p>The engine emits this at its newborn choke point for every message a reduce produces, in birth
  * order, before anything read-shaped (compaction, elision, windowing) ever gets an opinion. It is
@@ -29,7 +29,7 @@ import org.jwcarman.nessy.api.message.Message;
  * extraction, transcription mirrors, streaming UIs. The journal is not a privileged engine
  * dependency — it is simply a declared listener for this event (design §17).
  *
- * @param conversationId the session this message belongs to
+ * @param conversationId the conversation this message belongs to
  * @param message the settled message, exactly as born
  * @param turnUsage the usage to attribute to this message: the flushed assistant message of a model
  *     turn carries that turn's usage; every other newborn message, including a compaction's

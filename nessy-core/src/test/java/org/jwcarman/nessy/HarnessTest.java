@@ -103,13 +103,13 @@ class HarnessTest {
 
     Agent<String> agentA = harness.agent().model("model-a").build();
     Agent<String> agentB = harness.agent().model("model-b").build();
-    ConversationId sessionA = agentA.converse().tell("hello").state().id();
-    ConversationId sessionB = agentB.converse().tell("hello").state().id();
+    ConversationId conversationA = agentA.converse().tell("hello").state().id();
+    ConversationId conversationB = agentB.converse().tell("hello").state().id();
 
     assertThat(observed.stream().map(ConversationEvent::conversationId))
-        .contains(sessionA, sessionB);
-    assertThat(store.load(sessionA)).isPresent();
-    assertThat(store.load(sessionB)).isPresent();
+        .contains(conversationA, conversationB);
+    assertThat(store.load(conversationA)).isPresent();
+    assertThat(store.load(conversationB)).isPresent();
   }
 
   @Test
