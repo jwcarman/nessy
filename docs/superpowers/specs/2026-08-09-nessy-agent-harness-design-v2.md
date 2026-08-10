@@ -794,7 +794,7 @@ prefix with one summary message, keeps the recent tail verbatim, bumps
 tail; bumped → rewrite), and proceeds to `CallModel`.
 
 Design rules:
-- **Survivors**: summary + recent tail (`CompactionPolicy.keepRecentMessages`,
+- **Survivors**: summary + recent tail (the summarizing builder's `keepRecent`,
   pair-safe — the cut boundary only falls before a genuine user text turn, never
   between an assistant `tool_use` and its results, preserving the transcript
   invariant). The summary ships as a clearly-prefixed user message.
@@ -803,10 +803,11 @@ Design rules:
   and the turn proceeds uncompacted — retried naturally at the next trigger. The
   session never dies because its summarizer hiccuped; if context truly
   overflows, the existing `MAX_TOKENS`/refusal machinery fails it loudly.
-- **Configuration**: `CompactionPolicy(long triggerTokens, int
-  keepRecentMessages, int summaryMaxTokens, String instructions)` in `api`,
-  with `defaults()` (enabled, 100k trigger, 10 kept messages, 2,048-token
-  summary cap) and `disabled()`; `AgentBuilder.compaction(policy)`.
+- **Configuration**: `Compactors.summarizing(summarizer)` with builder
+  knobs `triggerTokens` (default 100k), `keepRecent` (default 10),
+  `.window(w, maxTokens)`; the summarizer bakes `summaryMaxTokens` (default
+  2,048) and `instructions`; `Compactor.disabled()`;
+  `AgentBuilder.compaction(compactor)`.
   Compaction-by-default replaces v1's "fail loudly on overflow" — the loud
   failure remains the backstop, no longer the plan.
 
@@ -877,23 +878,6 @@ dependencies (extractive/NLP, embeddings, remote services).
   it. The recompute-the-cut hazard parked by Plan 4's review dissolves: a
   replayed `Compacted` reproduces state by construction.
 - **The earlier pieces demote into the default strategy, not the trash.**
-  The default is *not* a static factory on the `CompactionStrategy`
-  interface itself: `api` may never depend on `spi` (see
-  `ZoneBoundariesTest`), and the default needs a `Summarizer`, which is an
-  `spi.compaction` type. So it lives as
-  `org.jwcarman.nessy.spi.compaction.CompactionStrategies#summarizing(CompactionPolicy,
-  Summarizer)` instead; `CompactionStrategy.disabled()` is the only factory
-  that belongs on the interface, because it needs nothing from `spi`. Most
-  callers reach the summarizing default through `AgentBuilder`, which
-  assembles it for you. `requiresCompaction` delegates to the policy's
-  trigger, `compact` cuts at `Context.pairSafeCut(keepRecentMessages)` (no
-  safe cut → unchanged result → skip) and stands in a `Summarizer` summary
-  for the head.
-  `CompactionPolicy` becomes its knob bundle — `(CompactionTrigger
-  trigger, int keepRecentMessages, int summaryMaxTokens, String
-  instructions)`, `defaults()` = `atTokens(100_000)`, `disabled()` =
-  `never()` — and `CompactionTrigger` is the pluggable decision half:
-
 
   Constants bake at construction; the builder wires `forWindow(…)`
   automatically when a `contextWindow` is declared on the model binding.
@@ -922,7 +906,7 @@ where each truthfully lives:
   (OpenRouter's `context_length`, Ollama metadata) may pre-fill;
   application declaration always wins. No model→window table ships in
   core — hardcoded facts about other vendors' products rot on arrival.
-- **Derived**: `CompactionTrigger.forWindow(window, maxTokens)` computes
+- **Derived**: the summarizing builder's `.window(window, maxTokens)` computes
   the threshold as roughly `0.8 × (window − maxTokens)` — reserving the
   reply's room, with the margin absorbing between-measurement growth
   (the new user turn, tool-result spikes, recall drift). The builder
@@ -980,7 +964,7 @@ the type, with head/tail slicing beside it — so the reducer, the
 summarizer's head selection, and any budget-aware projection all use one
 implementation of "where may I cut?". Wire-bound seams speak `Context`:
 `ModelRequest` and `ContextBuilder.project` speak `Context`; `Effect.Compact`/
-`CompactionStrategy.compact` carry the working set as `List<Message>` (a pure
+`Compactor.compact(SessionState)` receives the ledger; `Effect.Compact` is a bare marker (a pure
 reducer must not mint a throwing type), validated as a `Context` at the
 engine's compact-result check. `SessionState.messages` stays a plain list — a mid-turn state
 legitimately ends with an open `tool_use` awaiting its results; the
@@ -1025,7 +1009,7 @@ verbs are for derivations.
   projection; from *storage* → the codec/at-rest layer; from the *record*
   → the front door, before `tell`. A redaction feature that does not ask
   "from whom?" is theater); summarization (I/O and money —
-  `CompactionStrategy`'s job on the ledger); reordering (order is meaning;
+  `Compactor`'s job on the ledger); reordering (order is meaning;
   inexpressible on purpose); raw positional insert (pairing's graveyard).
 
 **`TranscriptStore` (spi.session) — the append-only journal.**
@@ -1101,13 +1085,13 @@ sequence — an append-heavy write path with rare sequential reads is
 precisely the workload Cassandra's storage model is built for.
 
 **`Summarizer` (spi.compaction) — the default strategy's sub-seam.**
-(Ruled 2026-08-09: `CompactionStrategy` in §10.6 owns compaction wholesale;
+(Ruled 2026-08-09, names as consolidated 2026-08-10: `Compactor` in §10.6 owns compaction wholesale;
 `Summarizer` survives inside the default `summarizing(…)` strategy so "same
 strategy, cheaper model" never requires reimplementing cut logic.)
 
 ```java
 public interface Summarizer {
-    Summary summarize(Context head, CompactionPolicy policy);
+    Summary summarize(Context head);   // config baked at construction (2026-08-10)
 
     record Summary(String text, Usage usage) { }   // non-LLM summarizers return Usage.zero()
 }
@@ -1172,7 +1156,7 @@ own public signature, and `api` may not depend on `spi`.
 
 **What this amendment does not touch:** the measured trigger, the pair-safe
 cut semantics (relocated, not changed), best-effort failure,
-`CompactionPolicy`'s shape, and the engine's durability contract all stand
+the compactor knobs, and the engine's durability contract all stand
 as shipped in Plan 4.
 
 ### 10.9 The context pipeline — the Contextualize phase (vocabulary settled 2026-08-10)
@@ -1422,7 +1406,7 @@ the application's own explicit declaration. If none is declared, the starter's
    | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | ✅ cleared — `Usage` is now `(inputTokens, outputTokens, cachedInputTokens)` |
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
-   | `Context` adoption (`ModelRequest`/`ContextBuilder.project` speak `Context`; `Effect.Compact`/`CompactionStrategy.compact` carry `List<Message>`, validated as a `Context` at the engine's compact-result check) | seam signature + record component types; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
+   | `Context` adoption (`ModelRequest` and the pipeline speak `Context`; `Compactor.compact(SessionState)` receives the ledger, its result validated as a `Context` at the engine) | seam signature + record component types; breaking after 1.0 | ✅ cleared — landed and tested end to end |
    | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | ✅ cleared — landed; `Agent<String>` is the degenerate case behind `Nessy.agent()` |
    | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
    | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
@@ -1471,7 +1455,7 @@ the application's own explicit declaration. If none is declared, the starter's
 | Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
 | Are agents typed? (2026-08-09) | Yes, all of them — `Agent<I>` over an application-owned sealed vocabulary; `Agent<String>` degenerate; born pre-1.0; tools keep their own input types (§8.4) |
 | Does compaction's spend count? (2026-08-09) | Yes — `Event.Compacted(workingSet, spend)`; a bill, not a diff; non-LLM strategies bill `Usage.zero()`; the exclusion is repealed (§10.6) |
-| Is compaction pluggable? (2026-08-09) | Wholesale — `CompactionStrategy.requiresCompaction(state)` + `compact(workingSet) → Result(workingSet, spend)`; the strategy proposes, the reducer disposes; `CompactionTrigger`/`Summarizer`/`CompactionPolicy` demote into the default `summarizing(…)` strategy (§10.6) |
+| Is compaction pluggable? (2026-08-09; consolidated 2026-08-10) | Wholesale — `Compactor.requiresCompaction(state)` + `compact(state) → Result(workingSet, spend)`; the compactor proposes, the reducer disposes; trigger/policy dissolved into `Compactors.summarizing`'s builder; `Summarizer` is its sub-seam (§10.6) |
 | Journal append failure? (2026-08-09) | Strict — audit-grade truth; a failed append fails the run; in-memory default cannot fail (§10.8) |
 | At-rest encoding? (2026-08-09) | `MessageCodec` (`Message ↔ byte[]`): JSON-as-UTF-8 default, encryption as codec decorator, serving both stores; core ships no cryptography (§10.8) |
 | Is the journal readable through the seam? (2026-08-09) | No — `TranscriptStore` is a pure sink; the framework never reads it; default is `none()`, retention is opt-in (§10.8) |
