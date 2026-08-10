@@ -190,9 +190,8 @@ org.jwcarman.nessy.api.event     EventEmitter, EventHub, Subscription, SessionEv
 org.jwcarman.nessy.spi           ExecutionEngine, Reducer, Effect (sealed), Step, InProcessEngine
 org.jwcarman.nessy.spi.model     ModelProvider, ModelRequest, ModelEvent (sealed), ModelStream,
                                  Capability, ModelSettings
-org.jwcarman.nessy.spi.context   ContextBuilder, TokenEstimator          [amended, §10.8]
+org.jwcarman.nessy.spi.context   ContextPipeline, Projection, ContextEnricher, TokenEstimator  [§10.9]
 org.jwcarman.nessy.spi.compaction Summarizer                             [amended, §10.8]
-org.jwcarman.nessy.spi.memory    Memory                                  [§10.9]
 org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry, MessageCodec  [§10.8]
 org.jwcarman.nessy.internal      ToolInvoker, Schemas, observation conventions, engine machinery
 ```
@@ -367,7 +366,7 @@ the table is normative about openness:
 |---|---|---|---|
 | Load | snapshot → ledger | `SessionStore` | seam |
 | Prepare | wiring | build time, on purpose — harness + grants, reviewable | closed at runtime (the grant principle) |
-| Contextualize | ledger → `Context` | the context pipeline: `recall`/`shape` bindings (§10.9) | fully open |
+| Contextualize | ledger → `Context` | the context pipeline: `project`/`enrich` bindings (§10.9) | fully open |
 | Invoke | `Context` → stream | provider decorators (retry, routing); observations | decorate |
 | Interpret | wire → facts | sealed grammar + reducer | **closed — determinism is the product** |
 | Execute | wishes → outcomes | tools, through the grant chokepoint | open through the chokepoint only |
@@ -1117,52 +1116,53 @@ cut semantics (relocated, not changed), best-effort failure,
 `CompactionPolicy`'s shape, and the engine's durability contract all stand
 as shipped in Plan 4.
 
-### 10.9 The context pipeline — the Contextualize phase (re-settled 2026-08-10)
+### 10.9 The context pipeline — the Contextualize phase (vocabulary settled 2026-08-10)
 
-Supersedes the separate `Memory`-seam and context-assembler sections: the
-project owner's Maven instinct lands here, as the one lifecycle phase with
-fully open, Maven-style binding. `ContextBuilder`, the `Memory` wiring, and
-`ContextAssembler` dissolve into one concept:
+The Contextualize phase is the one lifecycle phase with fully open,
+Maven-style binding. Its vocabulary, in the owner's words: **compact**
+happens conditionally and actually succeeds the `SessionState` (an
+Evaluate decision, not part of this pipeline); **project** creates a
+projection of the working set (dropping, eliding, modifying); **enrich**
+adds new messages to the projection. Memory is just a `ContextEnricher`.
 
 ```java
 harness.agent(SupportInput.class)
     .context(pipeline -> pipeline
-        .recall(graphMemory)                 // RECALL: 0..n contributors
-        .recall(userPreferences)
-        .shape(elidingToolResults(2))        // SHAPE: 0..n transforms, declaration order
-        .shape(redactingSecrets())
-        .placement(MEMORIES_FIRST))          // where RECALL contributions land
+        .project(elidingToolResults(2))      // PROJECT: 0..n, pure, declaration order
+        .project(redactingSecrets())
+        .enrich(graphMemory)                 // ENRICH: 0..n contributors, each best-effort
+        .enrich(userProfile)
+        .placement(ENRICHMENTS_FIRST))       // where enrichments land
 ```
 
-- **RECALL** contributors are `Memory` (`spi.memory`, unchanged):
-  `List<Message> recall(SessionState state)` — I/O sanctioned, each
-  contributor individually best-effort (its own `nessy.memory.recall`
-  observation and `RecallFailed` hub event; a failed contributor costs its
-  contribution, never the turn). Contributions concatenate in declaration
-  order.
-- **SHAPE** transforms are `Shape` (`spi.context`): `Context apply(Context
-  context)` — pure, total, applied in declaration order to the working
-  set's minted `Context`. A shape's failure is the application's own bug
-  and fails loud at assembly. `elidingToolResults(keepRecent)` becomes the
-  first standard shape; `ContextBuilder` is deleted (its `identity()` is
-  the empty shape list).
-- **Placement** is policy, not hardcode: where recalled material lands
-  relative to the shaped transcript (`MEMORIES_FIRST` default; the cache
-  tradeoff documented — recalled content churns the prefix;
-  refresh-on-compaction aligns the churn).
+- **`Projection`** (`spi.context`): `Context apply(Context context)` —
+  pure, total, applied in declaration order to the working set's minted
+  `Context`. A projection's failure is the application's own bug and fails
+  loud. `elidingToolResults(keepRecent)` is the first standard projection.
+- **`ContextEnricher`** (`spi.context`): `List<Message> enrich(SessionState
+  state)` — I/O sanctioned, each contributor individually best-effort (its
+  own `nessy.context.enrich` observation and `EnrichmentFailed` hub event;
+  a failed enricher costs its contribution, never the turn). Contributions
+  concatenate in declaration order. Memory implementations are enrichers;
+  the former `spi.memory` package dissolves here — so do RAG, user
+  profiles, ambient facts, anything additive.
+- **Why project before enrich — jurisdiction, not sequence.** Enrichers
+  key on the ledger, not the projection, so ordering costs them nothing.
+  Projections govern the *transcript's* wire form; enriched material must
+  be outside their reach — otherwise every projection carries a
+  "don't touch the memories" clause. Project-then-enrich means projections
+  see transcript only, enrichments arrive verbatim, and `placement`
+  (ENRICHMENTS_FIRST default; the cache tradeoff documented) decides where
+  they land.
 - **Determinism by construction**: bindings are declared at build time in
   reviewable code — the POM analog — never registered at runtime through
-  the hub. Declaration order is execution order. Same ledger, same
-  bindings, same `Context`, every time; `agent.contextFor(id)` runs the
-  same pipeline and stays truthful. The hub carries facts and vetoes
-  (§9.1); the pipeline carries participation. They do not mix.
-- The pipeline executor is engine machinery (`spi.context`), constructed
-  once per agent, consumed by the engine's Invoke preparation and by
-  `contextFor` — one implementation, one instance, as before. The compact
+  the hub. Declaration order is execution order; same ledger, same
+  bindings, same `Context`; `agent.contextFor(id)` runs the same pipeline.
+  The hub carries facts and vetoes (§9.1); the pipeline carries
+  participation. They do not mix.
+- The pipeline executor is engine machinery (`spi.context`), one instance
+  per agent, consumed by Invoke preparation and `contextFor`. The compact
   path remains unpiped: a strategy's working set is its own business.
-- There was never science behind project-then-recall ordering; both
-  contributors key on the ledger (`SessionState`), and the pipeline makes
-  their composition explicit and configurable instead of arbitrary.
 
 ## 11. Observability
 
