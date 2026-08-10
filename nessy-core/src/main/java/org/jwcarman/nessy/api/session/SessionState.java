@@ -38,15 +38,14 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  *     call resolves
  * @param consecutiveErrors errored tool results in a row; any success resets it
  * @param turns model turns completed so far
- * @param usage tokens spent so far, accumulated across every completed turn. This does not include
- *     compaction's own summarization call: usage accumulates through model-turn events, and the
- *     summarization call is engine-internal — its {@code TurnEnded} is discarded rather than fed to
- *     the reducer
+ * @param usage tokens spent so far, accumulated across every completed turn, including what a
+ *     {@code Compactor}'s own summarization call spent — billed to the ledger like any other model
+ *     call
  * @param lastInputTokens the provider's own measurement of what the most recent model call cost;
- *     read by {@code CompactionPolicy.trigger()} to decide when to compact. This reads the
- *     provider's reported input token count as-is; a future message-level prompt-cache breakpoint
- *     that excludes cached tokens from that count would weaken the trigger, since a large cached
- *     prefix would then read as cheap even while still counting toward the model's context window
+ *     read by the reducer's {@code Compactor} to decide when to compact. This reads the provider's
+ *     reported input token count as-is; a future message-level prompt-cache breakpoint that
+ *     excludes cached tokens from that count would weaken the trigger, since a large cached prefix
+ *     would then read as cheap even while still counting toward the model's context window
  * @param generation bumped whenever compaction rewrites the settled conversation; the store's
  *     signal that it must rewrite rather than append
  * @param failureReason why the session failed, or {@code null} if it has not failed. This is the

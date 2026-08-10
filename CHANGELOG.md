@@ -119,50 +119,54 @@ changed.
 - **`Context`** (`api`) — the pairing invariant's single home: an immutable,
   validated message sequence bound for the wire, whose construction rejects an
   orphan `tool_use`/results pair. `ModelRequest` and `ContextBuilder.project`
-  speak `Context` now instead of a plain `List<Message>`; `Effect.Compact` and
-  `CompactionStrategy.compact` carry the working set as `List<Message>` (a
-  pure reducer must not mint a throwing type), validated as a `Context` at the
-  engine's compact-result check.
+  speak `Context` now instead of a plain `List<Message>`; `Effect.Compact` is
+  a bare marker (the engine hands the compactor the state it already holds),
+  and `Compactor.compact`'s returned working set is validated as a `Context`
+  at the engine's compact-result check.
   Pair-safe cutting and head/tail slicing (`Context.pairSafeCut(int)`,
   `Context.head(int)`) live on the type, so the reducer, the default
-  summarizer, and any custom projection share one implementation of "where may
+  summarizer, and any custom compactor share one implementation of "where may
   I cut?".
-- **`CompactionStrategy`** (`api`) — compaction's decision and transformation
-  unify behind one seam: `requiresCompaction(SessionState)` (pure, consulted
-  by the reducer at every `CallModel` decision point) and
-  `compact(List<Message>)` (effectful, performed by the engine only). The
-  strategy proposes a replacement working set and what producing it cost; the
+- **`Compactor`** (`spi.compaction`) — the one compaction seam, replacing the
+  earlier `CompactionStrategy`/`CompactionPolicy`/`CompactionTrigger` split
+  (owner ruling 2026-08-10: the consolidation). `requiresCompaction(SessionState)`
+  (pure, consulted by the reducer at every `CallModel` decision point) and
+  `compact(SessionState)` (effectful, performed by the engine only, seeing the
+  whole ledger rather than a bare message list) are the whole interface. The
+  compactor proposes a replacement working set and what producing it cost; the
   reducer disposes — applying the result, bumping `generation`, and treating a
-  non-shrinking result as a skip. The built-in `summarizing(policy,
-  summarizer)` strategy (`spi.compaction.CompactionStrategies`) is the
-  `CompactionPolicy`-tuned default `AgentBuilder` assembles automatically;
-  `AgentBuilder.compaction(...)` now overloads on `CompactionPolicy` (tune the
-  default) versus `CompactionStrategy` (replace the mechanism wholesale, wins
-  outright even over an earlier policy call).
-- **`CompactionTrigger`** (`api`) and declared context windows —
-  `CompactionTrigger` is the pluggable decision half of `CompactionPolicy`:
-  `atTokens(trigger)`, `forWindow(window, maxTokens)` (≈ 0.8 × (window −
-  maxTokens), reserving room for the reply), and `never()`. `ModelSettings`
-  gains an optional `contextWindow`, set via `.model(name).contextWindow(n)`
-  on the builder; when declared and no explicit `CompactionPolicy` is set,
-  `AgentBuilder.build()` derives the trigger from it automatically, so a
-  small-window model no longer relies solely on the loud-overflow backstop.
-- **Complete usage accounting for compaction** — `CompactionStrategy.Result.spend`
-  is a bill, not an excluded side channel: whatever a strategy's own call
+  non-shrinking result as a skip. `Compactor.disabled()` never compacts.
+  `AgentBuilder.compaction(Compactor)` is the single overload — no more
+  policy-versus-strategy ambiguity.
+- **`Compactors`** (`spi.compaction`) — the summarizing default's factory:
+  `Compactors.summarizing(summarizer)` returns a builder whose knobs each
+  belong to their owner — `.triggerTokens(long)` (fires once measured input
+  tokens cross it; default 100k), `.window(window, maxTokens)` (derives the
+  trigger at ≈ 0.8 × (window − maxTokens), reserving room for the reply; wired
+  automatically when `AgentBuilder.contextWindow(...)` is declared and no
+  explicit compactor is set), and `.keepRecent(int)` (how many trailing
+  messages survive verbatim; default 10). `AgentBuilder` assembles this
+  default automatically from the harness's provider unless
+  `.compaction(Compactor)` replaces it outright.
+- **Complete usage accounting for compaction** — `Compactor.Result.spend`
+  is a bill, not an excluded side channel: whatever a compactor's own call
   costs (a summarizer's input/output tokens; `Usage.zero()` for a
-  non-LLM strategy) is accumulated into `SessionState.usage()` alongside every
+  non-LLM compactor) is accumulated into `SessionState.usage()` alongside every
   conversational turn, via `Event.Compacted(workingSet, spend)`. This repeals
   the earlier cost-accounting exclusion, under which the compaction call's
   tokens never reached the ledger.
-- **`Summarizer`** (`spi.compaction`) — the default strategy's sub-seam:
-  `summarize(Context head, CompactionPolicy policy) -> Summary(text, usage)`.
-  Lets "same strategy, cheaper model" swap in without reimplementing cut
-  logic. The default, `Summarizer.usingProvider(provider, config)`, is the
-  tool-free, policy-bound summarization call the engine always performed
-  before this seam existed; `AgentBuilder.summarizer(...)` overrides it,
-  ignored once `.compaction(CompactionStrategy)` replaces the mechanism
-  outright. `ScriptedSummarizer` ships in `nessy-testing` beside the other
-  test doubles.
+- **`Summarizer`** (`spi.compaction`) — the summarizing default's sub-seam:
+  `summarize(Context head) -> Summary(text, usage)`, with instructions and the
+  summary's own token ceiling baked in at construction rather than threaded
+  per call. Lets "same compactor, cheaper model" swap in without
+  reimplementing cut logic. `Summarizer.usingProvider(provider, config,
+  summaryMaxTokens, instructions)` is the tool-free summarization call the
+  engine always performed before this seam existed; the 2-arg
+  `usingProvider(provider, config)` convenience defaults to a 2,048-token
+  ceiling and `Summarizer.DEFAULT_INSTRUCTIONS`. `AgentBuilder.summarizer(...)`
+  overrides what the assembled default calls, ignored once
+  `.compaction(Compactor)` replaces the mechanism outright. `ScriptedSummarizer`
+  ships in `nessy-testing` beside the other test doubles.
 - **`TranscriptStore` and `TranscriptEntry`** (`spi.session`) — an append-only
   journal of a session's entire message history, independent of what
   compaction keeps in the working set. A pure sink (`append` is the only
@@ -193,8 +197,9 @@ changed.
   next to the seam they serve: `spi.context` holds `Projection` and
   `ContextPipeline` (`ContextBuilder`, briefly moved here from `spi` root,
   has since dissolved into `Projection` — see "The context pipeline" below)
-  and the new `TokenEstimator`; `spi.compaction` holds
-  `Summarizer`. `TokenEstimator.estimate(Message)` (default `heuristic()`,
+  and the new `TokenEstimator`; `spi.compaction` holds the whole compaction
+  seam — `Compactor`, `Compactors`, `Summarizer`.
+  `TokenEstimator.estimate(Message)` (default `heuristic()`,
   content characters / 4) manufactures the per-message token figure no
   provider reports, computed on demand on the read path only — never
   journaled, so a frozen estimate can't rot the permanent record.
@@ -202,16 +207,10 @@ changed.
   plain message list it used to carry, so every provider now receives the
   same validated, pairing-legal sequence the rest of the read path already
   guarantees.
-- **`CompactionPolicy`** (`api`) — the default strategy's knob bundle:
-  `CompactionTrigger trigger`, `keepRecentMessages`, `summaryMaxTokens`,
-  `instructions`. `CompactionPolicy.defaults()` (`CompactionTrigger.atTokens(100_000)`,
-  keep 10 messages, 2,048-token summary cap) is what
-  `CompactionStrategies.summarizing(policy, summarizer)` runs unless
-  overridden; `CompactionPolicy.disabled()` (`CompactionTrigger.never()`)
-  turns compaction off. Compaction stays best-effort — a failed
-  summarization call skips compaction for that turn rather than failing it,
-  and emits `CompactionFailed` on the hub — and is instrumented via the
-  `nessy.compaction` observation alongside the engine's other spans.
+- **Compaction stays best-effort** — a failed summarization call skips
+  compaction for that turn rather than failing it, and emits
+  `CompactionFailed` on the hub; instrumented via the `nessy.compaction`
+  observation alongside the engine's other spans.
 - **The context pipeline: `ContextPipeline`, `Projection`, `Placement`**
   (`spi.context`; supersedes `ContextBuilder` and `ContextAssembler`, both
   dissolved — see "Removed" below) — the Contextualize phase (design §6.1,
@@ -376,17 +375,13 @@ changed.
   else moved into a named subpackage: `Message`, `Role`, `Context`,
   `ContentBlock` and its variants moved to `api.message`; `SessionId`,
   `SessionState`, `SessionStatus`, `Usage`, `TerminationPolicy` moved to
-  `api.session`; `CompactionStrategy`, `CompactionPolicy`, `CompactionTrigger`
-  moved to `api.compaction`; `ToolCall`, `ToolResult` moved to `api.tool`
+  `api.session`; `ToolCall`, `ToolResult` moved to `api.tool`
   alongside `Tool`. No type was renamed and no signature changed — this is a
   pure package move; source using the old `org.jwcarman.nessy.api.*` imports
-  for these types must update the import statement only.
-- **`AgentBuilder.compaction(...)` source-compat note (pre-1.0 breaking)** —
-  adding the `CompactionStrategy` overload alongside the existing
-  `CompactionPolicy` one means `.compaction(null)` no longer resolves: the
-  call is now ambiguous between the two overloads and requires an explicit
-  cast, e.g. `.compaction((CompactionPolicy) null)`. Source using the
-  single-overload form to explicitly pass a null policy must add the cast.
+  for these types must update the import statement only. Compaction's own
+  types took a further step: `api.compaction` (`CompactionStrategy`,
+  `CompactionPolicy`, `CompactionTrigger`) is dissolved outright rather than
+  kept as a resting place — see the `Compactor` consolidation above.
 - **`AgentBuilder.tools(...)` source-compat note (pre-1.0 breaking)** — adding
   the `ToolGrant...` overload alongside the existing `Tool...` one means a
   bare `.tools()` call (zero arguments) no longer resolves: it is now

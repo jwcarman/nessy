@@ -23,9 +23,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
-import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.session.TerminationPolicy;
@@ -36,7 +33,8 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
-import org.jwcarman.nessy.spi.compaction.CompactionStrategies;
+import org.jwcarman.nessy.spi.compaction.Compactor;
+import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -72,9 +70,7 @@ public final class AgentBuilder<I> {
   private SessionStore store;
   private EventHub events;
   private TerminationPolicy termination = TerminationPolicy.defaults();
-  private CompactionPolicy compaction = CompactionPolicy.defaults();
-  private boolean compactionExplicit;
-  private CompactionStrategy compactionStrategy;
+  private Compactor compactor;
   private Summarizer summarizer;
   private Long contextWindow;
   private ObjectMapper mapper;
@@ -200,31 +196,24 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Tunes the default, summarizing strategy: when it triggers, how much it keeps verbatim, and what
-   * it asks the summarizer for. Superseded entirely by {@link #compaction(CompactionStrategy)},
-   * explicit or not — that overload replaces the strategy outright, so there is nothing here left
-   * to tune.
+   * Replaces the default, summarizing compactor entirely — the one overload compaction has. Wins
+   * over {@link #summarizer(Summarizer)} and {@link #contextWindow(long)}, whether or not those
+   * were called, since there is no default left for them to feed.
+   *
+   * <p>To tune the built-in summarizing default instead of replacing it, build one explicitly with
+   * {@link Compactors#summarizing(Summarizer)} and pass the result here — the knobs it exposes
+   * (trigger tokens, window derivation, how many recent messages survive verbatim) each belong to
+   * that builder now, not to this method.
    */
-  public AgentBuilder<I> compaction(CompactionPolicy compaction) {
-    this.compaction = compaction;
-    this.compactionExplicit = true;
+  public AgentBuilder<I> compaction(Compactor compactor) {
+    this.compactor = Objects.requireNonNull(compactor, "compaction must not be null");
     return this;
   }
 
   /**
-   * Escapes the built-in summarizing strategy entirely. Wins over {@link
-   * #compaction(CompactionPolicy)}, {@link #summarizer(Summarizer)}, and {@link
-   * #contextWindow(long)}, whether or not those were called.
-   */
-  public AgentBuilder<I> compaction(CompactionStrategy compaction) {
-    this.compactionStrategy = compaction;
-    return this;
-  }
-
-  /**
-   * What performs the default summarizing strategy's model call. Default: {@link
-   * Summarizer#usingProvider} over this builder's {@link #provider(ModelProvider)} and settings.
-   * Ignored when {@link #compaction(CompactionStrategy)} is called.
+   * What performs the default summarizing compactor's model call. Default: {@link
+   * Summarizer#usingProvider(ModelProvider, ModelSettings)} over this builder's {@link
+   * #provider(ModelProvider)} and settings. Ignored when {@link #compaction(Compactor)} is called.
    */
   public AgentBuilder<I> summarizer(Summarizer summarizer) {
     this.summarizer = summarizer;
@@ -232,9 +221,9 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Declares the model's total token budget. When set and {@link #compaction(CompactionPolicy)} is
-   * never called, {@link #build()} derives the compaction trigger from it via {@link
-   * CompactionTrigger#forWindow}; an explicit {@code compaction(...)} call always wins.
+   * Declares the model's total token budget. When set and {@link #compaction(Compactor)} is never
+   * called, {@link #build()} derives the default compactor's trigger from it via {@link
+   * Compactors.SummarizingBuilder#window}; an explicit {@code compaction(...)} call always wins.
    */
   public AgentBuilder<I> contextWindow(long contextWindow) {
     this.contextWindow = contextWindow;
@@ -315,8 +304,8 @@ public final class AgentBuilder<I> {
     }
     ModelSettings settings =
         new ModelSettings(model, systemPrompt, maxTokens, capabilities, contextWindow);
-    CompactionStrategy resolvedStrategy =
-        compactionStrategy != null ? compactionStrategy : assembleCompactionStrategy(settings);
+    Compactor resolvedCompactor =
+        compactor != null ? compactor : assembleDefaultCompactor(settings);
     // Constructed once here and handed to both the engine and the Agent: the invariant is one
     // ContextPipeline instance per agent, so requestFor and contextFor never disagree about what
     // a call sees.
@@ -334,7 +323,7 @@ public final class AgentBuilder<I> {
             approver,
             store,
             events,
-            new Reducer(termination, resolvedStrategy),
+            new Reducer(termination, resolvedCompactor),
             settings,
             mapper,
             observations,
@@ -361,27 +350,19 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Assembles the default, summarizing strategy from {@link #compaction(CompactionPolicy)} (or a
-   * window-derived trigger, per {@link #contextWindow(long)}) and {@link #summarizer(Summarizer)}
-   * (or {@link Summarizer#usingProvider} over this builder's provider, by default). A resolved
-   * policy equal to {@link CompactionPolicy#disabled()} short-circuits to {@link
-   * CompactionStrategy#disabled()} rather than wrapping a summarizer that would never run.
+   * Assembles the default, summarizing compactor from {@link #summarizer(Summarizer)} (or {@link
+   * Summarizer#usingProvider(ModelProvider, ModelSettings)} over this builder's provider, by
+   * default) and a declared {@link #contextWindow(long)}, when there is one, to derive the trigger
+   * from. No window declared means the builder's own default trigger (100k measured input tokens)
+   * stands.
    */
-  private CompactionStrategy assembleCompactionStrategy(ModelSettings settings) {
-    Objects.requireNonNull(compaction, "compaction must not be null");
-    CompactionPolicy resolvedPolicy =
-        contextWindow != null && !compactionExplicit
-            ? new CompactionPolicy(
-                CompactionTrigger.forWindow(contextWindow, maxTokens),
-                compaction.keepRecentMessages(),
-                compaction.summaryMaxTokens(),
-                compaction.instructions())
-            : compaction;
-    if (resolvedPolicy.equals(CompactionPolicy.disabled())) {
-      return CompactionStrategy.disabled();
-    }
+  private Compactor assembleDefaultCompactor(ModelSettings settings) {
     Summarizer resolvedSummarizer =
         summarizer != null ? summarizer : Summarizer.usingProvider(provider, settings);
-    return CompactionStrategies.summarizing(resolvedPolicy, resolvedSummarizer);
+    Compactors.SummarizingBuilder builder = Compactors.summarizing(resolvedSummarizer);
+    if (contextWindow != null) {
+      builder = builder.window(contextWindow, maxTokens);
+    }
+    return builder.build();
   }
 }

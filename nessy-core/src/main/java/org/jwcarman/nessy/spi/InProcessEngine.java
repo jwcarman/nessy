@@ -32,7 +32,6 @@ import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.MessageAppended;
@@ -53,6 +52,7 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
+import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -192,7 +192,7 @@ public final class InProcessEngine implements ExecutionEngine {
    *       message (a user message, a flushed tool-results message) carries {@link Usage#zero()}.
    *   <li>Compaction — {@code after.generation()} advanced — emits whatever messages of {@code
    *       after} are not present (by value) in {@code before}, comparing by equality rather than
-   *       position since a custom strategy is free to keep some originals and drop others. For the
+   *       position since a custom compactor is free to keep some originals and drop others. For the
    *       summarizing default that is exactly the one summary message. Every newborn here carries
    *       the {@link Event.Compacted} event's spend. Survivors are never re-announced.
    * </ul>
@@ -248,39 +248,38 @@ public final class InProcessEngine implements ExecutionEngine {
       case Effect.CallModel _ -> callModel(progress, state);
       case Effect.RequestApproval(ToolCall call) -> feed(progress, state, decide(state, call));
       case Effect.ExecuteTool(ToolCall call) -> feed(progress, state, executeTool(state, call));
-      case Effect.Compact compaction -> compact(progress, state, compaction);
+      case Effect.Compact _ -> compact(progress, state);
     };
   }
 
   /**
-   * Performs a compaction by handing the whole working set to {@code reducer.compaction()}, then
-   * feeds the one event it produces.
+   * Performs a compaction by handing the whole ledger to {@code reducer.compaction()}, then feeds
+   * the one event it produces.
    *
-   * <p>Unlike {@link #callModel}, nothing here streams live into the hub: whatever the strategy
+   * <p>Unlike {@link #callModel}, nothing here streams live into the hub: whatever the compactor
    * does internally (a model call, for the summarizing default) is not conversation the model or a
    * listener needs to see chunk by chunk, only the finished result the reducer folds into the
-   * transcript. The whole attempt — the strategy's {@code compact()}, the result's validation, and
+   * transcript. The whole attempt — the compactor's {@code compact()}, the result's validation, and
    * the resulting {@link Event#Compacted} or {@link Event#CompactionSkipped} feed — runs inside one
    * {@code nessy.compaction} observation, matching the F2 convention used everywhere else in this
    * engine: a caught failure marks the observation with {@link Observation#error(Throwable)} rather
    * than letting it escape, since a failed compaction is recoverable and the turn must proceed
    * uncompacted.
    *
-   * <p>{@link Context#of} validates the strategy's result before it ever reaches the reducer: a
-   * strategy that hands back a pair-breaking working set is treated as a failure here, not a
+   * <p>{@link Context#of} validates the compactor's result before it ever reaches the reducer: a
+   * compactor that hands back a pair-breaking working set is treated as a failure here, not a
    * corruption the reducer has to detect later.
    *
    * <p>As in {@link #callModel}, the resulting event is built inside the observation scope but fed
    * to the reducer only after the scope closes: {@code feed} can trigger the next model turn, and
    * that follow-on work must not nest under {@code nessy.compaction} or be timed as part of it.
    */
-  private SessionState compact(
-      AtomicReference<SessionState> progress, SessionState state, Effect.Compact effect) {
+  private SessionState compact(AtomicReference<SessionState> progress, SessionState state) {
     Observation observation = EngineObservations.compaction(observations);
     Event event;
     try (var _ = observation.openScope()) {
       try {
-        CompactionStrategy.Result result = reducer.compaction().compact(effect.workingSet());
+        Compactor.Result result = reducer.compaction().compact(state);
         Context.of(result.workingSet());
         event = new Event.Compacted(result.workingSet(), result.spend());
       } catch (RuntimeException e) {
@@ -354,8 +353,8 @@ public final class InProcessEngine implements ExecutionEngine {
    * disagree about what a call sees.
    *
    * <p>The compaction/summarization path is deliberately not routed through here: {@link #compact}
-   * hands the strategy its own working set directly, so enrichment and projection are never
-   * consulted for that call.
+   * hands the compactor the ledger directly, so enrichment and projection are never consulted for
+   * that call.
    */
   private ModelRequest requestFor(SessionState state) {
     Context projected = contextPipeline.assemble(state);

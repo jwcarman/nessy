@@ -32,9 +32,6 @@ import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
-import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
@@ -49,6 +46,8 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.spi.compaction.Compactor;
+import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.context.ContextEnricher;
 import org.jwcarman.nessy.spi.context.Projection;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -294,17 +293,17 @@ class AgentFacadeTest {
   }
 
   @Test
-  void a_custom_compaction_policy_is_wired_through_the_builder() {
+  void a_custom_compactor_is_wired_through_the_builder() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    CompactionPolicy policy =
-        new CompactionPolicy(
-            CompactionTrigger.atTokens(50_000), // trigger at 50k measured input tokens
-            20, // keep the last 20 messages verbatim
-            1_024, // cap the summary reply at 1024 tokens
-            "Summarize the conversation so far, focusing on open TODOs.");
+    ScriptedSummarizer summarizer = ScriptedSummarizer.builder().summary("gist").build();
+    Compactor compactor =
+        Compactors.summarizing(summarizer)
+            .triggerTokens(50_000) // trigger at 50k measured input tokens
+            .keepRecent(20) // keep the last 20 messages verbatim
+            .build();
 
     Agent<String> agent =
-        Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
+        Nessy.agent().provider(provider).model("fake-model").compaction(compactor).build();
 
     assertThat(agent).isNotNull();
   }
@@ -351,8 +350,8 @@ class AgentFacadeTest {
     assertThat(seventhReply.failed()).isFalse();
     assertThat(seventhReply.state().generation()).isEqualTo(1);
 
-    // The same declared window, but an explicit compaction policy always wins: compaction
-    // never fires even though the same usage crosses the derived threshold.
+    // The same declared window, but an explicit compactor always wins: compaction never fires
+    // even though the same usage crosses the derived threshold.
     ScriptedModelProvider explicitProvider =
         ScriptedModelProvider.builder()
             .text("First answer.")
@@ -366,7 +365,7 @@ class AgentFacadeTest {
             .model("fake-model")
             .maxTokens(10_000)
             .contextWindow(110_000)
-            .compaction(CompactionPolicy.disabled())
+            .compaction(Compactor.disabled())
             .build();
     Conversation<String> explicitConversation = explicitAgent.converse();
     explicitConversation.tell("first question");
@@ -385,19 +384,8 @@ class AgentFacadeTest {
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
-            .compaction(CompactionPolicy.disabled())
+            .compaction(Compactor.disabled())
             .build();
-
-    assertThat(agent).isNotNull();
-  }
-
-  @Test
-  void a_custom_compaction_strategy_is_wired_through_the_builder() {
-    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    CompactionStrategy myStrategy = CompactionStrategy.disabled();
-
-    Agent<String> agent =
-        Nessy.agent().provider(provider).model("fake-model").compaction(myStrategy).build();
 
     assertThat(agent).isNotNull();
   }
@@ -471,16 +459,11 @@ class AgentFacadeTest {
   }
 
   @Test
-  void a_null_compaction_policy_is_rejected_at_build_time() {
+  void a_null_compactor_is_rejected() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
     assertThatThrownBy(
-            () ->
-                Nessy.agent()
-                    .provider(provider)
-                    .model("fake-model")
-                    .compaction((CompactionPolicy) null)
-                    .build())
+            () -> Nessy.agent().provider(provider).model("fake-model").compaction(null).build())
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("compaction");
   }

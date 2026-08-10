@@ -25,7 +25,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.SessionState;
@@ -34,18 +33,18 @@ import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.compaction.Compactor;
 
 /**
- * What the reducer itself owns around compaction: consulting the strategy at each {@code CallModel}
- * decision point, handing over the whole working set unexamined, and applying whatever result comes
- * back. What the strategy does with that working set — cuts, summaries, prefixes — is {@code
+ * What the reducer itself owns around compaction: consulting the compactor at each {@code
+ * CallModel} decision point, handing over the whole ledger unexamined, and applying whatever result
+ * comes back. What the compactor does with that ledger — cuts, summaries, prefixes — is {@code
  * SummarizingCompactionTest}'s business, not this one's; the reducer no longer computes any of it.
  */
 class ReducerCompactionTest {
 
   /** Builds seed states without ever triggering compaction itself. */
-  private final Reducer builder =
-      new Reducer(TerminationPolicy.never(), CompactionStrategy.disabled());
+  private final Reducer builder = new Reducer(TerminationPolicy.never(), Compactor.disabled());
 
   private final SessionState initial = SessionState.newSession(new SessionId("s1"));
 
@@ -53,16 +52,16 @@ class ReducerCompactionTest {
     return new ToolCall(id, "read_file", JsonNodeFactory.instance.objectNode());
   }
 
-  /** A strategy whose only behavior that matters to the reducer is when it requires compaction. */
-  private static CompactionStrategy triggeringAt(long triggerTokens) {
-    return new CompactionStrategy() {
+  /** A compactor whose only behavior that matters to the reducer is when it requires compaction. */
+  private static Compactor triggeringAt(long triggerTokens) {
+    return new Compactor() {
       @Override
       public boolean requiresCompaction(SessionState state) {
         return state.lastInputTokens() >= triggerTokens;
       }
 
       @Override
-      public Result compact(List<Message> workingSet) {
+      public Result compact(SessionState state) {
         throw new UnsupportedOperationException(
             "the reducer never calls compact() itself; these tests drive compact()'s result"
                 + " through Event.Compacted directly");
@@ -106,14 +105,14 @@ class ReducerCompactionTest {
   class Triggering {
 
     @Test
-    void at_the_trigger_the_whole_working_set_goes_to_the_strategy() {
+    void at_the_trigger_compaction_is_emitted_as_a_bare_marker() {
       SessionState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
       Reducer reducer = new Reducer(TerminationPolicy.never(), triggeringAt(100_000));
 
       Step step = reducer.reduce(state, Event.UserSaid.of("one more thing"));
 
       assertThat(step.state().status()).isEqualTo(SessionStatus.COMPACTING);
-      assertThat(step.effects()).containsExactly(new Effect.Compact(step.state().messages()));
+      assertThat(step.effects()).containsExactly(Effect.compact());
     }
 
     @Test
@@ -153,7 +152,7 @@ class ReducerCompactionTest {
       Step step = reducer.reduce(pending, new Event.ToolFinished(toolCall, ToolResult.ok("more")));
 
       assertThat(step.state().status()).isEqualTo(SessionStatus.COMPACTING);
-      assertThat(step.effects()).containsExactly(new Effect.Compact(step.state().messages()));
+      assertThat(step.effects()).containsExactly(Effect.compact());
     }
   }
 
@@ -197,7 +196,7 @@ class ReducerCompactionTest {
     /**
      * {@code Effect.Compact} is only ever emitted from a settled state, but {@code Event.Compacted}
      * is not guaranteed to land against one: a durably replayed run can replay a stale result
-     * against a state that has since moved on, and nothing at this layer stops a strategy from
+     * against a state that has since moved on, and nothing at this layer stops a compactor from
      * answering late. A shrinking result that would otherwise replace the messages must still be
      * treated as a skip once tool debt is outstanding — the tail a shrink drops might be exactly
      * the messages a pending call belongs to, and splicing underneath it would strand the pending
@@ -228,7 +227,7 @@ class ReducerCompactionTest {
     @Test
     void a_skip_proceeds_to_the_model_without_retrying_in_place() {
       SessionState state = initial.withLastInputTokens(42);
-      Reducer reducer = new Reducer(TerminationPolicy.never(), CompactionStrategy.disabled());
+      Reducer reducer = new Reducer(TerminationPolicy.never(), Compactor.disabled());
 
       Step step = reducer.reduce(state, new Event.CompactionSkipped("429"));
 

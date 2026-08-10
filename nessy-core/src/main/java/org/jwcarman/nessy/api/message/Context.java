@@ -43,8 +43,8 @@ import java.util.function.Predicate;
  * {@code Context} only if its correctness depends on the context's own structure — pairing,
  * position, size — never for anything semantic. Redaction, summarization, and reordering are
  * deliberately not verbs here; compose redaction from {@link #map}/{@link #drop}, reach for {@code
- * CompactionStrategy} for summarization, and treat reordering as inexpressible on purpose, because
- * order is meaning.
+ * Compactor} for summarization, and treat reordering as inexpressible on purpose, because order is
+ * meaning.
  */
 public record Context(List<Message> messages) {
 

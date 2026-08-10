@@ -27,8 +27,6 @@ import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
-import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.session.Usage;
@@ -40,17 +38,15 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@link Summarizer#usingProvider}, the production summarizer, over a hand-rolled fake provider.
+ * {@link Summarizer#usingProvider(ModelProvider, ModelSettings, int, String)}, the production
+ * summarizer, over a hand-rolled fake provider.
  */
 class SummarizerTest {
 
   private static final ModelSettings CONFIG =
       new ModelSettings("fake-model", "be helpful", 1_024, Set.of(), null);
 
-  private static CompactionPolicy policy(int summaryMaxTokens) {
-    return new CompactionPolicy(
-        CompactionTrigger.atTokens(1), 0, summaryMaxTokens, "Summarize the conversation so far.");
-  }
+  private static final String INSTRUCTIONS = "Summarize the conversation so far.";
 
   /** Replays one scripted turn per call and records every request it was handed. */
   private static final class FakeProvider implements ModelProvider {
@@ -97,17 +93,16 @@ class SummarizerTest {
               List.of(
                   new ModelEvent.TextChunk("the gist"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG);
+      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS);
       Context head = Context.of(List.of(Message.user("hi")));
-      CompactionPolicy policy = policy(500);
 
-      summarizer.summarize(head, policy);
+      summarizer.summarize(head);
 
       ModelRequest request = provider.requests().getFirst();
       assertThat(request.tools()).isEmpty();
       assertThat(request.maxTokens()).isEqualTo(500);
       assertThat(request.context().messages())
-          .containsExactly(Message.user("hi"), Message.user(policy.instructions()));
+          .containsExactly(Message.user("hi"), Message.user(INSTRUCTIONS));
     }
   }
 
@@ -123,10 +118,9 @@ class SummarizerTest {
                   new ModelEvent.TextChunk("the "),
                   new ModelEvent.TextChunk("gist"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, usage)));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG);
+      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS);
 
-      Summarizer.Summary summary =
-          summarizer.summarize(Context.of(List.of(Message.user("hi"))), policy(500));
+      Summarizer.Summary summary = summarizer.summarize(Context.of(List.of(Message.user("hi"))));
 
       assertThat(summary.text()).isEqualTo("the gist");
       assertThat(summary.usage()).isEqualTo(usage);
@@ -139,13 +133,33 @@ class SummarizerTest {
               List.of(
                   new ModelEvent.TextChunk("   "),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG);
+      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS);
       Context head = Context.of(List.of(Message.user("hi")));
-      CompactionPolicy policy = policy(500);
 
-      assertThatThrownBy(() -> summarizer.summarize(head, policy))
+      assertThatThrownBy(() -> summarizer.summarize(head))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("no text");
+    }
+  }
+
+  @Nested
+  class The_convenience_factory {
+
+    @Test
+    void usingProvider_without_explicit_knobs_defaults_the_ceiling_and_instructions() {
+      FakeProvider provider =
+          new FakeProvider(
+              List.of(
+                  new ModelEvent.TextChunk("the gist"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
+      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG);
+
+      summarizer.summarize(Context.of(List.of(Message.user("hi"))));
+
+      ModelRequest request = provider.requests().getFirst();
+      assertThat(request.maxTokens()).isEqualTo(2_048);
+      assertThat(request.context().messages())
+          .containsExactly(Message.user("hi"), Message.user(Summarizer.DEFAULT_INSTRUCTIONS));
     }
   }
 }

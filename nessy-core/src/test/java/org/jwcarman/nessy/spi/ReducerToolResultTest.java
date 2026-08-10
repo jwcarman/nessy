@@ -24,7 +24,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.session.SessionId;
@@ -34,11 +33,12 @@ import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.compaction.Compactor;
 
 class ReducerToolResultTest {
 
   private final Reducer reducer =
-      new Reducer(TerminationPolicy.maxConsecutiveErrors(2), CompactionStrategy.disabled());
+      new Reducer(TerminationPolicy.maxConsecutiveErrors(2), Compactor.disabled());
   private final SessionState initial = SessionState.newSession(new SessionId("s1"));
 
   private static ToolCall call(String id) {
@@ -230,8 +230,7 @@ class ReducerToolResultTest {
 
     @Test
     void failing_with_calls_still_pending_answers_every_one_of_them() {
-      Reducer strict =
-          new Reducer(TerminationPolicy.maxConsecutiveErrors(1), CompactionStrategy.disabled());
+      Reducer strict = new Reducer(TerminationPolicy.maxConsecutiveErrors(1), Compactor.disabled());
       ToolCall first = call("c1");
       ToolCall second = call("c2");
       SessionState state = initial;
@@ -271,7 +270,7 @@ class ReducerToolResultTest {
     @Test
     void halting_mid_batch_still_answers_every_pending_tool_use() {
       Reducer limited =
-          new Reducer(TerminationPolicy.maxConsecutiveErrors(1), CompactionStrategy.disabled());
+          new Reducer(TerminationPolicy.maxConsecutiveErrors(1), Compactor.disabled());
       ToolCall first = call("c1");
       ToolCall second = call("c2");
       SessionState state = awaitingApprovalWith(limited, first, second);
@@ -291,7 +290,7 @@ class ReducerToolResultTest {
 
   @Test
   void a_user_message_that_trips_the_turn_ceiling_still_answers_every_pending_tool_use() {
-    Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), CompactionStrategy.disabled());
+    Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), Compactor.disabled());
     ToolCall first = call("c1");
     ToolCall second = call("c2");
     SessionState state = awaitingApprovalWith(limited, first, second);
@@ -309,7 +308,7 @@ class ReducerToolResultTest {
 
   @Test
   void a_fresh_user_message_clears_a_stale_failure_reason_from_a_resumed_session() {
-    Reducer permissive = new Reducer(TerminationPolicy.never(), CompactionStrategy.disabled());
+    Reducer permissive = new Reducer(TerminationPolicy.never(), Compactor.disabled());
     SessionState failed =
         initial.withConsecutiveErrors(3).withFailureReason("3 consecutive tool errors");
 

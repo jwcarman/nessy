@@ -22,7 +22,6 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
@@ -35,6 +34,7 @@ import org.jwcarman.nessy.api.session.SessionStatus;
 import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.compaction.Compactor;
 
 /**
  * The whole of the agent's semantics, as a pure function.
@@ -48,7 +48,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * @param compaction decides when the settled conversation needs shrinking and shrinks it, keeping
  *     it inside the model's context window
  */
-public record Reducer(TerminationPolicy termination, CompactionStrategy compaction) {
+public record Reducer(TerminationPolicy termination, Compactor compaction) {
 
   public Reducer {
     Objects.requireNonNull(termination, "termination must not be null");
@@ -62,7 +62,7 @@ public record Reducer(TerminationPolicy termination, CompactionStrategy compacti
    * {@code AgentBuilder.build()} does. Call {@code AgentBuilder} for a compacting agent.
    */
   public static Reducer defaults() {
-    return new Reducer(TerminationPolicy.defaults(), CompactionStrategy.disabled());
+    return new Reducer(TerminationPolicy.defaults(), Compactor.disabled());
   }
 
   public Step reduce(SessionState state, Event event) {
@@ -314,23 +314,23 @@ public record Reducer(TerminationPolicy termination, CompactionStrategy compacti
 
   /**
    * The decision made at every point the loop is about to ask the model to continue: call it, or —
-   * when {@link CompactionStrategy#requiresCompaction} says the settled conversation has grown
-   * enough — hand the whole working set to the strategy first. Termination has already been checked
-   * by the caller; this is the second half of that same decision point, tried at most once per
-   * point (a skipped or completed compaction does not loop back through here).
+   * when {@link Compactor#requiresCompaction} says the settled conversation has grown enough — hand
+   * the whole working set to the compactor first. Termination has already been checked by the
+   * caller; this is the second half of that same decision point, tried at most once per point (a
+   * skipped or completed compaction does not loop back through here).
    *
-   * <p>The reducer no longer computes what to keep versus summarize away: it emits the entire
-   * settled working set and lets the strategy decide.
+   * <p>The reducer no longer computes what to keep versus summarize away: the compactor sees the
+   * whole ledger and decides for itself.
    */
   private Step proceedOrCompact(SessionState state) {
     if (!compaction.requiresCompaction(state)) {
       return Step.of(state, Effect.callModel());
     }
-    return Step.of(state.with(SessionStatus.COMPACTING), new Effect.Compact(state.messages()));
+    return Step.of(state.with(SessionStatus.COMPACTING), Effect.compact());
   }
 
   /**
-   * The strategy's result lands. A working set smaller than what went in is a shrink: it replaces
+   * The compactor's result lands. A working set smaller than what went in is a shrink: it replaces
    * the messages wholesale, bumps the generation (a compacted transcript is a new shape the rest of
    * the system — transcripts, resumed sessions — must be able to tell apart from the one before
    * it), and resets {@code lastInputTokens} since the next call's measured usage will reflect the
@@ -342,14 +342,14 @@ public record Reducer(TerminationPolicy termination, CompactionStrategy compacti
    * state at emission time, not at apply time — durable replay makes the two different moments.
    * {@code Event.Compacted} can land here with tool debt outstanding: a durably replayed run can
    * replay a stale {@code Compacted} against a state that has since moved on, and nothing stops a
-   * hostile or buggy {@code CompactionStrategy} from answering late. {@link #proceedOrCompact} is
-   * itself reached from more than one caller — including {@link #userSaid}, which performs no
-   * pending-lane check of its own — so this belt cannot lean on an apply-time guarantee that was
-   * never actually enforced at every call site. Splicing a rewritten working set underneath an
-   * assistant message that still has unanswered {@code tool_use} blocks would strand the pending
-   * lane — the tail the strategy dropped might be exactly the messages those calls belong to. So a
-   * {@code Compacted} arriving with {@code pendingCalls} or {@code pendingResults} non-empty is
-   * always treated as a skip, regardless of what the working set's size says.
+   * hostile or buggy {@code Compactor} from answering late. {@link #proceedOrCompact} is itself
+   * reached from more than one caller — including {@link #userSaid}, which performs no pending-lane
+   * check of its own — so this belt cannot lean on an apply-time guarantee that was never actually
+   * enforced at every call site. Splicing a rewritten working set underneath an assistant message
+   * that still has unanswered {@code tool_use} blocks would strand the pending lane — the tail the
+   * compactor dropped might be exactly the messages those calls belong to. So a {@code Compacted}
+   * arriving with {@code pendingCalls} or {@code pendingResults} non-empty is always treated as a
+   * skip, regardless of what the working set's size says.
    */
   private Step compacted(SessionState state, Event.Compacted event) {
     SessionState spent = state.withUsage(state.usage().plus(event.spend()));

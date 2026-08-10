@@ -26,8 +26,8 @@ import java.util.Set;
  * @param contextWindow the model's total token budget, or {@code null} if undeclared. This is the
  *     third sanctioned nullable field in this codebase (see {@code ModelRequest.responseSchema} for
  *     the second): most callers never set it, and a declared window exists only so {@link
- *     org.jwcarman.nessy.api.compaction.CompactionTrigger#forWindow} has something to derive a
- *     trigger from.
+ *     org.jwcarman.nessy.spi.compaction.Compactors.SummarizingBuilder#window} has something to
+ *     derive a trigger from.
  */
 public record ModelSettings(
     String model,

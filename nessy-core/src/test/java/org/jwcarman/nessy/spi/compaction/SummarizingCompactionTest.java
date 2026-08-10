@@ -24,9 +24,6 @@ import java.util.Deque;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
-import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -38,16 +35,21 @@ import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * The default {@link CompactionStrategy}, pure over a scripted {@link Summarizer}: how the working
- * set gets cut, what the strategy hands the summarizer, and how the summary is spliced back in.
- * {@code SummarizingCompaction} itself is package-private, reached only through {@link
- * CompactionStrategies#summarizing}.
+ * The default {@link Compactor}, pure over a scripted {@link Summarizer}: how the working set gets
+ * cut, what the compactor hands the summarizer, and how the summary is spliced back in. {@code
+ * SummarizingCompaction} itself is package-private, reached only through {@link
+ * Compactors#summarizing}.
  */
 class SummarizingCompactionTest {
 
-  private static CompactionPolicy policy(int keepRecentMessages) {
-    return new CompactionPolicy(
-        CompactionTrigger.atTokens(1), keepRecentMessages, 512, "Summarize.");
+  private static final SessionId SESSION_ID = new SessionId("s1");
+
+  private static Compactor compactorFor(Summarizer summarizer, int keepRecent) {
+    return Compactors.summarizing(summarizer).triggerTokens(1).keepRecent(keepRecent).build();
+  }
+
+  private static SessionState stateWith(List<Message> messages) {
+    return SessionState.newSession(SESSION_ID).withMessages(messages);
   }
 
   /** Six user/assistant text pairs — twelve messages, every even index a genuine user turn. */
@@ -79,7 +81,7 @@ class SummarizingCompactionTest {
     }
 
     @Override
-    public Summary summarize(Context head, CompactionPolicy policy) {
+    public Summary summarize(Context head) {
       heads.add(head);
       return script.removeFirst();
     }
@@ -98,9 +100,9 @@ class SummarizingCompactionTest {
       Usage spend = new Usage(1_500, 75, 0);
       RecordingSummarizer summarizer =
           new RecordingSummarizer(new Summarizer.Summary("the gist", spend));
-      CompactionStrategy strategy = CompactionStrategies.summarizing(policy(4), summarizer);
+      Compactor compactor = compactorFor(summarizer, 4);
 
-      CompactionStrategy.Result result = strategy.compact(workingSet);
+      Compactor.Result result = compactor.compact(stateWith(workingSet));
 
       List<Message> tail = workingSet.subList(8, workingSet.size());
       List<Message> expected = new ArrayList<>();
@@ -112,13 +114,13 @@ class SummarizingCompactionTest {
     }
 
     @Test
-    void the_summary_prefix_is_the_strategys_business() {
+    void the_summary_prefix_is_the_compactors_business() {
       List<Message> workingSet = sixPairs();
       RecordingSummarizer summarizer =
           new RecordingSummarizer(new Summarizer.Summary("the gist", Usage.zero()));
-      CompactionStrategy strategy = CompactionStrategies.summarizing(policy(4), summarizer);
+      Compactor compactor = compactorFor(summarizer, 4);
 
-      CompactionStrategy.Result result = strategy.compact(workingSet);
+      Compactor.Result result = compactor.compact(stateWith(workingSet));
 
       String text = ((TextBlock) result.workingSet().getFirst().content().getFirst()).text();
       assertThat(text).startsWith("[Conversation summary — earlier turns compacted]\n");
@@ -132,9 +134,9 @@ class SummarizingCompactionTest {
     void no_safe_cut_returns_the_working_set_unchanged() {
       List<Message> workingSet = toolOnlyExchange();
       RecordingSummarizer summarizer = new RecordingSummarizer();
-      CompactionStrategy strategy = CompactionStrategies.summarizing(policy(0), summarizer);
+      Compactor compactor = compactorFor(summarizer, 0);
 
-      CompactionStrategy.Result result = strategy.compact(workingSet);
+      Compactor.Result result = compactor.compact(stateWith(workingSet));
 
       assertThat(result.workingSet()).isEqualTo(workingSet);
       assertThat(result.spend()).isEqualTo(Usage.zero());
@@ -146,14 +148,14 @@ class SummarizingCompactionTest {
   class Consulting_the_trigger {
 
     @Test
-    void requires_compaction_delegates_to_the_policys_trigger() {
+    void requires_compaction_delegates_to_the_configured_trigger() {
       RecordingSummarizer summarizer = new RecordingSummarizer();
-      CompactionStrategy neverTriggers =
-          CompactionStrategies.summarizing(CompactionPolicy.disabled(), summarizer);
+      Compactor neverTriggers =
+          Compactors.summarizing(summarizer).triggerTokens(Long.MAX_VALUE).build();
 
       assertThat(
               neverTriggers.requiresCompaction(
-                  SessionState.newSession(new SessionId("s1")).withLastInputTokens(Long.MAX_VALUE)))
+                  SessionState.newSession(SESSION_ID).withLastInputTokens(Long.MAX_VALUE - 1)))
           .isFalse();
     }
   }

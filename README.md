@@ -120,7 +120,7 @@ by one or more seams:
 | # | Service | Provided by |
 |---|---|---|
 | 1 | Turn-taking | `Reducer`, `ExecutionEngine`, `Context` |
-| 2 | Context fit | `CompactionPolicy`, `Summarizer`, `ContextPipeline`, `Projection`, `TokenEstimator`, `ContextEnricher` |
+| 2 | Context fit | `Compactor`, `Summarizer`, `ContextPipeline`, `Projection`, `TokenEstimator`, `ContextEnricher` |
 | 3 | A memory of record | `SessionStore`, `TranscriptStore` |
 | 4 | Safe hands | `ToolRegistry`, the invoker (Factor 9) |
 | 5 | Guardrails | `ToolGrant`/`UsagePolicy`, `Approver` |
@@ -301,66 +301,70 @@ current, possibly-compacted view — `[summary, …tail]` once compaction has ru
 message sequence minted per request, never smaller in scope than what the
 `ContextPipeline` and compaction agree to send.
 
-### Compaction: a strategy, not a mechanism
+### Compaction: one seam, `Compactor`
 
-Compaction is on by default. Every `Agent` runs a `CompactionStrategy` —
+Compaction is on by default. Every `Agent` runs a `Compactor` —
 `requiresCompaction(SessionState)` decides when the working set needs
-shrinking, `compact(List<Message>)` shrinks it — and unless you say otherwise
-that strategy is `summarizing`: `CompactionPolicy.defaults()` triggers once
-`SessionState.lastInputTokens()` (the measured input-token count the model
-itself reported for the previous turn) reaches 100,000 tokens, and shrinks by
-asking the model to summarize everything except the most recent 10 messages,
-capping that summary reply at 2,048 tokens. The cut always lands on a
-message-pair boundary — the pair-safe cut (`Context.pairSafeCut`, used by the
-summarizing strategy) never splits a tool call from its result — so what
+shrinking, `compact(SessionState)` shrinks it, seeing the whole ledger rather
+than just a message list — and unless you say otherwise that compactor is the
+summarizing default assembled by `Compactors.summarizing(summarizer)`: it
+triggers once `SessionState.lastInputTokens()` (the measured input-token count
+the model itself reported for the previous turn) reaches 100,000 tokens, and
+shrinks by asking the model to summarize everything except the most recent 10
+messages, capping that summary reply at 2,048 tokens. The cut always lands on
+a message-pair boundary — the pair-safe cut (`Context.pairSafeCut`, used by
+the summarizing default) never splits a tool call from its result — so what
 survives is always a valid working set. If no such boundary exists old
 enough to compact — a tool-heavy transcript with no plain user-text turn far
-enough back, for example — the strategy leaves the working set unchanged for
+enough back, for example — the compactor leaves the working set unchanged for
 that turn rather than cutting somewhere unsafe.
 
-Two ways to reach for `.compaction(...)`, and they mean different things:
+`.compaction(Compactor)` is the one overload. Tune the summarizing default's
+own knobs — each owned by whichever piece of the default actually reads it —
+by building one explicitly:
 
 ```java
-// Tune the default strategy's knobs — trigger, how much survives verbatim,
-// the summary's own token cap, the instructions it summarizes with.
-CompactionPolicy policy =
-    new CompactionPolicy(
-        CompactionTrigger.atTokens(50_000), // trigger at 50k measured input tokens
-        20, // keep the last 20 messages verbatim
-        1_024, // cap the summary reply at 1024 tokens
-        "Summarize the conversation so far, focusing on open TODOs.");
+// Tune the summarizing default: trigger, how much survives verbatim, and
+// (baked into the Summarizer) the summary's own token cap and instructions.
+Summarizer summarizer =
+    Summarizer.usingProvider(
+        provider, settings, 1_024, "Summarize the conversation so far, focusing on open TODOs.");
+Compactor compactor =
+    Compactors.summarizing(summarizer)
+        .triggerTokens(50_000) // trigger at 50k measured input tokens
+        .keepRecent(20) // keep the last 20 messages verbatim
+        .build();
 
 Agent<String> agent =
-    Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
+    Nessy.agent().provider(provider).model("fake-model").compaction(compactor).build();
 ```
 
 ```java
-// Replace the mechanism wholesale: your own CompactionStrategy, no model
-// call required if you don't want one.
+// Replace the mechanism wholesale: your own Compactor, no model call
+// required if you don't want one.
 Agent<String> agent =
-    Nessy.agent().provider(provider).model("fake-model").compaction(myStrategy).build();
+    Nessy.agent().provider(provider).model("fake-model").compaction(myCompactor).build();
 ```
 
-A `CompactionPolicy` only ever tunes the built-in summarizing strategy; a
-`CompactionStrategy` replaces it outright and wins even if a policy was set
-first. Turn compaction off entirely with the same policy overload:
+Turn compaction off entirely with `Compactor.disabled()`:
 
 ```java
 Agent<String> agent =
     Nessy.agent()
         .provider(provider)
         .model("fake-model")
-        .compaction(CompactionPolicy.disabled())
+        .compaction(Compactor.disabled())
         .build();
 ```
 
-Compaction is best-effort: if the strategy's own call fails, the turn proceeds
-uncompacted rather than blocking the conversation, and the hub carries a
-`CompactionFailed(sessionId, reason)` event so you can observe and alert on it
-like any other hub event. Whatever the strategy spends producing a smaller
-working set is a real cost, not a side channel: it is billed straight into
-`SessionState.usage()` alongside every conversational turn's usage, so the
-ledger's running total always matches what you were actually charged.
+Compaction is best-effort: if the compactor's own call fails, the turn
+proceeds uncompacted rather than blocking the conversation, and the hub
+carries a `CompactionFailed(sessionId, reason)` event so you can observe and
+alert on it like any other hub event. Whatever the compactor spends producing
+a smaller working set is a real cost, not a side channel: it is billed
+straight into `SessionState.usage()` alongside every conversational turn's
+usage, so the ledger's running total always matches what you were actually
+charged.
 
 ### Declaring a small model's window
 
@@ -380,8 +384,7 @@ Agent<String> agent =
 ```
 
 `contextWindow` only shapes the *derived* trigger — an explicit
-`.compaction(CompactionPolicy)` or `.compaction(CompactionStrategy)` call
-always wins over it, declared window or not.
+`.compaction(Compactor)` call always wins over it, declared window or not.
 
 ### The journal: `TranscriptStore`
 
@@ -543,9 +546,10 @@ bug the live run surfaced is fixed, with regression tests). `nessy-examples`
 ships a runnable two-provider chat app — see [Try it](#try-it) below.
 
 Context management landed too, and converged further: compaction unifies
-behind the `CompactionStrategy` seam (default `summarizing`, tunable via
-`CompactionPolicy` or replaceable wholesale), declared context windows derive
-their own trigger for small models, the `ContextPipeline` (`spi.context`)
+behind the `Compactor` seam (default `summarizing`, assembled and tuned via
+`Compactors.summarizing(summarizer)`'s builder or replaced wholesale), declared
+context windows derive their own trigger for small models, the `ContextPipeline`
+(`spi.context`)
 declares `project`/`enrich` bindings Maven-style for the fully-open
 Contextualize phase, and an opt-in `TranscriptStore` journal — strict,
 audit-grade, with `MessageCodec` for at-rest encoding — keeps the full

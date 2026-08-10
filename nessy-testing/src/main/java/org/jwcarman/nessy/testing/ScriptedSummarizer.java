@@ -17,7 +17,6 @@ package org.jwcarman.nessy.testing;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
@@ -44,7 +43,7 @@ public final class ScriptedSummarizer implements Summarizer {
   }
 
   @Override
-  public Summary summarize(Context head, CompactionPolicy policy) {
+  public Summary summarize(Context head) {
     if (next >= script.size()) {
       throw new IllegalStateException(
           "script exhausted: the harness asked for summarization "

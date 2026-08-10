@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.session.Usage;
@@ -30,8 +29,8 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * Summarizes by asking a real model: an ordinary, tool-free call over {@code head} plus the
- * policy's instructions as a trailing user message.
+ * Summarizes by asking a real model: an ordinary, tool-free call over {@code head} plus the baked-
+ * in instructions as a trailing user message.
  *
  * <p>A blank result is treated as a failure rather than a valid, if useless, summary: an empty
  * summary would still replace the compacted prefix, silently discarding history for nothing.
@@ -40,24 +39,31 @@ final class ProviderSummarizer implements Summarizer {
 
   private final ModelProvider provider;
   private final ModelSettings config;
+  private final int summaryMaxTokens;
+  private final String instructions;
 
-  ProviderSummarizer(ModelProvider provider, ModelSettings config) {
+  ProviderSummarizer(
+      ModelProvider provider, ModelSettings config, int summaryMaxTokens, String instructions) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.config = Objects.requireNonNull(config, "config must not be null");
+    if (summaryMaxTokens < 1) {
+      throw new IllegalArgumentException("summaryMaxTokens must be at least 1");
+    }
+    this.summaryMaxTokens = summaryMaxTokens;
+    this.instructions = Objects.requireNonNull(instructions, "instructions must not be null");
   }
 
   @Override
-  public Summary summarize(Context head, CompactionPolicy policy) {
+  public Summary summarize(Context head) {
     Objects.requireNonNull(head, "head must not be null");
-    Objects.requireNonNull(policy, "policy must not be null");
     List<Message> messages = new ArrayList<>(head.messages());
-    messages.add(Message.user(policy.instructions()));
+    messages.add(Message.user(instructions));
     ModelRequest request =
         new ModelRequest(
             Context.of(messages),
             config.systemPrompt(),
             config.model(),
-            policy.summaryMaxTokens(),
+            summaryMaxTokens,
             List.of(),
             Set.of(),
             null);

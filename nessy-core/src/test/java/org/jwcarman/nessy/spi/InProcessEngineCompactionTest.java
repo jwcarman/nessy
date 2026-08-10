@@ -32,9 +32,6 @@ import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
-import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Message;
@@ -47,7 +44,8 @@ import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
-import org.jwcarman.nessy.spi.compaction.CompactionStrategies;
+import org.jwcarman.nessy.spi.compaction.Compactor;
+import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -58,9 +56,9 @@ import org.jwcarman.nessy.spi.session.TranscriptEntry;
 import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
- * Compaction performed by {@link InProcessEngine}: the strategy's {@code compact()} runs under its
+ * Compaction performed by {@link InProcessEngine}: the compactor's {@code compact()} runs under its
  * own observation, and its result — or its failure — is what the reducer sees next. Unlike before
- * this seam existed, most of these scenarios never touch the model provider at all: the strategy
+ * this seam existed, most of these scenarios never touch the model provider at all: the compactor
  * decides how (or whether) to shrink the working set, and only the summarizing default happens to
  * do that by calling a model, which {@code SummarizerTest} covers on its own.
  */
@@ -71,18 +69,17 @@ class InProcessEngineCompactionTest {
       new ModelSettings("fake-model", "be helpful", 1024, Set.of(), null);
 
   /**
-   * A trigger low enough that the huge scripted usage crosses it, and {@code keepRecentMessages}
-   * low enough that the short transcripts these tests build still have something to cut at.
+   * A trigger low enough that the huge scripted usage crosses it, and {@code keepRecent} low enough
+   * that the short transcripts these tests build still have something to cut at.
    */
   private static Reducer reducerUsing(Summarizer summarizer) {
-    CompactionPolicy policy =
-        new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize.");
-    return new Reducer(
-        TerminationPolicy.defaults(), CompactionStrategies.summarizing(policy, summarizer));
+    Compactor compactor =
+        Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build();
+    return new Reducer(TerminationPolicy.defaults(), compactor);
   }
 
-  private static Reducer reducerUsing(CompactionStrategy strategy) {
-    return new Reducer(TerminationPolicy.defaults(), strategy);
+  private static Reducer reducerUsing(Compactor compactor) {
+    return new Reducer(TerminationPolicy.defaults(), compactor);
   }
 
   private static InProcessEngine engineWith(
@@ -117,18 +114,18 @@ class InProcessEngineCompactionTest {
   }
 
   /**
-   * A strategy that triggers exactly like the summarizing default's token trigger would, but hands
+   * A compactor that triggers exactly like the summarizing default's token trigger would, but hands
    * back whatever {@code result} it is given rather than actually summarizing.
    */
-  private static CompactionStrategy triggeringAt(long tokens, CompactionStrategy.Result result) {
-    return new CompactionStrategy() {
+  private static Compactor triggeringAt(long tokens, Compactor.Result result) {
+    return new Compactor() {
       @Override
       public boolean requiresCompaction(SessionState state) {
         return state.lastInputTokens() >= tokens;
       }
 
       @Override
-      public Result compact(List<Message> workingSet) {
+      public Result compact(SessionState state) {
         return result;
       }
     };
@@ -141,7 +138,7 @@ class InProcessEngineCompactionTest {
     void a_triggered_compaction_summarizes_and_the_conversation_continues() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer =
-          (head, policy) -> new Summarizer.Summary("Summary of earlier turns.", Usage.zero());
+          (head) -> new Summarizer.Summary("Summary of earlier turns.", Usage.zero());
       InProcessEngine engine =
           engineWith(
               provider,
@@ -163,10 +160,10 @@ class InProcessEngineCompactionTest {
     }
 
     @Test
-    void the_engine_reports_what_the_strategy_spent() {
+    void the_engine_reports_what_the_compactor_spent() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Usage spend = new Usage(500, 20, 0);
-      Summarizer summarizer = (head, policy) -> new Summarizer.Summary("Summary.", spend);
+      Summarizer summarizer = (head) -> new Summarizer.Summary("Summary.", spend);
       InProcessEngine engine =
           engineWith(
               provider,
@@ -178,7 +175,7 @@ class InProcessEngineCompactionTest {
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("second question"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-      // First turn's usage (150_000, 10, 0) + the strategy's spend (500, 20, 0); the second,
+      // First turn's usage (150_000, 10, 0) + the compactor's spend (500, 20, 0); the second,
       // uncompacted turn contributes zero.
       assertThat(completed.state().usage()).isEqualTo(new Usage(150_500, 30, 0));
     }
@@ -188,10 +185,10 @@ class InProcessEngineCompactionTest {
   class A_failing_compaction {
 
     @Test
-    void a_failing_strategy_emits_the_hub_event_and_the_turn_proceeds() {
+    void a_failing_compactor_emits_the_hub_event_and_the_turn_proceeds() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer =
-          (head, policy) -> {
+          (head) -> {
             throw new IllegalStateException("summarizer exploded");
           };
       EventHub hub = EventHub.synchronous();
@@ -213,17 +210,16 @@ class InProcessEngineCompactionTest {
     }
 
     @Test
-    void a_pair_breaking_strategy_is_a_failure_not_a_corruption() {
+    void a_pair_breaking_compactor_is_a_failure_not_a_corruption() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       ToolCall orphan = new ToolCall("orphan", "read_file", JsonNodeFactory.instance.objectNode());
       List<Message> broken = List.of(Message.assistant(List.of(new ToolUseBlock(orphan))));
-      CompactionStrategy strategy =
-          triggeringAt(100_000, new CompactionStrategy.Result(broken, Usage.zero()));
+      Compactor compactor = triggeringAt(100_000, new Compactor.Result(broken, Usage.zero()));
       EventHub hub = EventHub.synchronous();
       List<CompactionFailed> failures = new ArrayList<>();
       hub.subscribe(CompactionFailed.class, failures::add);
       InProcessEngine engine =
-          engineWith(provider, reducerUsing(strategy), hub, ObservationRegistry.create());
+          engineWith(provider, reducerUsing(compactor), hub, ObservationRegistry.create());
 
       engine.run(ID, Event.UserSaid.of("first question"));
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("second question"));
@@ -231,7 +227,7 @@ class InProcessEngineCompactionTest {
       assertThat(failures).hasSize(1);
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().generation()).isZero();
-      // The strategy's broken result never reached the reducer, so the working set that was
+      // The compactor's broken result never reached the reducer, so the working set that was
       // already there survives untouched, and the turn still completes normally.
       assertThat(completed.state().messages().getLast())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Normal answer."))));
@@ -245,7 +241,7 @@ class InProcessEngineCompactionTest {
     void compaction_journals_the_summary_with_its_spend() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Usage spend = new Usage(500, 20, 0);
-      Summarizer summarizer = (head, policy) -> new Summarizer.Summary("Summary.", spend);
+      Summarizer summarizer = (head) -> new Summarizer.Summary("Summary.", spend);
       InMemoryTranscriptStore transcriptStore = TranscriptStore.inMemory();
       EventHub hub = EventHub.synchronous();
       transcriptStore.feedFrom(hub);
@@ -282,7 +278,7 @@ class InProcessEngineCompactionTest {
     void compaction_produces_its_own_observation() {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Summarizer summarizer = (head, policy) -> new Summarizer.Summary("Summary.", Usage.zero());
+      Summarizer summarizer = (head) -> new Summarizer.Summary("Summary.", Usage.zero());
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), EventHub.synchronous(), observations);
 
@@ -300,7 +296,7 @@ class InProcessEngineCompactionTest {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer =
-          (head, policy) -> {
+          (head) -> {
             throw new IllegalStateException("summarizer exploded");
           };
       InProcessEngine engine =

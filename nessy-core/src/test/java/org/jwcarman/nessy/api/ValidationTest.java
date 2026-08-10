@@ -23,9 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
-import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -35,8 +32,8 @@ import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolSpec;
-import org.jwcarman.nessy.spi.Effect;
 import org.jwcarman.nessy.spi.Reducer;
+import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
@@ -60,12 +57,12 @@ class ValidationTest {
 
   @Test
   void a_null_termination_policy_is_rejected() {
-    assertThatThrownBy(() -> new Reducer(null, CompactionStrategy.disabled()))
+    assertThatThrownBy(() -> new Reducer(null, Compactor.disabled()))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void a_null_compaction_strategy_is_rejected() {
+  void a_null_compactor_is_rejected() {
     assertThatThrownBy(() -> new Reducer(TerminationPolicy.defaults(), null))
         .isInstanceOf(NullPointerException.class);
   }
@@ -194,33 +191,6 @@ class ValidationTest {
   }
 
   @Test
-  void a_compaction_policy_with_a_null_trigger_is_rejected() {
-    assertThatThrownBy(() -> new CompactionPolicy(null, 5, 1_024, "summarize"))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compaction_policy_with_negative_keep_recent_messages_is_rejected() {
-    assertThatThrownBy(
-            () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), -1, 1_024, "summarize"))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_compaction_policy_with_a_summary_ceiling_below_one_is_rejected() {
-    assertThatThrownBy(
-            () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), 5, 0, "summarize"))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_compaction_policy_without_instructions_is_rejected() {
-    assertThatThrownBy(
-            () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), 5, 1_024, null))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
   void a_compacted_event_without_a_working_set_is_rejected() {
     assertThatThrownBy(() -> new Event.Compacted(null, Usage.zero()))
         .isInstanceOf(NullPointerException.class);
@@ -250,19 +220,14 @@ class ValidationTest {
   }
 
   @Test
-  void a_compact_effect_without_a_working_set_is_rejected() {
-    assertThatThrownBy(() -> new Effect.Compact(null)).isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compaction_strategy_result_without_a_working_set_is_rejected() {
-    assertThatThrownBy(() -> new CompactionStrategy.Result(null, Usage.zero()))
+  void a_compactor_result_without_a_working_set_is_rejected() {
+    assertThatThrownBy(() -> new Compactor.Result(null, Usage.zero()))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void a_compaction_strategy_result_without_spend_is_rejected() {
-    assertThatThrownBy(() -> new CompactionStrategy.Result(List.of(), null))
+  void a_compactor_result_without_spend_is_rejected() {
+    assertThatThrownBy(() -> new Compactor.Result(List.of(), null))
         .isInstanceOf(NullPointerException.class);
   }
 

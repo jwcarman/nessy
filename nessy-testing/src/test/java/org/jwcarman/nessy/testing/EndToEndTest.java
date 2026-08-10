@@ -35,9 +35,6 @@ import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.compaction.CompactionPolicy;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
-import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.message.Message;
@@ -55,10 +52,14 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.spi.compaction.Compactor;
+import org.jwcarman.nessy.spi.compaction.Compactors;
+import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
 import org.jwcarman.nessy.spi.session.TranscriptEntry;
@@ -345,17 +346,16 @@ class EndToEndTest {
   class A_compacting_conversation {
 
     /**
-     * Arithmetic: a {@code CompactionPolicy} with {@code keepRecentMessages = 0} and the default
-     * trigger is what {@code InProcessEngineCompactionTest} uses, because the default policy's
-     * {@code keepRecentMessages} of 10 would leave a short transcript with no safe cut (cut == 0,
-     * compaction silently skipped). {@code Reducer.userSaid} appends the new user message
-     * <em>before</em> deciding whether to compact, so by the time send 2's "second question" is
-     * appended, the transcript is {@code [user1, asst1, user2]} (size 3). {@code pairSafeCut} then
-     * computes {@code limit = min(3 - 0, 3 - 1) = 2}, and {@code messages.get(2)} is {@code user2}
-     * — a genuine user-text turn — so {@code cut = 2}. {@code [user1, asst1]} collapses into the
-     * summary, {@code [user2]} survives as the tail, and the model is then called with the
-     * rewritten context to answer send 2. A third send, with {@code lastInputTokens} reset to 0 by
-     * compaction, proceeds without triggering compaction again.
+     * Arithmetic: a compactor with {@code keepRecent = 0} and the default trigger is what {@code
+     * InProcessEngineCompactionTest} uses, because {@code keepRecent = 10} would leave a short
+     * transcript with no safe cut (cut == 0, compaction silently skipped). {@code Reducer.userSaid}
+     * appends the new user message <em>before</em> deciding whether to compact, so by the time send
+     * 2's "second question" is appended, the transcript is {@code [user1, asst1, user2]} (size 3).
+     * {@code pairSafeCut} then computes {@code limit = min(3 - 0, 3 - 1) = 2}, and {@code
+     * messages.get(2)} is {@code user2} — a genuine user-text turn — so {@code cut = 2}. {@code
+     * [user1, asst1]} collapses into the summary, {@code [user2]} survives as the tail, and the
+     * model is then called with the rewritten context to answer send 2. A third send, with {@code
+     * lastInputTokens} reset to 0 by compaction, proceeds without triggering compaction again.
      */
     @Test
     void a_long_conversation_compacts_and_keeps_answering() {
@@ -370,12 +370,18 @@ class EndToEndTest {
               .text("Third answer.")
               .endTurn()
               .build();
+      Summarizer summarizer =
+          Summarizer.usingProvider(
+              provider,
+              new ModelSettings("fake-model", "", 4096, Set.of(), null),
+              256,
+              "Summarize.");
       Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
               .compaction(
-                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
+                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
               .build();
 
       var conversation = agent.converse();
@@ -412,12 +418,18 @@ class EndToEndTest {
                       new ModelEvent.TextChunk("Second answer."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
       RecordingSubscriber subscriber = new RecordingSubscriber();
+      Summarizer summarizer =
+          Summarizer.usingProvider(
+              provider,
+              new ModelSettings("fake-model", "", 4096, Set.of(), null),
+              256,
+              "Summarize.");
       Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
               .compaction(
-                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
+                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
               .build();
       subscriber.attachTo(agent.events());
 
@@ -438,11 +450,12 @@ class EndToEndTest {
   class A_custom_summarizer {
 
     /**
-     * {@code .summarizer(...)} replaces only the thing that calls a model inside the default,
-     * summarizing strategy — the policy still decides when to trigger and what to keep. Proven two
-     * ways: the resulting summary is exactly what the double was scripted to return, and the
-     * provider only ever sees the two ordinary conversational calls — never a third, summarization
-     * call — because {@link ScriptedSummarizer} intercepted that call entirely.
+     * A custom {@link Summarizer} handed to {@link Compactors#summarizing} replaces only the thing
+     * that calls a model inside the summarizing compactor — the surrounding trigger and keep-recent
+     * knobs are set independently. Proven two ways: the resulting summary is exactly what the
+     * double was scripted to return, and the provider only ever sees the two ordinary
+     * conversational calls — never a third, summarization call — because {@link ScriptedSummarizer}
+     * intercepted that call entirely.
      */
     @Test
     void the_summarizer_override_replaces_the_providers_summarization_call() {
@@ -462,8 +475,7 @@ class EndToEndTest {
               .provider(provider)
               .model("fake-model")
               .compaction(
-                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
-              .summarizer(summarizer)
+                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
               .build();
 
       var conversation = agent.converse();
@@ -482,19 +494,18 @@ class EndToEndTest {
   }
 
   @Nested
-  class An_explicit_strategy {
+  class An_explicit_compactor {
 
     /**
-     * {@code .compaction(CompactionStrategy)} replaces the strategy outright, even when a {@code
-     * CompactionPolicy} was set first — the policy-tuned default is never assembled at all. Proven
-     * by using a trivial, no-LLM strategy whose shape (keep only the newest message) is nothing
-     * like what the policy's summarizing default would have produced (a prefixed summary message
-     * plus a verbatim tail): if the policy default had won instead, this would need a third,
-     * summarization call from the provider, which the two-turn script below doesn't have — the run
-     * would fail with "script exhausted" rather than succeed with a one-message transcript.
+     * {@code .compaction(Compactor)} replaces the summarizing default outright. Proven by using a
+     * trivial, no-LLM compactor whose shape (keep only the newest message) is nothing like what the
+     * summarizing default would have produced (a prefixed summary message plus a verbatim tail): if
+     * the default had won instead, this would need a third, summarization call from the provider,
+     * which the two-turn script below doesn't have — the run would fail with "script exhausted"
+     * rather than succeed with a one-message transcript.
      */
     @Test
-    void an_explicit_strategy_wins_over_a_policy_set_earlier() {
+    void an_explicit_compactor_replaces_the_summarizing_default() {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder()
               .text("First answer.")
@@ -502,15 +513,16 @@ class EndToEndTest {
               .text("Second answer.")
               .endTurn()
               .build();
-      CompactionStrategy keepOnlyTheNewestMessage =
-          new CompactionStrategy() {
+      Compactor keepOnlyTheNewestMessage =
+          new Compactor() {
             @Override
             public boolean requiresCompaction(SessionState state) {
               return state.lastInputTokens() >= 1;
             }
 
             @Override
-            public Result compact(List<Message> workingSet) {
+            public Result compact(SessionState state) {
+              List<Message> workingSet = state.messages();
               List<Message> tail = workingSet.subList(workingSet.size() - 1, workingSet.size());
               return new Result(tail, Usage.zero());
             }
@@ -519,8 +531,6 @@ class EndToEndTest {
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
-              .compaction(
-                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 10, 256, "Summarize."))
               .compaction(keepOnlyTheNewestMessage)
               .build();
 
@@ -531,8 +541,8 @@ class EndToEndTest {
       assertThat(secondReply.failed()).isFalse();
       assertThat(secondReply.text()).isEqualTo("Second answer.");
       assertThat(secondReply.state().generation()).isEqualTo(1);
-      // Only the strategy's kept tail message plus the fresh assistant reply survive — no
-      // summary prefix, unlike the policy default's shape (compare A_compacting_conversation).
+      // Only the compactor's kept tail message plus the fresh assistant reply survive — no
+      // summary prefix, unlike the summarizing default's shape (compare A_compacting_conversation).
       assertThat(secondReply.state().messages())
           .containsExactly(
               Message.user("second question"),
@@ -548,14 +558,13 @@ class EndToEndTest {
   class A_journaled_transcript {
 
     /**
-     * Same arithmetic as {@link A_compacting_conversation}: a {@code CompactionPolicy} with {@code
-     * keepRecentMessages = 0} compacts {@code [user1, asst1]} into a summary once send 2's usage
-     * crosses the trigger. The journal, wired via {@code .transcript(...)}, is compaction-blind by
-     * construction — it appends every message the instant it is born, before anything downstream
-     * can remove it from the working set. So after compaction shrinks {@code reply.state()} to
-     * {@code [summary, user2, asst2]} (three messages), the journal still holds all five births in
-     * birth order: the two originals compaction discarded, the second question, the summary, and
-     * the final answer.
+     * Same arithmetic as {@link A_compacting_conversation}: a compactor with {@code keepRecent = 0}
+     * compacts {@code [user1, asst1]} into a summary once send 2's usage crosses the trigger. The
+     * journal, wired via {@code .transcript(...)}, is compaction-blind by construction — it appends
+     * every message the instant it is born, before anything downstream can remove it from the
+     * working set. So after compaction shrinks {@code reply.state()} to {@code [summary, user2,
+     * asst2]} (three messages), the journal still holds all five births in birth order: the two
+     * originals compaction discarded, the second question, the summary, and the final answer.
      */
     @Test
     void the_journal_keeps_what_compaction_removes() {
@@ -569,12 +578,18 @@ class EndToEndTest {
               .endTurn()
               .build();
       InMemoryTranscriptStore journal = TranscriptStore.inMemory();
+      Summarizer summarizer =
+          Summarizer.usingProvider(
+              provider,
+              new ModelSettings("fake-model", "", 4096, Set.of(), null),
+              256,
+              "Summarize.");
       Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
               .compaction(
-                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
+                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
               .transcript(journal)
               .build();
 
@@ -606,17 +621,17 @@ class EndToEndTest {
   }
 
   @Nested
-  class A_ledger_that_bills_the_strategy {
+  class A_ledger_that_bills_the_compactor {
 
     /**
-     * The strategy's spend is not a side channel — it is billed to the same ledger every
+     * The compactor's spend is not a side channel — it is billed to the same ledger every
      * conversational turn's usage lands in. {@link ScriptedSummarizer} pins the summarizer's spend
      * to a value no conversational turn in this script produces (500 input / 10 output tokens), so
      * {@code reply.state().usage()} landing on turn 1's usage plus exactly that spend proves the
      * bill was added rather than merely that compaction didn't error.
      */
     @Test
-    void the_ledger_counts_the_strategys_spend() {
+    void the_ledger_counts_the_compactors_spend() {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder()
               .text("First answer.")
@@ -633,8 +648,7 @@ class EndToEndTest {
               .provider(provider)
               .model("fake-model")
               .compaction(
-                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
-              .summarizer(summarizer)
+                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
               .build();
 
       var conversation = agent.converse();

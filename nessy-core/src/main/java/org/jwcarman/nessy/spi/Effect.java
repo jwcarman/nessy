@@ -15,10 +15,7 @@
  */
 package org.jwcarman.nessy.spi;
 
-import java.util.List;
-import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 
@@ -50,20 +47,22 @@ public sealed interface Effect {
   record ExecuteTool(ToolCall call) implements Effect {}
 
   /**
-   * Compact the whole settled working set. The reducer no longer decides what to keep versus
-   * summarize away — that choice, and the instructions to summarize by, belong entirely to {@code
-   * Reducer#compaction()} now.
+   * Compact the settled working set. A bare marker, like {@link CallModel}: the reducer no longer
+   * decides what to keep versus summarize away — that choice belongs entirely to {@code
+   * Reducer#compaction()} now — and the engine hands the compactor the state it already holds, so
+   * the effect itself carries no payload.
    */
-  record Compact(List<Message> workingSet) implements Effect {
-
-    public Compact {
-      Objects.requireNonNull(workingSet, "workingSet must not be null");
-      workingSet = List.copyOf(workingSet);
-    }
+  record Compact() implements Effect {
+    private static final Compact INSTANCE = new Compact();
   }
 
   /** The one instance of {@link CallModel}; the record has no state, so one is enough. */
   static Effect callModel() {
     return CallModel.INSTANCE;
+  }
+
+  /** The one instance of {@link Compact}; the record has no state, so one is enough. */
+  static Effect compact() {
+    return Compact.INSTANCE;
   }
 }

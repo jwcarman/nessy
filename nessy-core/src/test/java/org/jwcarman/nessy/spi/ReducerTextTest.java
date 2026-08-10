@@ -22,7 +22,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.session.SessionId;
@@ -30,6 +29,7 @@ import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.api.session.SessionStatus;
 import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.spi.compaction.Compactor;
 
 class ReducerTextTest {
 
@@ -60,7 +60,7 @@ class ReducerTextTest {
 
     @Test
     void a_fresh_user_message_on_a_turn_exhausted_session_halts_instead_of_calling_the_model() {
-      Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), CompactionStrategy.disabled());
+      Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), Compactor.disabled());
       SessionState exhausted = SessionState.newSession(new SessionId("s1")).withTurns(1);
 
       Step step = limited.reduce(exhausted, Event.UserSaid.of("more?"));
@@ -137,8 +137,8 @@ class ReducerTextTest {
     }
 
     /**
-     * {@code lastInputTokens} is what a {@code CompactionTrigger} reads to decide whether to fire;
-     * this pins the one place it gets written, independent of any compaction test.
+     * {@code lastInputTokens} is what a {@code Compactor} reads to decide whether to fire; this
+     * pins the one place it gets written, independent of any compaction test.
      */
     @Test
     void a_turn_end_records_the_measured_input_tokens() {
