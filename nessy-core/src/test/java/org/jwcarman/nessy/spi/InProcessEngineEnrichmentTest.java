@@ -110,7 +110,7 @@ class InProcessEngineEnrichmentTest {
       assertThat(requestMessages).contains(Message.user("what color is the sky?"));
 
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-      assertThat(completed.state().messages()).doesNotContain(fact);
+      assertThat(completed.state().messages()).isNotEmpty().doesNotContain(fact);
     }
   }
 
@@ -176,8 +176,8 @@ class InProcessEngineEnrichmentTest {
       // Zero declared enrichment contributors is identity-skipped:
       // nessy.run/nessy.turn/nessy.model.call
       // still fire, but nessy.context.enrich never does.
-      assertThatThrownBy(
-              () -> assertThat(observations).hasObservationWithNameEqualTo("nessy.context.enrich"))
+      var registryAssert = assertThat(observations);
+      assertThatThrownBy(() -> registryAssert.hasObservationWithNameEqualTo("nessy.context.enrich"))
           .isInstanceOf(AssertionError.class);
       assertThat(provider.requests()).hasSize(1);
       assertThat(provider.requests().getFirst().context().messages())

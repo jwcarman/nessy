@@ -22,7 +22,6 @@ import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.ConversationEvents;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
-import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.spi.ExecutionEngine;
@@ -88,7 +87,7 @@ public final class Conversation<I> {
   public Reply tell(I input, Consumer<ConversationEvent> tap) {
     Objects.requireNonNull(tap, "tap must not be null");
     ConversationEvent.AgentTold event = render(input);
-    try (Subscription subscription = events().subscribe(ConversationEvent.class, tap)) {
+    try (var _ = events().subscribe(ConversationEvent.class, tap)) {
       return new Reply(engine.run(conversationId, event));
     }
   }

@@ -53,7 +53,9 @@ class RetryingModelProviderTest {
         }
 
         @Override
-        public void close() {}
+        public void close() {
+          // fake stream holds no resources to release
+        }
       };
     }
 
@@ -100,7 +102,9 @@ class RetryingModelProviderTest {
           new RetryingModelProvider(
               flaky, RetryPolicy.defaults(), e -> true, new RecordingSleeper());
 
-      assertThatThrownBy(() -> provider.stream(request()))
+      ModelRequest modelRequest = request();
+
+      assertThatThrownBy(() -> provider.stream(modelRequest))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("still 429");
       assertThat(flaky.calls).isEqualTo(3);
@@ -113,7 +117,9 @@ class RetryingModelProviderTest {
       ModelProvider provider =
           new RetryingModelProvider(flaky, RetryPolicy.defaults(), e -> false, sleeper);
 
-      assertThatThrownBy(() -> provider.stream(request()))
+      ModelRequest modelRequest = request();
+
+      assertThatThrownBy(() -> provider.stream(modelRequest))
           .isInstanceOf(IllegalArgumentException.class);
       assertThat(flaky.calls).isEqualTo(1);
       assertThat(sleeper.slept).isEmpty();
@@ -133,11 +139,13 @@ class RetryingModelProviderTest {
 
   @Test
   void degenerate_policies_are_rejected() {
-    assertThatThrownBy(() -> new RetryPolicy(0, Duration.ofMillis(1), 2.0))
+    Duration oneMilli = Duration.ofMillis(1);
+
+    assertThatThrownBy(() -> new RetryPolicy(0, oneMilli, 2.0))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new RetryPolicy(3, Duration.ZERO, 2.0))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new RetryPolicy(3, Duration.ofMillis(1), 0.5))
+    assertThatThrownBy(() -> new RetryPolicy(3, oneMilli, 0.5))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

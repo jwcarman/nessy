@@ -45,12 +45,9 @@ public interface TokenEstimator {
       for (ContentBlock block : message.content()) {
         characters +=
             switch (block) {
-              case TextBlock text -> text.text().length();
+              case TextBlock(String text) -> text.length();
               case ToolResultBlock toolResult -> toolResult.content().length();
-              case ImageBlock ignored -> 0;
-              case ThinkingBlock ignored -> 0;
-              case RedactedThinkingBlock ignored -> 0;
-              case ToolUseBlock ignored -> 0;
+              case ImageBlock _, ThinkingBlock _, RedactedThinkingBlock _, ToolUseBlock _ -> 0;
             };
       }
       return Math.max(1, characters / 4);

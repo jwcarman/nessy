@@ -57,25 +57,31 @@ class ValidationTest {
 
   @Test
   void a_null_termination_policy_is_rejected() {
-    assertThatThrownBy(() -> new Reducer(null, Compactor.disabled()))
-        .isInstanceOf(NullPointerException.class);
+    Compactor compactor = Compactor.disabled();
+
+    assertThatThrownBy(() -> new Reducer(null, compactor)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_null_compactor_is_rejected() {
-    assertThatThrownBy(() -> new Reducer(TerminationPolicy.defaults(), null))
-        .isInstanceOf(NullPointerException.class);
+    TerminationPolicy policy = TerminationPolicy.defaults();
+
+    assertThatThrownBy(() -> new Reducer(policy, null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_tool_call_without_an_id_is_rejected() {
-    assertThatThrownBy(() -> new ToolCall(null, "echo", JsonNodeFactory.instance.objectNode()))
+    var arguments = JsonNodeFactory.instance.objectNode();
+
+    assertThatThrownBy(() -> new ToolCall(null, "echo", arguments))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_tool_call_without_a_name_is_rejected() {
-    assertThatThrownBy(() -> new ToolCall("c1", " ", JsonNodeFactory.instance.objectNode()))
+    var arguments = JsonNodeFactory.instance.objectNode();
+
+    assertThatThrownBy(() -> new ToolCall("c1", " ", arguments))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -92,7 +98,9 @@ class ValidationTest {
 
   @Test
   void a_tool_spec_without_a_name_is_rejected() {
-    assertThatThrownBy(() -> new ToolSpec("", "does things", JsonNodeFactory.instance.objectNode()))
+    var schema = JsonNodeFactory.instance.objectNode();
+
+    assertThatThrownBy(() -> new ToolSpec("", "does things", schema))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -130,19 +138,19 @@ class ValidationTest {
 
   @Test
   void a_model_request_without_a_model_is_rejected() {
+    Context context = Context.of(List.of());
+
     assertThatThrownBy(
-            () ->
-                new ModelRequest(
-                    Context.of(List.of()), "system", " ", 1024, List.of(), Set.of(), null))
+            () -> new ModelRequest(context, "system", " ", 1024, List.of(), Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_model_request_without_tokens_to_spend_is_rejected() {
+    Context context = Context.of(List.of());
+
     assertThatThrownBy(
-            () ->
-                new ModelRequest(
-                    Context.of(List.of()), "system", "fake-model", 0, List.of(), Set.of(), null))
+            () -> new ModelRequest(context, "system", "fake-model", 0, List.of(), Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -192,7 +200,9 @@ class ValidationTest {
 
   @Test
   void a_compacted_event_without_a_working_set_is_rejected() {
-    assertThatThrownBy(() -> new ConversationEvent.Compacted(new ConversationId("s1"), null))
+    ConversationId id = new ConversationId("s1");
+
+    assertThatThrownBy(() -> new ConversationEvent.Compacted(id, null))
         .isInstanceOf(NullPointerException.class);
   }
 
@@ -210,8 +220,9 @@ class ValidationTest {
 
   @Test
   void a_compaction_skipped_event_without_a_reason_is_rejected() {
-    assertThatThrownBy(
-            () -> new ConversationEvent.CompactionSkipped(new ConversationId("s1"), null))
+    ConversationId id = new ConversationId("s1");
+
+    assertThatThrownBy(() -> new ConversationEvent.CompactionSkipped(id, null))
         .isInstanceOf(NullPointerException.class);
   }
 
@@ -228,7 +239,9 @@ class ValidationTest {
 
   @Test
   void a_compaction_failed_event_without_a_reason_is_rejected() {
-    assertThatThrownBy(() -> new CompactionFailed(new ConversationId("s1"), null))
+    ConversationId id = new ConversationId("s1");
+
+    assertThatThrownBy(() -> new CompactionFailed(id, null))
         .isInstanceOf(NullPointerException.class);
   }
 }

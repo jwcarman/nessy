@@ -81,7 +81,7 @@ public final class OpenAiRequests {
     var builder =
         ChatCompletionCreateParams.builder()
             .model(request.model())
-            .maxCompletionTokens((long) request.maxTokens())
+            .maxCompletionTokens(request.maxTokens())
             .messages(messages)
             .streamOptions(ChatCompletionStreamOptions.builder().includeUsage(true).build());
 
@@ -127,9 +127,9 @@ public final class OpenAiRequests {
 
   private static ChatCompletionContentPart toContentPart(ContentBlock block) {
     return switch (block) {
-      case TextBlock text ->
+      case TextBlock(String text) ->
           ChatCompletionContentPart.ofText(
-              ChatCompletionContentPartText.builder().text(text.text()).build());
+              ChatCompletionContentPartText.builder().text(text).build());
       case ImageBlock image ->
           ChatCompletionContentPart.ofImageUrl(
               ChatCompletionContentPartImage.builder()
@@ -189,8 +189,8 @@ public final class OpenAiRequests {
   private static String concatenateText(List<ContentBlock> content) {
     var builder = new StringBuilder();
     for (ContentBlock block : content) {
-      if (block instanceof TextBlock text) {
-        builder.append(text.text());
+      if (block instanceof TextBlock(String text)) {
+        builder.append(text);
       }
     }
     return builder.toString();

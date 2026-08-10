@@ -66,7 +66,9 @@ public final class AgentBuilder<I> {
 
   private static final int DEFAULT_MAX_TOKENS = 4096;
 
-  private final Class<I> vocabulary;
+  /** {@code ""} — no system prompt. */
+  private static final String DEFAULT_SYSTEM_PROMPT = "";
+
   private final ModelProvider provider;
   private final ConversationStore store;
   private final ObservationRegistry observations;
@@ -100,7 +102,7 @@ public final class AgentBuilder<I> {
    * unchecked cast is ever needed here; {@link #renderer(InputRenderer)} overrides it.
    */
   AgentBuilder(Harness harness, Class<I> vocabulary, InputRenderer<I> defaultRenderer) {
-    this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
+    Objects.requireNonNull(vocabulary, "vocabulary must not be null");
     this.renderer = Objects.requireNonNull(defaultRenderer, "defaultRenderer must not be null");
     this.provider = harness.provider();
     this.store = harness.store();
@@ -273,7 +275,7 @@ public final class AgentBuilder<I> {
     ModelSettings settings =
         new ModelSettings(
             resolvedModel,
-            Optional.ofNullable(systemPrompt).orElseGet(this::defaultSystemPrompt),
+            Optional.ofNullable(systemPrompt).orElse(DEFAULT_SYSTEM_PROMPT),
             resolvedMaxTokens,
             Optional.ofNullable(capabilities).orElseGet(this::defaultCapabilities),
             contextWindow);
@@ -305,11 +307,6 @@ public final class AgentBuilder<I> {
             observations,
             contextPipeline);
     return new Agent<>(engine, events, store, contextPipeline, renderer);
-  }
-
-  /** {@code ""} — no system prompt. */
-  private String defaultSystemPrompt() {
-    return "";
   }
 
   /** {@link #DEFAULT_MAX_TOKENS}. */

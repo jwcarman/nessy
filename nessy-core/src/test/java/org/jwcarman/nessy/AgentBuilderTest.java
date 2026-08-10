@@ -77,8 +77,9 @@ class AgentBuilderTest {
     @Test
     void a_null_grants_array_is_rejected() {
       ToolGrant[] grants = null;
+      var agent = Nessy.harness(NEVER_CALLED).build().agent();
 
-      assertThatThrownBy(() -> Nessy.harness(NEVER_CALLED).build().agent().tools(grants))
+      assertThatThrownBy(() -> agent.tools(grants))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants");
     }
@@ -86,8 +87,9 @@ class AgentBuilderTest {
     @Test
     void a_null_element_in_the_grants_array_is_rejected() {
       ToolGrant present = ToolGrant.grant(new NoOpTool(), UsagePolicy.allow());
+      var agent = Nessy.harness(NEVER_CALLED).build().agent();
 
-      assertThatThrownBy(() -> Nessy.harness(NEVER_CALLED).build().agent().tools(present, null))
+      assertThatThrownBy(() -> agent.tools(present, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants[1]");
     }

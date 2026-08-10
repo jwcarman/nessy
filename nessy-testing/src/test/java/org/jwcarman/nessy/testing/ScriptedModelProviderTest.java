@@ -126,8 +126,9 @@ class ScriptedModelProviderTest {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hello").endTurn().build();
     provider.stream(request()).close();
+    ModelRequest exhaustedRequest = request();
 
-    assertThatThrownBy(() -> provider.stream(request()))
+    assertThatThrownBy(() -> provider.stream(exhaustedRequest))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("script exhausted");
   }

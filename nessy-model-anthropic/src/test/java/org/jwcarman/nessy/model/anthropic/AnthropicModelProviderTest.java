@@ -52,7 +52,9 @@ class AnthropicModelProviderTest {
 
     @Test
     void rejects_build_with_neither_a_key_nor_a_client() {
-      assertThatThrownBy(() -> AnthropicModelProvider.builder().build())
+      var builder = AnthropicModelProvider.builder();
+
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
@@ -70,7 +72,9 @@ class AnthropicModelProviderTest {
               && System.getenv("ANTHROPIC_AUTH_TOKEN") == null,
           "ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is set in this shell");
 
-      assertThatThrownBy(() -> AnthropicModelProvider.builder().fromEnv().build())
+      var builder = AnthropicModelProvider.builder().fromEnv();
+
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("ANTHROPIC_API_KEY");
     }

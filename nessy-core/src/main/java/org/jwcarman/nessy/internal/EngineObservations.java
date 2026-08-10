@@ -26,14 +26,16 @@ public final class EngineObservations {
 
   private EngineObservations() {}
 
-  // Observation names are Nessy's stable metric identity; contextual names follow
-  // the (pre-1.0) OTel GenAI agent span conventions: invoke_agent / chat {model} /
-  // execute_tool {tool}. Metrics stay stable even as span conventions evolve.
+  // Observation names are Nessy's stable metric identity; contextual names follow the
+  // (pre-1.0) OTel GenAI agent span conventions (invoke_agent, chat {model}, execute_tool
+  // {tool}). Metrics stay stable even as span conventions evolve.
+
+  private static final String GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
 
   public static Observation run(ObservationRegistry registry, ConversationId id) {
     return Observation.start("nessy.run", registry)
         .contextualName("invoke_agent")
-        .lowCardinalityKeyValue("gen_ai.operation.name", "invoke_agent")
+        .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, "invoke_agent")
         .highCardinalityKeyValue("gen_ai.conversation.id", id.value());
   }
 
@@ -44,7 +46,7 @@ public final class EngineObservations {
   public static Observation modelCall(ObservationRegistry registry, String model) {
     return Observation.start("nessy.model.call", registry)
         .contextualName("chat " + model)
-        .lowCardinalityKeyValue("gen_ai.operation.name", "chat")
+        .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, "chat")
         .lowCardinalityKeyValue("gen_ai.request.model", model);
   }
 
@@ -57,7 +59,7 @@ public final class EngineObservations {
   public static Observation toolCall(ObservationRegistry registry, String toolName, String callId) {
     return Observation.start("nessy.tool.call", registry)
         .contextualName("execute_tool " + toolName)
-        .lowCardinalityKeyValue("gen_ai.operation.name", "execute_tool")
+        .lowCardinalityKeyValue(GEN_AI_OPERATION_NAME, "execute_tool")
         .lowCardinalityKeyValue("gen_ai.tool.name", toolName)
         .highCardinalityKeyValue("gen_ai.tool.call.id", callId);
   }

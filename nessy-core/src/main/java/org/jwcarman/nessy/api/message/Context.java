@@ -18,8 +18,9 @@ package org.jwcarman.nessy.api.message;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * A wire-safe slice of the conversation: a list of {@link Message}s that a provider will always
@@ -53,35 +54,53 @@ public record Context(List<Message> messages) {
     messages = List.copyOf(messages);
     int i = 0;
     while (i < messages.size()) {
-      List<String> callIds = toolUseIdsOf(messages.get(i));
-      if (callIds.isEmpty()) {
-        List<String> strayResultIds = toolResultIdsOf(messages.get(i));
-        if (!strayResultIds.isEmpty()) {
-          throw new IllegalArgumentException(
-              "tool_result outside an answering message: " + strayResultIds.getFirst());
-        }
-        i++;
-        continue;
+      i = validatePairingFrom(messages, i);
+    }
+  }
+
+  /**
+   * Validates the pairing invariant starting at index {@code i} and returns the index of the next
+   * unvalidated message — {@code i + 1} for a plain message, {@code i + 2} once a {@code tool_use}
+   * message and its answering results message both check out. Split out of the canonical
+   * constructor to keep its own cognitive complexity within the house limit (S3776); the checks
+   * themselves are unchanged.
+   */
+  private static int validatePairingFrom(List<Message> messages, int i) {
+    List<String> callIds = toolUseIdsOf(messages.get(i));
+    if (callIds.isEmpty()) {
+      requireNoStrayResult(messages.get(i));
+      return i + 1;
+    }
+    requireAnsweredBy(messages, i, callIds);
+    return i + 2;
+  }
+
+  private static void requireNoStrayResult(Message message) {
+    List<String> strayResultIds = toolResultIdsOf(message);
+    if (!strayResultIds.isEmpty()) {
+      throw new IllegalArgumentException(
+          "tool_result outside an answering message: " + strayResultIds.getFirst());
+    }
+  }
+
+  private static void requireAnsweredBy(List<Message> messages, int i, List<String> callIds) {
+    if (i + 1 >= messages.size()) {
+      throw new IllegalArgumentException("unanswered tool_use: " + callIds.getFirst());
+    }
+    Message next = messages.get(i + 1);
+    if (next.role() != Role.USER) {
+      throw new IllegalArgumentException("unanswered tool_use: " + callIds.getFirst());
+    }
+    List<String> resultIds = toolResultIdsOf(next);
+    for (String callId : callIds) {
+      if (!resultIds.contains(callId)) {
+        throw new IllegalArgumentException("unanswered tool_use: " + callId);
       }
-      if (i + 1 >= messages.size()) {
-        throw new IllegalArgumentException("unanswered tool_use: " + callIds.getFirst());
+    }
+    for (String resultId : resultIds) {
+      if (!callIds.contains(resultId)) {
+        throw new IllegalArgumentException("tool_result for an unknown id: " + resultId);
       }
-      Message next = messages.get(i + 1);
-      if (next.role() != Role.USER) {
-        throw new IllegalArgumentException("unanswered tool_use: " + callIds.getFirst());
-      }
-      List<String> resultIds = toolResultIdsOf(next);
-      for (String callId : callIds) {
-        if (!resultIds.contains(callId)) {
-          throw new IllegalArgumentException("unanswered tool_use: " + callId);
-        }
-      }
-      for (String resultId : resultIds) {
-        if (!callIds.contains(resultId)) {
-          throw new IllegalArgumentException("tool_result for an unknown id: " + resultId);
-        }
-      }
-      i += 2;
     }
   }
 
@@ -163,7 +182,7 @@ public record Context(List<Message> messages) {
    *
    * @throws NullPointerException if {@code rewriter} is null, or if it returns a null message
    */
-  public Context map(Function<Message, Message> rewriter) {
+  public Context map(UnaryOperator<Message> rewriter) {
     Objects.requireNonNull(rewriter, "rewriter must not be null");
     List<Message> rewritten = new ArrayList<>(messages.size());
     for (Message message : messages) {
@@ -317,8 +336,8 @@ public record Context(List<Message> messages) {
     }
     List<String> ids = new ArrayList<>();
     for (ContentBlock block : message.content()) {
-      if (block instanceof ToolUseBlock toolUse) {
-        ids.add(toolUse.call().id());
+      if (block instanceof ToolUseBlock(ToolCall call)) {
+        ids.add(call.id());
       }
     }
     return ids;

@@ -166,8 +166,9 @@ class ReducerGrammarTest {
   @Test
   void a_misdelivered_fact_is_rejected_loudly() {
     ConversationId foreign = new ConversationId("s2");
+    ConversationEvent.AgentTold event = ConversationEvent.AgentTold.of(foreign, "hi");
 
-    assertThatThrownBy(() -> reducer.reduce(initial, ConversationEvent.AgentTold.of(foreign, "hi")))
+    assertThatThrownBy(() -> reducer.reduce(initial, event))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining(foreign.toString())
         .hasMessageContaining(ID.toString());

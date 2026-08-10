@@ -130,14 +130,18 @@ class UsagePolicyTest {
 
     @Test
     void grant_rejects_a_null_tool() {
-      assertThatThrownBy(() -> ToolGrant.grant(null, UsagePolicy.allow()))
+      UsagePolicy policy = UsagePolicy.allow();
+
+      assertThatThrownBy(() -> ToolGrant.grant(null, policy))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("tool");
     }
 
     @Test
     void grant_rejects_a_null_policy() {
-      assertThatThrownBy(() -> ToolGrant.grant(new Recorder(), null))
+      Recorder tool = new Recorder();
+
+      assertThatThrownBy(() -> ToolGrant.grant(tool, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("policy");
     }
@@ -159,14 +163,18 @@ class UsagePolicyTest {
 
     @Test
     void a_grant_rejects_a_null_tool() {
-      assertThatThrownBy(() -> new ToolGrant(null, UsagePolicy.allow()))
+      UsagePolicy policy = UsagePolicy.allow();
+
+      assertThatThrownBy(() -> new ToolGrant(null, policy))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("tool");
     }
 
     @Test
     void a_grant_rejects_a_null_policy() {
-      assertThatThrownBy(() -> new ToolGrant(new Grant_construction.Recorder(), null))
+      Grant_construction.Recorder tool = new Grant_construction.Recorder();
+
+      assertThatThrownBy(() -> new ToolGrant(tool, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("policy");
     }

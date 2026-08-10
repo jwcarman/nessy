@@ -23,9 +23,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * A compensating control for the withdrawn JPMS module descriptor (see CHANGELOG): with no {@code
@@ -44,17 +45,27 @@ class ZoneBoundariesTest {
           "Tool.java" // -> Schemas, to derive its wire ToolSpec
           );
 
-  @Test
-  void no_file_under_api_imports_spi() {
+  /**
+   * The api-to-spi ban, covering the top-level spi zone as well as its spi.context and
+   * spi.compaction sub-zones.
+   */
+  @ParameterizedTest(name = "no file under api imports {0}")
+  @MethodSource("apiForbiddenSpiPackages")
+  void no_file_under_api_imports_spi_zone(String forbiddenPackage) {
     List<JavaFile> filesUnderApi = filesUnder("api");
     assertThat(filesUnderApi).isNotEmpty();
     for (JavaFile file : filesUnderApi) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.spi"))
-          .as(
-              "%s imports org.jwcarman.nessy.spi, but api may not depend on spi",
-              file.relativePath())
+      assertThat(file.importsPackage(forbiddenPackage))
+          .as("%s imports %s, but api may not depend on spi", file.relativePath(), forbiddenPackage)
           .isFalse();
     }
+  }
+
+  private static Stream<String> apiForbiddenSpiPackages() {
+    return Stream.of(
+        "org.jwcarman.nessy.spi",
+        "org.jwcarman.nessy.spi.context",
+        "org.jwcarman.nessy.spi.compaction");
   }
 
   @Test
@@ -111,20 +122,6 @@ class ZoneBoundariesTest {
     }
   }
 
-  /** The api-to-spi ban (see {@link #no_file_under_api_imports_spi}) covers spi.context too. */
-  @Test
-  void no_file_under_api_imports_spi_context() {
-    List<JavaFile> filesUnderApi = filesUnder("api");
-    assertThat(filesUnderApi).isNotEmpty();
-    for (JavaFile file : filesUnderApi) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.spi.context"))
-          .as(
-              "%s imports org.jwcarman.nessy.spi.context, but api may not depend on spi",
-              file.relativePath())
-          .isFalse();
-    }
-  }
-
   /**
    * {@code spi.compaction} ({@link org.jwcarman.nessy.spi.compaction.Compactor}, {@link
    * org.jwcarman.nessy.spi.compaction.Summarizer}, {@link
@@ -140,20 +137,6 @@ class ZoneBoundariesTest {
       assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
           .as(
               "%s imports org.jwcarman.nessy.internal, but spi.compaction may not",
-              file.relativePath())
-          .isFalse();
-    }
-  }
-
-  /** The api-to-spi ban (see {@link #no_file_under_api_imports_spi}) covers spi.compaction too. */
-  @Test
-  void no_file_under_api_imports_spi_compaction() {
-    List<JavaFile> filesUnderApi = filesUnder("api");
-    assertThat(filesUnderApi).isNotEmpty();
-    for (JavaFile file : filesUnderApi) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.spi.compaction"))
-          .as(
-              "%s imports org.jwcarman.nessy.spi.compaction, but api may not depend on spi",
               file.relativePath())
           .isFalse();
     }
@@ -182,7 +165,7 @@ class ZoneBoundariesTest {
       return paths
           .filter(path -> path.toString().endsWith(".java"))
           .map(path -> new JavaFile(packageRoot.relativize(path), read(path)))
-          .collect(Collectors.toList());
+          .toList();
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }

@@ -43,6 +43,7 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -164,49 +165,45 @@ public final class AnthropicRequests {
    */
   private static Optional<ContentBlockParam> toContentBlockParam(ContentBlock block) {
     return switch (block) {
-      case TextBlock text ->
-          text.text().isEmpty()
+      case TextBlock(String text) ->
+          text.isEmpty()
               ? Optional.empty()
-              : Optional.of(
-                  ContentBlockParam.ofText(TextBlockParam.builder().text(text.text()).build()));
-      case ImageBlock image ->
+              : Optional.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text).build()));
+      case ImageBlock(String mediaType, String base64Data) ->
           Optional.of(
               ContentBlockParam.ofImage(
                   ImageBlockParam.builder()
                       .source(
                           Base64ImageSource.builder()
-                              .mediaType(Base64ImageSource.MediaType.of(image.mediaType()))
-                              .data(image.base64Data())
+                              .mediaType(Base64ImageSource.MediaType.of(mediaType))
+                              .data(base64Data)
                               .build())
                       .build()));
-      case ThinkingBlock thinking ->
-          thinking.signature().isEmpty()
+      case ThinkingBlock(String text, String signature) ->
+          signature.isEmpty()
               ? Optional.empty()
               : Optional.of(
                   ContentBlockParam.ofThinking(
-                      ThinkingBlockParam.builder()
-                          .thinking(thinking.text())
-                          .signature(thinking.signature())
-                          .build()));
-      case RedactedThinkingBlock redacted ->
+                      ThinkingBlockParam.builder().thinking(text).signature(signature).build()));
+      case RedactedThinkingBlock(String data) ->
           Optional.of(
               ContentBlockParam.ofRedactedThinking(
-                  RedactedThinkingBlockParam.builder().data(redacted.data()).build()));
-      case ToolUseBlock toolUse ->
+                  RedactedThinkingBlockParam.builder().data(data).build()));
+      case ToolUseBlock(ToolCall call) ->
           Optional.of(
               ContentBlockParam.ofToolUse(
                   ToolUseBlockParam.builder()
-                      .id(toolUse.call().id())
-                      .name(toolUse.call().name())
-                      .input(toInput(toolUse.call().arguments()))
+                      .id(call.id())
+                      .name(call.name())
+                      .input(toInput(call.arguments()))
                       .build()));
-      case ToolResultBlock toolResult ->
+      case ToolResultBlock(String toolUseId, String content, boolean isError) ->
           Optional.of(
               ContentBlockParam.ofToolResult(
                   ToolResultBlockParam.builder()
-                      .toolUseId(toolResult.toolUseId())
-                      .content(toolResult.content())
-                      .isError(toolResult.isError())
+                      .toolUseId(toolUseId)
+                      .content(content)
+                      .isError(isError)
                       .build()));
     };
   }

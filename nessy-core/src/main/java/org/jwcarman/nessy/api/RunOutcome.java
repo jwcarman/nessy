@@ -20,6 +20,11 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 /** How a run ended: finished, or waiting for something that outlives this process. */
 public sealed interface RunOutcome {
 
+  /**
+   * The state the run reached, whichever way it ended — satisfied by both variants' own component.
+   */
+  ConversationState state();
+
   record Completed(ConversationState state) implements RunOutcome {}
 
   record Parked(ConversationState state, ParkToken token) implements RunOutcome {}

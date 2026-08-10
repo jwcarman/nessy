@@ -97,14 +97,15 @@ final class ProviderSummarizer implements Summarizer {
           // recordUsage only ever runs from this arm: a stream that ends without a TurnEnded
           // (a provider bug, or the stream closing early) leaves the span with no
           // gen_ai.usage.* key-values at all, rather than a zeroed or partial usage report.
-          case ModelEvent.TurnEnded(var _, Usage turnUsage) -> recordUsage(observation, turnUsage);
-          // Thinking, redacted-thinking, and tool-use chunks are not part of the summary;
-          // this is a tool-free call, so a ToolUseEmitted here would be a provider bug this
-          // summarizer doesn't need to guard against specially.
-          case ModelEvent.ThinkingChunk _ -> {}
-          case ModelEvent.ThinkingSigned _ -> {}
-          case ModelEvent.RedactedThinkingEmitted _ -> {}
-          case ModelEvent.ToolUseEmitted _ -> {}
+          case ModelEvent.TurnEnded(_, Usage turnUsage) -> recordUsage(observation, turnUsage);
+          case ModelEvent.ThinkingChunk _,
+              ModelEvent.ThinkingSigned _,
+              ModelEvent.RedactedThinkingEmitted _,
+              ModelEvent.ToolUseEmitted _ -> {
+            // Thinking, redacted-thinking, and tool-use chunks are not part of the summary;
+            // this is a tool-free call, so a ToolUseEmitted here would be a provider bug this
+            // summarizer doesn't need to guard against specially.
+          }
         }
       }
     } catch (RuntimeException e) {

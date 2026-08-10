@@ -115,6 +115,9 @@
     <sonar.host.url>https://sonarcloud.io</sonar.host.url>
     <sonar.projectKey>jwcarman_nessy</sonar.projectKey>
     <sonar.coverage.exclusions>nessy-examples/**</sonar.coverage.exclusions>
+    <!-- nessy-examples are console demo apps where stdout/stderr IS the product;
+         excluded from analysis rather than suppressing individual S106 issues. -->
+    <sonar.exclusions>nessy-examples/**</sonar.exclusions>
   </properties>
 
   <dependencyManagement>

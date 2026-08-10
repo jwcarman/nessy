@@ -39,6 +39,8 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  */
 public sealed interface ConversationEvent extends ConversationScoped {
 
+  String CONVERSATION_ID_MUST_NOT_BE_NULL = "conversationId must not be null";
+
   @Override
   ConversationId conversationId();
 
@@ -52,7 +54,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public AgentTold {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
       content = List.copyOf(content);
     }
 
@@ -66,7 +68,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
   record TextDelta(ConversationId conversationId, String text) implements ConversationEvent {
 
     public TextDelta {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
     }
   }
 
@@ -74,7 +76,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
   record ThinkingDelta(ConversationId conversationId, String text) implements ConversationEvent {
 
     public ThinkingDelta {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
     }
   }
 
@@ -83,7 +85,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public ThinkingSigned {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(signature, "signature must not be null");
     }
   }
@@ -93,7 +95,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public RedactedThinkingArrived {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(data, "data must not be null");
     }
   }
@@ -103,7 +105,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public ToolCallRequested {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
     }
   }
 
@@ -112,7 +114,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public ModelTurnEnded {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(reason, "reason must not be null");
       Objects.requireNonNull(usage, "usage must not be null");
     }
@@ -123,7 +125,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public ApprovalDecided {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
     }
   }
 
@@ -132,7 +134,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public ToolFinished {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
     }
   }
 
@@ -147,7 +149,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public Compacted {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(workingSet, "workingSet must not be null");
       workingSet = List.copyOf(workingSet);
     }
@@ -158,7 +160,7 @@ public sealed interface ConversationEvent extends ConversationScoped {
       implements ConversationEvent {
 
     public CompactionSkipped {
-      Objects.requireNonNull(conversationId, "conversationId must not be null");
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
       Objects.requireNonNull(reason, "reason must not be null");
     }
   }

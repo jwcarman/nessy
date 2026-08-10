@@ -64,14 +64,17 @@ class ConversationStateTest {
 
   @Test
   void a_negative_last_input_tokens_is_rejected() {
-    assertThatThrownBy(() -> ConversationState.newConversation(ID).withLastInputTokens(-1))
+    ConversationState state = ConversationState.newConversation(ID);
+
+    assertThatThrownBy(() -> state.withLastInputTokens(-1))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_negative_generation_is_rejected() {
-    assertThatThrownBy(() -> ConversationState.newConversation(ID).withGeneration(-1))
-        .isInstanceOf(IllegalArgumentException.class);
+    ConversationState state = ConversationState.newConversation(ID);
+
+    assertThatThrownBy(() -> state.withGeneration(-1)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

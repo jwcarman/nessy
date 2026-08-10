@@ -78,7 +78,9 @@ class HarnessTest {
         }
 
         @Override
-        public void close() {}
+        public void close() {
+          // intentionally empty: this fake stream holds no resources to release
+        }
       };
     }
 
@@ -157,8 +159,9 @@ class HarnessTest {
     @Test
     void neither_model_declared_throws_a_named_AgentConfigurationException() {
       FakeProvider provider = new FakeProvider("hi");
+      AgentBuilder<String> agentBuilder = Nessy.harness(provider).build().agent();
 
-      assertThatThrownBy(() -> Nessy.harness(provider).build().agent().build())
+      assertThatThrownBy(agentBuilder::build)
           .isInstanceOf(AgentConfigurationException.class)
           .hasMessageContaining("model");
     }
@@ -204,8 +207,9 @@ class HarnessTest {
                   })
               .listen(ConversationEvent.class, e -> reached.add("never"))
               .build();
+      Conversation<String> conversation = agent.converse();
 
-      assertThatThrownBy(() -> agent.converse().tell("hi"))
+      assertThatThrownBy(() -> conversation.tell("hi"))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("listener blew up");
       assertThat(reached).isEmpty();

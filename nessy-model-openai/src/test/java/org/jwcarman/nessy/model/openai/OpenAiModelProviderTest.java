@@ -51,7 +51,9 @@ class OpenAiModelProviderTest {
 
     @Test
     void rejects_build_with_neither_a_key_nor_a_client() {
-      assertThatThrownBy(() -> OpenAiModelProvider.builder().build())
+      var builder = OpenAiModelProvider.builder();
+
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
@@ -66,7 +68,9 @@ class OpenAiModelProviderTest {
       // configured — moves to build() accordingly.
       assumeTrue(System.getenv("OPENAI_API_KEY") == null, "OPENAI_API_KEY is set in this shell");
 
-      assertThatThrownBy(() -> OpenAiModelProvider.builder().fromEnv().build())
+      var builder = OpenAiModelProvider.builder().fromEnv();
+
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("OPENAI_API_KEY");
     }

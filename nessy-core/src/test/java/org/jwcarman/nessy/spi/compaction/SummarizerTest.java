@@ -74,7 +74,9 @@ class SummarizerTest {
         }
 
         @Override
-        public void close() {}
+        public void close() {
+          // fake stream holds no resources to release
+        }
       };
     }
 

@@ -211,40 +211,57 @@ class InProcessEngineTest {
 
     @Test
     void a_null_provider_is_rejected() {
+      ToolRegistry tools = ToolRegistry.of();
+      Approver approver = Approver.allowAll();
+      ConversationStore store = ConversationStore.inMemory();
+      EventEmitter events = EventEmitter.noop();
+      Reducer reducer = Reducer.defaults();
+      ObjectMapper mapper = new ObjectMapper();
+      ContextPipeline contextPipeline = EngineFixtures.contextPipeline();
+
       assertThatThrownBy(
               () ->
                   new InProcessEngine(
                       null,
-                      ToolRegistry.of(),
+                      tools,
                       Map.of(),
-                      Approver.allowAll(),
-                      ConversationStore.inMemory(),
-                      EventEmitter.noop(),
-                      Reducer.defaults(),
+                      approver,
+                      store,
+                      events,
+                      reducer,
                       CONFIG,
-                      new ObjectMapper(),
+                      mapper,
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextPipeline()))
+                      contextPipeline))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("provider");
     }
 
     @Test
     void a_null_grants_map_is_rejected() {
+      EngineFixtures.FakeProvider provider = new EngineFixtures.FakeProvider(List.of());
+      ToolRegistry tools = ToolRegistry.of();
+      Approver approver = Approver.allowAll();
+      ConversationStore store = ConversationStore.inMemory();
+      EventEmitter events = EventEmitter.noop();
+      Reducer reducer = Reducer.defaults();
+      ObjectMapper mapper = new ObjectMapper();
+      ContextPipeline contextPipeline = EngineFixtures.contextPipeline();
+
       assertThatThrownBy(
               () ->
                   new InProcessEngine(
-                      new EngineFixtures.FakeProvider(List.of()),
-                      ToolRegistry.of(),
+                      provider,
+                      tools,
                       null,
-                      Approver.allowAll(),
-                      ConversationStore.inMemory(),
-                      EventEmitter.noop(),
-                      Reducer.defaults(),
+                      approver,
+                      store,
+                      events,
+                      reducer,
                       CONFIG,
-                      new ObjectMapper(),
+                      mapper,
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextPipeline()))
+                      contextPipeline))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants");
     }
@@ -252,39 +269,54 @@ class InProcessEngineTest {
     @Test
     void a_grant_map_missing_a_registered_tool_is_rejected() {
       ToolRegistry tools = ToolRegistry.of(new EngineFixtures.EchoTool(false));
+      EngineFixtures.FakeProvider provider = new EngineFixtures.FakeProvider(List.of());
+      Approver approver = Approver.allowAll();
+      ConversationStore store = ConversationStore.inMemory();
+      EventEmitter events = EventEmitter.noop();
+      Reducer reducer = Reducer.defaults();
+      ObjectMapper mapper = new ObjectMapper();
+      ContextPipeline contextPipeline = EngineFixtures.contextPipeline();
 
       assertThatThrownBy(
               () ->
                   new InProcessEngine(
-                      new EngineFixtures.FakeProvider(List.of()),
+                      provider,
                       tools,
                       Map.of(),
-                      Approver.allowAll(),
-                      ConversationStore.inMemory(),
-                      EventEmitter.noop(),
-                      Reducer.defaults(),
+                      approver,
+                      store,
+                      events,
+                      reducer,
                       CONFIG,
-                      new ObjectMapper(),
+                      mapper,
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextPipeline()))
+                      contextPipeline))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("echo");
     }
 
     @Test
     void a_null_context_pipeline_is_rejected() {
+      EngineFixtures.FakeProvider provider = new EngineFixtures.FakeProvider(List.of());
+      ToolRegistry tools = ToolRegistry.of();
+      Approver approver = Approver.allowAll();
+      ConversationStore store = ConversationStore.inMemory();
+      EventEmitter events = EventEmitter.noop();
+      Reducer reducer = Reducer.defaults();
+      ObjectMapper mapper = new ObjectMapper();
+
       assertThatThrownBy(
               () ->
                   new InProcessEngine(
-                      new EngineFixtures.FakeProvider(List.of()),
-                      ToolRegistry.of(),
+                      provider,
+                      tools,
                       Map.of(),
-                      Approver.allowAll(),
-                      ConversationStore.inMemory(),
-                      EventEmitter.noop(),
-                      Reducer.defaults(),
+                      approver,
+                      store,
+                      events,
+                      reducer,
                       CONFIG,
-                      new ObjectMapper(),
+                      mapper,
                       ObservationRegistry.NOOP,
                       null))
           .isInstanceOf(NullPointerException.class)
@@ -729,15 +761,14 @@ class InProcessEngineTest {
                           new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
                       new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
       ConversationStore store = ConversationStore.inMemory();
+      InProcessEngine engine =
+          engineWith(
+              provider,
+              ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+              new ThrowingApprover(),
+              store);
 
-      assertThatThrownBy(
-              () ->
-                  engineWith(
-                          provider,
-                          ToolRegistry.of(new EngineFixtures.EchoTool(true)),
-                          new ThrowingApprover(),
-                          store)
-                      .run(ID, ConversationEvent.AgentTold.of(ID, "echo hi")))
+      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "echo hi")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("approver blew up");
 
@@ -751,15 +782,10 @@ class InProcessEngineTest {
       // observer can no longer be the source of a blown-up run. The failure has
       // to come from the provider itself instead.
       ConversationStore store = ConversationStore.inMemory();
+      InProcessEngine engine =
+          engineWith(new ExplodingStreamProvider(), ToolRegistry.of(), Approver.allowAll(), store);
 
-      assertThatThrownBy(
-              () ->
-                  engineWith(
-                          new ExplodingStreamProvider(),
-                          ToolRegistry.of(),
-                          Approver.allowAll(),
-                          store)
-                      .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
+      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("stream blew up");
 
@@ -771,15 +797,13 @@ class InProcessEngineTest {
     @Test
     void resume_is_refused_because_this_engine_never_parks() {
       EngineFixtures.FakeProvider provider = new EngineFixtures.FakeProvider(List.of());
+      InProcessEngine engine =
+          engineWith(
+              provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory());
 
       assertThatThrownBy(
               () ->
-                  engineWith(
-                          provider,
-                          ToolRegistry.of(),
-                          Approver.allowAll(),
-                          ConversationStore.inMemory())
-                      .resume(ID, ParkToken.generate(), ConversationEvent.AgentTold.of(ID, "x")))
+                  engine.resume(ID, ParkToken.generate(), ConversationEvent.AgentTold.of(ID, "x")))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("DurableEngine");
     }
@@ -793,15 +817,14 @@ class InProcessEngineTest {
                       new ModelEvent.ToolUseEmitted(
                           new ToolCall("c1", "park", EngineFixtures.echoArgs("hi"))),
                       new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
+      InProcessEngine engine =
+          engineWith(
+              provider,
+              ToolRegistry.of(new ParkingTool()),
+              Approver.allowAll(),
+              ConversationStore.inMemory());
 
-      assertThatThrownBy(
-              () ->
-                  engineWith(
-                          provider,
-                          ToolRegistry.of(new ParkingTool()),
-                          Approver.allowAll(),
-                          ConversationStore.inMemory())
-                      .run(ID, ConversationEvent.AgentTold.of(ID, "go")))
+      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "go")))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("DurableEngine");
     }
@@ -1068,11 +1091,10 @@ class InProcessEngineTest {
                       event -> {
                         throw new IllegalStateException("journal blew up");
                       })));
+      InProcessEngine engine =
+          engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store, hub);
 
-      assertThatThrownBy(
-              () ->
-                  engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store, hub)
-                      .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
+      assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("journal blew up");
 
@@ -1108,7 +1130,9 @@ class InProcessEngineTest {
         }
 
         @Override
-        public void close() {}
+        public void close() {
+          // intentionally empty: this fake stream holds no resources to release
+        }
       };
     }
 

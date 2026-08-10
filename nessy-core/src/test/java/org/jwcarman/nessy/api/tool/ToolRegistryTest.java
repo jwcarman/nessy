@@ -109,9 +109,9 @@ class ToolRegistryTest {
 
     @Test
     void the_interface_is_the_front_door_to_its_default() {
-      ToolRegistry registry = ToolRegistry.of(new GreetTool());
+      ToolRegistry localRegistry = ToolRegistry.of(new GreetTool());
 
-      assertThat(registry.find("greet")).isPresent();
+      assertThat(localRegistry.find("greet")).isPresent();
     }
 
     @Test
@@ -144,7 +144,10 @@ class ToolRegistryTest {
 
     @Test
     void duplicate_names_are_rejected_at_registration_time() {
-      assertThatThrownBy(() -> ToolRegistry.of(new GreetTool(), new GreetTool()))
+      GreetTool first = new GreetTool();
+      GreetTool second = new GreetTool();
+
+      assertThatThrownBy(() -> ToolRegistry.of(first, second))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("greet");
     }

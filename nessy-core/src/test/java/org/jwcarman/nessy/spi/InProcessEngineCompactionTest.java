@@ -137,7 +137,7 @@ class InProcessEngineCompactionTest {
     @Test
     void a_triggered_compaction_summarizes_and_the_conversation_continues() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Summarizer summarizer = (head) -> "Summary of earlier turns.";
+      Summarizer summarizer = head -> "Summary of earlier turns.";
       InProcessEngine engine =
           engineWith(
               provider,
@@ -166,7 +166,7 @@ class InProcessEngineCompactionTest {
     void a_failing_compactor_emits_the_hub_event_and_the_turn_proceeds() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer =
-          (head) -> {
+          head -> {
             throw new IllegalStateException("summarizer exploded");
           };
       List<CompactionFailed> failures = new ArrayList<>();
@@ -223,7 +223,7 @@ class InProcessEngineCompactionTest {
       // the loop's own conversational spend. Whatever the summarizer's call cost is telemetry's
       // business, not the journal's — SummarizerTest pins where it actually surfaces.
       EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Summarizer summarizer = (head) -> "Summary.";
+      Summarizer summarizer = head -> "Summary.";
       List<MessageAppended> journal = new ArrayList<>();
       ListenerRegistry hub =
           ListenerRegistry.of(
@@ -260,7 +260,7 @@ class InProcessEngineCompactionTest {
     void compaction_produces_its_own_observation() {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Summarizer summarizer = (head) -> "Summary.";
+      Summarizer summarizer = head -> "Summary.";
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), EventEmitter.noop(), observations);
 
@@ -278,7 +278,7 @@ class InProcessEngineCompactionTest {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer =
-          (head) -> {
+          head -> {
             throw new IllegalStateException("summarizer exploded");
           };
       InProcessEngine engine =

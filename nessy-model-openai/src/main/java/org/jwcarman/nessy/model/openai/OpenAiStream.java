@@ -86,27 +86,6 @@ public final class OpenAiStream implements ModelStream {
     stream.close();
   }
 
-  // The SDK's finish-reason type (ChatCompletionChunk.Choice.FinishReason) shares its role with
-  // org.jwcarman.nessy.api.StopReason (imported above) but not its simple name, so no collision
-  // forces an FQN here — unlike the tool-call delta type below. Matching on the wire string itself
-  // (rather than the SDK's own Known/Value enums) means a genuinely novel value fails with our
-  // IllegalStateException instead of the SDK's own exception type, which is the contract this
-  // method exists to keep.
-  private static StopReason mapFinishReason(ChatCompletionChunk.Choice.FinishReason reason) {
-    return switch (reason.asString()) {
-      case "stop" -> StopReason.END_TURN;
-      case "length" -> StopReason.MAX_TOKENS;
-      // "function_call" is the deprecated, pre-tool_calls legacy finish reason; mapping it to
-      // TOOL_USE (rather than leaving it unmapped) keeps this harness working against servers
-      // that still emit it.
-      case "tool_calls", "function_call" -> StopReason.TOOL_USE;
-      case "content_filter" -> StopReason.REFUSAL;
-      default ->
-          throw new IllegalStateException(
-              "Unrecognized OpenAI finish_reason: " + reason.asString());
-    };
-  }
-
   /**
    * Pulls SDK chunks one at a time and emits translated {@link ModelEvent}s from a small queue, so
    * a single chunk that maps to zero, one, or (across an accumulating tool call) eventually one
@@ -259,6 +238,27 @@ public final class OpenAiStream implements ModelStream {
               completionUsage.promptTokens(),
               completionUsage.completionTokens(),
               cachedInputTokens);
+    }
+
+    // The SDK's finish-reason type (ChatCompletionChunk.Choice.FinishReason) shares its role with
+    // org.jwcarman.nessy.api.StopReason (imported above) but not its simple name, so no collision
+    // forces an FQN here — unlike the tool-call delta type below. Matching on the wire string
+    // itself (rather than the SDK's own Known/Value enums) means a genuinely novel value fails
+    // with our IllegalStateException instead of the SDK's own exception type, which is the
+    // contract this method exists to keep.
+    private static StopReason mapFinishReason(ChatCompletionChunk.Choice.FinishReason reason) {
+      return switch (reason.asString()) {
+        case "stop" -> StopReason.END_TURN;
+        case "length" -> StopReason.MAX_TOKENS;
+        // "function_call" is the deprecated, pre-tool_calls legacy finish reason; mapping it to
+        // TOOL_USE (rather than leaving it unmapped) keeps this harness working against servers
+        // that still emit it.
+        case "tool_calls", "function_call" -> StopReason.TOOL_USE;
+        case "content_filter" -> StopReason.REFUSAL;
+        default ->
+            throw new IllegalStateException(
+                "Unrecognized OpenAI finish_reason: " + reason.asString());
+      };
     }
   }
 

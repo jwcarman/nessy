@@ -294,16 +294,7 @@ public final class InProcessEngine implements ExecutionEngine {
     Observation observation = EngineObservations.compaction(observations);
     ConversationEvent event;
     try (var _ = observation.openScope()) {
-      try {
-        Compactor.Result result = reducer.compaction().compact(state);
-        Context.of(result.workingSet());
-        event = new ConversationEvent.Compacted(state.id(), result.workingSet());
-      } catch (RuntimeException e) {
-        observation.error(e);
-        String reason = describe(e);
-        emitter.emit(new CompactionFailed(state.id(), reason));
-        event = new ConversationEvent.CompactionSkipped(state.id(), reason);
-      }
+      event = compactionEvent(state, observation);
     } catch (RuntimeException e) {
       observation.error(e);
       throw e;
@@ -311,6 +302,23 @@ public final class InProcessEngine implements ExecutionEngine {
       observation.stop();
     }
     return feed(progress, state, event);
+  }
+
+  /**
+   * Runs the compactor and turns its outcome into the one event {@link #compact} feeds — extracted
+   * so {@link #compact}'s own {@code try} is never nested (S1141).
+   */
+  private ConversationEvent compactionEvent(ConversationState state, Observation observation) {
+    try {
+      Compactor.Result result = reducer.compaction().compact(state);
+      Context.of(result.workingSet());
+      return new ConversationEvent.Compacted(state.id(), result.workingSet());
+    } catch (RuntimeException e) {
+      observation.error(e);
+      String reason = describe(e);
+      emitter.emit(new CompactionFailed(state.id(), reason));
+      return new ConversationEvent.CompactionSkipped(state.id(), reason);
+    }
   }
 
   /**
@@ -331,26 +339,8 @@ public final class InProcessEngine implements ExecutionEngine {
       AtomicReference<ConversationState> progress, ConversationState state) {
     Observation turn = EngineObservations.turn(observations);
     try (var _ = turn.openScope()) {
-      ConversationState current = state;
       List<Effect> deferred = new ArrayList<>();
-      Observation modelCall = EngineObservations.modelCall(observations, config.model());
-      try (var _ = modelCall.openScope();
-          ModelStream stream = provider.stream(requestFor(current))) {
-        for (ModelEvent modelEvent : stream) {
-          Step step = reduceAndNotify(current, translate(current.id(), modelEvent));
-          current = step.state();
-          progress.set(current);
-          deferred.addAll(step.effects());
-          if (modelEvent instanceof ModelEvent.TurnEnded ended) {
-            EngineObservations.recordUsage(modelCall, ended.usage());
-          }
-        }
-      } catch (RuntimeException e) {
-        modelCall.error(e);
-        throw e;
-      } finally {
-        modelCall.stop();
-      }
+      ConversationState current = streamModelTurn(progress, state, deferred);
       for (Effect effect : deferred) {
         current = perform(progress, current, effect);
         progress.set(current);
@@ -362,6 +352,35 @@ public final class InProcessEngine implements ExecutionEngine {
     } finally {
       turn.stop();
     }
+  }
+
+  /**
+   * Consumes one {@link ModelStream} to completion, notifying the hub as each chunk arrives and
+   * collecting the terminal event's effects into {@code deferred} — extracted so {@link
+   * #callModel}'s own {@code try} is never nested (S1141).
+   */
+  private ConversationState streamModelTurn(
+      AtomicReference<ConversationState> progress, ConversationState state, List<Effect> deferred) {
+    Observation modelCall = EngineObservations.modelCall(observations, config.model());
+    ConversationState current = state;
+    try (var _ = modelCall.openScope();
+        ModelStream stream = provider.stream(requestFor(current))) {
+      for (ModelEvent modelEvent : stream) {
+        Step step = reduceAndNotify(current, translate(current.id(), modelEvent));
+        current = step.state();
+        progress.set(current);
+        deferred.addAll(step.effects());
+        if (modelEvent instanceof ModelEvent.TurnEnded ended) {
+          EngineObservations.recordUsage(modelCall, ended.usage());
+        }
+      }
+    } catch (RuntimeException e) {
+      modelCall.error(e);
+      throw e;
+    } finally {
+      modelCall.stop();
+    }
+    return current;
   }
 
   /**
@@ -459,7 +478,7 @@ public final class InProcessEngine implements ExecutionEngine {
         new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
     Observation observation = EngineObservations.approvalWait(observations, tool.name());
     Awaited<Decision> decision;
-    try (Observation.Scope scope = observation.openScope()) {
+    try (var _ = observation.openScope()) {
       decision = approver.approve(request);
     } catch (RuntimeException e) {
       observation.error(e);
@@ -484,7 +503,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private String describeForApproval(Tool<?> tool, ToolCall call) {
     try {
       return invoker.describe(tool, call);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       return call.name() + "(" + call.arguments() + ")";
     }
   }
@@ -496,31 +515,40 @@ public final class InProcessEngine implements ExecutionEngine {
           state.id(), call, ToolResult.error("No such tool: " + call.name()));
     }
     Observation observation = EngineObservations.toolCall(observations, call.name(), call.id());
-    try (Observation.Scope scope = observation.openScope()) {
-      Awaited<ToolResult> awaited;
-      try {
-        awaited = invoker.invoke(found.get(), call, new ToolContext(state.id(), emitter));
-      } catch (RuntimeException e) {
-        // Factor 9: the model sees a compact error and gets to recover. It
-        // never sees a stack trace, and the loop never dies on a bad tool. The
-        // span still has to say so: without this, every tool failure reports
-        // as a success to anything watching the span.
-        observation.error(e);
-        ToolResult result = ToolResult.error(describe(e));
-        EngineObservations.recordOutcome(observation, result);
-        return new ConversationEvent.ToolFinished(state.id(), call, result);
-      }
-      // Outside the catch: a tool that parks is a configuration error, not a
-      // runtime one, and must fail loudly rather than becoming model-visible noise.
-      ToolResult result = resolve(awaited, "tool " + call.name());
-      EngineObservations.recordOutcome(observation, result);
-      return new ConversationEvent.ToolFinished(state.id(), call, result);
+    try (var _ = observation.openScope()) {
+      return invokeAndRecord(state, call, found.get(), observation);
     } catch (RuntimeException e) {
       observation.error(e);
       throw e;
     } finally {
       observation.stop();
     }
+  }
+
+  /**
+   * Invokes one tool and turns its outcome into the model-visible event {@link #executeTool}
+   * returns — extracted so {@link #executeTool}'s own {@code try} is never nested (S1141).
+   */
+  private ConversationEvent invokeAndRecord(
+      ConversationState state, ToolCall call, Tool<?> tool, Observation observation) {
+    Awaited<ToolResult> awaited;
+    try {
+      awaited = invoker.invoke(tool, call, new ToolContext(state.id(), emitter));
+    } catch (RuntimeException e) {
+      // Factor 9: the model sees a compact error and gets to recover. It
+      // never sees a stack trace, and the loop never dies on a bad tool. The
+      // span still has to say so: without this, every tool failure reports
+      // as a success to anything watching the span.
+      observation.error(e);
+      ToolResult result = ToolResult.error(describe(e));
+      EngineObservations.recordOutcome(observation, result);
+      return new ConversationEvent.ToolFinished(state.id(), call, result);
+    }
+    // Outside the catch: a tool that parks is a configuration error, not a
+    // runtime one, and must fail loudly rather than becoming model-visible noise.
+    ToolResult result = resolve(awaited, "tool " + call.name());
+    EngineObservations.recordOutcome(observation, result);
+    return new ConversationEvent.ToolFinished(state.id(), call, result);
   }
 
   private static String describe(RuntimeException e) {

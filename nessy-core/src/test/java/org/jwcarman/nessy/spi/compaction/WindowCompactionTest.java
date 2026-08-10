@@ -125,7 +125,9 @@ class WindowCompactionTest {
 
     @Test
     void a_trigger_below_one_is_rejected() {
-      assertThatThrownBy(() -> Compactors.window(0).triggerTokens(0))
+      Compactors.WindowBuilder builder = Compactors.window(0);
+
+      assertThatThrownBy(() -> builder.triggerTokens(0))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -148,7 +150,9 @@ class WindowCompactionTest {
 
     @Test
     void a_window_not_greater_than_max_tokens_is_rejected() {
-      assertThatThrownBy(() -> Compactors.window(0).window(2_000, 2_000))
+      Compactors.WindowBuilder builder = Compactors.window(0);
+
+      assertThatThrownBy(() -> builder.window(2_000, 2_000))
           .isInstanceOf(IllegalArgumentException.class);
     }
 

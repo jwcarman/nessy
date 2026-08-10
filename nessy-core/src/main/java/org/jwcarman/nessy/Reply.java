@@ -18,7 +18,6 @@ package org.jwcarman.nessy;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
@@ -34,10 +33,7 @@ public record Reply(RunOutcome outcome) {
   }
 
   public ConversationState state() {
-    return switch (outcome) {
-      case RunOutcome.Completed(ConversationState state) -> state;
-      case RunOutcome.Parked(ConversationState state, ParkToken _) -> state;
-    };
+    return outcome.state();
   }
 
   /** The prose of the last assistant message; empty if there is none. */

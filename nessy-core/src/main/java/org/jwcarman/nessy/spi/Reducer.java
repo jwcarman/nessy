@@ -22,7 +22,6 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
@@ -86,10 +85,10 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
       case ConversationEvent.ModelTurnEnded e -> modelTurnEnded(state, e);
       case ConversationEvent.ToolCallRequested e -> toolCallRequested(state, e);
       case ConversationEvent.ApprovalDecided e -> approvalDecided(state, e);
-      case ConversationEvent.ToolFinished(ConversationId _, ToolCall call, ToolResult result) ->
+      case ConversationEvent.ToolFinished(_, ToolCall call, ToolResult result) ->
           toolFinished(state, call, result);
       case ConversationEvent.Compacted e -> compacted(state, e);
-      case ConversationEvent.CompactionSkipped e -> compactionSkipped(state, e);
+      case ConversationEvent.CompactionSkipped _ -> compactionSkipped(state);
     };
   }
 
@@ -123,8 +122,8 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    */
   private Step textDelta(ConversationState state, ConversationEvent.TextDelta event) {
     List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
-    if (!blocks.isEmpty() && blocks.getLast() instanceof TextBlock last) {
-      blocks.set(blocks.size() - 1, new TextBlock(last.text() + event.text()));
+    if (!blocks.isEmpty() && blocks.getLast() instanceof TextBlock(String text)) {
+      blocks.set(blocks.size() - 1, new TextBlock(text + event.text()));
     } else {
       blocks.add(new TextBlock(event.text()));
     }
@@ -142,9 +141,9 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
   private Step thinkingDelta(ConversationState state, ConversationEvent.ThinkingDelta event) {
     List<ContentBlock> blocks = new ArrayList<>(state.pendingBlocks());
     if (!blocks.isEmpty()
-        && blocks.getLast() instanceof ThinkingBlock last
-        && last.signature().isEmpty()) {
-      blocks.set(blocks.size() - 1, new ThinkingBlock(last.text() + event.text(), ""));
+        && blocks.getLast() instanceof ThinkingBlock(String text, String signature)
+        && signature.isEmpty()) {
+      blocks.set(blocks.size() - 1, new ThinkingBlock(text + event.text(), ""));
     } else {
       blocks.add(new ThinkingBlock(event.text(), ""));
     }
@@ -387,8 +386,7 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * re-checking here, so {@code lastInputTokens} is left untouched and simply retriggers the same
    * decision naturally at the next {@code CallModel} site.
    */
-  private Step compactionSkipped(
-      ConversationState state, ConversationEvent.CompactionSkipped event) {
+  private Step compactionSkipped(ConversationState state) {
     return Step.of(state.with(ConversationStatus.AWAITING_MODEL), Effect.callModel());
   }
 

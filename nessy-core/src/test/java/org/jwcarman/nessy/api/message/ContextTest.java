@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -63,8 +63,9 @@ class ContextTest {
     @Test
     void an_unanswered_tool_use_is_rejected() {
       Message assistant = Message.assistant(List.of(new ToolUseBlock(call("c1"))));
+      List<Message> messages = List.of(assistant);
 
-      assertThatThrownBy(() -> Context.of(List.of(assistant)))
+      assertThatThrownBy(() -> Context.of(messages))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("c1");
     }
@@ -74,8 +75,9 @@ class ContextTest {
       Message assistant =
           Message.assistant(List.of(new ToolUseBlock(call("c1")), new ToolUseBlock(call("c2"))));
       Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      List<Message> messages = List.of(assistant, results);
 
-      assertThatThrownBy(() -> Context.of(List.of(assistant, results)))
+      assertThatThrownBy(() -> Context.of(messages))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("c2");
     }
@@ -88,8 +90,9 @@ class ContextTest {
               List.of(
                   new ToolResultBlock("c1", "ok", false),
                   new ToolResultBlock("unknown", "ok", false)));
+      List<Message> messages = List.of(assistant, results);
 
-      assertThatThrownBy(() -> Context.of(List.of(assistant, results)))
+      assertThatThrownBy(() -> Context.of(messages))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unknown");
     }
@@ -97,8 +100,10 @@ class ContextTest {
     @Test
     void a_result_outside_an_answering_message_is_rejected() {
       Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      Message user = Message.user("hi");
+      List<Message> messages = List.of(user, results);
 
-      assertThatThrownBy(() -> Context.of(List.of(Message.user("hi"), results)))
+      assertThatThrownBy(() -> Context.of(messages))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("c1");
     }
@@ -108,8 +113,9 @@ class ContextTest {
       Message assistant = Message.assistant(List.of(new ToolUseBlock(call("c1"))));
       Message interleaved = Message.user("wait, one more thing");
       Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
+      List<Message> messages = List.of(assistant, interleaved, results);
 
-      assertThatThrownBy(() -> Context.of(List.of(assistant, interleaved, results)))
+      assertThatThrownBy(() -> Context.of(messages))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("c1");
     }
@@ -287,7 +293,7 @@ class ContextTest {
       Message assistant = toolUse("c1");
       Message results = Message.toolResults(List.of(new ToolResultBlock("c1", "ok", false)));
       Context context = Context.of(List.of(assistant, results));
-      Function<Message, Message> renameCallId =
+      UnaryOperator<Message> renameCallId =
           message -> message == assistant ? toolUse("c1-renamed") : message;
 
       assertThatThrownBy(() -> context.map(renameCallId))
@@ -300,7 +306,7 @@ class ContextTest {
       Context context =
           Context.of(List.of(Message.user("hi"), assistantText("hello"), Message.user("bye")));
 
-      Context rewritten = context.map(Function.identity());
+      Context rewritten = context.map(UnaryOperator.identity());
 
       assertThat(rewritten).isEqualTo(context);
     }
@@ -389,17 +395,17 @@ class ContextTest {
       Message assistant1 =
           Message.assistant(
               List.of(new ToolUseBlock(call("call-1")), new ToolUseBlock(call("call-2"))));
-      Message old_result =
+      Message oldResult =
           Message.toolResults(
               List.of(
                   new ToolResultBlock("call-1", "forty-two", false),
                   new ToolResultBlock("call-2", "boom", true)));
       Message middle = Message.user("in between");
       Message assistant2 = toolUse("call-3");
-      Message recent_result =
+      Message recentResult =
           Message.toolResults(List.of(new ToolResultBlock("call-3", "still fresh", false)));
       Context context =
-          Context.of(List.of(assistant1, old_result, middle, assistant2, recent_result));
+          Context.of(List.of(assistant1, oldResult, middle, assistant2, recentResult));
 
       Context shaped = context.elideToolResults(1);
 
@@ -412,40 +418,39 @@ class ContextTest {
                       new ToolResultBlock("call-2", "[elided]", true))),
               middle,
               assistant2,
-              recent_result);
+              recentResult);
       assertThat(shaped.messages()).containsExactlyElementsOf(expected);
     }
 
     @Test
     void recent_messages_are_verbatim() {
-      Message assistant_call1 = toolUse("call-1");
-      Message old_result =
-          Message.toolResults(List.of(new ToolResultBlock("call-1", "old", false)));
-      Message recent_assistant = toolUse("call-2");
-      Message recent_result =
+      Message assistantCall1 = toolUse("call-1");
+      Message oldResult = Message.toolResults(List.of(new ToolResultBlock("call-1", "old", false)));
+      Message recentAssistant = toolUse("call-2");
+      Message recentResult =
           Message.toolResults(List.of(new ToolResultBlock("call-2", "recent", false)));
       Context context =
-          Context.of(List.of(assistant_call1, old_result, recent_assistant, recent_result));
+          Context.of(List.of(assistantCall1, oldResult, recentAssistant, recentResult));
 
       Context shaped = context.elideToolResults(2);
 
-      assertThat(shaped.messages().get(2)).isSameAs(recent_assistant);
-      assertThat(shaped.messages().get(3)).isSameAs(recent_result);
+      assertThat(shaped.messages().get(2)).isSameAs(recentAssistant);
+      assertThat(shaped.messages().get(3)).isSameAs(recentResult);
     }
 
     @Test
     void non_tool_blocks_are_never_touched() {
-      TextBlock untouched_text = new TextBlock("keep me exactly as I am");
+      TextBlock untouchedText = new TextBlock("keep me exactly as I am");
       Message assistant1 = toolUse("call-1");
-      Message old_mixed =
-          Message.user(List.of(untouched_text, new ToolResultBlock("call-1", "gone", false)));
+      Message oldMixed =
+          Message.user(List.of(untouchedText, new ToolResultBlock("call-1", "gone", false)));
       Message recent = Message.user("recent");
-      Context context = Context.of(List.of(assistant1, old_mixed, recent));
+      Context context = Context.of(List.of(assistant1, oldMixed, recent));
 
       Context shaped = context.elideToolResults(1);
 
       ContentBlock preserved = shaped.messages().get(1).content().get(0);
-      assertThat(preserved).isSameAs(untouched_text);
+      assertThat(preserved).isSameAs(untouchedText);
     }
 
     @Test
@@ -456,18 +461,18 @@ class ContextTest {
       Message second = Message.toolResults(List.of(new ToolResultBlock("call-2", "two", false)));
       Context context = Context.of(List.of(assistant1, first, assistant2, second));
 
-      Context elides_everything = context.elideToolResults(0);
-      Context elides_nothing = context.elideToolResults(100);
+      Context elidesEverything = context.elideToolResults(0);
+      Context elidesNothing = context.elideToolResults(100);
 
-      assertThat(elides_everything.messages())
+      assertThat(elidesEverything.messages())
           .containsExactly(
               assistant1,
               Message.toolResults(List.of(new ToolResultBlock("call-1", "[elided]", false))),
               assistant2,
               Message.toolResults(List.of(new ToolResultBlock("call-2", "[elided]", false))));
-      assertThat(elides_nothing.messages()).containsExactly(assistant1, first, assistant2, second);
-      assertThat(elides_nothing.messages().get(1)).isSameAs(first);
-      assertThat(elides_nothing.messages().get(3)).isSameAs(second);
+      assertThat(elidesNothing.messages()).containsExactly(assistant1, first, assistant2, second);
+      assertThat(elidesNothing.messages().get(1)).isSameAs(first);
+      assertThat(elidesNothing.messages().get(3)).isSameAs(second);
     }
 
     @Test
@@ -578,7 +583,9 @@ class ContextTest {
     void a_budget_below_one_is_rejected() {
       Context context = Context.of(List.of(Message.user("hi")));
 
-      assertThatThrownBy(() -> context.limitTokens(0, TokenEstimator.heuristic()))
+      TokenEstimator estimator = TokenEstimator.heuristic();
+
+      assertThatThrownBy(() -> context.limitTokens(0, estimator))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("budget must be at least 1");
     }

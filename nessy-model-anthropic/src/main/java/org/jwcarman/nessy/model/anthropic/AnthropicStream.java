@@ -69,33 +69,6 @@ public final class AnthropicStream implements ModelStream {
     stream.close();
   }
 
-  // The SDK's stop-reason type shares its simple name with org.jwcarman.nessy.api.StopReason
-  // (imported above), so the parameter type here is left fully qualified rather than sprinkling
-  // FQNs through the rest of the file. Matching on the wire string itself (rather than the SDK's
-  // own Known/Value enums) means a genuinely novel value fails with our IllegalStateException
-  // instead of the SDK's own exception type, which is the contract this method exists to keep.
-  //
-  // "model_context_window_exceeded" maps to StopReason.MAX_TOKENS: semantically it is also "ran
-  // out of room" (context, not output budget), and the reducer already halts cleanly on
-  // MAX_TOKENS, so no new StopReason variant is needed to handle it correctly.
-  //
-  // "pause_turn" is a KNOWN SDK value that this method still deliberately throws on: it is
-  // emitted only for server-side tools (e.g. the built-in web search tool), which this harness
-  // never requests via AnthropicRequests, so it is unreachable through our params today. It will
-  // gain a real mapping when server-tool support ships. Every other value not named above is
-  // genuinely novel to the SDK and also throws.
-  private static StopReason mapStopReason(com.anthropic.models.messages.StopReason reason) {
-    return switch (reason.asString()) {
-      case "end_turn", "stop_sequence" -> StopReason.END_TURN;
-      case "tool_use" -> StopReason.TOOL_USE;
-      case "max_tokens", "model_context_window_exceeded" -> StopReason.MAX_TOKENS;
-      case "refusal" -> StopReason.REFUSAL;
-      default ->
-          throw new IllegalStateException(
-              "Unrecognized Anthropic stop_reason: " + reason.asString());
-    };
-  }
-
   /**
    * Pulls SDK events one at a time and emits translated {@link ModelEvent}s from a small queue, so
    * a single SDK event that maps to zero, one, or (across a tool-use block) eventually one
@@ -246,6 +219,33 @@ public final class AnthropicStream implements ModelStream {
       var usage = new Usage(inputTokens, event.usage().outputTokens(), cachedInputTokens);
       pending.add(new ModelEvent.TurnEnded(mapStopReason(stopReason), usage));
       turnEnded = true;
+    }
+
+    // The SDK's stop-reason type shares its simple name with org.jwcarman.nessy.api.StopReason
+    // (imported above), so the parameter type here is left fully qualified rather than sprinkling
+    // FQNs through the rest of the file. Matching on the wire string itself (rather than the SDK's
+    // own Known/Value enums) means a genuinely novel value fails with our IllegalStateException
+    // instead of the SDK's own exception type, which is the contract this method exists to keep.
+    //
+    // "model_context_window_exceeded" maps to StopReason.MAX_TOKENS: semantically it is also "ran
+    // out of room" (context, not output budget), and the reducer already halts cleanly on
+    // MAX_TOKENS, so no new StopReason variant is needed to handle it correctly.
+    //
+    // "pause_turn" is a KNOWN SDK value that this method still deliberately throws on: it is
+    // emitted only for server-side tools (e.g. the built-in web search tool), which this harness
+    // never requests via AnthropicRequests, so it is unreachable through our params today. It will
+    // gain a real mapping when server-tool support ships. Every other value not named above is
+    // genuinely novel to the SDK and also throws.
+    private static StopReason mapStopReason(com.anthropic.models.messages.StopReason reason) {
+      return switch (reason.asString()) {
+        case "end_turn", "stop_sequence" -> StopReason.END_TURN;
+        case "tool_use" -> StopReason.TOOL_USE;
+        case "max_tokens", "model_context_window_exceeded" -> StopReason.MAX_TOKENS;
+        case "refusal" -> StopReason.REFUSAL;
+        default ->
+            throw new IllegalStateException(
+                "Unrecognized Anthropic stop_reason: " + reason.asString());
+      };
     }
   }
 

@@ -57,14 +57,16 @@ class InProcessEngineObservationTest {
         .hasObservationWithNameEqualTo("nessy.run")
         .that()
         .hasContextualNameEqualTo("invoke_agent")
-        .hasHighCardinalityKeyValueWithKey("gen_ai.conversation.id");
-    assertThat(observations)
+        .hasHighCardinalityKeyValueWithKey("gen_ai.conversation.id")
+        .backToTestObservationRegistry()
         .hasObservationWithNameEqualTo("nessy.model.call")
         .that()
         .hasContextualNameEqualTo("chat fake-model")
-        .hasLowCardinalityKeyValue("gen_ai.request.model", "fake-model");
-    assertThat(observations).hasObservationWithNameEqualTo("nessy.turn");
-    assertThat(observations)
+        .hasLowCardinalityKeyValue("gen_ai.request.model", "fake-model")
+        .backToTestObservationRegistry()
+        .hasObservationWithNameEqualTo("nessy.turn")
+        .that()
+        .backToTestObservationRegistry()
         .hasObservationWithNameEqualTo("nessy.tool.call")
         .that()
         .hasContextualNameEqualTo("execute_tool echo")
@@ -105,8 +107,9 @@ class InProcessEngineObservationTest {
             observations,
             ContextPipeline.builder().build(EventEmitter.noop(), observations));
 
-    assertThatThrownBy(() -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "echo hi")))
-        .isInstanceOf(IllegalStateException.class);
+    ConversationEvent.AgentTold event = ConversationEvent.AgentTold.of(ID, "echo hi");
+
+    assertThatThrownBy(() -> engine.run(ID, event)).isInstanceOf(IllegalStateException.class);
 
     assertThat(observations).hasObservationWithNameEqualTo("nessy.approval.wait").that().hasError();
   }

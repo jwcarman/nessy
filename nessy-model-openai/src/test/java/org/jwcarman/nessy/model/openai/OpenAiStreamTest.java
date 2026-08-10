@@ -207,8 +207,7 @@ class OpenAiStreamTest {
           .containsExactly(
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
-              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
-      assertThat(modelEvents)
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)))
           .noneMatch(
               event -> event instanceof ModelEvent.TextChunk chunk && chunk.text().isEmpty());
     }
@@ -545,7 +544,9 @@ class OpenAiStreamTest {
             }
 
             @Override
-            public void close() {}
+            public void close() {
+              // no-op: this test double only needs to satisfy StreamResponse's contract
+            }
           };
 
       var iterator = new OpenAiStream(countingStream).iterator();

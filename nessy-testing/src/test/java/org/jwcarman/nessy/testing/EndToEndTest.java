@@ -284,7 +284,9 @@ class EndToEndTest {
         }
 
         @Override
-        public void close() {}
+        public void close() {
+          // no-op: the scripted iterator holds no resources to release
+        }
       };
     }
 

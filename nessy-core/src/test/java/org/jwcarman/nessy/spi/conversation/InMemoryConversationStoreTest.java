@@ -61,9 +61,9 @@ class InMemoryConversationStoreTest {
 
   @Test
   void in_memory_factory_returns_a_working_store() {
-    ConversationStore store = ConversationStore.inMemory();
-    store.save(ConversationState.newConversation(id));
+    ConversationStore inMemoryStore = ConversationStore.inMemory();
+    inMemoryStore.save(ConversationState.newConversation(id));
 
-    assertThat(store.load(id)).isPresent();
+    assertThat(inMemoryStore.load(id)).isPresent();
   }
 }

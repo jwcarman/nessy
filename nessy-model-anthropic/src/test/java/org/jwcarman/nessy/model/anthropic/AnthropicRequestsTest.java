@@ -368,7 +368,9 @@ class AnthropicRequestsTest {
       var params = AnthropicRequests.toParams(request, THINKING_DISABLED);
 
       var tools = params.tools().orElseThrow();
-      assertThat(tools).allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
+      assertThat(tools)
+          .isNotEmpty()
+          .allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
     }
   }
 
@@ -397,7 +399,9 @@ class AnthropicRequestsTest {
           new ModelRequest(
               Context.of(List.of()), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
 
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, new ThinkingConfig(true, 512)))
+      var thinkingConfig = new ThinkingConfig(true, 512);
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, thinkingConfig))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -406,8 +410,9 @@ class AnthropicRequestsTest {
       var request =
           new ModelRequest(
               Context.of(List.of()), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
+      var thinkingConfig = new ThinkingConfig(true, 1024);
 
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, new ThinkingConfig(true, 1024)))
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, thinkingConfig))
           .isInstanceOf(IllegalArgumentException.class);
     }
 

@@ -65,7 +65,9 @@ class CompactorsTest {
 
     @Test
     void a_trigger_below_one_is_rejected() {
-      assertThatThrownBy(() -> Compactors.summarizing(UNUSED_SUMMARIZER).triggerTokens(0))
+      Compactors.SummarizingBuilder builder = Compactors.summarizing(UNUSED_SUMMARIZER);
+
+      assertThatThrownBy(() -> builder.triggerTokens(0))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -82,8 +84,9 @@ class CompactorsTest {
 
     @Test
     void a_negative_keep_recent_is_rejected() {
-      assertThatThrownBy(() -> Compactors.summarizing(UNUSED_SUMMARIZER).keepRecent(-1))
-          .isInstanceOf(IllegalArgumentException.class);
+      Compactors.SummarizingBuilder builder = Compactors.summarizing(UNUSED_SUMMARIZER);
+
+      assertThatThrownBy(() -> builder.keepRecent(-1)).isInstanceOf(IllegalArgumentException.class);
     }
   }
 
@@ -92,13 +95,17 @@ class CompactorsTest {
 
     @Test
     void a_window_equal_to_max_tokens_is_rejected() {
-      assertThatThrownBy(() -> Compactors.summarizing(UNUSED_SUMMARIZER).window(2_000, 2_000))
+      Compactors.SummarizingBuilder builder = Compactors.summarizing(UNUSED_SUMMARIZER);
+
+      assertThatThrownBy(() -> builder.window(2_000, 2_000))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_window_smaller_than_max_tokens_is_rejected() {
-      assertThatThrownBy(() -> Compactors.summarizing(UNUSED_SUMMARIZER).window(1_000, 2_000))
+      Compactors.SummarizingBuilder builder = Compactors.summarizing(UNUSED_SUMMARIZER);
+
+      assertThatThrownBy(() -> builder.window(1_000, 2_000))
           .isInstanceOf(IllegalArgumentException.class);
     }
 

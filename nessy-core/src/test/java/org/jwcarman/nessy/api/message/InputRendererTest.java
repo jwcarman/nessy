@@ -42,8 +42,9 @@ class InputRendererTest {
 
       List<ContentBlock> rendered = renderer.render("what is 2+2?");
 
-      assertThat(rendered).isEqualTo(Message.user("what is 2+2?").content());
-      assertThat(rendered).containsExactly(new TextBlock("what is 2+2?"));
+      assertThat(rendered)
+          .isEqualTo(Message.user("what is 2+2?").content())
+          .containsExactly(new TextBlock("what is 2+2?"));
     }
   }
 

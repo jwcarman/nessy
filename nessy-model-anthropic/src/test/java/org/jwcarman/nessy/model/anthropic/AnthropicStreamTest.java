@@ -551,7 +551,9 @@ class AnthropicStreamTest {
             }
 
             @Override
-            public void close() {}
+            public void close() {
+              // no-op: this test double only needs to satisfy StreamResponse's contract
+            }
           };
 
       var iterator = new AnthropicStream(countingStream).iterator();

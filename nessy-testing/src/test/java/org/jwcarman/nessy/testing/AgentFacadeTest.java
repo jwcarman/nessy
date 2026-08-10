@@ -281,7 +281,9 @@ class AgentFacadeTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
 
-    assertThatThrownBy(() -> agent.contextFor(ConversationId.generate()))
+    ConversationId unknownConversationId = ConversationId.generate();
+
+    assertThatThrownBy(() -> agent.contextFor(unknownConversationId))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown conversation");
   }
@@ -579,8 +581,9 @@ class AgentFacadeTest {
   @Test
   void a_missing_model_is_rejected_at_build_time() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    var builder = Nessy.harness(provider).build().agent();
 
-    assertThatThrownBy(() -> Nessy.harness(provider).build().agent().build())
+    assertThatThrownBy(builder::build)
         .isInstanceOf(AgentConfigurationException.class)
         .hasMessageContaining("model");
   }
@@ -588,15 +591,9 @@ class AgentFacadeTest {
   @Test
   void a_null_compactor_is_rejected() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    var builder = Nessy.harness(provider).build().agent().model("fake-model");
 
-    assertThatThrownBy(
-            () ->
-                Nessy.harness(provider)
-                    .build()
-                    .agent()
-                    .model("fake-model")
-                    .compaction(null)
-                    .build())
+    assertThatThrownBy(() -> builder.compaction(null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("compaction");
   }
@@ -721,16 +718,15 @@ class AgentFacadeTest {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Conversation<String> chat = agent.converse();
 
     assertThatThrownBy(
             () ->
-                agent
-                    .converse()
-                    .tell(
-                        "what is 2+2?",
-                        event -> {
-                          throw new RuntimeException("tap blew up");
-                        }))
+                chat.tell(
+                    "what is 2+2?",
+                    event -> {
+                      throw new RuntimeException("tap blew up");
+                    }))
         .isInstanceOf(RuntimeException.class)
         .hasMessage("tap blew up");
   }

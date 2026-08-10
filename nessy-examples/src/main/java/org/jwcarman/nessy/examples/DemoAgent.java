@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Nessy;
@@ -110,7 +111,9 @@ public final class DemoAgent {
 
     @Override
     public Awaited<ToolResult> execute(Now input, ToolContext context) {
-      return Awaited.ready(ToolResult.ok(ZonedDateTime.now().toString()));
+      // Explicit zone (S8688): the demo reports the machine's own local time, so
+      // ZoneId.systemDefault() names the zone the implicit no-arg now() was silently assuming.
+      return Awaited.ready(ToolResult.ok(ZonedDateTime.now(ZoneId.systemDefault()).toString()));
     }
   }
 }
