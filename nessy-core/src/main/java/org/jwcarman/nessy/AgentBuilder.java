@@ -37,6 +37,7 @@ import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.session.SessionStore;
+import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * Assembles an {@link Agent}.
@@ -67,6 +68,7 @@ public final class AgentBuilder {
   private ObjectMapper mapper = new ObjectMapper();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ContextBuilder contextBuilder = ContextBuilder.identity();
+  private TranscriptStore transcript = TranscriptStore.none();
 
   AgentBuilder() {}
 
@@ -187,6 +189,15 @@ public final class AgentBuilder {
     return this;
   }
 
+  /**
+   * Where every message is journaled the moment it is born. Default: {@link TranscriptStore#none()}
+   * — retention is a deliberate declaration, not a silent default.
+   */
+  public AgentBuilder transcript(TranscriptStore transcript) {
+    this.transcript = transcript;
+    return this;
+  }
+
   public Agent build() {
     if (provider == null) {
       throw new IllegalStateException("a model provider is required: call provider(...)");
@@ -209,7 +220,8 @@ public final class AgentBuilder {
             settings,
             mapper,
             observations,
-            contextBuilder);
+            contextBuilder,
+            transcript);
     return new Agent(engine, events);
   }
 

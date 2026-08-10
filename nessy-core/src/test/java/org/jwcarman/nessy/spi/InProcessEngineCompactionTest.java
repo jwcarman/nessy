@@ -51,7 +51,10 @@ import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelSettings;
+import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
 import org.jwcarman.nessy.spi.session.SessionStore;
+import org.jwcarman.nessy.spi.session.TranscriptEntry;
+import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * Compaction performed by {@link InProcessEngine}: the strategy's {@code compact()} runs under its
@@ -86,6 +89,15 @@ class InProcessEngineCompactionTest {
       Reducer reducer,
       EventHub hub,
       ObservationRegistry observations) {
+    return engineWith(provider, reducer, hub, observations, TranscriptStore.none());
+  }
+
+  private static InProcessEngine engineWith(
+      EngineFixtures.FakeProvider provider,
+      Reducer reducer,
+      EventHub hub,
+      ObservationRegistry observations,
+      TranscriptStore transcript) {
     return new InProcessEngine(
         provider,
         ToolRegistry.of(),
@@ -96,7 +108,8 @@ class InProcessEngineCompactionTest {
         CONFIG,
         new ObjectMapper(),
         observations,
-        ContextBuilder.identity());
+        ContextBuilder.identity(),
+        transcript);
   }
 
   /** A two-turn provider: a big-usage first answer, then a plain second answer once resumed. */
@@ -230,6 +243,46 @@ class InProcessEngineCompactionTest {
       // already there survives untouched, and the turn still completes normally.
       assertThat(completed.state().messages().getLast())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Normal answer."))));
+    }
+  }
+
+  @Nested
+  class Transcript {
+
+    @Test
+    void compaction_journals_the_summary_with_its_spend() {
+      EngineFixtures.FakeProvider provider = twoTurnProvider();
+      Usage spend = new Usage(500, 20, 0);
+      Summarizer summarizer = (head, policy) -> new Summarizer.Summary("Summary.", spend);
+      InMemoryTranscriptStore transcriptStore = TranscriptStore.inMemory();
+      InProcessEngine engine =
+          engineWith(
+              provider,
+              reducerUsing(summarizer),
+              EventHub.synchronous(),
+              ObservationRegistry.create(),
+              transcriptStore);
+
+      engine.run(ID, Event.UserSaid.of("first question"));
+      engine.run(ID, Event.UserSaid.of("second question"));
+
+      List<TranscriptEntry> entries = transcriptStore.entries(ID);
+      assertThat(entries).hasSize(5);
+      assertThat(entries.get(0).message()).isEqualTo(Message.user("first question"));
+      assertThat(entries.get(0).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(entries.get(1).message())
+          .isEqualTo(Message.assistant(List.of(new TextBlock("First answer."))));
+      assertThat(entries.get(1).turnUsage()).isEqualTo(new Usage(150_000, 10, 0));
+      assertThat(entries.get(2).message()).isEqualTo(Message.user("second question"));
+      assertThat(entries.get(2).turnUsage()).isEqualTo(Usage.zero());
+      // The summary is the only newborn message the compaction produces; the originals it
+      // replaced were already journaled at their own birth and must not be re-appended.
+      String summaryText = ((TextBlock) entries.get(3).message().content().getFirst()).text();
+      assertThat(summaryText).contains("Summary.");
+      assertThat(entries.get(3).turnUsage()).isEqualTo(spend);
+      assertThat(entries.get(4).message())
+          .isEqualTo(Message.assistant(List.of(new TextBlock("Normal answer."))));
+      assertThat(entries.get(4).turnUsage()).isEqualTo(Usage.zero());
     }
   }
 

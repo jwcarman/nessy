@@ -43,6 +43,7 @@ import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ToolCall;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.ToolUseBlock;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
@@ -59,7 +60,10 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
 import org.jwcarman.nessy.spi.session.SessionStore;
+import org.jwcarman.nessy.spi.session.TranscriptEntry;
+import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 class InProcessEngineTest {
 
@@ -198,6 +202,16 @@ class InProcessEngineTest {
       Approver approver,
       SessionStore store,
       EventHub hub) {
+    return engineWith(provider, tools, approver, store, hub, TranscriptStore.none());
+  }
+
+  private static InProcessEngine engineWith(
+      ModelProvider provider,
+      ToolRegistry tools,
+      Approver approver,
+      SessionStore store,
+      EventHub hub,
+      TranscriptStore transcript) {
     return new InProcessEngine(
         provider,
         tools,
@@ -208,7 +222,8 @@ class InProcessEngineTest {
         CONFIG,
         new ObjectMapper(),
         ObservationRegistry.NOOP,
-        ContextBuilder.identity());
+        ContextBuilder.identity(),
+        transcript);
   }
 
   @Nested
@@ -228,7 +243,8 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      ContextBuilder.identity()))
+                      ContextBuilder.identity(),
+                      TranscriptStore.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("provider");
     }
@@ -247,9 +263,30 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      null))
+                      null,
+                      TranscriptStore.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("contextBuilder");
+    }
+
+    @Test
+    void a_null_transcript_store_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  new InProcessEngine(
+                      new EngineFixtures.FakeProvider(List.of()),
+                      ToolRegistry.of(),
+                      Approver.allowAll(),
+                      SessionStore.inMemory(),
+                      EventHub.synchronous(),
+                      Reducer.defaults(),
+                      CONFIG,
+                      new ObjectMapper(),
+                      ObservationRegistry.NOOP,
+                      ContextBuilder.identity(),
+                      null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("transcript");
     }
   }
 
@@ -745,6 +782,83 @@ class InProcessEngineTest {
           .run(ID, Event.UserSaid.of("go"));
 
       assertThat(progress).containsExactly(new ToolProgress(ID, "c1", "halfway"));
+    }
+  }
+
+  @Nested
+  class Transcript {
+
+    @Test
+    void every_message_is_journaled_at_birth() {
+      Usage toolTurnUsage = new Usage(10, 5, 0);
+      Usage finalTurnUsage = new Usage(20, 8, 0);
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ToolUseEmitted(
+                          new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                      new ModelEvent.TurnEnded(StopReason.TOOL_USE, toolTurnUsage)),
+                  List.of(
+                      new ModelEvent.TextChunk("Done."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, finalTurnUsage))));
+      InMemoryTranscriptStore transcript = TranscriptStore.inMemory();
+
+      engineWith(
+              provider,
+              ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+              Approver.allowAll(),
+              SessionStore.inMemory(),
+              EventHub.synchronous(),
+              transcript)
+          .run(ID, Event.UserSaid.of("echo hi"));
+
+      List<TranscriptEntry> entries = transcript.entries(ID);
+      assertThat(entries).hasSize(4);
+      assertThat(entries.get(0).message()).isEqualTo(Message.user("echo hi"));
+      assertThat(entries.get(0).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(entries.get(1).message().role()).isEqualTo(Role.ASSISTANT);
+      assertThat(entries.get(1).message().content())
+          .containsExactly(
+              new ToolUseBlock(new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))));
+      assertThat(entries.get(1).turnUsage()).isEqualTo(toolTurnUsage);
+      assertThat(entries.get(2).message().role()).isEqualTo(Role.USER);
+      assertThat(entries.get(2).message().content())
+          .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
+      assertThat(entries.get(2).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(entries.get(3).message())
+          .isEqualTo(Message.assistant(List.of(new TextBlock("Done."))));
+      assertThat(entries.get(3).turnUsage()).isEqualTo(finalTurnUsage);
+    }
+
+    @Test
+    void a_failing_journal_fails_the_run_loudly() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.TextChunk("Four."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      SessionStore store = SessionStore.inMemory();
+      TranscriptStore explodingTranscript =
+          (id, entry) -> {
+            throw new IllegalStateException("journal blew up");
+          };
+
+      assertThatThrownBy(
+              () ->
+                  engineWith(
+                          provider,
+                          ToolRegistry.of(),
+                          Approver.allowAll(),
+                          store,
+                          EventHub.synchronous(),
+                          explodingTranscript)
+                      .run(ID, Event.UserSaid.of("what is 2+2?")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("journal blew up");
+
+      assertThat(store.load(ID)).isPresent();
     }
   }
 

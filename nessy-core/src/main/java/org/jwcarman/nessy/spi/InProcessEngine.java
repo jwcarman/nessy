@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
+import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
@@ -53,6 +54,8 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 import org.jwcarman.nessy.spi.session.SessionStore;
+import org.jwcarman.nessy.spi.session.TranscriptEntry;
+import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * The default engine: blocking calls on whatever thread you hand it, and it never parks.
@@ -77,6 +80,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final ToolInvoker invoker;
   private final ObservationRegistry observations;
   private final ContextBuilder contextBuilder;
+  private final TranscriptStore transcript;
 
   public InProcessEngine(
       ModelProvider provider,
@@ -88,7 +92,8 @@ public final class InProcessEngine implements ExecutionEngine {
       ModelSettings config,
       ObjectMapper mapper,
       ObservationRegistry observations,
-      ContextBuilder contextBuilder) {
+      ContextBuilder contextBuilder,
+      TranscriptStore transcript) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
@@ -99,6 +104,7 @@ public final class InProcessEngine implements ExecutionEngine {
     this.invoker = new ToolInvoker(Objects.requireNonNull(mapper, "mapper must not be null"));
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     this.contextBuilder = Objects.requireNonNull(contextBuilder, "contextBuilder must not be null");
+    this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
   }
 
   /**
@@ -139,8 +145,56 @@ public final class InProcessEngine implements ExecutionEngine {
   /** Reduces one event and tells the hub, without performing its effects. */
   private Step reduceAndNotify(SessionState state, Event event) {
     Step step = reducer.reduce(state, event);
+    journal(state, step.state(), event);
     hub.emit(new SessionEvent(step.state().id(), event, step.state()));
     return step;
+  }
+
+  /**
+   * Appends every message born by this one reduce to {@link #transcript}, in birth order.
+   *
+   * <p>This is the single choke point: {@link #reduceAndNotify} is called from both {@link #feed}
+   * and the streaming loop in {@link #callModel}, so covering it here covers every arm that ever
+   * adopts a reducer's output.
+   *
+   * <p>Two shapes of birth:
+   *
+   * <ul>
+   *   <li>Normal growth — {@code before.messages()} is a proper prefix of {@code after.messages()}
+   *       — appends the tail delta. The flushed assistant message of a completed model turn carries
+   *       that turn's usage ({@code event} is {@link Event.ModelTurnEnded}); every other newborn
+   *       message (a user message, a flushed tool-results message) carries {@link Usage#zero()}.
+   *   <li>Compaction — {@code after.generation()} advanced — appends whatever messages of {@code
+   *       after} are not present (by value) in {@code before}, comparing by equality rather than
+   *       position since a custom strategy is free to keep some originals and drop others. For the
+   *       summarizing default that is exactly the one summary message. Every newborn here carries
+   *       the {@link Event.Compacted} event's spend. Survivors are never re-appended.
+   * </ul>
+   *
+   * <p>No {@code try}/{@code catch} here on purpose: see {@link TranscriptStore}'s strict-append
+   * contract. A throwing store propagates out of this method, out of {@link #reduceAndNotify}, and
+   * ultimately out of {@link #run} — {@code run}'s own {@code finally} still saves whatever
+   * progress reached the holder before this reduce.
+   */
+  private void journal(SessionState before, SessionState after, Event event) {
+    if (after.generation() != before.generation()) {
+      Usage spend = event instanceof Event.Compacted compacted ? compacted.spend() : Usage.zero();
+      List<Message> survivors = new ArrayList<>(before.messages());
+      for (Message message : after.messages()) {
+        if (!survivors.remove(message)) {
+          transcript.append(after.id(), new TranscriptEntry(message, spend));
+        }
+      }
+      return;
+    }
+    if (after.messages().size() <= before.messages().size()) {
+      return;
+    }
+    Usage usage = event instanceof Event.ModelTurnEnded ended ? ended.usage() : Usage.zero();
+    for (Message message :
+        after.messages().subList(before.messages().size(), after.messages().size())) {
+      transcript.append(after.id(), new TranscriptEntry(message, usage));
+    }
   }
 
   /**
