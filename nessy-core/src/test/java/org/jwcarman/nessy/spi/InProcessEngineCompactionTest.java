@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.event.EventSpine;
 import org.jwcarman.nessy.api.event.EventSpines;
 import org.jwcarman.nessy.api.event.ListenerDeclaration;
+import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -52,9 +53,6 @@ import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.conversation.TranscriptEntry;
-import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
@@ -225,31 +223,31 @@ class InProcessEngineCompactionTest {
       // business, not the journal's — SummarizerTest pins where it actually surfaces.
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer = (head) -> "Summary.";
-      InMemoryTranscriptStore transcriptStore = TranscriptStore.inMemory();
-      EventSpine hub = EventSpines.of(List.of(transcriptStore.declareListener()));
+      List<MessageAppended> journal = new ArrayList<>();
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(MessageAppended.class, journal::add)));
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
 
-      List<TranscriptEntry> entries = transcriptStore.entries(ID);
-      assertThat(entries).hasSize(5);
-      assertThat(entries.get(0).message()).isEqualTo(Message.user("first question"));
-      assertThat(entries.get(0).turnUsage()).isEqualTo(Usage.zero());
-      assertThat(entries.get(1).message())
+      assertThat(journal).hasSize(5);
+      assertThat(journal.get(0).message()).isEqualTo(Message.user("first question"));
+      assertThat(journal.get(0).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(journal.get(1).message())
           .isEqualTo(Message.assistant(List.of(new TextBlock("First answer."))));
-      assertThat(entries.get(1).turnUsage()).isEqualTo(new Usage(150_000, 10, 0));
-      assertThat(entries.get(2).message()).isEqualTo(Message.user("second question"));
-      assertThat(entries.get(2).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(journal.get(1).turnUsage()).isEqualTo(new Usage(150_000, 10, 0));
+      assertThat(journal.get(2).message()).isEqualTo(Message.user("second question"));
+      assertThat(journal.get(2).turnUsage()).isEqualTo(Usage.zero());
       // The summary is the only newborn message the compaction produces; the originals it
       // replaced were already journaled at their own birth and must not be re-appended.
-      String summaryText = ((TextBlock) entries.get(3).message().content().getFirst()).text();
+      String summaryText = ((TextBlock) journal.get(3).message().content().getFirst()).text();
       assertThat(summaryText).contains("Summary.");
-      assertThat(entries.get(3).turnUsage()).isEqualTo(Usage.zero());
-      assertThat(entries.get(4).message())
+      assertThat(journal.get(3).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(journal.get(4).message())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Normal answer."))));
-      assertThat(entries.get(4).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(journal.get(4).turnUsage()).isEqualTo(Usage.zero());
     }
   }
 

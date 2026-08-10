@@ -23,12 +23,11 @@ import org.jwcarman.nessy.api.message.Message;
 /**
  * One message, at the moment it was born into a session's transcript.
  *
- * <p>The engine emits this at its newborn choke point — the same point that used to feed a
- * dedicated {@code TranscriptStore} field directly (§10.8) — for every message a reduce produces,
- * in birth order, before anything read-shaped (compaction, elision, windowing) ever gets an
- * opinion. It is the subscription point for everything that wants to follow the transcript:
- * journaling, memory extraction, transcription mirrors, streaming UIs. The journal is no longer a
- * privileged engine dependency; it is simply the first subscriber.
+ * <p>The engine emits this at its newborn choke point for every message a reduce produces, in birth
+ * order, before anything read-shaped (compaction, elision, windowing) ever gets an opinion. It is
+ * the declaration point for everything that wants to follow the transcript: journaling, memory
+ * extraction, transcription mirrors, streaming UIs. The journal is not a privileged engine
+ * dependency — it is simply a declared listener for this event (design §17).
  *
  * @param conversationId the session this message belongs to
  * @param message the settled message, exactly as born

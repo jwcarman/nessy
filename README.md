@@ -144,7 +144,7 @@ by one or more seams:
 |---|---|---|
 | 1 | Turn-taking | `Reducer`, `ExecutionEngine`, `Context` |
 | 2 | Context fit | `Compactor`, `Summarizer`, `ContextPipeline`, `Projection`, `TokenEstimator`, `ContextEnricher` |
-| 3 | A memory of record | `ConversationStore`, `TranscriptStore` |
+| 3 | A memory of record | `ConversationStore`, a declared `MessageAppended` listener |
 | 4 | Safe hands | `ToolRegistry`, the invoker (Factor 9) |
 | 5 | Guardrails | `ToolGrant`/`UsagePolicy`, `Approver` |
 | 6 | A wallet guard | `TerminationPolicy` |
@@ -370,8 +370,9 @@ one `send` call.
 ## Context management
 
 Three words, three meanings. **The transcript** is a session's entire message
-history, forever — append-only, held by the `TranscriptStore` journal if you
-opt into one. **The working set** is `SessionState.messages()`: the ledger's
+history, forever — append-only, held by whatever `MessageAppended` listener
+you declare as a journal, if you declare one. **The working set** is
+`SessionState.messages()`: the ledger's
 current, possibly-compacted view — `[summary, …tail]` once compaction has run.
 **A `Context`** is what one model call actually sees: a validated, pairing-legal
 message sequence minted per request, never smaller in scope than what the
@@ -487,40 +488,48 @@ Agent<String> agent =
 `contextWindow` only shapes the *derived* trigger — an explicit
 `.compaction(Compactor)` call always wins over it, declared window or not.
 
-### The journal: `TranscriptStore`
+### The journal: a listener you declare
 
 The transcript and the working set are not the same thing, and compaction
-never touches the transcript. **The journal is a listener**: the engine holds
-no `TranscriptStore` of its own — it emits `MessageAppended(conversationId,
-message, turnUsage)` the instant a message is born, unconditionally, before
-anything read-shaped (compaction, elision, windowing) gets an opinion — and a
-journal is simply a declared listener for that event, via
-`TranscriptStore.declareListener()`. `.transcript(journal)` on the builder is
-sugar over exactly that declaration:
+never touches the transcript. **The journal is a listener, finally and
+fully** (design §17): there is no dedicated store type for it and no builder
+knob. The engine emits `MessageAppended(conversationId, message, turnUsage)`
+the instant a message is born, unconditionally, before anything read-shaped
+(compaction, elision, windowing) gets an opinion — and a journal is simply a
+`.listen(MessageAppended.class, ...)` declaration like any other:
 
 ```java
-InMemoryTranscriptStore journal = TranscriptStore.inMemory();
+List<MessageAppended> journal = new ArrayList<>();
 Agent<String> agent =
-    Nessy.harness(provider).build().agent().model("fake-model").transcript(journal).build();
+    Nessy.harness(provider)
+        .build()
+        .agent()
+        .model("fake-model")
+        .listen(MessageAppended.class, journal::add)
+        .build();
 ```
 
-There is no `TranscriptStore.none()`: retention is opt-in, so the zero-config
-posture stays lean and compaction genuinely bounds memory, and the absence of
-a `.transcript(...)` call is simply the absence of a declared listener. Wired
-the default way, the journal is audit-grade and strict — `declareListener()`
-is a synchronous declaration, so an append that throws propagates straight out
-of `emit` and fails the run outright, the same way a failing model call would,
+(`AgentFacadeTest`'s `a_journal_is_simply_a_declared_listener` mirrors this
+verbatim.)
+
+Retention is opt-in, so the zero-config posture stays lean and compaction
+genuinely bounds memory: the absence of a `.listen(MessageAppended.class,
+...)` declaration is simply the absence of a journal, no sentinel needed.
+Declared the default way — `.listen`, synchronous — the journal is
+audit-grade and strict: a listener that throws propagates straight out of
+`emit` and fails the run outright, the same way a failing model call would,
 because a silent gap in the audit trail is worse than a failed turn (the
-synchronous spine's veto-by-throw, see "Observability" above). An application
-that prefers best-effort journaling declares its own
-`listenAsync(MessageAppended.class, ...)` instead of using the sugar.
-`HarnessBuilder#transcript(...)` declares this listener once, seeded into
-every agent the harness builds — not once per agent. A durable
-`TranscriptStore` persists opaque bytes through
-a `MessageCodec` (`MessageCodec.json(mapper)` is the default); encryption at
-rest is a codec *decorator* over that, not a separate store implementation,
-so the same encrypting codec composes over whichever backing store you
-choose.
+synchronous spine's veto-by-throw, see "Observability" above), while the
+conversation's snapshot already reached the `ConversationStore` still saves.
+An application that prefers best-effort journaling declares
+`.listenAsync(MessageAppended.class, ...)` instead. Declared on the harness,
+the same listener is seeded once into every agent it builds — not once per
+agent (see "Declared listening" above). A durable journal — a future
+`nessy-store-cassandra` ships a `MessageAppended` listener class, not a
+store — persists opaque bytes through a `MessageCodec` (`MessageCodec.json(mapper)`
+is the default); encryption at rest is a codec *decorator* over that, not a
+separate store implementation, so the same encrypting codec composes over
+whichever backing store you choose.
 
 ### Projecting and enriching what the model sees: the context pipeline
 
@@ -655,9 +664,9 @@ behind the `Compactor` seam (default `summarizing`, assembled and tuned via
 context windows derive their own trigger for small models, the `ContextPipeline`
 (`spi.context`)
 declares `project`/`enrich` bindings Maven-style for the fully-open
-Contextualize phase, and an opt-in `TranscriptStore` journal — strict,
-audit-grade, with `MessageCodec` for at-rest encoding — keeps the full
-transcript even after compaction trims the working set. All of it is
+Contextualize phase, and an opt-in journal — a declared `MessageAppended`
+listener, strict by default, with `MessageCodec` for at-rest encoding — keeps
+the full transcript even after compaction trims the working set. All of it is
 implemented and tested end to end.
 
 The harness itself has since landed too: `Harness` reification, per-grant tool

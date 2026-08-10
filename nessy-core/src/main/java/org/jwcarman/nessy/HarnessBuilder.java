@@ -24,7 +24,6 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
 /**
@@ -37,7 +36,6 @@ public final class HarnessBuilder {
 
   private final ModelProvider provider;
   private ConversationStore store = ConversationStore.inMemory();
-  private TranscriptStore transcript;
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ObjectMapper mapper = new ObjectMapper();
   private String defaultModel;
@@ -50,16 +48,6 @@ public final class HarnessBuilder {
   /** Where session state lives. Default: {@link ConversationStore#inMemory()}. */
   public HarnessBuilder store(ConversationStore store) {
     this.store = Objects.requireNonNull(store, "store must not be null");
-    return this;
-  }
-
-  /**
-   * Sugar: registers {@code transcript} as an inline, synchronous listener for every agent this
-   * harness seeds, wired at {@link #build()} time. Default: none — retention is a deliberate
-   * declaration, not a silent default.
-   */
-  public HarnessBuilder transcript(TranscriptStore transcript) {
-    this.transcript = transcript;
     return this;
   }
 
@@ -124,9 +112,6 @@ public final class HarnessBuilder {
 
   public Harness build() {
     List<ListenerDeclaration> frozen = new ArrayList<>(declarations);
-    if (transcript != null) {
-      frozen.add(transcript.declareListener());
-    }
     return new Harness(provider, store, observations, mapper, defaultModel, List.copyOf(frozen));
   }
 }

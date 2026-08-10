@@ -64,9 +64,6 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.conversation.TranscriptEntry;
-import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -1040,11 +1037,10 @@ class InProcessEngineTest {
   class Transcript {
 
     /**
-     * The journal no longer rides a dedicated engine dependency (design §9.1/§10.8): the engine
-     * emits {@link MessageAppended} at the newborn choke point, and an {@link
-     * InMemoryTranscriptStore} subscribed via {@link TranscriptStore#feedFrom} — the same sugar
-     * {@code .transcript(store)} calls on the builders — sees exactly the entries the old
-     * direct-dependency test asserted.
+     * The journal rides no dedicated engine dependency (design §9.1/§17): the engine emits {@link
+     * MessageAppended} at the newborn choke point, and a plain recording listener — exactly what a
+     * {@code .listen(MessageAppended.class, journal::add)} declaration on the builders wires — sees
+     * every message born, in birth order.
      */
     @Test
     void every_message_is_journaled_at_birth() {
@@ -1060,8 +1056,9 @@ class InProcessEngineTest {
                   List.of(
                       new ModelEvent.TextChunk("Done."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, finalTurnUsage))));
-      InMemoryTranscriptStore transcript = TranscriptStore.inMemory();
-      EventSpine hub = EventSpines.of(List.of(transcript.declareListener()));
+      List<MessageAppended> journal = new ArrayList<>();
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(MessageAppended.class, journal::add)));
 
       engineWith(
               provider,
@@ -1071,34 +1068,32 @@ class InProcessEngineTest {
               hub)
           .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
 
-      List<TranscriptEntry> entries = transcript.entries(ID);
-      assertThat(entries).hasSize(4);
-      assertThat(entries.get(0).message()).isEqualTo(Message.user("echo hi"));
-      assertThat(entries.get(0).turnUsage()).isEqualTo(Usage.zero());
-      assertThat(entries.get(1).message().role()).isEqualTo(Role.ASSISTANT);
-      assertThat(entries.get(1).message().content())
+      assertThat(journal).hasSize(4);
+      assertThat(journal.get(0).message()).isEqualTo(Message.user("echo hi"));
+      assertThat(journal.get(0).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(journal.get(1).message().role()).isEqualTo(Role.ASSISTANT);
+      assertThat(journal.get(1).message().content())
           .containsExactly(
               new ToolUseBlock(new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))));
-      assertThat(entries.get(1).turnUsage()).isEqualTo(toolTurnUsage);
-      assertThat(entries.get(2).message().role()).isEqualTo(Role.USER);
-      assertThat(entries.get(2).message().content())
+      assertThat(journal.get(1).turnUsage()).isEqualTo(toolTurnUsage);
+      assertThat(journal.get(2).message().role()).isEqualTo(Role.USER);
+      assertThat(journal.get(2).message().content())
           .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
-      assertThat(entries.get(2).turnUsage()).isEqualTo(Usage.zero());
-      assertThat(entries.get(3).message())
+      assertThat(journal.get(2).turnUsage()).isEqualTo(Usage.zero());
+      assertThat(journal.get(3).message())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Done."))));
-      assertThat(entries.get(3).turnUsage()).isEqualTo(finalTurnUsage);
+      assertThat(journal.get(3).turnUsage()).isEqualTo(finalTurnUsage);
     }
 
     /**
-     * The old strictness test — a failing {@code TranscriptStore.append} fails the run — is now
-     * exactly the hub's throwing-subscriber contract (design §9.1): {@link
-     * TranscriptStore#feedFrom} subscribes inline, so a store whose {@code append} throws
-     * propagates straight out of {@code hub.emit}, out of the engine's newborn announcement, and
-     * out of {@code run} — the veto is the throw. {@code run}'s {@code finally} still saves
-     * whatever progress reached the session store before the throw.
+     * The strictness proof is exactly the hub's throwing-listener contract (design §9.1/§17): a
+     * synchronous {@link MessageAppended} listener that throws propagates straight out of {@code
+     * hub.emit}, out of the engine's newborn announcement, and out of {@code run} — the veto is the
+     * throw. {@code run}'s {@code finally} still saves whatever progress reached the session store
+     * before the throw.
      */
     @Test
-    void a_throwing_journaling_subscriber_fails_the_run_loudly() {
+    void a_throwing_journaling_listener_fails_the_run_loudly() {
       EngineFixtures.FakeProvider provider =
           new EngineFixtures.FakeProvider(
               List.of(
@@ -1106,11 +1101,14 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("Four."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
       ConversationStore store = ConversationStore.inMemory();
-      TranscriptStore explodingTranscript =
-          (id, entry) -> {
-            throw new IllegalStateException("journal blew up");
-          };
-      EventSpine hub = EventSpines.of(List.of(explodingTranscript.declareListener()));
+      EventSpine hub =
+          EventSpines.of(
+              List.of(
+                  ListenerDeclaration.sync(
+                      MessageAppended.class,
+                      event -> {
+                        throw new IllegalStateException("journal blew up");
+                      })));
 
       assertThatThrownBy(
               () ->

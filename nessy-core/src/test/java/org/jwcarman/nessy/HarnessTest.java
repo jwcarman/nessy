@@ -34,8 +34,6 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -112,29 +110,6 @@ class HarnessTest {
         .contains(sessionA, sessionB);
     assertThat(store.load(sessionA)).isPresent();
     assertThat(store.load(sessionB)).isPresent();
-  }
-
-  /**
-   * {@link HarnessBuilder#transcript} is sugar that declares one listener seeded into every agent
-   * this harness builds — not a fresh declaration per {@link Harness#agent()} call. A second,
-   * accidental registration per agent would double-journal every message; this pins that it does
-   * not.
-   */
-  @Test
-  void the_transcript_sugar_is_registered_once_per_harness_not_once_per_agent() {
-    FakeProvider provider = new FakeProvider("hi from A", "hi from B");
-    InMemoryTranscriptStore journal = TranscriptStore.inMemory();
-    Harness harness = Nessy.harness(provider).transcript(journal).build();
-
-    Agent<String> agentA = harness.agent().model("model-a").build();
-    Agent<String> agentB = harness.agent().model("model-b").build();
-    ConversationId sessionA = agentA.converse().tell("hello").state().id();
-    ConversationId sessionB = agentB.converse().tell("hello").state().id();
-
-    // One user message plus one assistant reply per session; a duplicate registration would
-    // journal each newborn message twice.
-    assertThat(journal.entries(sessionA)).hasSize(2);
-    assertThat(journal.entries(sessionB)).hasSize(2);
   }
 
   @Test

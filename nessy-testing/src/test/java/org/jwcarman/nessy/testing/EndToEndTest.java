@@ -16,11 +16,13 @@
 package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -40,6 +42,7 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
+import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.Role;
@@ -54,9 +57,7 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
-import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.conversation.TranscriptEntry;
-import org.jwcarman.nessy.spi.conversation.TranscriptStore;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -583,11 +584,12 @@ class EndToEndTest {
     /**
      * Same arithmetic as {@link A_compacting_conversation}: a compactor with {@code keepRecent = 0}
      * compacts {@code [user1, asst1]} into a summary once send 2's usage crosses the trigger. The
-     * journal, wired via {@code .transcript(...)}, is compaction-blind by construction — it appends
-     * every message the instant it is born, before anything downstream can remove it from the
-     * working set. So after compaction shrinks {@code reply.state()} to {@code [summary, user2,
-     * asst2]} (three messages), the journal still holds all five births in birth order: the two
-     * originals compaction discarded, the second question, the summary, and the final answer.
+     * journal, a plain {@code .listen(MessageAppended.class, journal::add)} declaration (design
+     * §17), is compaction-blind by construction — it appends every message the instant it is born,
+     * before anything downstream can remove it from the working set. So after compaction shrinks
+     * {@code reply.state()} to {@code [summary, user2, asst2]} (three messages), the journal still
+     * holds all five births in birth order: the two originals compaction discarded, the second
+     * question, the summary, and the final answer.
      */
     @Test
     void the_journal_keeps_what_compaction_removes() {
@@ -600,7 +602,7 @@ class EndToEndTest {
               .text("Second answer.")
               .endTurn()
               .build();
-      InMemoryTranscriptStore journal = TranscriptStore.inMemory();
+      List<MessageAppended> journal = new ArrayList<>();
       Summarizer summarizer =
           Summarizer.usingProvider(
               provider,
@@ -615,33 +617,63 @@ class EndToEndTest {
               .model("fake-model")
               .compaction(
                   Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
-              .transcript(journal)
+              .listen(MessageAppended.class, journal::add)
               .build();
 
       var conversation = agent.converse();
       conversation.tell("first question");
       Reply secondReply = conversation.tell("second question");
-      ConversationId conversationId = conversation.conversationId();
 
       assertThat(secondReply.failed()).isFalse();
       assertThat(secondReply.state().generation()).isEqualTo(1);
       assertThat(secondReply.state().messages()).hasSize(3);
 
-      List<TranscriptEntry> entries = journal.entries(conversationId);
-      assertThat(entries).hasSize(5);
+      assertThat(journal).hasSize(5);
       Message originalUser1 = Message.user("first question");
       Message originalAssistant1 = Message.assistant(List.of(new TextBlock("First answer.")));
-      assertThat(entries.get(0).message()).isEqualTo(originalUser1);
-      assertThat(entries.get(1).message()).isEqualTo(originalAssistant1);
-      assertThat(entries.get(2).message()).isEqualTo(Message.user("second question"));
-      String summaryText = ((TextBlock) entries.get(3).message().content().getFirst()).text();
+      assertThat(journal.get(0).message()).isEqualTo(originalUser1);
+      assertThat(journal.get(1).message()).isEqualTo(originalAssistant1);
+      assertThat(journal.get(2).message()).isEqualTo(Message.user("second question"));
+      String summaryText = ((TextBlock) journal.get(3).message().content().getFirst()).text();
       assertThat(summaryText).contains("Summary of earlier turns.");
-      assertThat(entries.get(4).message())
+      assertThat(journal.get(4).message())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Second answer."))));
 
       // The working set no longer holds the two originals compaction removed — only the journal
       // does.
       assertThat(secondReply.state().messages()).doesNotContain(originalUser1, originalAssistant1);
+    }
+
+    /**
+     * The strictness proof (design §17): a synchronous journal listener that throws is the same
+     * veto-by-throw every sync listener gets — it fails the run outright — but the engine's {@code
+     * run} still saves whatever progress reached the {@link ConversationStore} before the throw, so
+     * a broken journal never costs the conversation its snapshot.
+     */
+    @Test
+    void a_throwing_journal_listener_fails_the_run_but_the_snapshot_still_saves() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
+      ConversationStore store = ConversationStore.inMemory();
+      Agent<String> agent =
+          Nessy.harness(provider)
+              .store(store)
+              .build()
+              .agent()
+              .model("fake-model")
+              .listen(
+                  MessageAppended.class,
+                  event -> {
+                    throw new IllegalStateException("journal blew up");
+                  })
+              .build();
+      var conversation = agent.converse();
+
+      assertThatThrownBy(() -> conversation.tell("what is 2+2?"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("journal blew up");
+
+      assertThat(store.load(conversation.conversationId())).isPresent();
     }
   }
 

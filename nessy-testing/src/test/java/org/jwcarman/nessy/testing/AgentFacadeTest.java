@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.message.Message;
@@ -50,8 +51,6 @@ import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.context.ContextEnricher;
 import org.jwcarman.nessy.spi.context.Projection;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.conversation.InMemoryTranscriptStore;
-import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class AgentFacadeTest {
@@ -463,15 +462,27 @@ class AgentFacadeTest {
     assertThat(agent).isNotNull();
   }
 
+  /**
+   * The journal is nothing more than a declared listener on {@link MessageAppended} (design §17) —
+   * no dedicated store type, no builder knob. Mirrored verbatim in the README's "The journal"
+   * section.
+   */
   @Test
-  void a_transcript_store_is_wired_through_the_builder() {
+  void a_journal_is_simply_a_declared_listener() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
-    InMemoryTranscriptStore journal = TranscriptStore.inMemory();
+    List<MessageAppended> journal = new ArrayList<>();
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().model("fake-model").transcript(journal).build();
+        Nessy.harness(provider)
+            .build()
+            .agent()
+            .model("fake-model")
+            .listen(MessageAppended.class, journal::add)
+            .build();
 
-    assertThat(agent).isNotNull();
+    agent.converse().tell("hi");
+
+    assertThat(journal).isNotEmpty();
   }
 
   @Test

@@ -43,7 +43,6 @@ import org.jwcarman.nessy.spi.compaction.Compactors;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -88,7 +87,6 @@ public final class AgentBuilder<I> {
   private String summaryInstructions = Summarizer.DEFAULT_INSTRUCTIONS;
   private Long contextWindow;
   private Consumer<ContextPipeline.Builder> contextCustomizer = pipeline -> {};
-  private TranscriptStore transcript;
   private InputRenderer<I> renderer;
 
   /**
@@ -301,19 +299,6 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Sugar for this one agent: wires {@code transcript} as an inline, synchronous {@link
-   * org.jwcarman.nessy.api.event.MessageAppended} listener at {@link #build()}. Unusual: {@link
-   * HarnessBuilder#transcript(TranscriptStore)} is the normal home for a journal every agent
-   * shares, registered once at harness build time; reach for this only when one particular agent
-   * needs its own, separate journal. Default: none — retention is a deliberate declaration, not a
-   * silent default.
-   */
-  public AgentBuilder<I> transcript(TranscriptStore transcript) {
-    this.transcript = transcript;
-    return this;
-  }
-
-  /**
    * Overrides the vocabulary-driven default renderer: {@link InputRenderer#text()} for a {@code
    * String} vocabulary, {@link InputRenderer#json(ObjectMapper)} over the harness mapper otherwise.
    * The sealed-switch renderer over an application's own sealed input vocabulary is the recommended
@@ -360,17 +345,13 @@ public final class AgentBuilder<I> {
 
   /**
    * The harness's declarations first, in order, then this builder's own — the seeded-provider
-   * pattern applied to listeners (design §17) — then this agent's own {@link #transcript} sugar
-   * last, if declared.
+   * pattern applied to listeners (design §17).
    */
   private List<ListenerDeclaration> frozenDeclarations() {
     List<ListenerDeclaration> frozen =
-        new ArrayList<>(seededDeclarations.size() + declarations.size() + 1);
+        new ArrayList<>(seededDeclarations.size() + declarations.size());
     frozen.addAll(seededDeclarations);
     frozen.addAll(declarations);
-    if (transcript != null) {
-      frozen.add(transcript.declareListener());
-    }
     return frozen;
   }
 

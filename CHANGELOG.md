@@ -122,9 +122,7 @@ changed.
   once; `Harness#agent()` then returns an `AgentBuilder` seeded with those
   pieces, ready to be given one agent's identity: model, system prompt,
   tools, policies. Two agents built from the same harness share its session
-  store and event hub by construction. `HarnessBuilder#transcript(store)` is
-  sugar, not a stored piece: it registers the journaling subscriber directly
-  on the hub at `build()` time, once per harness. `Nessy.agent()` survives
+  store and event hub by construction. `Nessy.agent()` survives
   unchanged as sugar over an implicit default
   harness — the front door does not get heavier for the single-agent case.
 - **`ToolGrant`/`UsagePolicy`** (`api.tool`) — capability and authority,
@@ -225,31 +223,26 @@ changed.
   replaces the mechanism outright. `ScriptedSummarizer` ships in
   `nessy-testing` beside the other test doubles, scripting plain `String`
   summaries (plus a throwing mode).
-- **`TranscriptStore` and `TranscriptEntry`** (`spi.session`) — an append-only
-  journal of a session's entire message history, independent of what
-  compaction keeps in the working set. A pure sink (`append` is the only
-  method — the framework never reads its own audit log). **The journal rides
-  the hub**: the engine holds no `TranscriptStore` at all — it emits the new
-  `MessageAppended(sessionId, message, turnUsage)` (`api.event`) at its
-  newborn choke point, and a journal is simply a subscriber.
-  `TranscriptStore.feedFrom(EventHub)` is that subscription — an inline
-  default method that turns each `MessageAppended` into one `append` call on
-  the emitting thread, so a failing append propagates and fails the run
-  exactly as a direct engine dependency once did (the synchronous spine's
-  veto-by-throw, see below). `.transcript(store)` on `HarnessBuilder` /
-  `AgentBuilder` is sugar over exactly this call, registered once per harness
-  hub rather than once per agent. `TranscriptStore.none()` is **retired** —
-  there is no sentinel any more; the absence of a `.transcript(...)` call is
-  simply the absence of a subscriber. An application that prefers
-  best-effort journaling wraps the same subscription in `EventHub.async(...)`.
-  `TranscriptStore.inMemory()` ships an `InMemoryTranscriptStore` with a
-  test/host-facing `entries(id)` reader. `TranscriptEntry(message, turnUsage)`
-  carries each message's exact cost — an assistant turn's own usage, and
-  `Usage.zero()` for everything else, including a compaction summary: the
+- **The journal is a listener, finally and fully (design §17, pre-1.0
+  breaking; nothing released) — `TranscriptStore`, `TranscriptEntry`,
+  `InMemoryTranscriptStore`, and the `.transcript(...)` builder knob are
+  retired outright, never having shipped.** The journal was never anything
+  but a subscriber on `MessageAppended(conversationId, message, turnUsage)`
+  (`api.event`) — this history briefly gave that subscription its own store
+  interface and builder sugar (`feedFrom`/`declareListener`,
+  `.transcript(store)`), then found that vehicle added a type and a knob for
+  a use no listener declaration couldn't already express. A journal today is
+  simply `.listen(MessageAppended.class, journal::add)` on either builder —
+  sync (the audit-grade default: a throwing listener fails the run, the
+  synchronous spine's veto-by-throw, but the conversation's snapshot already
+  reached the `ConversationStore` still saves) or `.listenAsync(...)` for a
+  best-effort posture — with no sentinel for "no journal": the absence of a
+  declaration already says that. `MessageAppended`'s `Usage.zero()` for every
+  non-assistant newborn, including a compaction summary, is unchanged — the
   jurisdiction rule above means the journal never sees a compactor's spend
   either.
-- **`MessageCodec`** (`spi.session`) — the `Message ↔ byte[]` translation a
-  durable `TranscriptStore` needs to persist opaque bytes rather than message
+- **`MessageCodec`** (`spi.conversation`) — the `Message ↔ byte[]` translation
+  a durable store needs to persist opaque bytes rather than message
   structure. Default is `MessageCodec.json(mapper)`; encryption at rest is
   meant to compose as a codec *decorator* over any store, not a per-vendor
   reimplementation.
@@ -410,12 +403,6 @@ changed.
   `listenAsync` capture. There is no general, agent-wide, runtime-attachable
   subscription left anywhere — an agent-wide observer is declared once, at
   build time; see "Declared listening" above.
-- **`TranscriptStore#feedFrom(EventHub)` → `TranscriptStore#declareListener()`
-  (pre-1.0 breaking)** — with the hub gone, the sugar `.transcript(store)` on
-  both builders now declares a synchronous `ListenerDeclaration` for
-  `MessageAppended` instead of subscribing to a hub instance; the strictness
-  contract (a throwing `append` fails the run) is unchanged, just expressed
-  as a sync declaration instead of an inline `subscribe` call.
 - **`EventHub` subscribers choose sync or async at subscription time
   (pre-1.0 breaking)** — the static `EventHub.async(listener, onError)` /
   `EventHub.async(listener)` wrapper helpers are removed outright; their
