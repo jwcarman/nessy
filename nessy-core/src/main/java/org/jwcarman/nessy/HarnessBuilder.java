@@ -17,15 +17,17 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
-import java.lang.System.Logger.Level;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.event.ListenerRegistration;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Assembles a {@link Harness}: the infrastructure an application sets up once and every agent it
@@ -35,10 +37,12 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  */
 public final class HarnessBuilder {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(HarnessBuilder.class);
+
   private final ModelProvider provider;
-  private ConversationStore store = ConversationStore.inMemory();
-  private ObservationRegistry observations = ObservationRegistry.NOOP;
-  private ObjectMapper mapper = new ObjectMapper();
+  private ConversationStore store;
+  private ObservationRegistry observations;
+  private ObjectMapper mapper;
   private String defaultModel;
   private final List<ListenerRegistration> registrations = new ArrayList<>();
 
@@ -101,18 +105,36 @@ public final class HarnessBuilder {
   }
 
   /**
-   * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to a JDK {@link
-   * System.Logger} rather than requiring every caller to supply its own handler.
+   * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to an SLF4J {@link
+   * Logger} rather than requiring every caller to supply its own handler.
    */
   public <T> HarnessBuilder listenAsync(Class<T> type, Consumer<T> listener) {
     Objects.requireNonNull(listener, "listener must not be null");
-    System.Logger logger = System.getLogger(HarnessBuilder.class.getName());
-    return listenAsync(
-        type, listener, t -> logger.log(Level.ERROR, "async event listener failed", t));
+    return listenAsync(type, listener, t -> LOGGER.error("async event listener failed", t));
   }
 
   public Harness build() {
     return new Harness(
-        provider, store, observations, mapper, defaultModel, ListenerRegistry.of(registrations));
+        provider,
+        Optional.ofNullable(store).orElseGet(this::defaultStore),
+        Optional.ofNullable(observations).orElseGet(this::defaultObservations),
+        Optional.ofNullable(mapper).orElseGet(this::defaultMapper),
+        defaultModel,
+        ListenerRegistry.of(registrations));
+  }
+
+  /** {@link ConversationStore#inMemory()} — session state kept only for the process's lifetime. */
+  private ConversationStore defaultStore() {
+    return ConversationStore.inMemory();
+  }
+
+  /** {@link ObservationRegistry#NOOP} — no metrics or traces emitted. */
+  private ObservationRegistry defaultObservations() {
+    return ObservationRegistry.NOOP;
+  }
+
+  /** A fresh, un-configured {@link ObjectMapper}. */
+  private ObjectMapper defaultMapper() {
+    return new ObjectMapper();
   }
 }

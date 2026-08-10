@@ -133,10 +133,11 @@ changed.
 - **`ToolGrant`/`UsagePolicy`** (`api.tool`) — capability and authority,
   declared together, per tool, per agent. A `ToolGrant(tool, policy)` pairs a
   granted `Tool` with the `UsagePolicy` the engine's one authority chokepoint
-  consults before it runs. `tools(ToolGrant...)` is the only way to attach
-  tools to an `AgentBuilder` — see the one-path ruling below. A policy that
-  throws or returns `null` fails closed (`PolicyDecision.Deny`), never an
-  accidental allow.
+  consults before it runs. `tools(ToolGrant...)` is the intended way to attach
+  tools to an `AgentBuilder` — see the one-path ruling below, and the later
+  deletion of `tools(ToolRegistry)` that finally made it the *only* way. A
+  policy that throws or returns `null` fails closed (`PolicyDecision.Deny`),
+  never an accidental allow.
 - **One path for tool authority (ruled 2026-08-10, pre-1.0 breaking; design
   §17's final addendum)** — `Tool#requiresApproval()` is deleted from the
   interface: a tool is pure capability (name, schema, execution) and carries
@@ -144,9 +145,11 @@ changed.
   sole construction path — no bare `grant(tool)`, no derived floor, no
   `ToolGrant#with(UsagePolicy)` re-dressing. `AgentBuilder.tools(Tool...)` is
   removed outright, since no derivable policy exists any more; every tool
-  attachment goes through `tools(ToolGrant...)` and states its policy or does
-  not compile. The grant line is the complete security statement,
-  structurally.
+  attachment through `tools(ToolGrant...)` states its policy or fails to
+  compile. `tools(ToolRegistry)` was left standing at this point, though —
+  runtime-checked, not compile-checked, and only closed later by the
+  vestigial-trap deletion below. The grant line is the complete security
+  statement, structurally, once that gap is closed too.
 - **`ContextEnricher`** (`spi.context`) — the enrichment seam:
   `ContextEnricher.enrich(SessionState)` fetches messages from outside a
   session's own transcript — a graph, a vector store, whatever a caller wires
@@ -207,6 +210,50 @@ changed.
   messages survive verbatim; default 10). `AgentBuilder` assembles this
   default automatically from the harness's provider unless
   `.compaction(Compactor)` replaces it outright.
+- **`Compactors.window(int keepRecent)`** (`spi.compaction`) — a zero-spend,
+  lossy alternative to the summarizing default: once triggered, it drops the
+  working set's head at the nearest pair-safe boundary via
+  `Context.of(state.messages()).keepRecent(keepRecent)` and hands that back as
+  the `Result` — no model call, no summary, no spend. Its builder shares the
+  exact same trigger knobs as `Compactors.summarizing` — `.triggerTokens(long)`
+  (default 100k) and `.window(window, maxTokens)` (the same ≈ 0.8 ×
+  (window − maxTokens) derivation) — so switching between the two is a
+  one-line change. History earlier than the boundary is simply gone, not
+  condensed; reach for `Compactors.summarizing` when losing the earliest
+  turns outright is not an acceptable trade.
+- **Build-time defaults that announce themselves** — `HarnessBuilder` and
+  `AgentBuilder` now resolve every default at `build()` instead of in field
+  initializers: each knob's field starts `null`, and `build()` resolves it
+  via `Optional.ofNullable(x).orElseGet(this::defaultX)` — one named,
+  documented `defaultX()` method per knob (`defaultStore`,
+  `defaultObservations`, `defaultMapper` on `HarnessBuilder`;
+  `defaultSystemPrompt`, `defaultMaxTokens`, `defaultCapabilities`,
+  `defaultTools`, `defaultGrants`, `defaultApprover`, `defaultTermination`,
+  `defaultContextCustomizer`, `defaultCompactor` on `AgentBuilder`).
+  Behavior is unchanged for every knob whose default was already quiet;
+  `defaultApprover()` and `defaultCompactor()` are the two knobs design
+  §13.1 requires to announce themselves, so they now each log an SLF4J
+  warning, once per agent `build()`, naming what defaulted and how to
+  configure it instead:
+  - `defaultApprover()` — falling back to `Approver.allowAll()` (core's
+    approver default is allow-all today, not deny) logs a warning naming the
+    fallback and pointing at `.approver(...)`, exactly as §13.1 requires of
+    the classpath-upgradeable default.
+  - `defaultCompactor()` — falling back to the summarizing compactor logs a
+    warning naming the algorithm (`summarizing`), the trigger (the literal
+    100k default, or the `contextWindow`/`maxTokens` it was derived from),
+    `keepRecent` (10), the summarizing model, and `.compaction(...)` as the
+    way to configure a different one.
+- **SLF4J as `nessy-core`'s own logging façade** — `org.slf4j:slf4j-api` is
+  now a direct `nessy-core` dependency (previously only a transitive one,
+  pulled in by victools; confirmed via `dependency:tree` before adding it,
+  and version-aligned with the same `slf4j.version` property the test-scoped
+  `slf4j-simple` provider already used). `HarnessBuilder`/`AgentBuilder`'s
+  `listenAsync(Class, Consumer)` convenience — the one that reports a failed
+  async listener for you — now logs through an SLF4J `Logger` instead of a
+  JDK `System.Logger`, the same channel the new default-announcing warnings
+  above use. Logging policy: warnings for surprising defaults only, never
+  hot-path chatter.
 - **The jurisdiction rule (ruled 2026-08-10) — the ledger bills the loop,
   telemetry bills the rest.** `SessionState.usage()` accumulates only what
   `ModelTurnEnded` reports for the loop's own conversational turns.
@@ -510,12 +557,21 @@ changed.
   `CompactionPolicy`, `CompactionTrigger`) is dissolved outright rather than
   kept as a resting place — see the `Compactor` consolidation above.
 - **`AgentBuilder.tools(...)` source-compat note (pre-1.0 breaking, superseded
-  by the one-path ruling above)** — the `Tool...` overload this note
-  originally described no longer exists at all: `tools(ToolGrant...)` (and
-  `tools(ToolRegistry)`) are the only overloads. A bare `.tools()` call
-  (zero arguments) resolves unambiguously to `tools(ToolGrant...)`; `tools`
+  twice over — first by the one-path ruling above, now by the
+  `tools(ToolRegistry)` deletion below)** — the `Tool...` overload this note
+  originally described no longer exists at all, and neither does
+  `tools(ToolRegistry)`: `tools(ToolGrant...)` is the only overload left. A
+  bare `.tools()` call (zero arguments) resolves unambiguously to it; `tools`
   still defaults to an empty `ToolRegistry.of()` with no grants when never
   called.
+- **`AgentBuilder.tools(ToolRegistry)` deleted (pre-1.0 breaking; review
+  finding I1)** — a vestigial trap: a non-empty registry attached this way
+  carried no grants, so the engine's construction-time check ("no grant for
+  tool: …") threw for every tool in it, always. It had zero call sites
+  anywhere in this codebase. `tools(ToolGrant...)` — see the one-path ruling
+  above — is now the only way to attach tools to an `AgentBuilder`, and the
+  "states its policy or does not compile" promise made above finally holds
+  with nothing left to route around it.
 - **Zones**: the codebase is reorganized from `org.jwcarman.nessy.core.*` into
   `org.jwcarman.nessy` (front door), `.api` (application developers: `Tool`,
   `Approver`, the message/event grammar), `.spi` (infrastructure extenders:

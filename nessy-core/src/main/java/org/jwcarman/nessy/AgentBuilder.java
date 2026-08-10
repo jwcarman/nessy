@@ -17,12 +17,12 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
-import java.lang.System.Logger.Level;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.approval.Approver;
@@ -44,6 +44,8 @@ import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Assembles an {@link Agent}: the identity — model, system prompt, tools, policies — layered on top
@@ -60,6 +62,8 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
  */
 public final class AgentBuilder<I> {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(AgentBuilder.class);
+
   private static final int DEFAULT_MAX_TOKENS = 4096;
 
   private final Class<I> vocabulary;
@@ -72,16 +76,16 @@ public final class AgentBuilder<I> {
   private final List<ListenerRegistration> registrations = new ArrayList<>();
 
   private String model;
-  private String systemPrompt = "";
-  private int maxTokens = DEFAULT_MAX_TOKENS;
-  private Set<Capability> capabilities = Set.of();
-  private ToolRegistry tools = ToolRegistry.of();
+  private String systemPrompt;
+  private Integer maxTokens;
+  private Set<Capability> capabilities;
+  private ToolRegistry tools;
   private Map<String, ToolGrant> explicitGrants;
-  private Approver approver = Approver.allowAll();
-  private TerminationPolicy termination = TerminationPolicy.defaults();
+  private Approver approver;
+  private TerminationPolicy termination;
   private Compactor compactor;
   private Long contextWindow;
-  private Consumer<ContextPipeline.Builder> contextCustomizer = pipeline -> {};
+  private Consumer<ContextPipeline.Builder> contextCustomizer;
   private InputRenderer<I> renderer;
 
   /**
@@ -131,17 +135,10 @@ public final class AgentBuilder<I> {
     return this;
   }
 
-  public AgentBuilder<I> tools(ToolRegistry tools) {
-    this.tools = tools;
-    this.explicitGrants = null;
-    return this;
-  }
-
   /**
-   * The capability and the authority to use it, declared together, per tool — the only way to
-   * attach tools to this builder. The grant line is the complete security statement: every tool
-   * granted here uses exactly the policy its grant carries, structurally, with no derived default
-   * anywhere behind it.
+   * The capability and the authority to use it, declared together, per tool. The grant line is the
+   * complete security statement: every tool granted here uses exactly the policy its grant carries,
+   * structurally, with no derived default anywhere behind it.
    */
   public AgentBuilder<I> tools(ToolGrant... grants) {
     Objects.requireNonNull(grants, "grants must not be null");
@@ -246,14 +243,12 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to a JDK {@link
-   * System.Logger} rather than requiring every caller to supply its own handler.
+   * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to an SLF4J {@link
+   * Logger} rather than requiring every caller to supply its own handler.
    */
   public <T> AgentBuilder<I> listenAsync(Class<T> type, Consumer<T> listener) {
     Objects.requireNonNull(listener, "listener must not be null");
-    System.Logger logger = System.getLogger(AgentBuilder.class.getName());
-    return listenAsync(
-        type, listener, t -> logger.log(Level.ERROR, "async event listener failed", t));
+    return listenAsync(type, listener, t -> LOGGER.error("async event listener failed", t));
   }
 
   /**
@@ -274,26 +269,37 @@ public final class AgentBuilder<I> {
           "a model name is required: call model(...) on the agent, or defaultModel(...) on the"
               + " harness");
     }
+    int resolvedMaxTokens = Optional.ofNullable(maxTokens).orElseGet(this::defaultMaxTokens);
     ModelSettings settings =
-        new ModelSettings(resolvedModel, systemPrompt, maxTokens, capabilities, contextWindow);
+        new ModelSettings(
+            resolvedModel,
+            Optional.ofNullable(systemPrompt).orElseGet(this::defaultSystemPrompt),
+            resolvedMaxTokens,
+            Optional.ofNullable(capabilities).orElseGet(this::defaultCapabilities),
+            contextWindow);
     Compactor resolvedCompactor =
-        compactor != null ? compactor : assembleDefaultCompactor(resolvedModel);
+        Optional.ofNullable(compactor)
+            .orElseGet(() -> defaultCompactor(resolvedModel, resolvedMaxTokens));
     ListenerRegistry events = seededRegistry.extendedWith(registrations);
     // Constructed once here and handed to both the engine and the Agent: the invariant is one
     // ContextPipeline instance per agent, so requestFor and contextFor never disagree about what
     // a call sees.
     ContextPipeline.Builder pipelineBuilder = ContextPipeline.builder();
-    contextCustomizer.accept(pipelineBuilder);
+    Optional.ofNullable(contextCustomizer)
+        .orElseGet(this::defaultContextCustomizer)
+        .accept(pipelineBuilder);
     ContextPipeline contextPipeline = pipelineBuilder.build(events, observations);
     ExecutionEngine engine =
         new InProcessEngine(
             provider,
-            tools,
-            resolveGrants(),
-            approver,
+            Optional.ofNullable(tools).orElseGet(this::defaultTools),
+            Optional.ofNullable(explicitGrants).orElseGet(this::defaultGrants),
+            Optional.ofNullable(approver).orElseGet(this::defaultApprover),
             store,
             events,
-            new Reducer(termination, resolvedCompactor),
+            new Reducer(
+                Optional.ofNullable(termination).orElseGet(this::defaultTermination),
+                resolvedCompactor),
             settings,
             mapper,
             observations,
@@ -301,14 +307,57 @@ public final class AgentBuilder<I> {
     return new Agent<>(engine, events, store, contextPipeline, renderer);
   }
 
+  /** {@code ""} — no system prompt. */
+  private String defaultSystemPrompt() {
+    return "";
+  }
+
+  /** {@link #DEFAULT_MAX_TOKENS}. */
+  private int defaultMaxTokens() {
+    return DEFAULT_MAX_TOKENS;
+  }
+
+  /** No capabilities requested — "whatever the provider does by default". */
+  private Set<Capability> defaultCapabilities() {
+    return Set.of();
+  }
+
+  /** No tools attached. */
+  private ToolRegistry defaultTools() {
+    return ToolRegistry.of();
+  }
+
   /**
    * The grant map the engine consults, keyed by tool name. Only {@link #tools(ToolGrant...)}
-   * populates it — there is no derivation to fall back to. A {@link #tools(ToolRegistry)} registry
-   * whose tools were never granted leaves this empty, and {@code InProcessEngine}'s own
-   * construction-time check ("no grant for tool: …") catches the gap as the wiring error it is.
+   * populates {@link #explicitGrants} — there is no derivation to fall back to, so the default is
+   * simply empty.
    */
-  private Map<String, ToolGrant> resolveGrants() {
-    return explicitGrants != null ? explicitGrants : Map.of();
+  private Map<String, ToolGrant> defaultGrants() {
+    return Map.of();
+  }
+
+  /**
+   * {@link Approver#allowAll()} — every tool call is granted with no human in the loop. Design
+   * §13.1 requires this fallback to announce itself with a prominent warning, so it does, once per
+   * agent {@link #build()}: approval authority is always the application's own explicit
+   * declaration, never a silent default for anything a real tool grant deserves.
+   */
+  private Approver defaultApprover() {
+    LOGGER.warn(
+        "no approver configured for this agent: defaulting to Approver.allowAll(), which grants"
+            + " every tool call with no human in the loop; call .approver(...) to declare real"
+            + " approval authority (design §13.1)");
+    return Approver.allowAll();
+  }
+
+  /** Error-ceiling + max-turns, {@link TerminationPolicy}'s own default. */
+  private TerminationPolicy defaultTermination() {
+    return TerminationPolicy.defaults();
+  }
+
+  /** No projections, no enrichers — the working set reaches the model unchanged. */
+  private Consumer<ContextPipeline.Builder> defaultContextCustomizer() {
+    return pipeline -> {};
   }
 
   /**
@@ -319,14 +368,32 @@ public final class AgentBuilder<I> {
    * plus a declared {@link #contextWindow(long)}, when there is one, to derive the trigger from. No
    * window declared means {@link Compactors#summarizing}'s own default trigger (100k measured input
    * tokens) stands.
+   *
+   * <p>Logs a warning once per agent {@link #build()} naming the algorithm, the trigger, {@code
+   * keepRecent}, the summarizing model, and how to configure a different compactor via {@link
+   * #compaction(Compactor)} — trading tokens for fidelity is a real cost an application should
+   * choose, not inherit silently.
    */
-  private Compactor assembleDefaultCompactor(String resolvedModel) {
+  private Compactor defaultCompactor(String resolvedModel, int resolvedMaxTokens) {
     Summarizer summarizer =
         Summarizer.usingProvider(
             provider, resolvedModel, 2_048, Summarizer.DEFAULT_INSTRUCTIONS, observations);
     Compactors.SummarizingBuilder builder = Compactors.summarizing(summarizer);
     if (contextWindow != null) {
-      builder = builder.window(contextWindow, maxTokens);
+      builder = builder.window(contextWindow, resolvedMaxTokens);
+      LOGGER.warn(
+          "no compactor configured for this agent: defaulting to a summarizing compactor"
+              + " (algorithm=summarizing, trigger=derived from contextWindow={} and"
+              + " maxTokens={}, keepRecent=10, model={}); call .compaction(...) to configure",
+          contextWindow,
+          resolvedMaxTokens,
+          resolvedModel);
+    } else {
+      LOGGER.warn(
+          "no compactor configured for this agent: defaulting to a summarizing compactor"
+              + " (algorithm=summarizing, trigger=100000 input tokens, keepRecent=10,"
+              + " model={}); call .compaction(...) to configure",
+          resolvedModel);
     }
     return builder.build();
   }

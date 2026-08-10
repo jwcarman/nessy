@@ -37,6 +37,22 @@ public final class Compactors {
     return new SummarizingBuilder(summarizer);
   }
 
+  /**
+   * A zero-spend, lossy compactor: once triggered, it drops the working set's head at the nearest
+   * pair-safe boundary that still leaves {@code keepRecent} messages verbatim — no model call, no
+   * summary, just {@link org.jwcarman.nessy.api.message.Context#keepRecent(int)}. History earlier
+   * than the boundary is gone, not condensed; the summarizing default ({@link #summarizing}) spends
+   * tokens on a model call so that history survives as a summary instead of vanishing outright. Use
+   * this one when the cost of a compaction call is unacceptable and losing the earliest turns
+   * outright is an acceptable trade.
+   *
+   * @param keepRecent how many of the most recent messages must survive verbatim; must be at least
+   *     0
+   */
+  public static WindowBuilder window(int keepRecent) {
+    return new WindowBuilder(keepRecent);
+  }
+
   /** Builds the summarizing default, one knob per owner. */
   public static final class SummarizingBuilder {
 
@@ -85,6 +101,52 @@ public final class Compactors {
 
     public Compactor build() {
       return new SummarizingCompaction(summarizer, triggerTokens, keepRecent);
+    }
+  }
+
+  /**
+   * Builds the {@link #window} compactor, over the same trigger knobs as {@link SummarizingBuilder}
+   * so switching between the two default and this lossy alternative is a one-line change.
+   */
+  public static final class WindowBuilder {
+
+    private final int keepRecent;
+    private long triggerTokens = 100_000;
+
+    private WindowBuilder(int keepRecent) {
+      if (keepRecent < 0) {
+        throw new IllegalArgumentException("keepRecent must be at least 0");
+      }
+      this.keepRecent = keepRecent;
+    }
+
+    /**
+     * Fires once {@code ConversationState.lastInputTokens()} reaches {@code triggerTokens}. Shares
+     * one underlying value with {@link #window}; whichever of the two is called last wins.
+     */
+    public WindowBuilder triggerTokens(long triggerTokens) {
+      if (triggerTokens < 1) {
+        throw new IllegalArgumentException("triggerTokens must be at least 1");
+      }
+      this.triggerTokens = triggerTokens;
+      return this;
+    }
+
+    /**
+     * Derives {@link #triggerTokens} from a declared context window: fires at roughly 80% of the
+     * room left over after reserving {@code maxTokens} for the model's reply. Shares one underlying
+     * value with {@link #triggerTokens}; whichever of the two is called last wins.
+     */
+    public WindowBuilder window(long window, long maxTokens) {
+      if (window <= maxTokens) {
+        throw new IllegalArgumentException("window must be greater than maxTokens");
+      }
+      this.triggerTokens = Math.max(1, (long) (0.8 * (window - maxTokens)));
+      return this;
+    }
+
+    public Compactor build() {
+      return new WindowCompaction(triggerTokens, keepRecent);
     }
   }
 }
