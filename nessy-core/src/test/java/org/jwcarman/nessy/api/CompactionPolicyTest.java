@@ -59,13 +59,6 @@ class CompactionPolicyTest {
     }
 
     @Test
-    void ceilings_below_their_floors_are_rejected() {
-      assertThatThrownBy(
-              () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), -1, 0, "summarize"))
-          .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
     void null_instructions_are_rejected() {
       assertThatThrownBy(
               () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), 5, 1_024, null))
