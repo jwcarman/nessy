@@ -154,6 +154,37 @@ class ZoneBoundariesTest {
   }
 
   /**
+   * {@code spi.memory} (the {@link org.jwcarman.nessy.spi.memory.Memory} home) is free to depend on
+   * {@code api}, like {@code spi.context} and {@code spi.compaction}, but does not get the wider
+   * spi zone's licence to reach into {@code internal}: nothing in its public signature needs engine
+   * machinery.
+   */
+  @Test
+  void no_file_under_spi_memory_imports_internal() {
+    List<JavaFile> filesUnderSpiMemory = filesUnder("spi/memory");
+    assertThat(filesUnderSpiMemory).isNotEmpty();
+    for (JavaFile file : filesUnderSpiMemory) {
+      assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
+          .as("%s imports org.jwcarman.nessy.internal, but spi.memory may not", file.relativePath())
+          .isFalse();
+    }
+  }
+
+  /** The api-to-spi ban (see {@link #no_file_under_api_imports_spi}) covers spi.memory too. */
+  @Test
+  void no_file_under_api_imports_spi_memory() {
+    List<JavaFile> filesUnderApi = filesUnder("api");
+    assertThat(filesUnderApi).isNotEmpty();
+    for (JavaFile file : filesUnderApi) {
+      assertThat(file.importsPackage("org.jwcarman.nessy.spi.memory"))
+          .as(
+              "%s imports org.jwcarman.nessy.spi.memory, but api may not depend on spi",
+              file.relativePath())
+          .isFalse();
+    }
+  }
+
+  /**
    * Files whose relative path is under the given slash-separated package segment — matching both
    * the segment's direct children and anything nested deeper. A zone name is the leading path
    * segment (paths start {@code "api/..."}, not {@code "/api/..."}), so this checks a leading

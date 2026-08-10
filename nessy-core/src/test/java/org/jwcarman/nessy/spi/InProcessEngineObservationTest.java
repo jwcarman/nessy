@@ -38,6 +38,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.session.SessionStore;
@@ -105,7 +106,8 @@ class InProcessEngineObservationTest {
             new ObjectMapper(),
             observations,
             ContextBuilder.identity(),
-            TranscriptStore.none());
+            TranscriptStore.none(),
+            Memory.none());
 
     assertThatThrownBy(() -> engine.run(ID, Event.UserSaid.of("echo hi")))
         .isInstanceOf(IllegalStateException.class);
@@ -161,7 +163,8 @@ class InProcessEngineObservationTest {
             new ObjectMapper(),
             observations,
             ContextBuilder.identity(),
-            TranscriptStore.none());
+            TranscriptStore.none(),
+            Memory.none());
 
     engine.run(ID, Event.UserSaid.of("go"));
 
@@ -237,7 +240,8 @@ class InProcessEngineObservationTest {
             new ObjectMapper(),
             observations,
             ContextBuilder.identity(),
-            TranscriptStore.none());
+            TranscriptStore.none(),
+            Memory.none());
 
     engine.run(ID, Event.UserSaid.of("echo hi"));
   }

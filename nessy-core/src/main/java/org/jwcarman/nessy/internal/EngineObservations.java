@@ -78,4 +78,9 @@ public final class EngineObservations {
   public static Observation compaction(ObservationRegistry registry) {
     return Observation.start("nessy.compaction", registry).contextualName("compact");
   }
+
+  // No GenAI semconv concept exists for long-term memory recall either; ours again.
+  public static Observation recall(ObservationRegistry registry) {
+    return Observation.start("nessy.memory.recall", registry).contextualName("recall");
+  }
 }

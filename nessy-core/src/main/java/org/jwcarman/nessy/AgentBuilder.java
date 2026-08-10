@@ -37,6 +37,7 @@ import org.jwcarman.nessy.spi.Reducer;
 import org.jwcarman.nessy.spi.compaction.CompactionStrategies;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -76,6 +77,7 @@ public final class AgentBuilder {
   private ObservationRegistry observations;
   private ContextBuilder contextBuilder = ContextBuilder.identity();
   private TranscriptStore transcript;
+  private Memory memory = Memory.none();
 
   /**
    * Seeded from a {@link Harness}: the infrastructure six start out at the harness's values, and
@@ -238,6 +240,16 @@ public final class AgentBuilder {
   }
 
   /**
+   * What recalls messages from outside this session's own transcript ahead of each conversational
+   * request. Default: {@link Memory#none()} — recall is identity, scoped to this one agent, never a
+   * harness-level default the way {@link #store(SessionStore)} or {@link #events(EventHub)} are.
+   */
+  public AgentBuilder memory(Memory memory) {
+    this.memory = memory;
+    return this;
+  }
+
+  /**
    * Overrides the harness's Jackson mapper for this one agent. Unusual: the harness is the normal
    * home for the mapper every agent shares.
    */
@@ -289,7 +301,8 @@ public final class AgentBuilder {
             mapper,
             observations,
             contextBuilder,
-            transcript);
+            transcript,
+            memory);
     return new Agent(engine, events);
   }
 

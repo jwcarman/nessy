@@ -60,6 +60,7 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -230,7 +231,8 @@ class InProcessEngineTest {
         new ObjectMapper(),
         ObservationRegistry.NOOP,
         ContextBuilder.identity(),
-        transcript);
+        transcript,
+        Memory.none());
   }
 
   @Nested
@@ -252,7 +254,8 @@ class InProcessEngineTest {
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
                       ContextBuilder.identity(),
-                      TranscriptStore.none()))
+                      TranscriptStore.none(),
+                      Memory.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("provider");
     }
@@ -273,7 +276,8 @@ class InProcessEngineTest {
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
                       ContextBuilder.identity(),
-                      TranscriptStore.none()))
+                      TranscriptStore.none(),
+                      Memory.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants");
     }
@@ -296,7 +300,8 @@ class InProcessEngineTest {
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
                       ContextBuilder.identity(),
-                      TranscriptStore.none()))
+                      TranscriptStore.none(),
+                      Memory.none()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("echo");
     }
@@ -317,7 +322,8 @@ class InProcessEngineTest {
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
                       null,
-                      TranscriptStore.none()))
+                      TranscriptStore.none(),
+                      Memory.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("contextBuilder");
     }
@@ -338,7 +344,8 @@ class InProcessEngineTest {
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
                       ContextBuilder.identity(),
-                      null))
+                      null,
+                      Memory.none()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("transcript");
     }
@@ -518,7 +525,8 @@ class InProcessEngineTest {
           new ObjectMapper(),
           ObservationRegistry.NOOP,
           ContextBuilder.identity(),
-          TranscriptStore.none());
+          TranscriptStore.none(),
+          Memory.none());
     }
 
     private static EngineFixtures.FakeProvider toolCallingProvider() {
@@ -647,7 +655,8 @@ class InProcessEngineTest {
               new ObjectMapper(),
               ObservationRegistry.NOOP,
               ContextBuilder.identity(),
-              TranscriptStore.none());
+              TranscriptStore.none(),
+              Memory.none());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 
@@ -700,7 +709,8 @@ class InProcessEngineTest {
               new ObjectMapper(),
               ObservationRegistry.NOOP,
               ContextBuilder.identity(),
-              TranscriptStore.none());
+              TranscriptStore.none(),
+              Memory.none());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 

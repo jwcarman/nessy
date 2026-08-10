@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.RecallFailed;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -53,6 +54,7 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -87,6 +89,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final ObservationRegistry observations;
   private final ContextBuilder contextBuilder;
   private final TranscriptStore transcript;
+  private final Memory memory;
 
   public InProcessEngine(
       ModelProvider provider,
@@ -100,7 +103,8 @@ public final class InProcessEngine implements ExecutionEngine {
       ObjectMapper mapper,
       ObservationRegistry observations,
       ContextBuilder contextBuilder,
-      TranscriptStore transcript) {
+      TranscriptStore transcript,
+      Memory memory) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.grants = Map.copyOf(Objects.requireNonNull(grants, "grants must not be null"));
@@ -114,6 +118,7 @@ public final class InProcessEngine implements ExecutionEngine {
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     this.contextBuilder = Objects.requireNonNull(contextBuilder, "contextBuilder must not be null");
     this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
+    this.memory = Objects.requireNonNull(memory, "memory must not be null");
   }
 
   /**
@@ -348,15 +353,51 @@ public final class InProcessEngine implements ExecutionEngine {
     }
   }
 
+  /**
+   * Assembles the request for one conversational model call: {@link #contextBuilder} projects
+   * {@code state}, then — unless {@link #memory} is the {@link Memory#NONE} singleton, checked by
+   * identity so the default path allocates and observes nothing — {@link #memory} is given a chance
+   * to prepend recalled messages ahead of that projection.
+   *
+   * <p>Recall runs under its own {@code nessy.memory.recall} observation, matching the F2
+   * convention used everywhere else in this engine: a caught failure marks the observation with
+   * {@link Observation#error(Throwable)} rather than letting it escape, and the request proceeds
+   * with no recalled messages. Recall is enrichment, never the turn — a memory that throws, or that
+   * hands back messages breaking {@link Context}'s tool-pairing invariant (caught by {@link
+   * Context#of} inside the same {@code try}), costs this one request its enrichment, not the run.
+   *
+   * <p>The compaction/summarization path is deliberately not routed through here: {@link #compact}
+   * hands the strategy its own working set directly, so a memory is never consulted for that call.
+   */
   private ModelRequest requestFor(SessionState state) {
+    Context projected = contextBuilder.project(state);
+    if (memory != Memory.NONE) {
+      Observation observation = EngineObservations.recall(observations);
+      try (var _ = observation.openScope()) {
+        List<Message> recalled = memory.recall(projected);
+        projected = Context.of(concat(recalled, projected.messages()));
+      } catch (RuntimeException e) {
+        observation.error(e);
+        hub.emit(new RecallFailed(state.id(), describe(e)));
+      } finally {
+        observation.stop();
+      }
+    }
     return new ModelRequest(
-        contextBuilder.project(state),
+        projected,
         config.systemPrompt(),
         config.model(),
         config.maxTokens(),
         tools.specs(),
         config.capabilities(),
         null);
+  }
+
+  private static List<Message> concat(List<Message> head, List<Message> tail) {
+    List<Message> combined = new ArrayList<>(head.size() + tail.size());
+    combined.addAll(head);
+    combined.addAll(tail);
+    return combined;
   }
 
   private static Event translate(ModelEvent event) {
