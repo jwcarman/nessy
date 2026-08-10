@@ -89,7 +89,7 @@
     <source.plugin.version>3.4.0</source.plugin.version>
     <javadoc.plugin.version>3.12.0</javadoc.plugin.version>
     <gpg.plugin.version>3.2.8</gpg.plugin.version>
-    <sonatype.plugin.version>0.10.0</sonatype.plugin.version>
+    <sonatype.plugin.version>0.11.0</sonatype.plugin.version>
     <jacoco.version>0.8.13</jacoco.version>
 
     <!-- License Header Configuration -->
