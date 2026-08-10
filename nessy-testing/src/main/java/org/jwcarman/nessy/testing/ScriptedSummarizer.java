@@ -18,7 +18,6 @@ package org.jwcarman.nessy.testing;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 
 /**
@@ -43,7 +42,7 @@ public final class ScriptedSummarizer implements Summarizer {
   }
 
   @Override
-  public Summary summarize(Context head) {
+  public String summarize(Context head) {
     if (next >= script.size()) {
       throw new IllegalStateException(
           "script exhausted: the harness asked for summarization "
@@ -62,18 +61,18 @@ public final class ScriptedSummarizer implements Summarizer {
 
   private sealed interface Outcome {
 
-    Summary resolve();
+    String resolve();
 
-    record Ok(Summary summary) implements Outcome {
+    record Ok(String text) implements Outcome {
       @Override
-      public Summary resolve() {
-        return summary;
+      public String resolve() {
+        return text;
       }
     }
 
     record Throwing(RuntimeException exception) implements Outcome {
       @Override
-      public Summary resolve() {
+      public String resolve() {
         throw exception;
       }
     }
@@ -83,13 +82,9 @@ public final class ScriptedSummarizer implements Summarizer {
 
     private final List<Outcome> script = new ArrayList<>();
 
-    public Builder summary(String text, Usage usage) {
-      script.add(new Outcome.Ok(new Summary(text, usage)));
-      return this;
-    }
-
     public Builder summary(String text) {
-      return summary(text, Usage.zero());
+      script.add(new Outcome.Ok(text));
+      return this;
     }
 
     /** The next call throws {@code exception} instead of returning a summary. */

@@ -15,9 +15,8 @@
  */
 package org.jwcarman.nessy.spi.compaction;
 
-import java.util.Objects;
+import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
@@ -27,49 +26,53 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
  *
  * <p>Configuration bakes at construction rather than arriving per call: what to ask for and how
  * much room the reply gets are facts about the summarizer, not about any one summarization.
+ *
+ * <p>What a summarization call costs is not part of this seam's contract: the jurisdiction rule
+ * (design §10.6) reserves {@code SessionState.usage()} for the loop's own spend, so a summarizer
+ * that calls a model instruments that call itself as telemetry rather than returning a bill for the
+ * reducer to accumulate. {@link #usingProvider} shows the convention.
  */
 public interface Summarizer {
 
   /**
    * The default instructions handed to the summarizer by {@link #usingProvider(ModelProvider,
-   * ModelSettings)}.
+   * ModelSettings, ObservationRegistry)}.
    */
   String DEFAULT_INSTRUCTIONS =
       "Summarize the conversation so far for your own future reference: goals, decisions, facts"
           + " established, tool results that matter, and open questions. Be dense and factual;"
           + " omit pleasantries.";
 
-  /** Summarizes {@code head} per this summarizer's baked-in instructions and token budget. */
-  Summary summarize(Context head);
-
   /**
-   * @param text the summary prose. Blank text is accepted by this record — a producer decides for
-   *     itself whether that is a failure; {@link ProviderSummarizer}, for one, treats it as one.
-   * @param usage what the summarization call cost
+   * Summarizes {@code head} per this summarizer's baked-in instructions and token budget. Blank
+   * text is a producer's own call to make — {@link ProviderSummarizer}, for one, treats it as a
+   * failure — this method's contract only promises non-null prose or a thrown exception.
    */
-  record Summary(String text, Usage usage) {
-
-    public Summary {
-      Objects.requireNonNull(text, "text must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
-    }
-  }
+  String summarize(Context head);
 
   /**
    * The production summarizer: an ordinary, tool-free model call over {@code provider}, using
    * {@code config}'s model and system prompt, asking for {@code instructions} and capping the reply
-   * at {@code summaryMaxTokens}.
+   * at {@code summaryMaxTokens}. Instruments its own call as a {@code nessy.model.call} Micrometer
+   * observation on {@code observations} — the same convention the engine's own conversational calls
+   * use — so the summarization call's usage is visible as telemetry without ever reaching the
+   * ledger.
    */
   static Summarizer usingProvider(
-      ModelProvider provider, ModelSettings config, int summaryMaxTokens, String instructions) {
-    return new ProviderSummarizer(provider, config, summaryMaxTokens, instructions);
+      ModelProvider provider,
+      ModelSettings config,
+      int summaryMaxTokens,
+      String instructions,
+      ObservationRegistry observations) {
+    return new ProviderSummarizer(provider, config, summaryMaxTokens, instructions, observations);
   }
 
   /**
-   * {@link #usingProvider(ModelProvider, ModelSettings, int, String)} with this codebase's
-   * defaults: a 2,048-token summary ceiling and {@link #DEFAULT_INSTRUCTIONS}.
+   * {@link #usingProvider(ModelProvider, ModelSettings, int, String, ObservationRegistry)} with
+   * this codebase's defaults: a 2,048-token summary ceiling and {@link #DEFAULT_INSTRUCTIONS}.
    */
-  static Summarizer usingProvider(ModelProvider provider, ModelSettings config) {
-    return usingProvider(provider, config, 2_048, DEFAULT_INSTRUCTIONS);
+  static Summarizer usingProvider(
+      ModelProvider provider, ModelSettings config, ObservationRegistry observations) {
+    return usingProvider(provider, config, 2_048, DEFAULT_INSTRUCTIONS, observations);
   }
 }

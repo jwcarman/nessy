@@ -194,7 +194,10 @@ public final class InProcessEngine implements ExecutionEngine {
    *       after} are not present (by value) in {@code before}, comparing by equality rather than
    *       position since a custom compactor is free to keep some originals and drop others. For the
    *       summarizing default that is exactly the one summary message. Every newborn here carries
-   *       the {@link Event.Compacted} event's spend. Survivors are never re-announced.
+   *       {@link Usage#zero()}: the jurisdiction rule (design §10.6) reserves the ledger and the
+   *       journal for the loop's own spend, so whatever a compactor's own call cost never reaches
+   *       {@link MessageAppended} — it is telemetry's business, instrumented on the compactor's own
+   *       span instead. Survivors are never re-announced.
    * </ul>
    *
    * <p>No {@code try}/{@code catch} here on purpose: {@link EventHub#emit} propagates whatever an
@@ -205,11 +208,10 @@ public final class InProcessEngine implements ExecutionEngine {
    */
   private void announceNewborns(SessionState before, SessionState after, Event event) {
     if (after.generation() != before.generation()) {
-      Usage spend = event instanceof Event.Compacted compacted ? compacted.spend() : Usage.zero();
       List<Message> survivors = new ArrayList<>(before.messages());
       for (Message message : after.messages()) {
         if (!survivors.remove(message)) {
-          hub.emit(new MessageAppended(after.id(), message, spend));
+          hub.emit(new MessageAppended(after.id(), message, Usage.zero()));
         }
       }
       return;
@@ -281,7 +283,7 @@ public final class InProcessEngine implements ExecutionEngine {
       try {
         Compactor.Result result = reducer.compaction().compact(state);
         Context.of(result.workingSet());
-        event = new Event.Compacted(result.workingSet(), result.spend());
+        event = new Event.Compacted(result.workingSet());
       } catch (RuntimeException e) {
         observation.error(e);
         String reason = describe(e);

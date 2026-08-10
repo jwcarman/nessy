@@ -133,9 +133,9 @@ changed.
   (pure, consulted by the reducer at every `CallModel` decision point) and
   `compact(SessionState)` (effectful, performed by the engine only, seeing the
   whole ledger rather than a bare message list) are the whole interface. The
-  compactor proposes a replacement working set and what producing it cost; the
-  reducer disposes — applying the result, bumping `generation`, and treating a
-  non-shrinking result as a skip. `Compactor.disabled()` never compacts.
+  compactor proposes a replacement working set; the reducer disposes —
+  applying the result, bumping `generation`, and treating a non-shrinking
+  result as a skip. `Compactor.disabled()` never compacts.
   `AgentBuilder.compaction(Compactor)` is the single overload — no more
   policy-versus-strategy ambiguity.
 - **`Compactors`** (`spi.compaction`) — the summarizing default's factory:
@@ -148,25 +148,35 @@ changed.
   messages survive verbatim; default 10). `AgentBuilder` assembles this
   default automatically from the harness's provider unless
   `.compaction(Compactor)` replaces it outright.
-- **Complete usage accounting for compaction** — `Compactor.Result.spend`
-  is a bill, not an excluded side channel: whatever a compactor's own call
-  costs (a summarizer's input/output tokens; `Usage.zero()` for a
-  non-LLM compactor) is accumulated into `SessionState.usage()` alongside every
-  conversational turn, via `Event.Compacted(workingSet, spend)`. This repeals
-  the earlier cost-accounting exclusion, under which the compaction call's
-  tokens never reached the ledger.
+- **The jurisdiction rule (ruled 2026-08-10) — the ledger bills the loop,
+  telemetry bills the rest.** `SessionState.usage()` accumulates only what
+  `ModelTurnEnded` reports for the loop's own conversational turns.
+  `Compactor.Result` and `Event.Compacted` carry no `Usage` component; the
+  reducer's `compacted` handler never touches `usage()`, shrink or skip.
+  Whatever a compactor's own call costs — the summarizing default's
+  input/output tokens today, a tool's internal model calls tomorrow — is
+  auxiliary spend and stays out of the ledger entirely: the summarizing
+  compactor instruments its own model call as a `nessy.model.call`
+  Micrometer observation, nested under `nessy.compaction`, using the exact
+  span-name/attribute-key conventions the engine's own conversational calls
+  use. (This ruling supersedes an earlier same-day decision — briefly
+  implemented — to bill a compactor's spend into `SessionState.usage()`
+  alongside every conversational turn; that plumbing is gone.)
 - **`Summarizer`** (`spi.compaction`) — the summarizing default's sub-seam:
-  `summarize(Context head) -> Summary(text, usage)`, with instructions and the
-  summary's own token ceiling baked in at construction rather than threaded
-  per call. Lets "same compactor, cheaper model" swap in without
-  reimplementing cut logic. `Summarizer.usingProvider(provider, config,
-  summaryMaxTokens, instructions)` is the tool-free summarization call the
-  engine always performed before this seam existed; the 2-arg
-  `usingProvider(provider, config)` convenience defaults to a 2,048-token
-  ceiling and `Summarizer.DEFAULT_INSTRUCTIONS`. `AgentBuilder.summarizer(...)`
-  overrides what the assembled default calls, ignored once
-  `.compaction(Compactor)` replaces the mechanism outright. `ScriptedSummarizer`
-  ships in `nessy-testing` beside the other test doubles.
+  `summarize(Context head) -> String`, with instructions and the summary's
+  own token ceiling baked in at construction rather than threaded per call.
+  Lets "same compactor, cheaper model" swap in without reimplementing cut
+  logic. `Summarizer.usingProvider(provider, config, summaryMaxTokens,
+  instructions, observations)` is the tool-free summarization call the
+  engine always performed before this seam existed, instrumented as its own
+  `nessy.model.call` observation on the supplied `ObservationRegistry` per
+  the jurisdiction rule above; the 3-arg `usingProvider(provider, config,
+  observations)` convenience defaults to a 2,048-token ceiling and
+  `Summarizer.DEFAULT_INSTRUCTIONS`. `AgentBuilder.summarizer(...)` overrides
+  what the assembled default calls, ignored once `.compaction(Compactor)`
+  replaces the mechanism outright. `ScriptedSummarizer` ships in
+  `nessy-testing` beside the other test doubles, scripting plain `String`
+  summaries (plus a throwing mode).
 - **`TranscriptStore` and `TranscriptEntry`** (`spi.session`) — an append-only
   journal of a session's entire message history, independent of what
   compaction keeps in the working set. A pure sink (`append` is the only
@@ -186,8 +196,10 @@ changed.
   best-effort journaling wraps the same subscription in `EventHub.async(...)`.
   `TranscriptStore.inMemory()` ships an `InMemoryTranscriptStore` with a
   test/host-facing `entries(id)` reader. `TranscriptEntry(message, turnUsage)`
-  carries each message's exact cost — an assistant turn's own usage, a
-  compaction summary's spend, or `Usage.zero()` for everything else.
+  carries each message's exact cost — an assistant turn's own usage, and
+  `Usage.zero()` for everything else, including a compaction summary: the
+  jurisdiction rule above means the journal never sees a compactor's spend
+  either.
 - **`MessageCodec`** (`spi.session`) — the `Message ↔ byte[]` translation a
   durable `TranscriptStore` needs to persist opaque bytes rather than message
   structure. Default is `MessageCodec.json(mapper)`; encryption at rest is

@@ -274,6 +274,11 @@ so metrics stay stable even as those still-evolving conventions do not:
 | `nessy.compaction` | `compact` | ours; semconv has no compaction concept |
 | `nessy.context.enrich` | `enrich` | ours; semconv has no context-enrichment concept |
 
+The default summarizing `Compactor` reuses the `nessy.model.call` / `chat
+{model}` convention for its own summarization call, nested under
+`nessy.compaction` — see "Compaction" below for why that spend surfaces as
+telemetry rather than in `SessionState.usage()`.
+
 Wiring is `.observations(ObservationRegistry)` on the builder, default `NOOP`; the
 seams themselves reference Micrometer nowhere. The planned Spring Boot starter
 will wire the registry Boot's Actuator already auto-configures, so observability
@@ -343,7 +348,8 @@ Summarizer summarizer =
         provider,
         new ModelSettings("fake-model", "", 4_096, Set.of(), null),
         1_024, // cap the summary reply at 1024 tokens
-        "Summarize the conversation so far, focusing on open TODOs.");
+        "Summarize the conversation so far, focusing on open TODOs.",
+        ObservationRegistry.NOOP); // or the harness's registry, for a real nessy.model.call span
 Compactor compactor =
     Compactors.summarizing(summarizer)
         .triggerTokens(50_000) // trigger at 50k measured input tokens
@@ -375,11 +381,17 @@ Agent<String> agent =
 Compaction is best-effort: if the compactor's own call fails, the turn
 proceeds uncompacted rather than blocking the conversation, and the hub
 carries a `CompactionFailed(sessionId, reason)` event so you can observe and
-alert on it like any other hub event. Whatever the compactor spends producing
-a smaller working set is a real cost, not a side channel: it is billed
-straight into `SessionState.usage()` alongside every conversational turn's
-usage, so the ledger's running total always matches what you were actually
-charged.
+alert on it like any other hub event.
+
+**The jurisdiction rule.** `SessionState.usage()` only ever bills the loop's
+own spend — what each conversational turn's `TurnEnded` reports. Whatever a
+compactor's own call costs is auxiliary spend, and auxiliary spend is
+telemetry's jurisdiction, not the ledger's: the summarizing default
+instruments its own model call as a `nessy.model.call` observation (see
+"Observability" above), the same convention the engine's own conversational
+calls use, nested under `nessy.compaction`. It never shows up in
+`SessionState.usage()` — a custom `Compactor` that calls a model should follow
+the same convention rather than inventing a new one.
 
 ### Declaring a small model's window
 

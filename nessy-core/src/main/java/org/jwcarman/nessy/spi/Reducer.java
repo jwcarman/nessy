@@ -350,20 +350,24 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
    * compactor dropped might be exactly the messages those calls belong to. So a {@code Compacted}
    * arriving with {@code pendingCalls} or {@code pendingResults} non-empty is always treated as a
    * skip, regardless of what the working set's size says.
+   *
+   * <p>No usage accounting happens here, shrink or skip: the jurisdiction rule (design §10.6) bills
+   * the ledger only for the loop's own spend, reported via {@code ModelTurnEnded}. Whatever a
+   * compactor's own call cost is telemetry's jurisdiction, instrumented on its own span — never
+   * folded into {@code SessionState.usage()}.
    */
   private Step compacted(SessionState state, Event.Compacted event) {
-    SessionState spent = state.withUsage(state.usage().plus(event.spend()));
     boolean settled = state.pendingCalls().isEmpty() && state.pendingResults().isEmpty();
     if (settled && event.workingSet().size() < state.messages().size()) {
       SessionState next =
-          spent
+          state
               .withMessages(event.workingSet())
               .withGeneration(state.generation() + 1)
               .withLastInputTokens(0)
               .with(SessionStatus.AWAITING_MODEL);
       return Step.of(next, Effect.callModel());
     }
-    return Step.of(spent.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
+    return Step.of(state.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
   }
 
   /**

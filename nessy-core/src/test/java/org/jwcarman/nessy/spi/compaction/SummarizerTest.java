@@ -15,9 +15,12 @@
  */
 package org.jwcarman.nessy.spi.compaction;
 
+import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.observation.tck.TestObservationRegistry;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -38,8 +41,8 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@link Summarizer#usingProvider(ModelProvider, ModelSettings, int, String)}, the production
- * summarizer, over a hand-rolled fake provider.
+ * {@link Summarizer#usingProvider(ModelProvider, ModelSettings, int, String, ObservationRegistry)},
+ * the production summarizer, over a hand-rolled fake provider.
  */
 class SummarizerTest {
 
@@ -93,7 +96,8 @@ class SummarizerTest {
               List.of(
                   new ModelEvent.TextChunk("the gist"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS);
+      Summarizer summarizer =
+          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
       Context head = Context.of(List.of(Message.user("hi")));
 
       summarizer.summarize(head);
@@ -110,20 +114,19 @@ class SummarizerTest {
   class The_summary {
 
     @Test
-    void the_summary_carries_text_and_spend() {
-      Usage usage = new Usage(100, 20, 0);
+    void the_summary_carries_the_text() {
       FakeProvider provider =
           new FakeProvider(
               List.of(
                   new ModelEvent.TextChunk("the "),
                   new ModelEvent.TextChunk("gist"),
-                  new ModelEvent.TurnEnded(StopReason.END_TURN, usage)));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS);
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(100, 20, 0))));
+      Summarizer summarizer =
+          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
 
-      Summarizer.Summary summary = summarizer.summarize(Context.of(List.of(Message.user("hi"))));
+      String summary = summarizer.summarize(Context.of(List.of(Message.user("hi"))));
 
-      assertThat(summary.text()).isEqualTo("the gist");
-      assertThat(summary.usage()).isEqualTo(usage);
+      assertThat(summary).isEqualTo("the gist");
     }
 
     @Test
@@ -133,7 +136,8 @@ class SummarizerTest {
               List.of(
                   new ModelEvent.TextChunk("   "),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS);
+      Summarizer summarizer =
+          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
       Context head = Context.of(List.of(Message.user("hi")));
 
       assertThatThrownBy(() -> summarizer.summarize(head))
@@ -149,7 +153,10 @@ class SummarizerTest {
     void a_summary_max_tokens_below_one_is_rejected() {
       FakeProvider provider = new FakeProvider(List.of());
 
-      assertThatThrownBy(() -> Summarizer.usingProvider(provider, CONFIG, 0, INSTRUCTIONS))
+      assertThatThrownBy(
+              () ->
+                  Summarizer.usingProvider(
+                      provider, CONFIG, 0, INSTRUCTIONS, ObservationRegistry.NOOP))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -157,13 +164,17 @@ class SummarizerTest {
     void null_instructions_are_rejected() {
       FakeProvider provider = new FakeProvider(List.of());
 
-      assertThatThrownBy(() -> Summarizer.usingProvider(provider, CONFIG, 500, null))
+      assertThatThrownBy(
+              () -> Summarizer.usingProvider(provider, CONFIG, 500, null, ObservationRegistry.NOOP))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void a_null_provider_is_rejected() {
-      assertThatThrownBy(() -> Summarizer.usingProvider(null, CONFIG, 500, INSTRUCTIONS))
+      assertThatThrownBy(
+              () ->
+                  Summarizer.usingProvider(
+                      null, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -171,7 +182,18 @@ class SummarizerTest {
     void a_null_config_is_rejected() {
       FakeProvider provider = new FakeProvider(List.of());
 
-      assertThatThrownBy(() -> Summarizer.usingProvider(provider, null, 500, INSTRUCTIONS))
+      assertThatThrownBy(
+              () ->
+                  Summarizer.usingProvider(
+                      provider, null, 500, INSTRUCTIONS, ObservationRegistry.NOOP))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_null_observation_registry_is_rejected() {
+      FakeProvider provider = new FakeProvider(List.of());
+
+      assertThatThrownBy(() -> Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, null))
           .isInstanceOf(NullPointerException.class);
     }
   }
@@ -186,7 +208,7 @@ class SummarizerTest {
               List.of(
                   new ModelEvent.TextChunk("the gist"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG);
+      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, ObservationRegistry.NOOP);
 
       summarizer.summarize(Context.of(List.of(Message.user("hi"))));
 
@@ -194,6 +216,40 @@ class SummarizerTest {
       assertThat(request.maxTokens()).isEqualTo(2_048);
       assertThat(request.context().messages())
           .containsExactly(Message.user("hi"), Message.user(Summarizer.DEFAULT_INSTRUCTIONS));
+    }
+  }
+
+  @Nested
+  class Telemetry {
+
+    /**
+     * The jurisdiction rule (design §10.6): a summarizer's own call is telemetry's, never the
+     * ledger's. This is the one pin for that rule at the summarizer level — {@code
+     * InProcessEngineCompactionTest} and {@code EndToEndTest} pin the corresponding negative (the
+     * ledger and journal never see this spend); this test pins where it actually surfaces.
+     */
+    @Test
+    void the_summarizers_own_call_is_a_nessy_model_call_observation() {
+      Usage usage = new Usage(321, 45, 0);
+      FakeProvider provider =
+          new FakeProvider(
+              List.of(
+                  new ModelEvent.TextChunk("the gist"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, usage)));
+      TestObservationRegistry observations = TestObservationRegistry.create();
+      Summarizer summarizer =
+          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, observations);
+
+      summarizer.summarize(Context.of(List.of(Message.user("hi"))));
+
+      assertThat(observations)
+          .hasObservationWithNameEqualTo("nessy.model.call")
+          .that()
+          .hasContextualNameEqualTo("chat fake-model")
+          .hasLowCardinalityKeyValue("gen_ai.operation.name", "chat")
+          .hasLowCardinalityKeyValue("gen_ai.request.model", "fake-model")
+          .hasHighCardinalityKeyValue("gen_ai.usage.input_tokens", "321")
+          .hasHighCardinalityKeyValue("gen_ai.usage.output_tokens", "45");
     }
   }
 }

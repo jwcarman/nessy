@@ -166,13 +166,14 @@ class ReducerCompactionTest {
       List<Message> shrunk = new ArrayList<>();
       shrunk.add(Message.user("[Conversation summary — earlier turns compacted]\nthe gist"));
       shrunk.addAll(tail);
-      Usage spend = new Usage(5_000, 200, 0);
 
-      Step step = builder.reduce(state, new Event.Compacted(shrunk, spend));
+      Step step = builder.reduce(state, new Event.Compacted(shrunk));
 
       assertThat(step.state().messages()).isEqualTo(shrunk);
       assertThat(step.state().generation()).isEqualTo(state.generation() + 1);
-      assertThat(step.state().usage()).isEqualTo(state.usage().plus(spend));
+      // The jurisdiction rule (design §10.6): compaction carries no spend, so applying its
+      // result never changes the ledger's usage.
+      assertThat(step.state().usage()).isEqualTo(state.usage());
       assertThat(step.state().lastInputTokens()).isZero();
       assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
@@ -181,13 +182,12 @@ class ReducerCompactionTest {
     @Test
     void a_non_shrinking_result_is_a_skip() {
       SessionState state = fivePairsAndToolExchange().withLastInputTokens(100_000);
-      Usage spend = new Usage(1_000, 50, 0);
 
-      Step step = builder.reduce(state, new Event.Compacted(state.messages(), spend));
+      Step step = builder.reduce(state, new Event.Compacted(state.messages()));
 
       assertThat(step.state().messages()).isEqualTo(state.messages());
       assertThat(step.state().generation()).isEqualTo(state.generation());
-      assertThat(step.state().usage()).isEqualTo(state.usage().plus(spend));
+      assertThat(step.state().usage()).isEqualTo(state.usage());
       assertThat(step.state().lastInputTokens()).isEqualTo(state.lastInputTokens());
       assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
@@ -208,13 +208,12 @@ class ReducerCompactionTest {
       SessionState state = pendingToolCall(fivePairsAndToolExchange(), toolCall);
       List<Message> shrunk =
           List.of(Message.user("[Conversation summary — earlier turns compacted]\nthe gist"));
-      Usage spend = new Usage(2_000, 100, 0);
 
-      Step step = builder.reduce(state, new Event.Compacted(shrunk, spend));
+      Step step = builder.reduce(state, new Event.Compacted(shrunk));
 
       assertThat(step.state().messages()).isEqualTo(state.messages());
       assertThat(step.state().generation()).isEqualTo(state.generation());
-      assertThat(step.state().usage()).isEqualTo(state.usage().plus(spend));
+      assertThat(step.state().usage()).isEqualTo(state.usage());
       assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
       assertThat(step.state().pendingCalls()).containsExactly(toolCall);

@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.Usage;
 
 /**
  * Decides when the settled conversation needs shrinking, and shrinks it.
@@ -47,7 +46,13 @@ public interface Compactor {
 
   /**
    * Effectful — the ENGINE performs this, never the reducer. Sees the ledger it is compacting and
-   * returns a smaller working set and what producing it cost.
+   * returns a smaller working set.
+   *
+   * <p>What producing that working set costs is not this method's concern: the jurisdiction rule
+   * (design §10.6, ruled 2026-08-10) reserves the ledger for the loop's own spend — what {@code
+   * TurnEnded} reports for conversational turns. A compactor that calls a model instruments that
+   * call itself, on its own span, as telemetry rather than as a bill the reducer accumulates; see
+   * {@link Summarizer#usingProvider} for the default's own instrumentation.
    */
   Result compact(SessionState state);
 
@@ -56,15 +61,12 @@ public interface Compactor {
    *
    * @param workingSet the messages the reducer should replace {@code state.messages()} with. A
    *     result no smaller than what went in is treated as a skip, not a shrink.
-   * @param spend what producing {@code workingSet} cost; {@link Usage#zero()} for a compactor that
-   *     never calls a model.
    */
-  record Result(List<Message> workingSet, Usage spend) {
+  record Result(List<Message> workingSet) {
 
     public Result {
       Objects.requireNonNull(workingSet, "workingSet must not be null");
       workingSet = List.copyOf(workingSet);
-      Objects.requireNonNull(spend, "spend must not be null");
     }
   }
 

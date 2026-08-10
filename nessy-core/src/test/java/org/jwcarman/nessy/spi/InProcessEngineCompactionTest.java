@@ -137,8 +137,7 @@ class InProcessEngineCompactionTest {
     @Test
     void a_triggered_compaction_summarizes_and_the_conversation_continues() {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Summarizer summarizer =
-          (head) -> new Summarizer.Summary("Summary of earlier turns.", Usage.zero());
+      Summarizer summarizer = (head) -> "Summary of earlier turns.";
       InProcessEngine engine =
           engineWith(
               provider,
@@ -157,27 +156,6 @@ class InProcessEngineCompactionTest {
       assertThat(summaryText).contains("Summary of earlier turns.");
       assertThat(completed.state().messages().getLast())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Normal answer."))));
-    }
-
-    @Test
-    void the_engine_reports_what_the_compactor_spent() {
-      EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Usage spend = new Usage(500, 20, 0);
-      Summarizer summarizer = (head) -> new Summarizer.Summary("Summary.", spend);
-      InProcessEngine engine =
-          engineWith(
-              provider,
-              reducerUsing(summarizer),
-              EventHub.synchronous(),
-              ObservationRegistry.create());
-
-      engine.run(ID, Event.UserSaid.of("first question"));
-      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("second question"));
-
-      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-      // First turn's usage (150_000, 10, 0) + the compactor's spend (500, 20, 0); the second,
-      // uncompacted turn contributes zero.
-      assertThat(completed.state().usage()).isEqualTo(new Usage(150_500, 30, 0));
     }
   }
 
@@ -214,7 +192,7 @@ class InProcessEngineCompactionTest {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       ToolCall orphan = new ToolCall("orphan", "read_file", JsonNodeFactory.instance.objectNode());
       List<Message> broken = List.of(Message.assistant(List.of(new ToolUseBlock(orphan))));
-      Compactor compactor = triggeringAt(100_000, new Compactor.Result(broken, Usage.zero()));
+      Compactor compactor = triggeringAt(100_000, new Compactor.Result(broken));
       EventHub hub = EventHub.synchronous();
       List<CompactionFailed> failures = new ArrayList<>();
       hub.subscribe(CompactionFailed.class, failures::add);
@@ -238,10 +216,12 @@ class InProcessEngineCompactionTest {
   class Transcript {
 
     @Test
-    void compaction_journals_the_summary_with_its_spend() {
+    void compaction_journals_the_summary_with_zero_usage() {
+      // The jurisdiction rule (design §10.6): the journal, like the ledger, only ever attributes
+      // the loop's own conversational spend. Whatever the summarizer's call cost is telemetry's
+      // business, not the journal's — SummarizerTest pins where it actually surfaces.
       EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Usage spend = new Usage(500, 20, 0);
-      Summarizer summarizer = (head) -> new Summarizer.Summary("Summary.", spend);
+      Summarizer summarizer = (head) -> "Summary.";
       InMemoryTranscriptStore transcriptStore = TranscriptStore.inMemory();
       EventHub hub = EventHub.synchronous();
       transcriptStore.feedFrom(hub);
@@ -264,7 +244,7 @@ class InProcessEngineCompactionTest {
       // replaced were already journaled at their own birth and must not be re-appended.
       String summaryText = ((TextBlock) entries.get(3).message().content().getFirst()).text();
       assertThat(summaryText).contains("Summary.");
-      assertThat(entries.get(3).turnUsage()).isEqualTo(spend);
+      assertThat(entries.get(3).turnUsage()).isEqualTo(Usage.zero());
       assertThat(entries.get(4).message())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Normal answer."))));
       assertThat(entries.get(4).turnUsage()).isEqualTo(Usage.zero());
@@ -278,7 +258,7 @@ class InProcessEngineCompactionTest {
     void compaction_produces_its_own_observation() {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = twoTurnProvider();
-      Summarizer summarizer = (head) -> new Summarizer.Summary("Summary.", Usage.zero());
+      Summarizer summarizer = (head) -> "Summary.";
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), EventHub.synchronous(), observations);
 

@@ -31,7 +31,6 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -73,15 +72,15 @@ class SummarizingCompactionTest {
   /** Records every head it is handed and replays scripted summaries in order. */
   private static final class RecordingSummarizer implements Summarizer {
 
-    private final Deque<Summary> script;
+    private final Deque<String> script;
     private final List<Context> heads = new ArrayList<>();
 
-    RecordingSummarizer(Summary... script) {
+    RecordingSummarizer(String... script) {
       this.script = new ArrayDeque<>(List.of(script));
     }
 
     @Override
-    public Summary summarize(Context head) {
+    public String summarize(Context head) {
       heads.add(head);
       return script.removeFirst();
     }
@@ -97,9 +96,7 @@ class SummarizingCompactionTest {
     @Test
     void the_head_is_summarized_and_the_tail_survives_verbatim() {
       List<Message> workingSet = sixPairs();
-      Usage spend = new Usage(1_500, 75, 0);
-      RecordingSummarizer summarizer =
-          new RecordingSummarizer(new Summarizer.Summary("the gist", spend));
+      RecordingSummarizer summarizer = new RecordingSummarizer("the gist");
       Compactor compactor = compactorFor(summarizer, 4);
 
       Compactor.Result result = compactor.compact(stateWith(workingSet));
@@ -109,15 +106,13 @@ class SummarizingCompactionTest {
       expected.add(Message.user("[Conversation summary — earlier turns compacted]\nthe gist"));
       expected.addAll(tail);
       assertThat(result.workingSet()).isEqualTo(expected);
-      assertThat(result.spend()).isEqualTo(spend);
       assertThat(summarizer.heads()).containsExactly(Context.of(workingSet.subList(0, 8)));
     }
 
     @Test
     void the_summary_prefix_is_the_compactors_business() {
       List<Message> workingSet = sixPairs();
-      RecordingSummarizer summarizer =
-          new RecordingSummarizer(new Summarizer.Summary("the gist", Usage.zero()));
+      RecordingSummarizer summarizer = new RecordingSummarizer("the gist");
       Compactor compactor = compactorFor(summarizer, 4);
 
       Compactor.Result result = compactor.compact(stateWith(workingSet));
@@ -139,7 +134,6 @@ class SummarizingCompactionTest {
       Compactor.Result result = compactor.compact(stateWith(workingSet));
 
       assertThat(result.workingSet()).isEqualTo(workingSet);
-      assertThat(result.spend()).isEqualTo(Usage.zero());
       assertThat(summarizer.heads()).isEmpty();
     }
   }

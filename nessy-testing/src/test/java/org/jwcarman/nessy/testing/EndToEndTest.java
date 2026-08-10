@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Iterator;
@@ -375,7 +376,8 @@ class EndToEndTest {
               provider,
               new ModelSettings("fake-model", "", 4096, Set.of(), null),
               256,
-              "Summarize.");
+              "Summarize.",
+              ObservationRegistry.NOOP);
       Agent<String> agent =
           Nessy.agent()
               .provider(provider)
@@ -423,7 +425,8 @@ class EndToEndTest {
               provider,
               new ModelSettings("fake-model", "", 4096, Set.of(), null),
               256,
-              "Summarize.");
+              "Summarize.",
+              ObservationRegistry.NOOP);
       Agent<String> agent =
           Nessy.agent()
               .provider(provider)
@@ -467,9 +470,7 @@ class EndToEndTest {
               .endTurn()
               .build();
       ScriptedSummarizer summarizer =
-          ScriptedSummarizer.builder()
-              .summary("Summary of earlier turns.", new Usage(500, 10, 0))
-              .build();
+          ScriptedSummarizer.builder().summary("Summary of earlier turns.").build();
       Agent<String> agent =
           Nessy.agent()
               .provider(provider)
@@ -524,7 +525,7 @@ class EndToEndTest {
             public Result compact(SessionState state) {
               List<Message> workingSet = state.messages();
               List<Message> tail = workingSet.subList(workingSet.size() - 1, workingSet.size());
-              return new Result(tail, Usage.zero());
+              return new Result(tail);
             }
           };
       Agent<String> agent =
@@ -548,8 +549,9 @@ class EndToEndTest {
               Message.user("second question"),
               Message.assistant(List.of(new TextBlock("Second answer."))));
       assertThat(provider.requests()).hasSize(2);
-      // No summarizer means no spend: the ledger holds only the two conversational turns'
-      // usage — first turn's 150_000/20 plus the second, unscripted-usage answer's zero.
+      // The ledger holds only the two conversational turns' usage — first turn's 150_000/20 plus
+      // the second, unscripted-usage answer's zero; the jurisdiction rule means a compactor's own
+      // spend, if it had any, would never land here regardless.
       assertThat(secondReply.state().usage()).isEqualTo(new Usage(150_000, 20, 0));
     }
   }
@@ -583,7 +585,8 @@ class EndToEndTest {
               provider,
               new ModelSettings("fake-model", "", 4096, Set.of(), null),
               256,
-              "Summarize.");
+              "Summarize.",
+              ObservationRegistry.NOOP);
       Agent<String> agent =
           Nessy.agent()
               .provider(provider)
@@ -617,47 +620,6 @@ class EndToEndTest {
       // The working set no longer holds the two originals compaction removed — only the journal
       // does.
       assertThat(secondReply.state().messages()).doesNotContain(originalUser1, originalAssistant1);
-    }
-  }
-
-  @Nested
-  class A_ledger_that_bills_the_compactor {
-
-    /**
-     * The compactor's spend is not a side channel — it is billed to the same ledger every
-     * conversational turn's usage lands in. {@link ScriptedSummarizer} pins the summarizer's spend
-     * to a value no conversational turn in this script produces (500 input / 10 output tokens), so
-     * {@code reply.state().usage()} landing on turn 1's usage plus exactly that spend proves the
-     * bill was added rather than merely that compaction didn't error.
-     */
-    @Test
-    void the_ledger_counts_the_compactors_spend() {
-      ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .text("First answer.")
-              .endTurn(new Usage(150_000, 20, 0))
-              .text("Second answer.")
-              .endTurn()
-              .build();
-      ScriptedSummarizer summarizer =
-          ScriptedSummarizer.builder()
-              .summary("Summary of earlier turns.", new Usage(500, 10, 0))
-              .build();
-      Agent<String> agent =
-          Nessy.agent()
-              .provider(provider)
-              .model("fake-model")
-              .compaction(
-                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
-              .build();
-
-      var conversation = agent.converse();
-      conversation.tell("first question");
-      Reply secondReply = conversation.tell("second question");
-
-      assertThat(secondReply.failed()).isFalse();
-      assertThat(secondReply.state().generation()).isEqualTo(1);
-      assertThat(secondReply.state().usage()).isEqualTo(new Usage(150_500, 30, 0));
     }
   }
 

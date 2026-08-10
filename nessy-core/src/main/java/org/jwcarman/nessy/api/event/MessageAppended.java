@@ -33,8 +33,9 @@ import org.jwcarman.nessy.api.session.Usage;
  * @param sessionId the session this message belongs to
  * @param message the settled message, exactly as born
  * @param turnUsage the usage to attribute to this message: the flushed assistant message of a model
- *     turn carries that turn's usage, a compaction's summary carries the strategy's spend, and
- *     every other newborn message carries {@link Usage#zero()}
+ *     turn carries that turn's usage; every other newborn message, including a compaction's
+ *     summary, carries {@link Usage#zero()} — the jurisdiction rule (design §10.6) reserves this
+ *     field for the loop's own spend, so a compactor's own call cost is telemetry's, never here
  */
 public record MessageAppended(SessionId sessionId, Message message, Usage turnUsage) {
 

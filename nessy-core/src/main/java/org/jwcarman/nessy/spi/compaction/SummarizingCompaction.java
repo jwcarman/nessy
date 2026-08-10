@@ -21,7 +21,6 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.Usage;
 
 /**
  * The default {@link Compactor}: cuts the working set at the last pair-safe boundary that still
@@ -67,12 +66,12 @@ record SummarizingCompaction(Summarizer summarizer, long triggerTokens, int keep
       // Nothing compactable — a giant tool exchange with no user-text boundary to cut at, for
       // instance. The reducer's non-shrinking-result rule treats this the same as any other
       // skip: proceed uncompacted rather than fail.
-      return new Result(workingSet, Usage.zero());
+      return new Result(workingSet);
     }
-    Summarizer.Summary summary = summarizer.summarize(context.head(cut));
+    String summary = summarizer.summarize(context.head(cut));
     List<Message> rewritten = new ArrayList<>();
-    rewritten.add(Message.user(SUMMARY_PREFIX + summary.text()));
+    rewritten.add(Message.user(SUMMARY_PREFIX + summary));
     rewritten.addAll(workingSet.subList(cut, workingSet.size()));
-    return new Result(rewritten, summary.usage());
+    return new Result(rewritten);
   }
 }

@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spi.compaction;
 
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -34,6 +36,14 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  *
  * <p>A blank result is treated as a failure rather than a valid, if useless, summary: an empty
  * summary would still replace the compacted prefix, silently discarding history for nothing.
+ *
+ * <p>Instruments its own model call as a {@code nessy.model.call} Micrometer observation, with the
+ * usage recorded via the {@code gen_ai.usage.*} key-values — the exact span name, contextual name,
+ * and attribute keys {@code org.jwcarman.nessy.internal.EngineObservations#modelCall} and {@code
+ * #recordUsage} use for the engine's own conversational calls. Those conventions are duplicated
+ * here rather than shared because {@code spi.compaction} may not import {@code internal} (see
+ * {@code ZoneBoundariesTest}); this is the jurisdiction rule (design §10.6) in code — this call's
+ * spend is telemetry's, never {@code SessionState.usage()}'s.
  */
 final class ProviderSummarizer implements Summarizer {
 
@@ -41,9 +51,14 @@ final class ProviderSummarizer implements Summarizer {
   private final ModelSettings config;
   private final int summaryMaxTokens;
   private final String instructions;
+  private final ObservationRegistry observations;
 
   ProviderSummarizer(
-      ModelProvider provider, ModelSettings config, int summaryMaxTokens, String instructions) {
+      ModelProvider provider,
+      ModelSettings config,
+      int summaryMaxTokens,
+      String instructions,
+      ObservationRegistry observations) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.config = Objects.requireNonNull(config, "config must not be null");
     if (summaryMaxTokens < 1) {
@@ -51,10 +66,11 @@ final class ProviderSummarizer implements Summarizer {
     }
     this.summaryMaxTokens = summaryMaxTokens;
     this.instructions = Objects.requireNonNull(instructions, "instructions must not be null");
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
   @Override
-  public Summary summarize(Context head) {
+  public String summarize(Context head) {
     Objects.requireNonNull(head, "head must not be null");
     List<Message> messages = new ArrayList<>(head.messages());
     messages.add(Message.user(instructions));
@@ -68,12 +84,18 @@ final class ProviderSummarizer implements Summarizer {
             Set.of(),
             null);
     StringBuilder text = new StringBuilder();
-    Usage usage = Usage.zero();
-    try (ModelStream stream = provider.stream(request)) {
+    // Convention source: org.jwcarman.nessy.internal.EngineObservations.modelCall(...).
+    Observation observation =
+        Observation.start("nessy.model.call", observations)
+            .contextualName("chat " + config.model())
+            .lowCardinalityKeyValue("gen_ai.operation.name", "chat")
+            .lowCardinalityKeyValue("gen_ai.request.model", config.model());
+    try (var _ = observation.openScope();
+        ModelStream stream = provider.stream(request)) {
       for (ModelEvent event : stream) {
         switch (event) {
           case ModelEvent.TextChunk(String chunk) -> text.append(chunk);
-          case ModelEvent.TurnEnded(var _, Usage turnUsage) -> usage = turnUsage;
+          case ModelEvent.TurnEnded(var _, Usage turnUsage) -> recordUsage(observation, turnUsage);
           // Thinking, redacted-thinking, and tool-use chunks are not part of the summary;
           // this is a tool-free call, so a ToolUseEmitted here would be a provider bug this
           // summarizer doesn't need to guard against specially.
@@ -83,11 +105,23 @@ final class ProviderSummarizer implements Summarizer {
           case ModelEvent.ToolUseEmitted _ -> {}
         }
       }
+    } catch (RuntimeException e) {
+      observation.error(e);
+      throw e;
+    } finally {
+      observation.stop();
     }
     String summary = text.toString();
     if (summary.isBlank()) {
       throw new IllegalStateException("summarizer returned no text");
     }
-    return new Summary(summary, usage);
+    return summary;
+  }
+
+  // Convention source: org.jwcarman.nessy.internal.EngineObservations.recordUsage(...).
+  private static void recordUsage(Observation observation, Usage usage) {
+    observation
+        .highCardinalityKeyValue("gen_ai.usage.input_tokens", Long.toString(usage.inputTokens()))
+        .highCardinalityKeyValue("gen_ai.usage.output_tokens", Long.toString(usage.outputTokens()));
   }
 }

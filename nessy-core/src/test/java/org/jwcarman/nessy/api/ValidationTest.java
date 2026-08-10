@@ -192,21 +192,14 @@ class ValidationTest {
 
   @Test
   void a_compacted_event_without_a_working_set_is_rejected() {
-    assertThatThrownBy(() -> new Event.Compacted(null, Usage.zero()))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compacted_event_without_spend_is_rejected() {
-    assertThatThrownBy(() -> new Event.Compacted(List.of(), null))
-        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> new Event.Compacted(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_compacted_events_working_set_is_defensively_copied() {
     List<Message> mutable = new ArrayList<>();
     mutable.add(Message.user("hi"));
-    Event.Compacted event = new Event.Compacted(mutable, Usage.zero());
+    Event.Compacted event = new Event.Compacted(mutable);
 
     mutable.add(Message.user("surprise"));
 
@@ -221,14 +214,7 @@ class ValidationTest {
 
   @Test
   void a_compactor_result_without_a_working_set_is_rejected() {
-    assertThatThrownBy(() -> new Compactor.Result(null, Usage.zero()))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compactor_result_without_spend_is_rejected() {
-    assertThatThrownBy(() -> new Compactor.Result(List.of(), null))
-        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> new Compactor.Result(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test

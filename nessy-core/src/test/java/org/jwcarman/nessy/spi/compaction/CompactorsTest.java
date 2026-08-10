@@ -27,7 +27,6 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.api.session.Usage;
 
 /**
  * {@link Compactors#summarizing}'s builder: its own validation, the 0.8 window-derivation
@@ -157,8 +156,7 @@ class CompactorsTest {
      */
     @Test
     void the_default_keep_recent_is_ten_messages() {
-      RecordingSummarizer summarizer =
-          new RecordingSummarizer(new Summarizer.Summary("gist", Usage.zero()));
+      RecordingSummarizer summarizer = new RecordingSummarizer("gist");
       Compactor compactor =
           Compactors.summarizing(summarizer).triggerTokens(1).build(); // keepRecent left default
 
@@ -188,14 +186,14 @@ class CompactorsTest {
   /** Replays one scripted summary, regardless of the head it is handed. */
   private static final class RecordingSummarizer implements Summarizer {
 
-    private final Summary summary;
+    private final String summary;
 
-    RecordingSummarizer(Summary summary) {
+    RecordingSummarizer(String summary) {
       this.summary = summary;
     }
 
     @Override
-    public Summary summarize(Context head) {
+    public String summarize(Context head) {
       return summary;
     }
   }

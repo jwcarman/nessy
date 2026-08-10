@@ -214,11 +214,12 @@ public final class AgentBuilder<I> {
 
   /**
    * What performs the default summarizing compactor's model call. Default: {@link
-   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String)} over this builder's {@link
-   * #provider(ModelProvider)}, settings, {@link #summaryMaxTokens(int)}, and {@link
-   * #summaryInstructions(String)}. Wins over both of those knobs — an explicit summarizer needs
-   * nothing this builder would otherwise bake in for it. Ignored when {@link
-   * #compaction(Compactor)} is called.
+   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String,
+   * io.micrometer.observation.ObservationRegistry)} over this builder's {@link
+   * #provider(ModelProvider)}, settings, {@link #summaryMaxTokens(int)}, {@link
+   * #summaryInstructions(String)}, and {@link #observations(ObservationRegistry)}. Wins over both
+   * of those knobs — an explicit summarizer needs nothing this builder would otherwise bake in for
+   * it. Ignored when {@link #compaction(Compactor)} is called.
    */
   public AgentBuilder<I> summarizer(Summarizer summarizer) {
     this.summarizer = summarizer;
@@ -380,17 +381,19 @@ public final class AgentBuilder<I> {
 
   /**
    * Assembles the default, summarizing compactor from {@link #summarizer(Summarizer)} (or {@link
-   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String)} over this builder's
-   * provider, settings, {@link #summaryMaxTokens(int)}, and {@link #summaryInstructions(String)},
-   * by default) and a declared {@link #contextWindow(long)}, when there is one, to derive the
-   * trigger from. No window declared means the builder's own default trigger (100k measured input
-   * tokens) stands.
+   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String,
+   * io.micrometer.observation.ObservationRegistry)} over this builder's provider, settings, {@link
+   * #summaryMaxTokens(int)}, {@link #summaryInstructions(String)}, and {@link
+   * #observations(ObservationRegistry)}, by default) and a declared {@link #contextWindow(long)},
+   * when there is one, to derive the trigger from. No window declared means the builder's own
+   * default trigger (100k measured input tokens) stands.
    */
   private Compactor assembleDefaultCompactor(ModelSettings settings) {
     Summarizer resolvedSummarizer =
         summarizer != null
             ? summarizer
-            : Summarizer.usingProvider(provider, settings, summaryMaxTokens, summaryInstructions);
+            : Summarizer.usingProvider(
+                provider, settings, summaryMaxTokens, summaryInstructions, observations);
     Compactors.SummarizingBuilder builder = Compactors.summarizing(resolvedSummarizer);
     if (contextWindow != null) {
       builder = builder.window(contextWindow, maxTokens);

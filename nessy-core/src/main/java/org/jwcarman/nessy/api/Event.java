@@ -88,14 +88,15 @@ public sealed interface Event {
   /**
    * A compaction attempt finished. {@code workingSet} is the strategy's result: smaller than the
    * working set that went in means the reducer replaces its messages wholesale; the same size or
-   * larger is a skip, applied as spend with no other change.
+   * larger is a skip with no other change. Carries no spend — the jurisdiction rule (design §10.6)
+   * reserves the ledger for the loop's own spend; whatever a compactor's own call cost is
+   * telemetry's business, not this event's.
    */
-  record Compacted(List<Message> workingSet, Usage spend) implements Event {
+  record Compacted(List<Message> workingSet) implements Event {
 
     public Compacted {
       Objects.requireNonNull(workingSet, "workingSet must not be null");
       workingSet = List.copyOf(workingSet);
-      Objects.requireNonNull(spend, "spend must not be null");
     }
   }
 

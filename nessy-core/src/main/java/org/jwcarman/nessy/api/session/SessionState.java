@@ -38,9 +38,11 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  *     call resolves
  * @param consecutiveErrors errored tool results in a row; any success resets it
  * @param turns model turns completed so far
- * @param usage tokens spent so far, accumulated across every completed turn, including what a
- *     {@code Compactor}'s own summarization call spent — billed to the ledger like any other model
- *     call
+ * @param usage tokens spent so far, accumulated across every completed turn — the loop's own spend,
+ *     reported by {@code ModelTurnEnded}. This is the jurisdiction rule (design §10.6, ruled
+ *     2026-08-10): the ledger bills only the loop's own conversational turns; auxiliary spend — a
+ *     {@code Compactor}'s own summarization call today, a tool's internal model calls tomorrow — is
+ *     telemetry's jurisdiction, instrumented on its own span, and never reaches this field
  * @param lastInputTokens the provider's own measurement of what the most recent model call cost;
  *     read by the reducer's {@code Compactor} to decide when to compact. This reads the provider's
  *     reported input token count as-is; a future message-level prompt-cache breakpoint that
