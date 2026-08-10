@@ -246,7 +246,8 @@ materially improves.
 
 Artifacts follow `nessy-<family>-<implementation>` so an upgrader can guess the
 name: `nessy-model-anthropic`, `nessy-model-openai`, `nessy-store-jdbc`,
-`nessy-engine-temporal`. `nessy-core` is complete for the single-node in-memory
+`nessy-engine-temporal`, `nessy-compactor-<implementation>` (algorithm packs
+that bring dependencies; the summarizing default stays in core). `nessy-core` is complete for the single-node in-memory
 posture; `nessy-testing` ships the doubles; `nessy-bom` pins versions;
 `nessy-spring-boot-starter` wires the Spring world. All wiring converges on the
 one builder.
@@ -819,17 +820,39 @@ strategy seam.** The final synthesis of the design session: compaction's
 reducer keeps every scrap of bookkeeping authority:
 
 ```java
-public interface CompactionStrategy {
+public interface Compactor {                       // spi.compaction — renamed & consolidated 2026-08-10
     /** Pure — the reducer consults this at CallModel decision points. */
     boolean requiresCompaction(SessionState state);
 
     /** Effectful — the ENGINE performs this. May call models, may not.
-     *  Returns a smaller working set and what producing it cost. */
-    Result compact(List<Message> workingSet);
+     *  Decides on the ledger, transforms with the ledger in view. */
+    Result compact(SessionState state);
 
     record Result(List<Message> workingSet, Usage spend) { }
+
+    static Compactor disabled() { … }
 }
 ```
+
+**The consolidation (ruled 2026-08-10):** the reducer talks to a
+`Compactor`, full stop — everything else is construction detail of
+particular compactors. `CompactionTrigger` and `CompactionPolicy` are
+DELETED: the trigger was the seam's pure half wearing its own name, and
+the policy bundled knobs belonging to three different owners. The knobs
+move to the default's own builder —
+`Compactors.summarizing(summarizer).triggerTokens(50_000).keepRecent(5).build()`
+— with `.window(window, maxTokens)` carrying the 0.8 derivation, and the
+declared-`contextWindow` auto-wiring unchanged. `Summarizer.summarize(Context
+head)` bakes its config (instructions, summaryMaxTokens) at construction.
+`AgentBuilder.compaction(Compactor)` is the single overload (the old
+two-overload null-ambiguity dies with it). `Effect.Compact` becomes a bare
+marker like `CallModel` — the engine hands the compactor the state it
+holds; replay folds the outcome-carrying `Compacted`, so the effect needs
+no payload. Compaction is SPI, not API: `api.compaction` dissolves;
+grammar events stay `api`. The summarizing default STAYS IN CORE — it is
+dependency-free and compaction-by-default stands on it; the module ladder
+reserves `nessy-compactor-<implementation>` for algorithms that bring
+dependencies (extractive/NLP, embeddings, remote services).
 
 - **The choreography.** Reducer: `requiresCompaction` true at a decision
   point → emit `Effect.Compact(workingSet)` (the whole working set; the
