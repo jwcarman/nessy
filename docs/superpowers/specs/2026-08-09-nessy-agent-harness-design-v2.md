@@ -501,9 +501,21 @@ agent: the subagent story falls out of the type system. **The vocabulary binds
 only the front door**: an agent's tools are not related to its input type —
 each `Tool<T>` keeps its own independent input record, exactly as today. The
 `I` in `Agent<I>` is what the *application* may tell the agent; what the
-*model* may call remains the grant list. Rendering rules, schema publication
-into the system prompt, and the `tell`/`send`/tap relationship get their own
-design round before implementation.
+*model* may call remains the grant list.**Typed details (settled 2026-08-10, build in flight):** `tell(I)` is the
+only verb — `send(String)` is removed, not kept beside it (a typed front
+door with an untyped side entrance isn't typed). `Conversation<I>.tell(I)`
+plus the tap variant `tell(I, Consumer<Event>)`. `InputRenderer<I>` lives
+in `api.message` (`List<ContentBlock> render(I input)`); builder defaults:
+a `String` vocabulary installs a pass-through renderer (raw text → one
+text block), a typed vocabulary defaults the tagged-JSON renderer
+(`[order_escalation]` snake_case tag + canonical JSON over the harness
+mapper), both overridable via `.renderer(...)`. The sealed-switch renderer
+is the documented recommended idiom. Deferred with intent: schema
+publication into the system prompt (opt-in, later) and the agent-as-a-tool
+adapter (its own plan — its shape precisely: wrapping an `Agent<I>` as ONE
+tool for a parent makes that wrapper's input record `I`, because calling
+the agent means telling it something from its vocabulary; it implies
+nothing about any other tool's type).
 
 ## 9. The event hub
 
@@ -1036,11 +1048,22 @@ not a subtype.
 
 ```java
 public interface Memory {
-    List<Message> recall(Context context);      // engine-performed; I/O sanctioned
+    List<Message> recall(SessionState state);   // engine-performed; I/O sanctioned
 
     static Memory none() { … }                  // the default
 }
 ```
+
+**The cue is the ledger, not the payload (amended 2026-08-10).** Recall was
+first specified over the projected `Context`; the project owner caught the
+flaw: the context is the thing that will *include* the memories (a circular
+reading), and projection is a wire concern — an elided tool result is
+`"[elided]"` in the projection but full text in the working set, and recall
+relevance should key on the conversation's truth, not on what this call
+happens to send. `recall(SessionState)` mirrors
+`ContextBuilder.project(SessionState)` exactly: the two read-path
+collaborators are symmetric peers over the ledger, and the assembler
+concatenates their outputs.
 
 - **Recall** (`spi.memory`): consulted by the engine at request assembly beside
   the projection; recalled facts are injected into the request. Best-effort by
