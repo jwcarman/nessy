@@ -207,6 +207,8 @@ so metrics stay stable even as those still-evolving conventions do not:
 | `nessy.model.call` | `chat {model}` | `gen_ai.operation.name=chat`, `gen_ai.request.model`, `gen_ai.usage.*` |
 | `nessy.tool.call` | `execute_tool {tool}` | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id` |
 | `nessy.approval.wait` | `nessy.approval.wait` | `gen_ai.tool.name` — ours; semconv has no human-approval concept |
+| `nessy.compaction` | `compact` | ours; semconv has no compaction concept |
+| `nessy.memory.recall` | `recall` | ours; semconv has no memory-recall concept |
 
 Wiring is `.observations(ObservationRegistry)` on the builder, default `NOOP`; the
 seams themselves reference Micrometer nowhere. The planned Spring Boot starter
@@ -461,9 +463,12 @@ opt-in `TranscriptStore` journal — strict, audit-grade, with `MessageCodec`
 for at-rest encoding — keeps the full transcript even after compaction trims
 the working set. All of it is implemented and tested end to end.
 
-Not yet built: `Harness` reification and typed agents, per-grant tool
-authority, `Memory`, the context assembler, a durable execution engine, the
-Spring Boot starter, and a TUI. See
+The harness itself has since landed too: `Harness` reification, per-grant tool
+authority (`ToolGrant`/`UsagePolicy`), `Memory`, and the context assembler
+(`agent.contextFor`) are all implemented and tested end to end.
+
+Not yet built: typed agents (the `Agent<I>` front door), a durable execution
+engine, the Spring Boot starter, and a TUI. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
 

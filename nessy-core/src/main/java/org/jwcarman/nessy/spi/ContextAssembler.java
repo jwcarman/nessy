@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.RecallFailed;
@@ -76,12 +75,11 @@ public final class ContextAssembler {
   }
 
   /**
-   * Assembles the {@link Context} one call against {@code state} sees. {@code id} names the session
-   * for the {@link RecallFailed} event a failed recall emits; {@code state} carries the messages to
-   * project and, ordinarily, the same id ({@link SessionState#id()}) — callers that already have
-   * both simply pass them through.
+   * Assembles the {@link Context} one call against {@code state} sees. {@code state} carries both
+   * the messages to project and the session id ({@link SessionState#id()}) that names the session
+   * for the {@link RecallFailed} event a failed recall emits.
    */
-  public Context assemble(SessionId id, SessionState state) {
+  public Context assemble(SessionState state) {
     Context projected = contextBuilder.project(state);
     if (memory != Memory.NONE) {
       Observation observation = EngineObservations.recall(observations);
@@ -90,7 +88,7 @@ public final class ContextAssembler {
         projected = Context.of(concat(recalled, projected.messages()));
       } catch (RuntimeException e) {
         observation.error(e);
-        hub.emit(new RecallFailed(id, describe(e)));
+        hub.emit(new RecallFailed(state.id(), describe(e)));
       } finally {
         observation.stop();
       }

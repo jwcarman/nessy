@@ -77,6 +77,6 @@ public final class Agent {
   public Context contextFor(SessionId id) {
     SessionState state =
         store.load(id).orElseThrow(() -> new IllegalArgumentException("unknown session: " + id));
-    return contextAssembler.assemble(id, state);
+    return contextAssembler.assemble(state);
   }
 }

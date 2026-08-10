@@ -357,7 +357,7 @@ public final class InProcessEngine implements ExecutionEngine {
    * hands the strategy its own working set directly, so a memory is never consulted for that call.
    */
   private ModelRequest requestFor(SessionState state) {
-    Context projected = contextAssembler.assemble(state.id(), state);
+    Context projected = contextAssembler.assemble(state);
     return new ModelRequest(
         projected,
         config.systemPrompt(),

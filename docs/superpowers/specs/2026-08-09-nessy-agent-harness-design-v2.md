@@ -1125,6 +1125,8 @@ even as span conventions evolve:
 | `nessy.model.call` | `chat {model}` | `gen_ai.operation.name=chat`, `gen_ai.request.model`, `gen_ai.usage.*` |
 | `nessy.tool.call` | `execute_tool {tool}` | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id` |
 | `nessy.approval.wait` | `nessy.approval.wait` | `gen_ai.tool.name` — ours; semconv has no human-approval concept |
+| `nessy.compaction` | `compact` | ours; semconv has no compaction concept |
+| `nessy.memory.recall` | `recall` | ours; semconv has no memory-recall concept |
 
 The GenAI agent conventions are explicitly pre-1.0 (split into their own
 `semantic-conventions-genai` repository mid-2026, still moving). The hedge is
@@ -1183,13 +1185,14 @@ listener-based frameworks cannot tell. Implemented alongside `DurableEngine`.
 | `SessionStore` | `SessionStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
-| `Policy` (pre-1.0) | derived from `requiresApproval()` | path/allowlist rules | OPA, corporate policy |
+| `UsagePolicy` (per grant) | derived from `requiresApproval()` via `ToolGrant.grant` | path/allowlist rules; upgrades are contextual lambdas | OPA, corporate policy |
 | `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextBuilder` | `ContextBuilder.identity()` | `elidingToolResults(keepRecent)` (shipped); stateful compaction (shipped, §10.6); token-budget windowing (§10.8) | RAG, redaction |
 | `TranscriptStore` (§10.8) | `TranscriptStore.inMemory()` | `nessy-store-cassandra` | any append-only journal |
 | `Summarizer` (§10.8) | `usingProvider(…)` — the session's own model | cheap-model variant; extractive | remote services, custom |
 | `TokenEstimator` (§10.8) | `heuristic()` (chars / 4) | tokenizer-library adapter | provider count-tokens APIs |
+| `Memory` (§10.9) | `Memory.none()` | graph-backed recall | vector stores, custom retrieval |
 
 ### 13.1 Classpath-upgradeable defaults (the Spring starter's defining feature)
 
@@ -1246,6 +1249,8 @@ the application's own explicit declaration. If none is declared, the starter's
    fail-loudly mapping (Tasks 5 and 8) rather than a silent default for
    anything the audit didn't account for.
 3. **Plan 2.5 — Policy**: contextual authorization, second implementation.
+   **Superseded** by §10.5 per-grant authority (`ToolGrant`/`UsagePolicy`),
+   delivered in the harness plan (item 4 below) rather than as its own plan.
 4. Then as previously mapped: OpenAI-wire provider, `DurableEngine` (+ trace
    continuity, + resume semantics of §6), Spring Boot starter, TUI. Compaction
    and `ContextBuilder` (§10.6) shipped in Plan 4, ahead of this sequencing.

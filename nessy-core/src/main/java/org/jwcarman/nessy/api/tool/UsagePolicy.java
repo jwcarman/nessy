@@ -45,7 +45,7 @@ public interface UsagePolicy {
     return (call, state) -> decision;
   }
 
-  /** Every call is deferred to the approver, exactly as an ungated grant never is. */
+  /** Every call defers to the approver — unlike {@link #allow()}, which never asks. */
   static UsagePolicy requireApproval() {
     return (call, state) -> new PolicyDecision.RequireApproval();
   }

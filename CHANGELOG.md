@@ -51,7 +51,7 @@ changed.
 - **`RecallFailed(SessionId, String)`** (`api.event`) — the hub event a
   failed recall emits, mirroring `CompactionFailed` exactly: the reason a
   turn's memory enrichment was skipped, for observability and alerting.
-- **`Agent.contextFor(SessionId)`** and the internal `ContextAssembler` — the
+- **`Agent.contextFor(SessionId)`** and **`ContextAssembler`** (spi) — the
   debugging affordance that answers *what would a call made against this
   session see right now*, truthfully and without spending a model call:
   `contextFor` loads the session's stored state and runs it through the same
@@ -233,8 +233,9 @@ changed.
   bare `.tools()` call (zero arguments) no longer resolves: it is now
   ambiguous between the two varargs overloads, since an empty array satisfies
   either equally well. Source relying on the zero-arg form must either drop
-  the call (`tools` already defaults to `ToolRegistry.of()`) or cast, e.g.
-  `.tools((Tool<?>[]) null)`.
+  the call entirely (`tools` already defaults to an empty `ToolRegistry.of()`)
+  or pass an explicit empty array, e.g. `.tools(new Tool<?>[0])` — not
+  `.tools((Tool<?>[]) null)`, which NPEs inside `DefaultToolRegistry.of`.
 - **Zones**: the codebase is reorganized from `org.jwcarman.nessy.core.*` into
   `org.jwcarman.nessy` (front door), `.api` (application developers: `Tool`,
   `Approver`, the message/event grammar), `.spi` (infrastructure extenders:

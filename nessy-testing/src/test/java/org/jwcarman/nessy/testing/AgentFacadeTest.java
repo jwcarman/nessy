@@ -25,6 +25,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
+import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
@@ -208,7 +209,7 @@ class AgentFacadeTest {
 
   /**
    * The grant line is the security statement: {@code ToolGrant.grant(tool).with(policy)} declares
-   * capability and authority together. The README's "The harness" section mirrors this builder
+   * capability and authority together. The README's "The harness" section mirrors this two-builder
    * chain verbatim.
    */
   @Test
@@ -220,9 +221,10 @@ class AgentFacadeTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
+    Harness harness = Nessy.harness().provider(provider).build();
     Agent agent =
-        Nessy.agent()
-            .provider(provider)
+        harness
+            .agent()
             .model("fake-model")
             .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
             // The approver denies everything, but it must never be asked: the reply below
