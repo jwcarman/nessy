@@ -246,7 +246,7 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
   }
 
   private Step toolFinished(SessionState state, ToolCall call, ToolResult result) {
-    List<ContentBlock> results = new ArrayList<>(state.pendingResults());
+    List<ToolResultBlock> results = new ArrayList<>(state.pendingResults());
     results.add(new ToolResultBlock(call.id(), result.content(), result.isError()));
 
     List<ToolCall> remaining = new ArrayList<>(state.pendingCalls());
@@ -300,7 +300,7 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
     if (state.pendingCalls().isEmpty()) {
       return state;
     }
-    List<ContentBlock> results = new ArrayList<>(state.pendingResults());
+    List<ToolResultBlock> results = new ArrayList<>(state.pendingResults());
     for (ToolCall pending : state.pendingCalls()) {
       results.add(
           new ToolResultBlock(
@@ -395,7 +395,7 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
       return state;
     }
     return state
-        .withMessageAppended(Message.toolResults(state.pendingResults()))
+        .withMessageAppended(Message.toolResults(List.copyOf(state.pendingResults())))
         .withPendingResults(List.of());
   }
 }

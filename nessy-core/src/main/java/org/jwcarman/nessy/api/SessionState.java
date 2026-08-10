@@ -57,7 +57,7 @@ public record SessionState(
     List<Message> messages,
     List<ContentBlock> pendingBlocks,
     List<ToolCall> pendingCalls,
-    List<ContentBlock> pendingResults,
+    List<ToolResultBlock> pendingResults,
     int consecutiveErrors,
     int turns,
     Usage usage,
@@ -181,7 +181,7 @@ public record SessionState(
         status);
   }
 
-  public SessionState withPendingResults(List<ContentBlock> results) {
+  public SessionState withPendingResults(List<ToolResultBlock> results) {
     return new SessionState(
         id,
         messages,

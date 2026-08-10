@@ -154,3 +154,5 @@ changed.
   (`org.jwcarman.nessy.core` / `org.jwcarman.nessy.testing`); the
   api/spi/internal boundary stands on package convention until revisited
   pre-1.0.
+- `SessionState.pendingResults()` narrowed from `List<ContentBlock>` to
+  `List<ToolResultBlock>`, the only variant it ever holds.
