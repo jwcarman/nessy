@@ -973,6 +973,46 @@ reducer guarantees completeness at every `CallModel`, which is where
 contexts are minted. An invalid projection now fails loudly at the seam,
 in-process, with a message naming the orphaned id.
 
+**The edit algebra (thumbs-upped 2026-08-10).** `Context` owns not just the
+pairing invariant but the safe edits over it — raw list surgery is where
+pairing bugs breed, so user code never does any. Every verb returns a new
+validated `Context`; bare verb names (JDK-immutable style: `String.strip`,
+`Stream.filter`), never `with`-prefixes — withers are for record slots,
+verbs are for derivations.
+
+- Tier 1, the trusted kernel: `drop(Predicate<Message>)` — pair-atomic
+  (matching either half of a tool exchange removes the exchange; invalid
+  results unconstructible); `map(Function<Message, Message>)` —
+  revalidating (a pairing-breaking rewrite throws naming the orphaned id);
+  `enrich(ContentBlock...)` / `enrich(List<ContentBlock>)` — appends ONE
+  user-role message (the carrier for non-human content, as with tool
+  results).
+- Tier 2, structural verbs built on the kernel: `elideToolResults(int
+  keepRecentMessages)` (absorbs the former standalone projection — the
+  pipeline idiom becomes `.project(ctx -> ctx.elideToolResults(2))` and
+  the factory dies); `keepRecent(int n)` (sliding window at the nearest
+  pair-safe boundary; unchanged when none exists); `limitTokens(long
+  budget, TokenEstimator estimator)` (drops pair-safe boundaries from the
+  front until the estimate fits; honestly over budget when no safe cut
+  remains — `TokenEstimator`'s marquee consumer).
+- Queries: `pairSafeCut`, `head`, `messages`, `tokens(estimator)`.
+- **The admission rule**: a verb joins `Context` only if its correctness
+  depends on the context's own structure — pairing, position, size —
+  never for anything semantic.
+- **Failure policy is fixed by kind, never configured**: projections are
+  LOUD (pure; failure is your bug; the un-thrown redactor is a security
+  hole), enrichers are SOFT (I/O; failure costs enrichment, never the
+  turn). There is deliberately no loud/soft knob — the verb you bind to
+  IS the declaration. Mandatory content is input, not enrichment: fetch
+  it before `tell`.
+- **Not verbs, on record**: redaction/masking (semantic; compose from
+  `map`/`drop` — and redaction is jurisdictional: from the *model* → a
+  projection; from *storage* → the codec/at-rest layer; from the *record*
+  → the front door, before `tell`. A redaction feature that does not ask
+  "from whom?" is theater); summarization (I/O and money —
+  `CompactionStrategy`'s job on the ledger); reordering (order is meaning;
+  inexpressible on purpose); raw positional insert (pairing's graveyard).
+
 **`TranscriptStore` (spi.session) — the append-only journal.**
 
 ```java
