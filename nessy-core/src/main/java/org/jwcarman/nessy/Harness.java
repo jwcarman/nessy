@@ -17,7 +17,9 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.Objects;
 import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.session.SessionStore;
 import org.jwcarman.nessy.spi.session.TranscriptStore;
@@ -62,9 +64,23 @@ public final class Harness {
     this.mapper = mapper;
   }
 
-  /** A fresh {@link AgentBuilder}, pre-wired with this harness's infrastructure. */
-  public AgentBuilder agent() {
-    return new AgentBuilder(this);
+  /**
+   * A fresh {@link AgentBuilder}, pre-wired with this harness's infrastructure, over the {@code
+   * String} vocabulary — the degenerate, single-text-block case behind {@link Nessy#agent()}.
+   * Defaults to {@link InputRenderer#text()}.
+   */
+  public AgentBuilder<String> agent() {
+    return new AgentBuilder<>(this, String.class, InputRenderer.text());
+  }
+
+  /**
+   * A fresh {@link AgentBuilder} over an application-owned input vocabulary {@code I} — typically a
+   * sealed interface of records. Defaults to {@link InputRenderer#json(ObjectMapper)} over this
+   * harness's own mapper; override with {@link AgentBuilder#renderer(InputRenderer)}.
+   */
+  public <I> AgentBuilder<I> agent(Class<I> vocabulary) {
+    Objects.requireNonNull(vocabulary, "vocabulary must not be null");
+    return new AgentBuilder<>(this, vocabulary, InputRenderer.json(mapper));
   }
 
   ModelProvider provider() {

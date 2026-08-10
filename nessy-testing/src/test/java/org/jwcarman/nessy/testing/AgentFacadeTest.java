@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.session.SessionId;
@@ -51,6 +53,7 @@ import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
+import org.jwcarman.nessy.spi.session.SessionStore;
 import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 class AgentFacadeTest {
@@ -154,15 +157,16 @@ class AgentFacadeTest {
             .endTurn()
             .build();
 
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
-    Reply reply = agent.converse().send("what is 2+2?");
+    Agent<String> agent =
+        Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
+    Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.text()).isEqualTo("The answer is 4.");
     assertThat(reply.failed()).isFalse();
   }
 
   @Test
-  void conversations_carry_their_session_across_sends() {
+  void conversations_carry_their_session_across_tells() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .text("Hello!")
@@ -170,11 +174,11 @@ class AgentFacadeTest {
             .text("Still here.")
             .endTurn()
             .build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    Conversation chat = agent.converse();
-    chat.send("hi");
-    Reply second = chat.send("you there?");
+    Conversation<String> chat = agent.converse();
+    chat.tell("hi");
+    Reply second = chat.tell("you there?");
 
     assertThat(second.text()).isEqualTo("Still here.");
     assertThat(second.state().messages()).hasSize(4);
@@ -193,12 +197,12 @@ class AgentFacadeTest {
     // projected request apart from the untouched state the reducer kept.
     ContextBuilder droppingOldest =
         state -> Context.of(state.messages().subList(1, state.messages().size()));
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent().provider(provider).model("fake-model").contextBuilder(droppingOldest).build();
 
-    Conversation chat = agent.converse();
-    chat.send("hi");
-    Reply second = chat.send("you there?");
+    Conversation<String> chat = agent.converse();
+    chat.tell("hi");
+    Reply second = chat.tell("you there?");
 
     List<ModelRequest> requests = provider.requests();
     assertThat(requests).hasSize(2);
@@ -222,7 +226,7 @@ class AgentFacadeTest {
             .endTurn()
             .build();
     Harness harness = Nessy.harness().provider(provider).build();
-    Agent agent =
+    Agent<String> agent =
         harness
             .agent()
             .model("fake-model")
@@ -232,7 +236,7 @@ class AgentFacadeTest {
             .approver(Approver.denyAll("would fail if ever asked"))
             .build();
 
-    Reply reply = agent.converse().send("what is 2+2?");
+    Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.text()).isEqualTo("The answer is 4.");
   }
@@ -253,7 +257,7 @@ class AgentFacadeTest {
     // keepRecentMessages is large enough that nothing in this short transcript is ever old
     // enough to elide: the point of this test is that contextFor consults the same
     // ContextBuilder and Memory the engine does, not eliding's own cut-point behavior.
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
@@ -262,13 +266,13 @@ class AgentFacadeTest {
             .memory(memory)
             .build();
 
-    Conversation chat = agent.converse();
-    chat.send("what is 2+2?"); // a tool round trip: two model calls inside this one send
+    Conversation<String> chat = agent.converse();
+    chat.tell("what is 2+2?"); // a tool round trip: two model calls inside this one tell
     SessionId sessionId = chat.sessionId();
 
     Context preview = agent.contextFor(sessionId);
 
-    chat.send("anything else?"); // the subsequent send
+    chat.tell("anything else?"); // the subsequent tell
 
     List<Message> expected = new ArrayList<>(preview.messages());
     expected.add(Message.user("anything else?"));
@@ -279,7 +283,7 @@ class AgentFacadeTest {
   @Test
   void contextFor_rejects_an_unknown_session() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
     assertThatThrownBy(() -> agent.contextFor(SessionId.generate()))
         .isInstanceOf(IllegalArgumentException.class)
@@ -296,7 +300,8 @@ class AgentFacadeTest {
             1_024, // cap the summary reply at 1024 tokens
             "Summarize the conversation so far, focusing on open TODOs.");
 
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
+    Agent<String> agent =
+        Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
 
     assertThat(agent).isNotNull();
   }
@@ -326,19 +331,19 @@ class AgentFacadeTest {
             .text("a7")
             .endTurn()
             .build();
-    Agent derivedAgent =
+    Agent<String> derivedAgent =
         Nessy.agent()
             .provider(derivedProvider)
             .model("fake-model")
             .maxTokens(10_000)
             .contextWindow(110_000)
             .build();
-    Conversation derivedConversation = derivedAgent.converse();
+    Conversation<String> derivedConversation = derivedAgent.converse();
     for (int i = 1; i <= 6; i++) {
-      derivedConversation.send("u" + i);
+      derivedConversation.tell("u" + i);
     }
 
-    Reply seventhReply = derivedConversation.send("u7");
+    Reply seventhReply = derivedConversation.tell("u7");
 
     assertThat(seventhReply.failed()).isFalse();
     assertThat(seventhReply.state().generation()).isEqualTo(1);
@@ -352,7 +357,7 @@ class AgentFacadeTest {
             .text("Second answer.")
             .endTurn()
             .build();
-    Agent explicitAgent =
+    Agent<String> explicitAgent =
         Nessy.agent()
             .provider(explicitProvider)
             .model("fake-model")
@@ -360,10 +365,10 @@ class AgentFacadeTest {
             .contextWindow(110_000)
             .compaction(CompactionPolicy.disabled())
             .build();
-    Conversation explicitConversation = explicitAgent.converse();
-    explicitConversation.send("first question");
+    Conversation<String> explicitConversation = explicitAgent.converse();
+    explicitConversation.tell("first question");
 
-    Reply explicitReply = explicitConversation.send("second question");
+    Reply explicitReply = explicitConversation.tell("second question");
 
     assertThat(explicitReply.failed()).isFalse();
     assertThat(explicitReply.state().generation()).isZero();
@@ -373,7 +378,7 @@ class AgentFacadeTest {
   void compaction_can_be_disabled_on_the_builder() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
@@ -388,7 +393,7 @@ class AgentFacadeTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     CompactionStrategy myStrategy = CompactionStrategy.disabled();
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent().provider(provider).model("fake-model").compaction(myStrategy).build();
 
     assertThat(agent).isNotNull();
@@ -398,7 +403,7 @@ class AgentFacadeTest {
   void a_declared_context_window_is_wired_through_the_builder() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
@@ -414,7 +419,8 @@ class AgentFacadeTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
     InMemoryTranscriptStore journal = TranscriptStore.inMemory();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
+    Agent<String> agent =
+        Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
 
     assertThat(agent).isNotNull();
   }
@@ -423,7 +429,7 @@ class AgentFacadeTest {
   void elidingToolResults_is_wired_through_the_builder() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
@@ -436,11 +442,11 @@ class AgentFacadeTest {
   @Test
   void the_hub_is_reachable_from_the_agent() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
     RecordingSubscriber recorder = new RecordingSubscriber();
     recorder.attachTo(agent.events());
 
-    agent.converse().send("hello");
+    agent.converse().tell("hello");
 
     assertThat(recorder.ofType(SessionEvent.class)).isNotEmpty();
   }
@@ -484,9 +490,9 @@ class AgentFacadeTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    Reply reply = agent.converse().send("what is 2+2?");
+    Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.text()).isEqualTo("The answer is 4.");
   }
@@ -500,13 +506,13 @@ class AgentFacadeTest {
             .text("Still here.")
             .endTurn()
             .build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    Conversation first = agent.converse();
-    first.send("hi");
+    Conversation<String> first = agent.converse();
+    first.tell("hi");
     SessionId sessionId = first.sessionId();
 
-    Reply second = agent.resume(sessionId).send("you there?");
+    Reply second = agent.resume(sessionId).tell("you there?");
 
     assertThat(second.state().messages()).hasSize(4);
   }
@@ -514,19 +520,19 @@ class AgentFacadeTest {
   @Test
   void failure_reason_surfaces_through_reply() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
             .termination(TerminationPolicy.maxTurns(1))
             .build();
-    Conversation chat = agent.converse();
-    chat.send("hi");
+    Conversation<String> chat = agent.converse();
+    chat.tell("hi");
 
-    // Turn 1 already reached the ceiling, so this send halts on userSaid before the
+    // Turn 1 already reached the ceiling, so this tell halts on userSaid before the
     // reducer would ask the model for a second turn: the scripted provider is never called
     // again, and the second script entry (if any) would simply go unconsumed.
-    Reply second = chat.send("still there?");
+    Reply second = chat.tell("still there?");
 
     assertThat(second.failed()).isTrue();
     assertThat(second.failureReason()).isPresent();
@@ -534,13 +540,13 @@ class AgentFacadeTest {
   }
 
   @Test
-  void a_send_tap_sees_this_conversations_events_in_order() {
+  void a_tell_tap_sees_this_conversations_events_in_order() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
     List<Event> tapped = new ArrayList<>();
 
-    agent.converse().send("what is 2+2?", tapped::add);
+    agent.converse().tell("what is 2+2?", tapped::add);
 
     assertThat(tapped)
         .filteredOn(Event.TextDelta.class::isInstance)
@@ -550,10 +556,10 @@ class AgentFacadeTest {
   }
 
   @Test
-  void a_send_tap_never_sees_another_conversations_events() {
+  void a_tell_tap_never_sees_another_conversations_events() {
     // A foreign SessionEvent is emitted mid-turn — while A's tap is still subscribed — rather than
-    // by a second, later send. A synchronous hub delivers events the instant they're emitted, so a
-    // foreign event published after A's turn ends would never reach a tap that closes when send
+    // by a second, later tell. A synchronous hub delivers events the instant they're emitted, so a
+    // foreign event published after A's turn ends would never reach a tap that closes when tell
     // returns; the only way to prove the sessionId filter (rather than timing) is what protects the
     // tap is to have the foreign event arrive while the subscription is demonstrably still live.
     SessionId foreignSessionId = SessionId.generate();
@@ -564,7 +570,7 @@ class AgentFacadeTest {
             .text("done")
             .endTurn()
             .build();
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
@@ -572,7 +578,7 @@ class AgentFacadeTest {
             .build();
     List<Event> tapped = new ArrayList<>();
 
-    agent.converse().send("hi", tapped::add);
+    agent.converse().tell("hi", tapped::add);
 
     assertThat(tapped)
         .filteredOn(Event.UserSaid.class::isInstance)
@@ -581,15 +587,15 @@ class AgentFacadeTest {
   }
 
   @Test
-  void a_throwing_tap_does_not_abort_the_send() {
+  void a_throwing_tap_does_not_abort_the_tell() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
     Reply reply =
         agent
             .converse()
-            .send(
+            .tell(
                 "what is 2+2?",
                 event -> {
                   throw new RuntimeException("tap blew up");
@@ -600,17 +606,127 @@ class AgentFacadeTest {
   }
 
   @Test
-  void the_tap_is_closed_after_send() {
+  void the_tap_is_closed_after_tell() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hi").endTurn().text("Hi again").endTurn().build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
     List<Event> tapped = new ArrayList<>();
-    Conversation chat = agent.converse();
+    Conversation<String> chat = agent.converse();
 
-    chat.send("hi", tapped::add);
-    int sizeAfterTappedSend = tapped.size();
-    chat.send("still there?");
+    chat.tell("hi", tapped::add);
+    int sizeAfterTappedTell = tapped.size();
+    chat.tell("still there?");
 
-    assertThat(tapped).hasSize(sizeAfterTappedSend);
+    assertThat(tapped).hasSize(sizeAfterTappedTell);
+  }
+
+  /**
+   * The sealed-switch renderer is the recommended idiom for a typed vocabulary — an exhaustive
+   * {@code switch} over the vocabulary's own variants, one arm per shape of thing an application
+   * may tell the agent. The README's "Typed agents" section mirrors this shape.
+   */
+  @Nested
+  class Typed_front_door {
+
+    sealed interface SupportInput permits Question, Escalation {}
+
+    record Question(String text) implements SupportInput {}
+
+    record Escalation(String orderId, String reason) implements SupportInput {}
+
+    static final InputRenderer<SupportInput> SUPPORT_RENDERER =
+        input ->
+            switch (input) {
+              case Question question -> List.of(new TextBlock(question.text()));
+              case Escalation escalation ->
+                  List.of(
+                      new TextBlock(
+                          "Escalate order " + escalation.orderId() + ": " + escalation.reason()));
+            };
+
+    @Test
+    void a_typed_agent_speaks_its_vocabulary() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder().text("On it.").endTurn().build();
+      Harness harness = Nessy.harness().provider(provider).build();
+      Agent<SupportInput> support =
+          harness.agent(SupportInput.class).model("fake-model").renderer(SUPPORT_RENDERER).build();
+
+      Reply reply = support.converse().tell(new Escalation("o-1", "damaged in transit"));
+
+      assertThat(reply.text()).isEqualTo("On it.");
+      assertThat(provider.requests().getFirst().context().messages().getFirst().content())
+          .containsExactly(new TextBlock("Escalate order o-1: damaged in transit"));
+    }
+
+    @Test
+    void a_string_agent_tells_plain_text() {
+      // Wire-bytes proof: a String agent's tell produces exactly the one TextBlock send(String)
+      // always produced — typing the front door changes nothing about what a String agent puts
+      // on the wire.
+      ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+      Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
+
+      agent.converse().tell("what is 2+2?");
+
+      assertThat(provider.requests().getFirst().context().messages())
+          .containsExactly(Message.user("what is 2+2?"));
+    }
+
+    record Ping(String note) {}
+
+    @Test
+    void the_default_json_renderer_tags_and_serializes() {
+      // No explicit .renderer(...): a typed vocabulary defaults to the tagged-JSON renderer over
+      // the harness's own mapper.
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder().text("ack").endTurn().build();
+      Harness harness = Nessy.harness().provider(provider).build();
+      Agent<Ping> agent = harness.agent(Ping.class).model("fake-model").build();
+
+      agent.converse().tell(new Ping("hello"));
+
+      TextBlock block =
+          (TextBlock)
+              provider.requests().getFirst().context().messages().getFirst().content().getFirst();
+      assertThat(block.text()).startsWith("[ping]\n");
+      assertThat(block.text()).contains("\"note\":\"hello\"");
+    }
+
+    @Test
+    void a_broken_renderer_fails_at_the_front_door() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder().text("never reached").endTurn().build();
+      SessionStore store = SessionStore.inMemory();
+      Harness harness = Nessy.harness().provider(provider).store(store).build();
+      InputRenderer<String> throwing =
+          input -> {
+            throw new IllegalStateException("renderer blew up");
+          };
+      Agent<String> agent =
+          harness.agent(String.class).model("fake-model").renderer(throwing).build();
+      Conversation<String> chat = agent.converse();
+
+      assertThatThrownBy(() -> chat.tell("hi")).isInstanceOf(IllegalStateException.class);
+
+      assertThat(store.load(chat.sessionId())).isEmpty();
+      assertThat(provider.requests()).isEmpty();
+    }
+
+    @Test
+    void a_renderer_that_produces_no_blocks_also_fails_at_the_front_door() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder().text("never reached").endTurn().build();
+      SessionStore store = SessionStore.inMemory();
+      Harness harness = Nessy.harness().provider(provider).store(store).build();
+      InputRenderer<String> empty = input -> List.of();
+      Agent<String> agent = harness.agent(String.class).model("fake-model").renderer(empty).build();
+      Conversation<String> chat = agent.converse();
+
+      assertThatThrownBy(() -> chat.tell("hi")).isInstanceOf(IllegalArgumentException.class);
+
+      assertThat(store.load(chat.sessionId())).isEmpty();
+      assertThat(provider.requests()).isEmpty();
+    }
   }
 }

@@ -18,6 +18,7 @@ package org.jwcarman.nessy;
 import java.util.Objects;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.spi.ContextAssembler;
@@ -26,34 +27,40 @@ import org.jwcarman.nessy.spi.session.SessionStore;
 
 /**
  * A configured agent: a reusable factory of conversations, with the full machinery one call away.
+ *
+ * @param <I> the input vocabulary a {@code tell} to one of this agent's conversations may carry;
+ *     {@code String} for the {@link Nessy#agent()} sugar path, an application-owned type otherwise
  */
-public final class Agent {
+public final class Agent<I> {
 
   private final ExecutionEngine engine;
   private final EventHub events;
   private final SessionStore store;
   private final ContextAssembler contextAssembler;
+  private final InputRenderer<I> renderer;
 
   Agent(
       ExecutionEngine engine,
       EventHub events,
       SessionStore store,
-      ContextAssembler contextAssembler) {
+      ContextAssembler contextAssembler,
+      InputRenderer<I> renderer) {
     this.engine = Objects.requireNonNull(engine, "engine must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.contextAssembler =
         Objects.requireNonNull(contextAssembler, "contextAssembler must not be null");
+    this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
   }
 
   /** Opens a fresh conversation. */
-  public Conversation converse() {
-    return new Conversation(engine, SessionId.generate(), events);
+  public Conversation<I> converse() {
+    return new Conversation<>(engine, SessionId.generate(), events, renderer);
   }
 
   /** Reopens a stored session. The engine loads its state on the next send. */
-  public Conversation resume(SessionId sessionId) {
-    return new Conversation(engine, sessionId, events);
+  public Conversation<I> resume(SessionId sessionId) {
+    return new Conversation<>(engine, sessionId, events, renderer);
   }
 
   /** The event-level API, for anything the facade does not say. */

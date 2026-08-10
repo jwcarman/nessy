@@ -42,8 +42,8 @@ public final class AnthropicChat {
     }
 
     AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
-    Agent agent = DemoAgent.agentFor(provider, MODEL);
-    Conversation conversation = agent.converse();
+    Agent<String> agent = DemoAgent.agentFor(provider, MODEL);
+    Conversation<String> conversation = agent.converse();
     agent
         .events()
         .subscribe(SessionEvent.class, sessionEvent -> render(sessionEvent, conversation));
@@ -56,7 +56,7 @@ public final class AnthropicChat {
       if (input == null || input.isBlank() || input.equals("/quit")) {
         return;
       }
-      Reply reply = conversation.send(input);
+      Reply reply = conversation.tell(input);
       IO.println();
       if (reply.failed()) {
         IO.println("! " + reply.failureReason().orElse("unknown failure"));
@@ -64,7 +64,7 @@ public final class AnthropicChat {
     }
   }
 
-  private static void render(SessionEvent sessionEvent, Conversation conversation) {
+  private static void render(SessionEvent sessionEvent, Conversation<String> conversation) {
     if (!sessionEvent.sessionId().equals(conversation.sessionId())) {
       return;
     }

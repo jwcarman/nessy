@@ -35,7 +35,7 @@ public final class DemoAgent {
 
   private DemoAgent() {}
 
-  public static Agent agentFor(ModelProvider provider, String model) {
+  public static Agent<String> agentFor(ModelProvider provider, String model) {
     return Nessy.agent()
         .provider(provider)
         .model(model)

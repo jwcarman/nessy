@@ -79,14 +79,14 @@ class OpenAiLiveTest {
   void a_real_conversation_answers() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(OpenAiModelProvider.builder().fromEnv().build())
             .model(MODEL)
             .maxTokens(64)
             .build();
 
-    Reply reply = agent.converse().send("Reply with exactly: pong");
+    Reply reply = agent.converse().tell("Reply with exactly: pong");
 
     assertThat(reply.text()).contains("pong");
     assertThat(reply.state().usage().inputTokens()).isGreaterThan(0);
@@ -96,7 +96,7 @@ class OpenAiLiveTest {
   void a_real_tool_call_round_trips() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(OpenAiModelProvider.builder().fromEnv().build())
             .model(MODEL)
@@ -104,7 +104,7 @@ class OpenAiLiveTest {
             .tools(new AddTool())
             .build();
 
-    Reply reply = agent.converse().send("What is 2+2? Use the add tool to compute it.");
+    Reply reply = agent.converse().tell("What is 2+2? Use the add tool to compute it.");
 
     assertThat(reply.text()).contains("4");
     boolean hasToolResult =
@@ -123,7 +123,7 @@ class OpenAiLiveTest {
   @Test
   @Disabled("manual: point at a local or OpenRouter endpoint")
   void a_real_conversation_answers_through_an_openai_compatible_endpoint() {
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(
                 OpenAiModelProvider.builder()
@@ -134,7 +134,7 @@ class OpenAiLiveTest {
             .maxTokens(64)
             .build();
 
-    Reply reply = agent.converse().send("Reply with exactly: pong");
+    Reply reply = agent.converse().tell("Reply with exactly: pong");
 
     assertThat(reply.text()).contains("pong");
   }

@@ -21,6 +21,29 @@ changed.
 
 ### Added
 
+- **The typed front door** — every agent is `Agent<I>` over an
+  application-owned input vocabulary `I`, typically a sealed interface of
+  records. `Harness#agent()` / `Nessy.agent()` return `AgentBuilder<String>`,
+  the degenerate case; the new `Harness#agent(Class<I>)` returns
+  `AgentBuilder<I>` for anything richer. `Conversation<I>.tell(I)` (plus the
+  tap overload `tell(I, Consumer<Event>)`) is now the **only** verb —
+  `send(String)` is removed outright, not kept beside it. `InputRenderer<I>`
+  (`api.message`, `List<ContentBlock> render(I input)`) does the rendering:
+  `InputRenderer.text()` is the pass-through `String` default (raw text → one
+  text block, byte-for-byte what `send` always produced);
+  `InputRenderer.json(ObjectMapper)` is the default for any other vocabulary
+  — a `[snake_case_simple_name]` tag line plus canonical JSON of the input,
+  over the harness's own mapper. `AgentBuilder#renderer(InputRenderer<I>)`
+  overrides either default; the sealed-switch renderer — one arm per variant
+  of the application's own sealed vocabulary — is the recommended idiom for
+  anything past tagged JSON. A renderer that returns a null or empty block
+  list, or throws, fails `tell()` outright — before the engine ever sees the
+  call — rather than degrading silently: the caller is present on its own
+  thread, so there is no best-effort path here the way there is for
+  compaction or recall. Typing lives entirely in the facade's generics and
+  dissolves at the wire; the sealed `Event` grammar, the reducer, and the
+  engine are all unchanged. See `AgentFacadeTest`'s `Typed_front_door` nested
+  class and the README's "Typed agents" section.
 - **`Harness`** (root) — infrastructure reified. `Nessy.harness()` assembles
   the six pieces of substrate an application shares across every agent it
   builds — provider default, session store, transcript store, event hub,
@@ -222,6 +245,14 @@ changed.
 
 ### Changed
 
+- **`Conversation.send(String)` → `Conversation<I>.tell(I)` (pre-1.0 breaking)** —
+  `send` and its tap overload are removed outright; `tell` (and
+  `tell(I, Consumer<Event>)`) are the only way to advance a conversation now.
+  `Agent`, `Conversation`, and `AgentBuilder` all pick up the `<I>` input-
+  vocabulary type parameter; `Agent<String>`/`Conversation<String>` is the
+  drop-in replacement for every existing `Nessy.agent()` call site — the
+  mechanical fix is `.send(x)` → `.tell(x)` plus spelling out `Agent<String>`
+  wherever the raw type was written. See "The typed front door" above.
 - **`Memory.recall(Context)` → `Memory.recall(SessionState)` (pre-1.0 breaking)** —
   recall now cues on the ledger, not the projected `Context`: the context is
   the thing that will *include* the recalled messages, and projection is a

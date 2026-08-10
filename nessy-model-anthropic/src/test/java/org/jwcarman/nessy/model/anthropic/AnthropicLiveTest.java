@@ -81,14 +81,14 @@ class AnthropicLiveTest {
   void a_real_conversation_answers() {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(AnthropicModelProvider.builder().fromEnv().build())
             .model(MODEL)
             .maxTokens(64)
             .build();
 
-    Reply reply = agent.converse().send("Reply with exactly: pong");
+    Reply reply = agent.converse().tell("Reply with exactly: pong");
 
     assertThat(reply.text()).contains("pong");
     assertThat(reply.state().usage().inputTokens()).isGreaterThan(0);
@@ -98,7 +98,7 @@ class AnthropicLiveTest {
   void a_real_tool_call_round_trips() {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(AnthropicModelProvider.builder().fromEnv().build())
             .model(MODEL)
@@ -106,7 +106,7 @@ class AnthropicLiveTest {
             .tools(new AddTool())
             .build();
 
-    Reply reply = agent.converse().send("What is 2+2? Use the add tool to compute it.");
+    Reply reply = agent.converse().tell("What is 2+2? Use the add tool to compute it.");
 
     assertThat(reply.text()).contains("4");
     boolean hasToolResult =
@@ -122,7 +122,7 @@ class AnthropicLiveTest {
 
     // Extended thinking requires headroom above its budget: a small budget keeps this cheap
     // while still leaving room for maxTokens to exceed it, per AnthropicRequests' contract.
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(AnthropicModelProvider.builder().fromEnv().thinkingBudget(1024).build())
             .model(MODEL)
@@ -130,7 +130,7 @@ class AnthropicLiveTest {
             .capabilities(Set.of(Capability.THINKING))
             .build();
 
-    Reply reply = agent.converse().send("What is 2+2? Think it through briefly.");
+    Reply reply = agent.converse().tell("What is 2+2? Think it through briefly.");
 
     Message lastAssistantMessage =
         reply.state().messages().stream()

@@ -501,7 +501,7 @@ agent: the subagent story falls out of the type system. **The vocabulary binds
 only the front door**: an agent's tools are not related to its input type —
 each `Tool<T>` keeps its own independent input record, exactly as today. The
 `I` in `Agent<I>` is what the *application* may tell the agent; what the
-*model* may call remains the grant list.**Typed details (settled 2026-08-10, build in flight):** `tell(I)` is the
+*model* may call remains the grant list.**Typed details (settled 2026-08-10, landed):** `tell(I)` is the
 only verb — `send(String)` is removed, not kept beside it (a typed front
 door with an untyped side entrance isn't typed). `Conversation<I>.tell(I)`
 plus the tap variant `tell(I, Consumer<Event>)`. `InputRenderer<I>` lives
@@ -510,7 +510,12 @@ a `String` vocabulary installs a pass-through renderer (raw text → one
 text block), a typed vocabulary defaults the tagged-JSON renderer
 (`[order_escalation]` snake_case tag + canonical JSON over the harness
 mapper), both overridable via `.renderer(...)`. The sealed-switch renderer
-is the documented recommended idiom. Deferred with intent: schema
+is the documented recommended idiom. Shipped and tested end to end:
+`Agent`/`Conversation`/`AgentBuilder` all carry the `<I>` parameter,
+`Harness#agent(Class<I>)` joins `Harness#agent()`/`Nessy.agent()`
+(`AgentBuilder<String>`), and every call site across the codebase converted
+from `send` to `tell` — see `InputRendererTest` and `AgentFacadeTest`'s
+`Typed_front_door` nested class. Deferred with intent: schema
 publication into the system prompt (opt-in, later) and the agent-as-a-tool
 adapter (its own plan — its shape precisely: wrapping an `Agent<I>` as ONE
 tool for a parent makes that wrapper's input record `I`, because calling
@@ -1285,12 +1290,12 @@ the application's own explicit declaration. If none is declared, the starter's
    2026-08-09 design session's queue except its typed front door: the
    `Harness` reification (§8.4, minus the type parameter), per-grant
    authority (§10.5), `Memory` (§10.9), and the context assembler plus
-   `Agent.contextFor` (§10.10) all shipped and are tested end to end. **Still
-   open: the typed front door** (`Agent<I>`/`Conversation<I>`, §8.4) —
-   deliberately deferred to its own brainstorm-to-spec round rather than
-   folded in here, since retrofitting generics onto a shipped non-generic
-   facade is source-breaking and the vocabulary/rendering questions deserve
-   their own design pass (gate table below). One standing DurableEngine note
+   `Agent.contextFor` (§10.10) all shipped and are tested end to end. **The
+   typed front door has since landed too** (`Agent<I>`/`Conversation<I>`,
+   §8.4) — its own brainstorm-to-spec round settled the vocabulary/rendering
+   questions (§8.4 "Typed details"), and the build converted every call site
+   from `send` to `tell` across the codebase (gate table below, now cleared).
+   One standing DurableEngine note
    from the same session: pure replay is free, but replaying the imperative
    shell is not — a replayed reducer re-emits effects (the process-manager
    replay problem), so the journal must record which effects were performed
@@ -1315,7 +1320,7 @@ the application's own explicit declaration. If none is declared, the starter's
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
    | `Context` adoption (`ModelRequest`/`ContextBuilder.project` speak `Context`; `Effect.Compact`/`CompactionStrategy.compact` carry `List<Message>`, validated as a `Context` at the engine's compact-result check) | seam signature + record component types; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
-   | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | open — the type parameter must be born pre-1.0; `Agent<String>` is the degenerate case |
+   | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | ✅ cleared — landed; `Agent<String>` is the degenerate case behind `Nessy.agent()` |
    | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
    | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
    | Parallel tool execution | — | ✅ resolved as NOT a gate — needs no sealed change (multi-effect Steps + ordered feed, §10.7) |

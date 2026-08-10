@@ -22,7 +22,7 @@ import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 
 /**
- * Pattern demonstrated: streaming via {@link Conversation#send(String,
+ * Pattern demonstrated: streaming via {@link Conversation#tell(Object,
  * java.util.function.Consumer)} — the same rendering as {@link AnthropicChat}, with no manual hub
  * subscription and no session-id filtering to get wrong.
  */
@@ -41,8 +41,8 @@ public final class OpenAiChat {
     }
 
     OpenAiModelProvider provider = OpenAiModelProvider.builder().fromEnv().build();
-    Agent agent = DemoAgent.agentFor(provider, MODEL);
-    Conversation conversation = agent.converse();
+    Agent<String> agent = DemoAgent.agentFor(provider, MODEL);
+    Conversation<String> conversation = agent.converse();
 
     IO.println("Nessy demo (OpenAI, " + MODEL + "). Empty line or /quit to exit.");
     while (true) {
@@ -52,7 +52,7 @@ public final class OpenAiChat {
       if (input == null || input.isBlank() || input.equals("/quit")) {
         return;
       }
-      Reply reply = conversation.send(input, OpenAiChat::render);
+      Reply reply = conversation.tell(input, OpenAiChat::render);
       IO.println();
       if (reply.failed()) {
         IO.println("! " + reply.failureReason().orElse("unknown failure"));

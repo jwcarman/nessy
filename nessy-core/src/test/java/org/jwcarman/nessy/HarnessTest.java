@@ -91,10 +91,10 @@ class HarnessTest {
     List<SessionEvent> observed = new ArrayList<>();
     hub.subscribe(SessionEvent.class, observed::add);
 
-    Agent agentA = harness.agent().model("model-a").build();
-    Agent agentB = harness.agent().model("model-b").build();
-    SessionId sessionA = agentA.converse().send("hello").state().id();
-    SessionId sessionB = agentB.converse().send("hello").state().id();
+    Agent<String> agentA = harness.agent().model("model-a").build();
+    Agent<String> agentB = harness.agent().model("model-b").build();
+    SessionId sessionA = agentA.converse().tell("hello").state().id();
+    SessionId sessionB = agentB.converse().tell("hello").state().id();
 
     assertThat(observed.stream().map(SessionEvent::sessionId)).contains(sessionA, sessionB);
     assertThat(store.load(sessionA)).isPresent();
@@ -107,8 +107,8 @@ class HarnessTest {
     FakeProvider agentProvider = new FakeProvider("from agent provider");
     Harness harness = Nessy.harness().provider(harnessProvider).build();
 
-    Agent agent = harness.agent().provider(agentProvider).model("fake-model").build();
-    agent.converse().send("hi");
+    Agent<String> agent = harness.agent().provider(agentProvider).model("fake-model").build();
+    agent.converse().tell("hi");
 
     assertThat(agentProvider.requests()).hasSize(1);
     assertThat(harnessProvider.requests()).isEmpty();
@@ -127,8 +127,8 @@ class HarnessTest {
   void the_implicit_default_harness_keeps_the_one_liner_working() {
     FakeProvider provider = new FakeProvider("The answer is 4.");
 
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
-    Reply reply = agent.converse().send("what is 2+2?");
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.text()).isEqualTo("The answer is 4.");
     assertThat(reply.failed()).isFalse();

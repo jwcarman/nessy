@@ -26,6 +26,7 @@ import org.jwcarman.nessy.api.compaction.CompactionPolicy;
 import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 import org.jwcarman.nessy.api.compaction.CompactionTrigger;
 import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.session.TerminationPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -51,13 +52,16 @@ import org.jwcarman.nessy.spi.session.TranscriptStore;
  *
  * <p>Everything except the model has a default that works, so the smallest useful agent is a
  * provider and a model name. Every default here is a seam you can replace, which is the whole point
- * of the framework. Instances come from {@link Harness#agent()} (or, for the common single-agent
- * case, {@link Nessy#agent()}), never from a public constructor.
+ * of the framework. Instances come from {@link Harness#agent()} / {@link Harness#agent(Class)} (or,
+ * for the common single-agent case, {@link Nessy#agent()}), never from a public constructor.
+ *
+ * @param <I> the input vocabulary the built {@link Agent} will accept via {@code tell}
  */
-public final class AgentBuilder {
+public final class AgentBuilder<I> {
 
   private static final int DEFAULT_MAX_TOKENS = 4096;
 
+  private final Class<I> vocabulary;
   private ModelProvider provider;
   private String model;
   private String systemPrompt = "";
@@ -79,14 +83,22 @@ public final class AgentBuilder {
   private ContextBuilder contextBuilder = ContextBuilder.identity();
   private TranscriptStore transcript;
   private Memory memory = Memory.none();
+  private InputRenderer<I> renderer;
 
   /**
    * Seeded from a {@link Harness}: the infrastructure six start out at the harness's values, and
    * this builder layers identity — model, system prompt, tools, policies — on top. Every infra
    * setter below (store, transcript, events, mapper, observations) is an escape hatch that
    * overrides the harness for this one agent; the harness is the normal home for those values.
+   *
+   * <p>{@code defaultRenderer} is the vocabulary-driven default — {@link InputRenderer#text()} for
+   * {@code String}, {@link InputRenderer#json(ObjectMapper)} over the harness mapper otherwise —
+   * chosen by the caller ({@link Harness#agent()} / {@link Harness#agent(Class)}) so that no
+   * unchecked cast is ever needed here; {@link #renderer(InputRenderer)} overrides it.
    */
-  AgentBuilder(Harness harness) {
+  AgentBuilder(Harness harness, Class<I> vocabulary, InputRenderer<I> defaultRenderer) {
+    this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
+    this.renderer = Objects.requireNonNull(defaultRenderer, "defaultRenderer must not be null");
     this.provider = harness.provider();
     this.store = harness.store();
     this.transcript = harness.transcript();
@@ -100,33 +112,33 @@ public final class AgentBuilder {
    * normal home for the provider every agent shares; reach for this only when a particular agent
    * genuinely needs a different model line.
    */
-  public AgentBuilder provider(ModelProvider provider) {
+  public AgentBuilder<I> provider(ModelProvider provider) {
     this.provider = provider;
     return this;
   }
 
-  public AgentBuilder model(String model) {
+  public AgentBuilder<I> model(String model) {
     this.model = model;
     return this;
   }
 
-  public AgentBuilder systemPrompt(String systemPrompt) {
+  public AgentBuilder<I> systemPrompt(String systemPrompt) {
     this.systemPrompt = systemPrompt;
     return this;
   }
 
-  public AgentBuilder maxTokens(int maxTokens) {
+  public AgentBuilder<I> maxTokens(int maxTokens) {
     this.maxTokens = maxTokens;
     return this;
   }
 
   /** What this agent asks providers to use. Empty means "whatever the provider does by default". */
-  public AgentBuilder capabilities(Set<Capability> capabilities) {
+  public AgentBuilder<I> capabilities(Set<Capability> capabilities) {
     this.capabilities = Set.copyOf(capabilities);
     return this;
   }
 
-  public AgentBuilder tools(ToolRegistry tools) {
+  public AgentBuilder<I> tools(ToolRegistry tools) {
     this.tools = tools;
     this.explicitGrants = null;
     return this;
@@ -137,7 +149,7 @@ public final class AgentBuilder {
    * auto-wrapped via {@link ToolGrant#grant(Tool)} — the derived default, unchanged from how
    * approval worked before grants existed.
    */
-  public AgentBuilder tools(Tool<?>... tools) {
+  public AgentBuilder<I> tools(Tool<?>... tools) {
     this.tools = ToolRegistry.of(tools);
     this.explicitGrants = null;
     return this;
@@ -148,7 +160,7 @@ public final class AgentBuilder {
    * #tools(Tool...)} for the same builder: the grant line is the security statement, and every tool
    * granted here uses exactly the policy its grant carries rather than a derived default.
    */
-  public AgentBuilder tools(ToolGrant... grants) {
+  public AgentBuilder<I> tools(ToolGrant... grants) {
     Objects.requireNonNull(grants, "grants must not be null");
     Tool<?>[] granted = new Tool<?>[grants.length];
     Map<String, ToolGrant> byName = new LinkedHashMap<>();
@@ -162,7 +174,7 @@ public final class AgentBuilder {
     return this;
   }
 
-  public AgentBuilder approver(Approver approver) {
+  public AgentBuilder<I> approver(Approver approver) {
     this.approver = approver;
     return this;
   }
@@ -171,7 +183,7 @@ public final class AgentBuilder {
    * Overrides the harness's session store for this one agent. Unusual: the harness is the normal
    * home for the store every agent shares.
    */
-  public AgentBuilder store(SessionStore store) {
+  public AgentBuilder<I> store(SessionStore store) {
     this.store = store;
     return this;
   }
@@ -180,12 +192,12 @@ public final class AgentBuilder {
    * Overrides the harness's event hub for this one agent. Unusual: the harness is the normal home
    * for the hub every agent shares.
    */
-  public AgentBuilder events(EventHub events) {
+  public AgentBuilder<I> events(EventHub events) {
     this.events = events;
     return this;
   }
 
-  public AgentBuilder termination(TerminationPolicy termination) {
+  public AgentBuilder<I> termination(TerminationPolicy termination) {
     this.termination = termination;
     return this;
   }
@@ -196,7 +208,7 @@ public final class AgentBuilder {
    * explicit or not — that overload replaces the strategy outright, so there is nothing here left
    * to tune.
    */
-  public AgentBuilder compaction(CompactionPolicy compaction) {
+  public AgentBuilder<I> compaction(CompactionPolicy compaction) {
     this.compaction = compaction;
     this.compactionExplicit = true;
     return this;
@@ -207,7 +219,7 @@ public final class AgentBuilder {
    * #compaction(CompactionPolicy)}, {@link #summarizer(Summarizer)}, and {@link
    * #contextWindow(long)}, whether or not those were called.
    */
-  public AgentBuilder compaction(CompactionStrategy compaction) {
+  public AgentBuilder<I> compaction(CompactionStrategy compaction) {
     this.compactionStrategy = compaction;
     return this;
   }
@@ -217,7 +229,7 @@ public final class AgentBuilder {
    * Summarizer#usingProvider} over this builder's {@link #provider(ModelProvider)} and settings.
    * Ignored when {@link #compaction(CompactionStrategy)} is called.
    */
-  public AgentBuilder summarizer(Summarizer summarizer) {
+  public AgentBuilder<I> summarizer(Summarizer summarizer) {
     this.summarizer = summarizer;
     return this;
   }
@@ -227,7 +239,7 @@ public final class AgentBuilder {
    * never called, {@link #build()} derives the compaction trigger from it via {@link
    * CompactionTrigger#forWindow}; an explicit {@code compaction(...)} call always wins.
    */
-  public AgentBuilder contextWindow(long contextWindow) {
+  public AgentBuilder<I> contextWindow(long contextWindow) {
     this.contextWindow = contextWindow;
     return this;
   }
@@ -235,7 +247,7 @@ public final class AgentBuilder {
   /**
    * What a conversational call sees, projected from the full session state. Default: everything.
    */
-  public AgentBuilder contextBuilder(ContextBuilder contextBuilder) {
+  public AgentBuilder<I> contextBuilder(ContextBuilder contextBuilder) {
     this.contextBuilder = contextBuilder;
     return this;
   }
@@ -245,7 +257,7 @@ public final class AgentBuilder {
    * request. Default: {@link Memory#none()} — recall is identity, scoped to this one agent, never a
    * harness-level default the way {@link #store(SessionStore)} or {@link #events(EventHub)} are.
    */
-  public AgentBuilder memory(Memory memory) {
+  public AgentBuilder<I> memory(Memory memory) {
     this.memory = memory;
     return this;
   }
@@ -254,7 +266,7 @@ public final class AgentBuilder {
    * Overrides the harness's Jackson mapper for this one agent. Unusual: the harness is the normal
    * home for the mapper every agent shares.
    */
-  public AgentBuilder objectMapper(ObjectMapper mapper) {
+  public AgentBuilder<I> objectMapper(ObjectMapper mapper) {
     this.mapper = mapper;
     return this;
   }
@@ -263,7 +275,7 @@ public final class AgentBuilder {
    * Overrides the harness's observation registry for this one agent. Unusual: the harness is the
    * normal home for the registry every agent shares.
    */
-  public AgentBuilder observations(ObservationRegistry observations) {
+  public AgentBuilder<I> observations(ObservationRegistry observations) {
     this.observations = observations;
     return this;
   }
@@ -273,12 +285,23 @@ public final class AgentBuilder {
    * home for the transcript every agent shares. Harness default: {@link TranscriptStore#none()} —
    * retention is a deliberate declaration, not a silent default.
    */
-  public AgentBuilder transcript(TranscriptStore transcript) {
+  public AgentBuilder<I> transcript(TranscriptStore transcript) {
     this.transcript = transcript;
     return this;
   }
 
-  public Agent build() {
+  /**
+   * Overrides the vocabulary-driven default renderer: {@link InputRenderer#text()} for a {@code
+   * String} vocabulary, {@link InputRenderer#json(ObjectMapper)} over the harness mapper otherwise.
+   * The sealed-switch renderer over an application's own sealed input vocabulary is the recommended
+   * idiom for anything richer than tagged JSON.
+   */
+  public AgentBuilder<I> renderer(InputRenderer<I> renderer) {
+    this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+    return this;
+  }
+
+  public Agent<I> build() {
     if (provider == null) {
       throw new IllegalStateException("a model provider is required: call provider(...)");
     }
@@ -308,7 +331,7 @@ public final class AgentBuilder {
             observations,
             contextAssembler,
             transcript);
-    return new Agent(engine, events, store, contextAssembler);
+    return new Agent<>(engine, events, store, contextAssembler, renderer);
   }
 
   /**

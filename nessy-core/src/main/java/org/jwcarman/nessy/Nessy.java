@@ -29,7 +29,7 @@ public final class Nessy {
    * its default — seeding a fresh {@link AgentBuilder}. Equivalent to {@code
    * Nessy.harness().build().agent()}.
    */
-  public static AgentBuilder agent() {
+  public static AgentBuilder<String> agent() {
     return harness().build().agent();
   }
 

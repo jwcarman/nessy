@@ -120,7 +120,7 @@ class EndToEndTest {
             .build();
     RecordingSubscriber subscriber = new RecordingSubscriber();
 
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
@@ -129,7 +129,7 @@ class EndToEndTest {
             .build();
     subscriber.attachTo(agent.events());
 
-    Reply reply = agent.converse().send("what is 2+2?");
+    Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.failed()).isFalse();
     assertThat(reply.state().status()).isEqualTo(SessionStatus.COMPLETE);
@@ -141,7 +141,8 @@ class EndToEndTest {
   @Test
   void the_tool_schema_reaches_the_model() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
+    Agent<String> agent =
+        Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
 
     agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hello"));
 
@@ -162,7 +163,7 @@ class EndToEndTest {
   @Test
   void requested_capabilities_reach_the_provider() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    Agent agent =
+    Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
@@ -179,7 +180,7 @@ class EndToEndTest {
   void usage_accumulates_from_the_model_into_the_final_state() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5, 0)).build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
     RunOutcome outcome = agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hi"));
 
@@ -192,7 +193,7 @@ class EndToEndTest {
   void thinking_chunks_settle_into_a_thinking_block_before_the_answer() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
     RunOutcome outcome = agent.engine().run(new SessionId("s1"), Event.UserSaid.of("hi"));
 
@@ -210,9 +211,9 @@ class EndToEndTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    Reply reply = agent.converse().send("what is 2+2?");
+    Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.state().messages().getLast().content())
         .containsExactly(
@@ -227,9 +228,9 @@ class EndToEndTest {
             .text("Answer.")
             .endTurn()
             .build();
-    Agent agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    Reply reply = agent.converse().send("hi");
+    Reply reply = agent.converse().tell("hi");
 
     assertThat(reply.state().messages().getLast().content())
         .containsExactly(new RedactedThinkingBlock("opaque-bytes"), new TextBlock("Answer."));
@@ -295,7 +296,7 @@ class EndToEndTest {
               .text("The answer is 4.")
               .endTurn()
               .build();
-      Agent freeAgent =
+      Agent<String> freeAgent =
           harness
               .agent()
               .provider(freeProvider)
@@ -315,7 +316,7 @@ class EndToEndTest {
               .text("Understood.")
               .endTurn()
               .build();
-      Agent gatedAgent =
+      Agent<String> gatedAgent =
           harness
               .agent()
               .provider(gatedProvider)
@@ -324,8 +325,8 @@ class EndToEndTest {
               .approver(Approver.denyAll("not on this agent"))
               .build();
 
-      Reply freeReply = freeAgent.converse().send("what is 2+2?");
-      Reply gatedReply = gatedAgent.converse().send("what is 2+2?");
+      Reply freeReply = freeAgent.converse().tell("what is 2+2?");
+      Reply gatedReply = gatedAgent.converse().tell("what is 2+2?");
 
       assertThat(freeReply.failed()).isFalse();
       assertThat(freeReply.text()).isEqualTo("The answer is 4.");
@@ -370,7 +371,7 @@ class EndToEndTest {
               .text("Third answer.")
               .endTurn()
               .build();
-      Agent agent =
+      Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
@@ -379,8 +380,8 @@ class EndToEndTest {
               .build();
 
       var conversation = agent.converse();
-      conversation.send("first question");
-      Reply secondReply = conversation.send("second question");
+      conversation.tell("first question");
+      Reply secondReply = conversation.tell("second question");
 
       assertThat(secondReply.failed()).isFalse();
       assertThat(secondReply.text()).isEqualTo("Second answer.");
@@ -390,7 +391,7 @@ class EndToEndTest {
       assertThat(((TextBlock) summaryMessage.content().getFirst()).text())
           .contains("Summary of earlier turns.");
 
-      Reply thirdReply = conversation.send("third question");
+      Reply thirdReply = conversation.tell("third question");
 
       assertThat(thirdReply.failed()).isFalse();
       assertThat(thirdReply.text()).isEqualTo("Third answer.");
@@ -412,7 +413,7 @@ class EndToEndTest {
                       new ModelEvent.TextChunk("Second answer."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
       RecordingSubscriber subscriber = new RecordingSubscriber();
-      Agent agent =
+      Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
@@ -422,8 +423,8 @@ class EndToEndTest {
       subscriber.attachTo(agent.events());
 
       var conversation = agent.converse();
-      conversation.send("first question");
-      Reply reply = conversation.send("second question");
+      conversation.tell("first question");
+      Reply reply = conversation.tell("second question");
 
       assertThat(reply.failed()).isFalse();
       assertThat(reply.text()).isEqualTo("Second answer.");
@@ -457,7 +458,7 @@ class EndToEndTest {
           ScriptedSummarizer.builder()
               .summary("Summary of earlier turns.", new Usage(500, 10, 0))
               .build();
-      Agent agent =
+      Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
@@ -467,8 +468,8 @@ class EndToEndTest {
               .build();
 
       var conversation = agent.converse();
-      conversation.send("first question");
-      Reply secondReply = conversation.send("second question");
+      conversation.tell("first question");
+      Reply secondReply = conversation.tell("second question");
 
       assertThat(secondReply.failed()).isFalse();
       assertThat(secondReply.text()).isEqualTo("Second answer.");
@@ -515,7 +516,7 @@ class EndToEndTest {
               return new Result(tail, Usage.zero());
             }
           };
-      Agent agent =
+      Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
@@ -525,8 +526,8 @@ class EndToEndTest {
               .build();
 
       var conversation = agent.converse();
-      conversation.send("first question");
-      Reply secondReply = conversation.send("second question");
+      conversation.tell("first question");
+      Reply secondReply = conversation.tell("second question");
 
       assertThat(secondReply.failed()).isFalse();
       assertThat(secondReply.text()).isEqualTo("Second answer.");
@@ -569,7 +570,7 @@ class EndToEndTest {
               .endTurn()
               .build();
       InMemoryTranscriptStore journal = TranscriptStore.inMemory();
-      Agent agent =
+      Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
@@ -579,8 +580,8 @@ class EndToEndTest {
               .build();
 
       var conversation = agent.converse();
-      conversation.send("first question");
-      Reply secondReply = conversation.send("second question");
+      conversation.tell("first question");
+      Reply secondReply = conversation.tell("second question");
       SessionId sessionId = conversation.sessionId();
 
       assertThat(secondReply.failed()).isFalse();
@@ -628,7 +629,7 @@ class EndToEndTest {
           ScriptedSummarizer.builder()
               .summary("Summary of earlier turns.", new Usage(500, 10, 0))
               .build();
-      Agent agent =
+      Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
@@ -638,8 +639,8 @@ class EndToEndTest {
               .build();
 
       var conversation = agent.converse();
-      conversation.send("first question");
-      Reply secondReply = conversation.send("second question");
+      conversation.tell("first question");
+      Reply secondReply = conversation.tell("second question");
 
       assertThat(secondReply.failed()).isFalse();
       assertThat(secondReply.state().generation()).isEqualTo(1);
@@ -672,7 +673,7 @@ class EndToEndTest {
               .text("And what about 3+3?")
               .endTurn()
               .build();
-      Agent agent =
+      Agent<String> agent =
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
@@ -681,8 +682,8 @@ class EndToEndTest {
               .build();
 
       var conversation = agent.converse();
-      Reply firstReply = conversation.send("what is 2+2?");
-      Reply secondReply = conversation.send("thanks, what else?");
+      Reply firstReply = conversation.tell("what is 2+2?");
+      Reply secondReply = conversation.tell("thanks, what else?");
 
       assertThat(secondReply.failed()).isFalse();
 

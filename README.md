@@ -46,18 +46,22 @@ ScriptedModelProvider provider = ScriptedModelProvider.builder()
         .endTurn()
         .build();
 
-Agent agent = Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
-Reply reply = agent.converse().send("what is 2+2?");
+Agent<String> agent =
+    Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
+Reply reply = agent.converse().tell("what is 2+2?");
 
 reply.text(); // "The answer is 4."
 ```
 
-`Nessy.agent()` is the only front door. `Agent` is a configured, reusable handle;
-`converse()` opens a session and returns a `Conversation`, whose `send(String)`
-returns a `Reply` wrapping the final state — `text()` is the assistant's prose,
-extracted. Every builder default already works: in-memory session store,
-in-process engine, an allow-all approver (replace it before you point real tools
-at anything), a synchronous event hub, no-op observations. The smallest useful
+`Nessy.agent()` is the only front door. `Agent<I>` is a configured, reusable
+handle over its input vocabulary `I`; `converse()` opens a session and returns
+a `Conversation<I>`, whose `tell(I)` returns a `Reply` wrapping the final state
+— `text()` is the assistant's prose, extracted. `Nessy.agent()` gives you
+`Agent<String>`, the degenerate case where `I` is plain text — see
+[Typed agents](#typed-agents) below for an application's own input vocabulary.
+Every builder default already works: in-memory session store, in-process
+engine, an allow-all approver (replace it before you point real tools at
+anything), a synchronous event hub, no-op observations. The smallest useful
 agent is a provider and a model name.
 
 ### The same example, for real
@@ -70,8 +74,9 @@ most for a prompt this size on a small model):
 ```java
 AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
 
-Agent agent = Nessy.agent().provider(provider).model("claude-haiku-4-5-20251001").build();
-Reply reply = agent.converse().send("what is 2+2?");
+Agent<String> agent =
+    Nessy.agent().provider(provider).model("claude-haiku-4-5-20251001").build();
+Reply reply = agent.converse().tell("what is 2+2?");
 
 System.out.println(reply.text());
 ```
@@ -90,7 +95,7 @@ on top of it.
 ```java
 Harness harness = Nessy.harness().provider(anthropic).build(); // once per app
 
-Agent agent =
+Agent<String> agent =
     harness
         .agent()
         .model("claude-sonnet-4-5")
@@ -129,6 +134,53 @@ now*, truthfully and without spending a model call, by running the exact same
 projection-and-recall choreography the engine runs on every send. See
 [Context management](#context-management) below for what it does and doesn't
 show.
+
+## Typed agents
+
+Every agent is `Agent<I>` over an input vocabulary `I` — typically a sealed
+interface of records the application owns. `Nessy.agent()` /
+`Harness#agent()` hand back the degenerate `Agent<String>`; `Harness#agent(Class<I>)`
+hands back `Agent<I>` for anything richer. `tell` is the only verb —
+`Conversation<I>.tell(I)` renders the input into the outbound message; the
+sealed `Event` grammar underneath never changes shape, so typing lives in the
+facade's generics and ends at the wire.
+
+An `InputRenderer<I>` (`api.message`) does the rendering:
+`InputRenderer.text()` is the `String` default — raw text becomes one text
+block, byte-for-byte what `tell` always produced. A typed vocabulary defaults
+to `InputRenderer.json(mapper)` — a `[snake_case_simple_name]` tag line plus
+canonical JSON of the input, over the harness's own mapper — but the
+recommended idiom for anything richer is a sealed-switch renderer, one arm per
+shape of thing the application may tell the agent:
+
+```java
+sealed interface SupportInput permits Question, Escalation {}
+record Question(String text) implements SupportInput {}
+record Escalation(String orderId, String reason) implements SupportInput {}
+
+InputRenderer<SupportInput> renderer =
+    input ->
+        switch (input) {
+          case Question question -> List.of(new TextBlock(question.text()));
+          case Escalation escalation ->
+              List.of(
+                  new TextBlock(
+                      "Escalate order " + escalation.orderId() + ": " + escalation.reason()));
+        };
+
+Harness harness = Nessy.harness().provider(anthropic).build();
+
+Agent<SupportInput> support =
+    harness.agent(SupportInput.class).model("claude-sonnet-4-5").renderer(renderer).build();
+
+Reply reply = support.converse().tell(new Escalation("o-1", "damaged in transit"));
+```
+
+`AgentFacadeTest`'s `Typed_front_door` nested class mirrors this shape end to
+end, including the wire-bytes proof that a `String` agent's `tell` is
+byte-for-byte what `send` always produced, and that a broken renderer
+(throwing, or returning a null/empty block list) fails loud at `tell()` —
+before the engine ever sees it — rather than silently degrading.
 
 ## How it works
 
@@ -216,12 +268,12 @@ will wire the registry Boot's Actuator already auto-configures, so observability
 lights up with no configuration at all in a Spring Boot app — that starter does
 not exist yet (see Status).
 
-For streaming a single reply without touching the raw hub, `Conversation.send`
+For streaming a single reply without touching the raw hub, `Conversation.tell`
 has a tap overload — a natural fit for pushing tokens over SSE:
 
 ```java
-Conversation conversation = agent.converse();
-Reply reply = conversation.send("what is 2+2?", event -> System.out.println(event));
+Conversation<String> conversation = agent.converse();
+Reply reply = conversation.tell("what is 2+2?", event -> System.out.println(event));
 ```
 
 The tap sees only this conversation's events, in order, for the duration of that
@@ -266,13 +318,14 @@ CompactionPolicy policy =
         1_024, // cap the summary reply at 1024 tokens
         "Summarize the conversation so far, focusing on open TODOs.");
 
-Agent agent = Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
+Agent<String> agent =
+    Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
 ```
 
 ```java
 // Replace the mechanism wholesale: your own CompactionStrategy, no model
 // call required if you don't want one.
-Agent agent =
+Agent<String> agent =
     Nessy.agent().provider(provider).model("fake-model").compaction(myStrategy).build();
 ```
 
@@ -281,7 +334,7 @@ A `CompactionPolicy` only ever tunes the built-in summarizing strategy; a
 first. Turn compaction off entirely with the same policy overload:
 
 ```java
-Agent agent =
+Agent<String> agent =
     Nessy.agent()
         .provider(provider)
         .model("fake-model")
@@ -305,7 +358,7 @@ ceiling before the default ever fired. Declare the window on the model
 binding instead, and the trigger derives itself:
 
 ```java
-Agent agent =
+Agent<String> agent =
     Nessy.agent()
         .provider(provider)
         .model("fake-model")
@@ -329,7 +382,8 @@ ledger carries forward:
 
 ```java
 InMemoryTranscriptStore journal = TranscriptStore.inMemory();
-Agent agent = Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
+Agent<String> agent =
+    Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
 ```
 
 The default is `TranscriptStore.none()`: retention is opt-in, so the
@@ -355,7 +409,7 @@ tool results older than the last `keepRecentMessages` messages with a
 placeholder, keeping the recent window verbatim:
 
 ```java
-Agent agent =
+Agent<String> agent =
     Nessy.agent()
         .provider(provider)
         .model("fake-model")
@@ -393,7 +447,8 @@ in the working set):
 
 ```java
 Memory memory = state -> vectorStore.recall(state);
-Agent agent = Nessy.agent().provider(provider).model("fake-model").memory(memory).build();
+Agent<String> agent =
+    Nessy.agent().provider(provider).model("fake-model").memory(memory).build();
 ```
 
 The default is `Memory.none()`: recall is opt-in, scoped to one agent, never a
@@ -471,8 +526,13 @@ The harness itself has since landed too: `Harness` reification, per-grant tool
 authority (`ToolGrant`/`UsagePolicy`), `Memory`, and the context assembler
 (`agent.contextFor`) are all implemented and tested end to end.
 
-Not yet built: typed agents (the `Agent<I>` front door), a durable execution
-engine, the Spring Boot starter, and a TUI. See
+The typed front door has landed too: every agent is `Agent<I>` over an
+application-owned input vocabulary, `tell` is the only verb (`send` is gone),
+and `InputRenderer<I>` renders that vocabulary onto the wire — see
+[Typed agents](#typed-agents) above.
+
+Not yet built: a durable execution engine, the Spring Boot starter, and a TUI.
+See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
 
