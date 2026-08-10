@@ -78,6 +78,11 @@ class ValidationTest {
   }
 
   @Test
+  void a_context_without_a_message_list_is_rejected() {
+    assertThatThrownBy(() -> new Context(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
   void a_tool_spec_without_a_name_is_rejected() {
     assertThatThrownBy(() -> new ToolSpec("", "does things", JsonNodeFactory.instance.objectNode()))
         .isInstanceOf(IllegalArgumentException.class);
