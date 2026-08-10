@@ -37,17 +37,15 @@ import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@link Summarizer#usingProvider(ModelProvider, ModelSettings, int, String, ObservationRegistry)},
- * the production summarizer, over a hand-rolled fake provider.
+ * {@link Summarizer#usingProvider(ModelProvider, String, int, String, ObservationRegistry)}, the
+ * production summarizer, over a hand-rolled fake provider.
  */
 class SummarizerTest {
 
-  private static final ModelSettings CONFIG =
-      new ModelSettings("fake-model", "be helpful", 1_024, Set.of(), null);
+  private static final String MODEL = "fake-model";
 
   private static final String INSTRUCTIONS = "Summarize the conversation so far.";
 
@@ -97,7 +95,7 @@ class SummarizerTest {
                   new ModelEvent.TextChunk("the gist"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
       Summarizer summarizer =
-          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
+          Summarizer.usingProvider(provider, MODEL, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
       Context head = Context.of(List.of(Message.user("hi")));
 
       summarizer.summarize(head);
@@ -107,6 +105,27 @@ class SummarizerTest {
       assertThat(request.maxTokens()).isEqualTo(500);
       assertThat(request.context().messages())
           .containsExactly(Message.user("hi"), Message.user(INSTRUCTIONS));
+    }
+
+    /**
+     * Behavior change pinned here: the production summarizer never inherits the agent's persona.
+     * Earlier versions took a full {@code ModelSettings} and forwarded its {@code systemPrompt} to
+     * every summarization request; {@link Summarizer#usingProvider} now takes a bare model name, so
+     * there is no system prompt to forward — the request always carries an empty one.
+     */
+    @Test
+    void the_request_carries_no_system_prompt() {
+      FakeProvider provider =
+          new FakeProvider(
+              List.of(
+                  new ModelEvent.TextChunk("the gist"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
+      Summarizer summarizer =
+          Summarizer.usingProvider(provider, MODEL, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
+
+      summarizer.summarize(Context.of(List.of(Message.user("hi"))));
+
+      assertThat(provider.requests().getFirst().systemPrompt()).isEmpty();
     }
   }
 
@@ -122,7 +141,7 @@ class SummarizerTest {
                   new ModelEvent.TextChunk("gist"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(100, 20, 0))));
       Summarizer summarizer =
-          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
+          Summarizer.usingProvider(provider, MODEL, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
 
       String summary = summarizer.summarize(Context.of(List.of(Message.user("hi"))));
 
@@ -137,7 +156,7 @@ class SummarizerTest {
                   new ModelEvent.TextChunk("   "),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
       Summarizer summarizer =
-          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
+          Summarizer.usingProvider(provider, MODEL, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
       Context head = Context.of(List.of(Message.user("hi")));
 
       assertThatThrownBy(() -> summarizer.summarize(head))
@@ -156,7 +175,7 @@ class SummarizerTest {
       assertThatThrownBy(
               () ->
                   Summarizer.usingProvider(
-                      provider, CONFIG, 0, INSTRUCTIONS, ObservationRegistry.NOOP))
+                      provider, MODEL, 0, INSTRUCTIONS, ObservationRegistry.NOOP))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -165,7 +184,7 @@ class SummarizerTest {
       FakeProvider provider = new FakeProvider(List.of());
 
       assertThatThrownBy(
-              () -> Summarizer.usingProvider(provider, CONFIG, 500, null, ObservationRegistry.NOOP))
+              () -> Summarizer.usingProvider(provider, MODEL, 500, null, ObservationRegistry.NOOP))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -174,12 +193,12 @@ class SummarizerTest {
       assertThatThrownBy(
               () ->
                   Summarizer.usingProvider(
-                      null, CONFIG, 500, INSTRUCTIONS, ObservationRegistry.NOOP))
+                      null, MODEL, 500, INSTRUCTIONS, ObservationRegistry.NOOP))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
-    void a_null_config_is_rejected() {
+    void a_null_model_is_rejected() {
       FakeProvider provider = new FakeProvider(List.of());
 
       assertThatThrownBy(
@@ -190,10 +209,21 @@ class SummarizerTest {
     }
 
     @Test
+    void a_blank_model_is_rejected() {
+      FakeProvider provider = new FakeProvider(List.of());
+
+      assertThatThrownBy(
+              () ->
+                  Summarizer.usingProvider(
+                      provider, "  ", 500, INSTRUCTIONS, ObservationRegistry.NOOP))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void a_null_observation_registry_is_rejected() {
       FakeProvider provider = new FakeProvider(List.of());
 
-      assertThatThrownBy(() -> Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, null))
+      assertThatThrownBy(() -> Summarizer.usingProvider(provider, MODEL, 500, INSTRUCTIONS, null))
           .isInstanceOf(NullPointerException.class);
     }
   }
@@ -208,7 +238,7 @@ class SummarizerTest {
               List.of(
                   new ModelEvent.TextChunk("the gist"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
-      Summarizer summarizer = Summarizer.usingProvider(provider, CONFIG, ObservationRegistry.NOOP);
+      Summarizer summarizer = Summarizer.usingProvider(provider, MODEL, ObservationRegistry.NOOP);
 
       summarizer.summarize(Context.of(List.of(Message.user("hi"))));
 
@@ -238,7 +268,7 @@ class SummarizerTest {
                   new ModelEvent.TurnEnded(StopReason.END_TURN, usage)));
       TestObservationRegistry observations = TestObservationRegistry.create();
       Summarizer summarizer =
-          Summarizer.usingProvider(provider, CONFIG, 500, INSTRUCTIONS, observations);
+          Summarizer.usingProvider(provider, MODEL, 500, INSTRUCTIONS, observations);
 
       summarizer.summarize(Context.of(List.of(Message.user("hi"))));
 

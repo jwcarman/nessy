@@ -80,9 +80,6 @@ public final class AgentBuilder<I> {
   private Approver approver = Approver.allowAll();
   private TerminationPolicy termination = TerminationPolicy.defaults();
   private Compactor compactor;
-  private Summarizer summarizer;
-  private int summaryMaxTokens = 2_048;
-  private String summaryInstructions = Summarizer.DEFAULT_INSTRUCTIONS;
   private Long contextWindow;
   private Consumer<ContextPipeline.Builder> contextCustomizer = pipeline -> {};
   private InputRenderer<I> renderer;
@@ -171,54 +168,25 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Replaces the default, summarizing compactor entirely — the one overload compaction has. Wins
-   * over {@link #summarizer(Summarizer)} and {@link #contextWindow(long)}, whether or not those
-   * were called, since there is no default left for them to feed.
+   * Replaces the default, summarizing compactor entirely — the one compaction-related method on
+   * this builder. Wins over {@link #contextWindow(long)}, whether or not that was called, since
+   * there is no default left for it to feed.
    *
-   * <p>To tune the built-in summarizing default instead of replacing it, build one explicitly with
-   * {@link Compactors#summarizing(Summarizer)} and pass the result here — the knobs it exposes
-   * (trigger tokens, window derivation, how many recent messages survive verbatim) each belong to
-   * that builder now, not to this method.
+   * <p>The default, uncustomized compactor is assembled entirely internally — {@link
+   * Summarizer#usingProvider(ModelProvider, String, int, String,
+   * io.micrometer.observation.ObservationRegistry)} over the harness's provider and model, a
+   * 2,048-token summary ceiling, {@link Summarizer#DEFAULT_INSTRUCTIONS}, and the harness's
+   * observation registry, wrapped in {@link Compactors#summarizing(Summarizer)}'s defaults (100k
+   * trigger, or a window-derived one when {@link #contextWindow(long)} is declared; the last 10
+   * messages kept verbatim). To tune any of that, build a {@link Compactor} explicitly with {@link
+   * Summarizer#usingProvider(ModelProvider, String, int, String,
+   * io.micrometer.observation.ObservationRegistry)} and {@link Compactors#summarizing(Summarizer)}
+   * and pass the result here — every knob (summary ceiling, instructions, trigger tokens, window
+   * derivation, how many recent messages survive verbatim) is that builder's alone now, not this
+   * method's.
    */
   public AgentBuilder<I> compaction(Compactor compactor) {
     this.compactor = Objects.requireNonNull(compactor, "compaction must not be null");
-    return this;
-  }
-
-  /**
-   * What performs the default summarizing compactor's model call. Default: {@link
-   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String,
-   * io.micrometer.observation.ObservationRegistry)} over the harness's provider, settings, {@link
-   * #summaryMaxTokens(int)}, {@link #summaryInstructions(String)}, and the harness's observation
-   * registry. Wins over both of those knobs — an explicit summarizer needs nothing this builder
-   * would otherwise bake in for it. Ignored when {@link #compaction(Compactor)} is called.
-   */
-  public AgentBuilder<I> summarizer(Summarizer summarizer) {
-    this.summarizer = summarizer;
-    return this;
-  }
-
-  /**
-   * Caps the default summarizer's own reply. Default 2,048. Ignored once {@link
-   * #summarizer(Summarizer)} or {@link #compaction(Compactor)} replaces the default summarizer
-   * entirely.
-   */
-  public AgentBuilder<I> summaryMaxTokens(int summaryMaxTokens) {
-    if (summaryMaxTokens < 1) {
-      throw new IllegalArgumentException("summaryMaxTokens must be at least 1");
-    }
-    this.summaryMaxTokens = summaryMaxTokens;
-    return this;
-  }
-
-  /**
-   * What the default summarizer asks the model for. Default {@link
-   * Summarizer#DEFAULT_INSTRUCTIONS}. Ignored once {@link #summarizer(Summarizer)} or {@link
-   * #compaction(Compactor)} replaces the default summarizer entirely.
-   */
-  public AgentBuilder<I> summaryInstructions(String summaryInstructions) {
-    this.summaryInstructions =
-        Objects.requireNonNull(summaryInstructions, "summaryInstructions must not be null");
     return this;
   }
 
@@ -309,7 +277,7 @@ public final class AgentBuilder<I> {
     ModelSettings settings =
         new ModelSettings(resolvedModel, systemPrompt, maxTokens, capabilities, contextWindow);
     Compactor resolvedCompactor =
-        compactor != null ? compactor : assembleDefaultCompactor(settings);
+        compactor != null ? compactor : assembleDefaultCompactor(resolvedModel);
     ListenerRegistry events = seededRegistry.extendedWith(registrations);
     // Constructed once here and handed to both the engine and the Agent: the invariant is one
     // ContextPipeline instance per agent, so requestFor and contextFor never disagree about what
@@ -344,21 +312,19 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Assembles the default, summarizing compactor from {@link #summarizer(Summarizer)} (or {@link
-   * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String,
-   * io.micrometer.observation.ObservationRegistry)} over the harness's provider, settings, {@link
-   * #summaryMaxTokens(int)}, {@link #summaryInstructions(String)}, and the harness's observation
-   * registry, by default) and a declared {@link #contextWindow(long)}, when there is one, to derive
-   * the trigger from. No window declared means the builder's own default trigger (100k measured
-   * input tokens) stands.
+   * Assembles the default, summarizing compactor entirely internally: {@link
+   * Summarizer#usingProvider(ModelProvider, String, int, String,
+   * io.micrometer.observation.ObservationRegistry)} over the harness's provider and {@code
+   * resolvedModel}, a 2,048-token summary ceiling, and {@link Summarizer#DEFAULT_INSTRUCTIONS},
+   * plus a declared {@link #contextWindow(long)}, when there is one, to derive the trigger from. No
+   * window declared means {@link Compactors#summarizing}'s own default trigger (100k measured input
+   * tokens) stands.
    */
-  private Compactor assembleDefaultCompactor(ModelSettings settings) {
-    Summarizer resolvedSummarizer =
-        summarizer != null
-            ? summarizer
-            : Summarizer.usingProvider(
-                provider, settings, summaryMaxTokens, summaryInstructions, observations);
-    Compactors.SummarizingBuilder builder = Compactors.summarizing(resolvedSummarizer);
+  private Compactor assembleDefaultCompactor(String resolvedModel) {
+    Summarizer summarizer =
+        Summarizer.usingProvider(
+            provider, resolvedModel, 2_048, Summarizer.DEFAULT_INSTRUCTIONS, observations);
+    Compactors.SummarizingBuilder builder = Compactors.summarizing(summarizer);
     if (contextWindow != null) {
       builder = builder.window(contextWindow, maxTokens);
     }

@@ -398,6 +398,29 @@ changed.
 
 ### Changed
 
+- **The compactor is built, not configured through the agent (owner ruling,
+  2026-08-10, pre-1.0 breaking)** — `AgentBuilder` loses `.summarizer(Summarizer)`,
+  `.summaryMaxTokens(int)`, and `.summaryInstructions(String)` outright;
+  `.compaction(Compactor)` is the only compaction-related method left on it.
+  Tuning the default summarizing compactor's own knobs — the summary reply's
+  token cap and its instructions, alongside the trigger and keep-recent knobs
+  those knobs' siblings already lived on — now means building a `Summarizer`
+  and a `Compactor` explicitly via `Compactors.summarizing(...)` and handing
+  the result to `.compaction(...)`; there is no longer a one-path-plus-knobs
+  hybrid. `Summarizer.usingProvider` is re-signatured to match: it takes a
+  bare `(ModelProvider, String model, int summaryMaxTokens, String
+  instructions, ObservationRegistry)` instead of a full `ModelSettings`, with
+  a `(ModelProvider, String model, ObservationRegistry)` convenience
+  defaulting the ceiling and instructions. **Behavior change:** because the
+  production summarizer no longer takes a `ModelSettings`, it no longer has
+  an agent's `systemPrompt()` to forward — every summarization request now
+  carries no system prompt at all, so an agent's persona no longer steers how
+  its own history gets summarized. The default, uncustomized compactor
+  `AgentBuilder.build()` assembles when `.compaction(...)` is never called is
+  unaffected in its own effective defaults (a 2,048-token summary ceiling,
+  `Summarizer.DEFAULT_INSTRUCTIONS`, a 100k trigger or a window-derived one,
+  `keepRecent` 10) — only where those defaults live moved, from builder
+  fields to `AgentBuilder`'s own internal assembly.
 - **The hub is demoted: `EventHub`/`SynchronousEventHub` leave the public
   surface entirely (design §17, pre-1.0 breaking; supersedes the "`EventHub`
   subscribers choose sync or async" entry directly below, whose subscribe/

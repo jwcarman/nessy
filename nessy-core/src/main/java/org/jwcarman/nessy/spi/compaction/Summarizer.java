@@ -18,7 +18,6 @@ package org.jwcarman.nessy.spi.compaction;
 import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
  * Turns the head of a conversation into prose. The one thing {@code SummarizingCompaction} — the
@@ -31,12 +30,19 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
  * (design §10.6) reserves {@code ConversationState.usage()} for the loop's own spend, so a
  * summarizer that calls a model instruments that call itself as telemetry rather than returning a
  * bill for the reducer to accumulate. {@link #usingProvider} shows the convention.
+ *
+ * <p><strong>Behavior change:</strong> the production summarizer never sends a system prompt.
+ * Earlier versions inherited the agent's own {@code ModelSettings.systemPrompt()} for its
+ * summarization calls, so an agent's persona quietly steered how its own history got summarized.
+ * {@link #usingProvider} now takes a bare model name instead of a full {@code ModelSettings}, and
+ * every request it builds carries an empty system prompt — the persona no longer reaches the
+ * summary.
  */
 public interface Summarizer {
 
   /**
    * The default instructions handed to the summarizer by {@link #usingProvider(ModelProvider,
-   * ModelSettings, ObservationRegistry)}.
+   * String, ObservationRegistry)}.
    */
   String DEFAULT_INSTRUCTIONS =
       "Summarize the conversation so far for your own future reference: goals, decisions, facts"
@@ -52,27 +58,27 @@ public interface Summarizer {
 
   /**
    * The production summarizer: an ordinary, tool-free model call over {@code provider}, using
-   * {@code config}'s model and system prompt, asking for {@code instructions} and capping the reply
-   * at {@code summaryMaxTokens}. Instruments its own call as a {@code nessy.model.call} Micrometer
-   * observation on {@code observations} — the same convention the engine's own conversational calls
-   * use — so the summarization call's usage is visible as telemetry without ever reaching the
-   * ledger.
+   * {@code model} and asking for {@code instructions}, capping the reply at {@code
+   * summaryMaxTokens}. The request carries no system prompt — see this interface's class javadoc
+   * for why. Instruments its own call as a {@code nessy.model.call} Micrometer observation on
+   * {@code observations} — the same convention the engine's own conversational calls use — so the
+   * summarization call's usage is visible as telemetry without ever reaching the ledger.
    */
   static Summarizer usingProvider(
       ModelProvider provider,
-      ModelSettings config,
+      String model,
       int summaryMaxTokens,
       String instructions,
       ObservationRegistry observations) {
-    return new ProviderSummarizer(provider, config, summaryMaxTokens, instructions, observations);
+    return new ProviderSummarizer(provider, model, summaryMaxTokens, instructions, observations);
   }
 
   /**
-   * {@link #usingProvider(ModelProvider, ModelSettings, int, String, ObservationRegistry)} with
-   * this codebase's defaults: a 2,048-token summary ceiling and {@link #DEFAULT_INSTRUCTIONS}.
+   * {@link #usingProvider(ModelProvider, String, int, String, ObservationRegistry)} with this
+   * codebase's defaults: a 2,048-token summary ceiling and {@link #DEFAULT_INSTRUCTIONS}.
    */
   static Summarizer usingProvider(
-      ModelProvider provider, ModelSettings config, ObservationRegistry observations) {
-    return usingProvider(provider, config, 2_048, DEFAULT_INSTRUCTIONS, observations);
+      ModelProvider provider, String model, ObservationRegistry observations) {
+    return usingProvider(provider, model, 2_048, DEFAULT_INSTRUCTIONS, observations);
   }
 }

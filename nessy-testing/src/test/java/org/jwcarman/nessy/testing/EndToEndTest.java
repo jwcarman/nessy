@@ -62,7 +62,6 @@ import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 class EndToEndTest {
@@ -390,11 +389,7 @@ class EndToEndTest {
               .build();
       Summarizer summarizer =
           Summarizer.usingProvider(
-              provider,
-              new ModelSettings("fake-model", "", 4096, Set.of(), null),
-              256,
-              "Summarize.",
-              ObservationRegistry.NOOP);
+              provider, "fake-model", 256, "Summarize.", ObservationRegistry.NOOP);
       Agent<String> agent =
           Nessy.harness(provider)
               .build()
@@ -440,11 +435,7 @@ class EndToEndTest {
       RecordingSubscriber subscriber = new RecordingSubscriber();
       Summarizer summarizer =
           Summarizer.usingProvider(
-              provider,
-              new ModelSettings("fake-model", "", 4096, Set.of(), null),
-              256,
-              "Summarize.",
-              ObservationRegistry.NOOP);
+              provider, "fake-model", 256, "Summarize.", ObservationRegistry.NOOP);
       Agent<String> agent =
           Nessy.harness(provider)
               .build()
@@ -604,11 +595,7 @@ class EndToEndTest {
       List<MessageAppended> journal = new ArrayList<>();
       Summarizer summarizer =
           Summarizer.usingProvider(
-              provider,
-              new ModelSettings("fake-model", "", 4096, Set.of(), null),
-              256,
-              "Summarize.",
-              ObservationRegistry.NOOP);
+              provider, "fake-model", 256, "Summarize.", ObservationRegistry.NOOP);
       Agent<String> agent =
           Nessy.harness(provider)
               .build()

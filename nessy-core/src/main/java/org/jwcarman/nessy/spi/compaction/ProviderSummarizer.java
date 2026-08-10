@@ -27,12 +27,13 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
  * Summarizes by asking a real model: an ordinary, tool-free call over {@code head} plus the baked-
- * in instructions as a trailing user message.
+ * in instructions as a trailing user message. Every request it builds carries an empty system
+ * prompt — see {@link Summarizer}'s class javadoc for why — so {@code model} is the only identity
+ * this class needs from the agent's own configuration.
  *
  * <p>A blank result is treated as a failure rather than a valid, if useless, summary: an empty
  * summary would still replace the compacted prefix, silently discarding history for nothing.
@@ -48,19 +49,23 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 final class ProviderSummarizer implements Summarizer {
 
   private final ModelProvider provider;
-  private final ModelSettings config;
+  private final String model;
   private final int summaryMaxTokens;
   private final String instructions;
   private final ObservationRegistry observations;
 
   ProviderSummarizer(
       ModelProvider provider,
-      ModelSettings config,
+      String model,
       int summaryMaxTokens,
       String instructions,
       ObservationRegistry observations) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
-    this.config = Objects.requireNonNull(config, "config must not be null");
+    Objects.requireNonNull(model, "model must not be null");
+    if (model.isBlank()) {
+      throw new IllegalArgumentException("model must not be blank");
+    }
+    this.model = model;
     if (summaryMaxTokens < 1) {
       throw new IllegalArgumentException("summaryMaxTokens must be at least 1");
     }
@@ -76,20 +81,14 @@ final class ProviderSummarizer implements Summarizer {
     messages.add(Message.user(instructions));
     ModelRequest request =
         new ModelRequest(
-            Context.of(messages),
-            config.systemPrompt(),
-            config.model(),
-            summaryMaxTokens,
-            List.of(),
-            Set.of(),
-            null);
+            Context.of(messages), "", model, summaryMaxTokens, List.of(), Set.of(), null);
     StringBuilder text = new StringBuilder();
     // Convention source: org.jwcarman.nessy.internal.EngineObservations.modelCall(...).
     Observation observation =
         Observation.start("nessy.model.call", observations)
-            .contextualName("chat " + config.model())
+            .contextualName("chat " + model)
             .lowCardinalityKeyValue("gen_ai.operation.name", "chat")
-            .lowCardinalityKeyValue("gen_ai.request.model", config.model());
+            .lowCardinalityKeyValue("gen_ai.request.model", model);
     try (var _ = observation.openScope();
         ModelStream stream = provider.stream(request)) {
       for (ModelEvent event : stream) {

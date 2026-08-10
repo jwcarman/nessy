@@ -401,30 +401,18 @@ enough to compact — a tool-heavy transcript with no plain user-text turn far
 enough back, for example — the compactor leaves the working set unchanged for
 that turn rather than cutting somewhere unsafe.
 
-`.compaction(Compactor)` is the one overload. The two knobs the default
-summarizer itself owns — its reply's token cap and its instructions — sit
-directly on `AgentBuilder`, no `Compactor` assembly required:
-
-```java
-Agent<String> agent =
-    Nessy.harness(provider)
-        .build()
-        .agent()
-        .model("fake-model")
-        .summaryMaxTokens(1_024) // cap the summary reply at 1024 tokens
-        .summaryInstructions("Summarize the conversation so far, focusing on open TODOs.")
-        .build();
-```
-
-Trigger and keep-recent tuning reach past the agent-level knobs into the
-`Compactor` itself — build one explicitly with `Compactors.summarizing(...)`
-and hand it to `.compaction(...)`:
+`.compaction(Compactor)` is the one compaction-related method `AgentBuilder`
+exposes — the compactor is built, not configured through the agent. Every
+knob the default summarizing compactor has — the summary reply's token cap,
+its instructions, the trigger, and how many recent messages survive
+verbatim — belongs to a `Summarizer` and a `Compactors.summarizing(...)`
+builder assembled explicitly and handed to `.compaction(...)`:
 
 ```java
 Summarizer summarizer =
     Summarizer.usingProvider(
         provider,
-        new ModelSettings("fake-model", "", 4_096, Set.of(), null),
+        "fake-model",
         1_024, // cap the summary reply at 1024 tokens
         "Summarize the conversation so far, focusing on open TODOs.",
         ObservationRegistry.NOOP); // or the harness's registry, for a real nessy.model.call span
@@ -437,6 +425,11 @@ Compactor compactor =
 Agent<String> agent =
     Nessy.harness(provider).build().agent().model("fake-model").compaction(compactor).build();
 ```
+
+`Summarizer.usingProvider`'s request never carries a system prompt — the
+agent's own persona (`.systemPrompt(...)`) is never forwarded to a
+summarization call, even though the summarizer shares the agent's provider
+and model.
 
 ```java
 // Replace the mechanism wholesale: your own Compactor, no model call

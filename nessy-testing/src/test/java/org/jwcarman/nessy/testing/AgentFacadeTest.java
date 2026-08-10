@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
@@ -48,6 +49,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.compaction.Compactors;
+import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextEnricher;
 import org.jwcarman.nessy.spi.context.Projection;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
@@ -301,14 +303,76 @@ class AgentFacadeTest {
   }
 
   /**
-   * Verbatim mirror of the README's "Compaction" tuning snippet: {@code .summaryMaxTokens(...)} and
-   * {@code .summaryInstructions(...)} feed the assembled default summarizer's own model call
-   * without needing a hand-built {@link Compactor}. Same six-pairs-plus-seventh arithmetic as
-   * {@link #a_declared_window_derives_the_trigger()}: the default trigger (100k) and default {@code
-   * keepRecent} (10) need eleven settled messages before a safe cut exists.
+   * Verbatim mirror of the README's "Compaction" tuning snippet: with every summarizer knob removed
+   * from {@code AgentBuilder} (owner-ruled: the compactor is built, not configured through the
+   * agent), an explicitly-built {@link Summarizer} handed to {@code .compaction(Compactor)} is the
+   * only way a summary reply's token cap and instructions reach the wire. Same
+   * six-pairs-plus-seventh arithmetic as {@link #a_declared_window_derives_the_trigger()}: the
+   * default trigger (100k) and default {@code keepRecent} (10) need eleven settled messages before
+   * a safe cut exists.
    */
   @Test
-  void summary_knobs_on_the_builder_reach_the_wire() {
+  void summarizer_knobs_reach_the_wire_through_an_explicit_compactor() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .text("a1")
+            .endTurn()
+            .text("a2")
+            .endTurn()
+            .text("a3")
+            .endTurn()
+            .text("a4")
+            .endTurn()
+            .text("a5")
+            .endTurn()
+            .text("a6")
+            .endTurn(new Usage(100_000, 10, 0))
+            .text("Summary of earlier turns.")
+            .endTurn()
+            .text("a7")
+            .endTurn()
+            .build();
+    Summarizer summarizer =
+        Summarizer.usingProvider(
+            provider,
+            "fake-model",
+            1_024, // cap the summary reply at 1024 tokens
+            "Summarize the conversation so far, focusing on open TODOs.",
+            ObservationRegistry.NOOP);
+    Compactor compactor = Compactors.summarizing(summarizer).build();
+
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().model("fake-model").compaction(compactor).build();
+
+    Conversation<String> conversation = agent.converse();
+    for (int i = 1; i <= 6; i++) {
+      conversation.tell("u" + i);
+    }
+    Reply seventhReply = conversation.tell("u7");
+
+    assertThat(seventhReply.failed()).isFalse();
+    assertThat(seventhReply.state().generation()).isEqualTo(1);
+    ModelRequest summarizationRequest =
+        provider.requests().stream()
+            .filter(request -> request.maxTokens() == 1_024)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("no summarization request captured"));
+    assertThat(summarizationRequest.context().messages())
+        .last()
+        .isEqualTo(Message.user("Summarize the conversation so far, focusing on open TODOs."));
+    assertThat(summarizationRequest.systemPrompt()).isEmpty();
+  }
+
+  /**
+   * Owner-flagged behavior change: the default, uncustomized compactor's summarization call never
+   * inherits the agent's own persona, even though {@code Summarizer.usingProvider} shares the
+   * agent's provider and resolved model. Same six-pairs-plus-seventh arithmetic as {@link
+   * #a_declared_window_derives_the_trigger()}. Also re-pins the default assembly's own knobs (a
+   * 2,048-token summary ceiling) now that they are wired up entirely inside {@code AgentBuilder}
+   * rather than exposed on it.
+   */
+  @Test
+  void the_default_compactor_never_forwards_the_agents_persona_to_its_summarization_call() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .text("a1")
@@ -334,8 +398,7 @@ class AgentFacadeTest {
             .build()
             .agent()
             .model("fake-model")
-            .summaryMaxTokens(1_024) // cap the summary reply at 1024 tokens
-            .summaryInstructions("Summarize the conversation so far, focusing on open TODOs.")
+            .systemPrompt("You are a pirate.")
             .build();
 
     Conversation<String> conversation = agent.converse();
@@ -348,12 +411,13 @@ class AgentFacadeTest {
     assertThat(seventhReply.state().generation()).isEqualTo(1);
     ModelRequest summarizationRequest =
         provider.requests().stream()
-            .filter(request -> request.maxTokens() == 1_024)
+            .filter(request -> request.systemPrompt().isEmpty())
             .findFirst()
             .orElseThrow(() -> new AssertionError("no summarization request captured"));
+    assertThat(summarizationRequest.maxTokens()).isEqualTo(2_048);
     assertThat(summarizationRequest.context().messages())
         .last()
-        .isEqualTo(Message.user("Summarize the conversation so far, focusing on open TODOs."));
+        .isEqualTo(Message.user(Summarizer.DEFAULT_INSTRUCTIONS));
   }
 
   @Test
