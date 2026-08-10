@@ -88,12 +88,15 @@ class ZoneBoundariesTest {
   /**
    * {@code spi.context} (the {@link org.jwcarman.nessy.spi.context.Projection}, {@link
    * org.jwcarman.nessy.spi.context.ContextEnricher}, {@link
-   * org.jwcarman.nessy.spi.context.ContextPipeline}, {@link
-   * org.jwcarman.nessy.spi.context.TokenEstimator} home) is free to depend on {@code api}, the way
+   * org.jwcarman.nessy.spi.context.ContextPipeline} home) is free to depend on {@code api}, the way
    * {@code spi.model} already does, but it does not get the wider spi zone's licence to reach into
    * {@code internal}: nothing in its public signatures needs engine machinery — {@link
    * org.jwcarman.nessy.spi.context.ContextPipeline} mints its own {@code nessy.context.enrich}
-   * observation directly rather than depending on {@code internal.EngineObservations}.
+   * observation directly rather than depending on {@code internal.EngineObservations}. {@code
+   * TokenEstimator} (§10.8's edit algebra) lives in {@code api.message} instead, beside {@link
+   * org.jwcarman.nessy.api.message.Context}, which takes it directly in {@code tokens}/{@code
+   * limitTokens} — a type in {@code Context}'s own public signature cannot live in {@code spi}, per
+   * the ban this class enforces.
    */
   @Test
   void no_file_under_spi_context_imports_internal() {

@@ -34,7 +34,7 @@ import org.jwcarman.nessy.api.session.SessionState;
  * <pre>{@code
  * harness.agent(SupportInput.class)
  *     .context(pipeline -> pipeline
- *         .project(Projection.elidingToolResults(2)) // PROJECT: 0..n, pure, declaration order
+ *         .project(ctx -> ctx.elideToolResults(2))   // PROJECT: 0..n, pure, declaration order
  *         .enrich(graphMemory)                        // ENRICH: 0..n contributors, best-effort
  *         .enrich(userPreferences)
  *         .placement(Placement.ENRICHMENTS_FIRST))     // where ENRICH contributions land

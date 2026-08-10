@@ -13,16 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.context;
-
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.ImageBlock;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ThinkingBlock;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
+package org.jwcarman.nessy.api.message;
 
 /**
  * Manufactures the message-level token figure that models never report.
@@ -31,6 +22,13 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
  * demand, on the read path only: budget-aware projections, sizing a summarizer's head, offline
  * analysis over journal content. It complements the measured trigger and never replaces it —
  * compaction keeps triggering on the provider's own exact count.
+ *
+ * <p>Lives beside {@link Context} (not in {@code spi.context}, despite serving that seam) because
+ * {@link Context#tokens(TokenEstimator)} and {@link Context#limitTokens(long, TokenEstimator)} —
+ * two verbs of the edit algebra (§10.8) — take it directly: {@code api} may not depend on {@code
+ * spi} (see {@code ZoneBoundariesTest}), so a type in {@code Context}'s own public signature has to
+ * live in {@code api} too. {@code spi.context} (projections, enrichers, the pipeline) is still free
+ * to depend on it, the way it depends on every other {@code api.message} type.
  */
 public interface TokenEstimator {
 

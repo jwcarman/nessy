@@ -21,6 +21,30 @@ changed.
 
 ### Added
 
+- **The `Context` edit algebra (design §10.8, thumbs-upped 2026-08-10)** —
+  `Context` (`api.message`) now owns the safe edits over the pairing
+  invariant it already enforced, so raw list surgery never has to happen in
+  user code. Tier 1, the trusted kernel — the only code that touches the
+  message list directly: `drop(Predicate<Message>)` (pair-atomic: matching
+  either half of a tool exchange removes the whole exchange; a plain message
+  drops on its own), `map(Function<Message, Message>)` (revalidating; a
+  pairing-breaking rewrite propagates the constructor's
+  `IllegalArgumentException`, naming the orphaned id), and
+  `enrich(ContentBlock...)`/`enrich(List<ContentBlock>)` (appends exactly one
+  user-role message; null/empty rejected). Tier 2, structural verbs built on
+  that kernel: `elideToolResults(int keepRecentMessages)` (absorbs the former
+  `Projection.elidingToolResults` — see "Changed" below), `keepRecent(int n)`
+  (slides to the nearest pair-safe boundary that keeps at least `n` recent
+  messages; unchanged when no boundary exists), and `limitTokens(long budget,
+  TokenEstimator estimator)` (drops pair-safe boundaries from the head while
+  over budget and a safe cut remains; returns honestly over budget when
+  boundaries run out). `tokens(TokenEstimator estimator)` sums the per-message
+  estimate across the context. Every verb returns a new validated `Context`
+  and uses a bare verb name (JDK-immutable style — `String.strip`,
+  `Stream.filter` — never a `with`-prefix). The admission rule: a verb joins
+  `Context` only if its correctness depends on the context's own structure —
+  pairing, position, size — never anything semantic; redaction, summarization,
+  and reordering are deliberately not verbs here.
 - **The typed front door** — every agent is `Agent<I>` over an
   application-owned input vocabulary `I`, typically a sealed interface of
   records. `Harness#agent()` / `Nessy.agent()` return `AgentBuilder<String>`,
@@ -307,6 +331,18 @@ changed.
 
 ### Changed
 
+- **`Projection.elidingToolResults(keepRecentMessages)` dissolves into
+  `Context.elideToolResults(keepRecentMessages)` (pre-1.0 breaking)** — the
+  standard elision projection is now a verb on `Context`'s own edit algebra
+  (see "Added" above) instead of a factory returning an opaque `Projection`
+  implementation. The pipeline idiom becomes
+  `.project(ctx -> ctx.elideToolResults(2))`; the `elidingToolResults` factory
+  method and the package-private `ElidingToolResults` class are both removed
+  outright — there is no deprecation window pre-1.0. Every call site (README,
+  `AgentBuilder`/`ContextPipeline` javadoc, `EndToEndTest`, `AgentFacadeTest`)
+  moves to the lambda form; behavior is pinned end-to-end by
+  `ContextPipelineTest` and `ContextTest`'s `Eliding_tool_results` tests, which
+  port the old `ProjectionTest` scenarios verbatim.
 - **`Conversation.send(String)` → `Conversation<I>.tell(I)` (pre-1.0 breaking)** —
   `send` and its tap overload are removed outright; `tell` (and
   `tell(I, Consumer<Event>)`) are the only way to advance a conversation now.

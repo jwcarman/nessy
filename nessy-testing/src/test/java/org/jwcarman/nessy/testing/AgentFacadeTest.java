@@ -266,8 +266,7 @@ class AgentFacadeTest {
             .provider(provider)
             .model("fake-model")
             .tools(new AddTool())
-            .context(
-                pipeline -> pipeline.project(Projection.elidingToolResults(50)).enrich(enricher))
+            .context(pipeline -> pipeline.project(ctx -> ctx.elideToolResults(50)).enrich(enricher))
             .build();
 
     Conversation<String> chat = agent.converse();
@@ -430,14 +429,14 @@ class AgentFacadeTest {
   }
 
   @Test
-  void elidingToolResults_is_wired_through_the_builder() {
+  void elideToolResults_is_wired_through_the_builder() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
     Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
-            .context(pipeline -> pipeline.project(Projection.elidingToolResults(2)))
+            .context(pipeline -> pipeline.project(ctx -> ctx.elideToolResults(2)))
             .build();
 
     assertThat(agent).isNotNull();

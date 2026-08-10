@@ -254,7 +254,7 @@ public final class AgentBuilder<I> {
    *
    * <pre>{@code
    * builder.context(pipeline -> pipeline
-   *     .project(Projection.elidingToolResults(2))
+   *     .project(ctx -> ctx.elideToolResults(2))
    *     .enrich(graphMemory)
    *     .placement(ContextPipeline.Placement.ENRICHMENTS_FIRST));
    * }</pre>

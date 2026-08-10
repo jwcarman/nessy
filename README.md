@@ -228,7 +228,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
 | `EventHub` | `synchronous()` | `EventHub.async(listener)` per subscriber | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
-| `ContextPipeline` | no enrichers, no projections | `Projection.elidingToolResults(keepRecentMessages)`; `ContextEnricher` contributors | RAG, redaction |
+| `ContextPipeline` | no enrichers, no projections | `Context.elideToolResults(keepRecentMessages)`; `ContextEnricher` contributors | RAG, redaction |
 
 Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
 `RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
@@ -431,7 +431,7 @@ Agent<String> agent =
         .provider(provider)
         .model("fake-model")
         .context(pipeline -> pipeline
-            .project(Projection.elidingToolResults(2))  // PROJECT: 0..n, declaration order
+            .project(ctx -> ctx.elideToolResults(2))    // PROJECT: 0..n, declaration order
             .enrich(graphMemory)                         // ENRICH: 0..n contributors
             .placement(ContextPipeline.Placement.ENRICHMENTS_FIRST))
         .build();
@@ -442,14 +442,16 @@ A `ContextPipeline` runs in two stages, both in declaration order:
 **PROJECT** transforms are `Projection` (`spi.context`): `Context apply(Context
 context)` — pure and total, no I/O, same output for the same input. Applied to
 the `Context` minted from the session's messages, before any enrichment.
-`Projection.elidingToolResults(keepRecentMessages)` is the first standard
-projection: it replaces the content of tool results older than the last
-`keepRecentMessages` messages with a placeholder, keeping the recent window
-verbatim. The empty projection list — no `.project(...)` calls — is identity:
-the model sees the whole working set unchanged, which is why it's the
-default. Because a projection is contractually pure, a throwing projection is
-treated as the application's own bug and fails loud rather than being
-absorbed.
+Standard projections are written as lambdas over `Context`'s own edit algebra
+(`drop`, `map`, `enrich`, and the structural verbs built on them) rather than
+opaque classes: `ctx -> ctx.elideToolResults(keepRecentMessages)` replaces the
+content of tool
+results older than the last `keepRecentMessages` messages with a placeholder,
+keeping the recent window verbatim. The empty projection list — no
+`.project(...)` calls — is identity: the model sees the whole working set
+unchanged, which is why it's the default. Because a projection is
+contractually pure, a throwing projection is treated as the application's own
+bug and fails loud rather than being absorbed.
 
 Weigh the tradeoff before reaching for elision: the sliding window rewrites
 one old message per turn as it advances, and a rewritten message churns the
@@ -458,7 +460,7 @@ context space. That's a fine trade when a tool result is enormous and the
 context window is the scarcer resource, and a bad one when you're paying for
 cache misses more than you're saving in tokens. Projection never touches
 compaction's summarization call either: the summarizer always sees the
-un-elided prefix the reducer chose to compact, even when `elidingToolResults`
+un-elided prefix the reducer chose to compact, even when `elideToolResults`
 is projecting every other request in the session.
 
 **ENRICH** contributors are `ContextEnricher` (`spi.context`): `List<Message>

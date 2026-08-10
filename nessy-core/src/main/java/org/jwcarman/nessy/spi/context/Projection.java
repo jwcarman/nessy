@@ -31,20 +31,13 @@ import org.jwcarman.nessy.api.message.Context;
  * <p>The empty projection list — no {@code project(...)} calls on a {@link ContextPipeline.Builder}
  * — is the identity transform: the model sees the full working set unchanged. There is no dedicated
  * {@code Projection.identity()} factory; the empty list already says it.
+ *
+ * <p>Standard projections are written as lambdas over {@link Context}'s edit algebra (§10.8) —
+ * {@code ctx -> ctx.elideToolResults(2)} — proving the algebra sufficient; there are no opaque
+ * projection classes to import.
  */
 @FunctionalInterface
 public interface Projection {
 
   Context apply(Context context);
-
-  /**
-   * Elides the content of tool results older than the last {@code keepRecentMessages} messages,
-   * keeping the recent window verbatim. The first standard projection.
-   *
-   * @param keepRecentMessages how many of the most recent messages survive projecting untouched;
-   *     must be at least 0
-   */
-  static Projection elidingToolResults(int keepRecentMessages) {
-    return new ElidingToolResults(keepRecentMessages);
-  }
 }

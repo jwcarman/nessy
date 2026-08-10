@@ -13,15 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.context;
+package org.jwcarman.nessy.api.message;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.message.ToolResultBlock;
 
 class TokenEstimatorTest {
 

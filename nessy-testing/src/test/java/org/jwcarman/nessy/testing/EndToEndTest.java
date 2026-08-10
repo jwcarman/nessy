@@ -55,7 +55,6 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.context.Projection;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -656,10 +655,10 @@ class EndToEndTest {
      * (tool_results), asst2]} (size 4, matching {@code
      * a_full_tool_calling_conversation_runs_end_to_end}). {@code Reducer.userSaid} appends send 2's
      * user message before the model is called, so the state projected for send 2 has 5 messages.
-     * With {@code elidingToolResults(2)}, {@code firstRecentIndex = max(0, 5 - 2) = 3}: index 2
-     * (the tool-results message) falls before that window and is elided on the wire, while indices
-     * 3 and 4 (asst2, user3) stay verbatim. {@code SessionState} itself is never touched — elision
-     * is a per-request projection.
+     * With {@code elideToolResults(2)}, {@code firstRecentIndex = max(0, 5 - 2) = 3}: index 2 (the
+     * tool-results message) falls before that window and is elided on the wire, while indices 3 and
+     * 4 (asst2, user3) stay verbatim. {@code SessionState} itself is never touched — elision is a
+     * per-request projection.
      */
     @Test
     void shrinks_what_the_model_sees_not_what_the_state_keeps() {
@@ -678,7 +677,7 @@ class EndToEndTest {
               .provider(provider)
               .model("fake-model")
               .tools(new AddTool())
-              .context(pipeline -> pipeline.project(Projection.elidingToolResults(2)))
+              .context(pipeline -> pipeline.project(ctx -> ctx.elideToolResults(2)))
               .build();
 
       var conversation = agent.converse();

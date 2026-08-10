@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spi.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,8 +26,11 @@ import org.jwcarman.nessy.api.event.EnrichmentFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * The pipeline executor itself, in isolation from {@code InProcessEngine} — declaration order for
@@ -62,6 +66,30 @@ class ContextPipelineTest {
 
     assertThat(assembled.messages())
         .containsExactly(Message.user("start"), Message.user("first"), Message.user("second"));
+  }
+
+  @Test
+  void the_lambda_idiom_pins_elideToolResults_end_to_end() {
+    // Proves the factory's death didn't lose behavior: the standard idiom for eliding tool
+    // results is now a plain lambda over Context's own edit algebra, run through the pipeline
+    // exactly like any other projection.
+    Message toolUse =
+        Message.assistant(
+            List.of(
+                new ToolUseBlock(
+                    new ToolCall("c1", "lookup", JsonNodeFactory.instance.objectNode()))));
+    Message toolResult =
+        Message.toolResults(List.of(new ToolResultBlock("c1", "forty-two", false)));
+    ContextPipeline pipeline =
+        ContextPipeline.builder()
+            .project(ctx -> ctx.elideToolResults(0))
+            .build(EventHub.synchronous(), ObservationRegistry.NOOP);
+
+    Context assembled = pipeline.assemble(stateWith(toolUse, toolResult));
+
+    ToolResultBlock elided = (ToolResultBlock) assembled.messages().get(1).content().getFirst();
+    assertThat(elided.content()).isEqualTo("[elided]");
+    assertThat(elided.toolUseId()).isEqualTo("c1");
   }
 
   @Test
