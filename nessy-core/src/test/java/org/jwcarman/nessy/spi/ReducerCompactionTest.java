@@ -136,6 +136,25 @@ class ReducerCompactionTest {
       assertThat(step.state().status()).isEqualTo(SessionStatus.FAILED);
       assertThat(step.effects()).isEmpty();
     }
+
+    /**
+     * {@code userSaid} isn't the only decision point: {@code toolFinished} reaches the same {@code
+     * proceedOrCompact} once the last pending call's result lands and the pending lane is empty
+     * again. This pins that second site independently, so a change that wires triggering into only
+     * one of the two call sites fails loudly here rather than only in an end-to-end test.
+     */
+    @Test
+    void a_tool_result_at_the_trigger_also_compacts() {
+      ToolCall toolCall = call("c2");
+      SessionState pending =
+          pendingToolCall(fivePairsAndToolExchange(), toolCall).withLastInputTokens(100_000);
+      Reducer reducer = new Reducer(TerminationPolicy.never(), triggeringAt(100_000));
+
+      Step step = reducer.reduce(pending, new Event.ToolFinished(toolCall, ToolResult.ok("more")));
+
+      assertThat(step.state().status()).isEqualTo(SessionStatus.COMPACTING);
+      assertThat(step.effects()).containsExactly(new Effect.Compact(step.state().messages()));
+    }
   }
 
   @Nested
@@ -173,6 +192,33 @@ class ReducerCompactionTest {
       assertThat(step.state().lastInputTokens()).isEqualTo(state.lastInputTokens());
       assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
       assertThat(step.effects()).containsExactly(Effect.callModel());
+    }
+
+    /**
+     * {@code Effect.Compact} is only ever emitted from a settled state, but {@code Event.Compacted}
+     * is not guaranteed to land against one: a durably replayed run can replay a stale result
+     * against a state that has since moved on, and nothing at this layer stops a strategy from
+     * answering late. A shrinking result that would otherwise replace the messages must still be
+     * treated as a skip once tool debt is outstanding — the tail a shrink drops might be exactly
+     * the messages a pending call belongs to, and splicing underneath it would strand the pending
+     * lane.
+     */
+    @Test
+    void a_result_while_tool_debt_is_outstanding_is_a_skip() {
+      ToolCall toolCall = call("c3");
+      SessionState state = pendingToolCall(fivePairsAndToolExchange(), toolCall);
+      List<Message> shrunk =
+          List.of(Message.user("[Conversation summary — earlier turns compacted]\nthe gist"));
+      Usage spend = new Usage(2_000, 100, 0);
+
+      Step step = builder.reduce(state, new Event.Compacted(shrunk, spend));
+
+      assertThat(step.state().messages()).isEqualTo(state.messages());
+      assertThat(step.state().generation()).isEqualTo(state.generation());
+      assertThat(step.state().usage()).isEqualTo(state.usage().plus(spend));
+      assertThat(step.state().status()).isEqualTo(SessionStatus.AWAITING_MODEL);
+      assertThat(step.effects()).containsExactly(Effect.callModel());
+      assertThat(step.state().pendingCalls()).containsExactly(toolCall);
     }
   }
 

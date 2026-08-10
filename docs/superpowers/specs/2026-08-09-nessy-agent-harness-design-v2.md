@@ -747,7 +747,10 @@ public interface CompactionStrategy {
   replace messages wholesale, bump `generation`, accumulate the spend into
   `usage`, proceed to `CallModel`. **The strategy proposes; the reducer
   disposes.** A result that does not *shrink* the working set is applied
-  as a skip (no bump — the reducer's belt to the engine's suspenders).
+  as a skip (no bump — the reducer's belt to the engine's suspenders). A
+  `Compacted` arriving while tool debt is outstanding applies as a skip too,
+  regardless of shrink size — compaction only ever applies against a settled
+  transcript (Controller ruling, fix round 1).
 - **`Result.spend` is a bill, not a diff**: the tokens the compaction
   itself consumed (the summarizing call's own input + output), accumulated
   into the ledger like every other model call — the cost-accounting

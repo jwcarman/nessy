@@ -31,6 +31,7 @@ import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
@@ -38,6 +39,7 @@ import org.jwcarman.nessy.api.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.TextBlock;
@@ -355,6 +357,113 @@ class EndToEndTest {
       List<CompactionFailed> failures = subscriber.ofType(CompactionFailed.class);
       assertThat(failures).hasSize(1);
       assertThat(failures.getFirst().reason()).contains("summarizer exploded");
+    }
+  }
+
+  @Nested
+  class A_custom_summarizer {
+
+    /**
+     * {@code .summarizer(...)} replaces only the thing that calls a model inside the default,
+     * summarizing strategy — the policy still decides when to trigger and what to keep. Proven two
+     * ways: the resulting summary is exactly what the double was scripted to return, and the
+     * provider only ever sees the two ordinary conversational calls — never a third, summarization
+     * call — because {@link ScriptedSummarizer} intercepted that call entirely.
+     */
+    @Test
+    void the_summarizer_override_replaces_the_providers_summarization_call() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder()
+              .text("First answer.")
+              .endTurn(new Usage(150_000, 20, 0))
+              .text("Second answer.")
+              .endTurn()
+              .build();
+      ScriptedSummarizer summarizer =
+          ScriptedSummarizer.builder()
+              .summary("Summary of earlier turns.", new Usage(500, 10, 0))
+              .build();
+      Agent agent =
+          Nessy.agent()
+              .provider(provider)
+              .model("fake-model")
+              .compaction(
+                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
+              .summarizer(summarizer)
+              .build();
+
+      var conversation = agent.converse();
+      conversation.send("first question");
+      Reply secondReply = conversation.send("second question");
+
+      assertThat(secondReply.failed()).isFalse();
+      assertThat(secondReply.text()).isEqualTo("Second answer.");
+      assertThat(secondReply.state().generation()).isEqualTo(1);
+      Message summaryMessage = secondReply.state().messages().getFirst();
+      assertThat(((TextBlock) summaryMessage.content().getFirst()).text())
+          .contains("Summary of earlier turns.");
+      assertThat(summarizer.heads()).hasSize(1);
+      assertThat(provider.requests()).hasSize(2);
+    }
+  }
+
+  @Nested
+  class An_explicit_strategy {
+
+    /**
+     * {@code .compaction(CompactionStrategy)} replaces the strategy outright, even when a {@code
+     * CompactionPolicy} was set first — the policy-tuned default is never assembled at all. Proven
+     * by using a trivial, no-LLM strategy whose shape (keep only the newest message) is nothing
+     * like what the policy's summarizing default would have produced (a prefixed summary message
+     * plus a verbatim tail): if the policy default had won instead, this would need a third,
+     * summarization call from the provider, which the two-turn script below doesn't have — the run
+     * would fail with "script exhausted" rather than succeed with a one-message transcript.
+     */
+    @Test
+    void an_explicit_strategy_wins_over_a_policy_set_earlier() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder()
+              .text("First answer.")
+              .endTurn(new Usage(150_000, 20, 0))
+              .text("Second answer.")
+              .endTurn()
+              .build();
+      CompactionStrategy keepOnlyTheNewestMessage =
+          new CompactionStrategy() {
+            @Override
+            public boolean requiresCompaction(SessionState state) {
+              return state.lastInputTokens() >= 1;
+            }
+
+            @Override
+            public Result compact(List<Message> workingSet) {
+              List<Message> tail = workingSet.subList(workingSet.size() - 1, workingSet.size());
+              return new Result(tail, Usage.zero());
+            }
+          };
+      Agent agent =
+          Nessy.agent()
+              .provider(provider)
+              .model("fake-model")
+              .compaction(
+                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 10, 256, "Summarize."))
+              .compaction(keepOnlyTheNewestMessage)
+              .build();
+
+      var conversation = agent.converse();
+      conversation.send("first question");
+      Reply secondReply = conversation.send("second question");
+
+      assertThat(secondReply.failed()).isFalse();
+      assertThat(secondReply.text()).isEqualTo("Second answer.");
+      assertThat(secondReply.state().generation()).isEqualTo(1);
+      // Only the strategy's kept tail message plus the fresh assistant reply survive — no
+      // summary prefix, unlike the policy default's shape (compare A_compacting_conversation).
+      assertThat(secondReply.state().messages())
+          .containsExactly(
+              Message.user("second question"),
+              Message.assistant(List.of(new TextBlock("Second answer."))));
+      assertThat(provider.requests()).hasSize(2);
     }
   }
 

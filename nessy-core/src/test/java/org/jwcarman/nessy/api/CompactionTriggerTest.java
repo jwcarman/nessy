@@ -81,5 +81,15 @@ class CompactionTriggerTest {
       assertThat(trigger.shouldCompact(stateWithLastInputTokens(0))).isFalse();
       assertThat(trigger.shouldCompact(stateWithLastInputTokens(Long.MAX_VALUE))).isFalse();
     }
+
+    /**
+     * A stable singleton, not a fresh lambda per call: {@code CompactionPolicy.disabled()} depends
+     * on this identity so {@code AgentBuilder} can recognize a never-compacting policy by {@code
+     * equals}, rather than by a heuristic.
+     */
+    @Test
+    void never_is_the_same_instance_every_call() {
+      assertThat(CompactionTrigger.never()).isSameAs(CompactionTrigger.never());
+    }
   }
 }

@@ -78,9 +78,10 @@ final class ProviderSummarizer implements Summarizer {
         }
       }
     }
-    if (text.toString().isBlank()) {
+    String summary = text.toString();
+    if (summary.isBlank()) {
       throw new IllegalStateException("summarizer returned no text");
     }
-    return new Summary(text.toString(), usage);
+    return new Summary(summary, usage);
   }
 }

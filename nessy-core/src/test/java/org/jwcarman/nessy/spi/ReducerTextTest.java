@@ -135,5 +135,18 @@ class ReducerTextTest {
 
       assertThat(step.state().messages()).containsExactly(Message.user("hi"));
     }
+
+    /**
+     * {@code lastInputTokens} is what a {@code CompactionTrigger} reads to decide whether to fire;
+     * this pins the one place it gets written, independent of any compaction test.
+     */
+    @Test
+    void a_turn_end_records_the_measured_input_tokens() {
+      Step step =
+          reducer.reduce(
+              initial, new Event.ModelTurnEnded(StopReason.END_TURN, new Usage(120_000, 50, 0)));
+
+      assertThat(step.state().lastInputTokens()).isEqualTo(120_000);
+    }
   }
 }
