@@ -20,6 +20,7 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,9 +43,12 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.SessionEvent;
+import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
@@ -72,6 +76,7 @@ public final class InProcessEngine implements ExecutionEngine {
 
   private final ModelProvider provider;
   private final ToolRegistry tools;
+  private final Map<String, ToolGrant> grants;
   private final Approver approver;
   private final SessionStore store;
   private final EventHub hub;
@@ -85,6 +90,7 @@ public final class InProcessEngine implements ExecutionEngine {
   public InProcessEngine(
       ModelProvider provider,
       ToolRegistry tools,
+      Map<String, ToolGrant> grants,
       Approver approver,
       SessionStore store,
       EventHub hub,
@@ -96,6 +102,7 @@ public final class InProcessEngine implements ExecutionEngine {
       TranscriptStore transcript) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
+    this.grants = Map.copyOf(Objects.requireNonNull(grants, "grants must not be null"));
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.hub = Objects.requireNonNull(hub, "hub must not be null");
@@ -346,22 +353,46 @@ public final class InProcessEngine implements ExecutionEngine {
   }
 
   /**
-   * Answers the approval question for one call.
+   * Answers the approval question for one call by consulting its grant — the harness's one
+   * authority chokepoint.
    *
-   * <p>A tool that does not require approval is allowed here without troubling the approver. The
-   * decision still belongs to the harness — the model has no say in whether it is asked.
+   * <p>{@link Tool#requiresApproval()} plays no part here: {@link ToolGrant#grant} is the only
+   * place that reads it, deriving the default policy at grant construction. From here on the
+   * grant's {@link org.jwcarman.nessy.api.tool.UsagePolicy} alone decides whether the approver is
+   * ever asked. A call with no grant is treated exactly like a call to an unregistered tool — the
+   * same allow-through {@link #executeTool} then turns into a model-visible "no such tool" error,
+   * so a missing grant never surfaces as a second, different failure here.
    */
   private Event decide(SessionState state, ToolCall call) {
-    Optional<Tool<?>> found = tools.find(call.name());
-    if (found.isEmpty()) {
-      // Resolved as an allow so the missing-tool error surfaces once, in
-      // execution, rather than as two different errors in two places.
+    ToolGrant grant = grants.get(call.name());
+    if (grant == null) {
       return new Event.ApprovalDecided(call, Decision.allow());
     }
-    Tool<?> tool = found.get();
-    if (!tool.requiresApproval()) {
-      return new Event.ApprovalDecided(call, Decision.allow());
+    PolicyDecision decision = evaluate(grant.policy(), call, state);
+    return switch (decision) {
+      case PolicyDecision.Allow _ -> new Event.ApprovalDecided(call, Decision.allow());
+      case PolicyDecision.Deny(String reason) ->
+          new Event.ApprovalDecided(call, new Decision.Deny(reason));
+      case PolicyDecision.RequireApproval _ -> requestApproval(state, grant.tool(), call);
+    };
+  }
+
+  /**
+   * Runs one policy, fail-closed: a policy is supposed to be pure, but a broken one must never
+   * become an allow, so a thrown {@link RuntimeException} becomes a {@link PolicyDecision.Deny}
+   * carrying the same description {@link #describe(RuntimeException)} gives every other
+   * harness-caught failure.
+   */
+  private static PolicyDecision evaluate(UsagePolicy policy, ToolCall call, SessionState state) {
+    try {
+      return policy.evaluate(call, state);
+    } catch (RuntimeException e) {
+      return new PolicyDecision.Deny(describe(e));
     }
+  }
+
+  /** The existing human-approval flow, unchanged: only {@link #decide} routes into it now. */
+  private Event requestApproval(SessionState state, Tool<?> tool, ToolCall call) {
     ApprovalRequest request =
         new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
     Observation observation = EngineObservations.approvalWait(observations, tool.name());

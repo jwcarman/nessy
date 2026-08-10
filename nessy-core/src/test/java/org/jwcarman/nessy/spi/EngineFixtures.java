@@ -21,12 +21,17 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -124,5 +129,18 @@ final class EngineFixtures {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
     args.put("value", value);
     return args;
+  }
+
+  /**
+   * The grant map {@code AgentBuilder} would derive for {@code tools}: every registered tool
+   * wrapped by {@link ToolGrant#grant(Tool)}. Lets engine tests that only care about execution, not
+   * authority, keep passing a bare {@link ToolRegistry} without duplicating that derivation.
+   */
+  static Map<String, ToolGrant> defaultGrants(ToolRegistry tools) {
+    Map<String, ToolGrant> grants = new LinkedHashMap<>();
+    for (ToolSpec spec : tools.specs()) {
+      tools.find(spec.name()).ifPresent(tool -> grants.put(spec.name(), ToolGrant.grant(tool)));
+    }
+    return grants;
   }
 }

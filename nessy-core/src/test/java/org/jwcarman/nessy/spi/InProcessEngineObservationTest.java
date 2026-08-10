@@ -91,10 +91,12 @@ class InProcessEngineObservationTest {
                         new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))));
 
+    ToolRegistry tools = ToolRegistry.of(new EngineFixtures.EchoTool(true));
     InProcessEngine engine =
         new InProcessEngine(
             provider,
-            ToolRegistry.of(new EngineFixtures.EchoTool(true)),
+            tools,
+            EngineFixtures.defaultGrants(tools),
             new ThrowingApprover(),
             SessionStore.inMemory(),
             EventHub.synchronous(),
@@ -145,10 +147,12 @@ class InProcessEngineObservationTest {
                     new ModelEvent.TextChunk("Oh."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
+    ToolRegistry tools = ToolRegistry.of(new ExplodingTool());
     InProcessEngine engine =
         new InProcessEngine(
             provider,
-            ToolRegistry.of(new ExplodingTool()),
+            tools,
+            EngineFixtures.defaultGrants(tools),
             Approver.allowAll(),
             SessionStore.inMemory(),
             EventHub.synchronous(),
@@ -219,10 +223,12 @@ class InProcessEngineObservationTest {
                     new ModelEvent.TextChunk("Done."),
                     new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
 
+    ToolRegistry tools = ToolRegistry.of(new EngineFixtures.EchoTool(requiresApproval));
     InProcessEngine engine =
         new InProcessEngine(
             provider,
-            ToolRegistry.of(new EngineFixtures.EchoTool(requiresApproval)),
+            tools,
+            EngineFixtures.defaultGrants(tools),
             Approver.allowAll(),
             SessionStore.inMemory(),
             EventHub.synchronous(),

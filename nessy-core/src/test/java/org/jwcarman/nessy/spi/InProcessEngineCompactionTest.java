@@ -24,6 +24,7 @@ import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -101,6 +102,7 @@ class InProcessEngineCompactionTest {
     return new InProcessEngine(
         provider,
         ToolRegistry.of(),
+        Map.of(),
         Approver.allowAll(),
         SessionStore.inMemory(),
         hub,

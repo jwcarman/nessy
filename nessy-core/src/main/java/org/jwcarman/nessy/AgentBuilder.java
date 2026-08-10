@@ -17,6 +17,8 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.api.CompactionPolicy;
@@ -26,7 +28,9 @@ import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
@@ -58,6 +62,7 @@ public final class AgentBuilder {
   private int maxTokens = DEFAULT_MAX_TOKENS;
   private Set<Capability> capabilities = Set.of();
   private ToolRegistry tools = ToolRegistry.of();
+  private Map<String, ToolGrant> explicitGrants;
   private Approver approver = Approver.allowAll();
   private SessionStore store;
   private EventHub events;
@@ -120,12 +125,35 @@ public final class AgentBuilder {
 
   public AgentBuilder tools(ToolRegistry tools) {
     this.tools = tools;
+    this.explicitGrants = null;
     return this;
   }
 
-  /** Sugar for the common case: a handful of tools, no registry to assemble by hand. */
+  /**
+   * Sugar for the common case: a handful of tools, no registry to assemble by hand. Each tool is
+   * auto-wrapped via {@link ToolGrant#grant(Tool)} — the derived default, unchanged from how
+   * approval worked before grants existed.
+   */
   public AgentBuilder tools(Tool<?>... tools) {
     this.tools = ToolRegistry.of(tools);
+    this.explicitGrants = null;
+    return this;
+  }
+
+  /**
+   * The capability and the authority to use it, declared together, per tool. Supersedes {@link
+   * #tools(Tool...)} for the same builder: the grant line is the security statement, and every tool
+   * granted here uses exactly the policy its grant carries rather than a derived default.
+   */
+  public AgentBuilder tools(ToolGrant... grants) {
+    Tool<?>[] granted = new Tool<?>[grants.length];
+    Map<String, ToolGrant> byName = new LinkedHashMap<>();
+    for (int i = 0; i < grants.length; i++) {
+      granted[i] = grants[i].tool();
+      byName.put(grants[i].tool().name(), grants[i]);
+    }
+    this.tools = ToolRegistry.of(granted);
+    this.explicitGrants = byName;
     return this;
   }
 
@@ -250,6 +278,7 @@ public final class AgentBuilder {
         new InProcessEngine(
             provider,
             tools,
+            resolveGrants(),
             approver,
             store,
             events,
@@ -260,6 +289,24 @@ public final class AgentBuilder {
             contextBuilder,
             transcript);
     return new Agent(engine, events);
+  }
+
+  /**
+   * The grant map the engine consults, keyed by tool name. Explicit grants from {@link
+   * #tools(ToolGrant...)} win outright; otherwise every tool in {@link #tools} — however it was
+   * set, including a hand-rolled {@link ToolRegistry} — gets {@link ToolGrant#grant(Tool)}'s
+   * derived default, so an agent that never mentions grants behaves exactly as it did before grants
+   * existed.
+   */
+  private Map<String, ToolGrant> resolveGrants() {
+    if (explicitGrants != null) {
+      return explicitGrants;
+    }
+    Map<String, ToolGrant> derived = new LinkedHashMap<>();
+    for (ToolSpec spec : tools.specs()) {
+      tools.find(spec.name()).ifPresent(tool -> derived.put(spec.name(), ToolGrant.grant(tool)));
+    }
+    return derived;
   }
 
   /**

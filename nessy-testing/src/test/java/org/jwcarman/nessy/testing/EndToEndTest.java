@@ -27,6 +27,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
+import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
@@ -47,10 +48,13 @@ import org.jwcarman.nessy.api.ThinkingBlock;
 import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.ToolResultBlock;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -267,6 +271,69 @@ class EndToEndTest {
     @Override
     public Set<Capability> capabilities() {
       return Set.of();
+    }
+  }
+
+  @Nested
+  class A_grant_line_per_agent {
+
+    /**
+     * {@code AddTool.requiresApproval()} is {@code true}, so its derived default grant would defer
+     * every agent to the approver. One harness, two agents, two grant lines for the same tool: the
+     * free agent's explicit {@link UsagePolicy#allow()} skips the approver outright, while the
+     * gated agent keeps the derived default and hits an approver that denies. The grant, not the
+     * tool, is what decided each agent's authority.
+     */
+    @Test
+    void the_grant_line_is_the_security_statement() {
+      Harness harness = Nessy.harness().build();
+
+      ScriptedModelProvider freeProvider =
+          ScriptedModelProvider.builder()
+              .toolUse("c1", "add", addArgs(2, 2))
+              .endWithToolUse()
+              .text("The answer is 4.")
+              .endTurn()
+              .build();
+      Agent freeAgent =
+          harness
+              .agent()
+              .provider(freeProvider)
+              .model("fake-model")
+              .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
+              // If the approver were consulted at all, this would deny the call and the
+              // reply would carry an error instead of "The answer is 4." — proving allow()
+              // really does skip it.
+              .approver(Approver.denyAll("would fail if ever asked"))
+              .build();
+
+      ScriptedModelProvider gatedProvider =
+          ScriptedModelProvider.builder()
+              .toolUse("c1", "add", addArgs(2, 2))
+              .endWithToolUse()
+              .text("Understood.")
+              .endTurn()
+              .build();
+      Agent gatedAgent =
+          harness
+              .agent()
+              .provider(gatedProvider)
+              .model("fake-model")
+              .tools(new AddTool())
+              .approver(Approver.denyAll("not on this agent"))
+              .build();
+
+      Reply freeReply = freeAgent.converse().send("what is 2+2?");
+      Reply gatedReply = gatedAgent.converse().send("what is 2+2?");
+
+      assertThat(freeReply.failed()).isFalse();
+      assertThat(freeReply.text()).isEqualTo("The answer is 4.");
+
+      assertThat(gatedReply.failed()).isFalse();
+      ToolResultBlock deniedBlock =
+          (ToolResultBlock) gatedReply.state().messages().get(2).content().getFirst();
+      assertThat(deniedBlock.isError()).isTrue();
+      assertThat(deniedBlock.content()).contains("not on this agent");
     }
   }
 

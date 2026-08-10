@@ -25,6 +25,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -50,9 +51,12 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.event.ToolProgress;
+import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -215,6 +219,7 @@ class InProcessEngineTest {
     return new InProcessEngine(
         provider,
         tools,
+        EngineFixtures.defaultGrants(tools),
         approver,
         store,
         hub,
@@ -236,6 +241,7 @@ class InProcessEngineTest {
                   new InProcessEngine(
                       null,
                       ToolRegistry.of(),
+                      Map.of(),
                       Approver.allowAll(),
                       SessionStore.inMemory(),
                       EventHub.synchronous(),
@@ -250,12 +256,34 @@ class InProcessEngineTest {
     }
 
     @Test
+    void a_null_grants_map_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  new InProcessEngine(
+                      new EngineFixtures.FakeProvider(List.of()),
+                      ToolRegistry.of(),
+                      null,
+                      Approver.allowAll(),
+                      SessionStore.inMemory(),
+                      EventHub.synchronous(),
+                      Reducer.defaults(),
+                      CONFIG,
+                      new ObjectMapper(),
+                      ObservationRegistry.NOOP,
+                      ContextBuilder.identity(),
+                      TranscriptStore.none()))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("grants");
+    }
+
+    @Test
     void a_null_context_builder_is_rejected() {
       assertThatThrownBy(
               () ->
                   new InProcessEngine(
                       new EngineFixtures.FakeProvider(List.of()),
                       ToolRegistry.of(),
+                      Map.of(),
                       Approver.allowAll(),
                       SessionStore.inMemory(),
                       EventHub.synchronous(),
@@ -276,6 +304,7 @@ class InProcessEngineTest {
                   new InProcessEngine(
                       new EngineFixtures.FakeProvider(List.of()),
                       ToolRegistry.of(),
+                      Map.of(),
                       Approver.allowAll(),
                       SessionStore.inMemory(),
                       EventHub.synchronous(),
@@ -430,6 +459,160 @@ class InProcessEngineTest {
       RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
       assertThat(completed.state().messages().get(2).content())
           .containsExactly(new ToolResultBlock("c1", "Denied by user: not allowed", true));
+    }
+  }
+
+  /**
+   * The authority chokepoint: {@code decide()} now consults a grant's {@link UsagePolicy} instead
+   * of {@link Tool#requiresApproval()} directly. These prove the three {@link PolicyDecision}
+   * outcomes route correctly, that a broken policy fails closed, and that {@link ToolGrant#grant}
+   * still reproduces the pre-grant behavior when nothing overrides it.
+   */
+  @Nested
+  class Authority {
+
+    /** A policy that always throws, to prove a broken policy denies rather than allows. */
+    private static final class ThrowingPolicy implements UsagePolicy {
+      @Override
+      public PolicyDecision evaluate(ToolCall call, SessionState state) {
+        throw new IllegalStateException("policy blew up");
+      }
+    }
+
+    private static InProcessEngine engineWithGrant(
+        ModelProvider provider, ToolGrant grant, Approver approver) {
+      return new InProcessEngine(
+          provider,
+          ToolRegistry.of(grant.tool()),
+          Map.of(grant.tool().name(), grant),
+          approver,
+          SessionStore.inMemory(),
+          EventHub.synchronous(),
+          Reducer.defaults(),
+          CONFIG,
+          new ObjectMapper(),
+          ObservationRegistry.NOOP,
+          ContextBuilder.identity(),
+          TranscriptStore.none());
+    }
+
+    private static EngineFixtures.FakeProvider toolCallingProvider() {
+      return new EngineFixtures.FakeProvider(
+          List.of(
+              List.of(
+                  new ModelEvent.ToolUseEmitted(
+                      new ToolCall("c1", "echo", EngineFixtures.echoArgs("hi"))),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero())),
+              List.of(
+                  new ModelEvent.TextChunk("Done."),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+    }
+
+    @Test
+    void an_allow_grant_skips_the_approver() {
+      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(true);
+      ToolGrant grant = new ToolGrant(tool, UsagePolicy.allow());
+
+      RunOutcome outcome =
+          engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages().get(2).content())
+          .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
+    }
+
+    @Test
+    void a_deny_grant_answers_the_model_without_the_approver() {
+      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(false);
+      ToolGrant grant = new ToolGrant(tool, UsagePolicy.deny("not for you"));
+
+      RunOutcome outcome =
+          engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages().get(2).content())
+          .containsExactly(new ToolResultBlock("c1", "Denied by user: not for you", true));
+    }
+
+    @Test
+    void a_require_approval_grant_asks_the_approver() {
+      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(false);
+      ToolGrant grant = new ToolGrant(tool, UsagePolicy.requireApproval());
+      CountingApprover approver = new CountingApprover(Approver.allowAll());
+
+      RunOutcome outcome =
+          engineWithGrant(toolCallingProvider(), grant, approver)
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      assertThat(approver.calls).isEqualTo(1);
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages().get(2).content())
+          .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
+    }
+
+    @Test
+    void a_throwing_policy_fails_closed() {
+      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(false);
+      ToolGrant grant = new ToolGrant(tool, new ThrowingPolicy());
+
+      RunOutcome outcome =
+          engineWithGrant(toolCallingProvider(), grant, new ThrowingApprover())
+              .run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      ToolResultBlock block =
+          (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
+      assertThat(block.isError()).isTrue();
+      assertThat(block.content()).contains("policy blew up");
+    }
+
+    @Test
+    void the_derived_default_matches_requires_approval_when_true() {
+      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(true);
+      CountingApprover approver = new CountingApprover(Approver.allowAll());
+
+      engineWithGrant(toolCallingProvider(), ToolGrant.grant(tool), approver)
+          .run(ID, Event.UserSaid.of("echo hi"));
+
+      assertThat(approver.calls).isEqualTo(1);
+    }
+
+    @Test
+    void the_derived_default_matches_requires_approval_when_false() {
+      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(false);
+      CountingApprover approver = new CountingApprover(Approver.allowAll());
+
+      engineWithGrant(toolCallingProvider(), ToolGrant.grant(tool), approver)
+          .run(ID, Event.UserSaid.of("echo hi"));
+
+      assertThat(approver.calls).isZero();
+    }
+
+    @Test
+    void a_call_with_no_grant_is_allowed_through_like_an_unregistered_tool() {
+      EngineFixtures.FakeProvider provider = toolCallingProvider();
+      InProcessEngine engine =
+          new InProcessEngine(
+              provider,
+              ToolRegistry.of(new EngineFixtures.EchoTool(false)),
+              Map.of(),
+              new ThrowingApprover(),
+              SessionStore.inMemory(),
+              EventHub.synchronous(),
+              Reducer.defaults(),
+              CONFIG,
+              new ObjectMapper(),
+              ObservationRegistry.NOOP,
+              ContextBuilder.identity(),
+              TranscriptStore.none());
+
+      RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
+
+      RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
+      assertThat(completed.state().messages().get(2).content())
+          .containsExactly(new ToolResultBlock("c1", "echoed:hi", false));
     }
   }
 
