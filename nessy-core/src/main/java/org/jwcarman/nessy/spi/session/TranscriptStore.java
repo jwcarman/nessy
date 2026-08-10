@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.spi.session;
 
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /**
  * Where a session's messages go the moment they are born, in the order they were born.

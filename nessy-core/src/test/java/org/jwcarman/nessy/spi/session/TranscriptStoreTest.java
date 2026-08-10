@@ -20,9 +20,9 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.Usage;
 
 class TranscriptStoreTest {
 

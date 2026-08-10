@@ -20,16 +20,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.TerminationPolicy;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.compaction.CompactionStrategy;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.SessionStatus;
+import org.jwcarman.nessy.api.session.TerminationPolicy;
+import org.jwcarman.nessy.api.session.Usage;
 
 class ReducerTextTest {
 

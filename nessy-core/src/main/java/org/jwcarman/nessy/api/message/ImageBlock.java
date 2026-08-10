@@ -13,20 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.api.message;
 
-import org.jwcarman.nessy.internal.Identifiers;
+import java.util.Objects;
 
-/** Identifies one conversation. Opaque on purpose: the store chooses what it means. */
-public record SessionId(String value) {
+/** An image attached to a message, base64-encoded with its media type. */
+public record ImageBlock(String mediaType, String base64Data) implements ContentBlock {
 
-  public SessionId {
-    if (value == null || value.isBlank()) {
-      throw new IllegalArgumentException("session id must not be blank");
-    }
-  }
-
-  public static SessionId generate() {
-    return new SessionId(Identifiers.next());
+  public ImageBlock {
+    Objects.requireNonNull(mediaType, "mediaType must not be null");
+    Objects.requireNonNull(base64Data, "base64Data must not be null");
   }
 }

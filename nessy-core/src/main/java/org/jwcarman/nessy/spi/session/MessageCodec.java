@@ -16,16 +16,16 @@
 package org.jwcarman.nessy.spi.session;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.message.Message;
 
 /**
  * Turns a {@link Message} into bytes and back, for whatever durable module wants to store or
  * transmit a transcript entry.
  *
  * <p>The {@code api} zone stays annotation-free on principle: {@code Message} and {@link
- * org.jwcarman.nessy.api.ContentBlock} carry no Jackson wiring of their own. {@link #json} gets its
- * polymorphism from {@code internal.MessageJson} instead, which is free to depend on Jackson
- * however it needs to.
+ * org.jwcarman.nessy.api.message.ContentBlock} carry no Jackson wiring of their own. {@link #json}
+ * gets its polymorphism from {@code internal.MessageJson} instead, which is free to depend on
+ * Jackson however it needs to.
  */
 public interface MessageCodec {
 

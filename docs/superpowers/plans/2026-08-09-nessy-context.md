@@ -155,8 +155,8 @@ Red → implement → both profiles green → commit `feat(engine): perform comp
 package org.jwcarman.nessy.spi;
 
 import java.util.List;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Projects session state into the messages one model call sees.

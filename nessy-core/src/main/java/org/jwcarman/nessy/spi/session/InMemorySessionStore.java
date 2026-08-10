@@ -20,8 +20,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /** The default {@link SessionStore#inMemory()} implementation. */
 final class InMemorySessionStore implements SessionStore {

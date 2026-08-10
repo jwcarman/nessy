@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.spi.session;
 
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /** Discards every entry. For applications that never opted into a transcript. */
 enum NoOpTranscriptStore implements TranscriptStore {

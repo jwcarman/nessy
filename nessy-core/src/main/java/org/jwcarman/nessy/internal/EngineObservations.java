@@ -17,9 +17,9 @@ package org.jwcarman.nessy.internal;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.ToolResult;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 /** Span names and attribute assembly for the engine's phases. GenAI-semconv attribute keys. */
 public final class EngineObservations {

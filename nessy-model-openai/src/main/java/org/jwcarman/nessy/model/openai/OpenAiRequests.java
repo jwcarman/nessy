@@ -35,12 +35,12 @@ import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.ContentBlock;
-import org.jwcarman.nessy.api.ImageBlock;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ToolResultBlock;
-import org.jwcarman.nessy.api.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
@@ -51,10 +51,10 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
  * <p>This is pure request assembly: it builds params from a request already fully formed by the
  * harness. It never talks to a client and never sees a key.
  *
- * <p>{@link org.jwcarman.nessy.api.ThinkingBlock} and {@link
- * org.jwcarman.nessy.api.RedactedThinkingBlock} are dropped outright: Chat Completions has no
- * assistant content type that carries opaque or extended-reasoning payloads, so there is nothing on
- * this wire to round-trip them through.
+ * <p>{@link org.jwcarman.nessy.api.message.ThinkingBlock} and {@link
+ * org.jwcarman.nessy.api.message.RedactedThinkingBlock} are dropped outright: Chat Completions has
+ * no assistant content type that carries opaque or extended-reasoning payloads, so there is nothing
+ * on this wire to round-trip them through.
  */
 public final class OpenAiRequests {
 
@@ -157,9 +157,9 @@ public final class OpenAiRequests {
 
   /**
    * Maps an assistant {@link Message}'s content to its param form, or nothing at all if it carries
-   * no text and no tool calls once {@link org.jwcarman.nessy.api.ThinkingBlock} and {@link
-   * org.jwcarman.nessy.api.RedactedThinkingBlock} content (this wire has no home for either, per
-   * the class javadoc) is left behind.
+   * no text and no tool calls once {@link org.jwcarman.nessy.api.message.ThinkingBlock} and {@link
+   * org.jwcarman.nessy.api.message.RedactedThinkingBlock} content (this wire has no home for
+   * either, per the class javadoc) is left behind.
    *
    * <p>The scenario this guards is a lone unsigned {@code ThinkingBlock}: a resumed session whose
    * thinking was cut off before it was signed settles as an assistant message containing only that

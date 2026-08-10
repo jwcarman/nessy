@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /** A long-running tool reporting from inside its own execution. */
 public record ToolProgress(SessionId sessionId, String toolCallId, String message) {

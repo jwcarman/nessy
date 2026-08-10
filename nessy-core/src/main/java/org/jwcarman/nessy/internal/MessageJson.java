@@ -18,13 +18,13 @@ package org.jwcarman.nessy.internal;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jwcarman.nessy.api.ContentBlock;
-import org.jwcarman.nessy.api.ImageBlock;
-import org.jwcarman.nessy.api.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ThinkingBlock;
-import org.jwcarman.nessy.api.ToolResultBlock;
-import org.jwcarman.nessy.api.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 
 /**
  * Teaches an {@link ObjectMapper} how to round-trip the sealed {@code Message}/{@link ContentBlock}

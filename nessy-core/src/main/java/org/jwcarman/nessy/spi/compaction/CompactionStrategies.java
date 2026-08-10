@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.spi.compaction;
 
-import org.jwcarman.nessy.api.CompactionPolicy;
-import org.jwcarman.nessy.api.CompactionStrategy;
+import org.jwcarman.nessy.api.compaction.CompactionPolicy;
+import org.jwcarman.nessy.api.compaction.CompactionStrategy;
 
 /**
  * Home for {@link CompactionStrategy} factories that need an {@code spi} type and therefore cannot

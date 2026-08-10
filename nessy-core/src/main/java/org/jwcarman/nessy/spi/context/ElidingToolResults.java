@@ -17,11 +17,11 @@ package org.jwcarman.nessy.spi.context;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.api.ContentBlock;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Elides the content of tool results in every message older than the last {@code

@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /**
  * The default {@link TranscriptStore#inMemory()} implementation: every session's transcript lives

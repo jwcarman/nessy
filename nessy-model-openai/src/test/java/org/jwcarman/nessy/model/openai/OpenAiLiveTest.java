@@ -25,10 +25,10 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ToolResult;
-import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * Exercises {@link OpenAiModelProvider} against the real OpenAI API.

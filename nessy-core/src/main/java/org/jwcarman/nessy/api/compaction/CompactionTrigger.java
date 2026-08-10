@@ -13,7 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.api.compaction;
+
+import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Decides when a settled conversation should be summarized to keep it inside the model's context

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.api.session;
 
 /** Where a session is in its lifecycle. */
 public enum SessionStatus {

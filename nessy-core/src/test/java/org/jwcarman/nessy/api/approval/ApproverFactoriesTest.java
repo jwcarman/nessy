@@ -22,8 +22,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 class ApproverFactoriesTest {
 

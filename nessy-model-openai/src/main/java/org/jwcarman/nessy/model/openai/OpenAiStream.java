@@ -28,8 +28,8 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.TreeMap;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.ToolCall;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
@@ -216,7 +216,8 @@ public final class OpenAiStream implements ModelStream {
     }
 
     // ChatCompletionChunk.Choice.Delta.ToolCall shares its simple name with
-    // org.jwcarman.nessy.api.ToolCall (the type PendingToolCall assembles into, used throughout
+    // org.jwcarman.nessy.api.tool.ToolCall (the type PendingToolCall assembles into, used
+    // throughout
     // this file), so this one accessor is left fully qualified rather than sprinkling FQNs through
     // the rest of the class.
     private void accumulateToolCallDelta(

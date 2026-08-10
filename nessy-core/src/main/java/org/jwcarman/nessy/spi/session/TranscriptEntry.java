@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.spi.session;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.session.Usage;
 
 /**
  * One message as it was born into the transcript, with what its turn cost.

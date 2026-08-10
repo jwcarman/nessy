@@ -24,14 +24,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ImageBlock;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ThinkingBlock;
-import org.jwcarman.nessy.api.ToolCall;
-import org.jwcarman.nessy.api.ToolResultBlock;
-import org.jwcarman.nessy.api.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 class MessageCodecTest {
 

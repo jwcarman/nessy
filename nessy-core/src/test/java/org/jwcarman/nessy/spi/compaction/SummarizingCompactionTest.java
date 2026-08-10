@@ -24,18 +24,18 @@ import java.util.Deque;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.CompactionPolicy;
-import org.jwcarman.nessy.api.CompactionStrategy;
-import org.jwcarman.nessy.api.CompactionTrigger;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ToolCall;
-import org.jwcarman.nessy.api.ToolResultBlock;
-import org.jwcarman.nessy.api.ToolUseBlock;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.compaction.CompactionPolicy;
+import org.jwcarman.nessy.api.compaction.CompactionStrategy;
+import org.jwcarman.nessy.api.compaction.CompactionTrigger;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * The default {@link CompactionStrategy}, pure over a scripted {@link Summarizer}: how the working

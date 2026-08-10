@@ -121,10 +121,10 @@ class ZoneBoundariesTest {
   /**
    * {@code spi.compaction} ({@link org.jwcarman.nessy.spi.compaction.Summarizer}, {@link
    * org.jwcarman.nessy.spi.compaction.CompactionStrategies} home) is free to depend on {@code api}
-   * — {@link org.jwcarman.nessy.api.CompactionStrategy}'s {@code summarizing} factory could not
-   * live on the {@code api} interface itself precisely because it needs this package's {@code
-   * Summarizer} — but, like {@code spi.context}, it does not get the wider spi zone's licence to
-   * reach into {@code internal}.
+   * — {@link org.jwcarman.nessy.api.compaction.CompactionStrategy}'s {@code summarizing} factory
+   * could not live on the {@code api} interface itself precisely because it needs this package's
+   * {@code Summarizer} — but, like {@code spi.context}, it does not get the wider spi zone's
+   * licence to reach into {@code internal}.
    */
   @Test
   void no_file_under_spi_compaction_imports_internal() {

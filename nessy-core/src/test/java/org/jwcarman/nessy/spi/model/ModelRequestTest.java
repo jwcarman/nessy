@@ -21,8 +21,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
 
 class ModelRequestTest {
 

@@ -18,10 +18,10 @@ package org.jwcarman.nessy;
 import java.util.Objects;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.event.Subscription;
+import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 
 /** One session. Sugar over {@code engine.run} — no semantics of its own. */

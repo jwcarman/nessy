@@ -19,9 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
 
 class TokenEstimatorTest {
 

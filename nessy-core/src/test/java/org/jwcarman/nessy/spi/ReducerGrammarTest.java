@@ -20,16 +20,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.Role;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ThinkingBlock;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.Role;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.SessionStatus;
+import org.jwcarman.nessy.api.session.Usage;
 
 class ReducerGrammarTest {
 

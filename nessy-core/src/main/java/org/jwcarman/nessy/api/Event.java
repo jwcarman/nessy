@@ -17,6 +17,12 @@ package org.jwcarman.nessy.api;
 
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * Something that happened.

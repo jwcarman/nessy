@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /** What a tool learns about the invocation it is serving. */
 public record ToolContext(SessionId sessionId, EventEmitter events) {

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.api.message;
 
 /** One piece of a message. Messages are lists of these, not strings. */
 public sealed interface ContentBlock

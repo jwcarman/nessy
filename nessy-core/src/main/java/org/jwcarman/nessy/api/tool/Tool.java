@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.api.tool;
 
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.internal.Schemas;
 
 /**

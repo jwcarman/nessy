@@ -15,14 +15,14 @@
  */
 package org.jwcarman.nessy.spi.context;
 
-import org.jwcarman.nessy.api.ContentBlock;
-import org.jwcarman.nessy.api.ImageBlock;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ThinkingBlock;
-import org.jwcarman.nessy.api.ToolResultBlock;
-import org.jwcarman.nessy.api.ToolUseBlock;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 
 /**
  * Manufactures the message-level token figure that models never report.

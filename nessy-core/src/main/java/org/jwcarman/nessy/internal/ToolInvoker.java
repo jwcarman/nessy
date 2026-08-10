@@ -17,10 +17,10 @@ package org.jwcarman.nessy.internal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ToolCall;
-import org.jwcarman.nessy.api.ToolResult;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * Binds a call's JSON arguments to a tool's input record and runs it.

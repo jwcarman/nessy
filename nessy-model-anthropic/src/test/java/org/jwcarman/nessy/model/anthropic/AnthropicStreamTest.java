@@ -42,8 +42,8 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.ToolCall;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
 class AnthropicStreamTest {

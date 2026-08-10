@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.spi.context;
 
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Projects session state into the messages one model call sees.

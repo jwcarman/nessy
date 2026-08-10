@@ -18,8 +18,8 @@ package org.jwcarman.nessy.spi;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 
 /**

@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
 
 class MemoryTest {
 

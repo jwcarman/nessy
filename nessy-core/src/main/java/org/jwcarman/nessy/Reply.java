@@ -18,13 +18,13 @@ package org.jwcarman.nessy;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.RunOutcome;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.SessionStatus;
-import org.jwcarman.nessy.api.TextBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.Role;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.SessionStatus;
 
 /** What came back. Sugar over the final {@link SessionState}. */
 public record Reply(RunOutcome outcome) {

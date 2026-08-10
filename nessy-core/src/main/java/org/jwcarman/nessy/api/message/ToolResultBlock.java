@@ -13,27 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.api.message;
 
 import java.util.Objects;
 
 /**
- * What a tool produced.
+ * What a tool produced, addressed back to the call that asked for it.
  *
- * <p>{@code isError} is the factor-9 hinge: an errored result still flows into context so the model
- * can recover, rather than blowing up the loop.
+ * <p>Carried on a {@link Role#USER} message: the model asked, so the harness answers, and to the
+ * model an answer arrives from the user side.
  */
-public record ToolResult(String content, boolean isError) {
+public record ToolResultBlock(String toolUseId, String content, boolean isError)
+    implements ContentBlock {
 
-  public ToolResult {
+  public ToolResultBlock {
+    Objects.requireNonNull(toolUseId, "toolUseId must not be null");
     Objects.requireNonNull(content, "content must not be null");
-  }
-
-  public static ToolResult ok(String content) {
-    return new ToolResult(content, false);
-  }
-
-  public static ToolResult error(String content) {
-    return new ToolResult(content, true);
   }
 }

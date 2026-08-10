@@ -17,8 +17,8 @@ package org.jwcarman.nessy.spi.model;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.ToolCall;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.session.Usage;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * Something a provider emitted while streaming one turn.

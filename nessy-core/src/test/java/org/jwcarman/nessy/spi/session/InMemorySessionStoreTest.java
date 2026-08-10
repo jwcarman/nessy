@@ -19,9 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.SessionStatus;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.SessionStatus;
 
 class InMemorySessionStoreTest {
 

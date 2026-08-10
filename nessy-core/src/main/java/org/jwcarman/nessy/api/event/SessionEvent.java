@@ -17,8 +17,8 @@ package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /** One reduced loop event, re-published for observers. Exhaust, never intake. */
 public record SessionEvent(SessionId sessionId, Event event, SessionState state) {

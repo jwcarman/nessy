@@ -19,22 +19,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.CompactionStrategy;
-import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.TerminationPolicy;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ThinkingBlock;
-import org.jwcarman.nessy.api.ToolCall;
-import org.jwcarman.nessy.api.ToolResult;
-import org.jwcarman.nessy.api.ToolResultBlock;
-import org.jwcarman.nessy.api.ToolUseBlock;
+import org.jwcarman.nessy.api.compaction.CompactionStrategy;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.SessionStatus;
+import org.jwcarman.nessy.api.session.TerminationPolicy;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * The whole of the agent's semantics, as a pure function.

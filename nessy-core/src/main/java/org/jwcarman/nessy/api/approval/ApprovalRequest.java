@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.api.approval;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * The question put to a human.

@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /** A summarization call failed; compaction was skipped and the turn proceeds uncompacted. */
 public record CompactionFailed(SessionId sessionId, String reason) {

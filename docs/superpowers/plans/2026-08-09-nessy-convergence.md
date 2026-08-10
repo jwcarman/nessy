@@ -237,8 +237,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -543,8 +543,8 @@ package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /** One reduced loop event, re-published for observers. Exhaust, never intake. */
 public record SessionEvent(SessionId sessionId, Event event, SessionState state) {
@@ -563,7 +563,7 @@ public record SessionEvent(SessionId sessionId, Event event, SessionState state)
 package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /** A long-running tool reporting from inside its own execution. */
 public record ToolProgress(SessionId sessionId, String toolCallId, String message) {
@@ -720,14 +720,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.SessionStatus;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.TextBlock;
-import org.jwcarman.nessy.api.ThinkingBlock;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.session.Usage;
 import org.junit.jupiter.api.Test;
 
 class ReducerGrammarTest {
@@ -1129,8 +1129,8 @@ package org.jwcarman.nessy.internal;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.Usage;
 
 /** Span names and attribute assembly for the engine's phases. GenAI-semconv attribute keys. */
 public final class EngineObservations {
@@ -1249,7 +1249,7 @@ import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ToolResult;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -1381,7 +1381,7 @@ public final class Nessy {
 package org.jwcarman.nessy;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 
@@ -1426,7 +1426,7 @@ package org.jwcarman.nessy;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 
 /** One session. Sugar over {@code engine.run} — no semantics of its own. */
@@ -1458,12 +1458,12 @@ package org.jwcarman.nessy;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.Role;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.RunOutcome;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.SessionStatus;
-import org.jwcarman.nessy.api.TextBlock;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.SessionStatus;
+import org.jwcarman.nessy.api.message.TextBlock;
 
 /** What came back. Sugar over the final {@link SessionState}. */
 public record Reply(RunOutcome outcome) {

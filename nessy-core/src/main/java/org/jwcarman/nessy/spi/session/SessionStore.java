@@ -17,8 +17,8 @@ package org.jwcarman.nessy.spi.session;
 
 import java.util.Optional;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Where a session lives between steps.

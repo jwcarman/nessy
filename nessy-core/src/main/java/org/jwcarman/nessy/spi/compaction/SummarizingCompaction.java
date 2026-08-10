@@ -18,12 +18,12 @@ package org.jwcarman.nessy.spi.compaction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.CompactionPolicy;
-import org.jwcarman.nessy.api.CompactionStrategy;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Message;
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.compaction.CompactionPolicy;
+import org.jwcarman.nessy.api.compaction.CompactionStrategy;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.session.SessionState;
+import org.jwcarman.nessy.api.session.Usage;
 
 /**
  * The default {@link CompactionStrategy}: cuts the working set at the last pair-safe boundary that

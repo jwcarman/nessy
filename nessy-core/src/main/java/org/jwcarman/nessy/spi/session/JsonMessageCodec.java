@@ -19,7 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Objects;
-import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.internal.MessageJson;
 
 /** The default {@link MessageCodec#json(ObjectMapper)} implementation: canonical JSON, UTF-8. */

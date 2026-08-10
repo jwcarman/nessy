@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.spi.memory;
 
 import java.util.List;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
 
 /**
  * Recalls messages worth prepending to one conversational request, from outside the session's own
@@ -25,12 +25,12 @@ import org.jwcarman.nessy.api.Message;
  *
  * <p>Engine-performed and I/O-sanctioned: unlike {@link
  * org.jwcarman.nessy.spi.context.ContextBuilder}, which is pure and total over {@link
- * org.jwcarman.nessy.api.SessionState} alone, {@link #recall} is free to call out — a vector
- * search, a network fetch, whatever finding relevant memories actually costs. That freedom is also
- * why it is best-effort: the engine runs it under its own observation and treats any {@link
+ * org.jwcarman.nessy.api.session.SessionState} alone, {@link #recall} is free to call out — a
+ * vector search, a network fetch, whatever finding relevant memories actually costs. That freedom
+ * is also why it is best-effort: the engine runs it under its own observation and treats any {@link
  * RuntimeException} as a recall failure, never a turn failure. Recall never touches the ledger —
  * what it returns is enrichment for one request, not something the reducer folds into {@link
- * org.jwcarman.nessy.api.SessionState}.
+ * org.jwcarman.nessy.api.session.SessionState}.
  *
  * <p>Consulted only for conversational requests. The compaction/summarization path builds its own
  * working set and is never memory-enriched — the strategy's request is its own business.
@@ -42,7 +42,7 @@ public interface Memory {
    * returned on every call) gives {@link #none()} a stable identity the engine depends on being
    * able to recognize — {@code memory == Memory.NONE} — so the default path costs zero allocations
    * and zero observations, the same load-bearing trick {@link
-   * org.jwcarman.nessy.api.CompactionTrigger#NEVER} uses.
+   * org.jwcarman.nessy.api.compaction.CompactionTrigger#NEVER} uses.
    */
   Memory NONE = context -> List.of();
 

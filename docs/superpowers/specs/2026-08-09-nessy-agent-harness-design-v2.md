@@ -176,14 +176,14 @@ already know (`org.slf4j.spi`, JDBC drivers):
 
 ```
 org.jwcarman.nessy               Nessy, Harness [§8.4], Agent, AgentBuilder, Conversation, Reply
-org.jwcarman.nessy.api           Message, Role, ContentBlock (sealed: TextBlock, ThinkingBlock,
-                                 RedactedThinkingBlock, ImageBlock, ToolUseBlock, ToolResultBlock),
-                                 ToolCall, ToolResult, Usage, StopReason,
-                                 SessionId, SessionState, SessionStatus,
-                                 Event (sealed), Decision (sealed), Awaited (sealed), ParkToken,
-                                 RunOutcome (sealed), TerminationPolicy, Context [§10.8],
-                                 CompactionStrategy, CompactionTrigger, CompactionPolicy [§10.6]
-org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec,
+org.jwcarman.nessy.api           Event (sealed), Decision (sealed), Awaited (sealed), ParkToken,
+                                 RunOutcome (sealed), StopReason — the sealed grammar only
+org.jwcarman.nessy.api.message   Message, Role, Context [§10.8], ContentBlock (sealed: TextBlock,
+                                 ThinkingBlock, RedactedThinkingBlock, ImageBlock, ToolUseBlock,
+                                 ToolResultBlock)
+org.jwcarman.nessy.api.session   SessionId, SessionState, SessionStatus, Usage, TerminationPolicy
+org.jwcarman.nessy.api.compaction CompactionStrategy, CompactionTrigger, CompactionPolicy [§10.6]
+org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec, ToolCall, ToolResult,
                                  ToolGrant, UsagePolicy, PolicyDecision (sealed)  [§10.5]
 org.jwcarman.nessy.api.approval  Approver, ApprovalRequest
 org.jwcarman.nessy.api.event     EventEmitter, EventHub, Subscription, SessionEvent, ToolProgress
@@ -202,12 +202,12 @@ Placement decisions worth their reasoning:
 - **`Reducer`, `Effect`, `Step` are the SPI's centerpiece.** Users never touch
   them; engine implementors *must* — they are the semantics an engine executes.
   Neither user API nor internal: precisely SPI.
-- **`Awaited` and `ParkToken` are API**, because `Tool.execute` returns
-  `Awaited<ToolResult>` and tools are everyday code; `RunOutcome.Parked` hands
-  users a `ParkToken`. The SPI references them inward (`spi → api` is the allowed
-  direction).
-- **`TerminationPolicy` is API**: configuring budgets is everyday agent-writing,
-  not hosting.
+- **`Awaited` and `ParkToken` are API** (root, alongside the sealed grammar),
+  because `Tool.execute` returns `Awaited<ToolResult>` and tools are everyday
+  code; `RunOutcome.Parked` hands users a `ParkToken`. The SPI references them
+  inward (`spi → api` is the allowed direction).
+- **`TerminationPolicy` is API** (`api.session`, beside the rest of the session's
+  lifecycle state): configuring budgets is everyday agent-writing, not hosting.
 - **Default implementations live beside their seams**, reachable through static
   factories on the seam interface itself (§5). Only non-contractual machinery goes
   `internal`.

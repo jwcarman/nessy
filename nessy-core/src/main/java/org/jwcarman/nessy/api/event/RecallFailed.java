@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.event;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /** A memory recall failed; the request proceeds with no recalled messages. */
 public record RecallFailed(SessionId sessionId, String reason) {

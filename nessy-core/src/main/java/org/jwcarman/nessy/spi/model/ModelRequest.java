@@ -20,7 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import org.jwcarman.nessy.api.Context;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 
 /**

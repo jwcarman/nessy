@@ -222,6 +222,17 @@ changed.
 
 ### Changed
 
+- **`api` reorganized into domain families (pre-1.0 breaking, imports-only)** —
+  the root `api` package now holds only the sealed grammar (`Event`,
+  `Decision`, `Awaited`, `RunOutcome`, `ParkToken`, `StopReason`); everything
+  else moved into a named subpackage: `Message`, `Role`, `Context`,
+  `ContentBlock` and its variants moved to `api.message`; `SessionId`,
+  `SessionState`, `SessionStatus`, `Usage`, `TerminationPolicy` moved to
+  `api.session`; `CompactionStrategy`, `CompactionPolicy`, `CompactionTrigger`
+  moved to `api.compaction`; `ToolCall`, `ToolResult` moved to `api.tool`
+  alongside `Tool`. No type was renamed and no signature changed — this is a
+  pure package move; source using the old `org.jwcarman.nessy.api.*` imports
+  for these types must update the import statement only.
 - **`AgentBuilder.compaction(...)` source-compat note (pre-1.0 breaking)** —
   adding the `CompactionStrategy` overload alongside the existing
   `CompactionPolicy` one means `.compaction(null)` no longer resolves: the

@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
+import org.jwcarman.nessy.api.session.SessionState;
+
 /** How a run ended: finished, or waiting for something that outlives this process. */
 public sealed interface RunOutcome {
 

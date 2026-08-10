@@ -15,8 +15,7 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import org.jwcarman.nessy.api.SessionState;
-import org.jwcarman.nessy.api.ToolCall;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * The authority half of a {@link ToolGrant}: whether one call to a granted tool may proceed.

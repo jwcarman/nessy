@@ -18,6 +18,9 @@ package org.jwcarman.nessy.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.spi.Effect;
 import org.jwcarman.nessy.spi.Step;
 

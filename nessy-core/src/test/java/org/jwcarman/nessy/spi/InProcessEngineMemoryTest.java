@@ -29,15 +29,15 @@ import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.RunOutcome;
-import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.ToolResultBlock;
-import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.event.RecallFailed;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.memory.Memory;
@@ -50,7 +50,7 @@ import org.jwcarman.nessy.spi.session.TranscriptStore;
 /**
  * Recall performed by {@link InProcessEngine} at request assembly: {@link Memory#recall} enriches
  * one conversational request, under its own observation, never the ledger {@link
- * org.jwcarman.nessy.api.SessionState} carries forward.
+ * org.jwcarman.nessy.api.session.SessionState} carries forward.
  */
 class InProcessEngineMemoryTest {
 

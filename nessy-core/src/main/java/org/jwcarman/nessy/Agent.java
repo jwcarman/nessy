@@ -16,10 +16,10 @@
 package org.jwcarman.nessy;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.SessionId;
-import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.session.SessionId;
+import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.spi.ContextAssembler;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.session.SessionStore;

@@ -17,7 +17,7 @@ package org.jwcarman.nessy.spi;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.SessionState;
+import org.jwcarman.nessy.api.session.SessionState;
 
 /** What one turn of the reducer produced: the next state, and what to do about it. */
 public record Step(SessionState state, List<Effect> effects) {

@@ -18,7 +18,7 @@ package org.jwcarman.nessy.spi;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
-import org.jwcarman.nessy.api.SessionId;
+import org.jwcarman.nessy.api.session.SessionId;
 
 /**
  * Drives the reducer and performs its effects.

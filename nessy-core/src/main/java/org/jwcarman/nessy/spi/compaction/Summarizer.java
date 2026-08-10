@@ -16,15 +16,16 @@
 package org.jwcarman.nessy.spi.compaction;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.CompactionPolicy;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.compaction.CompactionPolicy;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
  * Turns the head of a conversation into prose. The one thing {@code SummarizingCompaction} — the
- * default {@link org.jwcarman.nessy.api.CompactionStrategy} — cannot do itself: call a model.
+ * default {@link org.jwcarman.nessy.api.compaction.CompactionStrategy} — cannot do itself: call a
+ * model.
  */
 public interface Summarizer {
 

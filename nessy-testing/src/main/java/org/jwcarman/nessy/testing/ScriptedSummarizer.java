@@ -17,9 +17,9 @@ package org.jwcarman.nessy.testing;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.api.CompactionPolicy;
-import org.jwcarman.nessy.api.Context;
-import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.compaction.CompactionPolicy;
+import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
 
 /**
