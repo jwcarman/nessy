@@ -226,7 +226,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
 | `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
-| `EventHub` | `synchronous()` | `EventHub.async(listener)` per subscriber | bridges (SSE, message bus) |
+| `EventHub` | `subscribe(type, listener)` | `subscribeAsync(type, listener)` per subscriber | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextPipeline` | no enrichers, no projections | `Context.elideToolResults(keepRecentMessages)`; `ContextEnricher` contributors | RAG, redaction |
 
@@ -247,16 +247,19 @@ artifact built for exactly this, it no-ops when unconfigured, and one
 instrumentation point fans out to metrics and traces without us writing either
 backend.
 
-The hub is a synchronous spine: delivery is in subscription order, on the
-emitting thread, and **a throwing subscriber stops the operation that
-emitted** — the veto is the throw. A subscriber that has to stand in the way
-of something (an audit write that must not be lost) writes inline and lets
-its exception propagate; a subscriber with no business stopping anything
-wraps itself with `EventHub.async(listener, onError)` (a
-`System.Logger`-backed overload needs no `onError`) and runs on a fresh
-virtual thread instead, where nothing it throws can reach the emitting
-thread. The engine emits `MessageAppended(sessionId, message, turnUsage)` at
-every message's birth — the subscription point for journaling, memory
+The hub itself is always a synchronous spine: delivery is in subscription
+order, on the emitting thread, and **a throwing subscriber stops the
+operation that emitted** — the veto is the throw. Sync or async is chosen
+once, at subscription time, never by the hub: a subscriber that has to stand
+in the way of something (an audit write that must not be lost) calls
+`hub.subscribe(type, listener)` and lets its exception propagate; a
+subscriber with no business stopping anything calls
+`hub.subscribeAsync(type, listener, onError)` (a `System.Logger`-backed
+overload needs no `onError`) instead, and the hub runs it on a fresh virtual
+thread, where nothing it throws can reach the emitting thread. The returned
+`Subscription` is the same type either way. The engine emits
+`MessageAppended(sessionId, message, turnUsage)` at every message's birth —
+the subscription point for journaling, memory
 extraction, and anything else that follows the transcript; see "The journal"
 below.
 
@@ -434,12 +437,12 @@ There is no `TranscriptStore.none()`: retention is opt-in, so the zero-config
 posture stays lean and compaction genuinely bounds memory, and the absence of
 a `.transcript(...)` call is simply the absence of a subscriber. Wired the
 default way, the journal is audit-grade and strict — `feedFrom` subscribes
-inline, so an append that throws propagates straight out of the hub's `emit`
-and fails the run outright, the same way a failing model call would, because
-a silent gap in the audit trail is worse than a failed turn (the synchronous
-spine's veto-by-throw, see "Observability" above). An application that
-prefers best-effort journaling wraps the same subscription in
-`EventHub.async(...)` instead. `Harness#transcript(...)` registers this
+with `hub.subscribe(...)`, so an append that throws propagates straight out
+of the hub's `emit` and fails the run outright, the same way a failing model
+call would, because a silent gap in the audit trail is worse than a failed
+turn (the synchronous spine's veto-by-throw, see "Observability" above). An
+application that prefers best-effort journaling subscribes with
+`hub.subscribeAsync(...)` instead. `Harness#transcript(...)` registers this
 subscriber once, on the harness's own hub, shared by every agent it builds —
 not once per agent. A durable `TranscriptStore` persists opaque bytes through
 a `MessageCodec` (`MessageCodec.json(mapper)` is the default); encryption at

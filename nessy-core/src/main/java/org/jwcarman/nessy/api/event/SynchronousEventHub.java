@@ -20,10 +20,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * The default {@link EventHub}: synchronous, in subscription order, on the emitting thread — and a
- * throwing subscriber propagates straight out of {@link #emit}, stopping delivery to every
- * registration after it. See the {@link EventHub} javadoc for why that is the contract rather than
- * a bug: the veto is the throw.
+ * The default {@link EventHub}: {@link #subscribe} delivers synchronously, in subscription order,
+ * on the emitting thread — and a throwing subscriber propagates straight out of {@link #emit},
+ * stopping delivery to every registration after it. See the {@link EventHub} javadoc for why that
+ * is the contract rather than a bug: the veto is the throw.
+ *
+ * <p>{@code subscribeAsync} needs no override here: {@link EventHub}'s default implementation wraps
+ * the listener and delegates to {@link #subscribe}, so this class gets async-for-free without
+ * knowing anything about virtual threads.
  */
 final class SynchronousEventHub implements EventHub {
 
@@ -65,8 +69,8 @@ final class SynchronousEventHub implements EventHub {
      * Delivers {@code event} to this registration, uncaught: a throwing subscriber propagates
      * straight out of here, through {@link #emit}'s loop, and into whatever called {@code emit} —
      * the synchronous spine's veto-by-throw (design §9.1). A subscriber that must not be allowed to
-     * stop the run wraps itself with {@link EventHub#async(Consumer, Consumer)} instead of relying
-     * on this class to protect it.
+     * stop the run subscribes with {@link EventHub#subscribeAsync(Class, Consumer, Consumer)}
+     * instead of relying on this class to protect it.
      */
     void deliver(Object event) {
       if (!type.isInstance(event)) {

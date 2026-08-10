@@ -36,10 +36,11 @@ import org.jwcarman.nessy.api.session.SessionId;
  * inline (the default {@code .transcript(store)} sugar on the harness/agent builders) keeps
  * strictness: a subscriber that writes on the emitting thread and lets a failed {@link #append}
  * propagate stops the run outright, the synchronous spine's veto-by-throw, exactly as a direct
- * engine dependency once did. An application that prefers best-effort journaling wraps the same
- * subscription in {@link EventHub#async(java.util.function.Consumer, java.util.function.Consumer)}
- * — a declared posture, per subscriber, never a default. There is no {@code TranscriptStore.none()}
- * sentinel any more: the absence of a journal is simply the absence of a subscriber.
+ * engine dependency once did. An application that prefers best-effort journaling subscribes with
+ * {@link EventHub#subscribeAsync(Class, java.util.function.Consumer, java.util.function.Consumer)}
+ * instead — a declared posture, chosen at subscription time, never a default. There is no {@code
+ * TranscriptStore.none()} sentinel any more: the absence of a journal is simply the absence of a
+ * subscriber.
  */
 public interface TranscriptStore {
 
@@ -48,7 +49,8 @@ public interface TranscriptStore {
    *
    * <p>See the interface javadoc: whether a thrown exception here fails the run depends entirely on
    * how this store was subscribed — inline (the default) propagates and fails the run; {@link
-   * EventHub#async(java.util.function.Consumer, java.util.function.Consumer)} isolates it instead.
+   * EventHub#subscribeAsync(Class, java.util.function.Consumer, java.util.function.Consumer)}
+   * isolates it instead.
    */
   void append(SessionId id, TranscriptEntry entry);
 

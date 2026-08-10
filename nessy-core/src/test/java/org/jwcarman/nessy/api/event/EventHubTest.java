@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
@@ -102,14 +103,13 @@ class EventHubTest {
         throws InterruptedException {
       CountDownLatch handled = new CountDownLatch(1);
       List<Ping> pings = new CopyOnWriteArrayList<>();
-      hub.subscribe(
+      hub.subscribeAsync(
           Ping.class,
-          EventHub.async(
-              p -> {
-                pings.add(p);
-                handled.countDown();
-              },
-              t -> {}));
+          p -> {
+            pings.add(p);
+            handled.countDown();
+          },
+          t -> {});
 
       hub.emit(new Ping("a"));
 
@@ -122,16 +122,15 @@ class EventHubTest {
         throws InterruptedException {
       CountDownLatch errored = new CountDownLatch(1);
       List<Throwable> errors = new CopyOnWriteArrayList<>();
-      hub.subscribe(
+      hub.subscribeAsync(
           Ping.class,
-          EventHub.async(
-              p -> {
-                throw new IllegalStateException("async observer bug");
-              },
-              t -> {
-                errors.add(t);
-                errored.countDown();
-              }));
+          p -> {
+            throw new IllegalStateException("async observer bug");
+          },
+          t -> {
+            errors.add(t);
+            errored.countDown();
+          });
 
       hub.emit(new Ping("a"));
 
@@ -140,6 +139,73 @@ class EventHubTest {
       assertThat(errors.getFirst())
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("async observer bug");
+    }
+
+    /**
+     * Subscription-time choice: an async subscriber that throws never gets the power a sync
+     * subscriber has to stop the emitting operation. {@code emit} returns normally; the exception
+     * reaches only the error handler, observed here via a latch since it lands on a virtual thread.
+     */
+    @Test
+    void an_async_subscriber_never_vetoes() throws InterruptedException {
+      CountDownLatch errored = new CountDownLatch(1);
+      List<Throwable> errors = new CopyOnWriteArrayList<>();
+      hub.subscribeAsync(
+          Ping.class,
+          p -> {
+            throw new IllegalStateException("async observer bug");
+          },
+          t -> {
+            errors.add(t);
+            errored.countDown();
+          });
+
+      assertThatCode(() -> hub.emit(new Ping("a"))).doesNotThrowAnyException();
+
+      assertThat(errored.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(errors).hasSize(1);
+      assertThat(errors.getFirst())
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("async observer bug");
+    }
+
+    @Test
+    void async_delivery_leaves_the_emitting_thread() throws InterruptedException {
+      CountDownLatch delivered = new CountDownLatch(1);
+      Thread[] deliveryThread = new Thread[1];
+      hub.subscribeAsync(
+          Ping.class,
+          p -> {
+            deliveryThread[0] = Thread.currentThread();
+            delivered.countDown();
+          },
+          t -> {});
+      Thread emittingThread = Thread.currentThread();
+
+      hub.emit(new Ping("a"));
+
+      assertThat(delivered.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(deliveryThread[0]).isNotSameAs(emittingThread);
+      assertThat(deliveryThread[0].isVirtual()).isTrue();
+    }
+
+    /**
+     * The {@code System.Logger} convenience overload: a throwing listener is logged, not
+     * propagated. We can only assert non-propagation here — capturing {@code System.Logger} output
+     * is out of scope.
+     */
+    @Test
+    void the_convenience_overload_logs_instead_of_killing() throws InterruptedException {
+      CountDownLatch handled = new CountDownLatch(1);
+      hub.subscribeAsync(
+          Ping.class,
+          p -> {
+            handled.countDown();
+            throw new IllegalStateException("async observer bug");
+          });
+
+      assertThatCode(() -> hub.emit(new Ping("a"))).doesNotThrowAnyException();
+      assertThat(handled.await(5, TimeUnit.SECONDS)).isTrue();
     }
   }
 

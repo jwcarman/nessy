@@ -344,6 +344,26 @@ changed.
 
 ### Changed
 
+- **`EventHub` subscribers choose sync or async at subscription time
+  (pre-1.0 breaking)** — the static `EventHub.async(listener, onError)` /
+  `EventHub.async(listener)` wrapper helpers are removed outright; their
+  implementation folds into two new default methods,
+  `subscribeAsync(Class<E>, Consumer<E>, Consumer<Throwable>)` and the
+  `System.Logger`-backed convenience `subscribeAsync(Class<E>, Consumer<E>)`.
+  The hub itself is always the synchronous spine — `subscribe` still delivers
+  in subscription order, on the emitting thread, veto-by-throw — but a
+  subscriber now declares sync or async once, at the call that registers it,
+  rather than wrapping its own listener before handing it to `subscribe`.
+  Both overloads are default methods on `EventHub` delegating to `subscribe`
+  with a wrapped consumer, so `SynchronousEventHub` (and any other
+  implementation) gets async-for-free without knowing about virtual threads.
+  The returned `Subscription` is the same type regardless. Async delivery
+  still starts one fresh virtual thread per event, now named
+  `nessy-delivery-*`; the subscribeAsync javadoc carries the ordering caveat
+  that follows from that (an async subscriber may observe events out of
+  order under load — order-sensitive subscribers stay sync). Mechanical fix:
+  `hub.subscribe(type, EventHub.async(listener, onError))` →
+  `hub.subscribeAsync(type, listener, onError)`.
 - **`Projection.elidingToolResults(keepRecentMessages)` dissolves into
   `Context.elideToolResults(keepRecentMessages)` (pre-1.0 breaking)** — the
   standard elision projection is now a verb on `Context`'s own edit algebra

@@ -70,12 +70,13 @@ public final class Conversation<I> {
    * closed when {@code tell} returns, whether normally or by exception, so {@code tap} never fires
    * again afterward.
    *
-   * <p>{@code tap} is just another hub subscriber, so the synchronous spine's veto-by-throw (design
-   * §9.1) applies to it exactly as it would to any other subscriber: if {@code tap} throws, that
-   * exception propagates straight out of {@code emit}, out of the engine's {@code run}, and out of
-   * this method — a throwing {@code tap} aborts the call. A {@code tap} that must not be allowed to
-   * do that wraps itself with {@link EventHub#async(java.util.function.Consumer,
-   * java.util.function.Consumer)} before being handed here.
+   * <p>{@code tap} is just another hub subscriber, wired here with {@link EventHub#subscribe(Class,
+   * Consumer)} — always sync, never a per-call choice — so the synchronous spine's veto-by-throw
+   * (design §9.1) applies to it exactly as it would to any other sync subscriber: if {@code tap}
+   * throws, that exception propagates straight out of {@code emit}, out of the engine's {@code
+   * run}, and out of this method — a throwing {@code tap} aborts the call. A {@code tap} that must
+   * not be allowed to do that catches its own exceptions, or hands its own work off to another
+   * thread, rather than relying on this method to protect it.
    *
    * @throws IllegalArgumentException if the renderer produces a null or empty block list
    * @throws RuntimeException whatever the renderer itself throws, unwrapped, or whatever {@code

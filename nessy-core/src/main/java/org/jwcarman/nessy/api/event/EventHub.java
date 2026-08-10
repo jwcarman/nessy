@@ -22,18 +22,24 @@ import java.util.function.Consumer;
 /**
  * Where runtime narrative flows.
  *
- * <p>The synchronous spine (design §9.1): delivery is synchronous, in subscription order, on the
- * emitting thread — and <b>a throwing subscriber stops the operation that emitted</b>. That is not
- * an accident to guard against; it is the point. A subscriber that has to stand in the way of
- * something (an audit write that must not be lost, an invariant check) writes inline and lets its
- * exception propagate out through {@code emit} and whatever called it — the veto is the throw. A
- * subscriber with no business stopping anything wraps itself with {@link #async(Consumer,
- * Consumer)} and goes about its business on a fresh virtual thread instead, where nothing it throws
- * can ever reach the emitting thread.
+ * <p>The hub itself is always a synchronous spine (design §9.1): every subscriber is delivered to
+ * synchronously, in subscription order, on the calling thread — that is how a sync subscriber gets
+ * veto power. A subscriber that has to stand in the way of something (an audit write that must not
+ * be lost, an invariant check) subscribes with {@link #subscribe(Class, Consumer)} and lets its
+ * exception propagate out through {@code emit} and whatever called it: <b>the veto is the
+ * throw</b>.
+ *
+ * <p>Sync or async is chosen once, at subscription time, never by the hub. A subscriber with no
+ * business standing in the way of anything calls {@link #subscribeAsync(Class, Consumer, Consumer)}
+ * (or its {@link System.Logger}-backed convenience, {@link #subscribeAsync(Class, Consumer)})
+ * instead of {@link #subscribe(Class, Consumer)}; the hub wraps that listener (and its error
+ * handler) so each event it receives runs on a fresh virtual thread, and nothing it throws can ever
+ * reach the emitting thread. The returned {@link Subscription} is the same type either way —
+ * closing it stops delivery regardless of how the subscriber chose to receive it.
  *
  * <p>The hub is otherwise exhaust, never intake: no return values, no vetoes-by-value. Input
  * reaches the reducer only through the engine; a subscriber's only lever over the run it is
- * watching is the exception it throws.
+ * watching is the exception it throws — and only a sync subscriber's throw reaches anything.
  *
  * <p>The vocabulary is open on purpose: any module may publish its own event records, and
  * subscribers select by type. The reducer's sealed {@code Event} grammar stays closed; the hub
@@ -41,52 +47,55 @@ import java.util.function.Consumer;
  */
 public interface EventHub extends EventEmitter {
 
+  /**
+   * Subscribes {@code subscriber} synchronously: delivery happens in subscription order, on the
+   * thread that calls {@code emit}, and an exception {@code subscriber} throws propagates straight
+   * out of {@code emit} — the veto is the throw.
+   */
   <E> Subscription subscribe(Class<E> type, Consumer<E> subscriber);
+
+  /**
+   * Subscribes {@code listener} asynchronously: the hub wraps it so each matching event is handled
+   * on a fresh virtual thread instead of the emitting thread, the per-subscriber opt-out of the
+   * synchronous spine's veto-by-throw. An exception {@code listener} throws is caught on that
+   * virtual thread and handed to {@code onError}; it never reaches the thread that called {@code
+   * emit}, and it never stops the emitting operation or any other subscriber.
+   *
+   * <p><b>Ordering caveat:</b> one virtual thread is started per event, so an async subscriber may
+   * observe its events out of order under load — a slow or rescheduled virtual thread is explicitly
+   * this wrapper's business, not the hub's. Order-sensitive subscribers stay sync.
+   *
+   * @param listener the subscriber logic to run off the emitting thread
+   * @param onError where a thrown exception goes instead of the emitting thread
+   * @return the subscription, closable like any other
+   */
+  default <E> Subscription subscribeAsync(
+      Class<E> type, Consumer<E> listener, Consumer<Throwable> onError) {
+    Objects.requireNonNull(listener, "listener must not be null");
+    Objects.requireNonNull(onError, "onError must not be null");
+    return subscribe(type, event -> AsyncDelivery.deliver(event, listener, onError));
+  }
+
+  /**
+   * {@link #subscribeAsync(Class, Consumer, Consumer)}, reporting a failed listener to a JDK {@link
+   * System.Logger} rather than requiring every caller to supply its own handler — no new
+   * dependency, since {@code nessy-core} stays slf4j-free.
+   *
+   * <p>Carries the same ordering caveat as {@link #subscribeAsync(Class, Consumer, Consumer)}: a
+   * per-event virtual thread means this subscriber may observe events out of order under load.
+   *
+   * @param listener the subscriber logic to run off the emitting thread
+   * @return the subscription, closable like any other
+   */
+  default <E> Subscription subscribeAsync(Class<E> type, Consumer<E> listener) {
+    Objects.requireNonNull(listener, "listener must not be null");
+    System.Logger logger = System.getLogger(EventHub.class.getName());
+    return subscribeAsync(
+        type, listener, e -> logger.log(Level.ERROR, "async event subscriber failed", e));
+  }
 
   /** The default: dispatches on the emitting thread, in subscription order. */
   static EventHub synchronous() {
     return new SynchronousEventHub();
-  }
-
-  /**
-   * Wraps {@code listener} so each event it receives is handled on a fresh virtual thread instead
-   * of the emitting thread — the per-subscriber opt-out of the synchronous spine's veto-by-throw.
-   * An exception the wrapped listener throws is caught on that virtual thread and handed to {@code
-   * onError}; it never reaches the thread that called {@code emit}, and it never stops the emitting
-   * operation or any other subscriber.
-   *
-   * <p>One virtual thread per event, so ordering across events for this one subscriber is not
-   * guaranteed the way the synchronous default's is — a slow or reordered virtual thread scheduling
-   * is explicitly this wrapper's business, not the hub's.
-   *
-   * @param listener the subscriber logic to run off the emitting thread
-   * @param onError where a thrown exception goes instead of the emitting thread
-   */
-  static <E> Consumer<E> async(Consumer<E> listener, Consumer<Throwable> onError) {
-    Objects.requireNonNull(listener, "listener must not be null");
-    Objects.requireNonNull(onError, "onError must not be null");
-    return event ->
-        Thread.ofVirtual()
-            .start(
-                () -> {
-                  try {
-                    listener.accept(event);
-                  } catch (RuntimeException e) {
-                    onError.accept(e);
-                  }
-                });
-  }
-
-  /**
-   * {@link #async(Consumer, Consumer)}, reporting a failed listener to a JDK {@link
-   * java.lang.System.Logger} rather than requiring every caller to supply its own handler — no new
-   * dependency, since {@code nessy-core} stays slf4j-free.
-   *
-   * @param listener the subscriber logic to run off the emitting thread
-   */
-  static <E> Consumer<E> async(Consumer<E> listener) {
-    Objects.requireNonNull(listener, "listener must not be null");
-    System.Logger logger = System.getLogger(EventHub.class.getName());
-    return async(listener, e -> logger.log(Level.ERROR, "async event subscriber failed", e));
   }
 }
