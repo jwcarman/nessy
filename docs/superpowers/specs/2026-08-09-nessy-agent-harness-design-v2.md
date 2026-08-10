@@ -353,6 +353,44 @@ completed by `resume`, inspected, or abandoned deliberately; it is never silentl
 overwritten by a fresh `run`. `DurableEngine` (a later plan) builds recovery on
 this rule.
 
+### 6.1 The lifecycle (settled 2026-08-10)
+
+The phases of a run, named — the framework's official map, born from a
+Maven-lifecycle design conversation with the project owner. Maven's insight
+is that phases define *when* and participants define *what*; Nessy's
+refinement is that each phase also declares **how much a participant may
+decide**, because an agent harness has determinism and authority stakes a
+build tool does not. The phases are descriptive of what is already built;
+the table is normative about openness:
+
+| Phase | Contract | How you participate | Openness |
+|---|---|---|---|
+| Load | snapshot → ledger | `SessionStore` | seam |
+| Prepare | wiring | build time, on purpose — harness + grants, reviewable | closed at runtime (the grant principle) |
+| Contextualize | ledger → `Context` | the context pipeline: `recall`/`shape` bindings (§10.9) | fully open |
+| Invoke | `Context` → stream | provider decorators (retry, routing); observations | decorate |
+| Interpret | wire → facts | sealed grammar + reducer | **closed — determinism is the product** |
+| Execute | wishes → outcomes | tools, through the grant chokepoint | open through the chokepoint only |
+| Integrate | facts → ledger | the reducer, sole author of succession | **closed — the ledger never lies** |
+| Checkpoint | ledger → durable | `SessionStore` + `MessageAppended` subscribers | seam + spine |
+| Evaluate | continue? | `TerminationPolicy`, `CompactionStrategy` | strategy objects |
+| Complete | → `Reply` / `RunOutcome` | facade | fixed |
+
+The repeating agent cycle is Contextualize → Invoke → Interpret → Execute →
+Integrate → Checkpoint → Evaluate; Load precedes it, Complete follows. A
+durable engine checkpoints per iteration (per fold, in practice — the
+in-process engine's progress holder is the degenerate form), which is what
+makes parking and resumption free: succession is a pure fold, the
+outstanding work is recorded *in* the ledger (`status`, the pending lane),
+and the fold cannot perceive time between facts.
+
+Interpret and Integrate are closed **on purpose and permanently**: opening
+them would hand out authorship of state succession, and every guarantee in
+this document — replayability, testing without mocks, the authority
+chokepoint, wire legality — is downstream of there being exactly one
+author. The next person who arrives with a middleware proposal for these
+phases should find this paragraph.
+
 ## 7. The grammar
 
 The sealed hierarchies — `ContentBlock`, `Event`, `Effect`, `Decision`, `Awaited`,
@@ -1079,81 +1117,52 @@ cut semantics (relocated, not changed), best-effort failure,
 `CompactionPolicy`'s shape, and the engine's durability contract all stand
 as shipped in Plan 4.
 
-### 10.9 Memory — the recall seam (settled 2026-08-09)
+### 10.9 The context pipeline — the Contextualize phase (re-settled 2026-08-10)
 
-Memory is the third read-path concern, and it needs its own seam for the same
-reason summarization did: `ContextBuilder` is contractually pure, and recalling
-facts from a graph or vector store is I/O. Memory is a sibling of projection,
-not a subtype.
+Supersedes the separate `Memory`-seam and context-assembler sections: the
+project owner's Maven instinct lands here, as the one lifecycle phase with
+fully open, Maven-style binding. `ContextBuilder`, the `Memory` wiring, and
+`ContextAssembler` dissolve into one concept:
 
 ```java
-public interface Memory {
-    List<Message> recall(SessionState state);   // engine-performed; I/O sanctioned
-
-    static Memory none() { … }                  // the default
-}
+harness.agent(SupportInput.class)
+    .context(pipeline -> pipeline
+        .recall(graphMemory)                 // RECALL: 0..n contributors
+        .recall(userPreferences)
+        .shape(elidingToolResults(2))        // SHAPE: 0..n transforms, declaration order
+        .shape(redactingSecrets())
+        .placement(MEMORIES_FIRST))          // where RECALL contributions land
 ```
 
-**The cue is the ledger, not the payload (amended 2026-08-10).** Recall was
-first specified over the projected `Context`; the project owner caught the
-flaw: the context is the thing that will *include* the memories (a circular
-reading), and projection is a wire concern — an elided tool result is
-`"[elided]"` in the projection but full text in the working set, and recall
-relevance should key on the conversation's truth, not on what this call
-happens to send. `recall(SessionState)` mirrors
-`ContextBuilder.project(SessionState)` exactly: the two read-path
-collaborators are symmetric peers over the ledger, and the assembler
-concatenates their outputs.
-
-- **Recall** (`spi.memory`): consulted by the engine at request assembly beside
-  the projection; recalled facts are injected into the request. Best-effort by
-  policy — a downed memory store costs *enrichment*, never the *turn* (failure
-  emits on the hub and the call proceeds without memories; the compaction
-  pattern). Being a separate seam is what makes that per-concern failure policy
-  possible: buried inside a projection, "the graph is down" and "the projection
-  is buggy" would share one fate.
-- **Extraction needs no new seams.** The feedstock supply chain already exists:
-  the `TranscriptStore` journal (offline pipelines — the token-annotated full
-  history), hub subscribers (online extraction), and the compaction moment —
-  the head handed to the `Summarizer` is exactly the material about to leave
-  the context, so the engine's compact arm keeps a "last chance to remember"
-  hook in mind for a memory extractor.
-- The agentic mode (`search_memory`/`save_memory` as granted tools) already
-  works through the tool seam, unchanged.
-- **Documented tradeoff** (same genre as elision's): recalled content changes
-  turn to turn, and front-of-prompt injection churns the prompt-cache prefix.
-  A refresh-on-compaction strategy aligns the churn with the moment the prefix
-  churns anyway; implementors get told this rather than rediscovering it.
-- Why the token-usage claims around memory are credible: distilled facts are
-  radically denser than the verbose history they replace, and recall composes
-  with compaction — aggressive compaction is safe precisely when the facts
-  worth keeping are already durable elsewhere.
-
-The seam ships `none()`-defaulted before the first real implementation; the
-graph-backed implementation arrives when a real backing store drives it.
-
-### 10.10 The context assembler (settled 2026-08-09)
-
-Three different message lists answer to one session id, and the distinction is
-the architecture: the **journal** (`TranscriptStore.read` — everything that
-ever happened), the **working set** (`SessionStore.load(id).messages` — what
-the reducer reasons over, `[summary, …tail]` after compactions), and the
-**assembled context** (working set → `ContextBuilder.project` →
-`Memory.recall` — what one model call sees). With `identity()` and no memory,
-the second and third are the same list; the gap opens only when read-path
-shaping is opted into, and the record never lies to the application
-(`reply.state()`) regardless of what any call was shown.
-
-The assembly line exists but has no name; it gets one. A reified assembler —
-harness-provided machinery binding agent-level choices (this agent's
-projection, this agent's memory) — produces the third list on demand:
-
-- **Engines consume it** for request assembly, so every engine (the in-process
-  one, the durable one) builds requests identically — the §10.8 extraction of
-  engine collaborators, arrived at by a better route.
-- **`agent.contextFor(sessionId)`** exposes it as a debugging affordance:
-  *show me exactly what the model would see right now* — answerable truthfully
-  without a model call because assembly is deterministic over state.
+- **RECALL** contributors are `Memory` (`spi.memory`, unchanged):
+  `List<Message> recall(SessionState state)` — I/O sanctioned, each
+  contributor individually best-effort (its own `nessy.memory.recall`
+  observation and `RecallFailed` hub event; a failed contributor costs its
+  contribution, never the turn). Contributions concatenate in declaration
+  order.
+- **SHAPE** transforms are `Shape` (`spi.context`): `Context apply(Context
+  context)` — pure, total, applied in declaration order to the working
+  set's minted `Context`. A shape's failure is the application's own bug
+  and fails loud at assembly. `elidingToolResults(keepRecent)` becomes the
+  first standard shape; `ContextBuilder` is deleted (its `identity()` is
+  the empty shape list).
+- **Placement** is policy, not hardcode: where recalled material lands
+  relative to the shaped transcript (`MEMORIES_FIRST` default; the cache
+  tradeoff documented — recalled content churns the prefix;
+  refresh-on-compaction aligns the churn).
+- **Determinism by construction**: bindings are declared at build time in
+  reviewable code — the POM analog — never registered at runtime through
+  the hub. Declaration order is execution order. Same ledger, same
+  bindings, same `Context`, every time; `agent.contextFor(id)` runs the
+  same pipeline and stays truthful. The hub carries facts and vetoes
+  (§9.1); the pipeline carries participation. They do not mix.
+- The pipeline executor is engine machinery (`spi.context`), constructed
+  once per agent, consumed by the engine's Invoke preparation and by
+  `contextFor` — one implementation, one instance, as before. The compact
+  path remains unpiped: a strategy's working set is its own business.
+- There was never science behind project-then-recall ordering; both
+  contributors key on the ledger (`SessionState`), and the pipeline makes
+  their composition explicit and configurable instead of arbitrary.
 
 ## 11. Observability
 
