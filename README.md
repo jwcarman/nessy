@@ -226,7 +226,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
 | `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
-| `EventHub` | `synchronous()` | async decorator | bridges (SSE, message bus) |
+| `EventHub` | `synchronous()` | `EventHub.async(listener)` per subscriber | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextBuilder` | `identity()` | `elidingToolResults(keepRecentMessages)` | RAG, redaction |
 | `Memory` | `none()` | graph-backed recall | vector stores, custom retrieval |
@@ -247,6 +247,19 @@ adopted directly rather than reinvented, because it is a near-zero-dependency
 artifact built for exactly this, it no-ops when unconfigured, and one
 instrumentation point fans out to metrics and traces without us writing either
 backend.
+
+The hub is a synchronous spine: delivery is in subscription order, on the
+emitting thread, and **a throwing subscriber stops the operation that
+emitted** — the veto is the throw. A subscriber that has to stand in the way
+of something (an audit write that must not be lost) writes inline and lets
+its exception propagate; a subscriber with no business stopping anything
+wraps itself with `EventHub.async(listener, onError)` (a
+`System.Logger`-backed overload needs no `onError`) and runs on a fresh
+virtual thread instead, where nothing it throws can reach the emitting
+thread. The engine emits `MessageAppended(sessionId, message, turnUsage)` at
+every message's birth — the subscription point for journaling, memory
+extraction, and anything else that follows the transcript; see "The journal"
+below.
 
 The engine's observation names are Nessy's stable metric identity; their
 contextual (span) names follow the OpenTelemetry GenAI *agent* span conventions,
@@ -374,11 +387,13 @@ always wins over it, declared window or not.
 ### The journal: `TranscriptStore`
 
 The transcript and the working set are not the same thing, and compaction
-never touches the transcript. Wire up a `TranscriptStore` and the engine
-appends every message the instant it is born — unconditionally, before
-anything read-shaped (compaction, elision, windowing) gets an opinion — so the
-full history survives in the journal even after compaction shrinks what the
-ledger carries forward:
+never touches the transcript. **The journal rides the hub**: the engine holds
+no `TranscriptStore` of its own — it emits `MessageAppended(sessionId,
+message, turnUsage)` the instant a message is born, unconditionally, before
+anything read-shaped (compaction, elision, windowing) gets an opinion — and a
+journal is simply a subscriber to that event, via
+`TranscriptStore.feedFrom(EventHub)`. `.transcript(journal)` on the builder is
+sugar over exactly that call:
 
 ```java
 InMemoryTranscriptStore journal = TranscriptStore.inMemory();
@@ -386,15 +401,22 @@ Agent<String> agent =
     Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
 ```
 
-The default is `TranscriptStore.none()`: retention is opt-in, so the
-zero-config posture stays lean and compaction genuinely bounds memory. Once
-you do opt in, the journal is audit-grade and strict — an append that throws
-fails the run outright, the same way a failing model call would, because a
-silent gap in the audit trail is worse than a failed turn. A durable
-`TranscriptStore` persists opaque bytes through a `MessageCodec`
-(`MessageCodec.json(mapper)` is the default); encryption at rest is a codec
-*decorator* over that, not a separate store implementation, so the same
-encrypting codec composes over whichever backing store you choose.
+There is no `TranscriptStore.none()`: retention is opt-in, so the zero-config
+posture stays lean and compaction genuinely bounds memory, and the absence of
+a `.transcript(...)` call is simply the absence of a subscriber. Wired the
+default way, the journal is audit-grade and strict — `feedFrom` subscribes
+inline, so an append that throws propagates straight out of the hub's `emit`
+and fails the run outright, the same way a failing model call would, because
+a silent gap in the audit trail is worse than a failed turn (the synchronous
+spine's veto-by-throw, see "Observability" above). An application that
+prefers best-effort journaling wraps the same subscription in
+`EventHub.async(...)` instead. `Harness#transcript(...)` registers this
+subscriber once, on the harness's own hub, shared by every agent it builds —
+not once per agent. A durable `TranscriptStore` persists opaque bytes through
+a `MessageCodec` (`MessageCodec.json(mapper)` is the default); encryption at
+rest is a codec *decorator* over that, not a separate store implementation,
+so the same encrypting codec composes over whichever backing store you
+choose.
 
 ### Shaping what the model sees: `ContextBuilder`
 

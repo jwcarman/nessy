@@ -91,15 +91,6 @@ class InProcessEngineCompactionTest {
       Reducer reducer,
       EventHub hub,
       ObservationRegistry observations) {
-    return engineWith(provider, reducer, hub, observations, TranscriptStore.none());
-  }
-
-  private static InProcessEngine engineWith(
-      EngineFixtures.FakeProvider provider,
-      Reducer reducer,
-      EventHub hub,
-      ObservationRegistry observations,
-      TranscriptStore transcript) {
     return new InProcessEngine(
         provider,
         ToolRegistry.of(),
@@ -111,8 +102,7 @@ class InProcessEngineCompactionTest {
         CONFIG,
         new ObjectMapper(),
         observations,
-        new ContextAssembler(ContextBuilder.identity(), Memory.none(), hub, observations),
-        transcript);
+        new ContextAssembler(ContextBuilder.identity(), Memory.none(), hub, observations));
   }
 
   /** A two-turn provider: a big-usage first answer, then a plain second answer once resumed. */
@@ -258,13 +248,10 @@ class InProcessEngineCompactionTest {
       Usage spend = new Usage(500, 20, 0);
       Summarizer summarizer = (head, policy) -> new Summarizer.Summary("Summary.", spend);
       InMemoryTranscriptStore transcriptStore = TranscriptStore.inMemory();
+      EventHub hub = EventHub.synchronous();
+      transcriptStore.feedFrom(hub);
       InProcessEngine engine =
-          engineWith(
-              provider,
-              reducerUsing(summarizer),
-              EventHub.synchronous(),
-              ObservationRegistry.create(),
-              transcriptStore);
+          engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
       engine.run(ID, Event.UserSaid.of("first question"));
       engine.run(ID, Event.UserSaid.of("second question"));

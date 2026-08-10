@@ -101,7 +101,6 @@ public final class AgentBuilder<I> {
     this.renderer = Objects.requireNonNull(defaultRenderer, "defaultRenderer must not be null");
     this.provider = harness.provider();
     this.store = harness.store();
-    this.transcript = harness.transcript();
     this.events = harness.hub();
     this.observations = harness.observations();
     this.mapper = harness.mapper();
@@ -281,9 +280,12 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Overrides the harness's transcript store for this one agent. Unusual: the harness is the normal
-   * home for the transcript every agent shares. Harness default: {@link TranscriptStore#none()} —
-   * retention is a deliberate declaration, not a silent default.
+   * Sugar for this one agent: wires {@code transcript} to this agent's event hub as an inline
+   * {@link org.jwcarman.nessy.api.event.MessageAppended} subscriber at {@link #build()}, via {@link
+   * TranscriptStore#feedFrom}. Unusual: {@link HarnessBuilder#transcript(TranscriptStore)} is the
+   * normal home for a journal every agent shares, registered once at harness build time; reach for
+   * this only when one particular agent needs its own, separate journal. Default: none — retention
+   * is a deliberate declaration, not a silent default.
    */
   public AgentBuilder<I> transcript(TranscriptStore transcript) {
     this.transcript = transcript;
@@ -317,6 +319,9 @@ public final class AgentBuilder<I> {
     // disagree about what a call sees.
     ContextAssembler contextAssembler =
         new ContextAssembler(contextBuilder, memory, events, observations);
+    if (transcript != null) {
+      transcript.feedFrom(events);
+    }
     ExecutionEngine engine =
         new InProcessEngine(
             provider,
@@ -329,8 +334,7 @@ public final class AgentBuilder<I> {
             settings,
             mapper,
             observations,
-            contextAssembler,
-            transcript);
+            contextAssembler);
     return new Agent<>(engine, events, store, contextAssembler, renderer);
   }
 

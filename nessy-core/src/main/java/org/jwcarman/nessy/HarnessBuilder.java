@@ -34,7 +34,7 @@ public final class HarnessBuilder {
 
   private ModelProvider provider;
   private SessionStore store = SessionStore.inMemory();
-  private TranscriptStore transcript = TranscriptStore.none();
+  private TranscriptStore transcript;
   private EventHub hub = EventHub.synchronous();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ObjectMapper mapper = new ObjectMapper();
@@ -59,8 +59,14 @@ public final class HarnessBuilder {
   }
 
   /**
-   * Where every message is journaled the moment it is born. Default: {@link TranscriptStore#none()}
-   * — retention is a deliberate declaration, not a silent default.
+   * Sugar: wires {@code transcript} to {@link #hub} as an inline {@link
+   * org.jwcarman.nessy.api.event.MessageAppended} subscriber at {@link #build()} time, via {@link
+   * TranscriptStore#feedFrom}. Default: none — retention is a deliberate declaration, not a silent
+   * default, and the absence of a call here is simply the absence of a subscriber.
+   *
+   * <p>Registered exactly once, at harness build time, on the harness's own hub — every agent built
+   * from the resulting {@link Harness} shares that one subscription rather than layering on a fresh
+   * one apiece.
    */
   public HarnessBuilder transcript(TranscriptStore transcript) {
     this.transcript = transcript;
@@ -92,6 +98,9 @@ public final class HarnessBuilder {
   }
 
   public Harness build() {
-    return new Harness(provider, store, transcript, hub, observations, mapper);
+    if (transcript != null) {
+      transcript.feedFrom(hub);
+    }
+    return new Harness(provider, store, hub, observations, mapper);
   }
 }

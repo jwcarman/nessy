@@ -16,9 +16,13 @@
 package org.jwcarman.nessy.api.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -66,8 +70,14 @@ class EventHubTest {
       assertThat(order).containsExactly("first", "second");
     }
 
+    /**
+     * The synchronous spine's veto-by-throw (design §9.1): a throwing subscriber is not contained
+     * by the hub. Its exception propagates straight out of {@code emit}, and every registration
+     * after it in subscription order never runs — the throw stops the operation that emitted, it
+     * does not merely skip the one broken subscriber.
+     */
     @Test
-    void survives_a_throwing_subscriber() {
+    void a_throwing_subscriber_propagates_and_stops_delivery_to_the_rest() {
       List<Ping> pings = new ArrayList<>();
       hub.subscribe(
           Ping.class,
@@ -76,9 +86,60 @@ class EventHubTest {
           });
       hub.subscribe(Ping.class, pings::add);
 
+      assertThatThrownBy(() -> hub.emit(new Ping("a")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("observer bug");
+
+      assertThat(pings).isEmpty();
+    }
+  }
+
+  @Nested
+  class Async {
+
+    @Test
+    void a_wrapped_listener_runs_off_the_emitting_thread_and_does_not_fail_the_run()
+        throws InterruptedException {
+      CountDownLatch handled = new CountDownLatch(1);
+      List<Ping> pings = new CopyOnWriteArrayList<>();
+      hub.subscribe(
+          Ping.class,
+          EventHub.async(
+              p -> {
+                pings.add(p);
+                handled.countDown();
+              },
+              t -> {}));
+
       hub.emit(new Ping("a"));
 
+      assertThat(handled.await(5, TimeUnit.SECONDS)).isTrue();
       assertThat(pings).containsExactly(new Ping("a"));
+    }
+
+    @Test
+    void a_wrapped_listeners_exception_reaches_onError_and_never_the_emitting_thread()
+        throws InterruptedException {
+      CountDownLatch errored = new CountDownLatch(1);
+      List<Throwable> errors = new CopyOnWriteArrayList<>();
+      hub.subscribe(
+          Ping.class,
+          EventHub.async(
+              p -> {
+                throw new IllegalStateException("async observer bug");
+              },
+              t -> {
+                errors.add(t);
+                errored.countDown();
+              }));
+
+      hub.emit(new Ping("a"));
+
+      assertThat(errored.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(errors).hasSize(1);
+      assertThat(errors.getFirst())
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("async observer bug");
     }
   }
 

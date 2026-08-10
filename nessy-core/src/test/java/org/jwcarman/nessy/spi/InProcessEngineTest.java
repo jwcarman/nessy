@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.message.Message;
@@ -209,16 +210,6 @@ class InProcessEngineTest {
       Approver approver,
       SessionStore store,
       EventHub hub) {
-    return engineWith(provider, tools, approver, store, hub, TranscriptStore.none());
-  }
-
-  private static InProcessEngine engineWith(
-      ModelProvider provider,
-      ToolRegistry tools,
-      Approver approver,
-      SessionStore store,
-      EventHub hub,
-      TranscriptStore transcript) {
     return new InProcessEngine(
         provider,
         tools,
@@ -231,8 +222,7 @@ class InProcessEngineTest {
         new ObjectMapper(),
         ObservationRegistry.NOOP,
         new ContextAssembler(
-            ContextBuilder.identity(), Memory.none(), hub, ObservationRegistry.NOOP),
-        transcript);
+            ContextBuilder.identity(), Memory.none(), hub, ObservationRegistry.NOOP));
   }
 
   @Nested
@@ -253,8 +243,7 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextAssembler(),
-                      TranscriptStore.none()))
+                      EngineFixtures.contextAssembler()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("provider");
     }
@@ -274,8 +263,7 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextAssembler(),
-                      TranscriptStore.none()))
+                      EngineFixtures.contextAssembler()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants");
     }
@@ -297,8 +285,7 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextAssembler(),
-                      TranscriptStore.none()))
+                      EngineFixtures.contextAssembler()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("echo");
     }
@@ -318,31 +305,9 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      null,
-                      TranscriptStore.none()))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("contextAssembler");
-    }
-
-    @Test
-    void a_null_transcript_store_is_rejected() {
-      assertThatThrownBy(
-              () ->
-                  new InProcessEngine(
-                      new EngineFixtures.FakeProvider(List.of()),
-                      ToolRegistry.of(),
-                      Map.of(),
-                      Approver.allowAll(),
-                      SessionStore.inMemory(),
-                      EventHub.synchronous(),
-                      Reducer.defaults(),
-                      CONFIG,
-                      new ObjectMapper(),
-                      ObservationRegistry.NOOP,
-                      EngineFixtures.contextAssembler(),
                       null))
           .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("transcript");
+          .hasMessageContaining("contextAssembler");
     }
   }
 
@@ -519,8 +484,7 @@ class InProcessEngineTest {
           CONFIG,
           new ObjectMapper(),
           ObservationRegistry.NOOP,
-          EngineFixtures.contextAssembler(),
-          TranscriptStore.none());
+          EngineFixtures.contextAssembler());
     }
 
     private static EngineFixtures.FakeProvider toolCallingProvider() {
@@ -648,8 +612,7 @@ class InProcessEngineTest {
               CONFIG,
               new ObjectMapper(),
               ObservationRegistry.NOOP,
-              EngineFixtures.contextAssembler(),
-              TranscriptStore.none());
+              EngineFixtures.contextAssembler());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 
@@ -701,8 +664,7 @@ class InProcessEngineTest {
               CONFIG,
               new ObjectMapper(),
               ObservationRegistry.NOOP,
-              EngineFixtures.contextAssembler(),
-              TranscriptStore.none());
+              EngineFixtures.contextAssembler());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 
@@ -1069,6 +1031,13 @@ class InProcessEngineTest {
   @Nested
   class Transcript {
 
+    /**
+     * The journal no longer rides a dedicated engine dependency (design §9.1/§10.8): the engine
+     * emits {@link MessageAppended} at the newborn choke point, and an {@link
+     * InMemoryTranscriptStore} subscribed via {@link TranscriptStore#feedFrom} — the same sugar
+     * {@code .transcript(store)} calls on the builders — sees exactly the entries the old
+     * direct-dependency test asserted.
+     */
     @Test
     void every_message_is_journaled_at_birth() {
       Usage toolTurnUsage = new Usage(10, 5, 0);
@@ -1084,14 +1053,15 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("Done."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, finalTurnUsage))));
       InMemoryTranscriptStore transcript = TranscriptStore.inMemory();
+      EventHub hub = EventHub.synchronous();
+      transcript.feedFrom(hub);
 
       engineWith(
               provider,
               ToolRegistry.of(new EngineFixtures.EchoTool(true)),
               Approver.allowAll(),
               SessionStore.inMemory(),
-              EventHub.synchronous(),
-              transcript)
+              hub)
           .run(ID, Event.UserSaid.of("echo hi"));
 
       List<TranscriptEntry> entries = transcript.entries(ID);
@@ -1112,8 +1082,16 @@ class InProcessEngineTest {
       assertThat(entries.get(3).turnUsage()).isEqualTo(finalTurnUsage);
     }
 
+    /**
+     * The old strictness test — a failing {@code TranscriptStore.append} fails the run — is now
+     * exactly the hub's throwing-subscriber contract (design §9.1): {@link
+     * TranscriptStore#feedFrom} subscribes inline, so a store whose {@code append} throws
+     * propagates straight out of {@code hub.emit}, out of the engine's newborn announcement, and
+     * out of {@code run} — the veto is the throw. {@code run}'s {@code finally} still saves
+     * whatever progress reached the session store before the throw.
+     */
     @Test
-    void a_failing_journal_fails_the_run_loudly() {
+    void a_throwing_journaling_subscriber_fails_the_run_loudly() {
       EngineFixtures.FakeProvider provider =
           new EngineFixtures.FakeProvider(
               List.of(
@@ -1125,16 +1103,12 @@ class InProcessEngineTest {
           (id, entry) -> {
             throw new IllegalStateException("journal blew up");
           };
+      EventHub hub = EventHub.synchronous();
+      explodingTranscript.feedFrom(hub);
 
       assertThatThrownBy(
               () ->
-                  engineWith(
-                          provider,
-                          ToolRegistry.of(),
-                          Approver.allowAll(),
-                          store,
-                          EventHub.synchronous(),
-                          explodingTranscript)
+                  engineWith(provider, ToolRegistry.of(), Approver.allowAll(), store, hub)
                       .run(ID, Event.UserSaid.of("what is 2+2?")))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("journal blew up");

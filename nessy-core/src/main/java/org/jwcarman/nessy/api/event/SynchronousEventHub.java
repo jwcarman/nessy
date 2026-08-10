@@ -19,6 +19,12 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
+/**
+ * The default {@link EventHub}: synchronous, in subscription order, on the emitting thread — and a
+ * throwing subscriber propagates straight out of {@link #emit}, stopping delivery to every
+ * registration after it. See the {@link EventHub} javadoc for why that is the contract rather than
+ * a bug: the veto is the throw.
+ */
 final class SynchronousEventHub implements EventHub {
 
   private final List<Registration<?>> registrations = new CopyOnWriteArrayList<>();
@@ -55,16 +61,18 @@ final class SynchronousEventHub implements EventHub {
       this.subscriber = subscriber;
     }
 
+    /**
+     * Delivers {@code event} to this registration, uncaught: a throwing subscriber propagates
+     * straight out of here, through {@link #emit}'s loop, and into whatever called {@code emit} —
+     * the synchronous spine's veto-by-throw (design §9.1). A subscriber that must not be allowed to
+     * stop the run wraps itself with {@link EventHub#async(Consumer, Consumer)} instead of relying
+     * on this class to protect it.
+     */
     void deliver(Object event) {
       if (!type.isInstance(event)) {
         return;
       }
-      try {
-        subscriber.accept(type.cast(event));
-      } catch (RuntimeException e) {
-        // Observers must never alter execution. A failure during failure
-        // reporting would recurse, so a broken subscriber is simply skipped.
-      }
+      subscriber.accept(type.cast(event));
     }
   }
 }

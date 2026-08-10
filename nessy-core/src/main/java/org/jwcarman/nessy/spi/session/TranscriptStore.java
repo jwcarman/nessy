@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.spi.session;
 
+import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.MessageAppended;
+import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.session.SessionId;
 
 /**
@@ -27,28 +30,42 @@ import org.jwcarman.nessy.api.session.SessionId;
  * or the engine ever calls anything but {@link #append}; a reader, where one exists (see {@link
  * InMemoryTranscriptStore#entries}), belongs to the concrete implementation, not the seam.
  *
- * <p><b>Strict by design:</b> the engine calls {@link #append} with no {@code try}/{@code catch}
- * around it. An implementation that throws fails the run outright — the exception propagates out of
- * {@code InProcessEngine.run}, just as a failing model call or a failing session save would.
- * Retention is opt-in ({@link #none()} is the default), but once an application has opted in by
- * supplying a real store, a transcript write that silently fails is worse than one that never
- * happened: it would leave the durable session state and the audit trail disagreeing about what was
- * said, with nothing to say so. A store that wants best-effort delivery has to build that itself —
- * swallow its own failures, retry, queue — rather than lean on the engine to do it.
+ * <p><b>The journal rides the hub (design §9.1, §10.8).</b> The engine no longer holds a {@code
+ * TranscriptStore} at all; it emits {@link MessageAppended} at its newborn choke point, and a
+ * journal is simply a subscriber — {@link #feedFrom(EventHub)} is that subscription. Wiring it
+ * inline (the default {@code .transcript(store)} sugar on the harness/agent builders) keeps
+ * strictness: a subscriber that writes on the emitting thread and lets a failed {@link #append}
+ * propagate stops the run outright, the synchronous spine's veto-by-throw, exactly as a direct
+ * engine dependency once did. An application that prefers best-effort journaling wraps the same
+ * subscription in {@link EventHub#async(java.util.function.Consumer, java.util.function.Consumer)}
+ * — a declared posture, per subscriber, never a default. There is no {@code TranscriptStore.none()}
+ * sentinel any more: the absence of a journal is simply the absence of a subscriber.
  */
 public interface TranscriptStore {
 
   /**
    * Appends one message to {@code id}'s transcript, in birth order.
    *
-   * <p>See the interface javadoc: a thrown exception here is not caught by the engine and fails the
-   * run.
+   * <p>See the interface javadoc: whether a thrown exception here fails the run depends entirely on
+   * how this store was subscribed — inline (the default) propagates and fails the run; {@link
+   * EventHub#async(java.util.function.Consumer, java.util.function.Consumer)} isolates it instead.
    */
   void append(SessionId id, TranscriptEntry entry);
 
-  /** The default: retention is a deliberate declaration, not a silent default. */
-  static TranscriptStore none() {
-    return NoOpTranscriptStore.INSTANCE;
+  /**
+   * Subscribes this store to {@code hub}'s {@link MessageAppended} stream, inline: each event is
+   * turned into one {@link #append} call on the emitting thread, so a failing append propagates
+   * straight out of {@code emit} and fails the run that produced it. This is the one obvious way to
+   * wire a store to the hub — the harness/agent builders' {@code .transcript(store)} sugar calls
+   * exactly this at build time, once per hub.
+   *
+   * @return the subscription, closable like any other
+   */
+  default Subscription feedFrom(EventHub hub) {
+    return hub.subscribe(
+        MessageAppended.class,
+        event ->
+            append(event.sessionId(), new TranscriptEntry(event.message(), event.turnUsage())));
   }
 
   /** An in-process, in-memory transcript, with its own reader for tests to inspect. */

@@ -45,13 +45,15 @@ changed.
   engine are all unchanged. See `AgentFacadeTest`'s `Typed_front_door` nested
   class and the README's "Typed agents" section.
 - **`Harness`** (root) — infrastructure reified. `Nessy.harness()` assembles
-  the six pieces of substrate an application shares across every agent it
-  builds — provider default, session store, transcript store, event hub,
-  observation registry, object mapper — once; `Harness#agent()` then returns
-  an `AgentBuilder` seeded with those pieces, ready to be given one agent's
-  identity: model, system prompt, tools, policies. Two agents built from the
-  same harness share its session store and event hub by construction.
-  `Nessy.agent()` survives unchanged as sugar over an implicit default
+  the substrate an application shares across every agent it builds — provider
+  default, session store, event hub, observation registry, object mapper —
+  once; `Harness#agent()` then returns an `AgentBuilder` seeded with those
+  pieces, ready to be given one agent's identity: model, system prompt,
+  tools, policies. Two agents built from the same harness share its session
+  store and event hub by construction. `HarnessBuilder#transcript(store)` is
+  sugar, not a stored piece: it registers the journaling subscriber directly
+  on the hub at `build()` time, once per harness. `Nessy.agent()` survives
+  unchanged as sugar over an implicit default
   harness — the front door does not get heavier for the single-agent case.
 - **`ToolGrant`/`UsagePolicy`** (`api.tool`) — capability and authority,
   declared together, per tool, per agent. A `ToolGrant(tool, policy)` pairs a
@@ -132,15 +134,24 @@ changed.
 - **`TranscriptStore` and `TranscriptEntry`** (`spi.session`) — an append-only
   journal of a session's entire message history, independent of what
   compaction keeps in the working set. A pure sink (`append` is the only
-  method — the framework never reads its own audit log); default is
-  `TranscriptStore.none()`, so retention stays opt-in and zero-config memory
-  bounds are untouched. Once wired via `.transcript(...)` on the builder, the
-  journal is strict: an append that throws fails the run outright, the same
-  as a failing model call. `TranscriptStore.inMemory()` ships an
-  `InMemoryTranscriptStore` with a test/host-facing `entries(id)` reader.
-  `TranscriptEntry(message, turnUsage)` carries each message's exact cost —
-  an assistant turn's own usage, a compaction summary's spend, or
-  `Usage.zero()` for everything else.
+  method — the framework never reads its own audit log). **The journal rides
+  the hub**: the engine holds no `TranscriptStore` at all — it emits the new
+  `MessageAppended(sessionId, message, turnUsage)` (`api.event`) at its
+  newborn choke point, and a journal is simply a subscriber.
+  `TranscriptStore.feedFrom(EventHub)` is that subscription — an inline
+  default method that turns each `MessageAppended` into one `append` call on
+  the emitting thread, so a failing append propagates and fails the run
+  exactly as a direct engine dependency once did (the synchronous spine's
+  veto-by-throw, see below). `.transcript(store)` on `HarnessBuilder` /
+  `AgentBuilder` is sugar over exactly this call, registered once per harness
+  hub rather than once per agent. `TranscriptStore.none()` is **retired** —
+  there is no sentinel any more; the absence of a `.transcript(...)` call is
+  simply the absence of a subscriber. An application that prefers
+  best-effort journaling wraps the same subscription in `EventHub.async(...)`.
+  `TranscriptStore.inMemory()` ships an `InMemoryTranscriptStore` with a
+  test/host-facing `entries(id)` reader. `TranscriptEntry(message, turnUsage)`
+  carries each message's exact cost — an assistant turn's own usage, a
+  compaction summary's spend, or `Usage.zero()` for everything else.
 - **`MessageCodec`** (`spi.session`) — the `Message ↔ byte[]` translation a
   durable `TranscriptStore` needs to persist opaque bytes rather than message
   structure. Default is `MessageCodec.json(mapper)`; encryption at rest is
@@ -222,10 +233,25 @@ changed.
   semantics, only sugar over it.
 - **The event hub**, replacing per-object listeners. `EventHub`/`EventEmitter`
   let any component emit and any subscriber declare interest by type;
-  dispatch is synchronous, in-order, and same-thread by default, and a
-  subscriber's exception can never affect execution. Ships `SessionEvent`
-  (every reduced loop event) and `ToolProgress` (long-running tools reporting
-  through `ToolContext.events()`). `nessy-testing` ships `RecordingSubscriber`.
+  dispatch is synchronous, in subscription order, on the emitting thread.
+  Ships `SessionEvent` (every reduced loop event), `ToolProgress`
+  (long-running tools reporting through `ToolContext.events()`), and the new
+  `MessageAppended` (every message, at birth, with its turn usage — the
+  subscription point for journaling, memory extraction, and anything else
+  that follows the transcript). `nessy-testing` ships `RecordingSubscriber`.
+- **The synchronous spine — the veto is the throw** (design §9.1, pre-1.0
+  breaking): `EventHub`'s delivery contract no longer catches a subscriber's
+  `RuntimeException`. A throwing subscriber now propagates straight out of
+  `emit`, stopping delivery to every subscriber after it and whatever called
+  `emit` in the first place — a subscriber that must stand in the way of
+  something (an audit write, an invariant check) writes inline and lets its
+  exception propagate; a subscriber with no business stopping anything opts
+  out per-subscriber via the new `EventHub.async(listener, onError)` (plus a
+  `System.Logger`-backed convenience overload), which runs the listener on a
+  fresh virtual thread so nothing it throws ever reaches the emitting thread.
+  `Conversation.tell(I, Consumer<Event>)`'s tap is just another hub
+  subscriber and picks up the same behavior: a throwing tap now aborts the
+  call rather than being silently contained.
 - **`TerminationPolicy`**, replacing the hard-coded consecutive-error ceiling.
   A pure `shouldHalt(SessionState)` the reducer consults before every model
   call, with `maxTurns`, `maxConsecutiveErrors`, `anyOf`, and `never` factories.

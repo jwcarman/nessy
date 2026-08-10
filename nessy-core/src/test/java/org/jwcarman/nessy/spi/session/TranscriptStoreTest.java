@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.Usage;
@@ -60,10 +62,26 @@ class TranscriptStoreTest {
   }
 
   @Test
-  void none_swallows_everything_silently() {
-    TranscriptStore store = TranscriptStore.none();
+  void feedFrom_turns_each_MessageAppended_into_one_append() {
+    InMemoryTranscriptStore store = new InMemoryTranscriptStore();
+    EventHub hub = EventHub.synchronous();
+    store.feedFrom(hub);
+    Message message = Message.user("hi");
+    Usage usage = new Usage(3, 4, 0);
 
-    assertThatCode(() -> store.append(ID, new TranscriptEntry(Message.user("hi"), Usage.zero())))
-        .doesNotThrowAnyException();
+    hub.emit(new MessageAppended(ID, message, usage));
+
+    assertThat(store.entries(ID)).containsExactly(new TranscriptEntry(message, usage));
+  }
+
+  @Test
+  void feedFrom_ignores_events_of_other_types() {
+    InMemoryTranscriptStore store = new InMemoryTranscriptStore();
+    EventHub hub = EventHub.synchronous();
+    store.feedFrom(hub);
+
+    hub.emit("not a MessageAppended");
+
+    assertThat(store.entries(ID)).isEmpty();
   }
 }

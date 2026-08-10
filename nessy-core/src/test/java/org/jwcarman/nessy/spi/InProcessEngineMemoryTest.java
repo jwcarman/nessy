@@ -45,7 +45,6 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.session.SessionStore;
-import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 /**
  * Recall performed by {@link InProcessEngine} at request assembly: {@link Memory#recall} enriches
@@ -74,8 +73,7 @@ class InProcessEngineMemoryTest {
         CONFIG,
         new ObjectMapper(),
         observations,
-        new ContextAssembler(ContextBuilder.identity(), memory, hub, observations),
-        TranscriptStore.none());
+        new ContextAssembler(ContextBuilder.identity(), memory, hub, observations));
   }
 
   private static EngineFixtures.FakeProvider oneTurnProvider() {

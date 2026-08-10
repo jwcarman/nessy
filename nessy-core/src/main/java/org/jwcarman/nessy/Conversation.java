@@ -70,13 +70,16 @@ public final class Conversation<I> {
    * closed when {@code tell} returns, whether normally or by exception, so {@code tap} never fires
    * again afterward.
    *
-   * <p>If {@code tap} throws, the exception is contained by the hub — {@link EventHub}'s delivery
-   * contract catches and discards a subscriber's {@link RuntimeException} rather than letting it
-   * propagate — so a throwing {@code tap} will not abort the call; the loop continues and this
-   * method still returns a normal {@link Reply}.
+   * <p>{@code tap} is just another hub subscriber, so the synchronous spine's veto-by-throw (design
+   * §9.1) applies to it exactly as it would to any other subscriber: if {@code tap} throws, that
+   * exception propagates straight out of {@code emit}, out of the engine's {@code run}, and out of
+   * this method — a throwing {@code tap} aborts the call. A {@code tap} that must not be allowed to
+   * do that wraps itself with {@link EventHub#async(java.util.function.Consumer,
+   * java.util.function.Consumer)} before being handed here.
    *
    * @throws IllegalArgumentException if the renderer produces a null or empty block list
-   * @throws RuntimeException whatever the renderer itself throws, unwrapped
+   * @throws RuntimeException whatever the renderer itself throws, unwrapped, or whatever {@code
+   *     tap} itself throws
    */
   public Reply tell(I input, Consumer<Event> tap) {
     Objects.requireNonNull(tap, "tap must not be null");

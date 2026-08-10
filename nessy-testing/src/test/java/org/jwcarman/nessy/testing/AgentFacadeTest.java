@@ -586,23 +586,28 @@ class AgentFacadeTest {
         .noneMatch(text -> text.contains("foreign"));
   }
 
+  /**
+   * A tap is just another hub subscriber, so the synchronous spine's veto-by-throw (design §9.1)
+   * applies to it exactly as it does to any other subscriber: a throwing tap propagates and aborts
+   * the {@code tell}, rather than being contained.
+   */
   @Test
-  void a_throwing_tap_does_not_abort_the_tell() {
+  void a_throwing_tap_propagates_and_aborts_the_tell() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
     Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
 
-    Reply reply =
-        agent
-            .converse()
-            .tell(
-                "what is 2+2?",
-                event -> {
-                  throw new RuntimeException("tap blew up");
-                });
-
-    assertThat(reply.failed()).isFalse();
-    assertThat(reply.text()).isEqualTo("The answer is 4.");
+    assertThatThrownBy(
+            () ->
+                agent
+                    .converse()
+                    .tell(
+                        "what is 2+2?",
+                        event -> {
+                          throw new RuntimeException("tap blew up");
+                        }))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessage("tap blew up");
   }
 
   @Test
