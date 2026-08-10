@@ -828,7 +828,7 @@ public interface Compactor {                       // spi.compaction — renamed
      *  Decides on the ledger, transforms with the ledger in view. */
     Result compact(SessionState state);
 
-    record Result(List<Message> workingSet, Usage spend) { }
+    record Result(List<Message> workingSet) { }   // spend stripped 2026-08-10 — see the jurisdiction rule
 
     static Compactor disabled() { … }
 }
@@ -860,19 +860,25 @@ dependencies (extractive/NLP, embeddings, remote services).
   perform `compact(…)` under the `nessy.compaction` observation, validate
   the result (`Context.of(replacement)` — a pair-breaking strategy takes
   the existing best-effort failure path), feed
-  `Event.Compacted(result.workingSet(), result.spend())`. Reducer: apply —
-  replace messages wholesale, bump `generation`, accumulate the spend into
-  `usage`, proceed to `CallModel`. **The strategy proposes; the reducer
+  `Event.Compacted(result.workingSet())`. Reducer: apply — replace
+  messages wholesale, bump `generation`, proceed to `CallModel`. **The strategy proposes; the reducer
   disposes.** A result that does not *shrink* the working set is applied
   as a skip (no bump — the reducer's belt to the engine's suspenders). A
   `Compacted` arriving while tool debt is outstanding applies as a skip too,
   regardless of shrink size — compaction only ever applies against a settled
   transcript (Controller ruling, fix round 1).
-- **`Result.spend` is a bill, not a diff**: the tokens the compaction
-  itself consumed (the summarizing call's own input + output), accumulated
-  into the ledger like every other model call — the cost-accounting
-  exclusion is repealed. Non-LLM strategies (truncation, tool-exchange
-  dropping) spent nothing and return `Usage.zero()`.
+- **The jurisdiction rule (ruled 2026-08-10, superseding the morning's
+  spend-is-a-bill ruling — made before the seam existed):** the ledger
+  bills the LOOP's own spend — what `TurnEnded` reports for conversational
+  turns. Auxiliary spend — compaction, tool-internal calls, anything a
+  performer does privately — is telemetry's jurisdiction: the summarizing
+  compactor instruments its own model call (usage on its span, nested
+  under `nessy.compaction`), and subagent tools will get the same
+  treatment. A `Usage` component on the seam's `Result` was the
+  summarizing implementation bleeding through the abstraction — every
+  `Usage.zero()` a truncating compactor wrote was the abstraction
+  apologizing. Wallet-guard integrity survives: compaction frequency is
+  coupled to loop progress, which is exactly what the guard bounds.
 - **Replay hardens for free.** `Event.Compacted` now carries the entire
   replacement working set — the *outcome*, not ingredients for re-deriving
   it. The recompute-the-cut hazard parked by Plan 4's review dissolves: a
@@ -1091,9 +1097,9 @@ strategy, cheaper model" never requires reimplementing cut logic.)
 
 ```java
 public interface Summarizer {
-    Summary summarize(Context head);   // config baked at construction (2026-08-10)
+    String summarize(Context head);    // config baked at construction; spend is its own span's business (2026-08-10)
 
-    record Summary(String text, Usage usage) { }   // non-LLM summarizers return Usage.zero()
+
 }
 ```
 
@@ -1454,7 +1460,7 @@ the application's own explicit declaration. If none is declared, the starter's
 | Where does authority attach? (2026-08-09) | To the grant — `ToolGrant` + `UsagePolicy` per agent-tool binding; `requiresApproval()` is the tool author's default; explicit grant policy may loosen or tighten (§10.5) |
 | Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
 | Are agents typed? (2026-08-09) | Yes, all of them — `Agent<I>` over an application-owned sealed vocabulary; `Agent<String>` degenerate; born pre-1.0; tools keep their own input types (§8.4) |
-| Does compaction's spend count? (2026-08-09) | Yes — `Event.Compacted(workingSet, spend)`; a bill, not a diff; non-LLM strategies bill `Usage.zero()`; the exclusion is repealed (§10.6) |
+| Whose spend does the ledger bill? (2026-08-10, supersedes 2026-08-09) | The loop's own — `TurnEnded` for conversational turns; auxiliary spend (compaction, tool-internal) is telemetry's jurisdiction; `Compacted` carries only the working set (§10.6) |
 | Is compaction pluggable? (2026-08-09; consolidated 2026-08-10) | Wholesale — `Compactor.requiresCompaction(state)` + `compact(state) → Result(workingSet, spend)`; the compactor proposes, the reducer disposes; trigger/policy dissolved into `Compactors.summarizing`'s builder; `Summarizer` is its sub-seam (§10.6) |
 | Journal append failure? (2026-08-09) | Strict — audit-grade truth; a failed append fails the run; in-memory default cannot fail (§10.8) |
 | At-rest encoding? (2026-08-09) | `MessageCodec` (`Message ↔ byte[]`): JSON-as-UTF-8 default, encryption as codec decorator, serving both stores; core ships no cryptography (§10.8) |
