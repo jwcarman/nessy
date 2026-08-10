@@ -46,7 +46,7 @@ mapped to the seams that provide it:
 
 | # | Service | The guarantee | Provided by |
 |---|---|---|---|
-| 1 | Turn-taking | events in, decisions out, effects in order, one coherent transcript | `Reducer`, `ExecutionEngine`, `Transcript` |
+| 1 | Turn-taking | events in, decisions out, effects in order, one coherent transcript | `Reducer`, `ExecutionEngine`, `Context` |
 | 2 | Context fit | the conversation always fits the window; compaction and projection are not the agent's concern | `CompactionPolicy`, `Summarizer`, `ContextBuilder`, `TokenEstimator`, `Memory` |
 | 3 | A memory of record | everything durable: snapshots to resume, an append-only journal of every message | `SessionStore`, `TranscriptStore`, the engine's durability contract |
 | 4 | Safe hands | tool calls bound, validated, contained; a throwing tool is a model-visible error, never a dead session | `ToolRegistry`, the invoker (Factor 9) |
@@ -181,7 +181,7 @@ org.jwcarman.nessy.api           Message, Role, ContentBlock (sealed: TextBlock,
                                  ToolCall, ToolResult, Usage, StopReason,
                                  SessionId, SessionState, SessionStatus,
                                  Event (sealed), Decision (sealed), Awaited (sealed), ParkToken,
-                                 RunOutcome (sealed), TerminationPolicy, Transcript [§10.8]
+                                 RunOutcome (sealed), TerminationPolicy, Context [§10.8]
 org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec,
                                  ToolGrant, UsagePolicy, PolicyDecision (sealed)  [§10.5]
 org.jwcarman.nessy.api.approval  Approver, ApprovalRequest
@@ -251,6 +251,24 @@ posture; `nessy-testing` ships the doubles; `nessy-bom` pins versions;
 one builder.
 
 ## 5. Naming
+
+### 5.0 Glossary (added 2026-08-09) — one word, one meaning
+
+- **The transcript** — a session's entire message history, forever.
+  Append-only; lives in the `TranscriptStore` journal.
+- **A session** — the continuing interaction, known by its `SessionId`,
+  persisting across runs, parks, and resumptions.
+- **The ledger** — `SessionState`: a value snapshot of everything true
+  about a session right now — working messages, accounting, in-flight
+  machinery.
+- **The working set** — the ledger's message aspect: the compacted
+  transcript (`[summary, …tail]` after compactions) that the reducer
+  reasons over and `reply.state()` returns.
+- **A `Context`** — a validated, pairing-legal message sequence bound for
+  the wire: what one model call sees, minted per request by projection and
+  recall.
+- **A run** — one drive of the loop: an entry fact in, effects performed
+  to quiescence, a `RunOutcome` out.
 
 The conventions, uniformly applied:
 
@@ -699,8 +717,30 @@ Design rules:
 
 **Amended 2026-08-09 (§10.8):** the engine's private summarization method is
 extracted into the `Summarizer` seam (`spi.compaction`), the pair-safe cut
-relocates onto the `Transcript` type, and wire-bound message lists become
-`Transcript`s. Semantics above are otherwise unchanged.
+relocates onto the `Context` type, and wire-bound message lists become
+`Context`s. **Convergence rulings (2026-08-09, project owner):**
+`Event.Compacted` gains the summarization call's `Usage` as a second
+component — the reducer accumulates it into `SessionState.usage`, so a
+session's cost accounting is complete (the prior documented exclusion is
+repealed). And the trigger is promoted from data to strategy:
+
+```java
+public interface CompactionTrigger {
+    boolean shouldCompact(SessionState state);   // pure; consulted by the reducer
+
+    static CompactionTrigger atTokens(long trigger) { … }              // the classic threshold
+    static CompactionTrigger forWindow(long window, long maxTokens) { … } // ≈ 0.8 × (window − maxTokens)
+    static CompactionTrigger never() { … }
+}
+```
+
+`CompactionPolicy` becomes `(CompactionTrigger trigger, int
+keepRecentMessages, int summaryMaxTokens, String instructions)`;
+`defaults()` = `atTokens(100_000)`, `disabled()` = `never()`. The builder
+derives `forWindow(…)` automatically when a `contextWindow` is declared on
+the model binding. Custom rules (message-count, topic-shift,
+never-mid-tool-chain) implement the interface; the threshold comparison is
+just the default strategy. Semantics above are otherwise unchanged.
 
 **The declared window (amended 2026-08-09).** The static `defaults()`
 trigger is safe for 200k-class models and silently wrong for small-window
@@ -717,11 +757,11 @@ where each truthfully lives:
   (OpenRouter's `context_length`, Ollama metadata) may pre-fill;
   application declaration always wins. No model→window table ships in
   core — hardcoded facts about other vendors' products rot on arrival.
-- **Derived**: `CompactionPolicy.forWindow(window, maxTokens)` computes
-  the trigger as roughly `0.8 × (window − maxTokens)` — reserving the
+- **Derived**: `CompactionTrigger.forWindow(window, maxTokens)` computes
+  the threshold as roughly `0.8 × (window − maxTokens)` — reserving the
   reply's room, with the margin absorbing between-measurement growth
   (the new user turn, tool-result spikes, recall drift). The builder
-  uses the derived form automatically when a window is declared;
+  uses the derived trigger automatically when a window is declared;
   absolute `defaults()` remains the zero-config path.
 - **Measured**: `lastInputTokens` stays the position gauge, unchanged —
   and because it measures the wire (post-projection, post-recall), memory
@@ -756,26 +796,30 @@ budgeting) lives on the read path. Append-only stops being a discipline
 stores must trust the reducer to honor and becomes structural: nothing in
 the system has an API to rewrite history.
 
-**`Transcript` (api) — the pairing invariant's single home.** The rule that
-an assistant `tool_use` must never be separated from its results was
-enforced in two implicit places (the reducer's private cut method;
-`elidingToolResults` being careful) and in zero places for third-party
-projections — a pair-breaking custom `ContextBuilder` would surface as a
-provider 400. `Transcript` is an immutable value type over an ordered
-message list whose construction validates the invariant: every `tool_use`
-id in an assistant message is answered, completely and immediately, by the
-following results message, and no orphan results exist. The boundary logic
-becomes its behavior — the pair-safe cut (largest index at or below a limit
-that lands before a genuine user text turn) moves out of the reducer's
-private method and onto the type, with head/tail slicing beside it — so the
-reducer, the summarizer's head selection, and any budget-aware projection
-all use one implementation of "where may I cut?". Wire-bound seams speak
-`Transcript`: `ContextBuilder.project` returns one, `ModelRequest` and
-`Effect.Compact` carry one. `SessionState.messages` stays a plain list — a
-mid-turn state legitimately ends with an open `tool_use` awaiting its
-results; the reducer guarantees completeness at every `CallModel`, which is
-where transcripts are minted. An invalid projection now fails loudly at the
-seam, in-process, with a message naming the orphaned id.
+**`Context` (api) — the pairing invariant's single home.** (Named
+`Transcript` when first amended; renamed 2026-08-09 so each word means one
+thing: *the transcript* is the journal's entire history, *a `Context`* is
+a validated message sequence bound for the wire — and `ContextBuilder`
+builds the thing it is named for.) The rule that an assistant `tool_use`
+must never be separated from its results was enforced in two implicit
+places (the reducer's private cut method; `elidingToolResults` being
+careful) and in zero places for third-party projections — a pair-breaking
+custom `ContextBuilder` would surface as a provider 400. `Context` is an
+immutable value type over an ordered message list whose construction
+validates the invariant: every `tool_use` id in an assistant message is
+answered, completely and immediately, by the following results message,
+and no orphan results exist. The boundary logic becomes its behavior — the
+pair-safe cut (largest index at or below a limit that lands before a
+genuine user text turn) moves out of the reducer's private method and onto
+the type, with head/tail slicing beside it — so the reducer, the
+summarizer's head selection, and any budget-aware projection all use one
+implementation of "where may I cut?". Wire-bound seams speak `Context`:
+`ContextBuilder.project` returns one, `ModelRequest` and `Effect.Compact`
+carry one. `SessionState.messages` stays a plain list — a mid-turn state
+legitimately ends with an open `tool_use` awaiting its results; the
+reducer guarantees completeness at every `CallModel`, which is where
+contexts are minted. An invalid projection now fails loudly at the seam,
+in-process, with a message naming the orphaned id.
 
 **`TranscriptStore` (spi.session) — the append-only journal.**
 
@@ -800,8 +844,28 @@ already stores, so it is computed on demand by whatever `TokenEstimator`
 is current — storing it would freeze one estimator's guess into the
 permanent record and couple the write path to a read-path collaborator.
 Store facts, compute derivations. Metadata rides on the entry rather than
-on the `Message` grammar, which stays wire-pure. The journal is never on
-the run
+on the `Message` grammar, which stays wire-pure.
+
+**Append failure is strict (ruled 2026-08-09).** The journal is
+audit-grade truth: a silent gap is worse than a failed turn, so a failed
+append fails the run, loudly. The in-memory default cannot fail, so the
+zero-config posture is untouched; strictness bites only where someone
+deliberately wired a durable journal — which is exactly when they mean it.
+(A best-effort mode, if ever demanded, would be a declared posture, never
+a default.)
+
+**At-rest encoding — `MessageCodec` (ruled 2026-08-09).** Durable stores
+persist opaque bytes, never message structure: a `MessageCodec` owns the
+`Message ↔ byte[]` translation. The default is `MessageCodec.json(mapper)`
+— canonical JSON serialized as UTF-8 bytes — and encryption at rest is a
+codec *decorator* —
+`MessageCodec.encrypted(json, keyProvider)` — composing over any store
+implementation rather than being rebuilt per vendor. The seam serves
+`SessionStore` equally (encrypting the journal but not the snapshots would
+be theater). Key management is the application's; `nessy-core` ships no
+cryptography — the encrypting codec lives with the durable-store modules
+that need it. The in-memory defaults hold live objects and use no codec at
+all. The journal is never on the run
 hot path: loads and resumes come from `SessionStore` snapshots exactly as
 today. The journal exists for what snapshots cannot do — audit, debugging a
 bad summary, re-summarizing with a better model later, and memory
@@ -817,7 +881,7 @@ precisely the workload Cassandra's storage model is built for.
 
 ```java
 public interface Summarizer {
-    String summarize(Transcript head, CompactionPolicy policy);
+    String summarize(Context head, CompactionPolicy policy);
 }
 ```
 
@@ -883,7 +947,7 @@ not a subtype.
 
 ```java
 public interface Memory {
-    List<Message> recall(Transcript context);   // engine-performed; I/O sanctioned
+    List<Message> recall(Context context);      // engine-performed; I/O sanctioned
 
     static Memory none() { … }                  // the default
 }
@@ -1096,7 +1160,7 @@ the application's own explicit declaration. If none is declared, the starter's
 4. Then as previously mapped: OpenAI-wire provider, `DurableEngine` (+ trace
    continuity, + resume semantics of §6), Spring Boot starter, TUI. Compaction
    and `ContextBuilder` (§10.6) shipped in Plan 4, ahead of this sequencing.
-   The §10.8 context-collaborator amendment (`Transcript`, `TranscriptStore`,
+   The §10.8 context-collaborator amendment (`Context`, `TranscriptStore`,
    `Summarizer`, `TokenEstimator`, domain packaging) is next in line, before
    `DurableEngine` — it reshapes seams the durable engine will consume. The
    2026-08-09 design session extends that queue: the `Harness` reification and
@@ -1126,7 +1190,7 @@ the application's own explicit declaration. If none is declared, the starter's
    | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | ✅ cleared — `Usage` is now `(inputTokens, outputTokens, cachedInputTokens)` |
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
-   | `Transcript` adoption (`ContextBuilder`/`ModelRequest`/`Effect.Compact` speak `Transcript`) | seam signature + record component types; breaking after 1.0 | open — ships with the §10.8 plan |
+   | `Context` adoption (`ContextBuilder`/`ModelRequest`/`Effect.Compact` speak `Context`) | seam signature + record component types; breaking after 1.0 | open — ships with the convergence plan |
    | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | open — the type parameter must be born pre-1.0; `Agent<String>` is the degenerate case |
    | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
    | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | open — ships pre-1.0 |
@@ -1164,13 +1228,18 @@ the application's own explicit declaration. If none is declared, the starter's
 | Async or sync event delivery? | Synchronous default; async is a decorator |
 | One front door or two? | One: `Nessy.agent()`; engine reached through `Agent` |
 | Where does history live durably? (2026-08-09) | The append-only `TranscriptStore` journal, fed by the engine at message birth; state is the working set (§10.8) |
-| Where is the tool-pairing invariant enforced? (2026-08-09) | Once, in the `Transcript` type, at construction (§10.8) |
+| Where is the tool-pairing invariant enforced? (2026-08-09) | Once, in the `Context` type, at construction (§10.8) |
 | Is summarization pluggable? (2026-08-09) | Yes — `spi.compaction.Summarizer`, a many-implementations seam; the reducer keeps summary formatting (§10.8) |
 | Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` computes the message-level figure on demand, read-path only — the journal stores facts (`turnUsage`), never derivations (§10.8) |
 | What is a harness? (2026-08-09) | The model-independent runtime an agent runs inside, defined by its eight-service contract (§1.1); reified as the `Harness` object (§8.4) |
 | Where does authority attach? (2026-08-09) | To the grant — `ToolGrant` + `UsagePolicy` per agent-tool binding; `requiresApproval()` is the tool author's default; explicit grant policy may loosen or tighten (§10.5) |
 | Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
 | Are agents typed? (2026-08-09) | Yes, all of them — `Agent<I>` over an application-owned sealed vocabulary; `Agent<String>` degenerate; born pre-1.0; tools keep their own input types (§8.4) |
+| Does the summarizer's spend count? (2026-08-09) | Yes — `Event.Compacted(summary, usage)`; the reducer accumulates it; the exclusion is repealed (§10.6) |
+| Is the compaction trigger pluggable? (2026-08-09) | Yes — `CompactionTrigger.shouldCompact(state)`, threshold as default strategy; constants baked at construction, wired by the builder (§10.6) |
+| Journal append failure? (2026-08-09) | Strict — audit-grade truth; a failed append fails the run; in-memory default cannot fail (§10.8) |
+| At-rest encoding? (2026-08-09) | `MessageCodec` (`Message ↔ byte[]`): JSON-as-UTF-8 default, encryption as codec decorator, serving both stores; core ships no cryptography (§10.8) |
+| Transcript vs Context? (2026-08-09) | The transcript is the journal's full history; `Context` is the validated wire-bound sequence; glossary §5.0 |
 | Test-only interfaces: where? | Internal, unadvertised; promotion on evidence only |
 | `MODIFY` policy verb? | Rejected — attribution nightmare |
 | Grammar additions timing | Pre-1.0, per §7 list; frozen at 1.0 |
