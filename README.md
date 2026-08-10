@@ -17,6 +17,12 @@
 
 An AI agent harness framework for Java.
 
+> **What's in a name?** Look at the middle of the word *har****ness***: the name
+> was hiding inside the thing the whole time. And once your agent framework is
+> named Nessy, the mascot picks itself — a certain famously elusive resident of
+> Loch Ness, here wearing (what else?) a harness. Like her namesake, she's
+> mostly calm water on the surface with a great deal going on underneath.
+
 Nessy supplies the machinery that turns a model API into an agent — the effectful
 loop, the tool plumbing, an approval gate the model cannot route around, conversations
 that pause and resume across processes, streaming as a first-class citizen, and
