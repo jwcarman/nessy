@@ -55,6 +55,18 @@ class AnthropicSchemasTest {
   }
 
   @Test
+  void a_missing_properties_field_produces_no_additional_properties() {
+    // schema.get("properties") returns null when the schema has no "properties" field at all;
+    // toInputSchema must not blow up on that, and must simply carry no properties across.
+    ObjectNode schema = MAPPER.createObjectNode();
+    schema.put("type", "object");
+
+    var inputSchema = AnthropicSchemas.toInputSchema(schema);
+
+    assertThat(inputSchema.properties().orElseThrow()._additionalProperties()).isEmpty();
+  }
+
+  @Test
   void a_missing_required_array_produces_an_empty_list() {
     ObjectNode schema = MAPPER.createObjectNode();
     schema.putObject("properties");

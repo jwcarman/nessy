@@ -165,6 +165,87 @@ class SummarizerTest {
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("no text");
     }
+
+    /**
+     * This is a tool-free call by construction (the request always carries {@code List.of()} for
+     * tools), so a real provider never actually emits these mid-stream; this pins that if one did,
+     * the summarizer simply ignores them rather than corrupting or aborting the summary.
+     */
+    @Test
+    void thinking_and_tool_use_chunks_are_ignored_and_never_reach_the_summary() {
+      FakeProvider provider =
+          new FakeProvider(
+              List.of(
+                  new ModelEvent.ThinkingChunk("pondering..."),
+                  new ModelEvent.ThinkingSigned("sig"),
+                  new ModelEvent.RedactedThinkingEmitted("opaque"),
+                  new ModelEvent.TextChunk("the "),
+                  new ModelEvent.TextChunk("gist"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())));
+      Summarizer summarizer =
+          Summarizer.usingProvider(provider, MODEL, 500, INSTRUCTIONS, ObservationRegistry.NOOP);
+
+      String summary = summarizer.summarize(Context.of(List.of(Message.user("hi"))));
+
+      assertThat(summary).isEqualTo("the gist");
+    }
+  }
+
+  @Nested
+  class Streaming_failures {
+
+    /** A provider whose stream blows up mid-iteration, to exercise the summarizer's own catch. */
+    private static final class ExplodingProvider implements ModelProvider {
+
+      @Override
+      public ModelStream stream(ModelRequest request) {
+        return new ModelStream() {
+          @Override
+          public Iterator<ModelEvent> iterator() {
+            return new Iterator<>() {
+              private int calls;
+
+              @Override
+              public boolean hasNext() {
+                return true;
+              }
+
+              @Override
+              public ModelEvent next() {
+                calls++;
+                if (calls == 1) {
+                  return new ModelEvent.TextChunk("partial");
+                }
+                throw new IllegalStateException("stream blew up");
+              }
+            };
+          }
+
+          @Override
+          public void close() {
+            // intentionally empty: this fake stream holds no resources to release
+          }
+        };
+      }
+
+      @Override
+      public Set<Capability> capabilities() {
+        return Set.of();
+      }
+    }
+
+    @Test
+    void a_runtime_exception_mid_stream_propagates_and_marks_the_observation_with_an_error() {
+      TestObservationRegistry observations = TestObservationRegistry.create();
+      Summarizer summarizer =
+          Summarizer.usingProvider(new ExplodingProvider(), MODEL, 500, INSTRUCTIONS, observations);
+      Context head = Context.of(List.of(Message.user("hi")));
+
+      assertThatThrownBy(() -> summarizer.summarize(head))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("stream blew up");
+      assertThat(observations).hasObservationWithNameEqualTo("nessy.model.call").that().hasError();
+    }
   }
 
   @Nested

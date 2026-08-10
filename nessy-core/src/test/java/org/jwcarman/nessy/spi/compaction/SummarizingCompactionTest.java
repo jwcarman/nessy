@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.compaction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
@@ -152,6 +153,39 @@ class SummarizingCompactionTest {
                   ConversationState.newConversation(CONVERSATION_ID)
                       .withLastInputTokens(Long.MAX_VALUE - 1)))
           .isFalse();
+    }
+  }
+
+  /**
+   * {@code SummarizingBuilder} is the only public construction path and already validates every one
+   * of these; this record's own guard is house validation, independent of its one caller — pinned
+   * directly since only same-package code can reach the package-private constructor at all.
+   */
+  @Nested
+  class The_records_own_construction_guard {
+
+    @Test
+    void a_null_summarizer_is_rejected_independent_of_the_builder() {
+      assertThatThrownBy(() -> new SummarizingCompaction(null, 1, 0))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_trigger_below_one_is_rejected_independent_of_the_builder() {
+      Summarizer summarizer = new RecordingSummarizer();
+
+      assertThatThrownBy(() -> new SummarizingCompaction(summarizer, 0, 0))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("triggerTokens");
+    }
+
+    @Test
+    void a_negative_keep_recent_is_rejected_independent_of_the_builder() {
+      Summarizer summarizer = new RecordingSummarizer();
+
+      assertThatThrownBy(() -> new SummarizingCompaction(summarizer, 1, -1))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("keepRecent");
     }
   }
 }

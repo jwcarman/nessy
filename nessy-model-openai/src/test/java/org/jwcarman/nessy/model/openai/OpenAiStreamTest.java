@@ -435,6 +435,54 @@ class OpenAiStreamTest {
           .hasMessageContaining("id");
     }
 
+    /** A fragment carrying only an id (name delta dropped/reordered) still fails loudly. */
+    private static ChatCompletionChunk toolCallIdOnly(long index, String id) {
+      return chunkBuilder()
+          .addChoice(
+              choiceBuilder(0)
+                  .delta(
+                      ChatCompletionChunk.Choice.Delta.builder()
+                          .addToolCall(
+                              ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+                                  .index(index)
+                                  .id(id)
+                                  .build())
+                          .build())
+                  .build())
+          .build();
+    }
+
+    @Test
+    void a_fragment_carrying_an_id_but_no_name_still_fails_loudly() {
+      var chunks = List.of(toolCallIdOnly(4, "call_9"), finishChunk("tool_calls"));
+
+      var stream = new OpenAiStream(fakeStream(chunks, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("index 4");
+    }
+
+    @Test
+    void a_truncated_json_failure_message_truncates_arguments_over_200_characters() {
+      var longFragment = "{\"le" + "a".repeat(250);
+      var chunks =
+          List.of(
+              toolCallStart(0, "call_8", "get_weather"),
+              toolCallArguments(0, longFragment),
+              finishChunk("length"));
+
+      var stream = new OpenAiStream(fakeStream(chunks, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("get_weather")
+          .hasMessageContaining("call_8")
+          .hasMessageContaining(longFragment.substring(0, 200))
+          .satisfies(
+              e -> assertThat(e.getMessage()).doesNotContain(longFragment.substring(0, 201)));
+    }
+
     @Test
     void fragments_arriving_after_the_finish_chunk_fail_loudly_naming_the_orphaned_index() {
       // finish_reason flushes and clears the accumulation map; a fragment landing after that has
@@ -569,6 +617,18 @@ class OpenAiStreamTest {
       assertThatThrownBy(() -> stream.forEach(event -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("finish_reason");
+    }
+
+    @Test
+    void calling_next_again_after_exhaustion_throws_no_such_element() {
+      var chunks = List.of(finishChunk("stop"));
+      var iterator = new OpenAiStream(fakeStream(chunks, () -> {})).iterator();
+
+      while (iterator.hasNext()) {
+        iterator.next();
+      }
+
+      assertThatThrownBy(iterator::next).isInstanceOf(java.util.NoSuchElementException.class);
     }
   }
 }

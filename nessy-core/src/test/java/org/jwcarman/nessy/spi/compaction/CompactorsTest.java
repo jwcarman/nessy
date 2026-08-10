@@ -190,6 +190,26 @@ class CompactorsTest {
     }
   }
 
+  @Nested
+  class Disabled {
+
+    @Test
+    void requires_compaction_always_answers_false() {
+      Compactor compactor = Compactor.disabled();
+
+      assertThat(compactor.requiresCompaction(stateWith(Long.MAX_VALUE))).isFalse();
+    }
+
+    @Test
+    void compact_still_throws_rather_than_silently_doing_nothing_if_ever_invoked_directly() {
+      Compactor compactor = Compactor.disabled();
+
+      assertThatThrownBy(() -> compactor.compact(stateWith(0)))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("compaction is disabled");
+    }
+  }
+
   /** Replays one scripted summary, regardless of the head it is handed. */
   private static final class RecordingSummarizer implements Summarizer {
 

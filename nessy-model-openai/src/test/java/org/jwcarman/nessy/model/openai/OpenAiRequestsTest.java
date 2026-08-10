@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.model.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -156,6 +157,22 @@ class OpenAiRequestsTest {
       assertThat(parts.get(0).isText()).isTrue();
       assertThat(parts.get(0).asText().text()).isEqualTo("what is this?");
       assertThat(parts.get(1).isImageUrl()).isTrue();
+    }
+
+    @Test
+    void a_content_block_with_no_content_part_mapping_alongside_an_image_fails_loudly() {
+      // toContentPart is only reached once a message carries an image (the multi-part branch);
+      // a ThinkingBlock has no Chat Completions content-part representation at all and hits the
+      // method's default case rather than silently being dropped. Grammar-wise a user message
+      // never actually carries a ThinkingBlock, but the ContentBlock type system does not forbid
+      // it, and toContentPart must still fail loudly rather than silently mis-map it.
+      var image = new ImageBlock("image/png", "aGVsbG8=");
+      var thinking = new ThinkingBlock("stray", "sig");
+      var request = request(List.of(Message.user(List.of(image, thinking))));
+
+      assertThatThrownBy(() -> OpenAiRequests.toParams(request))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("unsupported content block");
     }
   }
 

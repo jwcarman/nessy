@@ -1014,6 +1014,43 @@ class InProcessEngineTest {
     }
   }
 
+  /**
+   * {@code translate}'s three least-common arms: a real provider streaming extended thinking or a
+   * provider-side redaction. {@link Events_and_progress} already pins {@code TextChunk} and {@code
+   * TurnEnded}; {@code Tool_calls} already pins {@code ToolUseEmitted}.
+   */
+  @Nested
+  class Thinking_and_redacted_thinking_events {
+
+    @Test
+    void thinking_signed_and_redacted_thinking_events_translate_one_for_one() {
+      EngineFixtures.FakeProvider provider =
+          new EngineFixtures.FakeProvider(
+              List.of(
+                  List.of(
+                      new ModelEvent.ThinkingChunk("pondering"),
+                      new ModelEvent.ThinkingSigned("sig-1"),
+                      new ModelEvent.RedactedThinkingEmitted("opaque-1"),
+                      new ModelEvent.TextChunk("Four."),
+                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
+      List<ConversationEvent> events = new ArrayList<>();
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(ListenerRegistration.sync(ConversationEvent.class, events::add)));
+
+      engineWith(
+              provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory(), hub)
+          .run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"));
+
+      assertThat(events)
+          .containsSubsequence(
+              new ConversationEvent.ThinkingDelta(ID, "pondering"),
+              new ConversationEvent.ThinkingSigned(ID, "sig-1"),
+              new ConversationEvent.RedactedThinkingArrived(ID, "opaque-1"),
+              new ConversationEvent.TextDelta(ID, "Four."));
+    }
+  }
+
   @Nested
   class Transcript {
 

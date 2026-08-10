@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
@@ -131,5 +132,55 @@ class ScriptedModelProviderTest {
     assertThatThrownBy(() -> provider.stream(exhaustedRequest))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("script exhausted");
+  }
+
+  @Test
+  void building_with_an_unended_turn_is_a_loud_failure() {
+    ScriptedModelProvider.Builder builder = ScriptedModelProvider.builder().text("Hello");
+
+    assertThatThrownBy(builder::build)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("last turn was never ended");
+  }
+
+  @Test
+  void replays_thinking_and_tool_use_events_in_a_single_turn() {
+    ObjectNode args = JsonNodeFactory.instance.objectNode();
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .thinking("pondering")
+            .thinkingSigned("sig-123")
+            .redactedThinking("opaque-data")
+            .toolUse("c1", "read_file", args)
+            .endWithToolUse()
+            .build();
+
+    assertThat(drain(provider.stream(request())))
+        .containsExactly(
+            new ModelEvent.ThinkingChunk("pondering"),
+            new ModelEvent.ThinkingSigned("sig-123"),
+            new ModelEvent.RedactedThinkingEmitted("opaque-data"),
+            new ModelEvent.ToolUseEmitted(new ToolCall("c1", "read_file", args)),
+            new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+  }
+
+  @Test
+  void end_turn_with_explicit_usage_is_recorded_on_the_turn_ended_event() {
+    Usage usage = new Usage(12, 34, 0);
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("Hello").endTurn(usage).build();
+
+    assertThat(drain(provider.stream(request())))
+        .containsExactly(
+            new ModelEvent.TextChunk("Hello"),
+            new ModelEvent.TurnEnded(StopReason.END_TURN, usage));
+  }
+
+  @Test
+  void capabilities_are_empty() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+
+    assertThat(provider.capabilities()).isEmpty();
   }
 }

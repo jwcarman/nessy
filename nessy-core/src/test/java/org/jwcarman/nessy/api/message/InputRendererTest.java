@@ -99,5 +99,32 @@ class InputRendererTest {
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("mapper");
     }
+
+    @Test
+    void a_null_input_is_rejected() {
+      InputRenderer<OrderEscalation> renderer = InputRenderer.json(mapper);
+
+      assertThatThrownBy(() -> renderer.render(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("input");
+    }
+
+    /** A record whose accessor throws, so Jackson's own serialization fails mid-write. */
+    record Unserializable(String value) {
+      @Override
+      public String value() {
+        throw new RuntimeException("accessor exploded");
+      }
+    }
+
+    @Test
+    void a_serialization_failure_is_wrapped_as_an_IllegalArgumentException() {
+      InputRenderer<Unserializable> renderer = InputRenderer.json(mapper);
+      Unserializable input = new Unserializable("irrelevant");
+
+      assertThatThrownBy(() -> renderer.render(input))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Unserializable");
+    }
   }
 }

@@ -162,6 +162,24 @@ class AnthropicStreamTest {
             .build());
   }
 
+  /**
+   * {@code citations_delta} is the one {@code content_block_delta} variant the mapping table
+   * deliberately leaves unmapped (see {@code translateContentBlockDelta}'s javadoc) — parsed via
+   * raw JSON like {@code messageStart} etc. since the SDK's builder for {@code CitationsDelta}
+   * requires a fully-formed citation, and this fixture only needs the delta to identify itself as
+   * {@code citations_delta} to exercise the fall-through no-op.
+   */
+  private static RawMessageStreamEvent citationsDelta(long index) {
+    return parseEvent(
+        """
+        {"type":"content_block_delta","index":%d,
+        "delta":{"type":"citations_delta",
+        "citation":{"type":"char_location","cited_text":"x","document_index":0,
+        "document_title":null,"start_char_index":0,"end_char_index":1}}}
+        """
+            .formatted(index));
+  }
+
   private static RawMessageStreamEvent toolUseStart(long index, String id, String name) {
     return RawMessageStreamEvent.ofContentBlockStart(
         RawContentBlockStartEvent.builder()
@@ -211,6 +229,32 @@ class AnthropicStreamTest {
               new ModelEvent.TextChunk("Hello"),
               new ModelEvent.TextChunk(" world"),
               new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(10, 5, 0)));
+    }
+  }
+
+  @Nested
+  class UnmappedDeltas {
+
+    @Test
+    void a_citations_delta_is_silently_dropped_alongside_its_text_siblings() {
+      var events =
+          List.of(
+              messageStart(4),
+              textBlockStart(0),
+              textDelta(0, "see "),
+              citationsDelta(0),
+              textDelta(0, "here"),
+              contentBlockStop(0),
+              messageDelta("end_turn", 2),
+              messageStop());
+
+      var modelEvents = drain(events);
+
+      assertThat(modelEvents)
+          .containsExactly(
+              new ModelEvent.TextChunk("see "),
+              new ModelEvent.TextChunk("here"),
+              new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(4, 2, 0)));
     }
   }
 
@@ -419,6 +463,46 @@ class AnthropicStreamTest {
           .hasMessageContaining("toolu_6")
           .hasMessageContaining("null");
     }
+
+    @Test
+    void an_input_json_delta_for_an_index_with_no_started_tool_use_is_silently_ignored() {
+      // No toolUseStart(...) ran for index 0 — content_block_start was skipped or already
+      // popped by a content_block_stop. The delta must be dropped, not crash the translation.
+      var events =
+          List.of(
+              messageStart(5),
+              inputJsonDelta(0, "{\"loc\":\"NYC\"}"),
+              messageDelta("end_turn", 3),
+              messageStop());
+
+      var modelEvents = drain(events);
+
+      assertThat(modelEvents)
+          .containsExactly(new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(5, 3, 0)));
+    }
+
+    @Test
+    void a_truncated_json_failure_message_truncates_arguments_over_200_characters() {
+      var longFragment = "{\"le" + "a".repeat(250);
+      var events =
+          List.of(
+              messageStart(5),
+              toolUseStart(0, "toolu_7", "get_weather"),
+              inputJsonDelta(0, longFragment),
+              contentBlockStop(0),
+              messageDelta("max_tokens", 3),
+              messageStop());
+
+      var stream = new AnthropicStream(fakeStream(events, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("get_weather")
+          .hasMessageContaining("toolu_7")
+          .hasMessageContaining(longFragment.substring(0, 200))
+          .satisfies(
+              e -> assertThat(e.getMessage()).doesNotContain(longFragment.substring(0, 201)));
+    }
   }
 
   @Nested
@@ -576,6 +660,36 @@ class AnthropicStreamTest {
       assertThatThrownBy(() -> stream.forEach(event -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("message_delta");
+    }
+
+    @Test
+    void a_message_delta_missing_its_stop_reason_fails_loudly() {
+      // The real wire shape never omits stop_reason on message_delta; this pins the defensive
+      // guard that would otherwise let a malformed/future event silently produce a null reason.
+      var event =
+          parseEvent(
+              """
+              {"type":"message_delta","delta":{"stop_sequence":null},
+              "usage":{"output_tokens":1}}
+              """);
+      var events = List.of(messageStart(1), event);
+      var stream = new AnthropicStream(fakeStream(events, () -> {}));
+
+      assertThatThrownBy(() -> stream.forEach(evt -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("stop_reason");
+    }
+
+    @Test
+    void calling_next_again_after_exhaustion_throws_no_such_element() {
+      var events = List.of(messageStart(1), messageDelta("end_turn", 1), messageStop());
+      var iterator = new AnthropicStream(fakeStream(events, () -> {})).iterator();
+
+      while (iterator.hasNext()) {
+        iterator.next();
+      }
+
+      assertThatThrownBy(iterator::next).isInstanceOf(java.util.NoSuchElementException.class);
     }
 
     /**

@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.http.Headers;
+import com.openai.core.http.StreamResponse;
 import com.openai.errors.BadRequestException;
 import com.openai.errors.InternalServerException;
 import com.openai.errors.InvalidWebhookSignatureException;
@@ -36,14 +37,104 @@ import com.openai.errors.SseException;
 import com.openai.errors.UnauthorizedException;
 import com.openai.errors.UnexpectedStatusCodeException;
 import com.openai.errors.UnprocessableEntityException;
+import com.openai.models.chat.completions.ChatCompletionChunk;
+import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.services.blocking.ChatService;
+import com.openai.services.blocking.chat.ChatCompletionService;
+import java.lang.reflect.Proxy;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class OpenAiModelProviderTest {
 
   private static Headers emptyHeaders() {
     return Headers.builder().build();
+  }
+
+  /**
+   * {@link OpenAIClient} carries 26 unrelated abstract resource accessors (embeddings, files,
+   * images, batches, ...), none of which {@link OpenAiModelProvider#stream} ever touches except
+   * {@code chat().completions().createStreaming(...)}. A JDK dynamic proxy — not a mocking library,
+   * just {@link Proxy#newProxyInstance} — answers only that one call path and throws {@link
+   * UnsupportedOperationException} for everything else, without hand-implementing dozens of
+   * unrelated SDK resource accessors.
+   */
+  private static OpenAIClient fakeClient(
+      ChatCompletionCreateParams[] capturedParams, StreamResponse<ChatCompletionChunk> response) {
+    var completionService =
+        (ChatCompletionService)
+            Proxy.newProxyInstance(
+                ChatCompletionService.class.getClassLoader(),
+                new Class<?>[] {ChatCompletionService.class},
+                (proxy, method, args) -> {
+                  // The provider calls the SDK's one-arg createStreaming(params) default method,
+                  // but a JDK proxy intercepts every interface method call itself rather than
+                  // letting the default method's own body run and delegate to the two-arg
+                  // abstract overload — so this must match on name alone, not arity.
+                  if ("createStreaming".equals(method.getName())) {
+                    capturedParams[0] = (ChatCompletionCreateParams) args[0];
+                    return response;
+                  }
+                  throw new UnsupportedOperationException(method.getName());
+                });
+    var chatService =
+        (ChatService)
+            Proxy.newProxyInstance(
+                ChatService.class.getClassLoader(),
+                new Class<?>[] {ChatService.class},
+                (proxy, method, args) -> {
+                  if ("completions".equals(method.getName())) {
+                    return completionService;
+                  }
+                  throw new UnsupportedOperationException(method.getName());
+                });
+    return (OpenAIClient)
+        Proxy.newProxyInstance(
+            OpenAIClient.class.getClassLoader(),
+            new Class<?>[] {OpenAIClient.class},
+            (proxy, method, args) -> {
+              if ("chat".equals(method.getName())) {
+                return chatService;
+              }
+              throw new UnsupportedOperationException(method.getName());
+            });
+  }
+
+  private static StreamResponse<ChatCompletionChunk> emptyStreamResponse() {
+    return new StreamResponse<>() {
+      @Override
+      public Stream<ChatCompletionChunk> stream() {
+        return Stream.of();
+      }
+
+      @Override
+      public void close() {}
+    };
+  }
+
+  @Nested
+  class Streaming {
+
+    @Test
+    void delegates_to_the_sdk_client_and_wraps_the_result_in_an_openai_stream() {
+      var capturedParams = new ChatCompletionCreateParams[1];
+      var client = fakeClient(capturedParams, emptyStreamResponse());
+      var provider = OpenAiModelProvider.builder().client(client).build();
+      var request =
+          new ModelRequest(Context.of(List.of()), "sys", "gpt-4o", 1024, List.of(), Set.of(), null);
+
+      var stream = provider.stream(request);
+
+      assertThat(stream).isInstanceOf(OpenAiStream.class);
+      assertThat(capturedParams[0]).isNotNull();
+      assertThat(capturedParams[0].model().asString()).isEqualTo("gpt-4o");
+    }
   }
 
   @Nested
@@ -93,6 +184,29 @@ class OpenAiModelProviderTest {
               .build();
 
       assertThat(provider).isNotNull();
+    }
+
+    @Test
+    void an_explicit_api_key_set_after_from_env_with_no_base_url_or_organization_still_builds() {
+      // Companion to an_explicit_api_key_set_after_from_env_still_builds_without_needing_the
+      // _environment above: that test always sets baseUrl and organization too, which never
+      // exercises buildFromEnv()'s baseUrl == null / organization == null branches. This one
+      // leaves both unset.
+      OpenAiModelProvider provider =
+          OpenAiModelProvider.builder().fromEnv().apiKey("sk-explicit-only").build();
+
+      assertThat(provider).isNotNull();
+    }
+
+    @Test
+    void a_blank_api_key_is_rejected_the_same_as_a_missing_one() {
+      var builder = OpenAiModelProvider.builder().apiKey("   ");
+
+      assertThatThrownBy(builder::build)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("apiKey")
+          .hasMessageContaining("fromEnv")
+          .hasMessageContaining("client");
     }
 
     @Test

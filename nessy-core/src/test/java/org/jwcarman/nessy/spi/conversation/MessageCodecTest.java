@@ -16,10 +16,17 @@
 package org.jwcarman.nessy.spi.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
@@ -100,5 +107,49 @@ class MessageCodecTest {
     String json = new String(encoded, StandardCharsets.UTF_8);
     JsonNode tree = new ObjectMapper().readTree(json);
     assertThat(tree.get("role").asText()).isEqualTo("USER");
+  }
+
+  @Nested
+  class Failure_paths {
+
+    @Test
+    void decode_wraps_malformed_bytes_as_an_UncheckedIOException() {
+      byte[] garbage = "not json at all{{{".getBytes(StandardCharsets.UTF_8);
+
+      assertThatThrownBy(() -> codec.decode(garbage)).isInstanceOf(UncheckedIOException.class);
+    }
+
+    @Test
+    void encode_wraps_a_serialization_failure_as_an_UncheckedIOException() {
+      ObjectMapper mapper = new ObjectMapper();
+      SimpleModule explodingTextBlock = new SimpleModule();
+      explodingTextBlock.addSerializer(
+          TextBlock.class,
+          new JsonSerializer<>() {
+            @Override
+            public void serialize(
+                TextBlock value, JsonGenerator gen, SerializerProvider serializers)
+                throws IOException {
+              throw new IOException("serialization exploded");
+            }
+          });
+      mapper.registerModule(explodingTextBlock);
+      MessageCodec explodingCodec = MessageCodec.json(mapper);
+      Message message = Message.assistant(List.of(new TextBlock("hi")));
+
+      assertThatThrownBy(() -> explodingCodec.encode(message))
+          .isInstanceOf(UncheckedIOException.class)
+          .hasCauseInstanceOf(IOException.class);
+    }
+
+    @Test
+    void a_null_message_is_rejected_by_encode() {
+      assertThatThrownBy(() -> codec.encode(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void null_bytes_are_rejected_by_decode() {
+      assertThatThrownBy(() -> codec.decode(null)).isInstanceOf(NullPointerException.class);
+    }
   }
 }

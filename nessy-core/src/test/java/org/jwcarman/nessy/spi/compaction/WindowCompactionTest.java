@@ -78,6 +78,25 @@ class WindowCompactionTest {
     void a_negative_keep_recent_is_rejected() {
       assertThatThrownBy(() -> Compactors.window(-1)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    /**
+     * {@code WindowBuilder} is the only public construction path and already validates both of
+     * these; this record's own guard is house validation, independent of its one caller — pinned
+     * directly since only same-package code can reach the package-private constructor at all.
+     */
+    @Test
+    void the_records_own_guard_rejects_a_trigger_below_one_independent_of_the_builder() {
+      assertThatThrownBy(() -> new WindowCompaction(0, 0))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("triggerTokens");
+    }
+
+    @Test
+    void the_records_own_guard_rejects_a_negative_keep_recent_independent_of_the_builder() {
+      assertThatThrownBy(() -> new WindowCompaction(1, -1))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("keepRecent");
+    }
   }
 
   @Nested

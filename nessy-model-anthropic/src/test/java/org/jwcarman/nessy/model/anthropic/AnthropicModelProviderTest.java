@@ -23,6 +23,7 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonMissing;
 import com.anthropic.core.http.Headers;
+import com.anthropic.core.http.StreamResponse;
 import com.anthropic.errors.AnthropicException;
 import com.anthropic.errors.AnthropicInvalidDataException;
 import com.anthropic.errors.AnthropicIoException;
@@ -37,14 +38,116 @@ import com.anthropic.errors.SseException;
 import com.anthropic.errors.UnauthorizedException;
 import com.anthropic.errors.UnexpectedStatusCodeException;
 import com.anthropic.errors.UnprocessableEntityException;
+import com.anthropic.models.messages.MessageCreateParams;
+import com.anthropic.models.messages.RawMessageStreamEvent;
+import com.anthropic.services.blocking.MessageService;
+import java.lang.reflect.Proxy;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class AnthropicModelProviderTest {
 
   private static Headers emptyHeaders() {
     return Headers.builder().build();
+  }
+
+  /**
+   * {@link AnthropicClient} carries 8 abstract methods (async, withRawResponse, withOptions,
+   * completions, messages, models, beta, close) and its {@link MessageService} carries 6 more, none
+   * of which {@link AnthropicModelProvider#stream} ever touches except {@code messages()} and
+   * {@code createStreaming(...)}. A JDK dynamic proxy — not a mocking library, just {@link
+   * Proxy#newProxyInstance} — answers only the one call path exercised here and throws {@link
+   * UnsupportedOperationException} for everything else, without hand-implementing over a dozen
+   * unrelated SDK resource accessors.
+   */
+  private static AnthropicClient fakeClient(
+      MessageCreateParams[] capturedParams, StreamResponse<RawMessageStreamEvent> response) {
+    var messageService =
+        (MessageService)
+            Proxy.newProxyInstance(
+                MessageService.class.getClassLoader(),
+                new Class<?>[] {MessageService.class},
+                (proxy, method, args) -> {
+                  // The provider calls the SDK's one-arg createStreaming(params) default method,
+                  // but a JDK proxy intercepts every interface method call itself rather than
+                  // letting the default method's own body run and delegate to the two-arg
+                  // abstract overload — so this must match on name alone, not arity.
+                  if ("createStreaming".equals(method.getName())) {
+                    capturedParams[0] = (MessageCreateParams) args[0];
+                    return response;
+                  }
+                  throw new UnsupportedOperationException(method.getName());
+                });
+    return (AnthropicClient)
+        Proxy.newProxyInstance(
+            AnthropicClient.class.getClassLoader(),
+            new Class<?>[] {AnthropicClient.class},
+            (proxy, method, args) -> {
+              if ("messages".equals(method.getName())) {
+                return messageService;
+              }
+              throw new UnsupportedOperationException(method.getName());
+            });
+  }
+
+  private static StreamResponse<RawMessageStreamEvent> emptyStreamResponse() {
+    return new StreamResponse<>() {
+      @Override
+      public Stream<RawMessageStreamEvent> stream() {
+        return Stream.of();
+      }
+
+      @Override
+      public void close() {}
+    };
+  }
+
+  @Nested
+  class Streaming {
+
+    @Test
+    void delegates_to_the_sdk_client_and_wraps_the_result_in_an_anthropic_stream() {
+      var capturedParams = new MessageCreateParams[1];
+      var client = fakeClient(capturedParams, emptyStreamResponse());
+      var provider = AnthropicModelProvider.builder().client(client).build();
+      var request =
+          new ModelRequest(
+              Context.of(List.of()), "sys", "claude-sonnet", 1024, List.of(), Set.of(), null);
+
+      var stream = provider.stream(request);
+
+      assertThat(stream).isInstanceOf(AnthropicStream.class);
+      assertThat(capturedParams[0]).isNotNull();
+      assertThat(capturedParams[0].model().asString()).isEqualTo("claude-sonnet");
+    }
+
+    @Test
+    void a_thinking_request_carries_the_configured_budget_through_to_the_sdk_params() {
+      var capturedParams = new MessageCreateParams[1];
+      var client = fakeClient(capturedParams, emptyStreamResponse());
+      var provider = AnthropicModelProvider.builder().client(client).thinkingBudget(777).build();
+      var request =
+          new ModelRequest(
+              Context.of(List.of()),
+              "sys",
+              "claude-sonnet",
+              4096,
+              List.of(),
+              Set.of(Capability.THINKING),
+              null);
+
+      provider.stream(request);
+
+      var thinking = capturedParams[0].thinking().orElseThrow();
+      assertThat(thinking.isEnabled()).isTrue();
+      assertThat(thinking.asEnabled().budgetTokens()).isEqualTo(777L);
+    }
   }
 
   @Nested
@@ -100,6 +203,17 @@ class AnthropicModelProviderTest {
     }
 
     @Test
+    void an_explicit_api_key_set_after_from_env_with_no_base_url_still_builds() {
+      // Companion to an_explicit_api_key_set_after_from_env_still_builds_without_needing_the
+      // _environment above: that test always sets baseUrl too, which never exercises
+      // buildFromEnv()'s baseUrl == null branch. This one leaves it unset.
+      AnthropicModelProvider provider =
+          AnthropicModelProvider.builder().fromEnv().apiKey("sk-explicit-only").build();
+
+      assertThat(provider).isNotNull();
+    }
+
+    @Test
     void an_api_key_alone_is_enough_to_build() {
       AnthropicModelProvider provider = AnthropicModelProvider.builder().apiKey("sk-test").build();
 
@@ -132,6 +246,17 @@ class AnthropicModelProviderTest {
           AnthropicModelProvider.builder().apiKey("sk-test").thinkingBudget(1024).build();
 
       assertThat(provider).isNotNull();
+    }
+
+    @Test
+    void a_blank_api_key_is_rejected_the_same_as_a_missing_one() {
+      var builder = AnthropicModelProvider.builder().apiKey("   ");
+
+      assertThatThrownBy(builder::build)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("apiKey")
+          .hasMessageContaining("fromEnv")
+          .hasMessageContaining("client");
     }
   }
 

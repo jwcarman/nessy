@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spi;
 
 import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -186,6 +187,39 @@ class InProcessEngineCompactionTest {
       assertThat(completed.state().generation()).isZero();
       assertThat(completed.state().messages().getLast())
           .isEqualTo(Message.assistant(List.of(new TextBlock("Normal answer."))));
+    }
+
+    /**
+     * {@code compact}'s own outer catch (as opposed to {@code compactionEvent}'s inner one, which
+     * {@code a_failing_compactor_emits_the_hub_event_and_the_turn_proceeds} already pins): a
+     * listener that itself throws while handling {@link CompactionFailed} escapes the whole
+     * compaction attempt rather than being swallowed a second time.
+     */
+    @Test
+    void a_throwing_CompactionFailed_listener_escapes_the_whole_compaction_attempt() {
+      EngineFixtures.FakeProvider provider = twoTurnProvider();
+      Summarizer summarizer =
+          head -> {
+            throw new IllegalStateException("summarizer exploded");
+          };
+      ListenerRegistry hub =
+          ListenerRegistry.of(
+              List.of(
+                  ListenerRegistration.sync(
+                      CompactionFailed.class,
+                      e -> {
+                        throw new IllegalStateException("listener blew up too");
+                      })));
+      TestObservationRegistry observations = TestObservationRegistry.create();
+      InProcessEngine engine = engineWith(provider, reducerUsing(summarizer), hub, observations);
+
+      engine.run(ID, ConversationEvent.AgentTold.of(ID, "first question"));
+
+      assertThatThrownBy(
+              () -> engine.run(ID, ConversationEvent.AgentTold.of(ID, "second question")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("listener blew up too");
+      assertThat(observations).hasObservationWithNameEqualTo("nessy.compaction").that().hasError();
     }
 
     @Test

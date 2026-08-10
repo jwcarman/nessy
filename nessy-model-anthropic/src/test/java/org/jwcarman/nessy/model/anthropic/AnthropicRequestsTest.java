@@ -139,6 +139,29 @@ class AnthropicRequestsTest {
       assertThat(blocks.get(0).isText()).isTrue();
       assertThat(blocks.get(0).asText().text()).isEqualTo("hello there");
     }
+
+    @Test
+    void an_empty_text_block_is_dropped_leaving_the_message_elided() {
+      // Anthropic rejects empty text blocks, so toContentBlockParam drops one outright; with no
+      // other content, the whole message translates to nothing.
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(Message.user(List.of(new TextBlock(""))))), THINKING_DISABLED);
+
+      assertThat(params.messages()).isEmpty();
+    }
+
+    @Test
+    void an_empty_text_block_alongside_other_content_is_dropped_leaving_its_sibling() {
+      var image = new org.jwcarman.nessy.api.message.ImageBlock("image/png", "aGVsbG8=");
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(Message.user(List.of(new TextBlock(""), image)))), THINKING_DISABLED);
+
+      var blocks = params.messages().get(0).content().asBlockParams();
+      assertThat(blocks).hasSize(1);
+      assertThat(blocks.get(0).isImage()).isTrue();
+    }
   }
 
   @Nested
@@ -246,6 +269,23 @@ class AnthropicRequestsTest {
       assertThat(block.asToolUse().id()).isEqualTo("call-1");
       assertThat(block.asToolUse().name()).isEqualTo("read_file");
       assertThat(block.asToolUse().input()._additionalProperties()).containsKey("path");
+    }
+
+    @Test
+    void arguments_that_are_not_a_json_object_produce_no_additional_properties() {
+      // ToolCall.arguments() is typed as JsonNode, not ObjectNode; a non-object node (an array,
+      // here) must not blow up toInput — it simply carries no additional properties across.
+      var arguments = MAPPER.createArrayNode().add("unexpected");
+      var toolUse = new ToolUseBlock(new ToolCall("call-1", "read_file", arguments));
+      var assistantMessage = Message.assistant(List.of(toolUse));
+      var toolResultMessage =
+          Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var params =
+          AnthropicRequests.toParams(
+              request(List.of(assistantMessage, toolResultMessage)), THINKING_DISABLED);
+
+      var block = params.messages().get(0).content().asBlockParams().get(0);
+      assertThat(block.asToolUse().input()._additionalProperties()).isEmpty();
     }
   }
 
