@@ -31,6 +31,7 @@ import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.RedactedThinkingBlock;
@@ -297,7 +298,8 @@ class EndToEndTest {
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
-              .compaction(new CompactionPolicy(100_000, 0, 256, "Summarize."))
+              .compaction(
+                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
               .build();
 
       var conversation = agent.converse();
@@ -338,7 +340,8 @@ class EndToEndTest {
           Nessy.agent()
               .provider(provider)
               .model("fake-model")
-              .compaction(new CompactionPolicy(100_000, 0, 256, "Summarize."))
+              .compaction(
+                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
               .build();
       subscriber.attachTo(agent.events());
 

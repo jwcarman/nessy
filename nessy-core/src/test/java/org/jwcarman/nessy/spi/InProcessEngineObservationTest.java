@@ -45,7 +45,7 @@ class InProcessEngineObservationTest {
 
   private static final SessionId ID = new SessionId("s1");
   private static final ModelSettings CONFIG =
-      new ModelSettings("fake-model", "be helpful", 1024, Set.of());
+      new ModelSettings("fake-model", "be helpful", 1024, Set.of(), null);
 
   @Test
   void a_tool_calling_run_produces_the_span_taxonomy() {

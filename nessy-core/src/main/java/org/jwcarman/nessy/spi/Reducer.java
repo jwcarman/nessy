@@ -311,13 +311,13 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
 
   /**
    * The decision made at every point the loop is about to ask the model to continue: call it, or —
-   * when the most recently measured turn ran at or past {@link CompactionPolicy#triggerTokens()} —
+   * when {@link CompactionPolicy#trigger()} says the settled conversation has grown enough —
    * summarize the older half of the transcript first. Termination has already been checked by the
    * caller; this is the second half of that same decision point, tried at most once per point (a
    * skipped or completed compaction does not loop back through here).
    */
   private Step proceedOrCompact(SessionState state) {
-    if (state.lastInputTokens() < compaction.triggerTokens()) {
+    if (!compaction.trigger().shouldCompact(state)) {
       return Step.of(state, Effect.callModel());
     }
     int cut = pairSafeCut(state.messages());

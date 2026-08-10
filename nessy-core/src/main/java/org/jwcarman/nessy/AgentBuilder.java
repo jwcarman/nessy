@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Set;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.EventHub;
@@ -55,6 +56,8 @@ public final class AgentBuilder {
   private EventHub events = EventHub.synchronous();
   private TerminationPolicy termination = TerminationPolicy.defaults();
   private CompactionPolicy compaction = CompactionPolicy.defaults();
+  private boolean compactionExplicit;
+  private Long contextWindow;
   private ObjectMapper mapper = new ObjectMapper();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ContextBuilder contextBuilder = ContextBuilder.identity();
@@ -120,6 +123,17 @@ public final class AgentBuilder {
 
   public AgentBuilder compaction(CompactionPolicy compaction) {
     this.compaction = compaction;
+    this.compactionExplicit = true;
+    return this;
+  }
+
+  /**
+   * Declares the model's total token budget. When set and {@link #compaction(CompactionPolicy)} is
+   * never called, {@link #build()} derives the compaction trigger from it via {@link
+   * CompactionTrigger#forWindow}; an explicit {@code compaction(...)} call always wins.
+   */
+  public AgentBuilder contextWindow(long contextWindow) {
+    this.contextWindow = contextWindow;
     return this;
   }
 
@@ -148,6 +162,14 @@ public final class AgentBuilder {
     if (model == null || model.isBlank()) {
       throw new IllegalStateException("a model name is required: call model(...)");
     }
+    CompactionPolicy resolvedCompaction =
+        contextWindow != null && !compactionExplicit
+            ? new CompactionPolicy(
+                CompactionTrigger.forWindow(contextWindow, maxTokens),
+                compaction.keepRecentMessages(),
+                compaction.summaryMaxTokens(),
+                compaction.instructions())
+            : compaction;
     ExecutionEngine engine =
         new InProcessEngine(
             provider,
@@ -155,8 +177,8 @@ public final class AgentBuilder {
             approver,
             store,
             events,
-            new Reducer(termination, compaction),
-            new ModelSettings(model, systemPrompt, maxTokens, capabilities),
+            new Reducer(termination, resolvedCompaction),
+            new ModelSettings(model, systemPrompt, maxTokens, capabilities, contextWindow),
             mapper,
             observations,
             contextBuilder);

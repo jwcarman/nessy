@@ -30,6 +30,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.Role;
@@ -56,7 +57,7 @@ class InProcessEngineCompactionTest {
 
   private static final SessionId ID = new SessionId("s1");
   private static final ModelSettings CONFIG =
-      new ModelSettings("fake-model", "be helpful", 1024, Set.of());
+      new ModelSettings("fake-model", "be helpful", 1024, Set.of(), null);
 
   /**
    * A trigger low enough that the huge scripted usage crosses it, and {@code keepRecentMessages}
@@ -65,7 +66,8 @@ class InProcessEngineCompactionTest {
    */
   private static Reducer compactingReducer() {
     return new Reducer(
-        TerminationPolicy.defaults(), new CompactionPolicy(100_000, 0, 256, "Summarize."));
+        TerminationPolicy.defaults(),
+        new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."));
   }
 
   private static InProcessEngine engineWith(

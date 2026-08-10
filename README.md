@@ -191,7 +191,7 @@ Tune the knobs with your own policy:
 ```java
 CompactionPolicy policy =
     new CompactionPolicy(
-        50_000, // trigger at 50k measured input tokens
+        CompactionTrigger.atTokens(50_000), // trigger at 50k measured input tokens
         20, // keep the last 20 messages verbatim
         1_024, // cap the summary reply at 1024 tokens
         "Summarize the conversation so far, focusing on open TODOs.");

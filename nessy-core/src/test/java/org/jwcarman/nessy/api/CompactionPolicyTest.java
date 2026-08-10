@@ -28,41 +28,47 @@ class CompactionPolicyTest {
 
     @Test
     void a_valid_policy_retains_its_fields() {
-      CompactionPolicy policy = new CompactionPolicy(50_000, 5, 1_024, "summarize");
+      CompactionTrigger trigger = CompactionTrigger.atTokens(50_000);
+      CompactionPolicy policy = new CompactionPolicy(trigger, 5, 1_024, "summarize");
 
-      assertThat(policy.triggerTokens()).isEqualTo(50_000);
+      assertThat(policy.trigger()).isSameAs(trigger);
       assertThat(policy.keepRecentMessages()).isEqualTo(5);
       assertThat(policy.summaryMaxTokens()).isEqualTo(1_024);
       assertThat(policy.instructions()).isEqualTo("summarize");
     }
 
     @Test
-    void a_trigger_below_one_is_rejected() {
-      assertThatThrownBy(() -> new CompactionPolicy(0, 5, 1_024, "summarize"))
-          .isInstanceOf(IllegalArgumentException.class);
+    void a_null_trigger_is_rejected() {
+      assertThatThrownBy(() -> new CompactionPolicy(null, 5, 1_024, "summarize"))
+          .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void negative_keep_recent_messages_is_rejected() {
-      assertThatThrownBy(() -> new CompactionPolicy(50_000, -1, 1_024, "summarize"))
+      assertThatThrownBy(
+              () ->
+                  new CompactionPolicy(CompactionTrigger.atTokens(50_000), -1, 1_024, "summarize"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_summary_ceiling_below_one_is_rejected() {
-      assertThatThrownBy(() -> new CompactionPolicy(50_000, 5, 0, "summarize"))
+      assertThatThrownBy(
+              () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), 5, 0, "summarize"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void ceilings_below_their_floors_are_rejected() {
-      assertThatThrownBy(() -> new CompactionPolicy(0, -1, 0, "summarize"))
+      assertThatThrownBy(
+              () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), -1, 0, "summarize"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void null_instructions_are_rejected() {
-      assertThatThrownBy(() -> new CompactionPolicy(50_000, 5, 1_024, null))
+      assertThatThrownBy(
+              () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), 5, 1_024, null))
           .isInstanceOf(NullPointerException.class);
     }
   }
@@ -74,7 +80,8 @@ class CompactionPolicyTest {
     void defaults_trigger_at_one_hundred_thousand_tokens() {
       CompactionPolicy policy = CompactionPolicy.defaults();
 
-      assertThat(policy.triggerTokens()).isEqualTo(100_000);
+      assertThat(policy.trigger().shouldCompact(stateWithLastInputTokens(99_999))).isFalse();
+      assertThat(policy.trigger().shouldCompact(stateWithLastInputTokens(100_000))).isTrue();
       assertThat(policy.keepRecentMessages()).isEqualTo(10);
       assertThat(policy.summaryMaxTokens()).isEqualTo(2_048);
       assertThat(policy.instructions()).isEqualTo(CompactionPolicy.DEFAULT_INSTRUCTIONS);
@@ -84,10 +91,15 @@ class CompactionPolicyTest {
     void disabled_never_triggers() {
       CompactionPolicy policy = CompactionPolicy.disabled();
 
-      assertThat(policy.triggerTokens()).isEqualTo(Long.MAX_VALUE);
+      assertThat(policy.trigger().shouldCompact(stateWithLastInputTokens(Long.MAX_VALUE)))
+          .isFalse();
       assertThat(policy.keepRecentMessages()).isEqualTo(10);
       assertThat(policy.summaryMaxTokens()).isEqualTo(2_048);
       assertThat(policy.instructions()).isEqualTo(CompactionPolicy.DEFAULT_INSTRUCTIONS);
     }
+  }
+
+  private static SessionState stateWithLastInputTokens(long lastInputTokens) {
+    return SessionState.newSession(new SessionId("s1")).withLastInputTokens(lastInputTokens);
   }
 }

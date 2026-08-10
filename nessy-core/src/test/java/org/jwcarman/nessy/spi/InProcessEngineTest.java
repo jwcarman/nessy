@@ -64,7 +64,7 @@ class InProcessEngineTest {
 
   private static final SessionId ID = new SessionId("s1");
   private static final ModelSettings CONFIG =
-      new ModelSettings("fake-model", "be helpful", 1024, Set.of());
+      new ModelSettings("fake-model", "be helpful", 1024, Set.of(), null);
 
   /** A tool that throws, to prove the loop survives a broken tool. */
   private static final class ExplodingTool implements Tool<EngineFixtures.Echo> {

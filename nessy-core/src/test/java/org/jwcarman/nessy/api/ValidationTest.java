@@ -90,14 +90,34 @@ class ValidationTest {
 
   @Test
   void a_model_settings_without_a_model_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings(null, "", 1024, Set.of()))
+    assertThatThrownBy(() -> new ModelSettings(null, "", 1024, Set.of(), null))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_model_settings_without_tokens_to_spend_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 0, Set.of()))
+    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 0, Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_model_settings_context_window_at_or_below_max_tokens_is_rejected() {
+    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 1024, Set.of(), 1024L))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_model_settings_accepts_a_null_context_window() {
+    var settings = new ModelSettings("fake-model", "", 1024, Set.of(), null);
+
+    assertThat(settings.contextWindow()).isNull();
+  }
+
+  @Test
+  void a_model_settings_context_window_above_max_tokens_is_accepted() {
+    var settings = new ModelSettings("fake-model", "", 1024, Set.of(), 200_000L);
+
+    assertThat(settings.contextWindow()).isEqualTo(200_000L);
   }
 
   @Test
@@ -150,26 +170,29 @@ class ValidationTest {
   }
 
   @Test
-  void a_compaction_policy_with_a_trigger_below_one_is_rejected() {
-    assertThatThrownBy(() -> new CompactionPolicy(0, 5, 1_024, "summarize"))
-        .isInstanceOf(IllegalArgumentException.class);
+  void a_compaction_policy_with_a_null_trigger_is_rejected() {
+    assertThatThrownBy(() -> new CompactionPolicy(null, 5, 1_024, "summarize"))
+        .isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_compaction_policy_with_negative_keep_recent_messages_is_rejected() {
-    assertThatThrownBy(() -> new CompactionPolicy(50_000, -1, 1_024, "summarize"))
+    assertThatThrownBy(
+            () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), -1, 1_024, "summarize"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_compaction_policy_with_a_summary_ceiling_below_one_is_rejected() {
-    assertThatThrownBy(() -> new CompactionPolicy(50_000, 5, 0, "summarize"))
+    assertThatThrownBy(
+            () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), 5, 0, "summarize"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_compaction_policy_without_instructions_is_rejected() {
-    assertThatThrownBy(() -> new CompactionPolicy(50_000, 5, 1_024, null))
+    assertThatThrownBy(
+            () -> new CompactionPolicy(CompactionTrigger.atTokens(50_000), 5, 1_024, null))
         .isInstanceOf(NullPointerException.class);
   }
 

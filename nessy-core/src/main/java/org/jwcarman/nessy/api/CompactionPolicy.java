@@ -21,13 +21,13 @@ import java.util.Objects;
  * Configures stateful compaction: when to trigger it, how much of the transcript to summarize away
  * versus keep verbatim, and what to ask the summarizer for.
  *
- * @param triggerTokens compact once {@link SessionState#lastInputTokens()} reaches this
+ * @param trigger decides when the settled conversation should be compacted
  * @param keepRecentMessages how many of the most recent messages survive compaction verbatim
  * @param summaryMaxTokens the ceiling on the summarizer's own reply
  * @param instructions what to ask the summarizer for
  */
 public record CompactionPolicy(
-    long triggerTokens, int keepRecentMessages, int summaryMaxTokens, String instructions) {
+    CompactionTrigger trigger, int keepRecentMessages, int summaryMaxTokens, String instructions) {
 
   /** The default instructions handed to the summarizer by {@link #defaults()}. */
   public static final String DEFAULT_INSTRUCTIONS =
@@ -36,9 +36,7 @@ public record CompactionPolicy(
           + " omit pleasantries.";
 
   public CompactionPolicy {
-    if (triggerTokens < 1) {
-      throw new IllegalArgumentException("triggerTokens must be at least 1");
-    }
+    Objects.requireNonNull(trigger, "trigger must not be null");
     if (keepRecentMessages < 0) {
       throw new IllegalArgumentException("keepRecentMessages must be at least 0");
     }
@@ -50,14 +48,15 @@ public record CompactionPolicy(
 
   /** Compaction enabled, triggering at 100k measured input tokens. */
   public static CompactionPolicy defaults() {
-    return new CompactionPolicy(100_000, 10, 2_048, DEFAULT_INSTRUCTIONS);
+    return new CompactionPolicy(
+        CompactionTrigger.atTokens(100_000), 10, 2_048, DEFAULT_INSTRUCTIONS);
   }
 
   /**
-   * Compaction effectively off: the trigger sits at {@link Long#MAX_VALUE}, a threshold no measured
-   * input-token count can reach, so the reducer never emits {@code Effect.Compact}.
+   * Compaction effectively off: the trigger never fires, so the reducer never emits {@code
+   * Effect.Compact}.
    */
   public static CompactionPolicy disabled() {
-    return new CompactionPolicy(Long.MAX_VALUE, 10, 2_048, DEFAULT_INSTRUCTIONS);
+    return new CompactionPolicy(CompactionTrigger.never(), 10, 2_048, DEFAULT_INSTRUCTIONS);
   }
 }

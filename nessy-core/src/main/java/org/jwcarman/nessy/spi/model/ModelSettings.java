@@ -23,15 +23,26 @@ import java.util.Set;
  *
  * @param capabilities what the harness asks providers to use; a provider that cannot do one says so
  *     rather than silently degrading
+ * @param contextWindow the model's total token budget, or {@code null} if undeclared. This is the
+ *     third sanctioned nullable field in this codebase (see {@code ModelRequest.responseSchema} for
+ *     the second): most callers never set it, and a declared window exists only so {@link
+ *     org.jwcarman.nessy.api.CompactionTrigger#forWindow} has something to derive a trigger from.
  */
 public record ModelSettings(
-    String model, String systemPrompt, int maxTokens, Set<Capability> capabilities) {
+    String model,
+    String systemPrompt,
+    int maxTokens,
+    Set<Capability> capabilities,
+    Long contextWindow) {
 
   public ModelSettings {
     Objects.requireNonNull(model, "model must not be null");
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     if (maxTokens < 1) {
       throw new IllegalArgumentException("maxTokens must be at least 1");
+    }
+    if (contextWindow != null && contextWindow <= maxTokens) {
+      throw new IllegalArgumentException("contextWindow must be greater than maxTokens");
     }
     capabilities = Set.copyOf(capabilities);
   }

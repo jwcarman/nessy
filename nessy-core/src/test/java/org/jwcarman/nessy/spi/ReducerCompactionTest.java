@@ -23,6 +23,7 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
@@ -49,7 +50,10 @@ class ReducerCompactionTest {
 
   private static CompactionPolicy policy(long triggerTokens, int keepRecentMessages) {
     return new CompactionPolicy(
-        triggerTokens, keepRecentMessages, 2_048, CompactionPolicy.DEFAULT_INSTRUCTIONS);
+        CompactionTrigger.atTokens(triggerTokens),
+        keepRecentMessages,
+        2_048,
+        CompactionPolicy.DEFAULT_INSTRUCTIONS);
   }
 
   /** Drives one plain user/assistant text turn to completion, via {@link #builder}. */

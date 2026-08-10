@@ -29,12 +29,14 @@ import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.SessionId;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.TextBlock;
 import org.jwcarman.nessy.api.ToolResult;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -199,7 +201,7 @@ class AgentFacadeTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     CompactionPolicy policy =
         new CompactionPolicy(
-            50_000, // trigger at 50k measured input tokens
+            CompactionTrigger.atTokens(50_000), // trigger at 50k measured input tokens
             20, // keep the last 20 messages verbatim
             1_024, // cap the summary reply at 1024 tokens
             "Summarize the conversation so far, focusing on open TODOs.");
@@ -207,6 +209,74 @@ class AgentFacadeTest {
     Agent agent = Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
 
     assertThat(agent).isNotNull();
+  }
+
+  @Test
+  void a_declared_window_derives_the_trigger() {
+    // window 110_000, maxTokens 10_000 -> forWindow trigger at 0.8 * (110_000 - 10_000) = 80_000.
+    // keepRecentMessages stays the defaults' 10, so a safe cut needs at least eleven settled
+    // messages before the trigger can find one: six plain user/assistant pairs (twelve messages)
+    // plus the seventh user message the reducer appends before deciding.
+    ScriptedModelProvider derivedProvider =
+        ScriptedModelProvider.builder()
+            .text("a1")
+            .endTurn()
+            .text("a2")
+            .endTurn()
+            .text("a3")
+            .endTurn()
+            .text("a4")
+            .endTurn()
+            .text("a5")
+            .endTurn()
+            .text("a6")
+            .endTurn(new Usage(80_000, 10, 0))
+            .text("Summary of earlier turns.")
+            .endTurn()
+            .text("a7")
+            .endTurn()
+            .build();
+    Agent derivedAgent =
+        Nessy.agent()
+            .provider(derivedProvider)
+            .model("fake-model")
+            .maxTokens(10_000)
+            .contextWindow(110_000)
+            .build();
+    Conversation derivedConversation = derivedAgent.converse();
+    for (int i = 1; i <= 6; i++) {
+      derivedConversation.send("u" + i);
+    }
+
+    Reply seventhReply = derivedConversation.send("u7");
+
+    assertThat(seventhReply.failed()).isFalse();
+    assertThat(seventhReply.state().generation()).isEqualTo(1);
+
+    // The same declared window, but an explicit compaction policy always wins: compaction
+    // never fires even though the same usage crosses the derived threshold.
+    ScriptedModelProvider explicitProvider =
+        ScriptedModelProvider.builder()
+            .text("First answer.")
+            .endTurn(new Usage(80_000, 10, 0))
+            .text("Second answer.")
+            .endTurn()
+            .build();
+    Agent explicitAgent =
+        Nessy.agent()
+            .provider(explicitProvider)
+            .model("fake-model")
+            .maxTokens(10_000)
+            .contextWindow(110_000)
+            .compaction(CompactionPolicy.disabled())
+            .build();
+    Conversation explicitConversation = explicitAgent.converse();
+    explicitConversation.send("first question");
+
+    Reply explicitReply = explicitConversation.send("second question");
+
+    assertThat(explicitReply.failed()).isFalse();
+    assertThat(explicitReply.state().generation()).isZero();
   }
 
   @Test
