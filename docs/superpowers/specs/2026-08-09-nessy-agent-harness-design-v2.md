@@ -181,7 +181,8 @@ org.jwcarman.nessy.api           Message, Role, ContentBlock (sealed: TextBlock,
                                  ToolCall, ToolResult, Usage, StopReason,
                                  SessionId, SessionState, SessionStatus,
                                  Event (sealed), Decision (sealed), Awaited (sealed), ParkToken,
-                                 RunOutcome (sealed), TerminationPolicy, Context [§10.8]
+                                 RunOutcome (sealed), TerminationPolicy, Context [§10.8],
+                                 CompactionStrategy, CompactionTrigger, CompactionPolicy [§10.6]
 org.jwcarman.nessy.api.tool      Tool, ToolContext, ToolRegistry, ToolSpec,
                                  ToolGrant, UsagePolicy, PolicyDecision (sealed)  [§10.5]
 org.jwcarman.nessy.api.approval  Approver, ApprovalRequest
@@ -192,7 +193,7 @@ org.jwcarman.nessy.spi.model     ModelProvider, ModelRequest, ModelEvent (sealed
 org.jwcarman.nessy.spi.context   ContextBuilder, TokenEstimator          [amended, §10.8]
 org.jwcarman.nessy.spi.compaction Summarizer                             [amended, §10.8]
 org.jwcarman.nessy.spi.memory    Memory                                  [§10.9]
-org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry  [§10.8]
+org.jwcarman.nessy.spi.session   SessionStore, TranscriptStore, TranscriptEntry, MessageCodec  [§10.8]
 org.jwcarman.nessy.internal      ToolInvoker, Schemas, observation conventions, engine machinery
 ```
 
@@ -718,29 +719,74 @@ Design rules:
 **Amended 2026-08-09 (§10.8):** the engine's private summarization method is
 extracted into the `Summarizer` seam (`spi.compaction`), the pair-safe cut
 relocates onto the `Context` type, and wire-bound message lists become
-`Context`s. **Convergence rulings (2026-08-09, project owner):**
-`Event.Compacted` gains the summarization call's `Usage` as a second
-component — the reducer accumulates it into `SessionState.usage`, so a
-session's cost accounting is complete (the prior documented exclusion is
-repealed). And the trigger is promoted from data to strategy:
+`Context`s. **Convergence rulings (2026-08-09, project owner) — compaction becomes one
+strategy seam.** The final synthesis of the design session: compaction's
+*decision* and *transformation* unify behind a single interface, while the
+reducer keeps every scrap of bookkeeping authority:
 
 ```java
-public interface CompactionTrigger {
-    boolean shouldCompact(SessionState state);   // pure; consulted by the reducer
+public interface CompactionStrategy {
+    /** Pure — the reducer consults this at CallModel decision points. */
+    boolean requiresCompaction(SessionState state);
 
-    static CompactionTrigger atTokens(long trigger) { … }              // the classic threshold
-    static CompactionTrigger forWindow(long window, long maxTokens) { … } // ≈ 0.8 × (window − maxTokens)
-    static CompactionTrigger never() { … }
+    /** Effectful — the ENGINE performs this. May call models, may not.
+     *  Returns a smaller working set and what producing it cost. */
+    Result compact(List<Message> workingSet);
+
+    record Result(List<Message> workingSet, Usage spend) { }
 }
 ```
 
-`CompactionPolicy` becomes `(CompactionTrigger trigger, int
-keepRecentMessages, int summaryMaxTokens, String instructions)`;
-`defaults()` = `atTokens(100_000)`, `disabled()` = `never()`. The builder
-derives `forWindow(…)` automatically when a `contextWindow` is declared on
-the model binding. Custom rules (message-count, topic-shift,
-never-mid-tool-chain) implement the interface; the threshold comparison is
-just the default strategy. Semantics above are otherwise unchanged.
+- **The choreography.** Reducer: `requiresCompaction` true at a decision
+  point → emit `Effect.Compact(workingSet)` (the whole working set; the
+  strategy owns where and how to shrink), enter `COMPACTING`. Engine:
+  perform `compact(…)` under the `nessy.compaction` observation, validate
+  the result (`Context.of(replacement)` — a pair-breaking strategy takes
+  the existing best-effort failure path), feed
+  `Event.Compacted(result.workingSet(), result.spend())`. Reducer: apply —
+  replace messages wholesale, bump `generation`, accumulate the spend into
+  `usage`, proceed to `CallModel`. **The strategy proposes; the reducer
+  disposes.** A result that does not *shrink* the working set is applied
+  as a skip (no bump — the reducer's belt to the engine's suspenders).
+- **`Result.spend` is a bill, not a diff**: the tokens the compaction
+  itself consumed (the summarizing call's own input + output), accumulated
+  into the ledger like every other model call — the cost-accounting
+  exclusion is repealed. Non-LLM strategies (truncation, tool-exchange
+  dropping) spent nothing and return `Usage.zero()`.
+- **Replay hardens for free.** `Event.Compacted` now carries the entire
+  replacement working set — the *outcome*, not ingredients for re-deriving
+  it. The recompute-the-cut hazard parked by Plan 4's review dissolves: a
+  replayed `Compacted` reproduces state by construction.
+- **The earlier pieces demote into the default strategy, not the trash.**
+  `CompactionStrategy.summarizing(policy, summarizer)` is the default:
+  `requiresCompaction` delegates to the policy's trigger, `compact` cuts
+  at `Context.pairSafeCut(keepRecentMessages)` (no safe cut → unchanged
+  result → skip) and stands in a `Summarizer` summary for the head.
+  `CompactionPolicy` becomes its knob bundle — `(CompactionTrigger
+  trigger, int keepRecentMessages, int summaryMaxTokens, String
+  instructions)`, `defaults()` = `atTokens(100_000)`, `disabled()` =
+  `never()` — and `CompactionTrigger` is the pluggable decision half:
+
+  ```java
+  public interface CompactionTrigger {
+      boolean shouldCompact(SessionState state);
+      static CompactionTrigger atTokens(long trigger) { … }
+      static CompactionTrigger forWindow(long window, long maxTokens) { … } // ≈ 0.8 × (window − maxTokens)
+      static CompactionTrigger never() { … }
+  }
+  ```
+
+  Constants bake at construction; the builder wires `forWindow(…)`
+  automatically when a `contextWindow` is declared on the model binding.
+  `AgentBuilder.compaction(…)` overloads: pass a `CompactionPolicy` to
+  tune the default strategy, or a `CompactionStrategy` to replace it
+  wholesale. Alternative strategies (structured-facts digest, episodic
+  cuts, rebuild-from-journal) implement the seam with no grammar change —
+  the grammar freezes over outcomes, which are stable, not mechanisms,
+  which are not.
+
+Semantics above (measured trigger via the default, pair-safe cut inside
+the default, best-effort failure, `COMPACTING`) are otherwise unchanged.
 
 **The declared window (amended 2026-08-09).** The static `defaults()`
 trigger is safe for 200k-class models and silently wrong for small-window
@@ -877,17 +923,25 @@ stores still diff by it). The exemplary durable implementation is
 sequence — an append-heavy write path with rare sequential reads is
 precisely the workload Cassandra's storage model is built for.
 
-**`Summarizer` (spi.compaction) — the compaction domain's collaborator.**
+**`Summarizer` (spi.compaction) — the default strategy's sub-seam.**
+(Ruled 2026-08-09: `CompactionStrategy` in §10.6 owns compaction wholesale;
+`Summarizer` survives inside the default `summarizing(…)` strategy so "same
+strategy, cheaper model" never requires reimplementing cut logic.)
 
 ```java
 public interface Summarizer {
-    String summarize(Context head, CompactionPolicy policy);
+    Summary summarize(Context head, CompactionPolicy policy);
+
+    record Summary(String text, Usage usage) { }   // non-LLM summarizers return Usage.zero()
 }
 ```
 
+(The `Summary` pair exists because of the usage ruling: the engine needs
+the summarization call's spend to put on `Event.Compacted`.)
+
 The head handed in may begin with the previous summary message, so
 summaries fold forward across recompactions instead of nesting. It returns
-prose; the reducer keeps ownership of the summary message's format and
+prose plus the call's measured usage; the reducer keeps ownership of the summary message's format and
 placement, so replay determinism stays in one place (`Event.Compacted`
 carries the string, as shipped). Failure is a thrown `RuntimeException`,
 and the engine's best-effort path is unchanged: `CompactionFailed` on the
@@ -1235,8 +1289,8 @@ the application's own explicit declaration. If none is declared, the starter's
 | Where does authority attach? (2026-08-09) | To the grant — `ToolGrant` + `UsagePolicy` per agent-tool binding; `requiresApproval()` is the tool author's default; explicit grant policy may loosen or tighten (§10.5) |
 | Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
 | Are agents typed? (2026-08-09) | Yes, all of them — `Agent<I>` over an application-owned sealed vocabulary; `Agent<String>` degenerate; born pre-1.0; tools keep their own input types (§8.4) |
-| Does the summarizer's spend count? (2026-08-09) | Yes — `Event.Compacted(summary, usage)`; the reducer accumulates it; the exclusion is repealed (§10.6) |
-| Is the compaction trigger pluggable? (2026-08-09) | Yes — `CompactionTrigger.shouldCompact(state)`, threshold as default strategy; constants baked at construction, wired by the builder (§10.6) |
+| Does compaction's spend count? (2026-08-09) | Yes — `Event.Compacted(workingSet, spend)`; a bill, not a diff; non-LLM strategies bill `Usage.zero()`; the exclusion is repealed (§10.6) |
+| Is compaction pluggable? (2026-08-09) | Wholesale — `CompactionStrategy.requiresCompaction(state)` + `compact(workingSet) → Result(workingSet, spend)`; the strategy proposes, the reducer disposes; `CompactionTrigger`/`Summarizer`/`CompactionPolicy` demote into the default `summarizing(…)` strategy (§10.6) |
 | Journal append failure? (2026-08-09) | Strict — audit-grade truth; a failed append fails the run; in-memory default cannot fail (§10.8) |
 | At-rest encoding? (2026-08-09) | `MessageCodec` (`Message ↔ byte[]`): JSON-as-UTF-8 default, encryption as codec decorator, serving both stores; core ships no cryptography (§10.8) |
 | Transcript vs Context? (2026-08-09) | The transcript is the journal's full history; `Context` is the validated wire-bound sequence; glossary §5.0 |
