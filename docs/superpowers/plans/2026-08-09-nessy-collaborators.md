@@ -190,10 +190,14 @@ public interface Summarizer {
 public record TranscriptEntry(Message message, Usage turnUsage) { /* both non-null */ }
 
 public interface TranscriptStore {
-    void append(SessionId id, TranscriptEntry entry);   // STRICT: a thrown failure fails the run (javadoc'd)
-    List<TranscriptEntry> read(SessionId id);           // append order; empty for unknown ids
-    static TranscriptStore inMemory() { … }
+    void append(SessionId id, TranscriptEntry entry);   // the ONLY method — a pure sink; STRICT: a thrown failure fails the run (javadoc'd)
+
+    static TranscriptStore none() { … }                 // the DEFAULT — noop sink; auditability is opt-in
+    static InMemoryTranscriptStore inMemory() { … }     // returns the CONCRETE type
 }
+
+// public class InMemoryTranscriptStore implements TranscriptStore — its own reader, NOT on the seam:
+//     List<TranscriptEntry> entries(SessionId id)      // append order; empty for unknown ids; defensive copy
 
 public interface MessageCodec {
     byte[] encode(Message message);
@@ -207,11 +211,11 @@ public interface MessageCodec {
   - Generation bump (compaction applied): newborn = messages of `after` not present in `before` (for the summarizing default that is exactly the summary message) — append them with the `Compacted` event's spend as `turnUsage`. Never re-append survivors.
 - **Strict:** no try/catch around `append` — failure propagates, the run fails, the `finally` still persists the snapshot.
 - `MessageCodec.json`: round-trips the sealed `Message`/`ContentBlock` grammar WITHOUT annotating it — `internal/MessageJson` supplies a Jackson module (mixins/subtype registration). The api zone stays annotation-free.
-- In-memory store: `ConcurrentHashMap<SessionId, List<TranscriptEntry>>`, synchronized append, defensive read copies, no codec (codec is the seam durable modules and encryption decorators build on).
-- `AgentBuilder.transcript(TranscriptStore)`, default `inMemory()`.
+- In-memory store: PUBLIC `InMemoryTranscriptStore` in spi.session (`ConcurrentHashMap<SessionId, List<TranscriptEntry>>`, synchronized append, defensive copies from `entries(id)`), no codec (codec is the seam durable modules and encryption decorators build on). The framework never reads any journal — tests read via the concrete type they constructed.
+- `AgentBuilder.transcript(TranscriptStore)`, default `TranscriptStore.none()` — retention is a deliberate declaration.
 
 - [ ] **Step 1: failing tests.**
-  - `TranscriptStoreTest`: `appends_read_back_in_order`; `an_unknown_session_reads_empty`; `entries_are_immutable_to_readers`.
+  - `TranscriptStoreTest`: `appends_read_back_in_order` (via `InMemoryTranscriptStore.entries`); `an_unknown_session_reads_empty`; `entries_are_immutable_to_readers`; `none_swallows_everything_silently`.
   - `MessageCodecTest`: `every_block_variant_survives_the_round_trip` (one message per `ContentBlock` variant); `the_encoding_is_utf8_json` (decode bytes as UTF-8, parse as JSON, assert a known field).
   - Engine journaling: `every_message_is_journaled_at_birth` (tool round-trip → journal holds user, assistant(tool_use) with the turn's usage, results message with zero, final assistant with usage, in order); `compaction_journals_the_summary_with_its_spend` (post-compaction journal = originals + summary entry carrying the strategy's spend; nothing re-appended); `a_failing_journal_fails_the_run_loudly` (throwing store → run throws; snapshot still saved).
 - [ ] **Step 2: red.** **Step 3: implement.** **Step 4: both profiles green.** **Step 5: commit** `feat(spi): the append-only transcript journal, strict, with MessageCodec`.
@@ -225,7 +229,7 @@ public interface MessageCodec {
 - Modify: `README.md`, `CHANGELOG.md`, spec §14 (gate table + sequencing), `AgentFacadeTest` (README snippet mirrors)
 
 Facade-level proofs:
-- `the_journal_keeps_what_compaction_removes` — compacting conversation with a test-held `TranscriptStore`; afterwards the working set is `[summary, …tail]` while the journal holds every original message plus the summary entry, in order.
+- `the_journal_keeps_what_compaction_removes` — compacting conversation with a test-held `InMemoryTranscriptStore` wired via `.transcript(...)`; afterwards the working set is `[summary, …tail]` while the journal holds every original message plus the summary entry, in order.
 - `the_ledger_counts_the_strategys_spend` — scripted summary usage lands in `reply.state().usage()`.
 - `a_declared_window_compacts_a_small_model` — `.contextWindow(16_000)` with default `maxTokens`; scripted usage above `0.8 × (window − maxTokens)` → compaction fires.
 - `a_custom_strategy_replaces_the_mechanism_wholesale` — a no-LLM strategy (drop-all-but-last-N via a lambda in the test) wired with `.compaction(strategy)`; conversation compacts with zero added spend and no summarizer involved.

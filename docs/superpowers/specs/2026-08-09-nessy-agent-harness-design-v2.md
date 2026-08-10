@@ -871,14 +871,25 @@ in-process, with a message naming the orphaned id.
 
 ```java
 public interface TranscriptStore {
-    void append(SessionId id, TranscriptEntry entry);
-    List<TranscriptEntry> read(SessionId id);
+    void append(SessionId id, TranscriptEntry entry);   // a pure sink — the ONLY method
 
-    static TranscriptStore inMemory() { … }
+    static TranscriptStore none() { … }                 // the default: auditability is opt-in
+    static InMemoryTranscriptStore inMemory() { … }     // concrete type; exposes entries(id) for tests/hosts
 }
 
 public record TranscriptEntry(Message message, Usage turnUsage) { … }
 ```
+
+**The seam is a pure sink (ruled 2026-08-09).** The framework NEVER reads
+the journal — there is no `read` on the interface at all. Reading is the
+backing store's native business (CQL, SQL, the concrete in-memory type's
+own accessor); a combined implementation may physically rebuild
+`SessionStore` snapshots from journal rows, but that is its private
+affair — the seam contracts stay independent. **The default is `none()`**
+— a noop sink, so the zero-config posture stays lean and compaction
+genuinely bounds memory; retaining full history (in-memory for tests,
+Cassandra for production) is a deliberate declaration, like everything
+else with teeth.
 
 The engine appends at message birth. The entry carries the one number that
 is exact and non-derivable: `turnUsage` for assistant messages, whose
@@ -1293,6 +1304,7 @@ the application's own explicit declaration. If none is declared, the starter's
 | Is compaction pluggable? (2026-08-09) | Wholesale — `CompactionStrategy.requiresCompaction(state)` + `compact(workingSet) → Result(workingSet, spend)`; the strategy proposes, the reducer disposes; `CompactionTrigger`/`Summarizer`/`CompactionPolicy` demote into the default `summarizing(…)` strategy (§10.6) |
 | Journal append failure? (2026-08-09) | Strict — audit-grade truth; a failed append fails the run; in-memory default cannot fail (§10.8) |
 | At-rest encoding? (2026-08-09) | `MessageCodec` (`Message ↔ byte[]`): JSON-as-UTF-8 default, encryption as codec decorator, serving both stores; core ships no cryptography (§10.8) |
+| Is the journal readable through the seam? (2026-08-09) | No — `TranscriptStore` is a pure sink; the framework never reads it; default is `none()`, retention is opt-in (§10.8) |
 | Transcript vs Context? (2026-08-09) | The transcript is the journal's full history; `Context` is the validated wire-bound sequence; glossary §5.0 |
 | Test-only interfaces: where? | Internal, unadvertised; promotion on evidence only |
 | `MODIFY` policy verb? | Rejected — attribution nightmare |
