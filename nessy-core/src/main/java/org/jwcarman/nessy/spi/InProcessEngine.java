@@ -22,13 +22,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
-import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.SessionId;
@@ -173,23 +172,22 @@ public final class InProcessEngine implements ExecutionEngine {
   }
 
   /**
-   * Performs a compaction as an ordinary, tool-free model call, then feeds the one event it
-   * produces.
+   * Performs a compaction by handing the whole working set to {@code reducer.compaction()}, then
+   * feeds the one event it produces.
    *
-   * <p>Unlike {@link #callModel}, nothing here streams live into the hub: the summarizer's prose is
-   * not conversation the model or a listener needs to see chunk by chunk, only the finished summary
-   * the reducer folds into the transcript. The whole attempt — request, stream, and the resulting
-   * {@link Event#Compacted} or {@link Event#CompactionSkipped} feed — runs inside one {@code
-   * nessy.compaction} observation, matching the F2 convention used everywhere else in this engine:
-   * a caught failure marks the observation with {@link Observation#error(Throwable)} rather than
-   * letting it escape, since a failed compaction is recoverable and the turn must proceed
+   * <p>Unlike {@link #callModel}, nothing here streams live into the hub: whatever the strategy
+   * does internally (a model call, for the summarizing default) is not conversation the model or a
+   * listener needs to see chunk by chunk, only the finished result the reducer folds into the
+   * transcript. The whole attempt — the strategy's {@code compact()}, the result's validation, and
+   * the resulting {@link Event#Compacted} or {@link Event#CompactionSkipped} feed — runs inside one
+   * {@code nessy.compaction} observation, matching the F2 convention used everywhere else in this
+   * engine: a caught failure marks the observation with {@link Observation#error(Throwable)} rather
+   * than letting it escape, since a failed compaction is recoverable and the turn must proceed
    * uncompacted.
    *
-   * <p>{@code effect.messages()} is sent to the provider exactly as the reducer packaged it; it is
-   * never projected through {@link ContextBuilder}. The projection seam exists to shape what a
-   * conversational call sees; a compaction call's messages are already exactly the slice the
-   * reducer chose to summarize, and projecting them again would defeat the reducer's own choice of
-   * what to keep verbatim versus compact away.
+   * <p>{@link Context#of} validates the strategy's result before it ever reaches the reducer: a
+   * strategy that hands back a pair-breaking working set is treated as a failure here, not a
+   * corruption the reducer has to detect later.
    *
    * <p>As in {@link #callModel}, the resulting event is built inside the observation scope but fed
    * to the reducer only after the scope closes: {@code feed} can trigger the next model turn, and
@@ -201,7 +199,9 @@ public final class InProcessEngine implements ExecutionEngine {
     Event event;
     try (var _ = observation.openScope()) {
       try {
-        event = new Event.Compacted(summarize(effect));
+        CompactionStrategy.Result result = reducer.compaction().compact(effect.workingSet());
+        Context.of(result.workingSet());
+        event = new Event.Compacted(result.workingSet(), result.spend());
       } catch (RuntimeException e) {
         observation.error(e);
         String reason = describe(e);
@@ -215,40 +215,6 @@ public final class InProcessEngine implements ExecutionEngine {
       observation.stop();
     }
     return feed(progress, state, event);
-  }
-
-  /**
-   * Asks the model to summarize {@code effect.messages()} per {@code effect.instructions()},
-   * collecting only the assistant's text (thinking, if any, is discarded) into one string.
-   *
-   * <p>A blank result is treated as a failure rather than a valid, if useless, summary: an empty
-   * summary would still replace the compacted prefix, silently discarding history for nothing.
-   */
-  private String summarize(Effect.Compact effect) {
-    List<Message> messages = new ArrayList<>(effect.messages());
-    messages.add(Message.user(effect.instructions()));
-    ModelRequest request =
-        new ModelRequest(
-            Context.of(messages),
-            config.systemPrompt(),
-            config.model(),
-            reducer.compaction().summaryMaxTokens(),
-            List.of(),
-            Set.of(),
-            null);
-    StringBuilder summary = new StringBuilder();
-    try (ModelStream stream = provider.stream(request)) {
-      for (ModelEvent modelEvent : stream) {
-        if (modelEvent instanceof ModelEvent.TextChunk(String text)) {
-          summary.append(text);
-        }
-      }
-    }
-    String text = summary.toString();
-    if (text.isBlank()) {
-      throw new IllegalStateException("summarizer returned no text");
-    }
-    return text;
   }
 
   /**

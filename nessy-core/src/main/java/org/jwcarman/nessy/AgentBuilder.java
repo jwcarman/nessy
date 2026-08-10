@@ -17,8 +17,10 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.TerminationPolicy;
 import org.jwcarman.nessy.api.approval.Approver;
@@ -28,6 +30,8 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
+import org.jwcarman.nessy.spi.compaction.CompactionStrategies;
+import org.jwcarman.nessy.spi.compaction.Summarizer;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -57,6 +61,8 @@ public final class AgentBuilder {
   private TerminationPolicy termination = TerminationPolicy.defaults();
   private CompactionPolicy compaction = CompactionPolicy.defaults();
   private boolean compactionExplicit;
+  private CompactionStrategy compactionStrategy;
+  private Summarizer summarizer;
   private Long contextWindow;
   private ObjectMapper mapper = new ObjectMapper();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
@@ -121,9 +127,35 @@ public final class AgentBuilder {
     return this;
   }
 
+  /**
+   * Tunes the default, summarizing strategy: when it triggers, how much it keeps verbatim, and what
+   * it asks the summarizer for. Superseded entirely by {@link #compaction(CompactionStrategy)},
+   * explicit or not — that overload replaces the strategy outright, so there is nothing here left
+   * to tune.
+   */
   public AgentBuilder compaction(CompactionPolicy compaction) {
     this.compaction = compaction;
     this.compactionExplicit = true;
+    return this;
+  }
+
+  /**
+   * Escapes the built-in summarizing strategy entirely. Wins over {@link
+   * #compaction(CompactionPolicy)}, {@link #summarizer(Summarizer)}, and {@link
+   * #contextWindow(long)}, whether or not those were called.
+   */
+  public AgentBuilder compaction(CompactionStrategy compaction) {
+    this.compactionStrategy = compaction;
+    return this;
+  }
+
+  /**
+   * What performs the default summarizing strategy's model call. Default: {@link
+   * Summarizer#usingProvider} over this builder's {@link #provider(ModelProvider)} and settings.
+   * Ignored when {@link #compaction(CompactionStrategy)} is called.
+   */
+  public AgentBuilder summarizer(Summarizer summarizer) {
+    this.summarizer = summarizer;
     return this;
   }
 
@@ -162,14 +194,10 @@ public final class AgentBuilder {
     if (model == null || model.isBlank()) {
       throw new IllegalStateException("a model name is required: call model(...)");
     }
-    CompactionPolicy resolvedCompaction =
-        contextWindow != null && !compactionExplicit
-            ? new CompactionPolicy(
-                CompactionTrigger.forWindow(contextWindow, maxTokens),
-                compaction.keepRecentMessages(),
-                compaction.summaryMaxTokens(),
-                compaction.instructions())
-            : compaction;
+    ModelSettings settings =
+        new ModelSettings(model, systemPrompt, maxTokens, capabilities, contextWindow);
+    CompactionStrategy resolvedStrategy =
+        compactionStrategy != null ? compactionStrategy : assembleCompactionStrategy(settings);
     ExecutionEngine engine =
         new InProcessEngine(
             provider,
@@ -177,11 +205,36 @@ public final class AgentBuilder {
             approver,
             store,
             events,
-            new Reducer(termination, resolvedCompaction),
-            new ModelSettings(model, systemPrompt, maxTokens, capabilities, contextWindow),
+            new Reducer(termination, resolvedStrategy),
+            settings,
             mapper,
             observations,
             contextBuilder);
     return new Agent(engine, events);
+  }
+
+  /**
+   * Assembles the default, summarizing strategy from {@link #compaction(CompactionPolicy)} (or a
+   * window-derived trigger, per {@link #contextWindow(long)}) and {@link #summarizer(Summarizer)}
+   * (or {@link Summarizer#usingProvider} over this builder's provider, by default). A resolved
+   * policy equal to {@link CompactionPolicy#disabled()} short-circuits to {@link
+   * CompactionStrategy#disabled()} rather than wrapping a summarizer that would never run.
+   */
+  private CompactionStrategy assembleCompactionStrategy(ModelSettings settings) {
+    Objects.requireNonNull(compaction, "compaction must not be null");
+    CompactionPolicy resolvedPolicy =
+        contextWindow != null && !compactionExplicit
+            ? new CompactionPolicy(
+                CompactionTrigger.forWindow(contextWindow, maxTokens),
+                compaction.keepRecentMessages(),
+                compaction.summaryMaxTokens(),
+                compaction.instructions())
+            : compaction;
+    if (resolvedPolicy.equals(CompactionPolicy.disabled())) {
+      return CompactionStrategy.disabled();
+    }
+    Summarizer resolvedSummarizer =
+        summarizer != null ? summarizer : Summarizer.usingProvider(provider, settings);
+    return CompactionStrategies.summarizing(resolvedPolicy, resolvedSummarizer);
   }
 }

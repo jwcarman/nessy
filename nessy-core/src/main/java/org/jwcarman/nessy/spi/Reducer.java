@@ -19,13 +19,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.ContentBlock;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.Role;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.SessionStatus;
 import org.jwcarman.nessy.api.StopReason;
@@ -46,20 +45,24 @@ import org.jwcarman.nessy.api.ToolUseBlock;
  *
  * @param termination decides when the loop must stop calling the model rather than burning tokens
  *     in a loop
- * @param compaction decides when and how the settled conversation is summarized to keep it inside
- *     the model's context window
+ * @param compaction decides when the settled conversation needs shrinking and shrinks it, keeping
+ *     it inside the model's context window
  */
-public record Reducer(TerminationPolicy termination, CompactionPolicy compaction) {
-
-  private static final String SUMMARY_PREFIX = "[Conversation summary — earlier turns compacted]\n";
+public record Reducer(TerminationPolicy termination, CompactionStrategy compaction) {
 
   public Reducer {
     Objects.requireNonNull(termination, "termination must not be null");
     Objects.requireNonNull(compaction, "compaction must not be null");
   }
 
+  /**
+   * Compaction disabled. Every other default in this codebase that needs a provider is assembled by
+   * {@code AgentBuilder}, which has one to hand to {@code Summarizer.usingProvider(...)}; this
+   * factory has no provider available to it, so it cannot build the summarizing default the way
+   * {@code AgentBuilder.build()} does. Call {@code AgentBuilder} for a compacting agent.
+   */
   public static Reducer defaults() {
-    return new Reducer(TerminationPolicy.defaults(), CompactionPolicy.defaults());
+    return new Reducer(TerminationPolicy.defaults(), CompactionStrategy.disabled());
   }
 
   public Step reduce(SessionState state, Event event) {
@@ -311,45 +314,42 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
 
   /**
    * The decision made at every point the loop is about to ask the model to continue: call it, or —
-   * when {@link CompactionPolicy#trigger()} says the settled conversation has grown enough —
-   * summarize the older half of the transcript first. Termination has already been checked by the
-   * caller; this is the second half of that same decision point, tried at most once per point (a
-   * skipped or completed compaction does not loop back through here).
+   * when {@link CompactionStrategy#requiresCompaction} says the settled conversation has grown
+   * enough — hand the whole working set to the strategy first. Termination has already been checked
+   * by the caller; this is the second half of that same decision point, tried at most once per
+   * point (a skipped or completed compaction does not loop back through here).
+   *
+   * <p>The reducer no longer computes what to keep versus summarize away: it emits the entire
+   * settled working set and lets the strategy decide.
    */
   private Step proceedOrCompact(SessionState state) {
-    if (!compaction.trigger().shouldCompact(state)) {
+    if (!compaction.requiresCompaction(state)) {
       return Step.of(state, Effect.callModel());
     }
-    int cut = pairSafeCut(state.messages());
-    if (cut == 0) {
-      // Nothing compactable — a giant tool exchange with no user-text boundary to cut at,
-      // for instance. Calling the model uncompacted beats looping forever chasing a cut
-      // that will never exist.
-      return Step.of(state, Effect.callModel());
-    }
-    return Step.of(
-        state.with(SessionStatus.COMPACTING),
-        new Effect.Compact(state.messages().subList(0, cut), compaction.instructions()));
+    return Step.of(state.with(SessionStatus.COMPACTING), new Effect.Compact(state.messages()));
   }
 
   /**
-   * The summarizer's reply lands: the same cut is recomputed (state is unchanged since it was
-   * decided, so determinism holds) and everything before it collapses into one summary message,
-   * with the tail preserved verbatim and in order.
+   * The strategy's result lands. A working set smaller than what went in is a shrink: it replaces
+   * the messages wholesale, bumps the generation (a compacted transcript is a new shape the rest of
+   * the system — transcripts, resumed sessions — must be able to tell apart from the one before
+   * it), and resets {@code lastInputTokens} since the next call's measured usage will reflect the
+   * new, smaller transcript. A result no smaller than what went in is a skip in every way that
+   * matters: the spend still happened and is still accounted for, but the messages are untouched
+   * and the generation does not bump.
    */
   private Step compacted(SessionState state, Event.Compacted event) {
-    List<Message> messages = state.messages();
-    int cut = pairSafeCut(messages);
-    List<Message> rewritten = new ArrayList<>();
-    rewritten.add(Message.user(SUMMARY_PREFIX + event.summary()));
-    rewritten.addAll(messages.subList(cut, messages.size()));
-    SessionState next =
-        state
-            .withMessages(rewritten)
-            .withGeneration(state.generation() + 1)
-            .withLastInputTokens(0)
-            .with(SessionStatus.AWAITING_MODEL);
-    return Step.of(next, Effect.callModel());
+    SessionState spent = state.withUsage(state.usage().plus(event.spend()));
+    if (event.workingSet().size() < state.messages().size()) {
+      SessionState next =
+          spent
+              .withMessages(event.workingSet())
+              .withGeneration(state.generation() + 1)
+              .withLastInputTokens(0)
+              .with(SessionStatus.AWAITING_MODEL);
+      return Step.of(next, Effect.callModel());
+    }
+    return Step.of(spent.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
   }
 
   /**
@@ -359,30 +359,6 @@ public record Reducer(TerminationPolicy termination, CompactionPolicy compaction
    */
   private Step compactionSkipped(SessionState state, Event.CompactionSkipped event) {
     return Step.of(state.with(SessionStatus.AWAITING_MODEL), Effect.callModel());
-  }
-
-  /**
-   * The largest index {@code cut <= messages.size() - compaction.keepRecentMessages()} at which
-   * {@code messages.get(cut)} is a genuine user turn — a {@link Role#USER} message whose blocks are
-   * all {@link TextBlock}s, never a spot between an assistant {@code tool_use} and the message
-   * carrying its results. Walks downward from the limit (clamped to {@code messages.size() - 1} so
-   * a {@code keepRecentMessages} of {@code 0} still indexes a real message); {@code 0} when no
-   * index qualifies, which tells the caller nothing is safe to compact away.
-   */
-  private int pairSafeCut(List<Message> messages) {
-    int limit = Math.min(messages.size() - compaction.keepRecentMessages(), messages.size() - 1);
-    for (int cut = limit; cut > 0; cut--) {
-      if (isGenuineUserTurn(messages.get(cut))) {
-        return cut;
-      }
-    }
-    return 0;
-  }
-
-  private static boolean isGenuineUserTurn(Message message) {
-    return message.role() == Role.USER
-        && !message.content().isEmpty()
-        && message.content().stream().allMatch(TextBlock.class::isInstance);
   }
 
   /**

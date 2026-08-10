@@ -24,6 +24,15 @@ package org.jwcarman.nessy.api;
  */
 public interface CompactionTrigger {
 
+  /**
+   * The singleton {@link #never()} instance. A dedicated constant (rather than a fresh lambda
+   * returned on every call) gives {@link #never()} a stable identity that {@link
+   * CompactionPolicy#disabled()} depends on being able to recognize — for instance, so {@code
+   * AgentBuilder} can tell a policy that never compacts apart from one that merely triggers rarely,
+   * without a fragile heuristic.
+   */
+  CompactionTrigger NEVER = state -> false;
+
   /** Whether the settled conversation should be compacted before the next model call. */
   boolean shouldCompact(SessionState state);
 
@@ -49,6 +58,6 @@ public interface CompactionTrigger {
 
   /** Never fires: compaction effectively off. */
   static CompactionTrigger never() {
-    return state -> false;
+    return NEVER;
   }
 }

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -49,12 +50,12 @@ class ValidationTest {
 
   @Test
   void a_null_termination_policy_is_rejected() {
-    assertThatThrownBy(() -> new Reducer(null, CompactionPolicy.defaults()))
+    assertThatThrownBy(() -> new Reducer(null, CompactionStrategy.disabled()))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void a_null_compaction_policy_is_rejected() {
+  void a_null_compaction_strategy_is_rejected() {
     assertThatThrownBy(() -> new Reducer(TerminationPolicy.defaults(), null))
         .isInstanceOf(NullPointerException.class);
   }
@@ -210,8 +211,26 @@ class ValidationTest {
   }
 
   @Test
-  void a_compacted_event_without_a_summary_is_rejected() {
-    assertThatThrownBy(() -> new Event.Compacted(null)).isInstanceOf(NullPointerException.class);
+  void a_compacted_event_without_a_working_set_is_rejected() {
+    assertThatThrownBy(() -> new Event.Compacted(null, Usage.zero()))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compacted_event_without_spend_is_rejected() {
+    assertThatThrownBy(() -> new Event.Compacted(List.of(), null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compacted_events_working_set_is_defensively_copied() {
+    List<Message> mutable = new ArrayList<>();
+    mutable.add(Message.user("hi"));
+    Event.Compacted event = new Event.Compacted(mutable, Usage.zero());
+
+    mutable.add(Message.user("surprise"));
+
+    assertThat(event.workingSet()).hasSize(1);
   }
 
   @Test
@@ -221,14 +240,19 @@ class ValidationTest {
   }
 
   @Test
-  void a_compact_effect_without_instructions_is_rejected() {
-    assertThatThrownBy(() -> new Effect.Compact(List.of(), null))
+  void a_compact_effect_without_a_working_set_is_rejected() {
+    assertThatThrownBy(() -> new Effect.Compact(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void a_compaction_strategy_result_without_a_working_set_is_rejected() {
+    assertThatThrownBy(() -> new CompactionStrategy.Result(null, Usage.zero()))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void a_compact_effect_without_messages_is_rejected() {
-    assertThatThrownBy(() -> new Effect.Compact(null, "summarize"))
+  void a_compaction_strategy_result_without_spend_is_rejected() {
+    assertThatThrownBy(() -> new CompactionStrategy.Result(List.of(), null))
         .isInstanceOf(NullPointerException.class);
   }
 

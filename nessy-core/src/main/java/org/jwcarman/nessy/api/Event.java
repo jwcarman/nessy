@@ -79,11 +79,17 @@ public sealed interface Event {
   /** A tool ran to completion, successfully or not. */
   record ToolFinished(ToolCall call, ToolResult result) implements Event {}
 
-  /** The summarizer finished; {@code summary} replaces the compacted prefix. */
-  record Compacted(String summary) implements Event {
+  /**
+   * A compaction attempt finished. {@code workingSet} is the strategy's result: smaller than the
+   * working set that went in means the reducer replaces its messages wholesale; the same size or
+   * larger is a skip, applied as spend with no other change.
+   */
+  record Compacted(List<Message> workingSet, Usage spend) implements Event {
 
     public Compacted {
-      Objects.requireNonNull(summary, "summary must not be null");
+      Objects.requireNonNull(workingSet, "workingSet must not be null");
+      workingSet = List.copyOf(workingSet);
+      Objects.requireNonNull(spend, "spend must not be null");
     }
   }
 

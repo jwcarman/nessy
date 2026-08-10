@@ -47,13 +47,16 @@ public sealed interface Effect {
   /** Run an approved tool. */
   record ExecuteTool(ToolCall call) implements Effect {}
 
-  /** Summarize {@code messages} as an ordinary model call, no tools, per {@code instructions}. */
-  record Compact(List<Message> messages, String instructions) implements Effect {
+  /**
+   * Compact the whole settled working set. The reducer no longer decides what to keep versus
+   * summarize away — that choice, and the instructions to summarize by, belong entirely to {@code
+   * Reducer#compaction()} now.
+   */
+  record Compact(List<Message> workingSet) implements Effect {
 
     public Compact {
-      Objects.requireNonNull(messages, "messages must not be null");
-      messages = List.copyOf(messages);
-      Objects.requireNonNull(instructions, "instructions must not be null");
+      Objects.requireNonNull(workingSet, "workingSet must not be null");
+      workingSet = List.copyOf(workingSet);
     }
   }
 

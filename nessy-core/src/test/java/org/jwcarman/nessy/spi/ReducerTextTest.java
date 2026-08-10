@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.SessionId;
@@ -60,7 +60,7 @@ class ReducerTextTest {
 
     @Test
     void a_fresh_user_message_on_a_turn_exhausted_session_halts_instead_of_calling_the_model() {
-      Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), CompactionPolicy.disabled());
+      Reducer limited = new Reducer(TerminationPolicy.maxTurns(1), CompactionStrategy.disabled());
       SessionState exhausted = SessionState.newSession(new SessionId("s1")).withTurns(1);
 
       Step step = limited.reduce(exhausted, Event.UserSaid.of("more?"));

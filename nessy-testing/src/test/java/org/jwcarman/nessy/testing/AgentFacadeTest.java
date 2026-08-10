@@ -342,7 +342,12 @@ class AgentFacadeTest {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
 
     assertThatThrownBy(
-            () -> Nessy.agent().provider(provider).model("fake-model").compaction(null).build())
+            () ->
+                Nessy.agent()
+                    .provider(provider)
+                    .model("fake-model")
+                    .compaction((CompactionPolicy) null)
+                    .build())
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("compaction");
   }

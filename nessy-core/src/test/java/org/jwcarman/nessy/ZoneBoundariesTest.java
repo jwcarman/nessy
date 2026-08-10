@@ -119,6 +119,41 @@ class ZoneBoundariesTest {
   }
 
   /**
+   * {@code spi.compaction} ({@link org.jwcarman.nessy.spi.compaction.Summarizer}, {@link
+   * org.jwcarman.nessy.spi.compaction.CompactionStrategies} home) is free to depend on {@code api}
+   * — {@link org.jwcarman.nessy.api.CompactionStrategy}'s {@code summarizing} factory could not
+   * live on the {@code api} interface itself precisely because it needs this package's {@code
+   * Summarizer} — but, like {@code spi.context}, it does not get the wider spi zone's licence to
+   * reach into {@code internal}.
+   */
+  @Test
+  void no_file_under_spi_compaction_imports_internal() {
+    List<JavaFile> filesUnderSpiCompaction = filesUnder("spi/compaction");
+    assertThat(filesUnderSpiCompaction).isNotEmpty();
+    for (JavaFile file : filesUnderSpiCompaction) {
+      assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
+          .as(
+              "%s imports org.jwcarman.nessy.internal, but spi.compaction may not",
+              file.relativePath())
+          .isFalse();
+    }
+  }
+
+  /** The api-to-spi ban (see {@link #no_file_under_api_imports_spi}) covers spi.compaction too. */
+  @Test
+  void no_file_under_api_imports_spi_compaction() {
+    List<JavaFile> filesUnderApi = filesUnder("api");
+    assertThat(filesUnderApi).isNotEmpty();
+    for (JavaFile file : filesUnderApi) {
+      assertThat(file.importsPackage("org.jwcarman.nessy.spi.compaction"))
+          .as(
+              "%s imports org.jwcarman.nessy.spi.compaction, but api may not depend on spi",
+              file.relativePath())
+          .isFalse();
+    }
+  }
+
+  /**
    * Files whose relative path is under the given slash-separated package segment — matching both
    * the segment's direct children and anything nested deeper. A zone name is the leading path
    * segment (paths start {@code "api/..."}, not {@code "/api/..."}), so this checks a leading
