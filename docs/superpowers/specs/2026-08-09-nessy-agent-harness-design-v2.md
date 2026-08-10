@@ -1470,3 +1470,94 @@ the application's own explicit declaration. If none is declared, the starter's
 | `MODIFY` policy verb? | Rejected — attribution nightmare |
 | Grammar additions timing | Pre-1.0, per §7 list; frozen at 1.0 |
 | Termination defaults | `anyOf(maxConsecutiveErrors(3), maxTurns(100))` |
+
+
+## 17. The conversation convergence (ruled 2026-08-10, evening)
+
+One authoritative record of the day's final design session with the project
+owner. Where any earlier section conflicts with this one, THIS section
+governs; the convergence plan sweeps the body text.
+
+**Everything centers on a Conversation.**
+- The B-sweep: `SessionState` → `ConversationState`, `SessionId` →
+  `ConversationId`, `SessionStore` → `ConversationStore`, `SessionStatus` →
+  `ConversationStatus`; the sealed grammar `Event` → **`ConversationEvent`**
+  ("anything that changes the `ConversationState`" — the owner's
+  definition). The glossary updates accordingly; "session" leaves the
+  vocabulary.
+- **Every `ConversationEvent` declares `ConversationId conversationId()`**
+  on the sealed interface, carried as a component on every variant, stamped
+  at the two birthplaces (the engine's `translate()`; `tell()`).
+- **The misdelivery guard**: the reducer asserts
+  `event.conversationId().equals(state.id())` at the top of the fold and
+  fails loudly on mismatch. Defense in depth: a fact addressed to
+  conversation A can never fold into conversation B — corruption that
+  would be near-impossible to diagnose at runtime is made impossible
+  instead.
+- **The envelope (`SessionEvent`/`ConversationAdvanced`) is DELETED.** The
+  spine emits the self-attributing grammar events directly, alongside the
+  open notices (`MessageAppended`, `CompactionFailed`, `EnrichmentFailed`,
+  `ToolProgress` — each already carrying its `ConversationId`). Listeners
+  subscribe by type — including `ConversationEvent.class` itself and
+  switching internally. State-needing renderers are conversation-scoped
+  and hold the handle.
+
+**Listening is declared, scoped, and frozen.**
+- Harness- and agent-level listeners are declared on the BUILDERS
+  (`listen(type, listener)` / `listenAsync(type, listener[, onError])`) and
+  frozen at `build()` — Prepare is a build-time phase. No runtime
+  subscription at those scopes; runtime monitors delegate through a
+  declared listener in userland.
+- The harness SEEDS its listener declarations into every agent built from
+  it (the provider-default pattern applied to listeners); delivery order:
+  conversation-local, then the agent's list (harness seeds first, then the
+  agent's own declarations), declaration order within each. A throw
+  anywhere stops the chain — the veto is the throw, unchanged.
+- **Conversation-local subscription is the one dynamic level**:
+  `conversation.events().subscribe(...)` returning `Subscription` —
+  in-memory, per-handle, non-durable (UI/SSE attachment). The per-`tell`
+  tap's fate (sugar over this, or deleted) is the implementer's proposal,
+  reviewed.
+- **`EventHub` is demoted to internal delivery machinery**: the seam
+  leaves the public surface and the defaults ladder (its pluggability
+  threatened its own load-bearing semantics); `EventEmitter` survives for
+  emitters (`ToolContext.events()`); `HarnessBuilder.hub(…)` dies.
+
+**The harness is the idiom, reified — and razor-bound.**
+- **The razor**: if a proposed harness feature could not be expressed as
+  "pre-configuration of an agent builder," it does not belong on the
+  harness.
+- `Nessy.harness(provider)` is THE front door — the provider is the
+  harness's one required thing, enforced by signature. `Nessy.agent()` is
+  RETIRED.
+- **Owned** (harness-only, no agent override, disjoint builders):
+  provider, `ConversationStore` (default `inMemory()`), observations
+  (default NOOP), `ObjectMapper` (default fresh). **Seeded** (agents may
+  override/extend): `defaultModel(String)`, listener declarations.
+  **Granted** (agent-only, never harness-touched): tools — no harness
+  toolkit API; shared grant lists are a userland constant handed to
+  chosen agents (`tools(...)` accepts collections). Capability crossing
+  into an agent happens only via an explicit grant line in that agent's
+  own declaration.
+- **Model resolution**: agent `.model(...)`, else harness
+  `defaultModel`, else **`AgentConfigurationException`** at build — a
+  real, named exception type adopted for every agent build-time
+  configuration failure.
+- The odd-one-out agent (different store, different vendor) is a SECOND
+  harness — one harness per infrastructure profile; harnesses may share
+  store instances.
+
+**The journal is a listener, finally and fully.**
+- `TranscriptStore`, `TranscriptEntry`, `InMemoryTranscriptStore`,
+  `NoOpTranscriptStore`, and the `.transcript(…)` knob are DELETED.
+  `MessageAppended(conversationId, message, turnUsage)` is the only
+  first-class thing; journaling is a listener somebody declares (sync =
+  strict/veto; `listenAsync` = best-effort). A future
+  `nessy-store-cassandra` ships a listener class, not a store.
+  `MessageCodec` survives in `spi.session` for store modules. Tests use
+  recording listeners.
+
+**Deliberately OUT of this wave** (recorded, not smuggled): agent
+`.name(…)` attribution for multi-agent observability — its vehicle (the
+envelope) was deleted and the owner never ruled; open question, revisit
+with the multi-agent work.
