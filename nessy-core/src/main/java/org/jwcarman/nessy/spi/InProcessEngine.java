@@ -36,7 +36,7 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -78,7 +78,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final Map<String, ToolGrant> grants;
   private final Approver approver;
   private final ConversationStore store;
-  private final EventHub hub;
+  private final EventEmitter emitter;
   private final Reducer reducer;
   private final ModelSettings config;
   private final ToolInvoker invoker;
@@ -91,7 +91,7 @@ public final class InProcessEngine implements ExecutionEngine {
       Map<String, ToolGrant> grants,
       Approver approver,
       ConversationStore store,
-      EventHub hub,
+      EventEmitter emitter,
       Reducer reducer,
       ModelSettings config,
       ObjectMapper mapper,
@@ -103,7 +103,7 @@ public final class InProcessEngine implements ExecutionEngine {
     requireEveryRegisteredToolIsGranted(this.tools, this.grants);
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
-    this.hub = Objects.requireNonNull(hub, "hub must not be null");
+    this.emitter = Objects.requireNonNull(emitter, "emitter must not be null");
     this.reducer = Objects.requireNonNull(reducer, "reducer must not be null");
     this.config = Objects.requireNonNull(config, "config must not be null");
     this.invoker = new ToolInvoker(Objects.requireNonNull(mapper, "mapper must not be null"));
@@ -177,14 +177,15 @@ public final class InProcessEngine implements ExecutionEngine {
   private Step reduceAndNotify(ConversationState state, ConversationEvent event) {
     Step step = reducer.reduce(state, event);
     announceNewborns(state, step.state(), event);
-    hub.emit(event);
+    emitter.emit(event);
     return step;
   }
 
   /**
-   * Emits one {@link MessageAppended} on {@link #hub} for every message born by this one reduce, in
-   * birth order — the newborn choke point (design §9.1, §10.8). The engine no longer holds a
-   * transcript store of its own; a journal, where one exists, is simply a subscriber to this event.
+   * Emits one {@link MessageAppended} on {@link #emitter} for every message born by this one
+   * reduce, in birth order — the newborn choke point (design §9.1, §10.8). The engine no longer
+   * holds a transcript store of its own; a journal, where one exists, is simply a subscriber to
+   * this event.
    *
    * <p>This is the single choke point: {@link #reduceAndNotify} is called from both {@link #feed}
    * and the streaming loop in {@link #callModel}, so covering it here covers every arm that ever
@@ -208,8 +209,8 @@ public final class InProcessEngine implements ExecutionEngine {
    *       span instead. Survivors are never re-announced.
    * </ul>
    *
-   * <p>No {@code try}/{@code catch} here on purpose: {@link EventHub#emit} propagates whatever an
-   * inline subscriber throws (the synchronous spine's veto-by-throw), and that propagation is
+   * <p>No {@code try}/{@code catch} here on purpose: {@link EventEmitter#emit} propagates whatever
+   * an inline subscriber throws (the synchronous spine's veto-by-throw), and that propagation is
    * exactly how a strict journaling subscriber fails the run. A throwing subscriber propagates out
    * of this method, out of {@link #reduceAndNotify}, and ultimately out of {@link #run} — {@code
    * run}'s own {@code finally} still saves whatever progress reached the holder before this reduce.
@@ -220,7 +221,7 @@ public final class InProcessEngine implements ExecutionEngine {
       List<Message> survivors = new ArrayList<>(before.messages());
       for (Message message : after.messages()) {
         if (!survivors.remove(message)) {
-          hub.emit(new MessageAppended(after.id(), message, Usage.zero()));
+          emitter.emit(new MessageAppended(after.id(), message, Usage.zero()));
         }
       }
       return;
@@ -232,7 +233,7 @@ public final class InProcessEngine implements ExecutionEngine {
         event instanceof ConversationEvent.ModelTurnEnded ended ? ended.usage() : Usage.zero();
     for (Message message :
         after.messages().subList(before.messages().size(), after.messages().size())) {
-      hub.emit(new MessageAppended(after.id(), message, usage));
+      emitter.emit(new MessageAppended(after.id(), message, usage));
     }
   }
 
@@ -300,7 +301,7 @@ public final class InProcessEngine implements ExecutionEngine {
       } catch (RuntimeException e) {
         observation.error(e);
         String reason = describe(e);
-        hub.emit(new CompactionFailed(state.id(), reason));
+        emitter.emit(new CompactionFailed(state.id(), reason));
         event = new ConversationEvent.CompactionSkipped(state.id(), reason);
       }
     } catch (RuntimeException e) {
@@ -500,7 +501,7 @@ public final class InProcessEngine implements ExecutionEngine {
     try (Observation.Scope scope = observation.openScope()) {
       Awaited<ToolResult> awaited;
       try {
-        awaited = invoker.invoke(found.get(), call, new ToolContext(state.id(), hub));
+        awaited = invoker.invoke(found.get(), call, new ToolContext(state.id(), emitter));
       } catch (RuntimeException e) {
         // Factor 9: the model sees a compact error and gets to recover. It
         // never sees a stack trace, and the loop never dies on a bad tool. The

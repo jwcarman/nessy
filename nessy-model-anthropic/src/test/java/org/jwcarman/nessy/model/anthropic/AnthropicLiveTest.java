@@ -82,8 +82,9 @@ class AnthropicLiveTest {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.agent()
-            .provider(AnthropicModelProvider.builder().fromEnv().build())
+        Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
+            .build()
+            .agent()
             .model(MODEL)
             .maxTokens(64)
             .build();
@@ -99,8 +100,9 @@ class AnthropicLiveTest {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.agent()
-            .provider(AnthropicModelProvider.builder().fromEnv().build())
+        Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
+            .build()
+            .agent()
             .model(MODEL)
             .maxTokens(256)
             .tools(new AddTool())
@@ -123,8 +125,9 @@ class AnthropicLiveTest {
     // Extended thinking requires headroom above its budget: a small budget keeps this cheap
     // while still leaving room for maxTokens to exceed it, per AnthropicRequests' contract.
     Agent<String> agent =
-        Nessy.agent()
-            .provider(AnthropicModelProvider.builder().fromEnv().thinkingBudget(1024).build())
+        Nessy.harness(AnthropicModelProvider.builder().fromEnv().thinkingBudget(1024).build())
+            .build()
+            .agent()
             .model(MODEL)
             .maxTokens(2048)
             .capabilities(Set.of(Capability.THINKING))

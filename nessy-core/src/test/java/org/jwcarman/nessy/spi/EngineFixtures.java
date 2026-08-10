@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -149,6 +149,6 @@ final class EngineFixtures {
 
   /** A plain, no-recall/no-shape {@link ContextPipeline} for tests that don't exercise it. */
   static ContextPipeline contextPipeline() {
-    return ContextPipeline.builder().build(EventHub.synchronous(), ObservationRegistry.NOOP);
+    return ContextPipeline.builder().build(EventEmitter.noop(), ObservationRegistry.NOOP);
   }
 }

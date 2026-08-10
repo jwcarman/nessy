@@ -37,7 +37,10 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.EventSpines;
+import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -85,7 +88,7 @@ class InProcessEngineCompactionTest {
   private static InProcessEngine engineWith(
       EngineFixtures.FakeProvider provider,
       Reducer reducer,
-      EventHub hub,
+      EventEmitter events,
       ObservationRegistry observations) {
     return new InProcessEngine(
         provider,
@@ -93,12 +96,12 @@ class InProcessEngineCompactionTest {
         Map.of(),
         Approver.allowAll(),
         ConversationStore.inMemory(),
-        hub,
+        events,
         reducer,
         CONFIG,
         new ObjectMapper(),
         observations,
-        ContextPipeline.builder().build(hub, observations));
+        ContextPipeline.builder().build(events, observations));
   }
 
   /** A two-turn provider: a big-usage first answer, then a plain second answer once resumed. */
@@ -142,7 +145,7 @@ class InProcessEngineCompactionTest {
           engineWith(
               provider,
               reducerUsing(summarizer),
-              EventHub.synchronous(),
+              EventEmitter.noop(),
               ObservationRegistry.create());
 
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
@@ -169,9 +172,9 @@ class InProcessEngineCompactionTest {
           (head) -> {
             throw new IllegalStateException("summarizer exploded");
           };
-      EventHub hub = EventHub.synchronous();
       List<CompactionFailed> failures = new ArrayList<>();
-      hub.subscribe(CompactionFailed.class, failures::add);
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(CompactionFailed.class, failures::add)));
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
@@ -193,9 +196,9 @@ class InProcessEngineCompactionTest {
       ToolCall orphan = new ToolCall("orphan", "read_file", JsonNodeFactory.instance.objectNode());
       List<Message> broken = List.of(Message.assistant(List.of(new ToolUseBlock(orphan))));
       Compactor compactor = triggeringAt(100_000, new Compactor.Result(broken));
-      EventHub hub = EventHub.synchronous();
       List<CompactionFailed> failures = new ArrayList<>();
-      hub.subscribe(CompactionFailed.class, failures::add);
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(CompactionFailed.class, failures::add)));
       InProcessEngine engine =
           engineWith(provider, reducerUsing(compactor), hub, ObservationRegistry.create());
 
@@ -223,8 +226,7 @@ class InProcessEngineCompactionTest {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer = (head) -> "Summary.";
       InMemoryTranscriptStore transcriptStore = TranscriptStore.inMemory();
-      EventHub hub = EventHub.synchronous();
-      transcriptStore.feedFrom(hub);
+      EventSpine hub = EventSpines.of(List.of(transcriptStore.declareListener()));
       InProcessEngine engine =
           engineWith(provider, reducerUsing(summarizer), hub, ObservationRegistry.create());
 
@@ -260,7 +262,7 @@ class InProcessEngineCompactionTest {
       EngineFixtures.FakeProvider provider = twoTurnProvider();
       Summarizer summarizer = (head) -> "Summary.";
       InProcessEngine engine =
-          engineWith(provider, reducerUsing(summarizer), EventHub.synchronous(), observations);
+          engineWith(provider, reducerUsing(summarizer), EventEmitter.noop(), observations);
 
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));
@@ -280,7 +282,7 @@ class InProcessEngineCompactionTest {
             throw new IllegalStateException("summarizer exploded");
           };
       InProcessEngine engine =
-          engineWith(provider, reducerUsing(summarizer), EventHub.synchronous(), observations);
+          engineWith(provider, reducerUsing(summarizer), EventEmitter.noop(), observations);
 
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "first question"));
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "second question"));

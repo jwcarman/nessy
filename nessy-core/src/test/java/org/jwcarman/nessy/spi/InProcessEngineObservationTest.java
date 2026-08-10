@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -98,12 +98,12 @@ class InProcessEngineObservationTest {
             EngineFixtures.defaultGrants(tools),
             new ThrowingApprover(),
             ConversationStore.inMemory(),
-            EventHub.synchronous(),
+            EventEmitter.noop(),
             Reducer.defaults(),
             CONFIG,
             new ObjectMapper(),
             observations,
-            ContextPipeline.builder().build(EventHub.synchronous(), observations));
+            ContextPipeline.builder().build(EventEmitter.noop(), observations));
 
     assertThatThrownBy(() -> engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi")))
         .isInstanceOf(IllegalStateException.class);
@@ -153,12 +153,12 @@ class InProcessEngineObservationTest {
             EngineFixtures.defaultGrants(tools),
             Approver.allowAll(),
             ConversationStore.inMemory(),
-            EventHub.synchronous(),
+            EventEmitter.noop(),
             Reducer.defaults(),
             CONFIG,
             new ObjectMapper(),
             observations,
-            ContextPipeline.builder().build(EventHub.synchronous(), observations));
+            ContextPipeline.builder().build(EventEmitter.noop(), observations));
 
     engine.run(ID, ConversationEvent.UserSaid.of(ID, "go"));
 
@@ -228,12 +228,12 @@ class InProcessEngineObservationTest {
             EngineFixtures.defaultGrants(tools),
             Approver.allowAll(),
             ConversationStore.inMemory(),
-            EventHub.synchronous(),
+            EventEmitter.noop(),
             Reducer.defaults(),
             CONFIG,
             new ObjectMapper(),
             observations,
-            ContextPipeline.builder().build(EventHub.synchronous(), observations));
+            ContextPipeline.builder().build(EventEmitter.noop(), observations));
 
     engine.run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
   }

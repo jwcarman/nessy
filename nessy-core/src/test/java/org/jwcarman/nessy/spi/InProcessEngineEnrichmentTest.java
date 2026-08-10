@@ -35,7 +35,10 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.EventSpines;
+import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
@@ -60,18 +63,18 @@ class InProcessEngineEnrichmentTest {
   private static InProcessEngine engineWith(
       EngineFixtures.FakeProvider provider,
       ContextEnricher enricher,
-      EventHub hub,
+      EventEmitter events,
       ObservationRegistry observations) {
     ContextPipeline pipeline =
         (enricher == null ? ContextPipeline.builder() : ContextPipeline.builder().enrich(enricher))
-            .build(hub, observations);
+            .build(events, observations);
     return new InProcessEngine(
         provider,
         ToolRegistry.of(),
         Map.of(),
         Approver.allowAll(),
         ConversationStore.inMemory(),
-        hub,
+        events,
         Reducer.defaults(),
         CONFIG,
         new ObjectMapper(),
@@ -96,7 +99,7 @@ class InProcessEngineEnrichmentTest {
       Message fact = Message.user("the sky is blue");
       ContextEnricher enricher = state -> List.of(fact);
       InProcessEngine engine =
-          engineWith(provider, enricher, EventHub.synchronous(), ObservationRegistry.create());
+          engineWith(provider, enricher, EventEmitter.noop(), ObservationRegistry.create());
 
       RunOutcome outcome =
           engine.run(ID, ConversationEvent.UserSaid.of(ID, "what color is the sky?"));
@@ -122,9 +125,9 @@ class InProcessEngineEnrichmentTest {
           state -> {
             throw new IllegalStateException("enricher exploded");
           };
-      EventHub hub = EventHub.synchronous();
       List<EnrichmentFailed> failures = new ArrayList<>();
-      hub.subscribe(EnrichmentFailed.class, failures::add);
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(EnrichmentFailed.class, failures::add)));
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
       RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
@@ -143,9 +146,9 @@ class InProcessEngineEnrichmentTest {
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       Message orphan = Message.toolResults(List.of(new ToolResultBlock("orphan", "oops", false)));
       ContextEnricher enricher = state -> List.of(orphan);
-      EventHub hub = EventHub.synchronous();
       List<EnrichmentFailed> failures = new ArrayList<>();
-      hub.subscribe(EnrichmentFailed.class, failures::add);
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(EnrichmentFailed.class, failures::add)));
       InProcessEngine engine = engineWith(provider, enricher, hub, ObservationRegistry.create());
 
       RunOutcome outcome = engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
@@ -165,7 +168,7 @@ class InProcessEngineEnrichmentTest {
     void no_enrichment_contributors_adds_nothing_and_no_observation() {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = oneTurnProvider();
-      InProcessEngine engine = engineWith(provider, null, EventHub.synchronous(), observations);
+      InProcessEngine engine = engineWith(provider, null, EventEmitter.noop(), observations);
 
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 
@@ -185,7 +188,7 @@ class InProcessEngineEnrichmentTest {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = oneTurnProvider();
       ContextEnricher enricher = state -> List.of(Message.user("a fact"));
-      InProcessEngine engine = engineWith(provider, enricher, EventHub.synchronous(), observations);
+      InProcessEngine engine = engineWith(provider, enricher, EventEmitter.noop(), observations);
 
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 
@@ -203,7 +206,7 @@ class InProcessEngineEnrichmentTest {
           state -> {
             throw new IllegalStateException("enricher exploded");
           };
-      InProcessEngine engine = engineWith(provider, enricher, EventHub.synchronous(), observations);
+      InProcessEngine engine = engineWith(provider, enricher, EventEmitter.noop(), observations);
 
       engine.run(ID, ConversationEvent.UserSaid.of(ID, "hi"));
 

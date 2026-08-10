@@ -47,22 +47,23 @@ ScriptedModelProvider provider = ScriptedModelProvider.builder()
         .build();
 
 Agent<String> agent =
-    Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
+    Nessy.harness(provider).build().agent().model("fake-model").tools(new AddTool()).build();
 Reply reply = agent.converse().tell("what is 2+2?");
 
 reply.text(); // "The answer is 4."
 ```
 
-`Nessy.agent()` is the only front door. `Agent<I>` is a configured, reusable
-handle over its input vocabulary `I`; `converse()` opens a session and returns
-a `Conversation<I>`, whose `tell(I)` returns a `Reply` wrapping the final state
-— `text()` is the assistant's prose, extracted. `Nessy.agent()` gives you
-`Agent<String>`, the degenerate case where `I` is plain text — see
-[Typed agents](#typed-agents) below for an application's own input vocabulary.
-Every builder default already works: in-memory session store, in-process
-engine, an allow-all approver (replace it before you point real tools at
-anything), a synchronous event hub, no-op observations. The smallest useful
-agent is a provider and a model name.
+`Nessy.harness(provider)` is the only front door — the provider is the
+harness's one required thing, enforced by signature rather than discovered
+later at `build()`. `Agent<I>` is a configured, reusable handle over its input
+vocabulary `I`; `converse()` opens a session and returns a `Conversation<I>`,
+whose `tell(I)` returns a `Reply` wrapping the final state — `text()` is the
+assistant's prose, extracted. `.agent()` gives you `Agent<String>`, the
+degenerate case where `I` is plain text — see [Typed agents](#typed-agents)
+below for an application's own input vocabulary. Every builder default already
+works: in-memory session store, an allow-all approver (replace it before you
+point real tools at anything), no-op observations. The smallest useful agent
+is a provider and a model name.
 
 ### The same example, for real
 
@@ -75,7 +76,7 @@ most for a prompt this size on a small model):
 AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
 
 Agent<String> agent =
-    Nessy.agent().provider(provider).model("claude-haiku-4-5-20251001").build();
+    Nessy.harness(provider).build().agent().model("claude-haiku-4-5-20251001").build();
 Reply reply = agent.converse().tell("what is 2+2?");
 
 System.out.println(reply.text());
@@ -88,12 +89,20 @@ everything that stays the same when you swap the model or the prompt. An
 **agent** is an identity — a model binding, a system prompt, granted tools,
 declared authority — running inside a harness. Nessy's front door is a
 two-builder story that says exactly that: a `Harness` holds the infrastructure
-every agent shares, and `AgentBuilder` (reached via `Harness#agent()`, or
-`Nessy.agent()` for the common single-agent case) layers one agent's identity
-on top of it.
+every agent shares, and `AgentBuilder` (reached via `Harness#agent()`) layers
+one agent's identity on top of it.
+
+The two builders are **disjoint by design** — the razor: if a proposed harness
+feature could not be expressed as "pre-configuration of an agent builder," it
+does not belong on the harness.
+
+| | Owned by the harness | Seeded (agent may extend) | Granted (agent-only) |
+|---|---|---|---|
+| What | provider, session store, observations, object mapper | `defaultModel`, declared listeners | tools |
+| Override on `AgentBuilder`? | never — a second harness, not an override | `.model(...)` wins; `.listen`/`.listenAsync` append after the harness's own | no harness toolkit API at all — `tools(...)` accepts a userland constant handed to whichever agents need it |
 
 ```java
-Harness harness = Nessy.harness().provider(anthropic).build(); // once per app
+Harness harness = Nessy.harness(anthropic).build(); // once per app — provider is required, by signature
 
 Agent<String> agent =
     harness
@@ -104,15 +113,29 @@ Agent<String> agent =
         .build();
 ```
 
-Two agents built from the same harness share its session store and event hub
-by construction — one hub subscriber sees every agent's traffic, one store
-holds every agent's sessions. `.tools(ToolGrant.grant(tool).with(policy))` is
-the security statement: a grant declares which tool an agent may call and the
+Two agents built from the same harness share its session store by
+construction — one store holds every agent's sessions. Cross-agent
+observability is a harness-declared listener (see
+[Declared listening](#declared-listening) below): declare it once on the
+harness and it is seeded into every agent's own frozen chain, so the same
+listener instance fires for every agent's traffic without a shared, mutable
+hub object anywhere. `.tools(ToolGrant.grant(tool).with(policy))` is the
+security statement: a grant declares which tool an agent may call and the
 `UsagePolicy` the engine consults before it runs, together, per agent, per
 tool — the same pairing `AgentFacadeTest`'s
 `a_grant_line_declares_capability_and_authority_together` exercises end to
 end. `tools(Tool...)` still works as sugar over the derived default policy;
 reach for the grant form when an agent needs to loosen or tighten it.
+
+The odd-one-out agent — a different provider, a different store — is a
+**second harness**, one per infrastructure profile, never an override on
+`AgentBuilder`; harnesses are free to share store instances where that is
+what an application wants.
+
+**Model resolution**: agent `.model(...)` wins; else the harness's
+`.defaultModel(...)`; neither declared is an `AgentConfigurationException` at
+`build()`, naming the missing model — the same exception every other
+agent-configuration failure at build time now raises.
 
 A harness is best understood by the eight services it guarantees, each backed
 by one or more seams:
@@ -121,12 +144,57 @@ by one or more seams:
 |---|---|---|
 | 1 | Turn-taking | `Reducer`, `ExecutionEngine`, `Context` |
 | 2 | Context fit | `Compactor`, `Summarizer`, `ContextPipeline`, `Projection`, `TokenEstimator`, `ContextEnricher` |
-| 3 | A memory of record | `SessionStore`, `TranscriptStore` |
+| 3 | A memory of record | `ConversationStore`, `TranscriptStore` |
 | 4 | Safe hands | `ToolRegistry`, the invoker (Factor 9) |
 | 5 | Guardrails | `ToolGrant`/`UsagePolicy`, `Approver` |
 | 6 | A wallet guard | `TerminationPolicy` |
-| 7 | Witnesses | Observations, `EventHub` |
+| 7 | Witnesses | declared listeners (`listen`/`listenAsync`), `Conversation#events()` |
 | 8 | A vendor-neutral model line | `ModelProvider` |
+
+### Declared listening
+
+Listening is declared, scoped, and frozen (design §17) — there is no
+general-purpose, runtime-subscribable hub any more. Both builders expose the
+same two verbs:
+
+```java
+Harness harness =
+    Nessy.harness(anthropic)
+        .listen(ConversationEvent.class, auditLog::record) // seeds into every agent
+        .build();
+
+Agent<String> agent =
+    harness
+        .agent()
+        .model("claude-sonnet-4-5")
+        .listen(MessageAppended.class, journal::append)          // sync: veto-by-throw
+        .listenAsync(ToolProgress.class, ui::renderProgress)     // async: never vetoes
+        .build();
+```
+
+Delivery order per emitted event: this conversation's dynamic subscribers
+first (see below), then the frozen chain — the harness's declarations, then
+the agent's own, in declaration order. A throw from a sync listener, in
+either tier, propagates straight out and stops delivery to everything after
+it, aborting whatever operation emitted — the veto is the throw, unchanged
+from before. An async declaration never gets that power: its listener already
+runs on its own virtual thread by the time delivery reaches it, and whatever
+it throws reaches its own error handler instead.
+
+The one dynamic level left is per conversation:
+
+```java
+Conversation<String> chat = agent.converse();
+Subscription live = chat.events().subscribe(ConversationEvent.class, sse::push);
+// ... later, when the UI disconnects:
+live.close();
+```
+
+`Conversation#events()` is in-memory, per-handle, non-durable — the
+UI/SSE-attachment case — and already scoped: nothing subscribed through it
+ever sees another conversation's traffic, so no manual id filtering is ever
+needed. `Conversation#tell(input, tap)` is sugar over exactly this: a
+subscription wired for the duration of one call and closed when it returns.
 
 `agent.contextFor(sessionId)` is the debugging affordance that comes with
 service #2: it answers *what would a call made against this session see right
@@ -138,12 +206,12 @@ and doesn't show.
 ## Typed agents
 
 Every agent is `Agent<I>` over an input vocabulary `I` — typically a sealed
-interface of records the application owns. `Nessy.agent()` /
-`Harness#agent()` hand back the degenerate `Agent<String>`; `Harness#agent(Class<I>)`
-hands back `Agent<I>` for anything richer. `tell` is the only verb —
-`Conversation<I>.tell(I)` renders the input into the outbound message; the
-sealed `Event` grammar underneath never changes shape, so typing lives in the
-facade's generics and ends at the wire.
+interface of records the application owns. `Harness#agent()` hands back the
+degenerate `Agent<String>`; `Harness#agent(Class<I>)` hands back `Agent<I>`
+for anything richer. `tell` is the only verb — `Conversation<I>.tell(I)`
+renders the input into the outbound message; the sealed `ConversationEvent`
+grammar underneath never changes shape, so typing lives in the facade's
+generics and ends at the wire.
 
 An `InputRenderer<I>` (`api.message`) does the rendering:
 `InputRenderer.text()` is the `String` default — raw text becomes one text
@@ -168,7 +236,7 @@ InputRenderer<SupportInput> renderer =
                       "Escalate order " + escalation.orderId() + ": " + escalation.reason()));
         };
 
-Harness harness = Nessy.harness().provider(anthropic).build();
+Harness harness = Nessy.harness(anthropic).build();
 
 Agent<SupportInput> support =
     harness.agent(SupportInput.class).model("claude-sonnet-4-5").renderer(renderer).build();
@@ -226,7 +294,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
 | `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
-| `EventHub` | `subscribe(type, listener)` | `subscribeAsync(type, listener)` per subscriber | bridges (SSE, message bus) |
+| Declared listening | `listen(type, listener)` sync | `listenAsync(type, listener)` per listener | bridges (SSE, message bus) via `Conversation#events()` |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextPipeline` | no enrichers, no projections | `Context.elideToolResults(keepRecentMessages)`; `ContextEnricher` contributors | RAG, redaction |
 
@@ -238,30 +306,30 @@ also retry internally, so outer attempts multiply).
 
 ## Observability
 
-Two channels, a clean division of labor, and no third. The **event hub** carries
-narrative — UI rendering, audit, replay, progress, counters — as plain records
-that anyone can emit and anyone can subscribe to by type. **Micrometer
+Two channels, a clean division of labor, and no third. **Declared listening**
+carries narrative — UI rendering, audit, replay, progress, counters — as plain
+records that anyone can emit and anyone can declare a listener for, by type
+(see [Declared listening](#declared-listening) above). **Micrometer
 Observation** carries structure — spans, traces, timers, context propagation —
 adopted directly rather than reinvented, because it is a near-zero-dependency
 artifact built for exactly this, it no-ops when unconfigured, and one
 instrumentation point fans out to metrics and traces without us writing either
 backend.
 
-The hub itself is always a synchronous spine: delivery is in subscription
-order, on the emitting thread, and **a throwing subscriber stops the
-operation that emitted** — the veto is the throw. Sync or async is chosen
-once, at subscription time, never by the hub: a subscriber that has to stand
-in the way of something (an audit write that must not be lost) calls
-`hub.subscribe(type, listener)` and lets its exception propagate; a
-subscriber with no business stopping anything calls
-`hub.subscribeAsync(type, listener, onError)` (a `System.Logger`-backed
-overload needs no `onError`) instead, and the hub runs it on a fresh virtual
-thread, where nothing it throws can reach the emitting thread. The returned
-`Subscription` is the same type either way. The engine emits
-`MessageAppended(sessionId, message, turnUsage)` at every message's birth —
-the subscription point for journaling, memory
-extraction, and anything else that follows the transcript; see "The journal"
-below.
+Delivery is always synchronous at its core: conversation-local subscribers
+first, then the frozen declared chain, in order, on the emitting thread, and
+**a throwing sync listener stops the operation that emitted** — the veto is
+the throw. Sync or async is chosen once, at declaration time: a listener that
+has to stand in the way of something (an audit write that must not be lost)
+uses `.listen(type, listener)` and lets its exception propagate; a listener
+with no business stopping anything uses `.listenAsync(type, listener,
+onError)` (a `System.Logger`-backed overload needs no `onError`) instead, and
+delivery runs it on a fresh virtual thread, where nothing it throws can reach
+the emitting thread. The returned `Subscription` from `Conversation#events()`
+is the same type either way. The engine emits
+`MessageAppended(conversationId, message, turnUsage)` at every message's
+birth — the declaration point for journaling, memory extraction, and anything
+else that follows the transcript; see "The journal" below.
 
 The engine's observation names are Nessy's stable metric identity; their
 contextual (span) names follow the OpenTelemetry GenAI *agent* span conventions,
@@ -288,7 +356,7 @@ will wire the registry Boot's Actuator already auto-configures, so observability
 lights up with no configuration at all in a Spring Boot app — that starter does
 not exist yet (see Status).
 
-For streaming a single reply without touching the raw hub, `Conversation.tell`
+For streaming a single reply without a standing subscription, `Conversation.tell`
 has a tap overload — a natural fit for pushing tokens over SSE:
 
 ```java
@@ -333,8 +401,9 @@ directly on `AgentBuilder`, no `Compactor` assembly required:
 
 ```java
 Agent<String> agent =
-    Nessy.agent()
-        .provider(provider)
+    Nessy.harness(provider)
+        .build()
+        .agent()
         .model("fake-model")
         .summaryMaxTokens(1_024) // cap the summary reply at 1024 tokens
         .summaryInstructions("Summarize the conversation so far, focusing on open TODOs.")
@@ -360,31 +429,32 @@ Compactor compactor =
         .build();
 
 Agent<String> agent =
-    Nessy.agent().provider(provider).model("fake-model").compaction(compactor).build();
+    Nessy.harness(provider).build().agent().model("fake-model").compaction(compactor).build();
 ```
 
 ```java
 // Replace the mechanism wholesale: your own Compactor, no model call
 // required if you don't want one.
 Agent<String> agent =
-    Nessy.agent().provider(provider).model("fake-model").compaction(myCompactor).build();
+    Nessy.harness(provider).build().agent().model("fake-model").compaction(myCompactor).build();
 ```
 
 Turn compaction off entirely with `Compactor.disabled()`:
 
 ```java
 Agent<String> agent =
-    Nessy.agent()
-        .provider(provider)
+    Nessy.harness(provider)
+        .build()
+        .agent()
         .model("fake-model")
         .compaction(Compactor.disabled())
         .build();
 ```
 
 Compaction is best-effort: if the compactor's own call fails, the turn
-proceeds uncompacted rather than blocking the conversation, and the hub
-carries a `CompactionFailed(sessionId, reason)` event so you can observe and
-alert on it like any other hub event.
+proceeds uncompacted rather than blocking the conversation, and every declared
+listener sees a `CompactionFailed(conversationId, reason)` event so you can
+observe and alert on it like any other emitted event.
 
 **The jurisdiction rule.** `SessionState.usage()` only ever bills the loop's
 own spend — what each conversational turn's `TurnEnded` reports. Whatever a
@@ -405,8 +475,9 @@ binding instead, and the trigger derives itself:
 
 ```java
 Agent<String> agent =
-    Nessy.agent()
-        .provider(provider)
+    Nessy.harness(provider)
+        .build()
+        .agent()
         .model("fake-model")
         .maxTokens(4_000)
         .contextWindow(32_000) // trigger derives to ~0.8 × (32_000 − 4_000)
@@ -419,32 +490,33 @@ Agent<String> agent =
 ### The journal: `TranscriptStore`
 
 The transcript and the working set are not the same thing, and compaction
-never touches the transcript. **The journal rides the hub**: the engine holds
-no `TranscriptStore` of its own — it emits `MessageAppended(sessionId,
+never touches the transcript. **The journal is a listener**: the engine holds
+no `TranscriptStore` of its own — it emits `MessageAppended(conversationId,
 message, turnUsage)` the instant a message is born, unconditionally, before
 anything read-shaped (compaction, elision, windowing) gets an opinion — and a
-journal is simply a subscriber to that event, via
-`TranscriptStore.feedFrom(EventHub)`. `.transcript(journal)` on the builder is
-sugar over exactly that call:
+journal is simply a declared listener for that event, via
+`TranscriptStore.declareListener()`. `.transcript(journal)` on the builder is
+sugar over exactly that declaration:
 
 ```java
 InMemoryTranscriptStore journal = TranscriptStore.inMemory();
 Agent<String> agent =
-    Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
+    Nessy.harness(provider).build().agent().model("fake-model").transcript(journal).build();
 ```
 
 There is no `TranscriptStore.none()`: retention is opt-in, so the zero-config
 posture stays lean and compaction genuinely bounds memory, and the absence of
-a `.transcript(...)` call is simply the absence of a subscriber. Wired the
-default way, the journal is audit-grade and strict — `feedFrom` subscribes
-with `hub.subscribe(...)`, so an append that throws propagates straight out
-of the hub's `emit` and fails the run outright, the same way a failing model
-call would, because a silent gap in the audit trail is worse than a failed
-turn (the synchronous spine's veto-by-throw, see "Observability" above). An
-application that prefers best-effort journaling subscribes with
-`hub.subscribeAsync(...)` instead. `Harness#transcript(...)` registers this
-subscriber once, on the harness's own hub, shared by every agent it builds —
-not once per agent. A durable `TranscriptStore` persists opaque bytes through
+a `.transcript(...)` call is simply the absence of a declared listener. Wired
+the default way, the journal is audit-grade and strict — `declareListener()`
+is a synchronous declaration, so an append that throws propagates straight out
+of `emit` and fails the run outright, the same way a failing model call would,
+because a silent gap in the audit trail is worse than a failed turn (the
+synchronous spine's veto-by-throw, see "Observability" above). An application
+that prefers best-effort journaling declares its own
+`listenAsync(MessageAppended.class, ...)` instead of using the sugar.
+`HarnessBuilder#transcript(...)` declares this listener once, seeded into
+every agent the harness builds — not once per agent. A durable
+`TranscriptStore` persists opaque bytes through
 a `MessageCodec` (`MessageCodec.json(mapper)` is the default); encryption at
 rest is a codec *decorator* over that, not a separate store implementation,
 so the same encrypting codec composes over whichever backing store you
@@ -460,8 +532,9 @@ it:
 
 ```java
 Agent<String> agent =
-    Nessy.agent()
-        .provider(provider)
+    Nessy.harness(provider)
+        .build()
+        .agent()
         .model("fake-model")
         .context(pipeline -> pipeline
             .project(ctx -> ctx.elideToolResults(2))    // PROJECT: 0..n, declaration order
@@ -507,7 +580,8 @@ the working set). Each contributor runs under its own `nessy.context.enrich`
 observation and is independently best-effort: a thrown exception, or a
 contribution that would break `Context`'s tool-pairing invariant, costs only
 that contributor's own contribution — every other contributor still runs, and
-the hub carries an `EnrichmentFailed(sessionId, reason)` event per failure.
+every declared listener sees an `EnrichmentFailed(conversationId, reason)`
+event per failure.
 Contributions concatenate in declaration order. There is no
 `ContextEnricher.none()` sentinel: the empty enrichment list — no
 `.enrich(...)` calls — is itself "no enrichment", and it costs zero
@@ -562,7 +636,7 @@ exclusion:
 ## Status
 
 Early, and honest about it. `nessy-core` and `nessy-testing` are converged to the
-v2 design: the effectful reducer, the full sealed grammar, the event hub,
+v2 design: the effectful reducer, the full sealed grammar, declared listening,
 `TerminationPolicy`, Micrometer Observation instrumentation, and the `Agent`
 facade are all implemented and tested end to end against a scripted model.
 

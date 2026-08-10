@@ -25,7 +25,10 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.EventSpines;
+import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -61,7 +64,7 @@ class ContextPipelineTest {
         ContextPipeline.builder()
             .project(appendFirst)
             .project(appendSecond)
-            .build(EventHub.synchronous(), ObservationRegistry.NOOP);
+            .build(EventEmitter.noop(), ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(Message.user("start")));
 
@@ -84,7 +87,7 @@ class ContextPipelineTest {
     ContextPipeline pipeline =
         ContextPipeline.builder()
             .project(ctx -> ctx.elideToolResults(0))
-            .build(EventHub.synchronous(), ObservationRegistry.NOOP);
+            .build(EventEmitter.noop(), ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(toolUse, toolResult));
 
@@ -101,7 +104,7 @@ class ContextPipelineTest {
         ContextPipeline.builder()
             .enrich(first)
             .enrich(second)
-            .build(EventHub.synchronous(), ObservationRegistry.NOOP);
+            .build(EventEmitter.noop(), ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(Message.user("hi")));
 
@@ -116,9 +119,9 @@ class ContextPipelineTest {
           throw new IllegalStateException("A exploded");
         };
     ContextEnricher succeeding = state -> List.of(Message.user("fact B"));
-    EventHub hub = EventHub.synchronous();
     List<EnrichmentFailed> failures = new ArrayList<>();
-    hub.subscribe(EnrichmentFailed.class, failures::add);
+    EventSpine hub =
+        EventSpines.of(List.of(ListenerDeclaration.sync(EnrichmentFailed.class, failures::add)));
     ContextPipeline pipeline =
         ContextPipeline.builder()
             .enrich(failing)
@@ -139,7 +142,7 @@ class ContextPipelineTest {
         ContextPipeline.builder()
             .enrich(enricher)
             .placement(ContextPipeline.Placement.ENRICHMENTS_LAST)
-            .build(EventHub.synchronous(), ObservationRegistry.NOOP);
+            .build(EventEmitter.noop(), ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(Message.user("hi")));
 

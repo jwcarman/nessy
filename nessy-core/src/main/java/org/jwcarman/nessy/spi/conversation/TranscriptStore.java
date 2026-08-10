@@ -16,9 +16,8 @@
 package org.jwcarman.nessy.spi.conversation;
 
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.api.event.MessageAppended;
-import org.jwcarman.nessy.api.event.Subscription;
 
 /**
  * Where a session's messages go the moment they are born, in the order they were born.
@@ -30,17 +29,17 @@ import org.jwcarman.nessy.api.event.Subscription;
  * or the engine ever calls anything but {@link #append}; a reader, where one exists (see {@link
  * InMemoryTranscriptStore#entries}), belongs to the concrete implementation, not the seam.
  *
- * <p><b>The journal rides the hub (design §9.1, §10.8).</b> The engine no longer holds a {@code
- * TranscriptStore} at all; it emits {@link MessageAppended} at its newborn choke point, and a
- * journal is simply a subscriber — {@link #feedFrom(EventHub)} is that subscription. Wiring it
- * inline (the default {@code .transcript(store)} sugar on the harness/agent builders) keeps
- * strictness: a subscriber that writes on the emitting thread and lets a failed {@link #append}
- * propagate stops the run outright, the synchronous spine's veto-by-throw, exactly as a direct
- * engine dependency once did. An application that prefers best-effort journaling subscribes with
- * {@link EventHub#subscribeAsync(Class, java.util.function.Consumer, java.util.function.Consumer)}
- * instead — a declared posture, chosen at subscription time, never a default. There is no {@code
- * TranscriptStore.none()} sentinel any more: the absence of a journal is simply the absence of a
- * subscriber.
+ * <p><b>The journal rides the delivery spine (design §9.1, §10.8, §17).</b> The engine no longer
+ * holds a {@code TranscriptStore} at all; it emits {@link MessageAppended} at its newborn choke
+ * point, and a journal is simply a declared listener — {@link #declareListener()} is that
+ * declaration, which the harness/agent builders' {@code .transcript(store)} sugar declares at build
+ * time. Wiring it as a synchronous declaration keeps strictness: a listener that writes on the
+ * emitting thread and lets a failed {@link #append} propagate stops the run outright, the
+ * synchronous spine's veto-by-throw. An application that prefers best-effort journaling declares
+ * its own {@code listenAsync(MessageAppended.class, ...)} instead of relying on this sugar — a
+ * declared posture, chosen at declaration time, never a default. There is no {@code
+ * TranscriptStore.none()} sentinel: the absence of a journal is simply the absence of a
+ * declaration.
  */
 public interface TranscriptStore {
 
@@ -48,23 +47,20 @@ public interface TranscriptStore {
    * Appends one message to {@code id}'s transcript, in birth order.
    *
    * <p>See the interface javadoc: whether a thrown exception here fails the run depends entirely on
-   * how this store was subscribed — inline (the default) propagates and fails the run; {@link
-   * EventHub#subscribeAsync(Class, java.util.function.Consumer, java.util.function.Consumer)}
-   * isolates it instead.
+   * how this store was declared — synchronously (the default, via {@link #declareListener()})
+   * propagates and fails the run; an application's own {@code listenAsync} declaration isolates it
+   * instead.
    */
   void append(ConversationId id, TranscriptEntry entry);
 
   /**
-   * Subscribes this store to {@code hub}'s {@link MessageAppended} stream, inline: each event is
-   * turned into one {@link #append} call on the emitting thread, so a failing append propagates
-   * straight out of {@code emit} and fails the run that produced it. This is the one obvious way to
-   * wire a store to the hub — the harness/agent builders' {@code .transcript(store)} sugar calls
-   * exactly this at build time, once per hub.
-   *
-   * @return the subscription, closable like any other
+   * The synchronous listener declaration that turns this store into a journal: each {@link
+   * MessageAppended} becomes one {@link #append} call on the emitting thread, so a failing append
+   * propagates straight out of {@code emit} and fails the run that produced it. This is what the
+   * harness/agent builders' {@code .transcript(store)} sugar declares at build time.
    */
-  default Subscription feedFrom(EventHub hub) {
-    return hub.subscribe(
+  default ListenerDeclaration declareListener() {
+    return ListenerDeclaration.sync(
         MessageAppended.class,
         event ->
             append(

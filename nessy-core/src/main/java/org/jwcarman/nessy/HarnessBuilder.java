@@ -17,90 +17,116 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
-import org.jwcarman.nessy.api.event.EventHub;
+import java.lang.System.Logger.Level;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
+import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.TranscriptStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
 /**
- * Assembles a {@link Harness}: the six pieces of infrastructure an application sets up once and
- * every agent it builds then shares.
- *
- * <p>Every knob here has a default that works, so {@code Nessy.harness().build()} is already a
- * usable harness — a harness with no provider simply requires every agent it seeds to supply its
- * own via {@link AgentBuilder#provider(ModelProvider)}.
+ * Assembles a {@link Harness}: the infrastructure an application sets up once and every agent it
+ * builds then shares — disjointly from {@link AgentBuilder}, which owns identity instead (design
+ * §17's razor). {@code provider} is required, by constructor signature via {@link
+ * Nessy#harness(ModelProvider)}; everything else here has a default that works.
  */
 public final class HarnessBuilder {
 
-  private ModelProvider provider;
+  private final ModelProvider provider;
   private ConversationStore store = ConversationStore.inMemory();
   private TranscriptStore transcript;
-  private EventHub hub = EventHub.synchronous();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private ObjectMapper mapper = new ObjectMapper();
+  private String defaultModel;
+  private final List<ListenerDeclaration> declarations = new ArrayList<>();
 
-  HarnessBuilder() {}
-
-  /**
-   * The default model line every agent seeded from this harness uses, unless it calls its own
-   * {@link AgentBuilder#provider(ModelProvider)}. Optional here: a harness with no provider is
-   * legal, but an agent that neither inherits nor overrides one fails at {@link
-   * AgentBuilder#build()}.
-   */
-  public HarnessBuilder provider(ModelProvider provider) {
-    this.provider = provider;
-    return this;
+  HarnessBuilder(ModelProvider provider) {
+    this.provider = Objects.requireNonNull(provider, "provider must not be null");
   }
 
   /** Where session state lives. Default: {@link ConversationStore#inMemory()}. */
   public HarnessBuilder store(ConversationStore store) {
-    this.store = store;
+    this.store = Objects.requireNonNull(store, "store must not be null");
     return this;
   }
 
   /**
-   * Sugar: wires {@code transcript} to {@link #hub} as an inline {@link
-   * org.jwcarman.nessy.api.event.MessageAppended} subscriber at {@link #build()} time, via {@link
-   * TranscriptStore#feedFrom}. Default: none — retention is a deliberate declaration, not a silent
-   * default, and the absence of a call here is simply the absence of a subscriber.
-   *
-   * <p>Registered exactly once, at harness build time, on the harness's own hub — every agent built
-   * from the resulting {@link Harness} shares that one subscription rather than layering on a fresh
-   * one apiece.
+   * Sugar: registers {@code transcript} as an inline, synchronous listener for every agent this
+   * harness seeds, wired at {@link #build()} time. Default: none — retention is a deliberate
+   * declaration, not a silent default.
    */
   public HarnessBuilder transcript(TranscriptStore transcript) {
     this.transcript = transcript;
     return this;
   }
 
-  /**
-   * Where each loop's {@link org.jwcarman.nessy.api.ConversationEvent}s are published. Default:
-   * {@link EventHub#synchronous()}.
-   */
-  public HarnessBuilder hub(EventHub hub) {
-    this.hub = hub;
-    return this;
-  }
-
   /** Where engine-level metrics and traces go. Default: {@link ObservationRegistry#NOOP}. */
   public HarnessBuilder observations(ObservationRegistry observations) {
-    this.observations = observations;
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
     return this;
   }
 
   /**
-   * The Jackson mapper used for tool argument (de)serialization. Default: {@code new
-   * ObjectMapper()}.
+   * The Jackson mapper used for tool argument (de)serialization and the default JSON renderer.
+   * Default: {@code new ObjectMapper()}.
    */
   public HarnessBuilder mapper(ObjectMapper mapper) {
-    this.mapper = mapper;
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     return this;
+  }
+
+  /**
+   * Seeded default: every agent built from this harness uses this model unless it calls its own
+   * {@link AgentBuilder#model(String)}. Neither supplied is an {@link AgentConfigurationException}
+   * at {@link AgentBuilder#build()}, not here — a harness with no default model is legal on its
+   * own, exactly like a harness with no listeners.
+   */
+  public HarnessBuilder defaultModel(String defaultModel) {
+    this.defaultModel = defaultModel;
+    return this;
+  }
+
+  /**
+   * Declares a synchronous listener seeded into every agent this harness builds — before that
+   * agent's own declarations, in the order declared here. Frozen at {@link #build()}: no mutation
+   * path exists afterward. A throw from {@code listener} propagates and stops the emitting
+   * operation — the veto is the throw.
+   */
+  public <T> HarnessBuilder listen(Class<T> type, Consumer<T> listener) {
+    declarations.add(ListenerDeclaration.sync(type, listener));
+    return this;
+  }
+
+  /**
+   * Declares an asynchronous listener seeded into every agent this harness builds: {@code listener}
+   * runs on a fresh virtual thread per event, and whatever it throws reaches {@code onError}
+   * instead of the emitting thread — it never vetoes.
+   */
+  public <T> HarnessBuilder listenAsync(
+      Class<T> type, Consumer<T> listener, Consumer<Throwable> onError) {
+    declarations.add(ListenerDeclaration.async(type, listener, onError));
+    return this;
+  }
+
+  /**
+   * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to a JDK {@link
+   * System.Logger} rather than requiring every caller to supply its own handler.
+   */
+  public <T> HarnessBuilder listenAsync(Class<T> type, Consumer<T> listener) {
+    Objects.requireNonNull(listener, "listener must not be null");
+    System.Logger logger = System.getLogger(HarnessBuilder.class.getName());
+    return listenAsync(
+        type, listener, t -> logger.log(Level.ERROR, "async event listener failed", t));
   }
 
   public Harness build() {
+    List<ListenerDeclaration> frozen = new ArrayList<>(declarations);
     if (transcript != null) {
-      transcript.feedFrom(hub);
+      frozen.add(transcript.declareListener());
     }
-    return new Harness(provider, store, hub, observations, mapper);
+    return new Harness(provider, store, observations, mapper, defaultModel, List.copyOf(frozen));
   }
 }

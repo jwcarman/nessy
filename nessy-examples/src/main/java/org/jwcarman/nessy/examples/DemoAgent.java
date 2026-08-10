@@ -36,8 +36,9 @@ public final class DemoAgent {
   private DemoAgent() {}
 
   public static Agent<String> agentFor(ModelProvider provider, String model) {
-    return Nessy.agent()
-        .provider(provider)
+    return Nessy.harness(provider)
+        .build()
+        .agent()
         .model(model)
         .systemPrompt(SYSTEM_PROMPT)
         .tools(new AddTool(), new ClockTool())

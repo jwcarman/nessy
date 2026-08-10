@@ -22,7 +22,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.EventSpines;
 import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.message.Message;
 
@@ -62,10 +63,9 @@ class TranscriptStoreTest {
   }
 
   @Test
-  void feedFrom_turns_each_MessageAppended_into_one_append() {
+  void declareListener_turns_each_MessageAppended_into_one_append() {
     InMemoryTranscriptStore store = new InMemoryTranscriptStore();
-    EventHub hub = EventHub.synchronous();
-    store.feedFrom(hub);
+    EventSpine hub = EventSpines.of(List.of(store.declareListener()));
     Message message = Message.user("hi");
     Usage usage = new Usage(3, 4, 0);
 
@@ -75,10 +75,9 @@ class TranscriptStoreTest {
   }
 
   @Test
-  void feedFrom_ignores_events_of_other_types() {
+  void declareListener_ignores_events_of_other_types() {
     InMemoryTranscriptStore store = new InMemoryTranscriptStore();
-    EventHub hub = EventHub.synchronous();
-    store.feedFrom(hub);
+    EventSpine hub = EventSpines.of(List.of(store.declareListener()));
 
     hub.emit("not a MessageAppended");
 

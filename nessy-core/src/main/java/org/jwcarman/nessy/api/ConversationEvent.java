@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.event.ConversationScoped;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -36,8 +37,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * reject a fact addressed to one conversation but folded into another's state, and what lets the
  * engine publish the grammar event itself rather than wrapping it in an envelope.
  */
-public sealed interface ConversationEvent {
+public sealed interface ConversationEvent extends ConversationScoped {
 
+  @Override
   ConversationId conversationId();
 
   /** A human said something, as arbitrary content blocks rather than plain text. */

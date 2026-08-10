@@ -18,7 +18,7 @@ package org.jwcarman.nessy;
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventSpine;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.spi.ExecutionEngine;
@@ -28,20 +28,24 @@ import org.jwcarman.nessy.spi.conversation.ConversationStore;
 /**
  * A configured agent: a reusable factory of conversations, with the full machinery one call away.
  *
- * @param <I> the input vocabulary a {@code tell} to one of this agent's conversations may carry;
- *     {@code String} for the {@link Nessy#agent()} sugar path, an application-owned type otherwise
+ * <p>There is no agent-wide dynamic subscription any more (design §17): a listener that must watch
+ * every conversation this agent ever runs is declared once, at build time, via {@code
+ * AgentBuilder#listen}/{@code listenAsync}; the only thing left to attach at runtime is one
+ * conversation's own traffic, through {@link Conversation#events()}.
+ *
+ * @param <I> the input vocabulary a {@code tell} to one of this agent's conversations may carry
  */
 public final class Agent<I> {
 
   private final ExecutionEngine engine;
-  private final EventHub events;
+  private final EventSpine events;
   private final ConversationStore store;
   private final ContextPipeline contextPipeline;
   private final InputRenderer<I> renderer;
 
   Agent(
       ExecutionEngine engine,
-      EventHub events,
+      EventSpine events,
       ConversationStore store,
       ContextPipeline contextPipeline,
       InputRenderer<I> renderer) {
@@ -66,10 +70,6 @@ public final class Agent<I> {
   /** The event-level API, for anything the facade does not say. */
   public ExecutionEngine engine() {
     return engine;
-  }
-
-  public EventHub events() {
-    return events;
   }
 
   /**

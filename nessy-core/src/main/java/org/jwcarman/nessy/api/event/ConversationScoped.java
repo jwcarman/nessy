@@ -15,15 +15,18 @@
  */
 package org.jwcarman.nessy.api.event;
 
-import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 
-/** A summarization call failed; compaction was skipped and the turn proceeds uncompacted. */
-public record CompactionFailed(ConversationId conversationId, String reason)
-    implements ConversationScoped {
+/**
+ * Something self-attributing enough to name the one conversation it belongs to.
+ *
+ * <p>Implemented by the sealed {@code ConversationEvent} grammar and by every open notice ({@link
+ * MessageAppended}, {@link ToolProgress}, {@link CompactionFailed}, {@link EnrichmentFailed}) —
+ * this is what a conversation-scoped {@link ConversationEvents} subscription filters on. An emitted
+ * object that does not implement this interface is simply invisible to conversation-local delivery;
+ * it still reaches whatever declared (harness- or agent-level) listeners are frozen for its type.
+ */
+public interface ConversationScoped {
 
-  public CompactionFailed {
-    Objects.requireNonNull(conversationId, "conversationId must not be null");
-    Objects.requireNonNull(reason, "reason must not be null");
-  }
+  ConversationId conversationId();
 }

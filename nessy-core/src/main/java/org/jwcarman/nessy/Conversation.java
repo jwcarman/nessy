@@ -20,7 +20,8 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.ConversationEvents;
+import org.jwcarman.nessy.api.event.EventSpine;
 import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.InputRenderer;
@@ -35,13 +36,13 @@ public final class Conversation<I> {
 
   private final ExecutionEngine engine;
   private final ConversationId conversationId;
-  private final EventHub events;
+  private final EventSpine events;
   private final InputRenderer<I> renderer;
 
   Conversation(
       ExecutionEngine engine,
       ConversationId conversationId,
-      EventHub events,
+      EventSpine events,
       InputRenderer<I> renderer) {
     this.engine = Objects.requireNonNull(engine, "engine must not be null");
     this.conversationId = Objects.requireNonNull(conversationId, "conversationId must not be null");
@@ -65,24 +66,20 @@ public final class Conversation<I> {
 
   /**
    * Tells, delivering this conversation's loop events to {@code tap} for the duration of the call.
+   * Sugar over {@link #events()}: {@code tap} is wired as a plain conversation-local subscription,
+   * open only for this one call.
    *
-   * <p>Three guarantees: {@code tap} sees only this conversation's events (every other session's
-   * traffic on the same hub is filtered out); delivery is synchronous, in loop order, on the
-   * calling thread — the same contract {@link EventHub} itself makes; and the subscription is
-   * closed when {@code tell} returns, whether normally or by exception, so {@code tap} never fires
-   * again afterward.
+   * <p>Three guarantees, unchanged from before {@link #events()} existed: {@code tap} sees only
+   * this conversation's events (every other conversation's traffic is filtered out, by construction
+   * — {@link #events()} is already scoped); delivery is synchronous, in loop order, on the calling
+   * thread; and the subscription is closed when {@code tell} returns, whether normally or by
+   * exception, so {@code tap} never fires again afterward.
    *
-   * <p>{@code tap} is just another hub subscriber, wired here with {@link EventHub#subscribe(Class,
-   * Consumer)} — always sync, never a per-call choice — so the synchronous spine's veto-by-throw
-   * (design §9.1) applies to it exactly as it would to any other sync subscriber: if {@code tap}
-   * throws, that exception propagates straight out of {@code emit}, out of the engine's {@code
-   * run}, and out of this method — a throwing {@code tap} aborts the call. A {@code tap} that must
-   * not be allowed to do that catches its own exceptions, or hands its own work off to another
-   * thread, rather than relying on this method to protect it.
-   *
-   * <p>The envelope is gone: this subscribes to the raw, self-attributing {@link ConversationEvent}
-   * directly and filters by {@link ConversationEvent#conversationId()} rather than unwrapping a
-   * publishing record.
+   * <p>{@code tap} carries the same veto-by-throw contract as any other synchronous subscriber
+   * (design §9.1): a throwing {@code tap} propagates straight out of {@code emit}, out of the
+   * engine's {@code run}, and out of this method — a throwing {@code tap} aborts the call. A {@code
+   * tap} that must not be allowed to do that catches its own exceptions, or hands its own work off
+   * to another thread, rather than relying on this method to protect it.
    *
    * @throws IllegalArgumentException if the renderer produces a null or empty block list
    * @throws RuntimeException whatever the renderer itself throws, unwrapped, or whatever {@code
@@ -91,10 +88,20 @@ public final class Conversation<I> {
   public Reply tell(I input, Consumer<ConversationEvent> tap) {
     Objects.requireNonNull(tap, "tap must not be null");
     ConversationEvent.UserSaid event = render(input);
-    try (Subscription subscription =
-        events.subscribe(ConversationEvent.class, e -> deliver(e, tap))) {
+    try (Subscription subscription = events().subscribe(ConversationEvent.class, tap)) {
       return new Reply(engine.run(conversationId, event));
     }
+  }
+
+  /**
+   * This conversation's one dynamic listening level (design §17): in-memory, per-handle,
+   * non-durable, and already scoped to {@link #conversationId()} — nothing subscribed through the
+   * result ever sees another conversation's traffic. Reach for a build-time {@code
+   * AgentBuilder#listen}/{@code listenAsync} declaration instead when a listener needs to watch
+   * every conversation this agent ever runs, not just this one.
+   */
+  public ConversationEvents events() {
+    return events.forConversation(conversationId);
   }
 
   /**
@@ -110,12 +117,6 @@ public final class Conversation<I> {
           "InputRenderer produced no content blocks for input: " + input);
     }
     return new ConversationEvent.UserSaid(conversationId, blocks);
-  }
-
-  private void deliver(ConversationEvent event, Consumer<ConversationEvent> tap) {
-    if (event.conversationId().equals(conversationId)) {
-      tap.accept(event);
-    }
   }
 
   public ConversationId conversationId() {

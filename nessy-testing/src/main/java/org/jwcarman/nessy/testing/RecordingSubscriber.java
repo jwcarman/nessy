@@ -19,18 +19,15 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.event.EventHub;
-import org.jwcarman.nessy.api.event.Subscription;
 
-/** Captures everything a hub emits, so tests can assert on it. */
+/**
+ * Captures everything handed to it, so tests can assert on it. Wire it up as a declared listener —
+ * {@code .listen(Object.class, recorder)} on a {@code HarnessBuilder}/{@code AgentBuilder} — or as
+ * a conversation-local subscription via {@code Conversation#events()}.
+ */
 public final class RecordingSubscriber implements Consumer<Object> {
 
   private final List<Object> received = new CopyOnWriteArrayList<>();
-
-  /** Subscribes to every event on the hub. */
-  public Subscription attachTo(EventHub hub) {
-    return hub.subscribe(Object.class, this);
-  }
 
   @Override
   public void accept(Object event) {

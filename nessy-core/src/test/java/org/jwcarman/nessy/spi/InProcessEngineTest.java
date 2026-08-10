@@ -42,7 +42,10 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.EventSpines;
+import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.api.event.MessageAppended;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.message.Message;
@@ -199,7 +202,7 @@ class InProcessEngineTest {
 
   private static InProcessEngine engineWith(
       ModelProvider provider, ToolRegistry tools, Approver approver, ConversationStore store) {
-    return engineWith(provider, tools, approver, store, EventHub.synchronous());
+    return engineWith(provider, tools, approver, store, EventEmitter.noop());
   }
 
   private static InProcessEngine engineWith(
@@ -207,19 +210,19 @@ class InProcessEngineTest {
       ToolRegistry tools,
       Approver approver,
       ConversationStore store,
-      EventHub hub) {
+      EventEmitter events) {
     return new InProcessEngine(
         provider,
         tools,
         EngineFixtures.defaultGrants(tools),
         approver,
         store,
-        hub,
+        events,
         Reducer.defaults(),
         CONFIG,
         new ObjectMapper(),
         ObservationRegistry.NOOP,
-        ContextPipeline.builder().build(hub, ObservationRegistry.NOOP));
+        ContextPipeline.builder().build(events, ObservationRegistry.NOOP));
   }
 
   @Nested
@@ -235,7 +238,7 @@ class InProcessEngineTest {
                       Map.of(),
                       Approver.allowAll(),
                       ConversationStore.inMemory(),
-                      EventHub.synchronous(),
+                      EventEmitter.noop(),
                       Reducer.defaults(),
                       CONFIG,
                       new ObjectMapper(),
@@ -255,7 +258,7 @@ class InProcessEngineTest {
                       null,
                       Approver.allowAll(),
                       ConversationStore.inMemory(),
-                      EventHub.synchronous(),
+                      EventEmitter.noop(),
                       Reducer.defaults(),
                       CONFIG,
                       new ObjectMapper(),
@@ -277,7 +280,7 @@ class InProcessEngineTest {
                       Map.of(),
                       Approver.allowAll(),
                       ConversationStore.inMemory(),
-                      EventHub.synchronous(),
+                      EventEmitter.noop(),
                       Reducer.defaults(),
                       CONFIG,
                       new ObjectMapper(),
@@ -297,7 +300,7 @@ class InProcessEngineTest {
                       Map.of(),
                       Approver.allowAll(),
                       ConversationStore.inMemory(),
-                      EventHub.synchronous(),
+                      EventEmitter.noop(),
                       Reducer.defaults(),
                       CONFIG,
                       new ObjectMapper(),
@@ -476,7 +479,7 @@ class InProcessEngineTest {
           Map.of(grant.tool().name(), grant),
           approver,
           ConversationStore.inMemory(),
-          EventHub.synchronous(),
+          EventEmitter.noop(),
           Reducer.defaults(),
           CONFIG,
           new ObjectMapper(),
@@ -604,7 +607,7 @@ class InProcessEngineTest {
               Map.of(),
               new ThrowingApprover(),
               ConversationStore.inMemory(),
-              EventHub.synchronous(),
+              EventEmitter.noop(),
               Reducer.defaults(),
               CONFIG,
               new ObjectMapper(),
@@ -656,7 +659,7 @@ class InProcessEngineTest {
               Map.of(),
               new ThrowingApprover(),
               ConversationStore.inMemory(),
-              EventHub.synchronous(),
+              EventEmitter.noop(),
               Reducer.defaults(),
               CONFIG,
               new ObjectMapper(),
@@ -960,9 +963,9 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("Fo"),
                       new ModelEvent.TextChunk("ur."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-      EventHub hub = EventHub.synchronous();
       List<ConversationEvent> events = new ArrayList<>();
-      hub.subscribe(ConversationEvent.class, events::add);
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(ConversationEvent.class, events::add)));
 
       engineWith(
               provider, ToolRegistry.of(), Approver.allowAll(), ConversationStore.inMemory(), hub)
@@ -988,9 +991,9 @@ class InProcessEngineTest {
                   List.of(
                       new ModelEvent.TextChunk("Done."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-      EventHub hub = EventHub.synchronous();
       List<ToolProgress> progress = new ArrayList<>();
-      hub.subscribe(ToolProgress.class, progress::add);
+      EventSpine hub =
+          EventSpines.of(List.of(ListenerDeclaration.sync(ToolProgress.class, progress::add)));
 
       Tool<EngineFixtures.Echo> noisy =
           new Tool<>() {
@@ -1058,8 +1061,7 @@ class InProcessEngineTest {
                       new ModelEvent.TextChunk("Done."),
                       new ModelEvent.TurnEnded(StopReason.END_TURN, finalTurnUsage))));
       InMemoryTranscriptStore transcript = TranscriptStore.inMemory();
-      EventHub hub = EventHub.synchronous();
-      transcript.feedFrom(hub);
+      EventSpine hub = EventSpines.of(List.of(transcript.declareListener()));
 
       engineWith(
               provider,
@@ -1108,8 +1110,7 @@ class InProcessEngineTest {
           (id, entry) -> {
             throw new IllegalStateException("journal blew up");
           };
-      EventHub hub = EventHub.synchronous();
-      explodingTranscript.feedFrom(hub);
+      EventSpine hub = EventSpines.of(List.of(explodingTranscript.declareListener()));
 
       assertThatThrownBy(
               () ->

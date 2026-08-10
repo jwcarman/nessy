@@ -80,8 +80,9 @@ class OpenAiLiveTest {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.agent()
-            .provider(OpenAiModelProvider.builder().fromEnv().build())
+        Nessy.harness(OpenAiModelProvider.builder().fromEnv().build())
+            .build()
+            .agent()
             .model(MODEL)
             .maxTokens(64)
             .build();
@@ -97,8 +98,9 @@ class OpenAiLiveTest {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.agent()
-            .provider(OpenAiModelProvider.builder().fromEnv().build())
+        Nessy.harness(OpenAiModelProvider.builder().fromEnv().build())
+            .build()
+            .agent()
             .model(MODEL)
             .maxTokens(256)
             .tools(new AddTool())
@@ -124,12 +126,13 @@ class OpenAiLiveTest {
   @Disabled("manual: point at a local or OpenRouter endpoint")
   void a_real_conversation_answers_through_an_openai_compatible_endpoint() {
     Agent<String> agent =
-        Nessy.agent()
-            .provider(
+        Nessy.harness(
                 OpenAiModelProvider.builder()
                     .apiKey(System.getenv("OPENROUTER_API_KEY"))
                     .baseUrl("https://openrouter.ai/api/v1")
                     .build())
+            .build()
+            .agent()
             .model("openai/gpt-4o-mini")
             .maxTokens(64)
             .build();

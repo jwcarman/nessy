@@ -21,6 +21,54 @@ changed.
 
 ### Added
 
+- **The razor-bound harness — `Nessy.harness(ModelProvider)` (design §17,
+  2026-08-10 evening ruling, pre-1.0 breaking)** — `Nessy.harness(provider)`
+  is now THE front door; the provider is the harness's one required thing,
+  enforced by constructor signature rather than discovered later at
+  `build()`. `Nessy.agent()` and the no-arg `Nessy.harness()` are removed
+  outright. The two builders are disjoint: `AgentBuilder` loses every infra
+  setter (`.provider`/`.store`/`.observations`/`.mapper`, and the `.events`
+  override) — `HarnessBuilder` owns all four exclusively, with the same
+  defaults as before (`ConversationStore.inMemory()`, `ObservationRegistry.NOOP`,
+  a fresh `ObjectMapper`). The one seeded (not owned-outright) piece is the
+  model: `HarnessBuilder#defaultModel(String)` is the harness-wide fallback,
+  and agent `.model(...)` always wins when both are set. An agent that needs
+  a different provider or store is a **second harness** — one harness per
+  infrastructure profile — never an `AgentBuilder` override.
+- **`AgentConfigurationException` (new public type, front-door package)** —
+  every agent build-time *configuration* failure (currently: no model
+  resolves from either the agent or the harness's `defaultModel`) now throws
+  this instead of a bespoke `IllegalStateException`, with a message naming
+  exactly what is missing. Wiring-desync failures (a hand-rolled grant map
+  that disagrees with its tool registry) are unchanged `IllegalArgumentException`
+  — those are a caller's programming error at the call site, not an
+  incomplete declaration.
+- **Declared listening (design §17) replaces the runtime-subscribable hub** —
+  both `HarnessBuilder` and `AgentBuilder` gain `listen(Class<T>, Consumer<T>)`
+  and `listenAsync(Class<T>, Consumer<T>[, Consumer<Throwable>])`, frozen at
+  `build()` (no mutation path exists afterward — Prepare is a build-time
+  phase). A harness's declarations seed every agent it builds — before that
+  agent's own, in declaration order — reproducing the old "one hub
+  subscriber sees every agent's traffic" contract without a shared, mutable
+  hub instance: the seeded `Consumer` fires independently for each agent's
+  own conversations. Delivery order per emitted event: this conversation's
+  dynamic subscribers (see next bullet) first, then the frozen chain,
+  harness-then-agent, in declaration order. A throw from a sync declaration,
+  in either tier, propagates out and stops delivery to everything after it,
+  aborting the operation that emitted — the veto is the throw, unchanged; an
+  async declaration never gets that power, since its listener already runs
+  off the emitting thread by the time delivery reaches it.
+- **`Conversation#events()` — the one dynamic listening level** — returns a
+  `ConversationEvents` (new public interface, `api.event`) already scoped to
+  that one conversation: `.subscribe(Class<T>, Consumer<T>)` only ever
+  delivers events self-attributed (the new `ConversationScoped` marker
+  interface, implemented by `ConversationEvent` and every open notice) to
+  that conversation's id, so nothing subscribed through it ever sees another
+  conversation's traffic — no manual id filtering required any more.
+  `Conversation#tell(input, tap)` is now sugar over exactly this: a
+  subscription wired for the call's duration and closed when it returns,
+  which is why its existing tests — including the foreign-event isolation
+  proof — pin unchanged.
 - **The `Context` edit algebra (design §10.8, thumbs-upped 2026-08-10)** —
   `Context` (`api.message`) now owns the safe edits over the pairing
   invariant it already enforced, so raw list surgery never has to happen in
@@ -344,6 +392,30 @@ changed.
 
 ### Changed
 
+- **The hub is demoted: `EventHub`/`SynchronousEventHub` leave the public
+  surface entirely (design §17, pre-1.0 breaking; supersedes the "`EventHub`
+  subscribers choose sync or async" entry directly below, whose subscribe/
+  subscribeAsync surface no longer exists)** — `EventHub.synchronous()`,
+  `.subscribe(Class, Consumer)`, and `.subscribeAsync(...)` are gone.
+  `HarnessBuilder#hub(EventHub)` dies with them. The replacement is entirely
+  in `api.event`: `EventEmitter` survives, public, unchanged in shape (plus a
+  new `EventEmitter.noop()` convenience) — it is what `ToolContext#events()`
+  still exposes to tools. `EventSpine` (new, public, `extends EventEmitter`)
+  is the narrower per-agent delivery apparatus a `HarnessBuilder`/
+  `AgentBuilder` assembles at `build()` via the new `EventSpines.of(List<ListenerDeclaration>)`
+  factory from the harness's seeded declarations plus the agent's own; its
+  only capability beyond emitting is `forConversation(ConversationId)`,
+  returning the scoped `ConversationEvents` view `Conversation#events()`
+  hands out. `ListenerDeclaration` (new, public) is the frozen unit `listen`/
+  `listenAsync` capture. There is no general, agent-wide, runtime-attachable
+  subscription left anywhere — an agent-wide observer is declared once, at
+  build time; see "Declared listening" above.
+- **`TranscriptStore#feedFrom(EventHub)` → `TranscriptStore#declareListener()`
+  (pre-1.0 breaking)** — with the hub gone, the sugar `.transcript(store)` on
+  both builders now declares a synchronous `ListenerDeclaration` for
+  `MessageAppended` instead of subscribing to a hub instance; the strictness
+  contract (a throwing `append` fails the run) is unchanged, just expressed
+  as a sync declaration instead of an inline `subscribe` call.
 - **`EventHub` subscribers choose sync or async at subscription time
   (pre-1.0 breaking)** — the static `EventHub.async(listener, onError)` /
   `EventHub.async(listener)` wrapper helpers are removed outright; their

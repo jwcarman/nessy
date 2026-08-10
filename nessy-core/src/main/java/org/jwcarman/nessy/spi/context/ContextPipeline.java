@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.EnrichmentFailed;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 
@@ -88,19 +88,19 @@ public final class ContextPipeline {
   private final List<ContextEnricher> enrichers;
   private final List<Projection> projections;
   private final Placement placement;
-  private final EventHub hub;
+  private final EventEmitter emitter;
   private final ObservationRegistry observations;
 
   private ContextPipeline(
       List<ContextEnricher> enrichers,
       List<Projection> projections,
       Placement placement,
-      EventHub hub,
+      EventEmitter emitter,
       ObservationRegistry observations) {
     this.enrichers = enrichers;
     this.projections = projections;
     this.placement = placement;
-    this.hub = hub;
+    this.emitter = emitter;
     this.observations = observations;
   }
 
@@ -157,7 +157,7 @@ public final class ContextPipeline {
         accepted = candidate;
       } catch (RuntimeException e) {
         observation.error(e);
-        hub.emit(new EnrichmentFailed(state.id(), describe(e)));
+        emitter.emit(new EnrichmentFailed(state.id(), describe(e)));
       } finally {
         observation.stop();
       }
@@ -235,16 +235,16 @@ public final class ContextPipeline {
     }
 
     /**
-     * Builds the pipeline. {@code hub} and {@code observations} are engine infrastructure, not part
-     * of the declarative pipeline shape itself, which is why they arrive here rather than through
-     * the builder's fluent methods.
+     * Builds the pipeline. {@code emitter} and {@code observations} are engine infrastructure, not
+     * part of the declarative pipeline shape itself, which is why they arrive here rather than
+     * through the builder's fluent methods.
      */
-    public ContextPipeline build(EventHub hub, ObservationRegistry observations) {
+    public ContextPipeline build(EventEmitter emitter, ObservationRegistry observations) {
       return new ContextPipeline(
           List.copyOf(enrichers),
           List.copyOf(projections),
           placement,
-          Objects.requireNonNull(hub, "hub must not be null"),
+          Objects.requireNonNull(emitter, "emitter must not be null"),
           Objects.requireNonNull(observations, "observations must not be null"));
     }
   }

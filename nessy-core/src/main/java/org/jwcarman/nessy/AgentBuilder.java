@@ -17,14 +17,19 @@ package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
+import java.lang.System.Logger.Level;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
-import org.jwcarman.nessy.api.event.EventHub;
+import org.jwcarman.nessy.api.event.EventSpine;
+import org.jwcarman.nessy.api.event.EventSpines;
+import org.jwcarman.nessy.api.event.ListenerDeclaration;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -47,10 +52,12 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
  * Assembles an {@link Agent}: the identity — model, system prompt, tools, policies — layered on top
  * of a {@link Harness}'s shared infrastructure.
  *
- * <p>Everything except the model has a default that works, so the smallest useful agent is a
- * provider and a model name. Every default here is a seam you can replace, which is the whole point
- * of the framework. Instances come from {@link Harness#agent()} / {@link Harness#agent(Class)} (or,
- * for the common single-agent case, {@link Nessy#agent()}), never from a public constructor.
+ * <p>Disjoint from {@link HarnessBuilder} by design (design §17's razor): the provider, session
+ * store, observation registry, and object mapper are the harness's alone, never overridable here.
+ * Only the model is seeded rather than owned outright — {@link #model(String)} wins over the
+ * harness's {@link HarnessBuilder#defaultModel(String)}, and neither supplied is an {@link
+ * AgentConfigurationException} at {@link #build()}. Instances come from {@link Harness#agent()} /
+ * {@link Harness#agent(Class)}, never from a public constructor.
  *
  * @param <I> the input vocabulary the built {@link Agent} will accept via {@code tell}
  */
@@ -59,7 +66,14 @@ public final class AgentBuilder<I> {
   private static final int DEFAULT_MAX_TOKENS = 4096;
 
   private final Class<I> vocabulary;
-  private ModelProvider provider;
+  private final ModelProvider provider;
+  private final ConversationStore store;
+  private final ObservationRegistry observations;
+  private final ObjectMapper mapper;
+  private final String defaultModel;
+  private final List<ListenerDeclaration> seededDeclarations;
+  private final List<ListenerDeclaration> declarations = new ArrayList<>();
+
   private String model;
   private String systemPrompt = "";
   private int maxTokens = DEFAULT_MAX_TOKENS;
@@ -67,25 +81,20 @@ public final class AgentBuilder<I> {
   private ToolRegistry tools = ToolRegistry.of();
   private Map<String, ToolGrant> explicitGrants;
   private Approver approver = Approver.allowAll();
-  private ConversationStore store;
-  private EventHub events;
   private TerminationPolicy termination = TerminationPolicy.defaults();
   private Compactor compactor;
   private Summarizer summarizer;
   private int summaryMaxTokens = 2_048;
   private String summaryInstructions = Summarizer.DEFAULT_INSTRUCTIONS;
   private Long contextWindow;
-  private ObjectMapper mapper;
-  private ObservationRegistry observations;
   private Consumer<ContextPipeline.Builder> contextCustomizer = pipeline -> {};
   private TranscriptStore transcript;
   private InputRenderer<I> renderer;
 
   /**
-   * Seeded from a {@link Harness}: the infrastructure six start out at the harness's values, and
-   * this builder layers identity — model, system prompt, tools, policies — on top. Every infra
-   * setter below (store, transcript, events, mapper, observations) is an escape hatch that
-   * overrides the harness for this one agent; the harness is the normal home for those values.
+   * Seeded from a {@link Harness}: the infrastructure four (provider, store, observations, mapper)
+   * come straight from the harness, with no override here; {@code defaultModel} and the harness's
+   * declared listeners are seeded instead, layered under whatever this builder declares itself.
    *
    * <p>{@code defaultRenderer} is the vocabulary-driven default — {@link InputRenderer#text()} for
    * {@code String}, {@link InputRenderer#json(ObjectMapper)} over the harness mapper otherwise —
@@ -97,21 +106,16 @@ public final class AgentBuilder<I> {
     this.renderer = Objects.requireNonNull(defaultRenderer, "defaultRenderer must not be null");
     this.provider = harness.provider();
     this.store = harness.store();
-    this.events = harness.hub();
     this.observations = harness.observations();
     this.mapper = harness.mapper();
+    this.defaultModel = harness.defaultModel();
+    this.seededDeclarations = harness.declarations();
   }
 
   /**
-   * Overrides the harness's default model provider for this one agent. Unusual: the harness is the
-   * normal home for the provider every agent shares; reach for this only when a particular agent
-   * genuinely needs a different model line.
+   * Wins over the harness's {@link HarnessBuilder#defaultModel(String)} when both are set. Neither
+   * set is an {@link AgentConfigurationException} at {@link #build()}, naming the missing model.
    */
-  public AgentBuilder<I> provider(ModelProvider provider) {
-    this.provider = provider;
-    return this;
-  }
-
   public AgentBuilder<I> model(String model) {
     this.model = model;
     return this;
@@ -174,24 +178,6 @@ public final class AgentBuilder<I> {
     return this;
   }
 
-  /**
-   * Overrides the harness's session store for this one agent. Unusual: the harness is the normal
-   * home for the store every agent shares.
-   */
-  public AgentBuilder<I> store(ConversationStore store) {
-    this.store = store;
-    return this;
-  }
-
-  /**
-   * Overrides the harness's event hub for this one agent. Unusual: the harness is the normal home
-   * for the hub every agent shares.
-   */
-  public AgentBuilder<I> events(EventHub events) {
-    this.events = events;
-    return this;
-  }
-
   public AgentBuilder<I> termination(TerminationPolicy termination) {
     this.termination = termination;
     return this;
@@ -215,11 +201,10 @@ public final class AgentBuilder<I> {
   /**
    * What performs the default summarizing compactor's model call. Default: {@link
    * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String,
-   * io.micrometer.observation.ObservationRegistry)} over this builder's {@link
-   * #provider(ModelProvider)}, settings, {@link #summaryMaxTokens(int)}, {@link
-   * #summaryInstructions(String)}, and {@link #observations(ObservationRegistry)}. Wins over both
-   * of those knobs — an explicit summarizer needs nothing this builder would otherwise bake in for
-   * it. Ignored when {@link #compaction(Compactor)} is called.
+   * io.micrometer.observation.ObservationRegistry)} over the harness's provider, settings, {@link
+   * #summaryMaxTokens(int)}, {@link #summaryInstructions(String)}, and the harness's observation
+   * registry. Wins over both of those knobs — an explicit summarizer needs nothing this builder
+   * would otherwise bake in for it. Ignored when {@link #compaction(Compactor)} is called.
    */
   public AgentBuilder<I> summarizer(Summarizer summarizer) {
     this.summarizer = summarizer;
@@ -269,7 +254,7 @@ public final class AgentBuilder<I> {
    *
    * <p>Default: no projections, no enrichers, {@link ContextPipeline.Placement#ENRICHMENTS_FIRST} —
    * the model sees the full working set unchanged, scoped to this one agent, never a harness-level
-   * default the way {@link #store(ConversationStore)} or {@link #events(EventHub)} are.
+   * default.
    *
    * <pre>{@code
    * builder.context(pipeline -> pipeline
@@ -284,30 +269,44 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Overrides the harness's Jackson mapper for this one agent. Unusual: the harness is the normal
-   * home for the mapper every agent shares.
+   * Declares a synchronous listener for this agent, after the harness's own seeded declarations, in
+   * the order declared here. Frozen at {@link #build()}: no mutation path exists afterward. A throw
+   * from {@code listener} propagates and stops the emitting operation — the veto is the throw.
    */
-  public AgentBuilder<I> objectMapper(ObjectMapper mapper) {
-    this.mapper = mapper;
+  public <T> AgentBuilder<I> listen(Class<T> type, Consumer<T> listener) {
+    declarations.add(ListenerDeclaration.sync(type, listener));
     return this;
   }
 
   /**
-   * Overrides the harness's observation registry for this one agent. Unusual: the harness is the
-   * normal home for the registry every agent shares.
+   * Declares an asynchronous listener for this agent: {@code listener} runs on a fresh virtual
+   * thread per event, and whatever it throws reaches {@code onError} instead of the emitting thread
+   * — it never vetoes.
    */
-  public AgentBuilder<I> observations(ObservationRegistry observations) {
-    this.observations = observations;
+  public <T> AgentBuilder<I> listenAsync(
+      Class<T> type, Consumer<T> listener, Consumer<Throwable> onError) {
+    declarations.add(ListenerDeclaration.async(type, listener, onError));
     return this;
   }
 
   /**
-   * Sugar for this one agent: wires {@code transcript} to this agent's event hub as an inline
-   * {@link org.jwcarman.nessy.api.event.MessageAppended} subscriber at {@link #build()}, via {@link
-   * TranscriptStore#feedFrom}. Unusual: {@link HarnessBuilder#transcript(TranscriptStore)} is the
-   * normal home for a journal every agent shares, registered once at harness build time; reach for
-   * this only when one particular agent needs its own, separate journal. Default: none — retention
-   * is a deliberate declaration, not a silent default.
+   * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to a JDK {@link
+   * System.Logger} rather than requiring every caller to supply its own handler.
+   */
+  public <T> AgentBuilder<I> listenAsync(Class<T> type, Consumer<T> listener) {
+    Objects.requireNonNull(listener, "listener must not be null");
+    System.Logger logger = System.getLogger(AgentBuilder.class.getName());
+    return listenAsync(
+        type, listener, t -> logger.log(Level.ERROR, "async event listener failed", t));
+  }
+
+  /**
+   * Sugar for this one agent: wires {@code transcript} as an inline, synchronous {@link
+   * org.jwcarman.nessy.api.event.MessageAppended} listener at {@link #build()}. Unusual: {@link
+   * HarnessBuilder#transcript(TranscriptStore)} is the normal home for a journal every agent
+   * shares, registered once at harness build time; reach for this only when one particular agent
+   * needs its own, separate journal. Default: none — retention is a deliberate declaration, not a
+   * silent default.
    */
   public AgentBuilder<I> transcript(TranscriptStore transcript) {
     this.transcript = transcript;
@@ -326,25 +325,23 @@ public final class AgentBuilder<I> {
   }
 
   public Agent<I> build() {
-    if (provider == null) {
-      throw new IllegalStateException("a model provider is required: call provider(...)");
-    }
-    if (model == null || model.isBlank()) {
-      throw new IllegalStateException("a model name is required: call model(...)");
+    String resolvedModel = (model != null && !model.isBlank()) ? model : defaultModel;
+    if (resolvedModel == null || resolvedModel.isBlank()) {
+      throw new AgentConfigurationException(
+          "a model name is required: call model(...) on the agent, or defaultModel(...) on the"
+              + " harness");
     }
     ModelSettings settings =
-        new ModelSettings(model, systemPrompt, maxTokens, capabilities, contextWindow);
+        new ModelSettings(resolvedModel, systemPrompt, maxTokens, capabilities, contextWindow);
     Compactor resolvedCompactor =
         compactor != null ? compactor : assembleDefaultCompactor(settings);
+    EventSpine events = EventSpines.of(frozenDeclarations());
     // Constructed once here and handed to both the engine and the Agent: the invariant is one
     // ContextPipeline instance per agent, so requestFor and contextFor never disagree about what
     // a call sees.
     ContextPipeline.Builder pipelineBuilder = ContextPipeline.builder();
     contextCustomizer.accept(pipelineBuilder);
     ContextPipeline contextPipeline = pipelineBuilder.build(events, observations);
-    if (transcript != null) {
-      transcript.feedFrom(events);
-    }
     ExecutionEngine engine =
         new InProcessEngine(
             provider,
@@ -359,6 +356,22 @@ public final class AgentBuilder<I> {
             observations,
             contextPipeline);
     return new Agent<>(engine, events, store, contextPipeline, renderer);
+  }
+
+  /**
+   * The harness's declarations first, in order, then this builder's own — the seeded-provider
+   * pattern applied to listeners (design §17) — then this agent's own {@link #transcript} sugar
+   * last, if declared.
+   */
+  private List<ListenerDeclaration> frozenDeclarations() {
+    List<ListenerDeclaration> frozen =
+        new ArrayList<>(seededDeclarations.size() + declarations.size() + 1);
+    frozen.addAll(seededDeclarations);
+    frozen.addAll(declarations);
+    if (transcript != null) {
+      frozen.add(transcript.declareListener());
+    }
+    return frozen;
   }
 
   /**
@@ -382,11 +395,11 @@ public final class AgentBuilder<I> {
   /**
    * Assembles the default, summarizing compactor from {@link #summarizer(Summarizer)} (or {@link
    * Summarizer#usingProvider(ModelProvider, ModelSettings, int, String,
-   * io.micrometer.observation.ObservationRegistry)} over this builder's provider, settings, {@link
-   * #summaryMaxTokens(int)}, {@link #summaryInstructions(String)}, and {@link
-   * #observations(ObservationRegistry)}, by default) and a declared {@link #contextWindow(long)},
-   * when there is one, to derive the trigger from. No window declared means the builder's own
-   * default trigger (100k measured input tokens) stands.
+   * io.micrometer.observation.ObservationRegistry)} over the harness's provider, settings, {@link
+   * #summaryMaxTokens(int)}, {@link #summaryInstructions(String)}, and the harness's observation
+   * registry, by default) and a declared {@link #contextWindow(long)}, when there is one, to derive
+   * the trigger from. No window declared means the builder's own default trigger (100k measured
+   * input tokens) stands.
    */
   private Compactor assembleDefaultCompactor(ModelSettings settings) {
     Summarizer resolvedSummarizer =

@@ -15,8 +15,13 @@
  */
 package org.jwcarman.nessy.api.event;
 
-/** The emit-only face of the hub. Anything holding one may announce; nothing more. */
+/** The emit-only face of the delivery spine. Anything holding one may announce; nothing more. */
 public interface EventEmitter {
 
   void emit(Object event);
+
+  /** An emitter that discards everything — for wiring that needs a sink but never inspects it. */
+  static EventEmitter noop() {
+    return event -> {};
+  }
 }

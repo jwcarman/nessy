@@ -28,7 +28,6 @@ import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
-import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
@@ -121,13 +120,14 @@ class EndToEndTest {
     RecordingSubscriber subscriber = new RecordingSubscriber();
 
     Agent<String> agent =
-        Nessy.agent()
-            .provider(provider)
+        Nessy.harness(provider)
+            .build()
+            .agent()
             .model("fake-model")
             .systemPrompt("be helpful")
             .tools(new AddTool())
+            .listen(Object.class, subscriber)
             .build();
-    subscriber.attachTo(agent.events());
 
     Reply reply = agent.converse().tell("what is 2+2?");
 
@@ -142,7 +142,7 @@ class EndToEndTest {
   void the_tool_schema_reaches_the_model() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent =
-        Nessy.agent().provider(provider).model("fake-model").tools(new AddTool()).build();
+        Nessy.harness(provider).build().agent().model("fake-model").tools(new AddTool()).build();
 
     agent
         .engine()
@@ -168,8 +168,9 @@ class EndToEndTest {
   void requested_capabilities_reach_the_provider() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent =
-        Nessy.agent()
-            .provider(provider)
+        Nessy.harness(provider)
+            .build()
+            .agent()
             .model("fake-model")
             .capabilities(Set.of(Capability.PROMPT_CACHING))
             .build();
@@ -188,7 +189,7 @@ class EndToEndTest {
   void usage_accumulates_from_the_model_into_the_final_state() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5, 0)).build();
-    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
 
     RunOutcome outcome =
         agent
@@ -206,7 +207,7 @@ class EndToEndTest {
   void thinking_chunks_settle_into_a_thinking_block_before_the_answer() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
-    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
 
     RunOutcome outcome =
         agent
@@ -229,7 +230,7 @@ class EndToEndTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
-    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
 
     Reply reply = agent.converse().tell("what is 2+2?");
 
@@ -246,7 +247,7 @@ class EndToEndTest {
             .text("Answer.")
             .endTurn()
             .build();
-    Agent<String> agent = Nessy.agent().provider(provider).model("fake-model").build();
+    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
 
     Reply reply = agent.converse().tell("hi");
 
@@ -298,15 +299,14 @@ class EndToEndTest {
 
     /**
      * {@code AddTool.requiresApproval()} is {@code true}, so its derived default grant would defer
-     * every agent to the approver. One harness, two agents, two grant lines for the same tool: the
-     * free agent's explicit {@link UsagePolicy#allow()} skips the approver outright, while the
-     * gated agent keeps the derived default and hits an approver that denies. The grant, not the
-     * tool, is what decided each agent's authority.
+     * every agent to the approver. Two harnesses (provider is harness-owned, never an agent
+     * override — design §17's razor), two grant lines for the same tool: the free agent's explicit
+     * {@link UsagePolicy#allow()} skips the approver outright, while the gated agent keeps the
+     * derived default and hits an approver that denies. The grant, not the tool, is what decided
+     * each agent's authority.
      */
     @Test
     void the_grant_line_is_the_security_statement() {
-      Harness harness = Nessy.harness().build();
-
       ScriptedModelProvider freeProvider =
           ScriptedModelProvider.builder()
               .toolUse("c1", "add", addArgs(2, 2))
@@ -315,9 +315,9 @@ class EndToEndTest {
               .endTurn()
               .build();
       Agent<String> freeAgent =
-          harness
+          Nessy.harness(freeProvider)
+              .build()
               .agent()
-              .provider(freeProvider)
               .model("fake-model")
               .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
               // The approver denies everything, but it must never be asked: the tool-result
@@ -335,9 +335,9 @@ class EndToEndTest {
               .endTurn()
               .build();
       Agent<String> gatedAgent =
-          harness
+          Nessy.harness(gatedProvider)
+              .build()
               .agent()
-              .provider(gatedProvider)
               .model("fake-model")
               .tools(new AddTool())
               .approver(Approver.denyAll("not on this agent"))
@@ -396,8 +396,9 @@ class EndToEndTest {
               "Summarize.",
               ObservationRegistry.NOOP);
       Agent<String> agent =
-          Nessy.agent()
-              .provider(provider)
+          Nessy.harness(provider)
+              .build()
+              .agent()
               .model("fake-model")
               .compaction(
                   Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
@@ -445,13 +446,14 @@ class EndToEndTest {
               "Summarize.",
               ObservationRegistry.NOOP);
       Agent<String> agent =
-          Nessy.agent()
-              .provider(provider)
+          Nessy.harness(provider)
+              .build()
+              .agent()
               .model("fake-model")
               .compaction(
                   Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
+              .listen(Object.class, subscriber)
               .build();
-      subscriber.attachTo(agent.events());
 
       var conversation = agent.converse();
       conversation.tell("first question");
@@ -489,8 +491,9 @@ class EndToEndTest {
       ScriptedSummarizer summarizer =
           ScriptedSummarizer.builder().summary("Summary of earlier turns.").build();
       Agent<String> agent =
-          Nessy.agent()
-              .provider(provider)
+          Nessy.harness(provider)
+              .build()
+              .agent()
               .model("fake-model")
               .compaction(
                   Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
@@ -546,8 +549,9 @@ class EndToEndTest {
             }
           };
       Agent<String> agent =
-          Nessy.agent()
-              .provider(provider)
+          Nessy.harness(provider)
+              .build()
+              .agent()
               .model("fake-model")
               .compaction(keepOnlyTheNewestMessage)
               .build();
@@ -605,8 +609,9 @@ class EndToEndTest {
               "Summarize.",
               ObservationRegistry.NOOP);
       Agent<String> agent =
-          Nessy.agent()
-              .provider(provider)
+          Nessy.harness(provider)
+              .build()
+              .agent()
               .model("fake-model")
               .compaction(
                   Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
@@ -666,8 +671,9 @@ class EndToEndTest {
               .endTurn()
               .build();
       Agent<String> agent =
-          Nessy.agent()
-              .provider(provider)
+          Nessy.harness(provider)
+              .build()
+              .agent()
               .model("fake-model")
               .tools(new AddTool())
               .context(pipeline -> pipeline.project(ctx -> ctx.elideToolResults(2)))

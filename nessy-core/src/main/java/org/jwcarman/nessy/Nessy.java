@@ -15,29 +15,23 @@
  */
 package org.jwcarman.nessy;
 
+import org.jwcarman.nessy.spi.model.ModelProvider;
+
 /**
- * The front door. {@code Nessy.agent()} is the fast path for a single agent; {@code
- * Nessy.harness()} is where an application with more than one agent starts, since a {@link Harness}
- * is the infrastructure they share.
+ * The front door — the only one. A {@link Harness} is the infrastructure — provider, session store,
+ * observations, object mapper — every agent it builds shares; {@code provider} is the harness's one
+ * required thing, enforced right here by signature rather than discovered later at {@code build()}.
+ *
+ * <p>The razor: if a proposed harness feature could not be expressed as "pre-configuration of an
+ * agent builder," it does not belong on the harness. A single agent is still just as short as ever
+ * — {@code Nessy.harness(provider).agent().model(...).build()} — the harness is never optional
+ * ceremony, only ever the one place infrastructure lives.
  */
 public final class Nessy {
 
   private Nessy() {}
 
-  /**
-   * Sugar for the common, single-agent case: an implicit default {@link Harness} — every knob at
-   * its default — seeding a fresh {@link AgentBuilder}. Equivalent to {@code
-   * Nessy.harness().build().agent()}.
-   */
-  public static AgentBuilder<String> agent() {
-    return harness().build().agent();
-  }
-
-  /**
-   * Starts assembling the infrastructure — provider, store, transcript, hub, observations, mapper —
-   * that every agent built from the resulting {@link Harness} will share.
-   */
-  public static HarnessBuilder harness() {
-    return new HarnessBuilder();
+  public static HarnessBuilder harness(ModelProvider provider) {
+    return new HarnessBuilder(provider);
   }
 }

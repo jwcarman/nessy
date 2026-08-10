@@ -22,9 +22,11 @@ import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 
 /**
- * Pattern demonstrated: streaming via a raw hub subscription — {@code agent.events()}, filtered by
- * hand to this conversation's id. Reach for this when you need the full event vocabulary (every
- * conversation on the agent, not just one), or events that outlive a single send.
+ * Pattern demonstrated: streaming via {@link Conversation#events()} — the one dynamic listening
+ * level (design §17), already scoped to this conversation, so no manual id filtering is needed.
+ * Reach for this when a listener needs to attach and detach at runtime, outliving a single {@code
+ * tell}; a single call's own stream is simpler as {@link Conversation#tell(Object,
+ * java.util.function.Consumer)} (see {@link OpenAiChat}).
  */
 public final class AnthropicChat {
 
@@ -43,7 +45,7 @@ public final class AnthropicChat {
     AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
     Agent<String> agent = DemoAgent.agentFor(provider, MODEL);
     Conversation<String> conversation = agent.converse();
-    agent.events().subscribe(ConversationEvent.class, event -> render(event, conversation));
+    conversation.events().subscribe(ConversationEvent.class, AnthropicChat::render);
 
     IO.println("Nessy demo (Anthropic, " + MODEL + "). Empty line or /quit to exit.");
     while (true) {
@@ -61,10 +63,7 @@ public final class AnthropicChat {
     }
   }
 
-  private static void render(ConversationEvent event, Conversation<String> conversation) {
-    if (!event.conversationId().equals(conversation.conversationId())) {
-      return;
-    }
+  private static void render(ConversationEvent event) {
     switch (event) {
       case ConversationEvent.TextDelta textDelta -> IO.print(textDelta.text());
       case ConversationEvent.ToolCallRequested toolCallRequested ->

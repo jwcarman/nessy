@@ -37,7 +37,8 @@ import org.jwcarman.nessy.api.message.Message;
  *     summary, carries {@link Usage#zero()} — the jurisdiction rule (design §10.6) reserves this
  *     field for the loop's own spend, so a compactor's own call cost is telemetry's, never here
  */
-public record MessageAppended(ConversationId conversationId, Message message, Usage turnUsage) {
+public record MessageAppended(ConversationId conversationId, Message message, Usage turnUsage)
+    implements ConversationScoped {
 
   public MessageAppended {
     Objects.requireNonNull(conversationId, "conversationId must not be null");

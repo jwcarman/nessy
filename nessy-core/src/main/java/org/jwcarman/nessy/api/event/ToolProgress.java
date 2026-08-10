@@ -19,7 +19,8 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /** A long-running tool reporting from inside its own execution. */
-public record ToolProgress(ConversationId conversationId, String toolCallId, String message) {
+public record ToolProgress(ConversationId conversationId, String toolCallId, String message)
+    implements ConversationScoped {
 
   public ToolProgress {
     Objects.requireNonNull(conversationId, "conversationId must not be null");
