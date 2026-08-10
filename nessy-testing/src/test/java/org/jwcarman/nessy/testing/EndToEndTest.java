@@ -57,6 +57,9 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
+import org.jwcarman.nessy.spi.session.TranscriptEntry;
+import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 class EndToEndTest {
 
@@ -464,6 +467,112 @@ class EndToEndTest {
               Message.user("second question"),
               Message.assistant(List.of(new TextBlock("Second answer."))));
       assertThat(provider.requests()).hasSize(2);
+      // No summarizer means no spend: the ledger holds only the two conversational turns'
+      // usage — first turn's 150_000/20 plus the second, unscripted-usage answer's zero.
+      assertThat(secondReply.state().usage()).isEqualTo(new Usage(150_000, 20, 0));
+    }
+  }
+
+  @Nested
+  class A_journaled_transcript {
+
+    /**
+     * Same arithmetic as {@link A_compacting_conversation}: a {@code CompactionPolicy} with {@code
+     * keepRecentMessages = 0} compacts {@code [user1, asst1]} into a summary once send 2's usage
+     * crosses the trigger. The journal, wired via {@code .transcript(...)}, is compaction-blind by
+     * construction — it appends every message the instant it is born, before anything downstream
+     * can remove it from the working set. So after compaction shrinks {@code reply.state()} to
+     * {@code [summary, user2, asst2]} (three messages), the journal still holds all five births in
+     * birth order: the two originals compaction discarded, the second question, the summary, and
+     * the final answer.
+     */
+    @Test
+    void the_journal_keeps_what_compaction_removes() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder()
+              .text("First answer.")
+              .endTurn(new Usage(150_000, 20, 0))
+              .text("Summary of earlier turns.")
+              .endTurn()
+              .text("Second answer.")
+              .endTurn()
+              .build();
+      InMemoryTranscriptStore journal = TranscriptStore.inMemory();
+      Agent agent =
+          Nessy.agent()
+              .provider(provider)
+              .model("fake-model")
+              .compaction(
+                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
+              .transcript(journal)
+              .build();
+
+      var conversation = agent.converse();
+      conversation.send("first question");
+      Reply secondReply = conversation.send("second question");
+      SessionId sessionId = conversation.sessionId();
+
+      assertThat(secondReply.failed()).isFalse();
+      assertThat(secondReply.state().generation()).isEqualTo(1);
+      assertThat(secondReply.state().messages()).hasSize(3);
+
+      List<TranscriptEntry> entries = journal.entries(sessionId);
+      assertThat(entries).hasSize(5);
+      Message originalUser1 = Message.user("first question");
+      Message originalAssistant1 = Message.assistant(List.of(new TextBlock("First answer.")));
+      assertThat(entries.get(0).message()).isEqualTo(originalUser1);
+      assertThat(entries.get(1).message()).isEqualTo(originalAssistant1);
+      assertThat(entries.get(2).message()).isEqualTo(Message.user("second question"));
+      String summaryText = ((TextBlock) entries.get(3).message().content().getFirst()).text();
+      assertThat(summaryText).contains("Summary of earlier turns.");
+      assertThat(entries.get(4).message())
+          .isEqualTo(Message.assistant(List.of(new TextBlock("Second answer."))));
+
+      // The working set no longer holds the two originals compaction removed — only the journal
+      // does.
+      assertThat(secondReply.state().messages()).doesNotContain(originalUser1, originalAssistant1);
+    }
+  }
+
+  @Nested
+  class A_ledger_that_bills_the_strategy {
+
+    /**
+     * The strategy's spend is not a side channel — it is billed to the same ledger every
+     * conversational turn's usage lands in. {@link ScriptedSummarizer} pins the summarizer's spend
+     * to a value no conversational turn in this script produces (500 input / 10 output tokens), so
+     * {@code reply.state().usage()} landing on turn 1's usage plus exactly that spend proves the
+     * bill was added rather than merely that compaction didn't error.
+     */
+    @Test
+    void the_ledger_counts_the_strategys_spend() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder()
+              .text("First answer.")
+              .endTurn(new Usage(150_000, 20, 0))
+              .text("Second answer.")
+              .endTurn()
+              .build();
+      ScriptedSummarizer summarizer =
+          ScriptedSummarizer.builder()
+              .summary("Summary of earlier turns.", new Usage(500, 10, 0))
+              .build();
+      Agent agent =
+          Nessy.agent()
+              .provider(provider)
+              .model("fake-model")
+              .compaction(
+                  new CompactionPolicy(CompactionTrigger.atTokens(100_000), 0, 256, "Summarize."))
+              .summarizer(summarizer)
+              .build();
+
+      var conversation = agent.converse();
+      conversation.send("first question");
+      Reply secondReply = conversation.send("second question");
+
+      assertThat(secondReply.failed()).isFalse();
+      assertThat(secondReply.state().generation()).isEqualTo(1);
+      assertThat(secondReply.state().usage()).isEqualTo(new Usage(150_500, 30, 0));
     }
   }
 

@@ -21,6 +21,78 @@ changed.
 
 ### Added
 
+- **`Context`** (`api`) — the pairing invariant's single home: an immutable,
+  validated message sequence bound for the wire, whose construction rejects an
+  orphan `tool_use`/results pair. `ContextBuilder.project`, `ModelRequest`, and
+  `Effect.Compact` all speak `Context` now instead of a plain `List<Message>`.
+  Pair-safe cutting and head/tail slicing (`Context.pairSafeCut(int)`,
+  `Context.head(int)`) live on the type, so the reducer, the default
+  summarizer, and any custom projection share one implementation of "where may
+  I cut?".
+- **`CompactionStrategy`** (`api`) — compaction's decision and transformation
+  unify behind one seam: `requiresCompaction(SessionState)` (pure, consulted
+  by the reducer at every `CallModel` decision point) and
+  `compact(List<Message>)` (effectful, performed by the engine only). The
+  strategy proposes a replacement working set and what producing it cost; the
+  reducer disposes — applying the result, bumping `generation`, and treating a
+  non-shrinking result as a skip. The built-in `summarizing(policy,
+  summarizer)` strategy (`spi.compaction.CompactionStrategies`) is the
+  `CompactionPolicy`-tuned default `AgentBuilder` assembles automatically;
+  `AgentBuilder.compaction(...)` now overloads on `CompactionPolicy` (tune the
+  default) versus `CompactionStrategy` (replace the mechanism wholesale, wins
+  outright even over an earlier policy call).
+- **`CompactionTrigger`** (`api`) and declared context windows —
+  `CompactionTrigger` is the pluggable decision half of `CompactionPolicy`:
+  `atTokens(trigger)`, `forWindow(window, maxTokens)` (≈ 0.8 × (window −
+  maxTokens), reserving room for the reply), and `never()`. `ModelSettings`
+  gains an optional `contextWindow`, set via `.model(name).contextWindow(n)`
+  on the builder; when declared and no explicit `CompactionPolicy` is set,
+  `AgentBuilder.build()` derives the trigger from it automatically, so a
+  small-window model no longer relies solely on the loud-overflow backstop.
+- **Complete usage accounting for compaction** — `CompactionStrategy.Result.spend`
+  is a bill, not an excluded side channel: whatever a strategy's own call
+  costs (a summarizer's input/output tokens; `Usage.zero()` for a
+  non-LLM strategy) is accumulated into `SessionState.usage()` alongside every
+  conversational turn, via `Event.Compacted(workingSet, spend)`. This repeals
+  the earlier cost-accounting exclusion, under which the compaction call's
+  tokens never reached the ledger.
+- **`Summarizer`** (`spi.compaction`) — the default strategy's sub-seam:
+  `summarize(Context head, CompactionPolicy policy) -> Summary(text, usage)`.
+  Lets "same strategy, cheaper model" swap in without reimplementing cut
+  logic. The default, `Summarizer.usingProvider(provider)`, is the
+  tool-free, policy-bound summarization call the engine always performed
+  before this seam existed; `AgentBuilder.summarizer(...)` overrides it,
+  ignored once `.compaction(CompactionStrategy)` replaces the mechanism
+  outright. `ScriptedSummarizer` ships in `nessy-testing` beside the other
+  test doubles.
+- **`TranscriptStore` and `TranscriptEntry`** (`spi.session`) — an append-only
+  journal of a session's entire message history, independent of what
+  compaction keeps in the working set. A pure sink (`append` is the only
+  method — the framework never reads its own audit log); default is
+  `TranscriptStore.none()`, so retention stays opt-in and zero-config memory
+  bounds are untouched. Once wired via `.transcript(...)` on the builder, the
+  journal is strict: an append that throws fails the run outright, the same
+  as a failing model call. `TranscriptStore.inMemory()` ships an
+  `InMemoryTranscriptStore` with a test/host-facing `entries(id)` reader.
+  `TranscriptEntry(message, turnUsage)` carries each message's exact cost —
+  an assistant turn's own usage, a compaction summary's spend, or
+  `Usage.zero()` for everything else.
+- **`MessageCodec`** (`spi.session`) — the `Message ↔ byte[]` translation a
+  durable `TranscriptStore` needs to persist opaque bytes rather than message
+  structure. Default is `MessageCodec.json(mapper)`; encryption at rest is
+  meant to compose as a codec *decorator* over any store, not a per-vendor
+  reimplementation.
+- **`spi.context` and `spi.compaction` packaging** — collaborators now live
+  next to the seam they serve: `spi.context` holds `ContextBuilder` (moved
+  from `spi` root) and the new `TokenEstimator`; `spi.compaction` holds
+  `Summarizer`. `TokenEstimator.estimate(Message)` (default `heuristic()`,
+  content characters / 4) manufactures the per-message token figure no
+  provider reports, computed on demand on the read path only — never
+  journaled, so a frozen estimate can't rot the permanent record.
+- **`ModelRequest` carries `Context`** — `ModelRequest.context()` replaces the
+  plain message list it used to carry, so every provider now receives the
+  same validated, pairing-legal sequence the rest of the read path already
+  guarantees.
 - **Stateful compaction** — `CompactionPolicy` (`triggerTokens`,
   `keepRecentMessages`, `summaryMaxTokens`, `instructions`) is wired into
   `Reducer` and `InProcessEngine`: once `SessionState.lastInputTokens()` (the
@@ -111,6 +183,12 @@ changed.
 
 ### Changed
 
+- **`AgentBuilder.compaction(...)` source-compat note (pre-1.0 breaking)** —
+  adding the `CompactionStrategy` overload alongside the existing
+  `CompactionPolicy` one means `.compaction(null)` no longer resolves: the
+  call is now ambiguous between the two overloads and requires an explicit
+  cast, e.g. `.compaction((CompactionPolicy) null)`. Source using the
+  single-overload form to explicitly pass a null policy must add the cast.
 - **Zones**: the codebase is reorganized from `org.jwcarman.nessy.core.*` into
   `org.jwcarman.nessy` (front door), `.api` (application developers: `Tool`,
   `Approver`, the message/event grammar), `.spi` (infrastructure extenders:

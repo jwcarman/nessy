@@ -1229,17 +1229,19 @@ the application's own explicit declaration. If none is declared, the starter's
    continuity, + resume semantics of §6), Spring Boot starter, TUI. Compaction
    and `ContextBuilder` (§10.6) shipped in Plan 4, ahead of this sequencing.
    The §10.8 context-collaborator amendment (`Context`, `TranscriptStore`,
-   `Summarizer`, `TokenEstimator`, domain packaging) is next in line, before
-   `DurableEngine` — it reshapes seams the durable engine will consume. The
-   2026-08-09 design session extends that queue: the `Harness` reification and
-   typed front door (§8.4), per-grant authority (§10.5), `Memory` (§10.9), and
-   the context assembler (§10.10) — with typed-input details (§8.4) getting
-   their own brainstorm-to-spec round first. One standing DurableEngine note
-   from the same session: pure replay is free, but replaying the imperative
-   shell is not — a replayed reducer re-emits effects (the process-manager
-   replay problem), so the journal must record which effects were performed
-   and elide them on replay; the parked `Compacted` rulings from Plan 4's
-   review are the same issue.
+   `Summarizer`, `TokenEstimator`, domain packaging) is **done** — shipped and
+   tested end to end (the context-collaborators convergence plan) — it
+   reshapes seams the durable engine will consume, so it landed before
+   `DurableEngine` as planned. **Next: Plan 6**, the remainder of the
+   2026-08-09 design session's queue — the `Harness` reification and typed
+   front door (§8.4), per-grant authority (§10.5), `Memory` (§10.9), and the
+   context assembler (§10.10) — with typed-input details (§8.4) getting their
+   own brainstorm-to-spec round first. One standing DurableEngine note from
+   the same session: pure replay is free, but replaying the imperative shell
+   is not — a replayed reducer re-emits effects (the process-manager replay
+   problem), so the journal must record which effects were performed and
+   elide them on replay; the parked `Compacted` rulings from Plan 4's review
+   are the same issue.
 5. **`nessy-tool-mcp` (unscheduled, acknowledged)**: an adapter exposing MCP
    server tools as `Tool<?>` instances. Deliberately unscheduled: it drags in
    authorization, elicitation, and remote-tool trust — interactions with the
@@ -1258,7 +1260,7 @@ the application's own explicit declaration. If none is declared, the starter's
    | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | ✅ cleared — `Usage` is now `(inputTokens, outputTokens, cachedInputTokens)` |
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
-   | `Context` adoption (`ContextBuilder`/`ModelRequest`/`Effect.Compact` speak `Context`) | seam signature + record component types; breaking after 1.0 | open — ships with the convergence plan |
+   | `Context` adoption (`ContextBuilder`/`ModelRequest`/`Effect.Compact` speak `Context`) | seam signature + record component types; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
    | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | open — the type parameter must be born pre-1.0; `Agent<String>` is the degenerate case |
    | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
    | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | open — ships pre-1.0 |

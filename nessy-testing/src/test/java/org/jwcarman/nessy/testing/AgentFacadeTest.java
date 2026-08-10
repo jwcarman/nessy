@@ -29,6 +29,7 @@ import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompactionPolicy;
+import org.jwcarman.nessy.api.CompactionStrategy;
 import org.jwcarman.nessy.api.CompactionTrigger;
 import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Event;
@@ -43,6 +44,8 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
+import org.jwcarman.nessy.spi.session.TranscriptStore;
 
 class AgentFacadeTest {
 
@@ -291,6 +294,42 @@ class AgentFacadeTest {
             .model("fake-model")
             .compaction(CompactionPolicy.disabled())
             .build();
+
+    assertThat(agent).isNotNull();
+  }
+
+  @Test
+  void a_custom_compaction_strategy_is_wired_through_the_builder() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    CompactionStrategy myStrategy = CompactionStrategy.disabled();
+
+    Agent agent =
+        Nessy.agent().provider(provider).model("fake-model").compaction(myStrategy).build();
+
+    assertThat(agent).isNotNull();
+  }
+
+  @Test
+  void a_declared_context_window_is_wired_through_the_builder() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+
+    Agent agent =
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .maxTokens(4_000)
+            .contextWindow(32_000) // trigger derives to ~0.8 × (32_000 − 4_000)
+            .build();
+
+    assertThat(agent).isNotNull();
+  }
+
+  @Test
+  void a_transcript_store_is_wired_through_the_builder() {
+    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+
+    InMemoryTranscriptStore journal = TranscriptStore.inMemory();
+    Agent agent = Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
 
     assertThat(agent).isNotNull();
   }

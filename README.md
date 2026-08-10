@@ -172,23 +172,35 @@ one `send` call.
 
 ## Context management
 
-Compaction is on by default. Every `Agent` carries `CompactionPolicy.defaults()`
-unless you say otherwise: it triggers once `SessionState.lastInputTokens()` —
-the measured input-token count the model itself reported for the previous turn
-— reaches 100,000 measured input tokens, and it works by asking the model to
-summarize everything except the most recent 10 messages, capping that summary
-reply at 2,048 tokens. The cut always lands on a message-pair boundary — the
-reducer never splits a tool call from its result — so what survives is always a
-valid transcript. If no such boundary exists old enough to compact — a
-tool-heavy transcript with no plain user-text turn far enough back, for
-example — the reducer leaves the session uncompacted for that turn rather than
-cutting somewhere unsafe. The summarization call's own tokens are not counted
-in `SessionState.usage`; that total tracks conversational model turns, and the
-compaction call is engine-internal.
+Three words, three meanings. **The transcript** is a session's entire message
+history, forever — append-only, held by the `TranscriptStore` journal if you
+opt into one. **The working set** is `SessionState.messages()`: the ledger's
+current, possibly-compacted view — `[summary, …tail]` once compaction has run.
+**A `Context`** is what one model call actually sees: a validated, pairing-legal
+message sequence minted per request, never smaller in scope than what
+`ContextBuilder` and compaction agree to send.
 
-Tune the knobs with your own policy:
+### Compaction: a strategy, not a mechanism
+
+Compaction is on by default. Every `Agent` runs a `CompactionStrategy` —
+`requiresCompaction(SessionState)` decides when the working set needs
+shrinking, `compact(List<Message>)` shrinks it — and unless you say otherwise
+that strategy is `summarizing`: `CompactionPolicy.defaults()` triggers once
+`SessionState.lastInputTokens()` (the measured input-token count the model
+itself reported for the previous turn) reaches 100,000 tokens, and shrinks by
+asking the model to summarize everything except the most recent 10 messages,
+capping that summary reply at 2,048 tokens. The cut always lands on a
+message-pair boundary — the reducer never splits a tool call from its result —
+so what survives is always a valid transcript. If no such boundary exists old
+enough to compact — a tool-heavy transcript with no plain user-text turn far
+enough back, for example — the strategy leaves the working set unchanged for
+that turn rather than cutting somewhere unsafe.
+
+Two ways to reach for `.compaction(...)`, and they mean different things:
 
 ```java
+// Tune the default strategy's knobs — trigger, how much survives verbatim,
+// the summary's own token cap, the instructions it summarizes with.
 CompactionPolicy policy =
     new CompactionPolicy(
         CompactionTrigger.atTokens(50_000), // trigger at 50k measured input tokens
@@ -199,7 +211,16 @@ CompactionPolicy policy =
 Agent agent = Nessy.agent().provider(provider).model("fake-model").compaction(policy).build();
 ```
 
-Or turn it off entirely:
+```java
+// Replace the mechanism wholesale: your own CompactionStrategy, no model
+// call required if you don't want one.
+Agent agent =
+    Nessy.agent().provider(provider).model("fake-model").compaction(myStrategy).build();
+```
+
+A `CompactionPolicy` only ever tunes the built-in summarizing strategy; a
+`CompactionStrategy` replaces it outright and wins even if a policy was set
+first. Turn compaction off entirely with the same policy overload:
 
 ```java
 Agent agent =
@@ -210,16 +231,64 @@ Agent agent =
         .build();
 ```
 
-Compaction is best-effort: if the summarization call itself fails, the turn
-proceeds uncompacted rather than blocking the conversation, and the hub carries
-a `CompactionFailed(sessionId, reason)` event so you can observe and alert on
-it like any other hub event.
+Compaction is best-effort: if the strategy's own call fails, the turn proceeds
+uncompacted rather than blocking the conversation, and the hub carries a
+`CompactionFailed(sessionId, reason)` event so you can observe and alert on it
+like any other hub event. Whatever the strategy spends producing a smaller
+working set is a real cost, not a side channel: it is billed straight into
+`SessionState.usage()` alongside every conversational turn's usage, so the
+ledger's running total always matches what you were actually charged.
+
+### Declaring a small model's window
+
+The 100k-token default trigger is safe for 200k-class models and silently
+wrong for a small local one — a 32k-window model would sail past its real
+ceiling before the default ever fired. Declare the window on the model
+binding instead, and the trigger derives itself:
+
+```java
+Agent agent =
+    Nessy.agent()
+        .provider(provider)
+        .model("fake-model")
+        .maxTokens(4_000)
+        .contextWindow(32_000) // trigger derives to ~0.8 × (32_000 − 4_000)
+        .build();
+```
+
+`contextWindow` only shapes the *derived* trigger — an explicit
+`.compaction(CompactionPolicy)` or `.compaction(CompactionStrategy)` call
+always wins over it, declared window or not.
+
+### The journal: `TranscriptStore`
+
+The transcript and the working set are not the same thing, and compaction
+never touches the transcript. Wire up a `TranscriptStore` and the engine
+appends every message the instant it is born — unconditionally, before
+anything read-shaped (compaction, elision, windowing) gets an opinion — so the
+full history survives in the journal even after compaction shrinks what the
+ledger carries forward:
+
+```java
+InMemoryTranscriptStore journal = TranscriptStore.inMemory();
+Agent agent = Nessy.agent().provider(provider).model("fake-model").transcript(journal).build();
+```
+
+The default is `TranscriptStore.none()`: retention is opt-in, so the
+zero-config posture stays lean and compaction genuinely bounds memory. Once
+you do opt in, the journal is audit-grade and strict — an append that throws
+fails the run outright, the same way a failing model call would, because a
+silent gap in the audit trail is worse than a failed turn. A durable
+`TranscriptStore` persists opaque bytes through a `MessageCodec`
+(`MessageCodec.json(mapper)` is the default); encryption at rest is a codec
+*decorator* over that, not a separate store implementation, so the same
+encrypting codec composes over whichever backing store you choose.
 
 ### Shaping what the model sees: `ContextBuilder`
 
-`ContextBuilder` projects `SessionState` into the messages one model call
+`ContextBuilder` projects `SessionState` into the `Context` one model call
 actually sees. The default, `ContextBuilder.identity()`, hands over the whole
-transcript unchanged. Where compaction rewrites `SessionState` itself,
+working set unchanged. Where compaction rewrites `SessionState` itself,
 `ContextBuilder` is a per-request lens — nothing it does touches what gets
 stored or resumed.
 
@@ -292,11 +361,17 @@ live-validated too, including the empty-system fix (a real empty-system-block
 bug the live run surfaced is fixed, with regression tests). `nessy-examples`
 ships a runnable two-provider chat app — see [Try it](#try-it) below.
 
-Context management landed too: stateful compaction (`CompactionPolicy`) and the
-`ContextBuilder` seam (`identity()`, `elidingToolResults(...)`) are both
-implemented and tested end to end.
+Context management landed too, and converged further: compaction unifies
+behind the `CompactionStrategy` seam (default `summarizing`, tunable via
+`CompactionPolicy` or replaceable wholesale), declared context windows derive
+their own trigger for small models, the `ContextBuilder` seam
+(`identity()`, `elidingToolResults(...)`) shapes what one call sees, and an
+opt-in `TranscriptStore` journal — strict, audit-grade, with `MessageCodec`
+for at-rest encoding — keeps the full transcript even after compaction trims
+the working set. All of it is implemented and tested end to end.
 
-Not yet built: a durable execution engine, the contextual `Policy` layer, the
+Not yet built: `Harness` reification and typed agents, per-grant tool
+authority, `Memory`, the context assembler, a durable execution engine, the
 Spring Boot starter, and a TUI. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
