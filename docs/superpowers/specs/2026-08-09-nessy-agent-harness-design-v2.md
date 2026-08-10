@@ -1128,7 +1128,7 @@ adds new messages to the projection. Memory is just a `ContextEnricher`.
 ```java
 harness.agent(SupportInput.class)
     .context(pipeline -> pipeline
-        .project(elidingToolResults(2))      // PROJECT: 0..n, pure, declaration order
+        .project(ctx -> ctx.elideToolResults(2))   // PROJECT: 0..n, pure, declaration order
         .project(redactingSecrets())
         .enrich(graphMemory)                 // ENRICH: 0..n contributors, each best-effort
         .enrich(userProfile)
@@ -1138,7 +1138,7 @@ harness.agent(SupportInput.class)
 - **`Projection`** (`spi.context`): `Context apply(Context context)` —
   pure, total, applied in declaration order to the working set's minted
   `Context`. A projection's failure is the application's own bug and fails
-  loud. `elidingToolResults(keepRecent)` is the first standard projection.
+  loud. Standard projections are written as lambdas over `Context`'s edit algebra (§10.8) — `ctx -> ctx.elideToolResults(2)` — proving the algebra sufficient; there are no opaque projection classes to import.
 - **`ContextEnricher`** (`spi.context`): `List<Message> enrich(SessionState
   state)` — I/O sanctioned, each contributor individually best-effort (its
   own `nessy.context.enrich` observation and `EnrichmentFailed` hub event;
