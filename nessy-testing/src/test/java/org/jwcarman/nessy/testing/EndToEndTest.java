@@ -55,7 +55,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.context.Shape;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -678,7 +678,7 @@ class EndToEndTest {
               .provider(provider)
               .model("fake-model")
               .tools(new AddTool())
-              .contextBuilder(ContextBuilder.elidingToolResults(2))
+              .context(pipeline -> pipeline.shape(Shape.elidingToolResults(2)))
               .build();
 
       var conversation = agent.converse();

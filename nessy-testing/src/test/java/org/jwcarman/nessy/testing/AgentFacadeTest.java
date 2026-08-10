@@ -49,7 +49,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.context.Shape;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
@@ -185,7 +185,7 @@ class AgentFacadeTest {
   }
 
   @Test
-  void the_engine_consults_the_context_builder() {
+  void the_engine_consults_the_context_pipeline() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .text("Hello!")
@@ -193,12 +193,16 @@ class AgentFacadeTest {
             .text("Still here.")
             .endTurn()
             .build();
-    // A marking projection: drops the oldest message so the assertions below can tell the
-    // projected request apart from the untouched state the reducer kept.
-    ContextBuilder droppingOldest =
-        state -> Context.of(state.messages().subList(1, state.messages().size()));
+    // A marking shape: drops the oldest message so the assertions below can tell the shaped
+    // request apart from the untouched state the reducer kept.
+    Shape droppingOldest =
+        context -> Context.of(context.messages().subList(1, context.messages().size()));
     Agent<String> agent =
-        Nessy.agent().provider(provider).model("fake-model").contextBuilder(droppingOldest).build();
+        Nessy.agent()
+            .provider(provider)
+            .model("fake-model")
+            .context(pipeline -> pipeline.shape(droppingOldest))
+            .build();
 
     Conversation<String> chat = agent.converse();
     chat.tell("hi");
@@ -256,14 +260,13 @@ class AgentFacadeTest {
     Memory memory = state -> List.of(fact);
     // keepRecentMessages is large enough that nothing in this short transcript is ever old
     // enough to elide: the point of this test is that contextFor consults the same
-    // ContextBuilder and Memory the engine does, not eliding's own cut-point behavior.
+    // ContextPipeline the engine does, not eliding's own cut-point behavior.
     Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
             .tools(new AddTool())
-            .contextBuilder(ContextBuilder.elidingToolResults(50))
-            .memory(memory)
+            .context(pipeline -> pipeline.shape(Shape.elidingToolResults(50)).recall(memory))
             .build();
 
     Conversation<String> chat = agent.converse();
@@ -433,7 +436,7 @@ class AgentFacadeTest {
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
-            .contextBuilder(ContextBuilder.elidingToolResults(2))
+            .context(pipeline -> pipeline.shape(Shape.elidingToolResults(2)))
             .build();
 
     assertThat(agent).isNotNull();

@@ -86,10 +86,13 @@ class ZoneBoundariesTest {
   }
 
   /**
-   * {@code spi.context} (the {@link org.jwcarman.nessy.spi.context.ContextBuilder}, {@link
+   * {@code spi.context} (the {@link org.jwcarman.nessy.spi.context.Shape}, {@link
+   * org.jwcarman.nessy.spi.context.ContextPipeline}, {@link
    * org.jwcarman.nessy.spi.context.TokenEstimator} home) is free to depend on {@code api}, the way
    * {@code spi.model} already does, but it does not get the wider spi zone's licence to reach into
-   * {@code internal}: nothing in its public signatures needs engine machinery.
+   * {@code internal}: nothing in its public signatures needs engine machinery — {@link
+   * org.jwcarman.nessy.spi.context.ContextPipeline} mints its own {@code nessy.memory.recall}
+   * observation directly rather than depending on {@code internal.EngineObservations}.
    */
   @Test
   void no_file_under_spi_context_imports_internal() {

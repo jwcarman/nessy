@@ -64,26 +64,29 @@ changed.
   to loosen or tighten past that default — `ToolGrant#with(UsagePolicy)`
   reuses the tool with a different policy. A policy that throws or returns
   `null` fails closed (`PolicyDecision.Deny`), never an accidental allow.
-- **`Memory`** (`spi.memory`) — the recall seam: `Memory.recall(Context)`
+- **`Memory`** (`spi.memory`) — the recall seam: `Memory.recall(SessionState)`
   fetches messages from outside a session's own transcript — a graph, a
-  vector store, whatever a caller wires up — and the engine prepends whatever
-  comes back ahead of the projected request. Sibling to `ContextBuilder`, not
-  a subtype: projection stays pure and total, recall is I/O and best-effort
-  — a downed store or a pairing-invariant-breaking result costs the request
-  its enrichment, never the turn, and emits `RecallFailed` on the hub.
-  Default is `Memory.none()`, recognized by identity so the default path
-  allocates and observes nothing. Wired via `.memory(...)` on `AgentBuilder`.
+  vector store, whatever a caller wires up. Sibling to `Shape`, not
+  a subtype: shaping stays pure and total, recall is I/O and best-effort
+  — a downed store or a pairing-invariant-breaking result costs that one
+  contributor's enrichment, never the turn, and emits `RecallFailed` on the
+  hub. There is no `Memory.none()` sentinel; an empty recall list on
+  `ContextPipeline.Builder` is the degenerate, zero-allocation, zero-
+  observation case. Wired via `.context(pipeline -> pipeline.recall(...))`
+  on `AgentBuilder`.
 - **`RecallFailed(SessionId, String)`** (`api.event`) — the hub event a
-  failed recall emits, mirroring `CompactionFailed` exactly: the reason a
-  turn's memory enrichment was skipped, for observability and alerting.
-- **`Agent.contextFor(SessionId)`** and **`ContextAssembler`** (spi) — the
-  debugging affordance that answers *what would a call made against this
+  failed recall contributor emits, mirroring `CompactionFailed` exactly: the
+  reason one contributor's memory enrichment was skipped, for observability
+  and alerting.
+- **`Agent.contextFor(SessionId)`** and **`ContextPipeline`** (`spi.context`) —
+  the debugging affordance that answers *what would a call made against this
   session see right now*, truthfully and without spending a model call:
   `contextFor` loads the session's stored state and runs it through the same
-  `ContextAssembler` instance — one implementation of "project, then recall"
-  — that `InProcessEngine.requestFor` consults on every conversational send,
-  so the preview and the real thing can never drift apart. Still performs
-  recall's I/O to answer, so a configured `Memory` is genuinely consulted.
+  `ContextPipeline` instance — one implementation of "shape, then recall,
+  then compose per placement" — that `InProcessEngine.requestFor` consults on
+  every conversational send, so the preview and the real thing can never
+  drift apart. Still performs recall's I/O to answer, so configured `Memory`
+  contributors are genuinely consulted.
 - **`Context`** (`api`) — the pairing invariant's single home: an immutable,
   validated message sequence bound for the wire, whose construction rejects an
   orphan `tool_use`/results pair. `ModelRequest` and `ContextBuilder.project`
@@ -158,8 +161,10 @@ changed.
   meant to compose as a codec *decorator* over any store, not a per-vendor
   reimplementation.
 - **`spi.context` and `spi.compaction` packaging** — collaborators now live
-  next to the seam they serve: `spi.context` holds `ContextBuilder` (moved
-  from `spi` root) and the new `TokenEstimator`; `spi.compaction` holds
+  next to the seam they serve: `spi.context` holds `Shape` and
+  `ContextPipeline` (`ContextBuilder`, briefly moved here from `spi` root,
+  has since dissolved into `Shape` — see "The context pipeline" below) and
+  the new `TokenEstimator`; `spi.compaction` holds
   `Summarizer`. `TokenEstimator.estimate(Message)` (default `heuristic()`,
   content characters / 4) manufactures the per-message token figure no
   provider reports, computed on demand on the read path only — never
@@ -178,13 +183,27 @@ changed.
   summarization call skips compaction for that turn rather than failing it,
   and emits `CompactionFailed` on the hub — and is instrumented via the
   `nessy.compaction` observation alongside the engine's other spans.
-- **`ContextBuilder`** — a seam that projects `SessionState` into the messages
-  one model call actually sees, independent of what compaction stores.
-  `ContextBuilder.identity()` (the builder default) hands over the transcript
-  unchanged; `ContextBuilder.elidingToolResults(keepRecentMessages)` replaces
+- **The context pipeline: `ContextPipeline`, `Shape`, `Placement`**
+  (`spi.context`; supersedes `ContextBuilder` and `ContextAssembler`, both
+  dissolved — see "Removed" below) — the Contextualize phase (design §6.1,
+  §10.9), the one lifecycle phase with fully open, Maven-style binding:
+  `.context(pipeline -> pipeline.recall(...).shape(...).placement(...))` on
+  `AgentBuilder` replaces the old `.contextBuilder(...)`/`.memory(...)` pair
+  outright. `Shape` (`Context apply(Context context)`) is pure and total,
+  applied in declaration order to the `Context` minted from the session's
+  messages; `Shape.elidingToolResults(keepRecentMessages)` (formerly
+  `ContextBuilder.elidingToolResults`) is the first standard shape, replacing
   the content of older tool results with a placeholder while keeping the
-  recent window verbatim, trading prompt-cache hits for context space. Wired
-  via `.contextBuilder(...)` on the `Agent` builder.
+  recent window verbatim, trading prompt-cache hits for context space. The
+  empty shape list is identity — there is no dedicated `Shape.identity()`
+  factory, the empty list already says it. `Memory` recall contributors run
+  after shaping, each independently best-effort under its own
+  `nessy.memory.recall` observation, concatenating in declaration order;
+  `ContextPipeline.Placement` (`MEMORIES_FIRST`, the default, and
+  `MEMORIES_LAST`) decides where the recalled block lands relative to the
+  shaped transcript. `ContextPipeline` is constructed once per agent at
+  `AgentBuilder.build()` time and shared by `InProcessEngine.requestFor` and
+  `Agent.contextFor`, exactly as `ContextAssembler` was.
 - **`Usage.cachedInputTokens`** — the third component of `Usage`, reporting the
   cache-hit split of a turn's input tokens now that both live providers can
   report it.
@@ -280,15 +299,24 @@ changed.
   mechanical fix is `.send(x)` → `.tell(x)` plus spelling out `Agent<String>`
   wherever the raw type was written. See "The typed front door" above.
 - **`Memory.recall(Context)` → `Memory.recall(SessionState)` (pre-1.0 breaking)** —
-  recall now cues on the ledger, not the projected `Context`: the context is
-  the thing that will *include* the recalled messages, and projection is a
-  wire concern (an elided tool result reads `"[elided]"` in the projection but
-  full text in the working set), so recall relevance should key on the
-  conversation's truth. `recall(SessionState)` mirrors
-  `ContextBuilder.project(SessionState)`, and `ContextAssembler` concatenates
-  their outputs. Custom `Memory` implementations must update their lambda
-  parameter's type.
-- **`api` reorganized into domain families (pre-1.0 breaking, imports-only)** —
+  recall now cues on the ledger, not the shaped `Context`: the context is
+  the thing that will *include* the recalled messages, and shaping is a
+  wire concern (an elided tool result reads `"[elided]"` in the shaped context
+  but full text in the working set), so recall relevance should key on the
+  conversation's truth. `recall(SessionState)`'s argument mirrors what a
+  `Shape` sees before shaping, and `ContextPipeline` concatenates every
+  contributor's output. Custom `Memory` implementations must update their
+  lambda parameter's type.
+- **`ContextBuilder` and `ContextAssembler` dissolved into the context
+  pipeline (pre-1.0 breaking)** — `spi.context.ContextBuilder` and
+  `spi.ContextAssembler` are deleted outright, not deprecated.
+  `ContextBuilder.identity()` is now simply the empty shape list on a
+  `ContextPipeline.Builder`; `ContextBuilder.elidingToolResults(n)` moved to
+  `Shape.elidingToolResults(n)`, taking and returning `Context` instead of
+  projecting from `SessionState`. `AgentBuilder.contextBuilder(...)` and
+  `AgentBuilder.memory(...)` are both replaced by the single
+  `AgentBuilder.context(Consumer<ContextPipeline.Builder>)`. See "The context
+  pipeline" above for the full shape.
   the root `api` package now holds only the sealed grammar (`Event`,
   `Decision`, `Awaited`, `RunOutcome`, `ParkToken`, `StopReason`); everything
   else moved into a named subpackage: `Message`, `Role`, `Context`,

@@ -120,7 +120,7 @@ by one or more seams:
 | # | Service | Provided by |
 |---|---|---|
 | 1 | Turn-taking | `Reducer`, `ExecutionEngine`, `Context` |
-| 2 | Context fit | `CompactionPolicy`, `Summarizer`, `ContextBuilder`, `TokenEstimator`, `Memory` |
+| 2 | Context fit | `CompactionPolicy`, `Summarizer`, `ContextPipeline`, `Shape`, `TokenEstimator`, `Memory` |
 | 3 | A memory of record | `SessionStore`, `TranscriptStore` |
 | 4 | Safe hands | `ToolRegistry`, the invoker (Factor 9) |
 | 5 | Guardrails | `ToolGrant`/`UsagePolicy`, `Approver` |
@@ -131,9 +131,9 @@ by one or more seams:
 `agent.contextFor(sessionId)` is the debugging affordance that comes with
 service #2: it answers *what would a call made against this session see right
 now*, truthfully and without spending a model call, by running the exact same
-projection-and-recall choreography the engine runs on every send. See
-[Context management](#context-management) below for what it does and doesn't
-show.
+`ContextPipeline` (shape-then-recall) choreography the engine runs on every
+send. See [Context management](#context-management) below for what it does
+and doesn't show.
 
 ## Typed agents
 
@@ -228,8 +228,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
 | `EventHub` | `synchronous()` | `EventHub.async(listener)` per subscriber | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
-| `ContextBuilder` | `identity()` | `elidingToolResults(keepRecentMessages)` | RAG, redaction |
-| `Memory` | `none()` | graph-backed recall | vector stores, custom retrieval |
+| `ContextPipeline` | no recalls, no shapes | `Shape.elidingToolResults(keepRecentMessages)`; `Memory` recall contributors | RAG, redaction |
 
 Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
 `RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
@@ -299,8 +298,8 @@ history, forever — append-only, held by the `TranscriptStore` journal if you
 opt into one. **The working set** is `SessionState.messages()`: the ledger's
 current, possibly-compacted view — `[summary, …tail]` once compaction has run.
 **A `Context`** is what one model call actually sees: a validated, pairing-legal
-message sequence minted per request, never smaller in scope than what
-`ContextBuilder` and compaction agree to send.
+message sequence minted per request, never smaller in scope than what the
+`ContextPipeline` and compaction agree to send.
 
 ### Compaction: a strategy, not a mechanism
 
@@ -418,81 +417,79 @@ rest is a codec *decorator* over that, not a separate store implementation,
 so the same encrypting codec composes over whichever backing store you
 choose.
 
-### Shaping what the model sees: `ContextBuilder`
+### Shaping and recalling what the model sees: the context pipeline
 
-`ContextBuilder` projects `SessionState` into the `Context` one model call
-actually sees. The default, `ContextBuilder.identity()`, hands over the whole
-working set unchanged. Where compaction rewrites `SessionState` itself,
-`ContextBuilder` is a per-request lens — nothing it does touches what gets
-stored or resumed.
-
-`ContextBuilder.elidingToolResults(keepRecentMessages)` replaces the content of
-tool results older than the last `keepRecentMessages` messages with a
-placeholder, keeping the recent window verbatim:
+The Contextualize phase turns the ledger (`SessionState`) into the `Context`
+one model call actually sees, and it is the one phase of the lifecycle that is
+fully open, Maven-style: bindings declared once, at build time, in reviewable
+code, never registered at runtime through the hub. `.context(...)` configures
+it:
 
 ```java
 Agent<String> agent =
     Nessy.agent()
         .provider(provider)
         .model("fake-model")
-        .contextBuilder(ContextBuilder.elidingToolResults(2))
+        .context(pipeline -> pipeline
+            .recall(graphMemory)                  // RECALL: 0..n contributors
+            .shape(Shape.elidingToolResults(2))    // SHAPE: 0..n transforms, declaration order
+            .placement(ContextPipeline.Placement.MEMORIES_FIRST))
         .build();
 ```
 
-Weigh the tradeoff before reaching for it: the sliding window rewrites one old
-message per turn as it advances, and a rewritten message churns the
+A `ContextPipeline` runs in two stages, both in declaration order:
+
+**SHAPE** transforms are `Shape` (`spi.context`): `Context apply(Context
+context)` — pure and total, no I/O, same output for the same input. Applied to
+the `Context` minted from the session's messages, before any recall.
+`Shape.elidingToolResults(keepRecentMessages)` is the first standard shape: it
+replaces the content of tool results older than the last `keepRecentMessages`
+messages with a placeholder, keeping the recent window verbatim. The empty
+shape list — no `.shape(...)` calls — is identity: the model sees the whole
+working set unchanged, which is why it's the default. Because a shape is
+contractually pure, a throwing shape is treated as the application's own bug
+and fails loud rather than being absorbed.
+
+Weigh the tradeoff before reaching for elision: the sliding window rewrites
+one old message per turn as it advances, and a rewritten message churns the
 prompt-cache prefix from that point forward — you're trading cache hits for
 context space. That's a fine trade when a tool result is enormous and the
 context window is the scarcer resource, and a bad one when you're paying for
-cache misses more than you're saving in tokens. It's why `identity()`, not
-elision, is the default.
+cache misses more than you're saving in tokens. Shaping never touches
+compaction's summarization call either: the summarizer always sees the
+un-elided prefix the reducer chose to compact, even when `elidingToolResults`
+is shaping every other request in the session.
 
-`ContextBuilder` is a per-request lens, and compaction's summarization call is
-never projected through it: the summarizer always sees the un-elided prefix
-the reducer chose to compact, even when `elidingToolResults` is shaping every
-other request in the session. Combined with a large `keepRecentMessages`
-window, that makes the compaction call the largest single request a session
-sends.
+**RECALL** contributors are `Memory` (`spi.memory`, unchanged):
+`List<Message> recall(SessionState state)` — I/O sanctioned, so recalling
+facts from a graph or vector store outside the session's own transcript is a
+sibling concern to shaping, not a shape itself. Recall cues on the ledger, not
+the shaped `Context` — the context is the thing that will *include* the
+memories, and shaping is a wire concern (an elided tool result is `"[elided]"`
+in the shaped context but full text in the working set). Each contributor
+runs under its own `nessy.memory.recall` observation and is independently
+best-effort: a thrown exception, or a contribution that would break
+`Context`'s tool-pairing invariant, costs only that contributor's own
+contribution — every other contributor still runs, and the hub carries a
+`RecallFailed(sessionId, reason)` event per failure. Contributions concatenate
+in declaration order. There is no `Memory.none()` sentinel: the empty recall
+list — no `.recall(...)` calls — is itself "no recall", and it costs zero
+allocations and zero observations, same as the shape-only path.
 
-### Recalling from outside the session: `Memory`
+**Placement** decides where recalled contributions land relative to the
+shaped transcript: `ContextPipeline.Placement.MEMORIES_FIRST` (the default) or
+`MEMORIES_LAST`. Weigh the same cache tradeoff elision carries: recalled
+content changes turn to turn, and front-of-prompt injection churns the
+prompt-cache prefix every time it changes. A refresh-on-compaction recall
+strategy — recalling only at the moment compaction already churns the prefix
+— aligns the two churns instead of adding a second, independent one.
 
-`ContextBuilder` is contractually pure — no I/O, same output for the same
-state — so recalling facts from a graph or vector store outside the session's
-own transcript is a sibling seam, not a projection. `Memory.recall(SessionState)`
-runs beside `ContextBuilder`, engine-performed and I/O-sanctioned, and
-whatever it returns is prepended ahead of the projected messages for that one
-request. Recall cues on the ledger, not the projection — the same
-`SessionState` argument `ContextBuilder.project` takes — because the context
-is the thing that will *include* the memories, and projection is a wire
-concern (an elided tool result is `"[elided]"` in the projection but full text
-in the working set):
-
-```java
-Memory memory = state -> vectorStore.recall(state);
-Agent<String> agent =
-    Nessy.agent().provider(provider).model("fake-model").memory(memory).build();
-```
-
-The default is `Memory.none()`: recall is opt-in, scoped to one agent, never a
-harness-level default. Recall is best-effort, matching the compaction pattern
-— a downed memory store or a memory that hands back pairing-invariant-breaking
-messages costs the request its *enrichment*, never the *turn*: the hub carries
-a `RecallFailed(sessionId, reason)` event you can observe and alert on, and the
-call proceeds with no recalled messages.
-
-Weigh the same cache tradeoff `elidingToolResults` carries: recalled content
-changes turn to turn, and front-of-prompt injection churns the prompt-cache
-prefix every time it changes. A refresh-on-compaction strategy — recalling
-only at the moment compaction already churns the prefix — aligns the two
-churns instead of adding a second, independent one.
-
-`agent.contextFor(sessionId)` runs the exact projection-and-recall
-choreography above — the same `ContextBuilder` and `Memory` instance the
-engine consults on every send — against a session's current stored state, and
-hands back the resulting `Context`: *exactly what a call made right now would
-see*, truthfully and without a model call. It still performs recall's I/O to
-answer, so a configured `Memory` is genuinely consulted, not skipped for the
-preview.
+`agent.contextFor(sessionId)` runs the exact same `ContextPipeline` instance
+the engine consults on every send — against a session's current stored state
+— and hands back the resulting `Context`: *exactly what a call made right now
+would see*, truthfully and without a model call. It still performs recall's
+I/O to answer, so configured `Memory` contributors are genuinely consulted,
+not skipped for the preview.
 
 ## Testing
 
@@ -538,15 +535,17 @@ ships a runnable two-provider chat app — see [Try it](#try-it) below.
 Context management landed too, and converged further: compaction unifies
 behind the `CompactionStrategy` seam (default `summarizing`, tunable via
 `CompactionPolicy` or replaceable wholesale), declared context windows derive
-their own trigger for small models, the `ContextBuilder` seam
-(`identity()`, `elidingToolResults(...)`) shapes what one call sees, and an
-opt-in `TranscriptStore` journal — strict, audit-grade, with `MessageCodec`
-for at-rest encoding — keeps the full transcript even after compaction trims
-the working set. All of it is implemented and tested end to end.
+their own trigger for small models, the `ContextPipeline` (`spi.context`)
+declares `recall`/`shape` bindings Maven-style for the fully-open Contextualize
+phase, and an opt-in `TranscriptStore` journal — strict, audit-grade, with
+`MessageCodec` for at-rest encoding — keeps the full transcript even after
+compaction trims the working set. All of it is implemented and tested end to
+end.
 
 The harness itself has since landed too: `Harness` reification, per-grant tool
-authority (`ToolGrant`/`UsagePolicy`), `Memory`, and the context assembler
-(`agent.contextFor`) are all implemented and tested end to end.
+authority (`ToolGrant`/`UsagePolicy`), `Memory` recall contributors, and the
+context pipeline (`agent.contextFor`) are all implemented and tested end to
+end.
 
 The typed front door has landed too: every agent is `Agent<I>` over an
 application-owned input vocabulary, `tell` is the only verb (`send` is gone),

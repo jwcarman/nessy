@@ -60,8 +60,7 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.context.ContextBuilder;
-import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -221,8 +220,7 @@ class InProcessEngineTest {
         CONFIG,
         new ObjectMapper(),
         ObservationRegistry.NOOP,
-        new ContextAssembler(
-            ContextBuilder.identity(), Memory.none(), hub, ObservationRegistry.NOOP));
+        ContextPipeline.builder().build(hub, ObservationRegistry.NOOP));
   }
 
   @Nested
@@ -243,7 +241,7 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextAssembler()))
+                      EngineFixtures.contextPipeline()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("provider");
     }
@@ -263,7 +261,7 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextAssembler()))
+                      EngineFixtures.contextPipeline()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("grants");
     }
@@ -285,13 +283,13 @@ class InProcessEngineTest {
                       CONFIG,
                       new ObjectMapper(),
                       ObservationRegistry.NOOP,
-                      EngineFixtures.contextAssembler()))
+                      EngineFixtures.contextPipeline()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("echo");
     }
 
     @Test
-    void a_null_context_assembler_is_rejected() {
+    void a_null_context_pipeline_is_rejected() {
       assertThatThrownBy(
               () ->
                   new InProcessEngine(
@@ -307,7 +305,7 @@ class InProcessEngineTest {
                       ObservationRegistry.NOOP,
                       null))
           .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("contextAssembler");
+          .hasMessageContaining("contextPipeline");
     }
   }
 
@@ -484,7 +482,7 @@ class InProcessEngineTest {
           CONFIG,
           new ObjectMapper(),
           ObservationRegistry.NOOP,
-          EngineFixtures.contextAssembler());
+          EngineFixtures.contextPipeline());
     }
 
     private static EngineFixtures.FakeProvider toolCallingProvider() {
@@ -612,7 +610,7 @@ class InProcessEngineTest {
               CONFIG,
               new ObjectMapper(),
               ObservationRegistry.NOOP,
-              EngineFixtures.contextAssembler());
+              EngineFixtures.contextPipeline());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 
@@ -664,7 +662,7 @@ class InProcessEngineTest {
               CONFIG,
               new ObjectMapper(),
               ObservationRegistry.NOOP,
-              EngineFixtures.contextAssembler());
+              EngineFixtures.contextPipeline());
 
       RunOutcome outcome = engine.run(ID, Event.UserSaid.of("echo hi"));
 

@@ -21,8 +21,8 @@ import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.spi.ContextAssembler;
 import org.jwcarman.nessy.spi.ExecutionEngine;
+import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.session.SessionStore;
 
 /**
@@ -36,20 +36,20 @@ public final class Agent<I> {
   private final ExecutionEngine engine;
   private final EventHub events;
   private final SessionStore store;
-  private final ContextAssembler contextAssembler;
+  private final ContextPipeline contextPipeline;
   private final InputRenderer<I> renderer;
 
   Agent(
       ExecutionEngine engine,
       EventHub events,
       SessionStore store,
-      ContextAssembler contextAssembler,
+      ContextPipeline contextPipeline,
       InputRenderer<I> renderer) {
     this.engine = Objects.requireNonNull(engine, "engine must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
-    this.contextAssembler =
-        Objects.requireNonNull(contextAssembler, "contextAssembler must not be null");
+    this.contextPipeline =
+        Objects.requireNonNull(contextPipeline, "contextPipeline must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
   }
 
@@ -74,8 +74,8 @@ public final class Agent<I> {
 
   /**
    * The debugging affordance: exactly what a conversational call made against {@code id} right now
-   * would see — the same projection, the same memories, assembled by the same {@link
-   * ContextAssembler} instance the engine consults on every send. Truthful without a model call,
+   * would see — the same shaping, the same recalled memories, assembled by the same {@link
+   * ContextPipeline} instance the engine consults on every send. Truthful without a model call,
    * because assembly is deterministic over state; not free, because a configured {@link
    * org.jwcarman.nessy.spi.memory.Memory} still performs recall I/O to answer.
    *
@@ -84,6 +84,6 @@ public final class Agent<I> {
   public Context contextFor(SessionId id) {
     SessionState state =
         store.load(id).orElseThrow(() -> new IllegalArgumentException("unknown session: " + id));
-    return contextAssembler.assemble(state);
+    return contextPipeline.assemble(state);
   }
 }

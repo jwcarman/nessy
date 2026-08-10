@@ -49,8 +49,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.compaction.CompactionStrategies;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
-import org.jwcarman.nessy.spi.context.ContextBuilder;
-import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
@@ -102,7 +101,7 @@ class InProcessEngineCompactionTest {
         CONFIG,
         new ObjectMapper(),
         observations,
-        new ContextAssembler(ContextBuilder.identity(), Memory.none(), hub, observations));
+        ContextPipeline.builder().build(hub, observations));
   }
 
   /** A two-turn provider: a big-usage first answer, then a plain second answer once resumed. */

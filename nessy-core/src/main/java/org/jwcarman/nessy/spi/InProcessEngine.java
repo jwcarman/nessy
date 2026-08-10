@@ -53,6 +53,7 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
+import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -83,7 +84,7 @@ public final class InProcessEngine implements ExecutionEngine {
   private final ModelSettings config;
   private final ToolInvoker invoker;
   private final ObservationRegistry observations;
-  private final ContextAssembler contextAssembler;
+  private final ContextPipeline contextPipeline;
 
   public InProcessEngine(
       ModelProvider provider,
@@ -96,7 +97,7 @@ public final class InProcessEngine implements ExecutionEngine {
       ModelSettings config,
       ObjectMapper mapper,
       ObservationRegistry observations,
-      ContextAssembler contextAssembler) {
+      ContextPipeline contextPipeline) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.grants = Map.copyOf(Objects.requireNonNull(grants, "grants must not be null"));
@@ -108,8 +109,8 @@ public final class InProcessEngine implements ExecutionEngine {
     this.config = Objects.requireNonNull(config, "config must not be null");
     this.invoker = new ToolInvoker(Objects.requireNonNull(mapper, "mapper must not be null"));
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
-    this.contextAssembler =
-        Objects.requireNonNull(contextAssembler, "contextAssembler must not be null");
+    this.contextPipeline =
+        Objects.requireNonNull(contextPipeline, "contextPipeline must not be null");
   }
 
   /**
@@ -349,16 +350,17 @@ public final class InProcessEngine implements ExecutionEngine {
 
   /**
    * Assembles the request for one conversational model call by delegating to {@link
-   * #contextAssembler} — the same instance {@code Agent.contextFor} consults, so the two never
+   * #contextPipeline} — the same instance {@code Agent.contextFor} consults, so the two never
    * disagree about what a call sees.
    *
    * <p>The compaction/summarization path is deliberately not routed through here: {@link #compact}
-   * hands the strategy its own working set directly, so a memory is never consulted for that call.
+   * hands the strategy its own working set directly, so recall and shaping are never consulted for
+   * that call.
    */
   private ModelRequest requestFor(SessionState state) {
-    Context projected = contextAssembler.assemble(state);
+    Context shaped = contextPipeline.assemble(state);
     return new ModelRequest(
-        projected,
+        shaped,
         config.systemPrompt(),
         config.model(),
         config.maxTokens(),

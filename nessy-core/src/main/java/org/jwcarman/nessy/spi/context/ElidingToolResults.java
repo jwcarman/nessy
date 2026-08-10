@@ -21,17 +21,16 @@ import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
-import org.jwcarman.nessy.api.session.SessionState;
 
 /**
  * Elides the content of tool results in every message older than the last {@code
  * keepRecentMessages}, keeping the recent window verbatim.
  *
  * <p>The sliding boundary rewrites one old message per turn as the window advances, churning the
- * prompt-cache prefix — elision trades cache hits for context space, which is why {@link
- * ContextBuilder#identity()} is the default.
+ * prompt-cache prefix — elision trades cache hits for context space, which is why the empty shape
+ * list (see {@link Shape}) is the pipeline default.
  */
-final class ElidingToolResults implements ContextBuilder {
+final class ElidingToolResults implements Shape {
 
   private static final String ELIDED = "[elided]";
 
@@ -45,15 +44,15 @@ final class ElidingToolResults implements ContextBuilder {
   }
 
   @Override
-  public Context project(SessionState state) {
-    List<Message> messages = state.messages();
+  public Context apply(Context context) {
+    List<Message> messages = context.messages();
     int firstRecentIndex = Math.max(0, messages.size() - keepRecentMessages);
-    List<Message> projected = new ArrayList<>(messages.size());
+    List<Message> shaped = new ArrayList<>(messages.size());
     for (int i = 0; i < messages.size(); i++) {
       Message message = messages.get(i);
-      projected.add(i < firstRecentIndex ? elide(message) : message);
+      shaped.add(i < firstRecentIndex ? elide(message) : message);
     }
-    return Context.of(projected);
+    return Context.of(shaped);
   }
 
   private static Message elide(Message message) {

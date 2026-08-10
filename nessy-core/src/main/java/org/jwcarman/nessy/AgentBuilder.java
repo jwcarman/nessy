@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.compaction.CompactionPolicy;
 import org.jwcarman.nessy.api.compaction.CompactionStrategy;
@@ -32,14 +33,12 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolSpec;
-import org.jwcarman.nessy.spi.ContextAssembler;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
 import org.jwcarman.nessy.spi.compaction.CompactionStrategies;
 import org.jwcarman.nessy.spi.compaction.Summarizer;
-import org.jwcarman.nessy.spi.context.ContextBuilder;
-import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -80,9 +79,8 @@ public final class AgentBuilder<I> {
   private Long contextWindow;
   private ObjectMapper mapper;
   private ObservationRegistry observations;
-  private ContextBuilder contextBuilder = ContextBuilder.identity();
+  private Consumer<ContextPipeline.Builder> contextCustomizer = pipeline -> {};
   private TranscriptStore transcript;
-  private Memory memory = Memory.none();
   private InputRenderer<I> renderer;
 
   /**
@@ -244,20 +242,25 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * What a conversational call sees, projected from the full session state. Default: everything.
+   * Declares this agent's Contextualize phase (§6.1): the ordered {@code recall} contributors and
+   * {@code shape} transforms a {@link ContextPipeline} runs to turn ledger into {@link
+   * org.jwcarman.nessy.api.message.Context} for one conversational call, plus where recalled
+   * material lands relative to the shaped transcript. Declared once, at build time, in reviewable
+   * code — the one fully-open phase, but still closed to runtime registration.
+   *
+   * <p>Default: no recalls, no shapes, {@link ContextPipeline.Placement#MEMORIES_FIRST} — the model
+   * sees the full working set unchanged, scoped to this one agent, never a harness-level default
+   * the way {@link #store(SessionStore)} or {@link #events(EventHub)} are.
+   *
+   * <pre>{@code
+   * builder.context(pipeline -> pipeline
+   *     .recall(graphMemory)
+   *     .shape(Shape.elidingToolResults(2))
+   *     .placement(ContextPipeline.Placement.MEMORIES_FIRST));
+   * }</pre>
    */
-  public AgentBuilder<I> contextBuilder(ContextBuilder contextBuilder) {
-    this.contextBuilder = contextBuilder;
-    return this;
-  }
-
-  /**
-   * What recalls messages from outside this session's own transcript ahead of each conversational
-   * request. Default: {@link Memory#none()} — recall is identity, scoped to this one agent, never a
-   * harness-level default the way {@link #store(SessionStore)} or {@link #events(EventHub)} are.
-   */
-  public AgentBuilder<I> memory(Memory memory) {
-    this.memory = memory;
+  public AgentBuilder<I> context(Consumer<ContextPipeline.Builder> customizer) {
+    this.contextCustomizer = Objects.requireNonNull(customizer, "customizer must not be null");
     return this;
   }
 
@@ -315,10 +318,11 @@ public final class AgentBuilder<I> {
     CompactionStrategy resolvedStrategy =
         compactionStrategy != null ? compactionStrategy : assembleCompactionStrategy(settings);
     // Constructed once here and handed to both the engine and the Agent: the invariant is one
-    // ContextAssembler implementation, one instance per agent, so requestFor and contextFor never
-    // disagree about what a call sees.
-    ContextAssembler contextAssembler =
-        new ContextAssembler(contextBuilder, memory, events, observations);
+    // ContextPipeline instance per agent, so requestFor and contextFor never disagree about what
+    // a call sees.
+    ContextPipeline.Builder pipelineBuilder = ContextPipeline.builder();
+    contextCustomizer.accept(pipelineBuilder);
+    ContextPipeline contextPipeline = pipelineBuilder.build(events, observations);
     if (transcript != null) {
       transcript.feedFrom(events);
     }
@@ -334,8 +338,8 @@ public final class AgentBuilder<I> {
             settings,
             mapper,
             observations,
-            contextAssembler);
-    return new Agent<>(engine, events, store, contextAssembler, renderer);
+            contextPipeline);
+    return new Agent<>(engine, events, store, contextPipeline, renderer);
   }
 
   /**

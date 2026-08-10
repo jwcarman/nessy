@@ -28,32 +28,15 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.session.SessionId;
-import org.jwcarman.nessy.api.session.SessionState;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
-class ContextBuilderTest {
+class ShapeTest {
 
   private static Message toolUse(String callId) {
     return Message.assistant(
         List.of(
             new ToolUseBlock(
                 new ToolCall(callId, "lookup", JsonNodeFactory.instance.objectNode()))));
-  }
-
-  @Nested
-  class Identity {
-
-    @Test
-    void identity_projects_every_message_unchanged() {
-      SessionState state =
-          SessionState.newSession(new SessionId("s1"))
-              .withMessages(List.of(Message.user("hi"), Message.user("there")));
-
-      Context projected = ContextBuilder.identity().project(state);
-
-      assertThat(projected.messages()).isEqualTo(state.messages());
-    }
   }
 
   @Nested
@@ -77,11 +60,10 @@ class ContextBuilderTest {
       Message assistant2 = toolUse("call-3");
       Message recent_result =
           Message.toolResults(List.of(new ToolResultBlock("call-3", "still fresh", false)));
-      SessionState state =
-          SessionState.newSession(new SessionId("s1"))
-              .withMessages(List.of(assistant1, old_result, middle, assistant2, recent_result));
+      Context context =
+          Context.of(List.of(assistant1, old_result, middle, assistant2, recent_result));
 
-      Context projected = ContextBuilder.elidingToolResults(1).project(state);
+      Context shaped = Shape.elidingToolResults(1).apply(context);
 
       List<Message> expected =
           List.of(
@@ -93,7 +75,7 @@ class ContextBuilderTest {
               middle,
               assistant2,
               recent_result);
-      assertThat(projected.messages()).containsExactlyElementsOf(expected);
+      assertThat(shaped.messages()).containsExactlyElementsOf(expected);
     }
 
     @Test
@@ -104,14 +86,13 @@ class ContextBuilderTest {
       Message recent_assistant = toolUse("call-2");
       Message recent_result =
           Message.toolResults(List.of(new ToolResultBlock("call-2", "recent", false)));
-      SessionState state =
-          SessionState.newSession(new SessionId("s1"))
-              .withMessages(List.of(assistant_call1, old_result, recent_assistant, recent_result));
+      Context context =
+          Context.of(List.of(assistant_call1, old_result, recent_assistant, recent_result));
 
-      Context projected = ContextBuilder.elidingToolResults(2).project(state);
+      Context shaped = Shape.elidingToolResults(2).apply(context);
 
-      assertThat(projected.messages().get(2)).isSameAs(recent_assistant);
-      assertThat(projected.messages().get(3)).isSameAs(recent_result);
+      assertThat(shaped.messages().get(2)).isSameAs(recent_assistant);
+      assertThat(shaped.messages().get(3)).isSameAs(recent_result);
     }
 
     @Test
@@ -121,13 +102,11 @@ class ContextBuilderTest {
       Message old_mixed =
           Message.user(List.of(untouched_text, new ToolResultBlock("call-1", "gone", false)));
       Message recent = Message.user("recent");
-      SessionState state =
-          SessionState.newSession(new SessionId("s1"))
-              .withMessages(List.of(assistant1, old_mixed, recent));
+      Context context = Context.of(List.of(assistant1, old_mixed, recent));
 
-      Context projected = ContextBuilder.elidingToolResults(1).project(state);
+      Context shaped = Shape.elidingToolResults(1).apply(context);
 
-      ContentBlock preserved = projected.messages().get(1).content().get(0);
+      ContentBlock preserved = shaped.messages().get(1).content().get(0);
       assertThat(preserved).isSameAs(untouched_text);
     }
 
@@ -137,12 +116,10 @@ class ContextBuilderTest {
       Message first = Message.toolResults(List.of(new ToolResultBlock("call-1", "one", false)));
       Message assistant2 = toolUse("call-2");
       Message second = Message.toolResults(List.of(new ToolResultBlock("call-2", "two", false)));
-      SessionState state =
-          SessionState.newSession(new SessionId("s1"))
-              .withMessages(List.of(assistant1, first, assistant2, second));
+      Context context = Context.of(List.of(assistant1, first, assistant2, second));
 
-      Context elides_everything = ContextBuilder.elidingToolResults(0).project(state);
-      Context elides_nothing = ContextBuilder.elidingToolResults(100).project(state);
+      Context elides_everything = Shape.elidingToolResults(0).apply(context);
+      Context elides_nothing = Shape.elidingToolResults(100).apply(context);
 
       assertThat(elides_everything.messages())
           .containsExactly(
@@ -157,7 +134,7 @@ class ContextBuilderTest {
 
     @Test
     void keep_recent_messages_must_not_be_negative() {
-      assertThatThrownBy(() -> ContextBuilder.elidingToolResults(-1))
+      assertThatThrownBy(() -> Shape.elidingToolResults(-1))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("keepRecentMessages must be at least 0");
     }

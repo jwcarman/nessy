@@ -34,8 +34,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
-import org.jwcarman.nessy.spi.context.ContextBuilder;
-import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -148,9 +147,8 @@ final class EngineFixtures {
     return grants;
   }
 
-  /** A plain, identity/none-backed {@link ContextAssembler} for tests that don't exercise it. */
-  static ContextAssembler contextAssembler() {
-    return new ContextAssembler(
-        ContextBuilder.identity(), Memory.none(), EventHub.synchronous(), ObservationRegistry.NOOP);
+  /** A plain, no-recall/no-shape {@link ContextPipeline} for tests that don't exercise it. */
+  static ContextPipeline contextPipeline() {
+    return ContextPipeline.builder().build(EventHub.synchronous(), ObservationRegistry.NOOP);
   }
 }

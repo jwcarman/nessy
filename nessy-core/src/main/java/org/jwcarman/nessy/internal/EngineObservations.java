@@ -79,8 +79,7 @@ public final class EngineObservations {
     return Observation.start("nessy.compaction", registry).contextualName("compact");
   }
 
-  // No GenAI semconv concept exists for long-term memory recall either; ours again.
-  public static Observation recall(ObservationRegistry registry) {
-    return Observation.start("nessy.memory.recall", registry).contextualName("recall");
-  }
+  // nessy.memory.recall lives on org.jwcarman.nessy.spi.context.ContextPipeline, not here:
+  // spi.context may not import org.jwcarman.nessy.internal (see ZoneBoundariesTest), so that
+  // pipeline mints its own "nessy.memory.recall" / "recall" observation directly.
 }

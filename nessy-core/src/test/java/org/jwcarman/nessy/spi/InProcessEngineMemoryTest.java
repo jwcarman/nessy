@@ -39,7 +39,7 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.Usage;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
-import org.jwcarman.nessy.spi.context.ContextBuilder;
+import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -62,6 +62,9 @@ class InProcessEngineMemoryTest {
       Memory memory,
       EventHub hub,
       ObservationRegistry observations) {
+    ContextPipeline pipeline =
+        (memory == null ? ContextPipeline.builder() : ContextPipeline.builder().recall(memory))
+            .build(hub, observations);
     return new InProcessEngine(
         provider,
         ToolRegistry.of(),
@@ -73,7 +76,7 @@ class InProcessEngineMemoryTest {
         CONFIG,
         new ObjectMapper(),
         observations,
-        new ContextAssembler(ContextBuilder.identity(), memory, hub, observations));
+        pipeline);
   }
 
   private static EngineFixtures.FakeProvider oneTurnProvider() {
@@ -158,16 +161,16 @@ class InProcessEngineMemoryTest {
   class Observations {
 
     @Test
-    void none_adds_nothing_and_no_observation() {
+    void no_recall_contributors_adds_nothing_and_no_observation() {
       TestObservationRegistry observations = TestObservationRegistry.create();
       EngineFixtures.FakeProvider provider = oneTurnProvider();
-      InProcessEngine engine =
-          engineWith(provider, Memory.none(), EventHub.synchronous(), observations);
+      InProcessEngine engine = engineWith(provider, null, EventHub.synchronous(), observations);
 
       engine.run(ID, Event.UserSaid.of("hi"));
 
-      // The default path is identity-skipped: nessy.run/nessy.turn/nessy.model.call still fire,
-      // but nessy.memory.recall never does.
+      // Zero declared recall contributors is identity-skipped:
+      // nessy.run/nessy.turn/nessy.model.call
+      // still fire, but nessy.memory.recall never does.
       assertThatThrownBy(
               () -> assertThat(observations).hasObservationWithNameEqualTo("nessy.memory.recall"))
           .isInstanceOf(AssertionError.class);

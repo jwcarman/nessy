@@ -27,28 +27,6 @@ import org.jwcarman.nessy.api.session.SessionState;
 class MemoryTest {
 
   @Nested
-  class None {
-
-    @Test
-    void none_recalls_nothing() {
-      Memory memory = Memory.none();
-
-      assertThat(memory.recall(SessionState.newSession(SessionId.generate()))).isEmpty();
-    }
-
-    /**
-     * A stable singleton, not a fresh lambda per call: {@code InProcessEngine} depends on this
-     * identity so it can recognize the default, no-op memory by reference ({@code memory ==
-     * Memory.NONE}) rather than by a heuristic, the same load-bearing trick {@code
-     * CompactionTrigger.never()} uses.
-     */
-    @Test
-    void none_is_the_same_instance_every_call() {
-      assertThat(Memory.none()).isSameAs(Memory.none());
-    }
-  }
-
-  @Nested
   class A_custom_memory {
 
     @Test
