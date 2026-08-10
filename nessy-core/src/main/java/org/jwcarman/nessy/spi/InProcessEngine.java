@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.Event;
 import org.jwcarman.nessy.api.Message;
@@ -46,6 +47,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
+import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -227,7 +229,7 @@ public final class InProcessEngine implements ExecutionEngine {
     messages.add(Message.user(effect.instructions()));
     ModelRequest request =
         new ModelRequest(
-            messages,
+            Context.of(messages),
             config.systemPrompt(),
             config.model(),
             reducer.compaction().summaryMaxTokens(),

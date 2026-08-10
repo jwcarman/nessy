@@ -87,7 +87,7 @@ public final class AnthropicRequests {
     }
 
     builder.messages(
-        request.messages().stream()
+        request.context().messages().stream()
             .map(AnthropicRequests::toMessageParam)
             .flatMap(Optional::stream)
             .toList());

@@ -49,7 +49,7 @@ import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.SessionEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
-import org.jwcarman.nessy.spi.ContextBuilder;
+import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -397,7 +397,7 @@ class EndToEndTest {
 
       assertThat(secondReply.failed()).isFalse();
 
-      Message wireToolResults = provider.requests().getLast().messages().get(2);
+      Message wireToolResults = provider.requests().getLast().context().messages().get(2);
       ToolResultBlock elidedBlock = (ToolResultBlock) wireToolResults.content().getFirst();
       assertThat(elidedBlock.content()).isEqualTo("[elided]");
       assertThat(elidedBlock.toolUseId()).isEqualTo("c1");

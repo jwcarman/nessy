@@ -74,7 +74,7 @@ public final class OpenAiRequests {
           ChatCompletionMessageParam.ofSystem(
               ChatCompletionSystemMessageParam.builder().content(request.systemPrompt()).build()));
     }
-    for (Message message : request.messages()) {
+    for (Message message : request.context().messages()) {
       messages.addAll(toMessageParams(message));
     }
 

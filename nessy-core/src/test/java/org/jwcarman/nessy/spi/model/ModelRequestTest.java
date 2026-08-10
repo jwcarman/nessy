@@ -17,28 +17,31 @@ package org.jwcarman.nessy.spi.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Message;
 
 class ModelRequestTest {
 
   @Test
-  void collections_are_defensively_copied() {
-    List<Message> messages = new ArrayList<>();
-    messages.add(Message.user("hi"));
+  void the_requested_capability_set_is_defensively_copied() {
     Set<Capability> requested = EnumSet.of(Capability.PROMPT_CACHING);
 
     ModelRequest request =
-        new ModelRequest(messages, "be helpful", "some-model", 1024, List.of(), requested, null);
+        new ModelRequest(
+            Context.of(List.of(Message.user("hi"))),
+            "be helpful",
+            "some-model",
+            1024,
+            List.of(),
+            requested,
+            null);
 
-    messages.add(Message.user("sneaked in"));
     requested.add(Capability.THINKING);
 
-    assertThat(request.messages()).hasSize(1);
     assertThat(request.requested()).containsExactly(Capability.PROMPT_CACHING);
   }
 
@@ -46,7 +49,7 @@ class ModelRequestTest {
   void unsupported_capabilities_are_visible_rather_than_silent() {
     ModelRequest request =
         new ModelRequest(
-            List.of(Message.user("hi")),
+            Context.of(List.of(Message.user("hi"))),
             "be helpful",
             "some-model",
             1024,

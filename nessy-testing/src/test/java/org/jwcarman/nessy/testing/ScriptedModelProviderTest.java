@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.Usage;
@@ -35,7 +36,13 @@ class ScriptedModelProviderTest {
 
   private static ModelRequest request() {
     return new ModelRequest(
-        List.of(Message.user("hi")), "system", "fake-model", 1024, List.of(), Set.of(), null);
+        Context.of(List.of(Message.user("hi"))),
+        "system",
+        "fake-model",
+        1024,
+        List.of(),
+        Set.of(),
+        null);
   }
 
   private static List<ModelEvent> drain(ModelStream stream) {

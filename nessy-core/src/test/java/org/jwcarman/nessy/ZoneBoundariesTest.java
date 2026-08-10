@@ -81,10 +81,52 @@ class ZoneBoundariesTest {
     }
   }
 
+  /**
+   * {@code spi.context} (the {@link org.jwcarman.nessy.spi.context.ContextBuilder}, {@link
+   * org.jwcarman.nessy.spi.context.TokenEstimator} home) is free to depend on {@code api}, the way
+   * {@code spi.model} already does, but it does not get the wider spi zone's licence to reach into
+   * {@code internal}: nothing in its public signatures needs engine machinery.
+   */
+  @Test
+  void no_file_under_spi_context_imports_internal() {
+    List<JavaFile> filesUnderSpiContext = filesUnderSegment("spi/context");
+    assertThat(filesUnderSpiContext).isNotEmpty();
+    for (JavaFile file : filesUnderSpiContext) {
+      assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
+          .as(
+              "%s imports org.jwcarman.nessy.internal, but spi.context may not",
+              file.relativePath())
+          .isFalse();
+    }
+  }
+
+  /** The api-to-spi ban (see {@link #no_file_under_api_imports_spi}) covers spi.context too. */
+  @Test
+  void no_file_under_api_imports_spi_context() {
+    for (JavaFile file : filesUnder("api")) {
+      assertThat(file.importsPackage("org.jwcarman.nessy.spi.context"))
+          .as(
+              "%s imports org.jwcarman.nessy.spi.context, but api may not depend on spi",
+              file.relativePath())
+          .isFalse();
+    }
+  }
+
   private static List<JavaFile> filesUnder(String zone) {
     return allJavaFiles().stream()
         .filter(file -> file.relativePath().contains("/" + zone + "/"))
         .toList();
+  }
+
+  /**
+   * Files whose relative path is under the given slash-separated package segment, matching both the
+   * segment's direct children and anything nested deeper — unlike {@link #filesUnder}, which only
+   * matches a segment appearing with a leading slash and so never matches a zone's own top-level
+   * files.
+   */
+  private static List<JavaFile> filesUnderSegment(String segment) {
+    String prefix = segment + "/";
+    return allJavaFiles().stream().filter(file -> file.relativePath().startsWith(prefix)).toList();
   }
 
   /** Files directly in {@code org/jwcarman/nessy/}, not in any of its sub-packages. */

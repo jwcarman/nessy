@@ -20,7 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 
 /**
@@ -38,7 +38,7 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
  *     change.
  */
 public record ModelRequest(
-    List<Message> messages,
+    Context context,
     String systemPrompt,
     String model,
     int maxTokens,
@@ -47,6 +47,7 @@ public record ModelRequest(
     ObjectNode responseSchema) {
 
   public ModelRequest {
+    Objects.requireNonNull(context, "context must not be null");
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     if (model == null || model.isBlank()) {
       throw new IllegalArgumentException("model must not be blank");
@@ -54,7 +55,6 @@ public record ModelRequest(
     if (maxTokens < 1) {
       throw new IllegalArgumentException("maxTokens must be at least 1");
     }
-    messages = List.copyOf(messages);
     tools = List.copyOf(tools);
     requested = Set.copyOf(requested);
   }

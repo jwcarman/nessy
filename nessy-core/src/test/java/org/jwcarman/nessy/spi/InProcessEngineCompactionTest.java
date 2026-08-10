@@ -44,6 +44,7 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventHub;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.spi.context.ContextBuilder;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;

@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.ImageBlock;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.RedactedThinkingBlock;
@@ -41,16 +42,23 @@ class OpenAiRequestsTest {
 
   private static ModelRequest request(List<Message> messages) {
     return new ModelRequest(
-        messages, "you are a helpful assistant", "gpt-4o", 1024, List.of(), Set.of(), null);
+        Context.of(messages),
+        "you are a helpful assistant",
+        "gpt-4o",
+        1024,
+        List.of(),
+        Set.of(),
+        null);
   }
 
   private static ModelRequest request(List<Message> messages, List<ToolSpec> tools) {
     return new ModelRequest(
-        messages, "you are a helpful assistant", "gpt-4o", 1024, tools, Set.of(), null);
+        Context.of(messages), "you are a helpful assistant", "gpt-4o", 1024, tools, Set.of(), null);
   }
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
-    return new ModelRequest(List.of(), systemPrompt, "gpt-4o", 1024, List.of(), Set.of(), null);
+    return new ModelRequest(
+        Context.of(List.of()), systemPrompt, "gpt-4o", 1024, List.of(), Set.of(), null);
   }
 
   @Nested
@@ -178,7 +186,9 @@ class OpenAiRequestsTest {
     @Test
     void becomes_a_tool_call_with_id_name_and_raw_json_arguments() {
       var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "README.md"));
-      var params = OpenAiRequests.toParams(request(List.of(Message.assistant(List.of(toolUse)))));
+      var assistantTurn = Message.assistant(List.of(toolUse));
+      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
 
       var assistantMessage = params.messages().get(1).asAssistant();
       var toolCalls = assistantMessage.toolCalls().orElseThrow();
@@ -194,9 +204,13 @@ class OpenAiRequestsTest {
       var text = new TextBlock("running two tools");
       var first = new ToolUseBlock(call("call-1", "read_file", "path", "a.txt"));
       var second = new ToolUseBlock(call("call-2", "read_file", "path", "b.txt"));
-      var params =
-          OpenAiRequests.toParams(
-              request(List.of(Message.assistant(List.of(text, first, second)))));
+      var assistantTurn = Message.assistant(List.of(text, first, second));
+      var toolResultTurn =
+          Message.toolResults(
+              List.of(
+                  new ToolResultBlock("call-1", "ok", false),
+                  new ToolResultBlock("call-2", "ok", false)));
+      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content().orElseThrow().asText()).isEqualTo("running two tools");
@@ -209,7 +223,9 @@ class OpenAiRequestsTest {
     @Test
     void an_assistant_message_with_only_tool_calls_has_no_content() {
       var toolUse = new ToolUseBlock(call("call-1", "read_file", "path", "a.txt"));
-      var params = OpenAiRequests.toParams(request(List.of(Message.assistant(List.of(toolUse)))));
+      var assistantTurn = Message.assistant(List.of(toolUse));
+      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content()).isEmpty();
@@ -224,9 +240,9 @@ class OpenAiRequestsTest {
       var thinking = new ThinkingBlock("reasoning about the answer", "sig-123");
       var text = new TextBlock("the visible answer");
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
-      var params =
-          OpenAiRequests.toParams(
-              request(List.of(Message.assistant(List.of(thinking, text, toolUse)))));
+      var assistantTurn = Message.assistant(List.of(thinking, text, toolUse));
+      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var params = OpenAiRequests.toParams(request(List.of(assistantTurn, toolResultTurn)));
 
       var assistantMessage = params.messages().get(1).asAssistant();
       assertThat(assistantMessage.content().orElseThrow().asText()).isEqualTo("the visible answer");
@@ -268,10 +284,15 @@ class OpenAiRequestsTest {
 
     @Test
     void become_a_tool_role_message_carrying_the_tool_call_id() {
+      var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var result = new ToolResultBlock("call-1", "42", false);
-      var params = OpenAiRequests.toParams(request(List.of(Message.toolResults(List.of(result)))));
+      var params =
+          OpenAiRequests.toParams(
+              request(
+                  List.of(
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
 
-      var toolMessage = params.messages().get(1);
+      var toolMessage = params.messages().get(2);
       assertThat(toolMessage.isTool()).isTrue();
       assertThat(toolMessage.asTool().toolCallId()).isEqualTo("call-1");
       assertThat(toolMessage.asTool().content().asText()).isEqualTo("42");
@@ -279,24 +300,35 @@ class OpenAiRequestsTest {
 
     @Test
     void an_error_result_gets_the_error_prefix_on_its_content() {
+      var toolUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
       var result = new ToolResultBlock("call-1", "file not found", true);
-      var params = OpenAiRequests.toParams(request(List.of(Message.toolResults(List.of(result)))));
+      var params =
+          OpenAiRequests.toParams(
+              request(
+                  List.of(
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))));
 
-      var toolMessage = params.messages().get(1);
+      var toolMessage = params.messages().get(2);
       assertThat(toolMessage.asTool().content().asText()).isEqualTo("ERROR: file not found");
     }
 
     @Test
     void multiple_results_become_separate_messages_in_order() {
+      var firstUse = new ToolUseBlock(new ToolCall("call-1", "noop", MAPPER.createObjectNode()));
+      var secondUse = new ToolUseBlock(new ToolCall("call-2", "noop", MAPPER.createObjectNode()));
       var first = new ToolResultBlock("call-1", "first", false);
       var second = new ToolResultBlock("call-2", "second", false);
       var params =
-          OpenAiRequests.toParams(request(List.of(Message.toolResults(List.of(first, second)))));
+          OpenAiRequests.toParams(
+              request(
+                  List.of(
+                      Message.assistant(List.of(firstUse, secondUse)),
+                      Message.toolResults(List.of(first, second)))));
 
       var messages = params.messages();
-      assertThat(messages).hasSize(3);
-      assertThat(messages.get(1).asTool().toolCallId()).isEqualTo("call-1");
-      assertThat(messages.get(2).asTool().toolCallId()).isEqualTo("call-2");
+      assertThat(messages).hasSize(4);
+      assertThat(messages.get(2).asTool().toolCallId()).isEqualTo("call-1");
+      assertThat(messages.get(3).asTool().toolCallId()).isEqualTo("call-2");
     }
   }
 

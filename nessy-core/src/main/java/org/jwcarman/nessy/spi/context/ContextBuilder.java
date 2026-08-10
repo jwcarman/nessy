@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi;
+package org.jwcarman.nessy.spi.context;
 
-import java.util.List;
-import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.SessionState;
 
 /**
@@ -29,11 +28,11 @@ import org.jwcarman.nessy.api.SessionState;
  */
 public interface ContextBuilder {
 
-  List<Message> project(SessionState state);
+  Context project(SessionState state);
 
   /** The default: the model sees everything. */
   static ContextBuilder identity() {
-    return SessionState::messages;
+    return state -> Context.of(state.messages());
   }
 
   /**

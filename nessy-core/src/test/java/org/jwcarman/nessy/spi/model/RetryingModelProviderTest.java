@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Message;
 
 class RetryingModelProviderTest {
@@ -73,7 +74,7 @@ class RetryingModelProviderTest {
 
   private static ModelRequest request() {
     return new ModelRequest(
-        List.of(Message.user("hi")), "sys", "m", 100, List.of(), Set.of(), null);
+        Context.of(List.of(Message.user("hi"))), "sys", "m", 100, List.of(), Set.of(), null);
   }
 
   @Nested

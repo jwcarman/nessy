@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.ImageBlock;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.RedactedThinkingBlock;
@@ -46,7 +47,13 @@ class AnthropicRequestsTest {
 
   private static ModelRequest request(List<Message> messages, Set<Capability> requested) {
     return new ModelRequest(
-        messages, "you are a helpful assistant", "claude-sonnet", 1024, List.of(), requested, null);
+        Context.of(messages),
+        "you are a helpful assistant",
+        "claude-sonnet",
+        1024,
+        List.of(),
+        requested,
+        null);
   }
 
   private static ModelRequest request(List<Message> messages) {
@@ -55,7 +62,7 @@ class AnthropicRequestsTest {
 
   private static ModelRequest requestWithSystemPrompt(String systemPrompt) {
     return new ModelRequest(
-        List.of(), systemPrompt, "claude-sonnet", 1024, List.of(), Set.of(), null);
+        Context.of(List.of()), systemPrompt, "claude-sonnet", 1024, List.of(), Set.of(), null);
   }
 
   @Nested
@@ -205,10 +212,12 @@ class AnthropicRequestsTest {
       var toolUse =
           new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
       var text = new TextBlock("the visible answer");
+      var assistantMessage = Message.assistant(List.of(unsigned, toolUse, text));
+      var toolResultMessage =
+          Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.assistant(List.of(unsigned, toolUse, text)))),
-              THINKING_DISABLED);
+              request(List.of(assistantMessage, toolResultMessage)), THINKING_DISABLED);
 
       var blocks = params.messages().get(0).content().asBlockParams();
       assertThat(blocks).hasSize(2);
@@ -225,9 +234,12 @@ class AnthropicRequestsTest {
       ObjectNode arguments = MAPPER.createObjectNode();
       arguments.put("path", "README.md");
       var toolUse = new ToolUseBlock(new ToolCall("call-1", "read_file", arguments));
+      var assistantMessage = Message.assistant(List.of(toolUse));
+      var toolResultMessage =
+          Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.assistant(List.of(toolUse)))), THINKING_DISABLED);
+              request(List.of(assistantMessage, toolResultMessage)), THINKING_DISABLED);
 
       var block = params.messages().get(0).content().asBlockParams().get(0);
       assertThat(block.isToolUse()).isTrue();
@@ -258,12 +270,17 @@ class AnthropicRequestsTest {
 
     @Test
     void become_a_user_tool_result_block_carrying_is_error() {
+      var toolUse =
+          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
       var result = new ToolResultBlock("call-1", "file not found", true);
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.toolResults(List.of(result)))), THINKING_DISABLED);
+              request(
+                  List.of(
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              THINKING_DISABLED);
 
-      var message = params.messages().get(0);
+      var message = params.messages().get(1);
       assertThat(message.role()).isEqualTo(MessageParam.Role.USER);
       var block = message.content().asBlockParams().get(0);
       assertThat(block.isToolResult()).isTrue();
@@ -273,12 +290,17 @@ class AnthropicRequestsTest {
 
     @Test
     void a_successful_result_carries_is_error_false() {
+      var toolUse =
+          new ToolUseBlock(new ToolCall("call-2", "read_file", MAPPER.createObjectNode()));
       var result = new ToolResultBlock("call-2", "42", false);
       var params =
           AnthropicRequests.toParams(
-              request(List.of(Message.toolResults(List.of(result)))), THINKING_DISABLED);
+              request(
+                  List.of(
+                      Message.assistant(List.of(toolUse)), Message.toolResults(List.of(result)))),
+              THINKING_DISABLED);
 
-      var block = params.messages().get(0).content().asBlockParams().get(0);
+      var block = params.messages().get(1).content().asBlockParams().get(0);
       assertThat(block.asToolResult().isError()).contains(false);
     }
   }
@@ -297,7 +319,7 @@ class AnthropicRequestsTest {
     void convert_via_anthropic_schemas() {
       var request =
           new ModelRequest(
-              List.of(),
+              Context.of(List.of()),
               "sys",
               "claude-sonnet",
               1024,
@@ -318,7 +340,7 @@ class AnthropicRequestsTest {
     void only_the_last_tool_gets_cache_control_when_prompt_caching_is_requested() {
       var request =
           new ModelRequest(
-              List.of(),
+              Context.of(List.of()),
               "sys",
               "claude-sonnet",
               1024,
@@ -336,7 +358,7 @@ class AnthropicRequestsTest {
     void no_tool_gets_cache_control_when_prompt_caching_is_not_requested() {
       var request =
           new ModelRequest(
-              List.of(),
+              Context.of(List.of()),
               "sys",
               "claude-sonnet",
               1024,
@@ -372,7 +394,8 @@ class AnthropicRequestsTest {
     @Test
     void rejects_a_budget_that_leaves_no_headroom_under_max_tokens() {
       var request =
-          new ModelRequest(List.of(), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
+          new ModelRequest(
+              Context.of(List.of()), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
 
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, new ThinkingConfig(true, 512)))
           .isInstanceOf(IllegalArgumentException.class);
@@ -381,7 +404,8 @@ class AnthropicRequestsTest {
     @Test
     void rejects_a_budget_larger_than_max_tokens() {
       var request =
-          new ModelRequest(List.of(), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
+          new ModelRequest(
+              Context.of(List.of()), "sys", "claude-sonnet", 512, List.of(), Set.of(), null);
 
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, new ThinkingConfig(true, 1024)))
           .isInstanceOf(IllegalArgumentException.class);
@@ -390,7 +414,8 @@ class AnthropicRequestsTest {
     @Test
     void accepts_a_budget_strictly_below_max_tokens() {
       var request =
-          new ModelRequest(List.of(), "sys", "claude-sonnet", 513, List.of(), Set.of(), null);
+          new ModelRequest(
+              Context.of(List.of()), "sys", "claude-sonnet", 513, List.of(), Set.of(), null);
 
       var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 512));
 
@@ -405,7 +430,8 @@ class AnthropicRequestsTest {
     @Test
     void the_default_thinking_budget_leaves_headroom_under_the_default_max_tokens() {
       var request =
-          new ModelRequest(List.of(), "sys", "claude-sonnet", 4096, List.of(), Set.of(), null);
+          new ModelRequest(
+              Context.of(List.of()), "sys", "claude-sonnet", 4096, List.of(), Set.of(), null);
 
       var params = AnthropicRequests.toParams(request, new ThinkingConfig(true, 1024));
 

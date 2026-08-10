@@ -123,15 +123,26 @@ class ValidationTest {
   @Test
   void a_model_request_without_a_model_is_rejected() {
     assertThatThrownBy(
-            () -> new ModelRequest(List.of(), "system", " ", 1024, List.of(), Set.of(), null))
+            () ->
+                new ModelRequest(
+                    Context.of(List.of()), "system", " ", 1024, List.of(), Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_model_request_without_tokens_to_spend_is_rejected() {
     assertThatThrownBy(
-            () -> new ModelRequest(List.of(), "system", "fake-model", 0, List.of(), Set.of(), null))
+            () ->
+                new ModelRequest(
+                    Context.of(List.of()), "system", "fake-model", 0, List.of(), Set.of(), null))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void a_model_request_without_a_context_is_rejected() {
+    assertThatThrownBy(
+            () -> new ModelRequest(null, "system", "fake-model", 1024, List.of(), Set.of(), null))
+        .isInstanceOf(NullPointerException.class);
   }
 
   @Test
@@ -154,7 +165,8 @@ class ValidationTest {
   @Test
   void a_model_request_accepts_a_null_response_schema() {
     var request =
-        new ModelRequest(List.of(), "system", "fake-model", 1024, List.of(), Set.of(), null);
+        new ModelRequest(
+            Context.of(List.of()), "system", "fake-model", 1024, List.of(), Set.of(), null);
 
     assertThat(request.responseSchema()).isNull();
   }
@@ -164,7 +176,8 @@ class ValidationTest {
     var schema = JsonNodeFactory.instance.objectNode().put("type", "object");
 
     var request =
-        new ModelRequest(List.of(), "system", "fake-model", 1024, List.of(), Set.of(), schema);
+        new ModelRequest(
+            Context.of(List.of()), "system", "fake-model", 1024, List.of(), Set.of(), schema);
 
     assertThat(request.responseSchema()).isSameAs(schema);
   }

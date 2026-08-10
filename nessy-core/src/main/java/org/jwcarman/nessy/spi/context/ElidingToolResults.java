@@ -13,11 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi;
+package org.jwcarman.nessy.spi.context;
 
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.ContentBlock;
+import org.jwcarman.nessy.api.Context;
 import org.jwcarman.nessy.api.Message;
 import org.jwcarman.nessy.api.SessionState;
 import org.jwcarman.nessy.api.ToolResultBlock;
@@ -44,7 +45,7 @@ final class ElidingToolResults implements ContextBuilder {
   }
 
   @Override
-  public List<Message> project(SessionState state) {
+  public Context project(SessionState state) {
     List<Message> messages = state.messages();
     int firstRecentIndex = Math.max(0, messages.size() - keepRecentMessages);
     List<Message> projected = new ArrayList<>(messages.size());
@@ -52,7 +53,7 @@ final class ElidingToolResults implements ContextBuilder {
       Message message = messages.get(i);
       projected.add(i < firstRecentIndex ? elide(message) : message);
     }
-    return projected;
+    return Context.of(projected);
   }
 
   private static Message elide(Message message) {
