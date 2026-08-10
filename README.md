@@ -120,7 +120,7 @@ by one or more seams:
 | # | Service | Provided by |
 |---|---|---|
 | 1 | Turn-taking | `Reducer`, `ExecutionEngine`, `Context` |
-| 2 | Context fit | `CompactionPolicy`, `Summarizer`, `ContextPipeline`, `Shape`, `TokenEstimator`, `Memory` |
+| 2 | Context fit | `CompactionPolicy`, `Summarizer`, `ContextPipeline`, `Projection`, `TokenEstimator`, `ContextEnricher` |
 | 3 | A memory of record | `SessionStore`, `TranscriptStore` |
 | 4 | Safe hands | `ToolRegistry`, the invoker (Factor 9) |
 | 5 | Guardrails | `ToolGrant`/`UsagePolicy`, `Approver` |
@@ -131,7 +131,7 @@ by one or more seams:
 `agent.contextFor(sessionId)` is the debugging affordance that comes with
 service #2: it answers *what would a call made against this session see right
 now*, truthfully and without spending a model call, by running the exact same
-`ContextPipeline` (shape-then-recall) choreography the engine runs on every
+`ContextPipeline` (project-then-enrich) choreography the engine runs on every
 send. See [Context management](#context-management) below for what it does
 and doesn't show.
 
@@ -228,7 +228,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
 | `EventHub` | `synchronous()` | `EventHub.async(listener)` per subscriber | bridges (SSE, message bus) |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
-| `ContextPipeline` | no recalls, no shapes | `Shape.elidingToolResults(keepRecentMessages)`; `Memory` recall contributors | RAG, redaction |
+| `ContextPipeline` | no enrichers, no projections | `Projection.elidingToolResults(keepRecentMessages)`; `ContextEnricher` contributors | RAG, redaction |
 
 Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
 `RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
@@ -272,7 +272,7 @@ so metrics stay stable even as those still-evolving conventions do not:
 | `nessy.tool.call` | `execute_tool {tool}` | `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.call.id` |
 | `nessy.approval.wait` | `nessy.approval.wait` | `gen_ai.tool.name` — ours; semconv has no human-approval concept |
 | `nessy.compaction` | `compact` | ours; semconv has no compaction concept |
-| `nessy.memory.recall` | `recall` | ours; semconv has no memory-recall concept |
+| `nessy.context.enrich` | `enrich` | ours; semconv has no context-enrichment concept |
 
 Wiring is `.observations(ObservationRegistry)` on the builder, default `NOOP`; the
 seams themselves reference Micrometer nowhere. The planned Spring Boot starter
@@ -417,7 +417,7 @@ rest is a codec *decorator* over that, not a separate store implementation,
 so the same encrypting codec composes over whichever backing store you
 choose.
 
-### Shaping and recalling what the model sees: the context pipeline
+### Projecting and enriching what the model sees: the context pipeline
 
 The Contextualize phase turns the ledger (`SessionState`) into the `Context`
 one model call actually sees, and it is the one phase of the lifecycle that is
@@ -431,65 +431,73 @@ Agent<String> agent =
         .provider(provider)
         .model("fake-model")
         .context(pipeline -> pipeline
-            .recall(graphMemory)                  // RECALL: 0..n contributors
-            .shape(Shape.elidingToolResults(2))    // SHAPE: 0..n transforms, declaration order
-            .placement(ContextPipeline.Placement.MEMORIES_FIRST))
+            .project(Projection.elidingToolResults(2))  // PROJECT: 0..n, declaration order
+            .enrich(graphMemory)                         // ENRICH: 0..n contributors
+            .placement(ContextPipeline.Placement.ENRICHMENTS_FIRST))
         .build();
 ```
 
 A `ContextPipeline` runs in two stages, both in declaration order:
 
-**SHAPE** transforms are `Shape` (`spi.context`): `Context apply(Context
+**PROJECT** transforms are `Projection` (`spi.context`): `Context apply(Context
 context)` — pure and total, no I/O, same output for the same input. Applied to
-the `Context` minted from the session's messages, before any recall.
-`Shape.elidingToolResults(keepRecentMessages)` is the first standard shape: it
-replaces the content of tool results older than the last `keepRecentMessages`
-messages with a placeholder, keeping the recent window verbatim. The empty
-shape list — no `.shape(...)` calls — is identity: the model sees the whole
-working set unchanged, which is why it's the default. Because a shape is
-contractually pure, a throwing shape is treated as the application's own bug
-and fails loud rather than being absorbed.
+the `Context` minted from the session's messages, before any enrichment.
+`Projection.elidingToolResults(keepRecentMessages)` is the first standard
+projection: it replaces the content of tool results older than the last
+`keepRecentMessages` messages with a placeholder, keeping the recent window
+verbatim. The empty projection list — no `.project(...)` calls — is identity:
+the model sees the whole working set unchanged, which is why it's the
+default. Because a projection is contractually pure, a throwing projection is
+treated as the application's own bug and fails loud rather than being
+absorbed.
 
 Weigh the tradeoff before reaching for elision: the sliding window rewrites
 one old message per turn as it advances, and a rewritten message churns the
 prompt-cache prefix from that point forward — you're trading cache hits for
 context space. That's a fine trade when a tool result is enormous and the
 context window is the scarcer resource, and a bad one when you're paying for
-cache misses more than you're saving in tokens. Shaping never touches
+cache misses more than you're saving in tokens. Projection never touches
 compaction's summarization call either: the summarizer always sees the
 un-elided prefix the reducer chose to compact, even when `elidingToolResults`
-is shaping every other request in the session.
+is projecting every other request in the session.
 
-**RECALL** contributors are `Memory` (`spi.memory`, unchanged):
-`List<Message> recall(SessionState state)` — I/O sanctioned, so recalling
-facts from a graph or vector store outside the session's own transcript is a
-sibling concern to shaping, not a shape itself. Recall cues on the ledger, not
-the shaped `Context` — the context is the thing that will *include* the
-memories, and shaping is a wire concern (an elided tool result is `"[elided]"`
-in the shaped context but full text in the working set). Each contributor
-runs under its own `nessy.memory.recall` observation and is independently
-best-effort: a thrown exception, or a contribution that would break
-`Context`'s tool-pairing invariant, costs only that contributor's own
-contribution — every other contributor still runs, and the hub carries a
-`RecallFailed(sessionId, reason)` event per failure. Contributions concatenate
-in declaration order. There is no `Memory.none()` sentinel: the empty recall
-list — no `.recall(...)` calls — is itself "no recall", and it costs zero
-allocations and zero observations, same as the shape-only path.
+**ENRICH** contributors are `ContextEnricher` (`spi.context`): `List<Message>
+enrich(SessionState state)` — I/O sanctioned, so pulling facts from a graph or
+vector store outside the session's own transcript is a sibling concern to
+projection, not a projection itself. Memory is just a `ContextEnricher`.
+Enrichers key on the ledger, not the projected `Context` — the context is the
+thing that will *include* the enrichment, and projection is a wire concern (an
+elided tool result is `"[elided]"` in the projected context but full text in
+the working set). Each contributor runs under its own `nessy.context.enrich`
+observation and is independently best-effort: a thrown exception, or a
+contribution that would break `Context`'s tool-pairing invariant, costs only
+that contributor's own contribution — every other contributor still runs, and
+the hub carries an `EnrichmentFailed(sessionId, reason)` event per failure.
+Contributions concatenate in declaration order. There is no
+`ContextEnricher.none()` sentinel: the empty enrichment list — no
+`.enrich(...)` calls — is itself "no enrichment", and it costs zero
+allocations and zero observations, same as the project-only path.
 
-**Placement** decides where recalled contributions land relative to the
-shaped transcript: `ContextPipeline.Placement.MEMORIES_FIRST` (the default) or
-`MEMORIES_LAST`. Weigh the same cache tradeoff elision carries: recalled
-content changes turn to turn, and front-of-prompt injection churns the
-prompt-cache prefix every time it changes. A refresh-on-compaction recall
-strategy — recalling only at the moment compaction already churns the prefix
-— aligns the two churns instead of adding a second, independent one.
+Project runs before enrich by jurisdiction, not sequence: enrichers key on the
+ledger, so ordering costs them nothing, while projections govern the
+*transcript's* wire form — enriched material must be outside their reach, or
+every projection would need a "don't touch the enrichments" clause.
+
+**Placement** decides where enriched contributions land relative to the
+projected transcript: `ContextPipeline.Placement.ENRICHMENTS_FIRST` (the
+default) or `ENRICHMENTS_LAST`. Weigh the same cache tradeoff elision carries:
+enriched content changes turn to turn, and front-of-prompt injection churns
+the prompt-cache prefix every time it changes. A refresh-on-compaction
+enrichment strategy — enriching only at the moment compaction already churns
+the prefix — aligns the two churns instead of adding a second, independent
+one.
 
 `agent.contextFor(sessionId)` runs the exact same `ContextPipeline` instance
 the engine consults on every send — against a session's current stored state
 — and hands back the resulting `Context`: *exactly what a call made right now
-would see*, truthfully and without a model call. It still performs recall's
-I/O to answer, so configured `Memory` contributors are genuinely consulted,
-not skipped for the preview.
+would see*, truthfully and without a model call. It still performs
+enrichment's I/O to answer, so configured `ContextEnricher` contributors are
+genuinely consulted, not skipped for the preview.
 
 ## Testing
 
@@ -536,16 +544,16 @@ Context management landed too, and converged further: compaction unifies
 behind the `CompactionStrategy` seam (default `summarizing`, tunable via
 `CompactionPolicy` or replaceable wholesale), declared context windows derive
 their own trigger for small models, the `ContextPipeline` (`spi.context`)
-declares `recall`/`shape` bindings Maven-style for the fully-open Contextualize
-phase, and an opt-in `TranscriptStore` journal — strict, audit-grade, with
-`MessageCodec` for at-rest encoding — keeps the full transcript even after
-compaction trims the working set. All of it is implemented and tested end to
-end.
+declares `project`/`enrich` bindings Maven-style for the fully-open
+Contextualize phase, and an opt-in `TranscriptStore` journal — strict,
+audit-grade, with `MessageCodec` for at-rest encoding — keeps the full
+transcript even after compaction trims the working set. All of it is
+implemented and tested end to end.
 
 The harness itself has since landed too: `Harness` reification, per-grant tool
-authority (`ToolGrant`/`UsagePolicy`), `Memory` recall contributors, and the
-context pipeline (`agent.contextFor`) are all implemented and tested end to
-end.
+authority (`ToolGrant`/`UsagePolicy`), `ContextEnricher` contributors (memory
+is just a `ContextEnricher`), and the context pipeline (`agent.contextFor`)
+are all implemented and tested end to end.
 
 The typed front door has landed too: every agent is `Agent<I>` over an
 application-owned input vocabulary, `tell` is the only verb (`send` is gone),

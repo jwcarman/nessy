@@ -79,7 +79,7 @@ public final class EngineObservations {
     return Observation.start("nessy.compaction", registry).contextualName("compact");
   }
 
-  // nessy.memory.recall lives on org.jwcarman.nessy.spi.context.ContextPipeline, not here:
+  // nessy.context.enrich lives on org.jwcarman.nessy.spi.context.ContextPipeline, not here:
   // spi.context may not import org.jwcarman.nessy.internal (see ZoneBoundariesTest), so that
-  // pipeline mints its own "nessy.memory.recall" / "recall" observation directly.
+  // pipeline mints its own "nessy.context.enrich" / "enrich" observation directly.
 }

@@ -21,19 +21,18 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.event.EnrichmentFailed;
 import org.jwcarman.nessy.api.event.EventHub;
-import org.jwcarman.nessy.api.event.RecallFailed;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.session.SessionId;
 import org.jwcarman.nessy.api.session.SessionState;
-import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
  * The pipeline executor itself, in isolation from {@code InProcessEngine} — declaration order for
- * both bindings, per-contributor recall attribution, and {@link ContextPipeline.Placement}.
- * Engine-level recall scenarios (enrichment, failure, pairing) live in {@code
- * InProcessEngineMemoryTest}, which exercises the same pipeline through {@code requestFor}.
+ * both bindings, per-contributor enrichment attribution, and {@link ContextPipeline.Placement}.
+ * Engine-level enrichment scenarios (enrichment, failure, pairing) live in {@code
+ * InProcessEngineEnrichmentTest}, which exercises the same pipeline through {@code requestFor}.
  */
 class ContextPipelineTest {
 
@@ -48,15 +47,15 @@ class ContextPipelineTest {
   }
 
   @Test
-  void shapes_apply_in_declaration_order() {
-    Shape appendFirst =
+  void projections_apply_in_declaration_order() {
+    Projection appendFirst =
         context -> Context.of(concat(context.messages(), List.of(Message.user("first"))));
-    Shape appendSecond =
+    Projection appendSecond =
         context -> Context.of(concat(context.messages(), List.of(Message.user("second"))));
     ContextPipeline pipeline =
         ContextPipeline.builder()
-            .shape(appendFirst)
-            .shape(appendSecond)
+            .project(appendFirst)
+            .project(appendSecond)
             .build(EventHub.synchronous(), ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(Message.user("start")));
@@ -66,13 +65,13 @@ class ContextPipelineTest {
   }
 
   @Test
-  void recall_contributions_concatenate_in_declaration_order() {
-    Memory first = state -> List.of(Message.user("fact A"));
-    Memory second = state -> List.of(Message.user("fact B"));
+  void enrichment_contributions_concatenate_in_declaration_order() {
+    ContextEnricher first = state -> List.of(Message.user("fact A"));
+    ContextEnricher second = state -> List.of(Message.user("fact B"));
     ContextPipeline pipeline =
         ContextPipeline.builder()
-            .recall(first)
-            .recall(second)
+            .enrich(first)
+            .enrich(second)
             .build(EventHub.synchronous(), ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(Message.user("hi")));
@@ -83,18 +82,18 @@ class ContextPipelineTest {
 
   @Test
   void one_failing_contributor_costs_only_its_contribution() {
-    Memory failing =
+    ContextEnricher failing =
         state -> {
           throw new IllegalStateException("A exploded");
         };
-    Memory succeeding = state -> List.of(Message.user("fact B"));
+    ContextEnricher succeeding = state -> List.of(Message.user("fact B"));
     EventHub hub = EventHub.synchronous();
-    List<RecallFailed> failures = new ArrayList<>();
-    hub.subscribe(RecallFailed.class, failures::add);
+    List<EnrichmentFailed> failures = new ArrayList<>();
+    hub.subscribe(EnrichmentFailed.class, failures::add);
     ContextPipeline pipeline =
         ContextPipeline.builder()
-            .recall(failing)
-            .recall(succeeding)
+            .enrich(failing)
+            .enrich(succeeding)
             .build(hub, ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(Message.user("hi")));
@@ -106,11 +105,11 @@ class ContextPipelineTest {
 
   @Test
   void placement_is_policy() {
-    Memory memory = state -> List.of(Message.user("a fact"));
+    ContextEnricher enricher = state -> List.of(Message.user("a fact"));
     ContextPipeline pipeline =
         ContextPipeline.builder()
-            .recall(memory)
-            .placement(ContextPipeline.Placement.MEMORIES_LAST)
+            .enrich(enricher)
+            .placement(ContextPipeline.Placement.ENRICHMENTS_LAST)
             .build(EventHub.synchronous(), ObservationRegistry.NOOP);
 
     Context assembled = pipeline.assemble(stateWith(Message.user("hi")));

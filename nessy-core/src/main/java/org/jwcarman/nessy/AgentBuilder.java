@@ -242,21 +242,21 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Declares this agent's Contextualize phase (§6.1): the ordered {@code recall} contributors and
-   * {@code shape} transforms a {@link ContextPipeline} runs to turn ledger into {@link
-   * org.jwcarman.nessy.api.message.Context} for one conversational call, plus where recalled
-   * material lands relative to the shaped transcript. Declared once, at build time, in reviewable
-   * code — the one fully-open phase, but still closed to runtime registration.
+   * Declares this agent's Contextualize phase (§6.1): the ordered {@code project} transforms and
+   * {@code enrich} contributors a {@link ContextPipeline} runs to turn ledger into {@link
+   * org.jwcarman.nessy.api.message.Context} for one conversational call, plus where enriched
+   * material lands relative to the projected transcript. Declared once, at build time, in
+   * reviewable code — the one fully-open phase, but still closed to runtime registration.
    *
-   * <p>Default: no recalls, no shapes, {@link ContextPipeline.Placement#MEMORIES_FIRST} — the model
-   * sees the full working set unchanged, scoped to this one agent, never a harness-level default
-   * the way {@link #store(SessionStore)} or {@link #events(EventHub)} are.
+   * <p>Default: no projections, no enrichers, {@link ContextPipeline.Placement#ENRICHMENTS_FIRST} —
+   * the model sees the full working set unchanged, scoped to this one agent, never a harness-level
+   * default the way {@link #store(SessionStore)} or {@link #events(EventHub)} are.
    *
    * <pre>{@code
    * builder.context(pipeline -> pipeline
-   *     .recall(graphMemory)
-   *     .shape(Shape.elidingToolResults(2))
-   *     .placement(ContextPipeline.Placement.MEMORIES_FIRST));
+   *     .project(Projection.elidingToolResults(2))
+   *     .enrich(graphMemory)
+   *     .placement(ContextPipeline.Placement.ENRICHMENTS_FIRST));
    * }</pre>
    */
   public AgentBuilder<I> context(Consumer<ContextPipeline.Builder> customizer) {

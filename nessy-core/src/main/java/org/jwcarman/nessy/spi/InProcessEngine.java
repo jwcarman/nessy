@@ -354,13 +354,13 @@ public final class InProcessEngine implements ExecutionEngine {
    * disagree about what a call sees.
    *
    * <p>The compaction/summarization path is deliberately not routed through here: {@link #compact}
-   * hands the strategy its own working set directly, so recall and shaping are never consulted for
-   * that call.
+   * hands the strategy its own working set directly, so enrichment and projection are never
+   * consulted for that call.
    */
   private ModelRequest requestFor(SessionState state) {
-    Context shaped = contextPipeline.assemble(state);
+    Context projected = contextPipeline.assemble(state);
     return new ModelRequest(
-        shaped,
+        projected,
         config.systemPrompt(),
         config.model(),
         config.maxTokens(),

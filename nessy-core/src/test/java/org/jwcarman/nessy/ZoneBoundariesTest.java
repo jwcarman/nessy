@@ -86,12 +86,13 @@ class ZoneBoundariesTest {
   }
 
   /**
-   * {@code spi.context} (the {@link org.jwcarman.nessy.spi.context.Shape}, {@link
+   * {@code spi.context} (the {@link org.jwcarman.nessy.spi.context.Projection}, {@link
+   * org.jwcarman.nessy.spi.context.ContextEnricher}, {@link
    * org.jwcarman.nessy.spi.context.ContextPipeline}, {@link
    * org.jwcarman.nessy.spi.context.TokenEstimator} home) is free to depend on {@code api}, the way
    * {@code spi.model} already does, but it does not get the wider spi zone's licence to reach into
    * {@code internal}: nothing in its public signatures needs engine machinery — {@link
-   * org.jwcarman.nessy.spi.context.ContextPipeline} mints its own {@code nessy.memory.recall}
+   * org.jwcarman.nessy.spi.context.ContextPipeline} mints its own {@code nessy.context.enrich}
    * observation directly rather than depending on {@code internal.EngineObservations}.
    */
   @Test
@@ -151,37 +152,6 @@ class ZoneBoundariesTest {
       assertThat(file.importsPackage("org.jwcarman.nessy.spi.compaction"))
           .as(
               "%s imports org.jwcarman.nessy.spi.compaction, but api may not depend on spi",
-              file.relativePath())
-          .isFalse();
-    }
-  }
-
-  /**
-   * {@code spi.memory} (the {@link org.jwcarman.nessy.spi.memory.Memory} home) is free to depend on
-   * {@code api}, like {@code spi.context} and {@code spi.compaction}, but does not get the wider
-   * spi zone's licence to reach into {@code internal}: nothing in its public signature needs engine
-   * machinery.
-   */
-  @Test
-  void no_file_under_spi_memory_imports_internal() {
-    List<JavaFile> filesUnderSpiMemory = filesUnder("spi/memory");
-    assertThat(filesUnderSpiMemory).isNotEmpty();
-    for (JavaFile file : filesUnderSpiMemory) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
-          .as("%s imports org.jwcarman.nessy.internal, but spi.memory may not", file.relativePath())
-          .isFalse();
-    }
-  }
-
-  /** The api-to-spi ban (see {@link #no_file_under_api_imports_spi}) covers spi.memory too. */
-  @Test
-  void no_file_under_api_imports_spi_memory() {
-    List<JavaFile> filesUnderApi = filesUnder("api");
-    assertThat(filesUnderApi).isNotEmpty();
-    for (JavaFile file : filesUnderApi) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.spi.memory"))
-          .as(
-              "%s imports org.jwcarman.nessy.spi.memory, but api may not depend on spi",
               file.relativePath())
           .isFalse();
     }

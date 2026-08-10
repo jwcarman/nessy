@@ -21,30 +21,30 @@ import org.jwcarman.nessy.api.message.Context;
  * Transforms one {@link Context} into another — windows, redaction, elision, budgeting.
  *
  * <p>Pure and total: no I/O, no mutation, same output for the same input, every time. A {@link
- * ContextPipeline} applies its declared shapes in declaration order to the {@link Context} minted
- * from {@link org.jwcarman.nessy.api.session.SessionState#messages()}, before any recalled messages
- * are composed in. Because a shape is pure, a throwing shape is the application's own bug, not a
- * runtime condition to absorb — {@link ContextPipeline#assemble} lets it propagate rather than
- * catching it, in contrast to {@link org.jwcarman.nessy.spi.memory.Memory#recall}, which is
+ * ContextPipeline} applies its declared projections in declaration order to the {@link Context}
+ * minted from {@link org.jwcarman.nessy.api.session.SessionState#messages()}, before any enriched
+ * messages are composed in. Because a projection is pure, a throwing projection is the
+ * application's own bug, not a runtime condition to absorb — {@link ContextPipeline#assemble} lets
+ * it propagate rather than catching it, in contrast to {@link ContextEnricher#enrich}, which is
  * I/O-sanctioned and best-effort.
  *
- * <p>The empty shape list — no {@code shape(...)} calls on a {@link ContextPipeline.Builder} — is
- * the identity transform: the model sees the full working set unchanged. There is no dedicated
- * {@code Shape.identity()} factory; the empty list already says it.
+ * <p>The empty projection list — no {@code project(...)} calls on a {@link ContextPipeline.Builder}
+ * — is the identity transform: the model sees the full working set unchanged. There is no dedicated
+ * {@code Projection.identity()} factory; the empty list already says it.
  */
 @FunctionalInterface
-public interface Shape {
+public interface Projection {
 
   Context apply(Context context);
 
   /**
    * Elides the content of tool results older than the last {@code keepRecentMessages} messages,
-   * keeping the recent window verbatim. The first standard shape.
+   * keeping the recent window verbatim. The first standard projection.
    *
-   * @param keepRecentMessages how many of the most recent messages survive shaping untouched; must
-   *     be at least 0
+   * @param keepRecentMessages how many of the most recent messages survive projecting untouched;
+   *     must be at least 0
    */
-  static Shape elidingToolResults(int keepRecentMessages) {
+  static Projection elidingToolResults(int keepRecentMessages) {
     return new ElidingToolResults(keepRecentMessages);
   }
 }

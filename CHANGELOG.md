@@ -40,7 +40,7 @@ changed.
   list, or throws, fails `tell()` outright — before the engine ever sees the
   call — rather than degrading silently: the caller is present on its own
   thread, so there is no best-effort path here the way there is for
-  compaction or recall. Typing lives entirely in the facade's generics and
+  compaction or enrichment. Typing lives entirely in the facade's generics and
   dissolves at the wire; the sealed `Event` grammar, the reducer, and the
   engine are all unchanged. See `AgentFacadeTest`'s `Typed_front_door` nested
   class and the README's "Typed agents" section.
@@ -64,29 +64,34 @@ changed.
   to loosen or tighten past that default — `ToolGrant#with(UsagePolicy)`
   reuses the tool with a different policy. A policy that throws or returns
   `null` fails closed (`PolicyDecision.Deny`), never an accidental allow.
-- **`Memory`** (`spi.memory`) — the recall seam: `Memory.recall(SessionState)`
-  fetches messages from outside a session's own transcript — a graph, a
-  vector store, whatever a caller wires up. Sibling to `Shape`, not
-  a subtype: shaping stays pure and total, recall is I/O and best-effort
+- **`ContextEnricher`** (`spi.context`) — the enrichment seam:
+  `ContextEnricher.enrich(SessionState)` fetches messages from outside a
+  session's own transcript — a graph, a vector store, whatever a caller wires
+  up. Memory is just a `ContextEnricher`. Sibling to `Projection`, not a
+  subtype: projection stays pure and total, enrichment is I/O and best-effort
   — a downed store or a pairing-invariant-breaking result costs that one
-  contributor's enrichment, never the turn, and emits `RecallFailed` on the
-  hub. There is no `Memory.none()` sentinel; an empty recall list on
-  `ContextPipeline.Builder` is the degenerate, zero-allocation, zero-
-  observation case. Wired via `.context(pipeline -> pipeline.recall(...))`
-  on `AgentBuilder`.
-- **`RecallFailed(SessionId, String)`** (`api.event`) — the hub event a
-  failed recall contributor emits, mirroring `CompactionFailed` exactly: the
-  reason one contributor's memory enrichment was skipped, for observability
-  and alerting.
+  contributor's enrichment, never the turn, and emits `EnrichmentFailed` on
+  the hub. Enrichers key on `SessionState`, not the projected `Context`: the
+  context is the thing that will *include* the enrichment, so keying on it
+  would be circular, and projection is a wire concern — an elided tool
+  result reads `"[elided]"` in the projected context but full text in the
+  working set. There is no `ContextEnricher.none()` sentinel; an empty
+  enrichment list on `ContextPipeline.Builder` is the degenerate,
+  zero-allocation, zero-observation case. Wired via
+  `.context(pipeline -> pipeline.enrich(...))` on `AgentBuilder`.
+- **`EnrichmentFailed(SessionId, String)`** (`api.event`) — the hub event a
+  failed enrichment contributor emits, mirroring `CompactionFailed` exactly:
+  the reason one contributor's context enrichment was skipped, for
+  observability and alerting.
 - **`Agent.contextFor(SessionId)`** and **`ContextPipeline`** (`spi.context`) —
   the debugging affordance that answers *what would a call made against this
   session see right now*, truthfully and without spending a model call:
   `contextFor` loads the session's stored state and runs it through the same
-  `ContextPipeline` instance — one implementation of "shape, then recall,
+  `ContextPipeline` instance — one implementation of "project, then enrich,
   then compose per placement" — that `InProcessEngine.requestFor` consults on
   every conversational send, so the preview and the real thing can never
-  drift apart. Still performs recall's I/O to answer, so configured `Memory`
-  contributors are genuinely consulted.
+  drift apart. Still performs enrichment's I/O to answer, so configured
+  `ContextEnricher` contributors are genuinely consulted.
 - **`Context`** (`api`) — the pairing invariant's single home: an immutable,
   validated message sequence bound for the wire, whose construction rejects an
   orphan `tool_use`/results pair. `ModelRequest` and `ContextBuilder.project`
@@ -161,10 +166,10 @@ changed.
   meant to compose as a codec *decorator* over any store, not a per-vendor
   reimplementation.
 - **`spi.context` and `spi.compaction` packaging** — collaborators now live
-  next to the seam they serve: `spi.context` holds `Shape` and
+  next to the seam they serve: `spi.context` holds `Projection` and
   `ContextPipeline` (`ContextBuilder`, briefly moved here from `spi` root,
-  has since dissolved into `Shape` — see "The context pipeline" below) and
-  the new `TokenEstimator`; `spi.compaction` holds
+  has since dissolved into `Projection` — see "The context pipeline" below)
+  and the new `TokenEstimator`; `spi.compaction` holds
   `Summarizer`. `TokenEstimator.estimate(Message)` (default `heuristic()`,
   content characters / 4) manufactures the per-message token figure no
   provider reports, computed on demand on the read path only — never
@@ -183,27 +188,39 @@ changed.
   summarization call skips compaction for that turn rather than failing it,
   and emits `CompactionFailed` on the hub — and is instrumented via the
   `nessy.compaction` observation alongside the engine's other spans.
-- **The context pipeline: `ContextPipeline`, `Shape`, `Placement`**
+- **The context pipeline: `ContextPipeline`, `Projection`, `Placement`**
   (`spi.context`; supersedes `ContextBuilder` and `ContextAssembler`, both
   dissolved — see "Removed" below) — the Contextualize phase (design §6.1,
   §10.9), the one lifecycle phase with fully open, Maven-style binding:
-  `.context(pipeline -> pipeline.recall(...).shape(...).placement(...))` on
+  `.context(pipeline -> pipeline.project(...).enrich(...).placement(...))` on
   `AgentBuilder` replaces the old `.contextBuilder(...)`/`.memory(...)` pair
-  outright. `Shape` (`Context apply(Context context)`) is pure and total,
-  applied in declaration order to the `Context` minted from the session's
-  messages; `Shape.elidingToolResults(keepRecentMessages)` (formerly
-  `ContextBuilder.elidingToolResults`) is the first standard shape, replacing
-  the content of older tool results with a placeholder while keeping the
-  recent window verbatim, trading prompt-cache hits for context space. The
-  empty shape list is identity — there is no dedicated `Shape.identity()`
-  factory, the empty list already says it. `Memory` recall contributors run
-  after shaping, each independently best-effort under its own
-  `nessy.memory.recall` observation, concatenating in declaration order;
-  `ContextPipeline.Placement` (`MEMORIES_FIRST`, the default, and
-  `MEMORIES_LAST`) decides where the recalled block lands relative to the
-  shaped transcript. `ContextPipeline` is constructed once per agent at
-  `AgentBuilder.build()` time and shared by `InProcessEngine.requestFor` and
-  `Agent.contextFor`, exactly as `ContextAssembler` was.
+  outright. `Projection` (`Context apply(Context context)`) is pure and
+  total, applied in declaration order to the `Context` minted from the
+  session's messages; `Projection.elidingToolResults(keepRecentMessages)`
+  (formerly `ContextBuilder.elidingToolResults`) is the first standard
+  projection, replacing the content of older tool results with a placeholder
+  while keeping the recent window verbatim, trading prompt-cache hits for
+  context space. The empty projection list is identity — there is no
+  dedicated `Projection.identity()` factory, the empty list already says it.
+  `ContextEnricher` contributors run after projection, each independently
+  best-effort under its own `nessy.context.enrich` observation, concatenating
+  in declaration order; `ContextPipeline.Placement` (`ENRICHMENTS_FIRST`, the
+  default, and `ENRICHMENTS_LAST`) decides where the enriched block lands
+  relative to the projected transcript. Project runs before enrich by
+  jurisdiction, not sequence: enrichers key on the ledger, so ordering costs
+  them nothing, while projections govern the transcript's wire form — enriched
+  material must stay outside their reach. `ContextPipeline` is constructed
+  once per agent at `AgentBuilder.build()` time and shared by
+  `InProcessEngine.requestFor` and `Agent.contextFor`, exactly as
+  `ContextAssembler` was.
+- **Context pipeline vocabulary settled (design §10.9, 2026-08-10)** — this
+  pipeline's working names before its first release — `Shape`, `Memory`
+  (`spi.memory`), `.recall(...)`/`.shape(...)`, `RecallFailed`, and
+  `MEMORIES_FIRST`/`MEMORIES_LAST` — are renamed throughout to their settled
+  form: `Projection`, `ContextEnricher` (`spi.context`; `spi.memory`
+  dissolves), `.project(...)`/`.enrich(...)`, `EnrichmentFailed`, and
+  `ENRICHMENTS_FIRST`/`ENRICHMENTS_LAST`. A pre-release rename, not a breaking
+  change — none of the old names ever shipped.
 - **`Usage.cachedInputTokens`** — the third component of `Usage`, reporting the
   cache-hit split of a turn's input tokens now that both live providers can
   report it.
@@ -298,22 +315,21 @@ changed.
   drop-in replacement for every existing `Nessy.agent()` call site — the
   mechanical fix is `.send(x)` → `.tell(x)` plus spelling out `Agent<String>`
   wherever the raw type was written. See "The typed front door" above.
-- **`Memory.recall(Context)` → `Memory.recall(SessionState)` (pre-1.0 breaking)** —
-  recall now cues on the ledger, not the shaped `Context`: the context is
-  the thing that will *include* the recalled messages, and shaping is a
-  wire concern (an elided tool result reads `"[elided]"` in the shaped context
-  but full text in the working set), so recall relevance should key on the
-  conversation's truth. `recall(SessionState)`'s argument mirrors what a
-  `Shape` sees before shaping, and `ContextPipeline` concatenates every
-  contributor's output. Custom `Memory` implementations must update their
-  lambda parameter's type.
+- **`ContextEnricher.enrich` cues on `SessionState`, not `Context`** —
+  enrichment cues on the ledger, not the projected `Context`: the context is
+  the thing that will *include* the enriched messages, and projection is a
+  wire concern (an elided tool result reads `"[elided]"` in the projected
+  context but full text in the working set), so enrichment relevance should
+  key on the conversation's truth. `enrich(SessionState)`'s argument mirrors
+  what a `Projection` sees before projecting, and `ContextPipeline`
+  concatenates every contributor's output.
 - **`ContextBuilder` and `ContextAssembler` dissolved into the context
   pipeline (pre-1.0 breaking)** — `spi.context.ContextBuilder` and
   `spi.ContextAssembler` are deleted outright, not deprecated.
-  `ContextBuilder.identity()` is now simply the empty shape list on a
+  `ContextBuilder.identity()` is now simply the empty projection list on a
   `ContextPipeline.Builder`; `ContextBuilder.elidingToolResults(n)` moved to
-  `Shape.elidingToolResults(n)`, taking and returning `Context` instead of
-  projecting from `SessionState`. `AgentBuilder.contextBuilder(...)` and
+  `Projection.elidingToolResults(n)`, taking and returning `Context` instead
+  of projecting from `SessionState`. `AgentBuilder.contextBuilder(...)` and
   `AgentBuilder.memory(...)` are both replaced by the single
   `AgentBuilder.context(Consumer<ContextPipeline.Builder>)`. See "The context
   pipeline" above for the full shape.

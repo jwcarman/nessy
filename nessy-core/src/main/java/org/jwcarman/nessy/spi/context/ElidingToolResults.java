@@ -27,10 +27,10 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
  * keepRecentMessages}, keeping the recent window verbatim.
  *
  * <p>The sliding boundary rewrites one old message per turn as the window advances, churning the
- * prompt-cache prefix — elision trades cache hits for context space, which is why the empty shape
- * list (see {@link Shape}) is the pipeline default.
+ * prompt-cache prefix — elision trades cache hits for context space, which is why the empty
+ * projection list (see {@link Projection}) is the pipeline default.
  */
-final class ElidingToolResults implements Shape {
+final class ElidingToolResults implements Projection {
 
   private static final String ELIDED = "[elided]";
 

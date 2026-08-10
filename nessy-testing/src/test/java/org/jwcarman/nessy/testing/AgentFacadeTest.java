@@ -49,8 +49,8 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.context.Shape;
-import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.context.ContextEnricher;
+import org.jwcarman.nessy.spi.context.Projection;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.session.InMemoryTranscriptStore;
 import org.jwcarman.nessy.spi.session.SessionStore;
@@ -193,15 +193,15 @@ class AgentFacadeTest {
             .text("Still here.")
             .endTurn()
             .build();
-    // A marking shape: drops the oldest message so the assertions below can tell the shaped
-    // request apart from the untouched state the reducer kept.
-    Shape droppingOldest =
+    // A marking projection: drops the oldest message so the assertions below can tell the
+    // projected request apart from the untouched state the reducer kept.
+    Projection droppingOldest =
         context -> Context.of(context.messages().subList(1, context.messages().size()));
     Agent<String> agent =
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
-            .context(pipeline -> pipeline.shape(droppingOldest))
+            .context(pipeline -> pipeline.project(droppingOldest))
             .build();
 
     Conversation<String> chat = agent.converse();
@@ -257,7 +257,7 @@ class AgentFacadeTest {
             .endTurn()
             .build();
     Message fact = Message.user("remembered fact");
-    Memory memory = state -> List.of(fact);
+    ContextEnricher enricher = state -> List.of(fact);
     // keepRecentMessages is large enough that nothing in this short transcript is ever old
     // enough to elide: the point of this test is that contextFor consults the same
     // ContextPipeline the engine does, not eliding's own cut-point behavior.
@@ -266,7 +266,8 @@ class AgentFacadeTest {
             .provider(provider)
             .model("fake-model")
             .tools(new AddTool())
-            .context(pipeline -> pipeline.shape(Shape.elidingToolResults(50)).recall(memory))
+            .context(
+                pipeline -> pipeline.project(Projection.elidingToolResults(50)).enrich(enricher))
             .build();
 
     Conversation<String> chat = agent.converse();
@@ -436,7 +437,7 @@ class AgentFacadeTest {
         Nessy.agent()
             .provider(provider)
             .model("fake-model")
-            .context(pipeline -> pipeline.shape(Shape.elidingToolResults(2)))
+            .context(pipeline -> pipeline.project(Projection.elidingToolResults(2)))
             .build();
 
     assertThat(agent).isNotNull();

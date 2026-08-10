@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
-class ShapeTest {
+class ProjectionTest {
 
   private static Message toolUse(String callId) {
     return Message.assistant(
@@ -63,7 +63,7 @@ class ShapeTest {
       Context context =
           Context.of(List.of(assistant1, old_result, middle, assistant2, recent_result));
 
-      Context shaped = Shape.elidingToolResults(1).apply(context);
+      Context shaped = Projection.elidingToolResults(1).apply(context);
 
       List<Message> expected =
           List.of(
@@ -89,7 +89,7 @@ class ShapeTest {
       Context context =
           Context.of(List.of(assistant_call1, old_result, recent_assistant, recent_result));
 
-      Context shaped = Shape.elidingToolResults(2).apply(context);
+      Context shaped = Projection.elidingToolResults(2).apply(context);
 
       assertThat(shaped.messages().get(2)).isSameAs(recent_assistant);
       assertThat(shaped.messages().get(3)).isSameAs(recent_result);
@@ -104,7 +104,7 @@ class ShapeTest {
       Message recent = Message.user("recent");
       Context context = Context.of(List.of(assistant1, old_mixed, recent));
 
-      Context shaped = Shape.elidingToolResults(1).apply(context);
+      Context shaped = Projection.elidingToolResults(1).apply(context);
 
       ContentBlock preserved = shaped.messages().get(1).content().get(0);
       assertThat(preserved).isSameAs(untouched_text);
@@ -118,8 +118,8 @@ class ShapeTest {
       Message second = Message.toolResults(List.of(new ToolResultBlock("call-2", "two", false)));
       Context context = Context.of(List.of(assistant1, first, assistant2, second));
 
-      Context elides_everything = Shape.elidingToolResults(0).apply(context);
-      Context elides_nothing = Shape.elidingToolResults(100).apply(context);
+      Context elides_everything = Projection.elidingToolResults(0).apply(context);
+      Context elides_nothing = Projection.elidingToolResults(100).apply(context);
 
       assertThat(elides_everything.messages())
           .containsExactly(
@@ -134,7 +134,7 @@ class ShapeTest {
 
     @Test
     void keep_recent_messages_must_not_be_negative() {
-      assertThatThrownBy(() -> Shape.elidingToolResults(-1))
+      assertThatThrownBy(() -> Projection.elidingToolResults(-1))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("keepRecentMessages must be at least 0");
     }

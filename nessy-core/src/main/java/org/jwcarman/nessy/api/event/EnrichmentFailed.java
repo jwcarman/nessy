@@ -18,10 +18,10 @@ package org.jwcarman.nessy.api.event;
 import java.util.Objects;
 import org.jwcarman.nessy.api.session.SessionId;
 
-/** A memory recall failed; the request proceeds with no recalled messages. */
-public record RecallFailed(SessionId sessionId, String reason) {
+/** A context enricher failed; the request proceeds without that contributor's messages. */
+public record EnrichmentFailed(SessionId sessionId, String reason) {
 
-  public RecallFailed {
+  public EnrichmentFailed {
     Objects.requireNonNull(sessionId, "sessionId must not be null");
     Objects.requireNonNull(reason, "reason must not be null");
   }

@@ -74,10 +74,10 @@ public final class Agent<I> {
 
   /**
    * The debugging affordance: exactly what a conversational call made against {@code id} right now
-   * would see — the same shaping, the same recalled memories, assembled by the same {@link
+   * would see — the same projections, the same enrichments, assembled by the same {@link
    * ContextPipeline} instance the engine consults on every send. Truthful without a model call,
    * because assembly is deterministic over state; not free, because a configured {@link
-   * org.jwcarman.nessy.spi.memory.Memory} still performs recall I/O to answer.
+   * org.jwcarman.nessy.spi.context.ContextEnricher} still performs enrichment I/O to answer.
    *
    * @throws IllegalArgumentException if no session {@code id} is stored
    */
