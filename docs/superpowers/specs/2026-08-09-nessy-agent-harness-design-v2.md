@@ -1561,3 +1561,15 @@ governs; the convergence plan sweeps the body text.
 `.name(…)` attribution for multi-agent observability — its vehicle (the
 envelope) was deleted and the owner never ruled; open question, revisit
 with the multi-agent work.
+
+**Addendum (ruled 2026-08-10, late): one path for tool authority.**
+`Tool.requiresApproval()` is DELETED — a tool is pure capability (name,
+schema, execution) and carries zero authority content; whether an
+application wants a human in the loop is a deployment decision no tool
+author can make. The policy is MANDATORY on every grant and there is
+exactly one construction path: `grant(tool, policy)` — no bare grants, no
+derived floors, no `.with(...)` re-dressing, no defaults. The compile-time
+fail-closed property relocates to the grant: a grant does not exist until
+its authority is answered. `AgentBuilder.tools(Tool...)` dies with the
+derivation — every tool attachment is a grant that states its policy. The
+grant line is the complete security statement, structurally.
