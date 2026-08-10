@@ -16,9 +16,13 @@
 package org.jwcarman.nessy.spi.context;
 
 import org.jwcarman.nessy.api.ContentBlock;
+import org.jwcarman.nessy.api.ImageBlock;
 import org.jwcarman.nessy.api.Message;
+import org.jwcarman.nessy.api.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.TextBlock;
+import org.jwcarman.nessy.api.ThinkingBlock;
 import org.jwcarman.nessy.api.ToolResultBlock;
+import org.jwcarman.nessy.api.ToolUseBlock;
 
 /**
  * Manufactures the message-level token figure that models never report.
@@ -45,7 +49,10 @@ public interface TokenEstimator {
             switch (block) {
               case TextBlock text -> text.text().length();
               case ToolResultBlock toolResult -> toolResult.content().length();
-              default -> 0;
+              case ImageBlock ignored -> 0;
+              case ThinkingBlock ignored -> 0;
+              case RedactedThinkingBlock ignored -> 0;
+              case ToolUseBlock ignored -> 0;
             };
       }
       return Math.max(1, characters / 4);

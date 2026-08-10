@@ -190,8 +190,9 @@ that strategy is `summarizing`: `CompactionPolicy.defaults()` triggers once
 itself reported for the previous turn) reaches 100,000 tokens, and shrinks by
 asking the model to summarize everything except the most recent 10 messages,
 capping that summary reply at 2,048 tokens. The cut always lands on a
-message-pair boundary — the reducer never splits a tool call from its result —
-so what survives is always a valid transcript. If no such boundary exists old
+message-pair boundary — the pair-safe cut (`Context.pairSafeCut`, used by the
+summarizing strategy) never splits a tool call from its result — so what
+survives is always a valid working set. If no such boundary exists old
 enough to compact — a tool-heavy transcript with no plain user-text turn far
 enough back, for example — the strategy leaves the working set unchanged for
 that turn rather than cutting somewhere unsafe.

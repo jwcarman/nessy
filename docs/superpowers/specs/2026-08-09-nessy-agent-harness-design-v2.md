@@ -761,10 +761,18 @@ public interface CompactionStrategy {
   it. The recompute-the-cut hazard parked by Plan 4's review dissolves: a
   replayed `Compacted` reproduces state by construction.
 - **The earlier pieces demote into the default strategy, not the trash.**
-  `CompactionStrategy.summarizing(policy, summarizer)` is the default:
-  `requiresCompaction` delegates to the policy's trigger, `compact` cuts
-  at `Context.pairSafeCut(keepRecentMessages)` (no safe cut → unchanged
-  result → skip) and stands in a `Summarizer` summary for the head.
+  The default is *not* a static factory on the `CompactionStrategy`
+  interface itself: `api` may never depend on `spi` (see
+  `ZoneBoundariesTest`), and the default needs a `Summarizer`, which is an
+  `spi.compaction` type. So it lives as
+  `org.jwcarman.nessy.spi.compaction.CompactionStrategies#summarizing(CompactionPolicy,
+  Summarizer)` instead; `CompactionStrategy.disabled()` is the only factory
+  that belongs on the interface, because it needs nothing from `spi`. Most
+  callers reach the summarizing default through `AgentBuilder`, which
+  assembles it for you. `requiresCompaction` delegates to the policy's
+  trigger, `compact` cuts at `Context.pairSafeCut(keepRecentMessages)` (no
+  safe cut → unchanged result → skip) and stands in a `Summarizer` summary
+  for the head.
   `CompactionPolicy` becomes its knob bundle — `(CompactionTrigger
   trigger, int keepRecentMessages, int summaryMaxTokens, String
   instructions)`, `defaults()` = `atTokens(100_000)`, `disabled()` =
@@ -863,8 +871,10 @@ genuine user text turn) moves out of the reducer's private method and onto
 the type, with head/tail slicing beside it — so the reducer, the
 summarizer's head selection, and any budget-aware projection all use one
 implementation of "where may I cut?". Wire-bound seams speak `Context`:
-`ContextBuilder.project` returns one, `ModelRequest` and `Effect.Compact`
-carry one. `SessionState.messages` stays a plain list — a mid-turn state
+`ModelRequest` and `ContextBuilder.project` speak `Context`; `Effect.Compact`/
+`CompactionStrategy.compact` carry the working set as `List<Message>` (a pure
+reducer must not mint a throwing type), validated as a `Context` at the
+engine's compact-result check. `SessionState.messages` stays a plain list — a mid-turn state
 legitimately ends with an open `tool_use` awaiting its results; the
 reducer guarantees completeness at every `CallModel`, which is where
 contexts are minted. An invalid projection now fails loudly at the seam,
@@ -955,9 +965,11 @@ the summarization call's spend to put on `Event.Compacted`.)
 
 The head handed in may begin with the previous summary message, so
 summaries fold forward across recompactions instead of nesting. It returns
-prose plus the call's measured usage; the reducer keeps ownership of the summary message's format and
-placement, so replay determinism stays in one place (`Event.Compacted`
-carries the string, as shipped). Failure is a thrown `RuntimeException`,
+prose plus the call's measured usage; the summary message's format and
+placement (the `SUMMARY_PREFIX` marker) live in `SummarizingCompaction`, not
+the reducer, so replay determinism stays in one place (`Event.Compacted`
+carries the replacement working set and the spend, as shipped — never a raw
+string). Failure is a thrown `RuntimeException`,
 and the engine's best-effort path is unchanged: `CompactionFailed` on the
 hub, `CompactionSkipped` fed, turn proceeds. The default,
 `Summarizer.usingProvider(provider)`, is exactly the shipped behavior
@@ -1260,7 +1272,7 @@ the application's own explicit declaration. If none is declared, the starter's
    | `Usage` cache-token component(s) (`cachedInputTokens`) | record component; `PROMPT_CACHING` cannot report the cache-hit split without it | ✅ cleared — `Usage` is now `(inputTokens, outputTokens, cachedInputTokens)` |
    | `ModelRequest.responseSchema` | record component; structured output (`reply.as(T)`) needs a schema slot to the provider | ✅ cleared — nullable slot shipped; providers wired today ignore it; the feature itself lands post-1.0 |
    | Artifact-reference design (outputs referenced from state, not embedded) | `ContentBlock`/state shape implications | open — resolve before any coding-agent toolset ships |
-   | `Context` adoption (`ContextBuilder`/`ModelRequest`/`Effect.Compact` speak `Context`) | seam signature + record component types; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
+   | `Context` adoption (`ModelRequest`/`ContextBuilder.project` speak `Context`; `Effect.Compact`/`CompactionStrategy.compact` carry `List<Message>`, validated as a `Context` at the engine's compact-result check) | seam signature + record component types; breaking after 1.0 | ✅ cleared — shipped and tested end to end (this plan) |
    | Typed front door (`Agent<I>`/`Conversation<I>`, §8.4) | retrofitting generics onto a shipped non-generic facade is source-breaking | open — the type parameter must be born pre-1.0; `Agent<String>` is the degenerate case |
    | Entry-event vocabulary | sealed `Event`; every post-1.0 variant is a major | open — typed input (§8.4) is the settled direction for attribution; residue is cancellation (`RunCancelled`, a DurableEngine-plan question) and agent-to-agent delivery; audit before freeze |
    | Per-grant authority (`ToolGrant`/`UsagePolicy`, §10.5) | `tools(…)` signature change; breaking after 1.0 | open — ships pre-1.0 |
@@ -1299,7 +1311,7 @@ the application's own explicit declaration. If none is declared, the starter's
 | One front door or two? | One: `Nessy.agent()`; engine reached through `Agent` |
 | Where does history live durably? (2026-08-09) | The append-only `TranscriptStore` journal, fed by the engine at message birth; state is the working set (§10.8) |
 | Where is the tool-pairing invariant enforced? (2026-08-09) | Once, in the `Context` type, at construction (§10.8) |
-| Is summarization pluggable? (2026-08-09) | Yes — `spi.compaction.Summarizer`, a many-implementations seam; the reducer keeps summary formatting (§10.8) |
+| Is summarization pluggable? (2026-08-09) | Yes — `spi.compaction.Summarizer`, a many-implementations seam; summary formatting (the `SUMMARY_PREFIX` marker) lives in `SummarizingCompaction`, not the reducer (§10.8) |
 | Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` computes the message-level figure on demand, read-path only — the journal stores facts (`turnUsage`), never derivations (§10.8) |
 | What is a harness? (2026-08-09) | The model-independent runtime an agent runs inside, defined by its eight-service contract (§1.1); reified as the `Harness` object (§8.4) |
 | Where does authority attach? (2026-08-09) | To the grant — `ToolGrant` + `UsagePolicy` per agent-tool binding; `requiresApproval()` is the tool author's default; explicit grant policy may loosen or tighten (§10.5) |

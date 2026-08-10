@@ -23,8 +23,11 @@ changed.
 
 - **`Context`** (`api`) — the pairing invariant's single home: an immutable,
   validated message sequence bound for the wire, whose construction rejects an
-  orphan `tool_use`/results pair. `ContextBuilder.project`, `ModelRequest`, and
-  `Effect.Compact` all speak `Context` now instead of a plain `List<Message>`.
+  orphan `tool_use`/results pair. `ModelRequest` and `ContextBuilder.project`
+  speak `Context` now instead of a plain `List<Message>`; `Effect.Compact` and
+  `CompactionStrategy.compact` carry the working set as `List<Message>` (a
+  pure reducer must not mint a throwing type), validated as a `Context` at the
+  engine's compact-result check.
   Pair-safe cutting and head/tail slicing (`Context.pairSafeCut(int)`,
   `Context.head(int)`) live on the type, so the reducer, the default
   summarizer, and any custom projection share one implementation of "where may
@@ -59,7 +62,7 @@ changed.
 - **`Summarizer`** (`spi.compaction`) — the default strategy's sub-seam:
   `summarize(Context head, CompactionPolicy policy) -> Summary(text, usage)`.
   Lets "same strategy, cheaper model" swap in without reimplementing cut
-  logic. The default, `Summarizer.usingProvider(provider)`, is the
+  logic. The default, `Summarizer.usingProvider(provider, config)`, is the
   tool-free, policy-bound summarization call the engine always performed
   before this seam existed; `AgentBuilder.summarizer(...)` overrides it,
   ignored once `.compaction(CompactionStrategy)` replaces the mechanism
@@ -93,18 +96,16 @@ changed.
   plain message list it used to carry, so every provider now receives the
   same validated, pairing-legal sequence the rest of the read path already
   guarantees.
-- **Stateful compaction** — `CompactionPolicy` (`triggerTokens`,
-  `keepRecentMessages`, `summaryMaxTokens`, `instructions`) is wired into
-  `Reducer` and `InProcessEngine`: once `SessionState.lastInputTokens()` (the
-  model's own measured input-token count) reaches the trigger, the reducer
-  summarizes everything but the most recent messages, cuts only on a
-  message-pair boundary, and bumps `SessionState.generation()`. Default is
-  `CompactionPolicy.defaults()` (100,000 trigger, keep 10 messages, 2,048-token
-  summary); `CompactionPolicy.disabled()` turns it off. Compaction is
-  best-effort — a failed summarization call skips compaction for that turn
-  rather than failing it, and emits `CompactionFailed` on the hub — and
-  instrumented via the `nessy.compaction` observation alongside the engine's
-  other spans.
+- **`CompactionPolicy`** (`api`) — the default strategy's knob bundle:
+  `CompactionTrigger trigger`, `keepRecentMessages`, `summaryMaxTokens`,
+  `instructions`. `CompactionPolicy.defaults()` (`CompactionTrigger.atTokens(100_000)`,
+  keep 10 messages, 2,048-token summary cap) is what
+  `CompactionStrategies.summarizing(policy, summarizer)` runs unless
+  overridden; `CompactionPolicy.disabled()` (`CompactionTrigger.never()`)
+  turns compaction off. Compaction stays best-effort — a failed
+  summarization call skips compaction for that turn rather than failing it,
+  and emits `CompactionFailed` on the hub — and is instrumented via the
+  `nessy.compaction` observation alongside the engine's other spans.
 - **`ContextBuilder`** — a seam that projects `SessionState` into the messages
   one model call actually sees, independent of what compaction stores.
   `ContextBuilder.identity()` (the builder default) hands over the transcript

@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A wire-safe slice of the conversation: a list of {@link Message}s that a provider will always
@@ -33,6 +34,7 @@ import java.util.List;
 public record Context(List<Message> messages) {
 
   public Context {
+    Objects.requireNonNull(messages, "messages must not be null");
     messages = List.copyOf(messages);
     int i = 0;
     while (i < messages.size()) {

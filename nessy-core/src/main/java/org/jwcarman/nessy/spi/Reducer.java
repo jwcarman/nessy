@@ -338,16 +338,18 @@ public record Reducer(TerminationPolicy termination, CompactionStrategy compacti
    * matters: the spend still happened and is still accounted for, but the messages are untouched
    * and the generation does not bump.
    *
-   * <p>Compaction only ever applies against a settled transcript. {@code Effect.Compact} is only
-   * ever emitted from {@link #proceedOrCompact}, which is only reached once the pending lane is
-   * already empty — but {@code Event.Compacted} can still land here with tool debt outstanding: a
-   * durably replayed run can replay a stale {@code Compacted} against a state that has since moved
-   * on, and nothing stops a hostile or buggy {@code CompactionStrategy} from answering late. Either
-   * way, splicing a rewritten working set underneath an assistant message that still has unanswered
-   * {@code tool_use} blocks would strand the pending lane — the tail the strategy dropped might be
-   * exactly the messages those calls belong to. So a {@code Compacted} arriving with {@code
-   * pendingCalls} or {@code pendingResults} non-empty is always treated as a skip, regardless of
-   * what the working set's size says.
+   * <p>Compaction only ever applies against a settled transcript, but that is a claim about the
+   * state at emission time, not at apply time — durable replay makes the two different moments.
+   * {@code Event.Compacted} can land here with tool debt outstanding: a durably replayed run can
+   * replay a stale {@code Compacted} against a state that has since moved on, and nothing stops a
+   * hostile or buggy {@code CompactionStrategy} from answering late. {@link #proceedOrCompact} is
+   * itself reached from more than one caller — including {@link #userSaid}, which performs no
+   * pending-lane check of its own — so this belt cannot lean on an apply-time guarantee that was
+   * never actually enforced at every call site. Splicing a rewritten working set underneath an
+   * assistant message that still has unanswered {@code tool_use} blocks would strand the pending
+   * lane — the tail the strategy dropped might be exactly the messages those calls belong to. So a
+   * {@code Compacted} arriving with {@code pendingCalls} or {@code pendingResults} non-empty is
+   * always treated as a skip, regardless of what the working set's size says.
    */
   private Step compacted(SessionState state, Event.Compacted event) {
     SessionState spent = state.withUsage(state.usage().plus(event.spend()));
