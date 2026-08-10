@@ -28,7 +28,6 @@ class AddTool implements Tool<Add> {
     public String name() { return "add"; }
     public String description() { return "Adds two integers"; }
     public Class<Add> inputType() { return Add.class; }
-    public boolean requiresApproval() { return false; }
 
     public Awaited<ToolResult> execute(Add input, ToolContext context) {
         return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
@@ -47,7 +46,12 @@ ScriptedModelProvider provider = ScriptedModelProvider.builder()
         .build();
 
 Agent<String> agent =
-    Nessy.harness(provider).build().agent().model("fake-model").tools(new AddTool()).build();
+    Nessy.harness(provider)
+        .build()
+        .agent()
+        .model("fake-model")
+        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+        .build();
 Reply reply = agent.converse().tell("what is 2+2?");
 
 reply.text(); // "The answer is 4."
@@ -108,7 +112,7 @@ Agent<String> agent =
     harness
         .agent()
         .model("claude-sonnet-4-5")
-        .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
+        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
         .approver(Approver.denyAll("would fail if ever asked"))
         .build();
 ```
@@ -119,13 +123,14 @@ observability is a harness-declared listener (see
 [Declared listening](#declared-listening) below): declare it once on the
 harness and it is seeded into every agent's own frozen chain, so the same
 listener instance fires for every agent's traffic without a shared, mutable
-hub object anywhere. `.tools(ToolGrant.grant(tool).with(policy))` is the
-security statement: a grant declares which tool an agent may call and the
-`UsagePolicy` the engine consults before it runs, together, per agent, per
-tool — the same pairing `AgentFacadeTest`'s
+hub object anywhere. `.tools(ToolGrant.grant(tool, policy))` is the
+security statement, structurally: a grant declares which tool an agent may
+call and the `UsagePolicy` the engine consults before it runs, together, per
+agent, per tool — the same pairing `AgentFacadeTest`'s
 `a_grant_line_declares_capability_and_authority_together` exercises end to
-end. `tools(Tool...)` still works as sugar over the derived default policy;
-reach for the grant form when an agent needs to loosen or tighten it.
+end. It is also the *only* way to attach a tool — `tools(Tool...)` does not
+exist, because no derivable policy exists: a tool carries zero authority
+content, so every attachment states its policy or does not compile.
 
 The odd-one-out agent — a different provider, a different store — is a
 **second harness**, one per infrastructure profile, never an override on
@@ -293,7 +298,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `SessionStore` | `SessionStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-turns | cost budget (post-usage) | custom |
-| `UsagePolicy` | derived from `requiresApproval()` via `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
+| `UsagePolicy` | `allow()` / `requireApproval()` stated per `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
 | Declared listening | `listen(type, listener)` sync | `listenAsync(type, listener)` per listener | bridges (SSE, message bus) via `Conversation#events()` |
 | Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
 | `ContextPipeline` | no enrichers, no projections | `Context.elideToolResults(keepRecentMessages)`; `ContextEnricher` contributors | RAG, redaction |

@@ -21,11 +21,10 @@ import java.util.Objects;
  * A capability and the authority to use it, declared together: which {@link Tool} an agent may
  * call, and the {@link UsagePolicy} the engine consults before it runs.
  *
- * <p>This is the security statement of the harness. Granting a tool without saying anything more
- * falls back to {@link #grant(Tool)}'s derived default — the same floor {@link
- * Tool#requiresApproval()} always drew — but the policy can be loosened or tightened at
- * construction time, per agent, per grant. Nowhere else: the engine consults only the policy a
- * grant carries and never reads {@link Tool#requiresApproval()} itself.
+ * <p>This is the security statement of the harness, and there is exactly one way to write it:
+ * {@link #grant(Tool, UsagePolicy)}. No bare grant, no derived floor, no re-dressing an existing
+ * grant with a different policy — a grant does not exist until its authority is answered. The
+ * engine consults only the policy a grant carries.
  */
 public record ToolGrant(Tool<?> tool, UsagePolicy policy) {
 
@@ -34,20 +33,10 @@ public record ToolGrant(Tool<?> tool, UsagePolicy policy) {
     Objects.requireNonNull(policy, "policy must not be null");
   }
 
-  /**
-   * The default grant: {@link Tool#requiresApproval()} becomes {@link
-   * UsagePolicy#requireApproval()}, and everything else becomes {@link UsagePolicy#allow()}. This
-   * is what {@code tools(Tool...)} uses to auto-wrap, so an agent that never mentions grants
-   * behaves exactly as it did before grants existed.
-   */
-  public static ToolGrant grant(Tool<?> tool) {
+  /** The sole construction path: a tool and the policy that governs it, stated together. */
+  public static ToolGrant grant(Tool<?> tool, UsagePolicy policy) {
     Objects.requireNonNull(tool, "tool must not be null");
-    return new ToolGrant(
-        tool, tool.requiresApproval() ? UsagePolicy.requireApproval() : UsagePolicy.allow());
-  }
-
-  /** The same tool, a different policy. */
-  public ToolGrant with(UsagePolicy policy) {
+    Objects.requireNonNull(policy, "policy must not be null");
     return new ToolGrant(tool, policy);
   }
 }

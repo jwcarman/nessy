@@ -39,15 +39,6 @@ public interface Tool<T> {
   Class<T> inputType();
 
   /**
-   * Whether a human must say yes before this runs.
-   *
-   * <p>Deliberately not defaulted. A default of {@code false} fails open: add a tool later, forget
-   * to override, and it runs ungated and silently. Abstract means a new tool does not compile until
-   * someone answers the question.
-   */
-  boolean requiresApproval();
-
-  /**
    * What this call looks like to a human, in the approval prompt.
    *
    * <p>The default is the record's {@code toString}, which is usable but reads like {@code

@@ -95,11 +95,6 @@ class InProcessEngineTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
       throw new IllegalStateException("kaboom");
     }
@@ -124,11 +119,6 @@ class InProcessEngineTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
       return Awaited.parked(ParkToken.generate());
     }
@@ -150,11 +140,6 @@ class InProcessEngineTest {
     @Override
     public Class<EngineFixtures.Echo> inputType() {
       return EngineFixtures.Echo.class;
-    }
-
-    @Override
-    public boolean requiresApproval() {
-      return false;
     }
 
     @Override
@@ -451,10 +436,9 @@ class InProcessEngineTest {
   }
 
   /**
-   * The authority chokepoint: {@code decide()} now consults a grant's {@link UsagePolicy} instead
-   * of {@link Tool#requiresApproval()} directly. These prove the three {@link PolicyDecision}
-   * outcomes route correctly, that a broken policy fails closed, and that {@link ToolGrant#grant}
-   * still reproduces the pre-grant behavior when nothing overrides it.
+   * The authority chokepoint: {@code decide()} consults only a grant's {@link UsagePolicy} — a tool
+   * carries no authority of its own. These prove the three {@link PolicyDecision} outcomes route
+   * correctly and that a broken policy fails closed.
    */
   @Nested
   class Authority {
@@ -553,28 +537,6 @@ class InProcessEngineTest {
           (ToolResultBlock) completed.state().messages().get(2).content().getFirst();
       assertThat(block.isError()).isTrue();
       assertThat(block.content()).contains("policy blew up");
-    }
-
-    @Test
-    void the_derived_default_matches_requires_approval_when_true() {
-      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(true);
-      CountingApprover approver = new CountingApprover(Approver.allowAll());
-
-      engineWithGrant(toolCallingProvider(), ToolGrant.grant(tool), approver)
-          .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
-
-      assertThat(approver.calls).isEqualTo(1);
-    }
-
-    @Test
-    void the_derived_default_matches_requires_approval_when_false() {
-      Tool<EngineFixtures.Echo> tool = new EngineFixtures.EchoTool(false);
-      CountingApprover approver = new CountingApprover(Approver.allowAll());
-
-      engineWithGrant(toolCallingProvider(), ToolGrant.grant(tool), approver)
-          .run(ID, ConversationEvent.UserSaid.of(ID, "echo hi"));
-
-      assertThat(approver.calls).isZero();
     }
 
     @Test
@@ -1008,11 +970,6 @@ class InProcessEngineTest {
             @Override
             public Class<EngineFixtures.Echo> inputType() {
               return EngineFixtures.Echo.class;
-            }
-
-            @Override
-            public boolean requiresApproval() {
-              return false;
             }
 
             @Override

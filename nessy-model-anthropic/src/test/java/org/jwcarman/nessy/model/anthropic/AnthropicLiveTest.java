@@ -31,7 +31,9 @@ import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.model.Capability;
 
 /**
@@ -64,11 +66,6 @@ class AnthropicLiveTest {
     @Override
     public Class<Add> inputType() {
       return Add.class;
-    }
-
-    @Override
-    public boolean requiresApproval() {
-      return false;
     }
 
     @Override
@@ -105,7 +102,7 @@ class AnthropicLiveTest {
             .agent()
             .model(MODEL)
             .maxTokens(256)
-            .tools(new AddTool())
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
 
     Reply reply = agent.converse().tell("What is 2+2? Use the add tool to compute it.");

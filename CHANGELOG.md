@@ -133,12 +133,20 @@ changed.
 - **`ToolGrant`/`UsagePolicy`** (`api.tool`) — capability and authority,
   declared together, per tool, per agent. A `ToolGrant(tool, policy)` pairs a
   granted `Tool` with the `UsagePolicy` the engine's one authority chokepoint
-  consults before it runs; `ToolGrant.grant(tool)` derives the same default
-  `Tool#requiresApproval()` always drew, so `tools(Tool...)` behaves exactly
-  as before. `tools(ToolGrant...)` supersedes it when a grant's policy needs
-  to loosen or tighten past that default — `ToolGrant#with(UsagePolicy)`
-  reuses the tool with a different policy. A policy that throws or returns
-  `null` fails closed (`PolicyDecision.Deny`), never an accidental allow.
+  consults before it runs. `tools(ToolGrant...)` is the only way to attach
+  tools to an `AgentBuilder` — see the one-path ruling below. A policy that
+  throws or returns `null` fails closed (`PolicyDecision.Deny`), never an
+  accidental allow.
+- **One path for tool authority (ruled 2026-08-10, pre-1.0 breaking; design
+  §17's final addendum)** — `Tool#requiresApproval()` is deleted from the
+  interface: a tool is pure capability (name, schema, execution) and carries
+  zero authority content. `ToolGrant.grant(Tool<?>, UsagePolicy)` is now the
+  sole construction path — no bare `grant(tool)`, no derived floor, no
+  `ToolGrant#with(UsagePolicy)` re-dressing. `AgentBuilder.tools(Tool...)` is
+  removed outright, since no derivable policy exists any more; every tool
+  attachment goes through `tools(ToolGrant...)` and states its policy or does
+  not compile. The grant line is the complete security statement,
+  structurally.
 - **`ContextEnricher`** (`spi.context`) — the enrichment seam:
   `ContextEnricher.enrich(SessionState)` fetches messages from outside a
   session's own transcript — a graph, a vector store, whatever a caller wires
@@ -478,14 +486,13 @@ changed.
   types took a further step: `api.compaction` (`CompactionStrategy`,
   `CompactionPolicy`, `CompactionTrigger`) is dissolved outright rather than
   kept as a resting place — see the `Compactor` consolidation above.
-- **`AgentBuilder.tools(...)` source-compat note (pre-1.0 breaking)** — adding
-  the `ToolGrant...` overload alongside the existing `Tool...` one means a
-  bare `.tools()` call (zero arguments) no longer resolves: it is now
-  ambiguous between the two varargs overloads, since an empty array satisfies
-  either equally well. Source relying on the zero-arg form must either drop
-  the call entirely (`tools` already defaults to an empty `ToolRegistry.of()`)
-  or pass an explicit empty array, e.g. `.tools(new Tool<?>[0])` — not
-  `.tools((Tool<?>[]) null)`, which NPEs inside `DefaultToolRegistry.of`.
+- **`AgentBuilder.tools(...)` source-compat note (pre-1.0 breaking, superseded
+  by the one-path ruling above)** — the `Tool...` overload this note
+  originally described no longer exists at all: `tools(ToolGrant...)` (and
+  `tools(ToolRegistry)`) are the only overloads. A bare `.tools()` call
+  (zero arguments) resolves unambiguously to `tools(ToolGrant...)`; `tools`
+  still defaults to an empty `ToolRegistry.of()` with no grants when never
+  called.
 - **Zones**: the codebase is reorganized from `org.jwcarman.nessy.core.*` into
   `org.jwcarman.nessy` (front door), `.api` (application developers: `Tool`,
   `Approver`, the message/event grammar), `.spi` (infrastructure extenders:

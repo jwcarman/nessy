@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.context.ContextPipeline;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -117,8 +118,13 @@ final class EngineFixtures {
       return Echo.class;
     }
 
-    @Override
-    public boolean requiresApproval() {
+    /**
+     * Test-fixture-only signal, not part of {@link Tool}: which {@link UsagePolicy} {@link
+     * #defaultGrants} should attach to this instance, so call sites can keep writing {@code new
+     * EchoTool(true)} / {@code new EchoTool(false)} for the two authority scenarios engine tests
+     * exercise without hand-rolling a grant at every call site.
+     */
+    boolean needsApproval() {
       return needsApproval;
     }
 
@@ -135,14 +141,25 @@ final class EngineFixtures {
   }
 
   /**
-   * The grant map {@code AgentBuilder} would derive for {@code tools}: every registered tool
-   * wrapped by {@link ToolGrant#grant(Tool)}. Lets engine tests that only care about execution, not
-   * authority, keep passing a bare {@link ToolRegistry} without duplicating that derivation.
+   * A grant per registered tool, every one explicitly policed: an {@link EchoTool} gets {@link
+   * UsagePolicy#requireApproval()} or {@link UsagePolicy#allow()} depending on {@link
+   * EchoTool#needsApproval()}; anything else gets {@link UsagePolicy#allow()}. Lets engine tests
+   * that only care about execution, or about {@code EchoTool}'s own two-scenario authority story,
+   * keep passing a bare {@link ToolRegistry} without hand-rolling a grant map at every call site.
    */
   static Map<String, ToolGrant> defaultGrants(ToolRegistry tools) {
     Map<String, ToolGrant> grants = new LinkedHashMap<>();
     for (ToolSpec spec : tools.specs()) {
-      tools.find(spec.name()).ifPresent(tool -> grants.put(spec.name(), ToolGrant.grant(tool)));
+      tools
+          .find(spec.name())
+          .ifPresent(
+              tool -> {
+                UsagePolicy policy =
+                    tool instanceof EchoTool echo && echo.needsApproval()
+                        ? UsagePolicy.requireApproval()
+                        : UsagePolicy.allow();
+                grants.put(spec.name(), ToolGrant.grant(tool, policy));
+              });
     }
     return grants;
   }

@@ -74,11 +74,6 @@ class AgentFacadeTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public Awaited<ToolResult> execute(Add input, ToolContext context) {
       return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
     }
@@ -121,11 +116,6 @@ class AgentFacadeTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public Awaited<ToolResult> execute(NoArgs input, ToolContext context) {
       context.events().emit(ConversationEvent.UserSaid.of(foreignConversationId, "foreign"));
       return Awaited.ready(ToolResult.ok("emitted"));
@@ -152,7 +142,12 @@ class AgentFacadeTest {
             .build();
 
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().model("fake-model").tools(new AddTool()).build();
+        Nessy.harness(provider)
+            .build()
+            .agent()
+            .model("fake-model")
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+            .build();
     Reply reply = agent.converse().tell("what is 2+2?");
 
     assertThat(reply.text()).isEqualTo("The answer is 4.");
@@ -211,7 +206,7 @@ class AgentFacadeTest {
   }
 
   /**
-   * The grant line is the security statement: {@code ToolGrant.grant(tool).with(policy)} declares
+   * The grant line is the security statement: {@code ToolGrant.grant(tool, policy)} declares
    * capability and authority together. The README's "The harness" section mirrors this two-builder
    * chain verbatim.
    */
@@ -229,7 +224,7 @@ class AgentFacadeTest {
         harness
             .agent()
             .model("fake-model")
-            .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             // The approver denies everything, but it must never be asked: the reply below
             // proves the sum actually ran (via the tool) rather than being silently denied.
             .approver(Approver.denyAll("would fail if ever asked"))
@@ -261,7 +256,7 @@ class AgentFacadeTest {
             .build()
             .agent()
             .model("fake-model")
-            .tools(new AddTool())
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .context(pipeline -> pipeline.project(ctx -> ctx.elideToolResults(50)).enrich(enricher))
             .build();
 
@@ -638,7 +633,9 @@ class AgentFacadeTest {
             .build()
             .agent()
             .model("fake-model")
-            .tools(new EmitForeignEventTool(foreignConversationId))
+            .tools(
+                ToolGrant.grant(
+                    new EmitForeignEventTool(foreignConversationId), UsagePolicy.allow()))
             .build();
     List<ConversationEvent> tapped = new ArrayList<>();
 

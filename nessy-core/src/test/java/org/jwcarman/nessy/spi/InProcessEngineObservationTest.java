@@ -188,11 +188,6 @@ class InProcessEngineObservationTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public Awaited<ToolResult> execute(EngineFixtures.Echo input, ToolContext context) {
       throw new IllegalStateException("kaboom");
     }

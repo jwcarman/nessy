@@ -404,10 +404,8 @@ public final class InProcessEngine implements ExecutionEngine {
    * Answers the approval question for one call by consulting its grant — the harness's one
    * authority chokepoint.
    *
-   * <p>{@link Tool#requiresApproval()} plays no part here: {@link ToolGrant#grant} is the only
-   * place that reads it, deriving the default policy at grant construction. From here on the
-   * grant's {@link org.jwcarman.nessy.api.tool.UsagePolicy} alone decides whether the approver is
-   * ever asked.
+   * <p>A tool carries no authority of its own: only the grant's {@link
+   * org.jwcarman.nessy.api.tool.UsagePolicy} decides whether the approver is ever asked.
    *
    * <p>A missing grant splits into two cases. A call to a tool {@link #tools} does not know at all
    * is allowed through here — {@link #executeTool} then turns it into the one, model-visible "no

@@ -28,7 +28,9 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 
 /**
  * Exercises {@link OpenAiModelProvider} against the real OpenAI API.
@@ -65,11 +67,6 @@ class OpenAiLiveTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public Awaited<ToolResult> execute(Add input, ToolContext context) {
       return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
     }
@@ -103,7 +100,7 @@ class OpenAiLiveTest {
             .agent()
             .model(MODEL)
             .maxTokens(256)
-            .tools(new AddTool())
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
 
     Reply reply = agent.converse().tell("What is 2+2? Use the add tool to compute it.");

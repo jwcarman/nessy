@@ -96,16 +96,17 @@ class UsagePolicyTest {
     }
   }
 
+  /**
+   * A tool carries no authority of its own — {@code Tool#requiresApproval()} is gone, and {@link
+   * ToolGrant#grant(Tool, UsagePolicy)} is the sole construction path. There is no derived floor
+   * left to test: {@code a_grant_states_its_policy_or_does_not_compile} is a compile-level property
+   * (the single-arg {@code grant(tool)} no longer exists as a method to call), so what remains to
+   * pin here is the static factory's own validation.
+   */
   @Nested
-  class Grant_derivation {
+  class Grant_construction {
 
     private static final class Recorder implements Tool<Object> {
-      private final boolean needsApproval;
-
-      Recorder(boolean needsApproval) {
-        this.needsApproval = needsApproval;
-      }
-
       @Override
       public String name() {
         return "recorder";
@@ -122,42 +123,34 @@ class UsagePolicyTest {
       }
 
       @Override
-      public boolean requiresApproval() {
-        return needsApproval;
-      }
-
-      @Override
       public Awaited<ToolResult> execute(Object input, ToolContext context) {
         return Awaited.ready(ToolResult.ok("recorded"));
       }
     }
 
     @Test
-    void a_tool_that_requires_approval_derives_a_require_approval_grant() {
-      ToolGrant grant = ToolGrant.grant(new Recorder(true));
-
-      assertThat(grant.policy().evaluate(spendCall(1), STATE))
-          .isEqualTo(new PolicyDecision.RequireApproval());
+    void grant_rejects_a_null_tool() {
+      assertThatThrownBy(() -> ToolGrant.grant(null, UsagePolicy.allow()))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("tool");
     }
 
     @Test
-    void a_tool_that_does_not_require_approval_derives_an_allow_grant() {
-      ToolGrant grant = ToolGrant.grant(new Recorder(false));
-
-      assertThat(grant.policy().evaluate(spendCall(1), STATE))
-          .isEqualTo(new PolicyDecision.Allow());
+    void grant_rejects_a_null_policy() {
+      assertThatThrownBy(() -> ToolGrant.grant(new Recorder(), null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("policy");
     }
 
     @Test
-    void with_replaces_only_the_policy() {
-      Recorder tool = new Recorder(true);
-      ToolGrant derived = ToolGrant.grant(tool);
+    void grant_states_the_tool_and_policy_it_was_given() {
+      Recorder tool = new Recorder();
+      UsagePolicy policy = UsagePolicy.requireApproval();
 
-      ToolGrant tightened = derived.with(UsagePolicy.deny("locked down"));
+      ToolGrant grant = ToolGrant.grant(tool, policy);
 
-      assertThat(tightened.tool()).isSameAs(tool);
-      assertThat(tightened.policy().evaluate(spendCall(1), STATE))
-          .isEqualTo(new PolicyDecision.Deny("locked down"));
+      assertThat(grant.tool()).isSameAs(tool);
+      assertThat(grant.policy()).isSameAs(policy);
     }
   }
 
@@ -173,7 +166,7 @@ class UsagePolicyTest {
 
     @Test
     void a_grant_rejects_a_null_policy() {
-      assertThatThrownBy(() -> new ToolGrant(new Grant_derivation.Recorder(false), null))
+      assertThatThrownBy(() -> new ToolGrant(new Grant_construction.Recorder(), null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("policy");
     }

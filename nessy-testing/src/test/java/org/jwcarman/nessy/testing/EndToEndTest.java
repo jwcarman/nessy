@@ -86,11 +86,6 @@ class EndToEndTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return true;
-    }
-
-    @Override
     public String describe(Add input) {
       return "add(" + input.left() + ", " + input.right() + ")";
     }
@@ -126,7 +121,7 @@ class EndToEndTest {
             .agent()
             .model("fake-model")
             .systemPrompt("be helpful")
-            .tools(new AddTool())
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .listen(Object.class, subscriber)
             .build();
 
@@ -143,7 +138,12 @@ class EndToEndTest {
   void the_tool_schema_reaches_the_model() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().model("fake-model").tools(new AddTool()).build();
+        Nessy.harness(provider)
+            .build()
+            .agent()
+            .model("fake-model")
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+            .build();
 
     agent
         .engine()
@@ -299,12 +299,11 @@ class EndToEndTest {
   class A_grant_line_per_agent {
 
     /**
-     * {@code AddTool.requiresApproval()} is {@code true}, so its derived default grant would defer
-     * every agent to the approver. Two harnesses (provider is harness-owned, never an agent
-     * override — design §17's razor), two grant lines for the same tool: the free agent's explicit
-     * {@link UsagePolicy#allow()} skips the approver outright, while the gated agent keeps the
-     * derived default and hits an approver that denies. The grant, not the tool, is what decided
-     * each agent's authority.
+     * A tool carries no authority of its own — only its grant does. Two harnesses (provider is
+     * harness-owned, never an agent override — design §17's razor), two grant lines for the same
+     * {@code AddTool}: the free agent's explicit {@link UsagePolicy#allow()} skips the approver
+     * outright, while the gated agent's explicit {@link UsagePolicy#requireApproval()} hits an
+     * approver that denies. The grant, not the tool, is what decided each agent's authority.
      */
     @Test
     void the_grant_line_is_the_security_statement() {
@@ -320,7 +319,7 @@ class EndToEndTest {
               .build()
               .agent()
               .model("fake-model")
-              .tools(ToolGrant.grant(new AddTool()).with(UsagePolicy.allow()))
+              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
               // The approver denies everything, but it must never be asked: the tool-result
               // assertion below checks the sum actually ran rather than being denied, which
               // "The answer is 4." alone would not prove — that text comes from the script
@@ -340,7 +339,7 @@ class EndToEndTest {
               .build()
               .agent()
               .model("fake-model")
-              .tools(new AddTool())
+              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.requireApproval()))
               .approver(Approver.denyAll("not on this agent"))
               .build();
 
@@ -707,7 +706,7 @@ class EndToEndTest {
               .build()
               .agent()
               .model("fake-model")
-              .tools(new AddTool())
+              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
               .context(pipeline -> pipeline.project(ctx -> ctx.elideToolResults(2)))
               .build();
 

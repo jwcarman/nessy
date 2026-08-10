@@ -21,7 +21,9 @@ import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
 /**
@@ -41,7 +43,9 @@ public final class DemoAgent {
         .agent()
         .model(model)
         .systemPrompt(SYSTEM_PROMPT)
-        .tools(new AddTool(), new ClockTool())
+        .tools(
+            ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
+            ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()))
         .approver(new ConsoleApprover())
         .build();
   }
@@ -64,11 +68,6 @@ public final class DemoAgent {
     @Override
     public Class<Add> inputType() {
       return Add.class;
-    }
-
-    @Override
-    public boolean requiresApproval() {
-      return false;
     }
 
     @Override
@@ -102,11 +101,6 @@ public final class DemoAgent {
     @Override
     public Class<Now> inputType() {
       return Now.class;
-    }
-
-    @Override
-    public boolean requiresApproval() {
-      return true;
     }
 
     @Override

@@ -19,8 +19,7 @@ package org.jwcarman.nessy.api.tool;
  * What a {@link UsagePolicy} decided about one call.
  *
  * <p>Three answers, not two: {@link Allow} and {@link Deny} settle the question outright, and
- * {@link RequireApproval} defers it to the harness's {@code Approver} — the same human-in-the-loop
- * path a tool's {@code requiresApproval()} triggered before grants existed.
+ * {@link RequireApproval} defers it to the harness's {@code Approver}.
  */
 public sealed interface PolicyDecision {
 
@@ -37,6 +36,6 @@ public sealed interface PolicyDecision {
     }
   }
 
-  /** Ask a human, exactly as a tool with {@code requiresApproval() == true} always has. */
+  /** Ask a human. */
   record RequireApproval() implements PolicyDecision {}
 }

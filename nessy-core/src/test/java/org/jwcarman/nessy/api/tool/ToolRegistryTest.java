@@ -50,11 +50,6 @@ class ToolRegistryTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public String describe(Greet input) {
       return "greet(" + input.name() + ")";
     }
@@ -87,11 +82,6 @@ class ToolRegistryTest {
     @Override
     public Class<Named> inputType() {
       return Named.class;
-    }
-
-    @Override
-    public boolean requiresApproval() {
-      return false;
     }
 
     @Override

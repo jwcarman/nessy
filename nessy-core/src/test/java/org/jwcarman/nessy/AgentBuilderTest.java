@@ -25,6 +25,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -65,11 +66,6 @@ class AgentBuilderTest {
     }
 
     @Override
-    public boolean requiresApproval() {
-      return false;
-    }
-
-    @Override
     public Awaited<ToolResult> execute(Nothing input, ToolContext context) {
       return Awaited.ready(ToolResult.ok("done"));
     }
@@ -89,7 +85,7 @@ class AgentBuilderTest {
 
     @Test
     void a_null_element_in_the_grants_array_is_rejected() {
-      ToolGrant present = ToolGrant.grant(new NoOpTool());
+      ToolGrant present = ToolGrant.grant(new NoOpTool(), UsagePolicy.allow());
 
       assertThatThrownBy(() -> Nessy.harness(NEVER_CALLED).build().agent().tools(present, null))
           .isInstanceOf(NullPointerException.class)

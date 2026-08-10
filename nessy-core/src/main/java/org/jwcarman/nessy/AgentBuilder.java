@@ -33,7 +33,6 @@ import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
-import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.ExecutionEngine;
 import org.jwcarman.nessy.spi.InProcessEngine;
 import org.jwcarman.nessy.spi.Reducer;
@@ -142,20 +141,10 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Sugar for the common case: a handful of tools, no registry to assemble by hand. Each tool is
-   * auto-wrapped via {@link ToolGrant#grant(Tool)} — the derived default, unchanged from how
-   * approval worked before grants existed.
-   */
-  public AgentBuilder<I> tools(Tool<?>... tools) {
-    this.tools = ToolRegistry.of(tools);
-    this.explicitGrants = null;
-    return this;
-  }
-
-  /**
-   * The capability and the authority to use it, declared together, per tool. Supersedes {@link
-   * #tools(Tool...)} for the same builder: the grant line is the security statement, and every tool
-   * granted here uses exactly the policy its grant carries rather than a derived default.
+   * The capability and the authority to use it, declared together, per tool — the only way to
+   * attach tools to this builder. The grant line is the complete security statement: every tool
+   * granted here uses exactly the policy its grant carries, structurally, with no derived default
+   * anywhere behind it.
    */
   public AgentBuilder<I> tools(ToolGrant... grants) {
     Objects.requireNonNull(grants, "grants must not be null");
@@ -345,21 +334,13 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * The grant map the engine consults, keyed by tool name. Explicit grants from {@link
-   * #tools(ToolGrant...)} win outright; otherwise every tool in {@link #tools} — however it was
-   * set, including a hand-rolled {@link ToolRegistry} — gets {@link ToolGrant#grant(Tool)}'s
-   * derived default, so an agent that never mentions grants behaves exactly as it did before grants
-   * existed.
+   * The grant map the engine consults, keyed by tool name. Only {@link #tools(ToolGrant...)}
+   * populates it — there is no derivation to fall back to. A {@link #tools(ToolRegistry)} registry
+   * whose tools were never granted leaves this empty, and {@code InProcessEngine}'s own
+   * construction-time check ("no grant for tool: …") catches the gap as the wiring error it is.
    */
   private Map<String, ToolGrant> resolveGrants() {
-    if (explicitGrants != null) {
-      return explicitGrants;
-    }
-    Map<String, ToolGrant> derived = new LinkedHashMap<>();
-    for (ToolSpec spec : tools.specs()) {
-      tools.find(spec.name()).ifPresent(tool -> derived.put(spec.name(), ToolGrant.grant(tool)));
-    }
-    return derived;
+    return explicitGrants != null ? explicitGrants : Map.of();
   }
 
   /**
