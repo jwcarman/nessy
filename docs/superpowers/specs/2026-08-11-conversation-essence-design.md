@@ -187,11 +187,23 @@ parent's grammar never learns its tool was an agent.
 
 ## 6. The loop, the turn, and failure routing
 
-**The loop** (invariant, core-owned): ask the state to fold the fact; tell
-Memory any newborn messages (§7); persist progress; for each emitted effect,
-ask its executor for the next fact; repeat until no effects (terminal) or a
-park. Synchronous by nature — asynchrony is what callers build around a
-segment.
+**The loop** (invariant, core-owned): ask the state to fold the fact; consult
+the `TerminationPolicy` with the new state — a halt discards the step's
+unperformed effects (intents, not obligations) and applies the closure
+transition `state.halted(reason)`; otherwise tell Memory any newborn messages
+(§7), persist progress, and for each emitted effect ask its executor for the
+next fact; repeat until no effects (terminal) or a park. Synchronous by
+nature — asynchrony is what callers build around a segment.
+
+**Termination is the loop's brake, not the fold's business.** The policy
+decides when to stop *driving* — call ceilings, error streaks — so the loop
+consults it, uniformly, after every fold: a law, not a list of hand-picked
+check sites. The two kinds of death separate crisply: *intrinsic* fatality
+arrives in facts (`MAX_TOKENS`, `REFUSAL`, `ModelCallFailed`) and the fold
+handles it — the state can read its own doom; *extrinsic* limits are about
+continued driving and belong to the loop. Replay is unaffected: it was always
+"facts + same assembly," and a pure policy re-consulted by the same loop
+discipline reproduces every halt deterministically.
 
 **The fold lives on the state — there is no Reducer object.** v2's `Reducer`
 earned its separate existence by carrying cargo: compaction config, eleven
@@ -201,10 +213,13 @@ automaton moves onto the thing it governs. `ConversationState` is a rich
 *immutable* domain object: each fact folds through the state's own method,
 returning the `Step` holder (new state + zero or more effects). Determinism,
 replay, and sealed exhaustiveness are unchanged — the fold is the same pure
-function; it now has a home instead of a house. Two disciplines guard the
-move: `TerminationPolicy` is *injected at the fold*
-(`state.fold(event, policy) → Step`), never held by state — policy is assembly
-config, state is pure data; and `Effect`/`Step` become core-grammar citizens
+function; it now has a home instead of a house. The fold is *parameter-free* —
+`state.fold(event) → Step` — because termination is not its business (the loop
+consults the policy; see below), so state holds no config and threads none.
+Alongside the fact transitions, state exposes one closure transition,
+`halted(reason)`: lands `FAILED`, answers pending calls with abandoned-error
+results, and births the flush message for Memory — the same wire-legality
+closure every failing path owes. `Effect`/`Step` become core-grammar citizens
 beside the state (package placement is plan-level detail). v2's closure claim
 strengthens: semantics are no longer an object you could even try to swap.
 
@@ -371,9 +386,10 @@ debt included, is derivable by replaying the facts: state is the
 **materialized fold** — a snapshot kept so a durable engine resumes in O(1)
 and the fold has a substrate. Log is truth; state is cache.
 
-The fold keeps: the misdelivery guard, termination policy, the error
-streak, debt bookkeeping, status transitions, and the flush decision (when
-debt clears, the results message is born and told to Memory).
+The fold keeps: the misdelivery guard, the error-streak and call-count
+bookkeeping (the dials the policy reads), debt bookkeeping, status
+transitions, and the flush decision (when debt clears, the results message is
+born and told to Memory). The termination *consultation* is the loop's (§6).
 
 ## 10. The facade — settled and unsettled
 
@@ -423,7 +439,7 @@ yet.
 | "Journal is a listener; transcript store family retires" | **Partially reversed**: the fact log becomes first-class, load-bearing record (in-memory for tests/CLI, durable for fleets). The journal-as-listener remains valid for *additional* subscribers. The v2 rationale should be re-read at plan time to confirm nothing else leaned on it. |
 | `ExecutionEngine` as the implementable seam | Dissolves into loop + `EffectExecutors` + assembly (§1, §5). §6 resume-refusal contract survives, re-homed on the loop. |
 | Working set in `ConversationState` | Content leaves state (§9); "working set" as a state concept retires with it. |
-| `Reducer` as a standalone object | Dissolves into `ConversationState`'s own fold methods (§6). `Step` survives; `TerminationPolicy` is injected at the fold. Semantics stay closed — more closed: no object left to swap. |
+| `Reducer` as a standalone object | Dissolves into `ConversationState`'s own fold methods (§6). `Step` survives; `TerminationPolicy` moves to the loop, consulted with the state after every fold. Semantics stay closed — more closed: no object left to swap. |
 | Context pipeline (`ContextPipeline`/`Projection`/`ContextEnricher`) as core seams | Absorbed behind the Memory facade (§7); `recall` returns the finished context. |
 
 ## 13. Open questions (all small, none load-bearing)
@@ -449,8 +465,9 @@ pipeline — they are Memory implementation details behind the facade, §7.)*
 
 The v2 promises hold and get cheaper: the fold is tested pure, now with
 four arms instead of eleven and no message construction; the invariant loop is
-tested once with fake executors (its ordering laws — tell-Memory-then-perform,
-persist-on-every-exit, park handling — become directly assertable); Memory
+tested once with fake executors (its ordering laws — consult-policy-after-
+every-fold, tell-Memory-then-perform, persist-on-every-exit, park handling —
+become directly assertable); Memory
 implementations are tested against the border contract (`Context` legality,
 transaction atomicity) without a model; executors are tested per-slot. The
 no-mocking-library promise, prose test style, and no-network `verify` all
