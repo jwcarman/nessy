@@ -64,6 +64,39 @@ public sealed interface ConversationEvent extends ConversationScoped {
     }
   }
 
+  /**
+   * The model's settled contribution: one assistant message — text, thinking, and any tool-use
+   * blocks (the homework) as its content — plus how the call stopped and what it cost. One fact per
+   * call; the fold unpacks the homework into effects.
+   */
+  record ModelResponded(
+      ConversationId conversationId, Message message, StopReason reason, Usage usage)
+      implements ConversationEvent {
+
+    public ModelResponded {
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(message, "message must not be null");
+      Objects.requireNonNull(reason, "reason must not be null");
+      Objects.requireNonNull(usage, "usage must not be null");
+    }
+  }
+
+  /**
+   * The model call failed in a way re-performing cannot fix — canonically, the context outgrew the
+   * window. There is no party left in the dialogue to show this to (the model is the party that
+   * failed), so it is fate, not data: the fold answers it with {@code FAILED}. Transient failures
+   * (socket resets, retries exhausted) are exceptions, not facts — status still points at the work
+   * and re-driving is the recovery.
+   */
+  record ModelCallFailed(ConversationId conversationId, String reason)
+      implements ConversationEvent {
+
+    public ModelCallFailed {
+      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(reason, "reason must not be null");
+    }
+  }
+
   /** A chunk of assistant prose arrived from the stream. */
   record TextDelta(ConversationId conversationId, String text) implements ConversationEvent {
 

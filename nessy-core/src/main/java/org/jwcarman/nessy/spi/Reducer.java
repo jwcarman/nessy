@@ -78,6 +78,12 @@ public record Reducer(TerminationPolicy termination, Compactor compaction) {
     }
     return switch (event) {
       case ConversationEvent.AgentTold e -> agentTold(state, e);
+      // Scaffolding until the cutover (plan 2026-08-11, Task 9): the old reducer never
+      // receives the new facts — only the new loop feeds them, and it never feeds this class.
+      case ConversationEvent.ModelResponded e ->
+          throw new IllegalStateException("new-grammar fact fed to legacy reducer: " + e);
+      case ConversationEvent.ModelCallFailed e ->
+          throw new IllegalStateException("new-grammar fact fed to legacy reducer: " + e);
       case ConversationEvent.TextDelta e -> textDelta(state, e);
       case ConversationEvent.ThinkingDelta e -> thinkingDelta(state, e);
       case ConversationEvent.ThinkingSigned e -> thinkingSigned(state, e.signature());

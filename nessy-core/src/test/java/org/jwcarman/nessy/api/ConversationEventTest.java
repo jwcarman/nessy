@@ -16,10 +16,14 @@
 package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.Effect;
 import org.jwcarman.nessy.spi.Step;
@@ -34,6 +38,8 @@ class ConversationEventTest {
         switch (event) {
           case ConversationEvent.AgentTold e ->
               "user:" + ((TextBlock) e.content().getFirst()).text();
+          case ConversationEvent.ModelResponded e -> "responded:" + e.message();
+          case ConversationEvent.ModelCallFailed e -> "failed:" + e.reason();
           case ConversationEvent.TextDelta e -> "delta:" + e.text();
           case ConversationEvent.ThinkingDelta e -> "thinking:" + e.text();
           case ConversationEvent.ThinkingSigned e -> "signed:" + e.signature();
@@ -47,6 +53,34 @@ class ConversationEventTest {
         };
 
     assertThat(described).isEqualTo("user:hello");
+  }
+
+  @Test
+  void modelRespondedCarriesTheSettledMessageWhole() {
+    ConversationId id = ConversationId.generate();
+    Message message = Message.assistant(List.of(new TextBlock("the answer")));
+    ConversationEvent.ModelResponded fact =
+        new ConversationEvent.ModelResponded(id, message, StopReason.END_TURN, Usage.zero());
+
+    assertThat(fact.conversationId()).isEqualTo(id);
+    assertThat(fact.message()).isEqualTo(message);
+  }
+
+  @Test
+  void modelCallFailedNamesItsReason() {
+    ConversationEvent.ModelCallFailed fact =
+        new ConversationEvent.ModelCallFailed(ConversationId.generate(), "context window exceeded");
+
+    assertThat(fact.reason()).isEqualTo("context window exceeded");
+  }
+
+  @Test
+  void modelRespondedRejectsNullMessage() {
+    ConversationId id = ConversationId.generate();
+
+    assertThatThrownBy(
+            () -> new ConversationEvent.ModelResponded(id, null, StopReason.END_TURN, Usage.zero()))
+        .isInstanceOf(NullPointerException.class);
   }
 
   @Test
