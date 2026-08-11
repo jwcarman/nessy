@@ -30,6 +30,10 @@ public enum ConversationStatus {
   /** The model ended its turn with nothing left to do. */
   COMPLETE,
 
-  /** Too many consecutive tool errors. The loop gave up rather than burn tokens. */
+  /**
+   * The conversation cannot continue: a fatal stop reason ({@code MAX_TOKENS}, {@code REFUSAL}), a
+   * {@code ModelCallFailed} fact, or a {@link TerminationPolicy} halt (too many consecutive tool
+   * errors, too many model calls). The loop gave up rather than burn tokens.
+   */
   FAILED
 }

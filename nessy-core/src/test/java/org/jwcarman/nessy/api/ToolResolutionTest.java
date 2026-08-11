@@ -24,25 +24,25 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 class ToolResolutionTest {
 
   @Test
-  void aDecisionResolvesAParkedGate() {
+  void a_decision_resolves_a_parked_gate() {
     ToolResolution resolution = new ToolResolution.Decided(Decision.allow());
     assertThat(resolution).isInstanceOf(ToolResolution.class);
   }
 
   @Test
-  void aResultResolvesAParkedExecution() {
+  void a_result_resolves_a_parked_execution() {
     ToolResolution resolution = new ToolResolution.Completed(ToolResult.ok("done"));
     assertThat(resolution).isInstanceOf(ToolResolution.class);
   }
 
   @Test
-  void decidedRejectsNullDecision() {
+  void decided_rejects_null_decision() {
     assertThatThrownBy(() -> new ToolResolution.Decided(null))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void completedRejectsNullResult() {
+  void completed_rejects_null_result() {
     assertThatThrownBy(() -> new ToolResolution.Completed(null))
         .isInstanceOf(NullPointerException.class);
   }

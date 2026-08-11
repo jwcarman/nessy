@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
  * Where a session lives between steps.
  *
  * <p>Because {@code ConversationState} is a plain serializable record, durable resume is an
- * implementation of this interface rather than a change to the engine.
+ * implementation of this interface rather than a change to the loop.
  */
 public interface ConversationStore {
 

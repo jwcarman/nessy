@@ -21,10 +21,11 @@ import java.util.Optional;
 /**
  * Decides when the loop must stop calling the model.
  *
- * <p>Pure and stateless: consulted by the reducer, never by the engine, so termination is semantics
- * — identical on every engine. The reducer consults it after applying any event that could lead to
- * another model call; a halt settles pending work (answering every outstanding tool_use, preserving
- * the transcript invariant), records the reason, and fails the session with no effects.
+ * <p>Pure and stateless: it is the loop's brake, not the fold's business — assembly-scoped, so
+ * termination is semantics, identical on every assembly. The loop consults it after every fold that
+ * could lead to another model call; a halt settles pending work (answering every outstanding
+ * tool_use, preserving the transcript invariant), records the reason, and fails the session with no
+ * effects.
  */
 public interface TerminationPolicy {
 

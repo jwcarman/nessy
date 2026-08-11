@@ -30,7 +30,7 @@ public sealed interface Effect {
     private static final CallModel INSTANCE = new CallModel();
   }
 
-  /** Run an approved tool. */
+  /** Run one tool call; the executor's gate decides authority. */
   record ExecuteTool(ToolCall call) implements Effect {}
 
   /** The one instance of {@link CallModel}; the record has no state, so one is enough. */

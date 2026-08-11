@@ -295,6 +295,21 @@ class GatedToolCallExecutorTest {
       assertThat(result.isError()).isTrue();
       assertThat(result.content()).contains("policy blew up");
     }
+
+    @Test
+    void a_null_returning_policy_fails_closed_to_denial() {
+      UsagePolicy nullReturningPolicy = (call, s) -> null;
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(new EchoTool(false), nullReturningPolicy), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(echoCall("hi"), state, observed::add);
+
+      assertThat(approver.requests).isEmpty();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).isEqualTo("Denied: policy returned no decision");
+    }
   }
 
   @Nested

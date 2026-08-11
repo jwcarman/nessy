@@ -53,9 +53,8 @@ public final class Conversation<I> {
   /**
    * Tells this conversation something from its input vocabulary, watched by no one ({@link
    * TurnObserver#noop()}). {@code input} is rendered into content blocks by this agent's {@link
-   * InputRenderer} and carried into the loop as the same {@code AgentTold} event {@code
-   * send(String)} used to build directly — typing dissolves at the wire, the sealed {@link
-   * ConversationEvent} grammar never changes shape.
+   * InputRenderer} and carried into the loop as an {@code AgentTold} event — typing dissolves at
+   * the wire, the sealed {@link ConversationEvent} grammar never changes shape.
    *
    * @throws IllegalArgumentException if the renderer produces a null or empty block list
    * @throws RuntimeException whatever the renderer itself throws, unwrapped — a renderer is the

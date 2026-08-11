@@ -130,6 +130,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
           }
         }
       }
+      throw new IllegalStateException("model stream ended without a TurnEnded event");
     } catch (ContextOverflowException e) {
       return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
     } catch (RuntimeException e) {
@@ -138,7 +139,6 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
     } finally {
       modelCall.stop();
     }
-    throw new IllegalStateException("model stream ended without a TurnEnded event");
   }
 
   /** Merges a chunk into the trailing text block: a hundred deltas become one block. */

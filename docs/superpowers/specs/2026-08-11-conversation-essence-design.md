@@ -158,7 +158,10 @@ Awaited<ConversationEvent> execute(…)   // one fact, or a park
   context from Memory, wraps it with settings (system prompt, model, tools),
   consumes the provider's `ModelEvent` stream (translating texture to the
   observer, accumulating the settled message), yields `ModelResponded` or
-  `ModelCallFailed`.
+  `ModelCallFailed`. (Plan-level resolution: the implemented shape takes
+  `Memory` at construction rather than as a call parameter — one instance per
+  agent, so the wire request and `contextFor` can never disagree about what
+  Memory holds.)
 - `ToolCallExecutor.execute(call, state, observer)` — gate-then-invoke,
   narrating the verdict and completion to the observer, yields `ToolFinished`.
 
@@ -257,9 +260,14 @@ fact when it can't.*
 
 - **Transient** (socket reset, 529, retries exhausted): exception. The fold
   never happened; **status is a continuation pointer** — state still says
-  exactly what the loop should do next, so crash recovery and retry-later are
-  the same operation: re-drive. Telemetry's jurisdiction; the conversation
-  doesn't care.
+  exactly what the loop should do next, so crash recovery and retry-later
+  *could* be the same operation: re-drive. That recovery story arrives with
+  the durable generation, not this one; this generation ships the v2 §6
+  refusal contract instead — a run on a session whose status is in-flight
+  refuses loudly rather than silently overwriting a crashed turn, leaving it
+  to be inspected or abandoned deliberately (§12 preserves the ruling). Until
+  re-drive lands, that refusal is the whole of the story. Telemetry's
+  jurisdiction; the conversation doesn't care.
 - **Permanent, conversation-shaped** (context outgrew the window): fact —
   `ModelCallFailed` → `FAILED` with reason. Re-performing is futile; the
   course must change, and the only legal way state changes is a fact through
@@ -391,9 +399,11 @@ different clocks; the thin translation lives in exactly one place, the
 model-call executor.
 
 **The `TurnObserver` is required by the executor signatures and bound
-per-entry.** Both entry points take one — `tell(input, observer)` and
-`resume(token, resolution, observer)` — with `TurnObserver.noop()` as the
-default. Texture belongs to whoever is sitting there *now*, and "now" restarts
+per-entry.** Two entry points are named to this contract — `tell(input,
+observer)`, shipped this generation, and `resume(token, resolution,
+observer)`, which joins once parking's resume machinery ships — each with
+`TurnObserver.noop()` as the default. Texture belongs to whoever is sitting
+there *now*, and "now" restarts
 at every resume; a segment's observer sees deltas from its entry onward, and
 anything missed is in the facts. (The name slightly overpromises in the parked
 case — it observes the turn *while you hold it* — documented, accepted.)

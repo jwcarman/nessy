@@ -19,12 +19,12 @@ import java.util.Objects;
 
 /**
  * A capability and the authority to use it, declared together: which {@link Tool} an agent may
- * call, and the {@link UsagePolicy} the engine consults before it runs.
+ * call, and the {@link UsagePolicy} the tool call executor consults before it runs.
  *
  * <p>This is the security statement of the harness, and there is exactly one way to write it:
  * {@link #grant(Tool, UsagePolicy)}. No bare grant, no derived floor, no re-dressing an existing
  * grant with a different policy — a grant does not exist until its authority is answered. The
- * engine consults only the policy a grant carries.
+ * executor consults only the policy a grant carries.
  */
 public record ToolGrant(Tool<?> tool, UsagePolicy policy) {
 

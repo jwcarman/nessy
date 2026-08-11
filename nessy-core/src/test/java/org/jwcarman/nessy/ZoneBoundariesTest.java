@@ -54,6 +54,15 @@ class ZoneBoundariesTest {
   private static final Set<String> SANCTIONED_ROOT_TO_INTERNAL_IMPORTS =
       Set.of("Agent.java", "AgentBuilder.java", "Conversation.java");
 
+  /**
+   * The only spi types allowed to reach into internal machinery, and why: each is an executor
+   * living at the seam between the loop and its performances, and each needs exactly one internal
+   * helper — {@code ProviderModelCallExecutor} the {@code EngineObservations} span helpers, {@code
+   * GatedToolCallExecutor} both {@code EngineObservations} and the shared {@code ToolInvoker}.
+   */
+  private static final Set<String> SANCTIONED_SPI_TO_INTERNAL_IMPORTS =
+      Set.of("ProviderModelCallExecutor.java", "GatedToolCallExecutor.java");
+
   /** The api-to-spi ban, covering the top-level spi zone. */
   @ParameterizedTest(name = "no file under api imports {0}")
   @MethodSource("apiForbiddenSpiPackages")
@@ -78,6 +87,22 @@ class ZoneBoundariesTest {
     for (JavaFile file : filesUnderApi) {
       if (file.importsPackage("org.jwcarman.nessy.internal")) {
         assertThat(SANCTIONED_API_TO_INTERNAL_IMPORTS)
+            .as(
+                "%s imports org.jwcarman.nessy.internal but is not on the sanctioned list; either"
+                    + " widen the sanctioned set deliberately or remove the dependency",
+                file.relativePath())
+            .contains(file.fileName());
+      }
+    }
+  }
+
+  @Test
+  void files_under_spi_importing_internal_are_exactly_the_sanctioned_set() {
+    List<JavaFile> filesUnderSpi = filesUnder("spi");
+    assertThat(filesUnderSpi).isNotEmpty();
+    for (JavaFile file : filesUnderSpi) {
+      if (file.importsPackage("org.jwcarman.nessy.internal")) {
+        assertThat(SANCTIONED_SPI_TO_INTERNAL_IMPORTS)
             .as(
                 "%s imports org.jwcarman.nessy.internal but is not on the sanctioned list; either"
                     + " widen the sanctioned set deliberately or remove the dependency",

@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -40,7 +41,7 @@ class ConversationStateFoldTest {
   // --- AgentTold ---
 
   @Test
-  void aTellBirthsTheUserMessageAndAsksForTheModel() {
+  void a_tell_births_the_user_message_and_asks_for_the_model() {
     Step step = fresh.fold(ConversationEvent.AgentTold.of(id, "hello"));
 
     assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
@@ -49,14 +50,15 @@ class ConversationStateFoldTest {
   }
 
   @Test
-  void aTellStartsAFreshErrorStreak() {
-    ConversationState scarred = fresh.withConsecutiveErrors(2);
+  void a_tell_starts_a_fresh_error_streak() {
+    ConversationState scarred = fresh.withConsecutiveErrors(2).withFailureReason("old");
     Step step = scarred.fold(ConversationEvent.AgentTold.of(id, "again"));
     assertThat(step.state().consecutiveErrors()).isZero();
+    assertThat(step.state().failureReason()).isNull();
   }
 
   @Test
-  void aMisdeliveredFactFailsLoudly() {
+  void a_misdelivered_fact_fails_loudly() {
     ConversationEvent stray = ConversationEvent.AgentTold.of(ConversationId.generate(), "lost");
     assertThatThrownBy(() -> fresh.fold(stray))
         .isInstanceOf(IllegalArgumentException.class)
@@ -66,7 +68,7 @@ class ConversationStateFoldTest {
   // --- ModelResponded ---
 
   @Test
-  void aCleanResponseCompletesTheTurn() {
+  void a_clean_response_completes_the_turn() {
     Message answer = Message.assistant(List.of(new TextBlock("done")));
     Step step =
         awaitingModel()
@@ -80,7 +82,31 @@ class ConversationStateFoldTest {
   }
 
   @Test
-  void homeworkFansOutOneEffectPerCall() {
+  void usage_and_model_calls_accumulate_across_two_tells() {
+    Message firstAnswer = Message.assistant(List.of(new TextBlock("first")));
+    ConversationState afterFirst =
+        awaitingModel()
+            .fold(
+                new ConversationEvent.ModelResponded(
+                    id, firstAnswer, StopReason.END_TURN, usage(3)))
+            .state();
+
+    ConversationState awaitingSecond =
+        afterFirst.fold(ConversationEvent.AgentTold.of(id, "again")).state();
+    Message secondAnswer = Message.assistant(List.of(new TextBlock("second")));
+    ConversationState afterSecond =
+        awaitingSecond
+            .fold(
+                new ConversationEvent.ModelResponded(
+                    id, secondAnswer, StopReason.END_TURN, usage(4)))
+            .state();
+
+    assertThat(afterSecond.modelCalls()).isEqualTo(2);
+    assertThat(afterSecond.usage().inputTokens()).isEqualTo(7);
+  }
+
+  @Test
+  void homework_fans_out_one_effect_per_call() {
     ToolCall first = call("call-1", "search");
     ToolCall second = call("call-2", "fetch");
     Message homework =
@@ -97,26 +123,34 @@ class ConversationStateFoldTest {
   }
 
   @Test
-  void aTokenCeilingResponseFailsTheConversationAndAnswersItsOwnHomework() {
+  void a_token_ceiling_response_fails_the_conversation_and_answers_its_own_homework() {
     ToolCall orphan = call("call-1", "search");
-    Message truncated = Message.assistant(List.of(new ToolUseBlock(orphan)));
+    Message truncatedAssistantMessage = Message.assistant(List.of(new ToolUseBlock(orphan)));
     Step step =
         awaitingModel()
             .fold(
                 new ConversationEvent.ModelResponded(
-                    id, truncated, StopReason.MAX_TOKENS, usage(3)));
+                    id, truncatedAssistantMessage, StopReason.MAX_TOKENS, usage(3)));
 
     assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
     assertThat(step.state().failureReason()).contains("MAX_TOKENS");
     assertThat(step.state().pendingCalls()).isEmpty();
-    // the truncated message AND the abandoned-results flush are both remembered,
-    // so the record never holds a tool_use without its tool_result
-    assertThat(step.remember()).hasSize(2);
+    // the truncated message AND the abandoned-results flush are both remembered, in that
+    // order, so the record never holds a tool_use without its tool_result
+    Message expectedAbandonedFlushMessage =
+        Message.toolResults(
+            List.<ContentBlock>of(
+                new ToolResultBlock(
+                    orphan.id(),
+                    "Abandoned: the conversation failed before this tool ran.",
+                    true)));
+    assertThat(step.remember())
+        .containsExactly(truncatedAssistantMessage, expectedAbandonedFlushMessage);
     assertThat(step.effects()).isEmpty();
   }
 
   @Test
-  void aRefusalFailsTheConversation() {
+  void a_refusal_fails_the_conversation() {
     Message refusal = Message.assistant(List.of(new TextBlock("no")));
     Step step =
         awaitingModel()
@@ -128,7 +162,7 @@ class ConversationStateFoldTest {
   // --- ToolFinished ---
 
   @Test
-  void resultsFoldInAnyOrderAndTheFlushWaitsForTheLastOne() {
+  void results_fold_in_any_order_and_the_flush_waits_for_the_last_one() {
     ToolCall first = call("call-1", "search");
     ToolCall second = call("call-2", "fetch");
     ConversationState owing = midHomework(first, second);
@@ -148,7 +182,7 @@ class ConversationStateFoldTest {
   }
 
   @Test
-  void anErroredResultGrowsTheStreakAndASuccessResetsIt() {
+  void an_errored_result_grows_the_streak_and_a_success_resets_it() {
     ToolCall first = call("call-1", "search");
     ToolCall second = call("call-2", "fetch");
     ConversationState owing = midHomework(first, second);
@@ -167,7 +201,7 @@ class ConversationStateFoldTest {
   // --- ModelCallFailed ---
 
   @Test
-  void aFailedCallIsFateNotData() {
+  void a_failed_call_is_fate_not_data() {
     Step step =
         awaitingModel().fold(new ConversationEvent.ModelCallFailed(id, "context window exceeded"));
     assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
@@ -179,7 +213,7 @@ class ConversationStateFoldTest {
   // --- halted ---
 
   @Test
-  void haltingMidHomeworkAnswersEveryOutstandingCall() {
+  void halting_mid_homework_answers_every_outstanding_call() {
     ToolCall owed = call("call-1", "search");
     ConversationState owing = midHomework(owed);
 
@@ -193,7 +227,7 @@ class ConversationStateFoldTest {
   }
 
   @Test
-  void haltingWithNoDebtRemembersNothing() {
+  void halting_with_no_debt_remembers_nothing() {
     Step step = awaitingModel().halted("turn ceiling");
     assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
     assertThat(step.remember()).isEmpty();

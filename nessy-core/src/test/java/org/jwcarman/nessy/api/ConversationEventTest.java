@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
@@ -27,6 +28,8 @@ import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 class ConversationEventTest {
 
@@ -47,7 +50,7 @@ class ConversationEventTest {
   }
 
   @Test
-  void modelRespondedCarriesTheSettledMessageWhole() {
+  void model_responded_carries_the_settled_message_whole() {
     ConversationId id = ConversationId.generate();
     Message message = Message.assistant(List.of(new TextBlock("the answer")));
     ConversationEvent.ModelResponded fact =
@@ -58,7 +61,7 @@ class ConversationEventTest {
   }
 
   @Test
-  void modelCallFailedNamesItsReason() {
+  void model_call_failed_names_its_reason() {
     ConversationEvent.ModelCallFailed fact =
         new ConversationEvent.ModelCallFailed(ConversationId.generate(), "context window exceeded");
 
@@ -66,11 +69,29 @@ class ConversationEventTest {
   }
 
   @Test
-  void modelRespondedRejectsNullMessage() {
+  void model_responded_rejects_null_message() {
     ConversationId id = ConversationId.generate();
 
     assertThatThrownBy(
             () -> new ConversationEvent.ModelResponded(id, null, StopReason.END_TURN, Usage.zero()))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void tool_finished_rejects_null_call() {
+    ConversationId id = ConversationId.generate();
+    ToolResult result = ToolResult.ok("done");
+
+    assertThatThrownBy(() -> new ConversationEvent.ToolFinished(id, null, result))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void tool_finished_rejects_null_result() {
+    ConversationId id = ConversationId.generate();
+    ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+
+    assertThatThrownBy(() -> new ConversationEvent.ToolFinished(id, call, null))
         .isInstanceOf(NullPointerException.class);
   }
 

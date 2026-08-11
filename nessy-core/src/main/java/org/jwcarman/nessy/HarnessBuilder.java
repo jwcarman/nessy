@@ -56,7 +56,7 @@ public final class HarnessBuilder {
     return this;
   }
 
-  /** Where engine-level metrics and traces go. Default: {@link ObservationRegistry#NOOP}. */
+  /** Where loop-level metrics and traces go. Default: {@link ObservationRegistry#NOOP}. */
   public HarnessBuilder observations(ObservationRegistry observations) {
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     return this;

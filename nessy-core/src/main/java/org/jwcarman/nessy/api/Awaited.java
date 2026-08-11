@@ -20,7 +20,7 @@ package org.jwcarman.nessy.api;
  *
  * <p>Virtual threads unmount a task from a carrier thread; this unmounts a session from a process.
  * An in-process implementation blocks and returns {@link Ready}; a durable one returns {@link
- * Parked} so the engine can persist the session and let another machine finish it.
+ * Parked} so the loop can persist the session and let another machine finish it.
  *
  * @param <T> what the wait produces
  */

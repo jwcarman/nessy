@@ -104,6 +104,8 @@ public sealed interface ConversationEvent extends ConversationScoped {
 
     public ToolFinished {
       Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(result, "result must not be null");
     }
   }
 }

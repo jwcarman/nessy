@@ -35,6 +35,10 @@ import org.jwcarman.nessy.api.message.Message;
  * #recall}'s unsynchronized {@link Map#get} is therefore safe by construction — {@link
  * ConcurrentHashMap}'s per-key happens-before on the reference swap is all the safety a read of an
  * immutable value ever needs, with no risk of observing a torn or concurrently-modified list.
+ *
+ * <p>Every conversation it has ever been told about grows without eviction for the life of the
+ * process — there is no forgetting, no cap, no compaction. That suits a process that owns its
+ * sessions, not a long-lived multi-tenant server.
  */
 public final class ListMemory implements Memory {
 

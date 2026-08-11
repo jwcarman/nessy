@@ -312,7 +312,7 @@ class AgentFacadeTest {
   }
 
   @Test
-  void reply_text_excludes_thinking_prose() {
+  void assistant_text_excludes_thinking_prose() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .thinking("Let me think.")
@@ -350,7 +350,7 @@ class AgentFacadeTest {
   }
 
   @Test
-  void failure_reason_surfaces_through_reply() {
+  void failure_reason_surfaces_through_the_outcome() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent =
         Nessy.harness(provider)

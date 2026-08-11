@@ -57,7 +57,7 @@ class ProviderModelCallExecutorTest {
   private final List<TurnEvent> observed = new ArrayList<>();
 
   @Test
-  void mergesDeltasIntoOneSettledMessageAndYieldsOneFact() {
+  void merges_deltas_into_one_settled_message_and_yields_one_fact() {
     ProviderModelCallExecutor executor =
         executorStreaming(
             new ModelEvent.ThinkingChunk("let me"),
@@ -76,7 +76,7 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void narratesDeltasToTheObserverAsTheyArrive() {
+  void narrates_deltas_to_the_observer_as_they_arrive() {
     ProviderModelCallExecutor executor =
         executorStreaming(
             new ModelEvent.TextChunk("hi"),
@@ -89,7 +89,7 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void narratesRequestedHomeworkMidStream() {
+  void narrates_requested_homework_mid_stream() {
     ToolCall call = new ToolCall("call-1", "search", JsonNodeFactory.instance.objectNode());
     ProviderModelCallExecutor executor =
         executorStreaming(
@@ -105,7 +105,7 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void recallsTheContextFromMemoryNotFromState() {
+  void recalls_the_context_from_memory_not_from_state() {
     // remember something; the fake provider asserts the request context matches the recall
     memory.remember(id, Message.user(List.of(new TextBlock("hi"))));
     List<ModelRequest> seen = new ArrayList<>();
@@ -124,7 +124,7 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void contextOverflowBecomesTheFailureFactNotAnException() {
+  void context_overflow_becomes_the_failure_fact_not_an_exception() {
     ProviderModelCallExecutor executor =
         new ProviderModelCallExecutor(
             overflowingProvider(), settings(), ToolRegistry.of(), memory, ObservationRegistry.NOOP);
@@ -162,7 +162,7 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void aSignedThinkingBlockIsClosedSoALaterDeltaStartsAFreshOne() {
+  void a_signed_thinking_block_is_closed_so_a_later_delta_starts_a_fresh_one() {
     ProviderModelCallExecutor executor =
         executorStreaming(
             new ModelEvent.ThinkingChunk("a"),
@@ -179,7 +179,7 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void aSignatureWithNothingTrailingToSignIsANoOp() {
+  void a_signature_with_nothing_trailing_to_sign_is_a_noop() {
     ProviderModelCallExecutor executor =
         executorStreaming(
             new ModelEvent.ThinkingSigned("sig"),
@@ -193,7 +193,7 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void redactedThinkingIsNarratedAndRidesTheMessageInPosition() {
+  void redacted_thinking_is_narrated_and_rides_the_message_in_position() {
     ProviderModelCallExecutor executor =
         executorStreaming(
             new ModelEvent.RedactedThinkingEmitted("opaque"),
@@ -208,11 +208,28 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void aStreamThatEndsWithoutTurnEndedThrows() {
+  void a_stream_that_ends_without_turn_ended_throws() {
     ProviderModelCallExecutor executor = executorStreaming(new ModelEvent.TextChunk("hi"));
 
     assertThatThrownBy(() -> executor.execute(state, observed::add))
         .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void a_stream_that_ends_without_turn_ended_marks_the_observation_as_errored() {
+    TestObservationRegistry observations = TestObservationRegistry.create();
+    ProviderModelCallExecutor executor =
+        new ProviderModelCallExecutor(
+            recordingProvider(new ArrayList<>(), new ModelEvent.TextChunk("hi")),
+            settings(),
+            ToolRegistry.of(),
+            memory,
+            observations);
+
+    assertThatThrownBy(() -> executor.execute(state, observed::add))
+        .isInstanceOf(IllegalStateException.class);
+
+    assertThat(observations).hasObservationWithNameEqualTo("nessy.model.call").that().hasError();
   }
 
   // --- fakes ---

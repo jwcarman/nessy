@@ -30,7 +30,7 @@ class ListMemoryTest {
   private final ListMemory memory = new ListMemory();
 
   @Test
-  void recallsExactlyWhatItWasToldInOrder() {
+  void recalls_exactly_what_it_was_told_in_order() {
     ConversationId id = ConversationId.generate();
     Message first = Message.user("hello");
     Message second = Message.assistant(List.of(new TextBlock("hi there")));
@@ -43,13 +43,13 @@ class ListMemoryTest {
   }
 
   @Test
-  void recallsNothingForAConversationNeverToldAnything() {
+  void recalls_nothing_for_a_conversation_never_told_anything() {
     Context recalled = memory.recall(ConversationId.generate());
     assertThat(recalled.messages()).isEmpty();
   }
 
   @Test
-  void keepsConversationsApart() {
+  void keeps_conversations_apart() {
     ConversationId one = ConversationId.generate();
     ConversationId other = ConversationId.generate();
     memory.remember(one, Message.user("for one"));
@@ -60,7 +60,7 @@ class ListMemoryTest {
   }
 
   @Test
-  void toleratesTheSameMessageToldTwiceInARow() {
+  void tolerates_the_same_message_told_twice_in_a_row() {
     // At-least-once tellings (design 2026-08-11, ruling 6): a crash between telling
     // Memory and persisting state re-tells the same message. remember is idempotent.
     ConversationId id = ConversationId.generate();
@@ -73,7 +73,7 @@ class ListMemoryTest {
   }
 
   @Test
-  void recallReturnsAnImmutableSnapshotUnaffectedByLaterRemembering() {
+  void recall_returns_an_immutable_snapshot_unaffected_by_later_remembering() {
     // recall's list must be a point-in-time snapshot, not a live view: if remember ever
     // mutated a list already handed out by recall, a reader holding an earlier recall
     // result would see later tellings appear underneath it. Fixed by always storing a

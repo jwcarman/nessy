@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 class TurnEventTest {
 
   @Test
-  void aNoopObserverAcceptsEveryEventWithoutComplaint() {
+  void a_noop_observer_accepts_every_event_without_complaint() {
     TurnObserver observer = TurnObserver.noop();
     observer.on(new TurnEvent.TextDelta("hello"));
     observer.on(new TurnEvent.ThinkingDelta("hmm"));
@@ -32,19 +32,19 @@ class TurnEventTest {
   }
 
   @Test
-  void textDeltaRejectsNullText() {
+  void text_delta_rejects_null_text() {
     assertThatThrownBy(() -> new TurnEvent.TextDelta(null))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void thinkingDeltaRejectsNullText() {
+  void thinking_delta_rejects_null_text() {
     assertThatThrownBy(() -> new TurnEvent.ThinkingDelta(null))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void redactedThinkingRejectsNullData() {
+  void redacted_thinking_rejects_null_data() {
     assertThatThrownBy(() -> new TurnEvent.RedactedThinking(null))
         .isInstanceOf(NullPointerException.class);
   }

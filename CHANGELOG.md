@@ -57,7 +57,8 @@ sequence of renames and interim shapes that produced it.
   two-slot record the loop performs against — `callModel(ModelCallExecutor)`,
   `toolCall(ToolCallExecutor)`, each `.execute(...)` returning
   `Awaited<ConversationEvent>` — implemented by `ProviderModelCallExecutor`
-  (talks to the `ModelProvider` and tells `Memory` the birth) and
+  (recalls from `Memory` and talks to the `ModelProvider`; the loop is the one
+  that tells `Memory` the birth) and
   `GatedToolCallExecutor` (the one door into a tool call: policy, then the
   approval gate, then the invocation, folded into a single executor rather
   than three engine-sequenced steps). `TerminationPolicy` moved to the loop

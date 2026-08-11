@@ -27,6 +27,12 @@ import java.util.function.Consumer;
  * ConversationScoped}) to that conversation's id, so nothing subscribed here ever sees another
  * conversation's traffic. Delivery is synchronous, in subscription order — the same veto-by-throw
  * contract every other sync listener in the framework carries.
+ *
+ * <p>Veto with care: a subscriber that throws mid-turn aborts the run the same way any other
+ * exception escaping the loop would. If it fires while the loop is between calls — mid-homework,
+ * with tool calls still outstanding — the conversation is left {@code EXECUTING_TOOL}: unrunnable
+ * this generation, pending the durable resume generation, with its {@code Memory} already holding
+ * homework the model has not yet been told the answer to.
  */
 public interface ConversationEvents {
 

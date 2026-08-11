@@ -23,10 +23,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 
 /**
- * Performs one {@code ExecuteTool} or {@code RequestApproval} effect: the gate travels with the
- * act. There is no door into a tool's execution that is not this executor — a call either clears
- * the gate here, in one step, or {@link #execute} yields {@link Awaited.Parked} and the gate's
- * verdict arrives later through {@link #resume}.
+ * Performs one {@code ExecuteTool} effect: the gate travels with the act. There is no door into a
+ * tool's execution that is not this executor — a call either clears the gate here, in one step, or
+ * {@link #execute} yields {@link Awaited.Parked} and the gate's verdict arrives later through
+ * {@link #resume}.
  *
  * <p>Yields exactly one fact — {@code ToolFinished} — whichever branch it takes: policy allow,
  * policy deny, approver allow, approver deny, an unknown tool, or a tool that threw.

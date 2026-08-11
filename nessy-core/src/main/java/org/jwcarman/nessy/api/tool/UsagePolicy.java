@@ -20,13 +20,14 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 /**
  * The authority half of a {@link ToolGrant}: whether one call to a granted tool may proceed.
  *
- * <p>{@link #evaluate} is consulted exactly once per call, at the engine's one authority
- * chokepoint, before the tool ever runs and before the approver is ever asked. The model has no say
- * in the outcome — it only ever sees the result, allowed, denied, or approved.
+ * <p>{@link #evaluate} is consulted exactly once per call, at the tool call executor's one
+ * authority chokepoint, before the tool ever runs and before the approver is ever asked. The model
+ * has no say in the outcome — it only ever sees the result, allowed, denied, or approved.
  *
  * <p>{@code evaluate} must be pure: no I/O, no mutation, nothing beyond a function of its two
- * arguments. The engine may call it from any thread and treats an escaping {@code RuntimeException}
- * as a {@link PolicyDecision.Deny} — a broken policy fails closed rather than becoming an allow.
+ * arguments. The executor may call it from any thread and treats an escaping {@code
+ * RuntimeException} as a {@link PolicyDecision.Deny} — a broken policy fails closed rather than
+ * becoming an allow.
  */
 public interface UsagePolicy {
 

@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 /**
  * Everything the loop knows, as data.
  *
- * <p>This record is the control block: the debt lane, the dials, and the markers the reducer needs
- * to decide what happens next. It holds no connections, no threads, and no callbacks, which is what
- * makes the reducer pure, the loop testable without a network, and durable resume a storage concern
- * rather than an engine change. The settled transcript itself is not here — that is {@link
+ * <p>This record is the control block: the debt lane, the dials, and the markers the fold needs to
+ * decide what happens next. It holds no connections, no threads, and no callbacks, which is what
+ * makes the fold pure, the loop testable without a network, and durable resume a storage concern
+ * rather than an assembly change. The settled transcript itself is not here — that is {@link
  * org.jwcarman.nessy.spi.memory.Memory}'s custody, not the control block's.
  *
  * @param id the session this state belongs to
@@ -40,9 +40,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * @param pendingResults results collected so far, flushed as one user message when the last pending
  *     call resolves
  * @param consecutiveErrors errored tool results in a row; any success resets it
- * @param modelCalls model calls completed so far — the termination policy's dial. A turn is the
- *     whole tell-to-clean-response episode; this field counts the model calls within it, which is
- *     the unit {@link TerminationPolicy} actually bounds.
+ * @param modelCalls model calls completed so far — the termination policy's dial. It counts across
+ *     the conversation's whole life, not within one turn: {@code told()} never resets it, so it is
+ *     a lifetime total the way {@link #consecutiveErrors()} is a streak — the unit {@link
+ *     TerminationPolicy} actually bounds.
  * @param usage tokens spent so far, accumulated across every completed model call — the loop's own
  *     spend, reported by {@link ConversationEvent.ModelResponded}. This is the jurisdiction rule
  *     (design §10.6, ruled 2026-08-10): the ledger bills only the loop's own conversational calls;
