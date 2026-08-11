@@ -670,8 +670,8 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.Effect;
-import org.jwcarman.nessy.spi.Step;
+import org.jwcarman.nessy.api.conversation.Effect;
+import org.jwcarman.nessy.api.conversation.Step;
 import org.junit.jupiter.api.Test;
 
 class ConversationStateFoldTest {
@@ -1567,8 +1567,8 @@ import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.spi.Effect;
-import org.jwcarman.nessy.spi.Step;
+import org.jwcarman.nessy.api.conversation.Effect;
+import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.memory.Memory;
