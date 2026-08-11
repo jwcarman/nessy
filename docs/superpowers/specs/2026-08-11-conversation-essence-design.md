@@ -12,9 +12,9 @@ there stands.
 ## 1. The realization
 
 What v2 called an *execution engine* is really a **conversation effect
-executor**. The reduce→perform→fold cycle is not an implementation detail that
-engines may vary — it is invariant semantics that belongs beside the reducer.
-Engines never own the loop; they only supply **how each effect is performed**.
+executor**. The fold→perform cycle is not an implementation detail that
+engines may vary — it is invariant semantics owned by the core. Engines never
+own the loop; they only supply **how each effect is performed**.
 The "engine" dissolves into three parts:
 
 1. **The loop** — invariant, written once, owned by the core.
@@ -52,13 +52,13 @@ dialogue itself can absorb rides inside the success fact as data. This is why
 party remains to read it) while `ExecuteTool` has one (`ToolFinished` carries
 `isError`; success and failure have the same consequence shape: a result the
 model will read). Go's `{res, err}` forcing function is achieved by sealed
-exhaustiveness instead of convention — the reducer cannot omit an arm and
+exhaustiveness instead of convention — the fold cannot omit an arm and
 compile. `AgentTold` has no failure twin: the outside world cannot fail *into*
 a conversation.
 
 **The first law.** *Everything that changes the record is on the record.* The
 facts, durably appended in order, ARE the conversation. Replaying them through
-the reducer reconstructs state exactly; nothing off-record may alter what
+the fold reconstructs state exactly; nothing off-record may alter what
 replay would produce.
 
 **Grammar flow.** The facts form a small regular grammar; statuses are its
@@ -90,7 +90,7 @@ sealed interface Effect {
 }
 ```
 
-After folding any fact, the reducer answers one question — *what does the
+After folding any fact, the fold answers one question — *what does the
 conversation need to proceed?* — and there are only three answers: the model's
 next contribution (`CallModel`), homework done (`ExecuteTool`), or nothing
 (terminal; the silence that ends the turn).
@@ -103,7 +103,7 @@ declaration: adding a variant is not a feature, it is a new party.
 Candidates explicitly rejected, each with its principled home:
 
 - **Persistence, event emission, telling Memory** — the loop's invariant
-  discipline at every fold. An "effect" the reducer must always emit is not a
+  discipline at every fold. An "effect" the fold must always emit is not a
   decision; it is law, and law lives in the loop.
 - **Approval** — folded inside `ExecuteTool` (§4). The gate travels with the
   act.
@@ -128,7 +128,7 @@ built as **gate-then-invoke**: consult the grant's `UsagePolicy`, consult the
   its executor, ungated execution is structurally impossible rather than
   conventionally avoided. There is no door that isn't the gate.
 - **Denial semantics survive untouched.** The executor yields
-  `ToolFinished(call, error("Denied: …"))`; the reducer treats it like any
+  `ToolFinished(call, error("Denied: …"))`; the fold treats it like any
   errored result — error streak and all. A denial is a result the model can
   read and adapt to.
 - **"Waiting on a human" is a harness event** (`ApprovalRequested` on the
@@ -154,10 +154,11 @@ interface takes exactly what it needs and shares only the return shape:
 Awaited<ConversationEvent> execute(…)   // one fact, or a park
 ```
 
-- `ModelCallExecutor.execute(state, memory, observer)` — recalls the seed from
-  Memory, assembles the request, consumes the provider's `ModelEvent` stream
-  (translating texture to the observer, accumulating the settled message),
-  yields `ModelResponded` or `ModelCallFailed`.
+- `ModelCallExecutor.execute(state, memory, observer)` — recalls the finished
+  context from Memory, wraps it with settings (system prompt, model, tools),
+  consumes the provider's `ModelEvent` stream (translating texture to the
+  observer, accumulating the settled message), yields `ModelResponded` or
+  `ModelCallFailed`.
 - `ToolCallExecutor.execute(call, state)` — gate-then-invoke, yields
   `ToolFinished`.
 
@@ -172,7 +173,7 @@ merely the only executor that parks today; a batch-API model call is a parking
 `CallModel` executor tomorrow. Whether parks are tolerated is loop
 configuration (the in-process assembly refuses loudly), not executor contract.
 
-**Resume routes to the executor, not the reducer.** A resumption is *the
+**Resume routes to the executor, not the fold.** A resumption is *the
 parked executor finishing its yield*: hand the tool executor its `Decision`
 and it continues — deny yields the denial result, allow invokes and yields
 `ToolFinished`. The loop folds the fact exactly as if it had arrived without
@@ -186,11 +187,26 @@ parent's grammar never learns its tool was an agent.
 
 ## 6. The loop, the turn, and failure routing
 
-**The loop** (invariant, core-owned): fold the fact through the reducer; tell
+**The loop** (invariant, core-owned): ask the state to fold the fact; tell
 Memory any newborn messages (§7); persist progress; for each emitted effect,
 ask its executor for the next fact; repeat until no effects (terminal) or a
 park. Synchronous by nature — asynchrony is what callers build around a
 segment.
+
+**The fold lives on the state — there is no Reducer object.** v2's `Reducer`
+earned its separate existence by carrying cargo: compaction config, eleven
+event arms, delta merging, message construction. This amendment empties it —
+four transitions and one policy consult — so the object dissolves and the
+automaton moves onto the thing it governs. `ConversationState` is a rich
+*immutable* domain object: each fact folds through the state's own method,
+returning the `Step` holder (new state + zero or more effects). Determinism,
+replay, and sealed exhaustiveness are unchanged — the fold is the same pure
+function; it now has a home instead of a house. Two disciplines guard the
+move: `TerminationPolicy` is *injected at the fold*
+(`state.fold(event, policy) → Step`), never held by state — policy is assembly
+config, state is pure data; and `Effect`/`Step` become core-grammar citizens
+beside the state (package placement is plan-level detail). v2's closure claim
+strengthens: semantics are no longer an object you could even try to swap.
 
 **Terminology, made crisp:**
 
@@ -215,11 +231,11 @@ fact when it can't.*
 - **Permanent, conversation-shaped** (context outgrew the window): fact —
   `ModelCallFailed` → `FAILED` with reason. Re-performing is futile; the
   course must change, and the only legal way state changes is a fact through
-  the reducer. Without this, an autonomous agent's conversation sits pointing
+  the fold. Without this, an autonomous agent's conversation sits pointing
   at work that can never succeed — a silent zombie.
 - The classification burden lands on the provider seam, which already
   half-carries it (`RetryingModelProvider` classifies retryable-vs-not).
-- Factizing failure opens a door (not built now): the reducer could one day
+- Factizing failure opens a door (not built now): the fold could one day
   answer overflow with something smarter than `FAILED`, as a pure testable
   decision.
 
@@ -229,7 +245,7 @@ fact when it can't.*
 interface Memory {
   void remember(…);        // told: every message-grade happening, in order,
                            //   for the conversation's whole life
-  Context recall(…);       // asked: build the seed context for the next call
+  Context recall(…);       // asked: build the finished context for the next call
 }
 ```
 
@@ -253,8 +269,18 @@ this is a *directed* feed to the one party whose job depends on message
 births.) The assistant message rides `ModelResponded` verbatim — thinking
 signatures and tool-use blocks must round-trip exactly; the model's own
 contribution is wire-truth, never reconstructed. Message *construction*
-otherwise leaves the reducer entirely: facts are what happened; messages are
+otherwise leaves the fold entirely: facts are what happened; messages are
 how the read path presents what happened to a model.
+
+**Memory absorbs the read path whole.** Projection and enrichment are
+implementation details behind the Memory facade, not core seams: `recall`
+returns the *finished*, legal context — seeded, shaped, garnished — and the
+model-call executor adds only settings before touching the wire. Memory is a
+**subdomain**: it can be beefed up over time (checkpointing, retrieval,
+projection strategies, enrichment sources) without the core loop ever
+learning, and the loop's simplicity is bought by exactly this abstraction.
+The `ContextPipeline`/`Projection`/`ContextEnricher` family retires as core
+seams; their ideas live on as Memory-internal vocabulary.
 
 **Freedom of retention, rule of law at the border.** Inside, a Memory may
 transcribe, summarize, checkpoint, embed, or discard — the harness never
@@ -329,7 +355,7 @@ State sheds its messages and becomes what it always wanted to be:
 |---|---|---|
 | `id` | identity | everyone |
 | `status` | continuation pointer / terminal marker | the loop, §6 refusal contract |
-| `pendingCalls`, `pendingResults` | **the debt lane** — homework assigned and handed in, awaiting flush | reducer |
+| `pendingCalls`, `pendingResults` | **the debt lane** — homework assigned and handed in, awaiting flush | the fold |
 | `modelCalls` | policy accumulator | termination policy |
 | `consecutiveErrors` | policy accumulator (circuit breaker) | termination policy |
 | `usage` | accounting (sum of `ModelResponded.usage`) | ledger readers |
@@ -343,9 +369,9 @@ Statuses `AWAITING_APPROVAL` and `COMPACTING` retire.
 shape of an unfinished turn; everything else is a scalar. And every field,
 debt included, is derivable by replaying the facts: state is the
 **materialized fold** — a snapshot kept so a durable engine resumes in O(1)
-and the reducer has a substrate. Log is truth; state is cache.
+and the fold has a substrate. Log is truth; state is cache.
 
-The reducer keeps: the misdelivery guard, termination policy, the error
+The fold keeps: the misdelivery guard, termination policy, the error
 streak, debt bookkeeping, status transitions, and the flush decision (when
 debt clears, the results message is born and told to Memory).
 
@@ -379,13 +405,12 @@ yet.
   reborn as the directed Memory feed.
 - `ConversationState.messages`, `pendingBlocks`, `generation`,
   `lastInputTokens`; statuses `AWAITING_APPROVAL`, `COMPACTING`.
-- The reducer's delta-merging arms, compaction guards (stale-`Compacted`,
+- The `Reducer` object itself, and its delta-merging arms, compaction guards (stale-`Compacted`,
   pending-lane splice, size check), and message construction.
 - The engine-owned recursive loop; `translate()`'s 1:1 mirror.
-- The `Compactor`/`Summarizer`/`ContextPipeline` family as separate seams —
-  their jobs move inside Memory implementations and the model-call executor.
-  *(Exact disposition of `Projection`/`ContextEnricher` is plan-level detail:
-  they survive as tools for Memory/executor implementations or fold in.)*
+- The `Compactor`/`Summarizer`/`ContextPipeline`/`Projection`/
+  `ContextEnricher` family as separate core seams — their jobs move inside
+  Memory implementations, behind the facade (§7).
 
 ## 12. Amendment ledger — v2 rulings that move
 
@@ -398,12 +423,14 @@ yet.
 | "Journal is a listener; transcript store family retires" | **Partially reversed**: the fact log becomes first-class, load-bearing record (in-memory for tests/CLI, durable for fleets). The journal-as-listener remains valid for *additional* subscribers. The v2 rationale should be re-read at plan time to confirm nothing else leaned on it. |
 | `ExecutionEngine` as the implementable seam | Dissolves into loop + `EffectExecutors` + assembly (§1, §5). §6 resume-refusal contract survives, re-homed on the loop. |
 | Working set in `ConversationState` | Content leaves state (§9); "working set" as a state concept retires with it. |
+| `Reducer` as a standalone object | Dissolves into `ConversationState`'s own fold methods (§6). `Step` survives; `TerminationPolicy` is injected at the fold. Semantics stay closed — more closed: no object left to swap. |
+| Context pipeline (`ContextPipeline`/`Projection`/`ContextEnricher`) as core seams | Absorbed behind the Memory facade (§7); `recall` returns the finished context. |
 
 ## 13. Open questions (all small, none load-bearing)
 
 1. **`ToolUseEmitted` in `TurnEvent`** — lean *keep* (live UIs dead-air
    without it).
-2. **Multi-call homework sequencing** — reducer emits all `ExecuteTool`
+2. **Multi-call homework sequencing** — the fold emits all `ExecuteTool`
    effects from one `ModelResponded` fold vs. one-per-fold; lean *all at once*
    (opens the parallel-tools door with no grammar change).
 3. **Park-resolution typing** — opaque payload vs. per-executor typed
@@ -412,16 +439,15 @@ yet.
    `ConversationId`; lean *keyed* (matches the store idiom; facade hides the
    key).
 5. **Facade verbs** (`tell`/`ask`) — explicitly unsettled (§10).
-6. **`recall` feeds vs. absorbs the projection/enrichment pipeline** — lean
-   *feeds* (enrichment is per-call garnish, request-scoped; Memory is
-   retention, conversation-scoped; a dumb Memory should still get smart
-   enrichment).
-7. **Memory replay idempotency** — high-water mark vs. tolerant providers
+6. **Memory replay idempotency** — high-water mark vs. tolerant providers
    (§7).
+
+*(Resolved since first draft: `recall` **absorbs** the projection/enrichment
+pipeline — they are Memory implementation details behind the facade, §7.)*
 
 ## 14. Testing posture (unchanged in spirit, simpler in practice)
 
-The v2 promises hold and get cheaper: the reducer is tested pure, now with
+The v2 promises hold and get cheaper: the fold is tested pure, now with
 four arms instead of eleven and no message construction; the invariant loop is
 tested once with fake executors (its ordering laws — tell-Memory-then-perform,
 persist-on-every-exit, park handling — become directly assertable); Memory
