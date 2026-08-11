@@ -24,14 +24,8 @@ public enum ConversationStatus {
   /** A model call is in flight. */
   AWAITING_MODEL,
 
-  /** A tool call needs an approval decision before it can run. */
-  AWAITING_APPROVAL,
-
   /** An approved tool is running. */
   EXECUTING_TOOL,
-
-  /** A summarization call is in flight. */
-  COMPACTING,
 
   /** The model ended its turn with nothing left to do. */
   COMPLETE,

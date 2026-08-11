@@ -31,11 +31,11 @@ public interface TerminationPolicy {
   /** A human-readable reason to halt, or empty to continue. */
   Optional<String> shouldHalt(ConversationState state);
 
-  static TerminationPolicy maxTurns(int max) {
-    requireAtLeastOne(max, "maxTurns");
+  static TerminationPolicy maxModelCalls(int max) {
+    requireAtLeastOne(max, "maxModelCalls");
     return state ->
-        state.turns() >= max
-            ? Optional.of("reached the turn ceiling (" + max + " turns)")
+        state.modelCalls() >= max
+            ? Optional.of("reached the model-call ceiling (" + max + " model calls)")
             : Optional.empty();
   }
 
@@ -57,9 +57,9 @@ public interface TerminationPolicy {
     return state -> Optional.empty();
   }
 
-  /** The wallet-guarding default: three consecutive errors or one hundred turns. */
+  /** The wallet-guarding default: three consecutive errors or one hundred model calls. */
   static TerminationPolicy defaults() {
-    return anyOf(maxConsecutiveErrors(3), maxTurns(100));
+    return anyOf(maxConsecutiveErrors(3), maxModelCalls(100));
   }
 
   private static void requireAtLeastOne(int max, String name) {

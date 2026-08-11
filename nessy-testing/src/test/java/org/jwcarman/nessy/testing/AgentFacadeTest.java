@@ -357,7 +357,7 @@ class AgentFacadeTest {
             .build()
             .agent()
             .model("fake-model")
-            .termination(TerminationPolicy.maxTurns(1))
+            .termination(TerminationPolicy.maxModelCalls(1))
             .build();
     Conversation<String> chat = agent.converse();
     chat.tell("hi");
@@ -369,7 +369,7 @@ class AgentFacadeTest {
 
     assertThat(RunOutcomes.failed(second)).isTrue();
     assertThat(RunOutcomes.failureReason(second)).isPresent();
-    assertThat(RunOutcomes.failureReason(second).orElseThrow()).contains("turn");
+    assertThat(RunOutcomes.failureReason(second).orElseThrow()).contains("model calls");
   }
 
   /**

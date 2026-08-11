@@ -22,15 +22,15 @@ import org.junit.jupiter.api.Test;
 
 class TerminationPolicyTest {
 
-  private static ConversationState stateWith(int turns, int consecutiveErrors) {
+  private static ConversationState stateWith(int modelCalls, int consecutiveErrors) {
     return ConversationState.newConversation(new ConversationId("s1"))
-        .withTurns(turns)
+        .withModelCalls(modelCalls)
         .withConsecutiveErrors(consecutiveErrors);
   }
 
   @Test
-  void max_turns_halts_at_the_ceiling_and_not_below() {
-    TerminationPolicy policy = TerminationPolicy.maxTurns(5);
+  void max_model_calls_halts_at_the_ceiling_and_not_below() {
+    TerminationPolicy policy = TerminationPolicy.maxModelCalls(5);
 
     assertThat(policy.shouldHalt(stateWith(4, 0))).isEmpty();
     assertThat(policy.shouldHalt(stateWith(5, 0))).isPresent();
@@ -48,9 +48,9 @@ class TerminationPolicyTest {
   void any_of_reports_the_first_halting_policy() {
     TerminationPolicy policy =
         TerminationPolicy.anyOf(
-            TerminationPolicy.maxConsecutiveErrors(2), TerminationPolicy.maxTurns(5));
+            TerminationPolicy.maxConsecutiveErrors(2), TerminationPolicy.maxModelCalls(5));
 
-    assertThat(policy.shouldHalt(stateWith(9, 0)).orElseThrow()).contains("turn");
+    assertThat(policy.shouldHalt(stateWith(9, 0)).orElseThrow()).contains("model calls");
     assertThat(policy.shouldHalt(stateWith(0, 9)).orElseThrow()).contains("consecutive");
   }
 
@@ -61,7 +61,7 @@ class TerminationPolicyTest {
 
   @Test
   void ceilings_below_one_are_rejected() {
-    assertThatThrownBy(() -> TerminationPolicy.maxTurns(0))
+    assertThatThrownBy(() -> TerminationPolicy.maxModelCalls(0))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> TerminationPolicy.maxConsecutiveErrors(0))
         .isInstanceOf(IllegalArgumentException.class);

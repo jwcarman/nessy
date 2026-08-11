@@ -171,7 +171,7 @@ class EndToEndTest {
     RunOutcome outcome = agent.converse().tell("hi");
 
     assertThat(outcome.state().usage()).isEqualTo(new Usage(10, 5, 0));
-    assertThat(outcome.state().turns()).isEqualTo(1);
+    assertThat(outcome.state().modelCalls()).isEqualTo(1);
   }
 
   @Test

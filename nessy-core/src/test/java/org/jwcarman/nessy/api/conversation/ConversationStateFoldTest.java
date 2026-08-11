@@ -75,7 +75,7 @@ class ConversationStateFoldTest {
     assertThat(step.state().status()).isEqualTo(ConversationStatus.COMPLETE);
     assertThat(step.remember()).containsExactly(answer);
     assertThat(step.effects()).isEmpty();
-    assertThat(step.state().turns()).isEqualTo(1);
+    assertThat(step.state().modelCalls()).isEqualTo(1);
     assertThat(step.state().usage().inputTokens()).isEqualTo(7);
   }
 

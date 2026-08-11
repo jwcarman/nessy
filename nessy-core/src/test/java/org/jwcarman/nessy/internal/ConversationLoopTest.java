@@ -457,7 +457,7 @@ class ConversationLoopTest {
           new ConversationLoop(
               new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
               memory,
-              TerminationPolicy.maxTurns(1),
+              TerminationPolicy.maxModelCalls(1),
               new RecordingStore(journal),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
