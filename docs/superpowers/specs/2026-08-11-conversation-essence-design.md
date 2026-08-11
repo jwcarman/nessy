@@ -159,26 +159,43 @@ Awaited<ConversationEvent> execute(…)   // one fact, or a park
   consumes the provider's `ModelEvent` stream (translating texture to the
   observer, accumulating the settled message), yields `ModelResponded` or
   `ModelCallFailed`.
-- `ToolCallExecutor.execute(call, state)` — gate-then-invoke, yields
-  `ToolFinished`.
+- `ToolCallExecutor.execute(call, state, observer)` — gate-then-invoke,
+  narrating the verdict and completion to the observer, yields `ToolFinished`.
 
 **One fact per effect.** Multiplicity lives elsewhere by design: a turn with
 five tool calls is one `ModelResponded` fact whose fold emits five effects;
 streaming is texture, not facts.
 
-**Parking is a termination mode of the contract, universal to it.** An
-executor ends *exhausted* (fact yielded) or *parked* (the rest cannot exist
-yet — a human or long-running process owes us something). The tool caller is
-merely the only executor that parks today; a batch-API model call is a parking
-`CallModel` executor tomorrow. Whether parks are tolerated is loop
+**Homework fans out.** The fold emits every `ExecuteTool` from one
+`ModelResponded`; the loop may perform them concurrently; `ToolFinished`
+facts fold *serially*, in arrival order — any order, since the debt lane
+matches by call id and the flush fires only when the debt clears. Order was
+never load-bearing. (Concurrent performance interleaved with parks — several
+simultaneously parked calls, each with its own token, the segment ending when
+no performable effect remains — is plan-level mechanics.)
+
+**Parking is a termination mode of the contract — but this generation, only
+the tool executor parks.** An executor ends *exhausted* (fact yielded) or
+*parked* (the rest cannot exist yet — a human or long-running process owes us
+something). The contract *shape* (`Awaited`) permits any executor to park —
+a batch-API model call is a conceivable parking `CallModel` executor — but we
+build resolution machinery only for the case that exists: the model-call
+executor must return `Ready`. Whether parks are tolerated at all is loop
 configuration (the in-process assembly refuses loudly), not executor contract.
+
+**The resolution grammar is small because the scope is.** A parked tool call
+awaits exactly one of two things, so the resolution is a two-variant sealed
+type: `Decided(Decision)` — the gate verdict arrives (HITL approval) — or
+`Completed(ToolResult)` — the slow completion arrives (sub-agent delegation,
+long-running process). The parked executor receives its resolution and
+finishes its yield.
 
 **Resume routes to the executor, not the fold.** A resumption is *the
 parked executor finishing its yield*: hand the tool executor its `Decision`
 and it continues — deny yields the denial result, allow invokes and yields
 `ToolFinished`. The loop folds the fact exactly as if it had arrived without
 the nap. Run and resume are the same invariant loop differing only in what
-produces the first fact. *(Open: the resolution's type — see §13.)*
+produces the first fact.
 
 Sub-agent delegation needs nothing new: a tool whose implementation is another
 agent is a tool executor that parks; the sub-agent's turns and facts live in
@@ -287,6 +304,14 @@ contribution is wire-truth, never reconstructed. Message *construction*
 otherwise leaves the fold entirely: facts are what happened; messages are
 how the read path presents what happened to a model.
 
+**Memory is the agent's choice, addressed by conversation.** The
+implementation is wired per agent — different agents carry different memory
+systems (verbatim, summarizing, graph-based with ambient enrichment from the
+graph), and that choice is part of what the agent *is*. The contract is keyed
+by `ConversationId` — one instance serving all of that agent's conversations,
+matching the store idiom — and the facade hides the key from callers who
+never see two conversations.
+
 **Memory absorbs the read path whole.** Projection and enrichment are
 implementation details behind the Memory facade, not core seams: `recall`
 returns the *finished*, legal context — seeded, shaped, garnished — and the
@@ -326,29 +351,47 @@ the *enforcement* boundary for a Memory that engineers badly is
 `ModelCallFailed`. A summarizing Memory needs a `ModelProvider` in hand — the
 same wiring `AgentBuilder` does for today's `Summarizer`, re-aimed.
 
-**Replay stance (durable engines):** re-driving replays facts, which re-tells
-Memory. The contract needs an idempotency ruling — told-exactly-once via
-high-water mark, or providers tolerate replay. *(Flagged, not yet ruled.)*
+**Tellings are at-least-once; `remember` is idempotent.** Replay is not a
+runtime mechanism in this design: recovery is *re-driving from the status
+pointer* (§6) — load the thin state, perform the effect status points at —
+never re-folding old facts. The fact log's replayability is a *property*
+(audit, rebuild, migration), not a code path the loop depends on. But a crash
+in the window between telling Memory and persisting state re-performs the
+effect and re-tells the resulting message, so the contract stance is:
+the loop may tell a Memory the same message twice under crash recovery, and
+`remember` tolerates it. Stable message identity (plan-level) makes tolerance
+cheap; an assembly that co-locates store and Memory in one transaction can
+tighten to exactly-once without any contract change.
 
 ## 8. Turn texture — `TurnEvent` and `TurnObserver`
 
-An API-side sealed vocabulary for the live texture of a turn — meaningful only
-to something watching it happen, never folded into anything:
+An API-side sealed vocabulary for the live story of a turn — meaningful only
+to something watching it happen, never folded into anything. The roster is
+chosen for **narration**: a sitting consumer must be able to tell the turn's
+story from these events alone, as it unfolds:
 
-- `TextDelta`, `ThinkingDelta`, a redacted-thinking marker.
-- `ToolUseEmitted` — *open, lean keep*: it arrives inside the delta stream,
-  and live UIs go dead-air through tool-heavy turns without it.
-- No milestones: "tool started/finished" are **system events** (listener
-  channel, where `ToolProgress` lives) — they matter precisely when nobody is
-  sitting there.
+- `TextDelta`, `ThinkingDelta`, a redacted-thinking marker — the model
+  speaking and thinking.
+- `ToolCallRequested` — the model asked for homework (arrives mid-stream, as
+  the tool-use block materializes).
+- `ToolCallDecided` — the gate's verdict: approved, or denied with reason.
+- `ToolCallCompleted` — the homework settled, result in hand, success or
+  error.
+
+The tool-lifecycle events mean the tool-call executor takes the observer too —
+per-slot signatures absorb this without ceremony. The system channel
+(`ToolProgress`, `ApprovalRequested`, …) remains the harness-scoped ops feed
+for unattended fleets; the observer is the narration for whoever holds the
+segment. The same information may flow on both channels — different consumers,
+different jurisdictions, deliberately.
 
 `ModelEvent` (SPI, what providers emit) and `TurnEvent` (API, what apps
 observe) are near-twins on purpose: provider and app vocabularies evolve on
 different clocks; the thin translation lives in exactly one place, the
 model-call executor.
 
-**The `TurnObserver` is required by the model-call executor's signature and
-bound per-entry.** Both entry points take one — `tell(input, observer)` and
+**The `TurnObserver` is required by the executor signatures and bound
+per-entry.** Both entry points take one — `tell(input, observer)` and
 `resume(token, resolution, observer)` — with `TurnObserver.noop()` as the
 default. Texture belongs to whoever is sitting there *now*, and "now" restarts
 at every resume; a segment's observer sees deltas from its entry onward, and
@@ -391,7 +434,7 @@ bookkeeping (the dials the policy reads), debt bookkeeping, status
 transitions, and the flush decision (when debt clears, the results message is
 born and told to Memory). The termination *consultation* is the loop's (§6).
 
-## 10. The facade — settled and unsettled
+## 10. The facade
 
 **Settled principle:** *the outcome of a turn is a reading, not a delivery.*
 The segment ends; its outcome exists; a waiting caller reads it, a
@@ -404,11 +447,11 @@ semantics would turn the §6 collision contract from a loud throw into a silent
 queue. Callers who want later put a queue in front — their architecture,
 visible in their code.
 
-**Unsettled:** whether the facade names both intents Akka-style (`tell` →
-outcome ignored, `ask` → `Reply`), with the note that asking is telling plus
-reading — there is no `AgentAsked` fact; the conversation only ever learns it
-was told. The user has explicitly not signed off; do not build either shape
-yet.
+**Settled: the verb is `tell`.** The bare construct — even Akka builds `ask`
+atop `tell`. The facade ships `tell(input, observer?) → outcome` alone.
+`ask`/`Reply` sugar (asking is telling plus reading — there is no `AgentAsked`
+fact; the conversation only ever learns it was told) is deferred until a
+consumer demands it, and is buildable on top without touching the core.
 
 ## 11. What this simplifies away (inventory)
 
@@ -442,24 +485,29 @@ yet.
 | `Reducer` as a standalone object | Dissolves into `ConversationState`'s own fold methods (§6). `Step` survives; `TerminationPolicy` moves to the loop, consulted with the state after every fold. Semantics stay closed — more closed: no object left to swap. |
 | Context pipeline (`ContextPipeline`/`Projection`/`ContextEnricher`) as core seams | Absorbed behind the Memory facade (§7); `recall` returns the finished context. |
 
-## 13. Open questions (all small, none load-bearing)
+## 13. Rulings from review (formerly the open questions)
 
-1. **`ToolUseEmitted` in `TurnEvent`** — lean *keep* (live UIs dead-air
-   without it).
-2. **Multi-call homework sequencing** — the fold emits all `ExecuteTool`
-   effects from one `ModelResponded` fold vs. one-per-fold; lean *all at once*
-   (opens the parallel-tools door with no grammar change).
-3. **Park-resolution typing** — opaque payload vs. per-executor typed
-   resolutions; genuinely unresolved.
-4. **Memory scoping** — per-conversation instance vs. harness-wide keyed by
-   `ConversationId`; lean *keyed* (matches the store idiom; facade hides the
-   key).
-5. **Facade verbs** (`tell`/`ask`) — explicitly unsettled (§10).
-6. **Memory replay idempotency** — high-water mark vs. tolerant providers
-   (§7).
+1. **Turn narration** — `TurnEvent` carries the tool lifecycle
+   (`ToolCallRequested` / `ToolCallDecided` / `ToolCallCompleted`) alongside
+   the deltas; the observer narrates the whole turn, and the tool executor
+   takes the observer too (§8).
+2. **Homework fans out** — the fold emits every `ExecuteTool` at once; the
+   loop may perform them concurrently; `ToolFinished` facts fold serially in
+   arrival order, any order (§5).
+3. **Only the tool executor parks, this generation** — model-call parking
+   (batch APIs) is permitted by the contract shape but not built; the
+   resolution grammar is the two-variant sealed `Decided(Decision)` |
+   `Completed(ToolResult)` (§5).
+4. **Memory is the agent's choice, keyed by conversation** (§7).
+5. **The facade verb is `tell`**; `ask`/`Reply` is deferrable sugar (§10).
+6. **Tellings are at-least-once; `remember` is idempotent** — recovery
+   re-drives from the status pointer, it never re-folds (§7).
+7. **`recall` absorbs the projection/enrichment pipeline** — Memory
+   implementation details behind the facade (§7).
 
-*(Resolved since first draft: `recall` **absorbs** the projection/enrichment
-pipeline — they are Memory implementation details behind the facade, §7.)*
+No open questions remain at spec level. Remaining choices — package
+placement of `Effect`/`Step`, the message-identity scheme, `Reply`'s
+disposition, park-with-fan-out mechanics — are plan-level.
 
 ## 14. Testing posture (unchanged in spirit, simpler in practice)
 
