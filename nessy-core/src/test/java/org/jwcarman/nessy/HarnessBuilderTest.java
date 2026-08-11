@@ -106,7 +106,11 @@ class HarnessBuilderTest {
 
     agent.converse().tell("hi");
 
-    assertThat(observations).hasObservationWithNameEqualTo("nessy.run");
+    assertThat(observations)
+        .hasObservationWithNameEqualTo("nessy.run")
+        .that()
+        .backToTestObservationRegistry()
+        .hasObservationWithNameEqualTo("nessy.model.call");
   }
 
   @Test

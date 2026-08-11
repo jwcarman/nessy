@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples;
 
+import java.util.Objects;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.api.RunOutcome;
@@ -56,7 +57,8 @@ public final class OpenAiChat {
       RunOutcome outcome = conversation.tell(input, OpenAiChat::render);
       IO.println();
       if (outcome.state().status() == ConversationStatus.FAILED) {
-        IO.println("! " + outcome.state().failureReason());
+        IO.println(
+            "! " + Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
       }
     }
   }

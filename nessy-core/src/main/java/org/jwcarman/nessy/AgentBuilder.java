@@ -251,7 +251,8 @@ public final class AgentBuilder<I> {
     Memory resolvedMemory = Optional.ofNullable(memory).orElseGet(this::defaultMemory);
     EffectExecutors executors =
         new EffectExecutors(
-            new ProviderModelCallExecutor(provider, settings, resolvedTools, resolvedMemory),
+            new ProviderModelCallExecutor(
+                provider, settings, resolvedTools, resolvedMemory, observations),
             new GatedToolCallExecutor(
                 resolvedTools,
                 resolvedGrants,

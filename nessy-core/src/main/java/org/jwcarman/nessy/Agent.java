@@ -65,11 +65,6 @@ public final class Agent<I> {
     return new Conversation<>(loop, conversationId, events, renderer);
   }
 
-  /** The event-level API, for anything the facade does not say. */
-  public ConversationLoop loop() {
-    return loop;
-  }
-
   /**
    * The debugging affordance: exactly what a conversational call made against {@code id} right now
    * would see — the same {@link Memory#recall} the loop's own {@code ModelCallExecutor} consults on

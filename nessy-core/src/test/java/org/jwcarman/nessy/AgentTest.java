@@ -38,9 +38,9 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@link Agent}'s own surface: {@code converse()} versus {@code resume(...)}, the {@code loop()}
- * escape hatch, and {@code contextFor(...)}'s both branches (an unknown id, and the same assembly a
- * live {@code tell} would see).
+ * {@link Agent}'s own surface: {@code converse()} versus {@code resume(...)}, and {@code
+ * contextFor(...)}'s both branches (an unknown id, and the same assembly a live {@code tell} would
+ * see).
  */
 class AgentTest {
 
@@ -77,13 +77,6 @@ class AgentTest {
     public Set<Capability> capabilities() {
       return Set.of();
     }
-  }
-
-  @Test
-  void loop_exposes_the_same_loop_the_facade_runs_calls_through() {
-    Agent<String> agent = Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
-
-    assertThat(agent.loop()).isNotNull();
   }
 
   @Nested

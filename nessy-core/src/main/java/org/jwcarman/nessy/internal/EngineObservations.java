@@ -39,10 +39,6 @@ public final class EngineObservations {
         .highCardinalityKeyValue("gen_ai.conversation.id", id.value());
   }
 
-  public static Observation turn(ObservationRegistry registry) {
-    return Observation.start("nessy.turn", registry);
-  }
-
   public static Observation modelCall(ObservationRegistry registry, String model) {
     return Observation.start("nessy.model.call", registry)
         .contextualName("chat " + model)

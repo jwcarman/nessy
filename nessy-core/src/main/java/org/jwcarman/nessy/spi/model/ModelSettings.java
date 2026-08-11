@@ -25,9 +25,9 @@ import java.util.Set;
  *     rather than silently degrading
  * @param contextWindow the model's total token budget, or {@code null} if undeclared. This is the
  *     third sanctioned nullable field in this codebase (see {@code ModelRequest.responseSchema} for
- *     the second): most callers never set it, and a declared window exists only so {@link
- *     org.jwcarman.nessy.spi.compaction.Compactors.SummarizingBuilder#window} has something to
- *     derive a trigger from.
+ *     the second): most callers never set it. Validated at construction (must exceed {@code
+ *     maxTokens}, when declared) but otherwise not yet consumed by anything in the loop — a
+ *     declared-but-unconsumed setting, reserved for a future retention policy to read.
  */
 public record ModelSettings(
     String model,

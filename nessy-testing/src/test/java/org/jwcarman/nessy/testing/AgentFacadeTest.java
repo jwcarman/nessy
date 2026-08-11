@@ -38,6 +38,7 @@ import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -45,7 +46,6 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.memory.ListMemory;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 class AgentFacadeTest {
@@ -217,22 +217,61 @@ class AgentFacadeTest {
   }
 
   /**
+   * A {@link Memory} whose {@code recall} always returns the same seeded {@link Context},
+   * regardless of what it has been told, and which records every message {@code remember} tells it
+   * — proving the two halves of the wiring separately: a builder that silently ignored {@code
+   * .memory(m)} would still pass an assertion that only checked the reply text, so this fake makes
+   * both the recall path and the telling path independently observable.
+   */
+  private static final class SeededMemory implements Memory {
+
+    private final Context seeded;
+    private final List<Message> told = new ArrayList<>();
+
+    SeededMemory(Context seeded) {
+      this.seeded = seeded;
+    }
+
+    List<Message> told() {
+      return told;
+    }
+
+    @Override
+    public void remember(ConversationId id, Message message) {
+      told.add(message);
+    }
+
+    @Override
+    public Context recall(ConversationId id) {
+      return seeded;
+    }
+  }
+
+  /**
    * A custom {@link Memory} replaces the {@code ListMemory} floor entirely — the content
-   * jurisdiction the loop's own {@code ModelCallExecutor} consults on every send.
+   * jurisdiction the loop's own {@code ModelCallExecutor} consults on every send. A builder that
+   * ignored {@code .memory(m)} would still fall back to a working {@code ListMemory}, so this test
+   * proves both halves of the wiring rather than only that the agent still answers: the seeded
+   * marker message reaches the wire request (recall wiring), and both the rendered user message and
+   * the settled assistant reply reach the custom memory's own {@code remember} (telling wiring).
    */
   @Test
   void a_custom_memory_is_wired_through_the_builder() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("Hi there.").endTurn().build();
-    Memory memory = new ListMemory();
+    Message marker = Message.user("seeded-by-custom-memory");
+    SeededMemory memory = new SeededMemory(Context.of(List.of(marker)));
 
     Agent<String> agent =
         Nessy.harness(provider).build().agent().model("fake-model").memory(memory).build();
-    TextObserver observer = new TextObserver();
 
-    agent.converse().tell("hi", observer);
+    agent.converse().tell("hi");
 
-    assertThat(observer.text()).isEqualTo("Hi there.");
+    assertThat(provider.requests().getFirst().context().messages()).contains(marker);
+    assertThat(memory.told()).isNotEmpty();
+    assertThat(memory.told()).contains(Message.user("hi"));
+    assertThat(memory.told())
+        .anySatisfy(message -> assertThat(message.role()).isEqualTo(Role.ASSISTANT));
   }
 
   @Test

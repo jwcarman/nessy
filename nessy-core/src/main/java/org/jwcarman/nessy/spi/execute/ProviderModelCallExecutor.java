@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spi.execute;
 
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -30,6 +32,7 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ContextOverflowException;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -43,6 +46,12 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * deltas into settled blocks (a hundred chunks become one block), narrate texture as it arrives,
  * and yield the one settled fact. Message construction lives here and nowhere else on the model
  * side: facts are what happened; this is where what happened is assembled.
+ *
+ * <p>Stream consumption runs inside one {@code nessy.model.call} observation, ported unchanged from
+ * the retired in-process engine's {@code streamModelTurn}: opened before the provider is asked to
+ * stream, marked {@link Observation#error(Throwable)} on an unexpected {@link RuntimeException},
+ * stopped in a {@code finally} regardless of outcome, and tagged with the settled usage the instant
+ * {@link ModelEvent.TurnEnded} arrives.
  */
 public final class ProviderModelCallExecutor implements ModelCallExecutor {
 
@@ -50,13 +59,19 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private final ModelSettings config;
   private final ToolRegistry tools;
   private final Memory memory;
+  private final ObservationRegistry observations;
 
   public ProviderModelCallExecutor(
-      ModelProvider provider, ModelSettings config, ToolRegistry tools, Memory memory) {
+      ModelProvider provider,
+      ModelSettings config,
+      ToolRegistry tools,
+      Memory memory,
+      ObservationRegistry observations) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.config = Objects.requireNonNull(config, "config must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
   @Override
@@ -75,8 +90,19 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
     } catch (ContextOverflowException e) {
       return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
     }
+    return stream(state, request, observer);
+  }
+
+  /**
+   * Consumes one {@link ModelStream} inside the {@code nessy.model.call} observation — extracted so
+   * {@link #execute}'s own {@code try} is never nested (S1141).
+   */
+  private Awaited<ConversationEvent> stream(
+      ConversationState state, ModelRequest request, TurnObserver observer) {
+    Observation modelCall = EngineObservations.modelCall(observations, config.model());
     List<ContentBlock> blocks = new ArrayList<>();
-    try (ModelStream stream = provider.stream(request)) {
+    try (var _ = modelCall.openScope();
+        ModelStream stream = provider.stream(request)) {
       for (ModelEvent event : stream) {
         switch (event) {
           case ModelEvent.TextChunk(String text) -> {
@@ -97,6 +123,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
             blocks.add(new ToolUseBlock(call));
           }
           case ModelEvent.TurnEnded(var reason, var usage) -> {
+            EngineObservations.recordUsage(modelCall, usage);
             return Awaited.ready(
                 new ConversationEvent.ModelResponded(
                     state.id(), Message.assistant(List.copyOf(blocks)), reason, usage));
@@ -105,6 +132,11 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       }
     } catch (ContextOverflowException e) {
       return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
+    } catch (RuntimeException e) {
+      modelCall.error(e);
+      throw e;
+    } finally {
+      modelCall.stop();
     }
     throw new IllegalStateException("model stream ended without a TurnEnded event");
   }

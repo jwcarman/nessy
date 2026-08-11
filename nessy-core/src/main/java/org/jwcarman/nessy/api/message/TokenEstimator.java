@@ -20,15 +20,13 @@ package org.jwcarman.nessy.api.message;
  *
  * <p>Providers report usage per call, not per message. This seam recomputes an honest estimate on
  * demand, on the read path only: budget-aware projections, sizing a summarizer's head, offline
- * analysis over journal content. It complements the measured trigger and never replaces it —
- * compaction keeps triggering on the provider's own exact count.
+ * analysis over stored content. It complements the provider's own measured usage and never replaces
+ * it — anything that must trigger on an exact cost still reads the provider's own reported count.
  *
- * <p>Lives beside {@link Context} (not in {@code spi.context}, despite serving that seam) because
- * {@link Context#tokens(TokenEstimator)} and {@link Context#limitTokens(long, TokenEstimator)} —
- * two verbs of the edit algebra (§10.8) — take it directly: {@code api} may not depend on {@code
- * spi} (see {@code ZoneBoundariesTest}), so a type in {@code Context}'s own public signature has to
- * live in {@code api} too. {@code spi.context} (projections, enrichers, the pipeline) is still free
- * to depend on it, the way it depends on every other {@code api.message} type.
+ * <p>Lives beside {@link Context} because {@link Context#tokens(TokenEstimator)} and {@link
+ * Context#limitTokens(long, TokenEstimator)} — two verbs of the edit algebra (§10.8) — take it
+ * directly: {@code api} may not depend on {@code spi} (see {@code ZoneBoundariesTest}), so a type
+ * in {@code Context}'s own public signature has to live in {@code api} too.
  */
 public interface TokenEstimator {
 

@@ -89,6 +89,7 @@ class ZoneBoundariesTest {
 
   @Test
   void root_package_files_importing_internal_are_exactly_the_sanctioned_set() {
+    assertThat(rootPackageFiles()).isNotEmpty();
     for (JavaFile file : rootPackageFiles()) {
       if (file.importsPackage("org.jwcarman.nessy.internal")) {
         assertThat(SANCTIONED_ROOT_TO_INTERNAL_IMPORTS)

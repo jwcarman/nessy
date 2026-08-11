@@ -15,10 +15,13 @@
  */
 package org.jwcarman.nessy.spi.execute;
 
+import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.observation.tck.TestObservationRegistry;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -111,7 +114,8 @@ class ProviderModelCallExecutorTest {
             recordingProvider(seen, new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero())),
             settings(),
             ToolRegistry.of(),
-            memory);
+            memory,
+            ObservationRegistry.NOOP);
 
     executor.execute(state, observed::add);
 
@@ -122,13 +126,39 @@ class ProviderModelCallExecutorTest {
   @Test
   void contextOverflowBecomesTheFailureFactNotAnException() {
     ProviderModelCallExecutor executor =
-        new ProviderModelCallExecutor(overflowingProvider(), settings(), ToolRegistry.of(), memory);
+        new ProviderModelCallExecutor(
+            overflowingProvider(), settings(), ToolRegistry.of(), memory, ObservationRegistry.NOOP);
 
     Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
 
     ConversationEvent.ModelCallFailed fact =
         (ConversationEvent.ModelCallFailed) ((Awaited.Ready<ConversationEvent>) outcome).value();
     assertThat(fact.reason()).contains("too long");
+  }
+
+  @Test
+  void a_model_call_records_a_nessy_model_call_observation_carrying_usage() {
+    TestObservationRegistry observations = TestObservationRegistry.create();
+    ProviderModelCallExecutor executor =
+        new ProviderModelCallExecutor(
+            recordingProvider(
+                new ArrayList<>(),
+                new ModelEvent.TextChunk("hi"),
+                new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(5, 2, 0))),
+            settings(),
+            ToolRegistry.of(),
+            memory,
+            observations);
+
+    executor.execute(state, observed::add);
+
+    assertThat(observations)
+        .hasObservationWithNameEqualTo("nessy.model.call")
+        .that()
+        .hasContextualNameEqualTo("chat fake-model")
+        .hasLowCardinalityKeyValue("gen_ai.request.model", "fake-model")
+        .hasHighCardinalityKeyValueWithKey("gen_ai.usage.input_tokens")
+        .hasHighCardinalityKeyValueWithKey("gen_ai.usage.output_tokens");
   }
 
   @Test
@@ -189,7 +219,11 @@ class ProviderModelCallExecutorTest {
 
   private ProviderModelCallExecutor executorStreaming(ModelEvent... events) {
     return new ProviderModelCallExecutor(
-        recordingProvider(new ArrayList<>(), events), settings(), ToolRegistry.of(), memory);
+        recordingProvider(new ArrayList<>(), events),
+        settings(),
+        ToolRegistry.of(),
+        memory,
+        ObservationRegistry.NOOP);
   }
 
   private static ModelProvider recordingProvider(List<ModelRequest> seen, ModelEvent... events) {
