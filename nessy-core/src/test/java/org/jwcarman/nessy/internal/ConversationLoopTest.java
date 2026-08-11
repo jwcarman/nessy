@@ -99,13 +99,6 @@ class ConversationLoopTest {
       }
     }
 
-    void thenThrow(RuntimeException exception) {
-      scripts.addLast(
-          () -> {
-            throw exception;
-          });
-    }
-
     int calls() {
       return calls;
     }
