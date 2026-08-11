@@ -1,7 +1,7 @@
 # The Conversation Essence — design amendment
 
 **Date:** 2026-08-11
-**Status:** DRAFT — pending review
+**Status:** IMPLEMENTED (see plan 2026-08-11-conversation-essence)
 **Amends:** `2026-08-09-nessy-agent-harness-design-v2.md` (the design of record).
 Upon acceptance, the rulings here supersede the corresponding v2 sections; a
 ledger of exactly which v2 rulings move is in §12. Everything in v2 not named

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.examples;
 import java.util.Objects;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -27,7 +28,11 @@ import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
  * Pattern demonstrated: narrating one turn live via a {@link
  * org.jwcarman.nessy.api.turn.TurnObserver} handed straight to {@link Conversation#tell(Object,
  * org.jwcarman.nessy.api.turn.TurnObserver)} — the model's prose prints as it streams, and homework
- * prints as it is requested.
+ * prints as it is requested — alongside {@link Conversation#events()}, the fact-log side of the
+ * story: a standing subscription to this one conversation's {@link ConversationEvent.ToolFinished}
+ * facts, printed independently of whatever the turn observer narrates. {@link OpenAiChat} sticks to
+ * the observer alone, so the two mains together cover both watching surfaces rather than the same
+ * one twice.
  */
 public final class AnthropicChat {
 
@@ -46,6 +51,7 @@ public final class AnthropicChat {
     AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
     Agent<String> agent = DemoAgent.agentFor(provider, MODEL);
     Conversation<String> conversation = agent.converse();
+    conversation.events().subscribe(ConversationEvent.ToolFinished.class, AnthropicChat::announce);
 
     IO.println("Nessy demo (Anthropic, " + MODEL + "). Empty line or /quit to exit.");
     while (true) {
@@ -71,5 +77,10 @@ public final class AnthropicChat {
           IO.println("\n⚙ tool: " + toolCallRequested.call().name());
       default -> {}
     }
+  }
+
+  /** The fact-log side of the story: printed independently of whatever {@link #render} narrates. */
+  private static void announce(ConversationEvent.ToolFinished finished) {
+    IO.println("tool finished: " + finished.call().name());
   }
 }

@@ -30,32 +30,86 @@ sequence of renames and interim shapes that produced it.
   owned-outright) piece: `HarnessBuilder#defaultModel(String)` is the
   harness-wide fallback, and an agent's own `.model(...)` wins whenever both
   are set. Tools are **granted**, not owned or seeded — see `ToolGrant` below.
-  `Agent.converse()` opens a `Conversation`; `.tell(input)` returns a `Reply`
-  whose `.text()` extracts the assistant's prose. Five lines gets a working
-  agent; the event-level `ExecutionEngine` stays one call away via
-  `Agent.engine()` for anything the facade doesn't cover.
-- **The Conversation-centric grammar.** `ConversationEvent` (`api`) is the
-  sealed, self-attributing fact vocabulary the reducer folds: every variant
-  carries its own `ConversationId` as its first component. `AgentTold` is the
-  entry fact — the agent was told something, as arbitrary content blocks
-  rather than plain text; the name matches the verb (you `tell` the agent),
-  and deliberately doesn't presume the teller is human, since triggers
-  include webhooks and crons as well as `Conversation#tell`. The rest of the
-  grammar covers a model turn end to end: `TextDelta`/`ThinkingDelta` (streamed
-  chunks), `ThinkingSigned`/`RedactedThinkingArrived` (thinking-block
-  round-trips), `ToolCallRequested`/`ApprovalDecided`/`ToolFinished` (the tool
-  lifecycle through the one authority chokepoint), `ModelTurnEnded`, and
-  `Compacted`/`CompactionSkipped`. The misdelivery guard (design §17) is
-  `Reducer.reduce`'s first check: a fact addressed to one conversation can
-  never fold into another's state, so a misrouted event fails loudly at the
-  reducer rather than corrupting state silently.
+  `Agent.converse()` opens a `Conversation`; `.tell(input)` (or `.tell(input,
+  TurnObserver)` to narrate the segment live) returns a `RunOutcome` —
+  `Completed` or `Parked` — carrying the settled `ConversationState`. Five
+  lines gets a working agent; there is no separate event-level engine handle
+  to reach for — the loop and its `Memory` are the whole story.
+- **The core loop: two effects, four facts, one fold.** The whole of an
+  agent's semantics lives in one place now — `ConversationState.fold
+  (ConversationEvent)` (`api.conversation`), a pure, parameter-free method on
+  the state it folds, exhaustive over a **sealed four-fact grammar**
+  (`ConversationEvent`, `api`): `AgentTold` (the entry fact — arbitrary
+  content blocks, not presumed to come from a human, since triggers include
+  webhooks and crons as well as `Conversation#tell`), `ModelResponded` (the
+  model's whole settled contribution — message, stop reason, usage — one fact
+  per call), `ModelCallFailed` (fate, not data: nothing is left in the
+  dialogue to answer a call that failed outright), and `ToolFinished` (one
+  piece of homework settled). Every variant self-attributes its
+  `ConversationId` as its first component, which is what lets `fold` reject a
+  fact addressed to one conversation but folded into another's state — the
+  misdelivery guard (design §17) runs before the switch, and the switch
+  itself carries no `default` arm anywhere in `nessy-core`. `fold` answers
+  with a `Step` (state, the messages born this fold, effects to perform) —
+  and there are only **two** effects now (`Effect`, sealed): `CallModel`
+  (a singleton) and `ExecuteTool(ToolCall)`, no separate approval or
+  compaction effects to sequence. `EffectExecutors` (`spi.execute`) is the
+  two-slot record the loop performs against — `callModel(ModelCallExecutor)`,
+  `toolCall(ToolCallExecutor)`, each `.execute(...)` returning
+  `Awaited<ConversationEvent>` — implemented by `ProviderModelCallExecutor`
+  (talks to the `ModelProvider` and tells `Memory` the birth) and
+  `GatedToolCallExecutor` (the one door into a tool call: policy, then the
+  approval gate, then the invocation, folded into a single executor rather
+  than three engine-sequenced steps). `TerminationPolicy` moved to the loop
+  itself, consulted after every fold rather than owned by a retired engine
+  type; a halt closes out any open homework with abandoned-error results
+  through `ConversationState#halted(String)` before failing, the same closure
+  every fatal-stop-reason path reuses. `ConversationState.modelCalls`
+  (renamed from `turns`) is the field `TerminationPolicy` actually bounds —
+  the count of model calls completed within one `tell`-to-clean-response
+  episode.
+- **`Memory` — the content jurisdiction.** `Memory` (`spi.memory`) is the one
+  seam that owns what a model call sees: told everything, in order — the
+  user message when `AgentTold` folds, the assistant message when
+  `ModelResponded` folds, and the batched tool-results message when the last
+  pending call clears — a closed list of exactly three message-grade
+  tellings (see `ConversationLoopTest`'s `Clean_response` and
+  `Homework_round_trip` nested classes, which assert `memory.remembered()`
+  directly against that shape). `Memory#recall(ConversationId)` answers with
+  the finished `Context` the next model call will see; retention is the
+  implementation's own business (transcribe, summarize, checkpoint, embed,
+  discard) as long as `recall` returns a legal `Context` and the
+  tool-exchange transaction is never split or reordered. `ListMemory` is the
+  floor default — remembers everything verbatim, consecutive-duplicate
+  idempotent for at-least-once redelivery — and `AgentBuilder#memory(Memory)`
+  replaces it outright. This one seam absorbs what used to be three separate
+  ones: compaction, the context pipeline, and (for token-aware retention)
+  the declared `contextWindow` dial. `contextWindow` itself is unchanged and
+  deliberately still just a declared, unconsumed setting on `ModelSettings`/
+  `AgentBuilder` — the reservation for a future token-aware `Memory`
+  implementation to read, not a promise this generation redeems.
+- **`TurnEvent` + `TurnObserver` — live narration, not record.** `TurnEvent`
+  (`api.turn`, sealed) is the roster a sitting consumer needs to tell one
+  turn's story as it happens, without any of it ever folding into
+  conversation state: `TextDelta`/`ThinkingDelta` (streamed chunks),
+  `RedactedThinking` (an opaque signed-thinking block, complete), and the
+  tool trio `ToolCallRequested`/`ToolCallDecided`/`ToolCallCompleted`. Core
+  switches over `TurnEvent` are exhaustive with no `default` arm; extender
+  code is advised to carry one for forward tolerance across majors.
+  `TurnObserver` is the single-method sink (`void on(TurnEvent)`,
+  `TurnObserver.noop()` the default) bound at `Conversation#tell(input,
+  observer)` — the observer sees only that call's segment, in order,
+  independent of whatever `Memory` and the fact log separately retain.
 - **One path for tool authority.** `ToolGrant.grant(Tool<?>, UsagePolicy)`
   (`api.tool`) is the sole way to attach a tool to an `AgentBuilder`: capability
   and authority, declared together, so the grant line is the complete security
   statement structurally — no bare `grant(tool)`, no derived floor, nothing to
   route around it. `UsagePolicy` is the engine's one authority chokepoint,
   consulted before every tool call; a policy that throws or returns `null`
-  fails closed.
+  fails closed. A policy that defers to a human raises `ApprovalRequested`
+  (`api.event`) on the system channel before the approver is even asked,
+  narrates the verdict as a `TurnEvent.ToolCallDecided` once it lands, and —
+  parking aside — never leaves the tool-call executor that raised it.
 - **Declared listening + `ListenerRegistry`.** `HarnessBuilder`/`AgentBuilder`
   both expose `listen(Class<T>, Consumer<T>)` and `listenAsync(Class<T>,
   Consumer<T>[, Consumer<Throwable>])`, frozen at `build()` — an agent-wide
@@ -64,59 +118,15 @@ sequence of renames and interim shapes that produced it.
   order, before that agent's own. `Conversation#events()` is the one dynamic
   listening level: a `ConversationEvents` already scoped to that one
   conversation, so nothing subscribed through it ever sees another
-  conversation's traffic; `Conversation#tell(input, tap)` is sugar over a
-  subscription wired for the call's duration. Delivery order per event: this
-  conversation's dynamic subscribers, then the frozen chain
-  (harness-then-agent). A throw from a synchronous listener, at either tier,
-  propagates out and aborts the call that emitted — the veto is the throw; an
-  async listener runs off the emitting thread and never gets that power.
-- **The context pipeline + the `Context` edit algebra.** `.context(pipeline ->
-  pipeline.project(...).enrich(...).placement(...))` on `AgentBuilder` wires
-  the Contextualize phase (design §10.9): `Projection` (pure, total,
-  `Context apply(Context)`) runs in declaration order over the `Context`
-  minted from the conversation's messages, then `ContextEnricher` contributors
-  (I/O, independently best-effort, emitting `EnrichmentFailed` on failure)
-  concatenate in, placed by `ContextPipeline.Placement` relative to the
-  projected transcript. `Context` (`api.message`) owns the pairing
-  invariant's safe edits so raw list surgery never happens in application
-  code: the trusted kernel is `drop(Predicate<Message>)` (pair-atomic),
-  `map(Function<Message, Message>)` (revalidating), and
-  `enrich(ContentBlock...)`; built on that kernel are `elideToolResults(int)`,
-  `keepRecent(int)`, and `limitTokens(long, TokenEstimator)`. `Agent.contextFor
-  (ConversationId)` answers "what would a call against this conversation see right now"
-  through the exact same pipeline instance the engine consults, so the
-  preview and the real thing can never drift apart.
-- **`Compactor`/`Compactors`.** `Compactor` (`spi.compaction`) is the one
-  compaction seam: `requiresCompaction(ConversationState)` (pure) and
-  `compact(ConversationState)` (effectful, engine-only) — the compactor proposes a
-  replacement working set, the reducer disposes. `Compactors.summarizing(...)`
-  is the default, assembled automatically from the harness's own provider
-  unless `.compaction(Compactor)` replaces it outright: triggers once measured
-  input tokens cross a threshold (100k by default, or derived from a declared
-  `contextWindow`), summarizes the pair-safe head through a `Summarizer`, and
-  keeps the trailing `Compactors.SummarizingBuilder.DEFAULT_KEEP_RECENT`
-  messages (10) verbatim. `Compactors.window(int keepRecent)` is the
-  zero-spend, lossy alternative — same trigger knobs, no model call, no
-  summary. An unconfigured compactor logs a warning naming exactly what
-  defaulted, once per agent `build()` (design §13.1). Compaction stays
-  best-effort: a failed summarization call skips that turn's compaction and
-  emits `CompactionFailed` rather than failing the turn. The jurisdiction
-  rule keeps a compactor's own spend out of `ConversationState.usage()` — the
-  ledger bills only the loop's own conversational turns; a compactor's cost
-  is telemetry's business, instrumented as its own `nessy.model.call`
-  observation nested under `nessy.compaction`.
-- **The journal is a listener.** There is no dedicated journal type: a
-  transcript is `.listen(MessageAppended.class, journal::add)` on either
-  builder — sync for audit-grade (a throwing listener fails the run, veto-by-
-  throw) or `.listenAsync(...)` for best-effort — with no sentinel for "no
-  journal," since the absence of a declaration already says that.
-  `MessageAppended(conversationId, message, turnUsage)` fires for every
-  message at birth, including compaction summaries (at `Usage.zero()`, since
-  the jurisdiction rule keeps a compactor's spend off the ledger there too).
-- **`MessageCodec`** (`spi.conversation`) — the `Message ↔ byte[]` translation
-  a durable `ConversationStore` needs to persist opaque bytes rather than
-  message structure. Default is `MessageCodec.json(mapper)`; encryption at
-  rest composes as a codec decorator over any store.
+  conversation's traffic. Delivery order per event: this conversation's
+  dynamic subscribers, then the frozen chain (harness-then-agent). A throw
+  from a synchronous listener, at either tier, propagates out and aborts the
+  call that emitted — the veto is the throw; an async listener runs off the
+  emitting thread and never gets that power. The four `ConversationEvent`
+  facts and `ApprovalRequested` both ride this same system channel, so
+  `.listen(ConversationEvent.class, ...)` is the declaration point for a
+  fact-grade journal now that there is no dedicated `MessageAppended`
+  broadcast to subscribe to instead.
 - **The typed front door.** Every agent is `Agent<I>` over an
   application-owned input vocabulary, typically a sealed interface of
   records; `Harness#agent()` is the degenerate `Agent<String>` case.
@@ -133,7 +143,7 @@ sequence of renames and interim shapes that produced it.
   directly (not merely a transitive dependency); every module's test
   classpath carries `ch.qos.logback:logback-classic` as its SLF4J provider,
   managed once at the parent, so a build's own warnings — an unconfigured
-  approver or compactor falling back to a default, an async listener's
+  approver falling back to a default, an async listener's
   failure — actually render during `mvn verify` instead of vanishing into an
   unconfigured binding. `nessy-examples` carries `logback-classic`
   compile-scope instead of test-scope, and ships its own `logback.xml`: an
@@ -149,15 +159,37 @@ sequence of renames and interim shapes that produced it.
   the stream's opening only, over a provider-specific retryable-failure
   predicate.
 - **Observability.** Micrometer `Observation` instrumentation covers every
-  phase the engine can see — `nessy.run`, `nessy.turn`, `nessy.model.call`,
-  `nessy.tool.call`, `nessy.approval.wait`, `nessy.compaction`,
-  `nessy.context.enrich` — as stable metric names, with span names following
-  the OpenTelemetry GenAI *agent* conventions. Wired via `.observations(...)`;
-  default is `ObservationRegistry.NOOP`.
+  phase the loop can see — `nessy.run`, `nessy.model.call`, `nessy.tool.call`,
+  `nessy.approval.wait` — as stable metric names, with span names following
+  the OpenTelemetry GenAI *agent* conventions. `nessy.turn` never existed as
+  its own span (a turn is narrated via `TurnEvent`, not observed as a
+  phase), and `nessy.compaction`/`nessy.context.enrich` retired along with
+  the seams they measured — compaction and context assembly are `Memory`'s
+  internal business now, off the harness's own observation surface. Wired
+  via `.observations(...)`; default is `ObservationRegistry.NOOP`.
 - **`nessy-examples`** — a runnable two-provider demo: `DemoAgent` wires an
   ungated `AddTool` and an approval-gated `ClockTool` behind a
-  `ConsoleApprover`, with `AnthropicChat` and `OpenAiChat` mains demonstrating
-  the raw-event and per-tell-tap streaming patterns respectively.
+  `ConsoleApprover`. `AnthropicChat` and `OpenAiChat` both narrate a turn live
+  via a `TurnObserver` handed to `Conversation#tell(input, observer)` —
+  assistant prose as it streams, homework as it's requested; `AnthropicChat`
+  additionally taps `Conversation#events()` for the fact-log side of the
+  story, subscribing `ConversationEvent.ToolFinished` to print which tool
+  just settled, so the two mains demonstrate the observer and the
+  fact-tapping paths rather than the same pattern twice.
+- **What this generation retired.** The two-effect/four-fact core loop above
+  replaced a wider grammar and a multi-object engine split: the standalone
+  `Reducer` and `ExecutionEngine` types dissolved into `ConversationState
+  .fold` plus the loop and its `EffectExecutors`; the compaction and
+  context-pipeline seams (`Compactor`, `Compactors`, `Summarizer`,
+  `ContextPipeline`, `Projection`, `ContextEnricher`) absorbed into `Memory`;
+  the front-door `Reply` type retired in favor of `RunOutcome`, with no
+  `.text()` extraction method surviving it (narrate text via `TurnObserver`,
+  or read `Memory`/the fact log instead); and the `MessageAppended` broadcast
+  and its `MessageCodec`/`JsonMessageCodec` at-rest encoding retired with the
+  dedicated transcript-store family, superseded by `ConversationEvent`
+  arriving on the same declared-listening channel every other fact does.
+  Nothing here was ever public, so this is not a deprecation — it is the
+  shape settling before the first release.
 - **Time-ordered UUIDs (v7)** — conversation and park identifiers are time-ordered
   UUIDv7, sortable by creation time and index-friendly in durable stores.
 - Tests read as prose: method names are `snake_case` sentences, related
