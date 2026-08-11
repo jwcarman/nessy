@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -63,10 +64,30 @@ class ListMemoryTest {
     // At-least-once tellings (design 2026-08-11, ruling 6): a crash between telling
     // Memory and persisting state re-tells the same message. remember is idempotent.
     ConversationId id = ConversationId.generate();
-    Message told = Message.user("once only, please");
-    memory.remember(id, told);
-    memory.remember(id, told);
+    Message toldFirst = Message.user("once only, please");
+    Message toldAgain = Message.user("once only, please");
+    memory.remember(id, toldFirst);
+    memory.remember(id, toldAgain);
 
-    assertThat(memory.recall(id).messages()).containsExactly(told);
+    assertThat(memory.recall(id).messages()).containsExactly(toldFirst);
+  }
+
+  @Test
+  void recallReturnsAnImmutableSnapshotUnaffectedByLaterRemembering() {
+    // recall's list must be a point-in-time snapshot, not a live view: if remember ever
+    // mutated a list already handed out by recall, a reader holding an earlier recall
+    // result would see later tellings appear underneath it. Fixed by always storing a
+    // fresh List.copyOf in ListMemory#remember rather than mutating in place — this also
+    // removes the unsynchronized-read race between remember and recall on the same id.
+    ConversationId id = ConversationId.generate();
+    Message first = Message.user("first");
+    memory.remember(id, first);
+
+    Context earlySnapshot = memory.recall(id);
+    memory.remember(id, Message.user("second"));
+
+    assertThat(earlySnapshot.messages()).containsExactly(first);
+    assertThatThrownBy(() -> earlySnapshot.messages().add(Message.user("mutation")))
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 }
