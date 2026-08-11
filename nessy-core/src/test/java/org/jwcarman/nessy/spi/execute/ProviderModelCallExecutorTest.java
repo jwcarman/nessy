@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.execute;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -127,6 +129,60 @@ class ProviderModelCallExecutorTest {
     ConversationEvent.ModelCallFailed fact =
         (ConversationEvent.ModelCallFailed) ((Awaited.Ready<ConversationEvent>) outcome).value();
     assertThat(fact.reason()).contains("too long");
+  }
+
+  @Test
+  void aSignedThinkingBlockIsClosedSoALaterDeltaStartsAFreshOne() {
+    ProviderModelCallExecutor executor =
+        executorStreaming(
+            new ModelEvent.ThinkingChunk("a"),
+            new ModelEvent.ThinkingSigned("sig"),
+            new ModelEvent.ThinkingChunk("b"),
+            new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    ConversationEvent.ModelResponded fact =
+        (ConversationEvent.ModelResponded) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.message().content())
+        .containsExactly(new ThinkingBlock("a", "sig"), new ThinkingBlock("b", ""));
+  }
+
+  @Test
+  void aSignatureWithNothingTrailingToSignIsANoOp() {
+    ProviderModelCallExecutor executor =
+        executorStreaming(
+            new ModelEvent.ThinkingSigned("sig"),
+            new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    ConversationEvent.ModelResponded fact =
+        (ConversationEvent.ModelResponded) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.message().content()).isEmpty();
+  }
+
+  @Test
+  void redactedThinkingIsNarratedAndRidesTheMessageInPosition() {
+    ProviderModelCallExecutor executor =
+        executorStreaming(
+            new ModelEvent.RedactedThinkingEmitted("opaque"),
+            new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    assertThat(observed).contains(new TurnEvent.RedactedThinking("opaque"));
+    ConversationEvent.ModelResponded fact =
+        (ConversationEvent.ModelResponded) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.message().content()).containsExactly(new RedactedThinkingBlock("opaque"));
+  }
+
+  @Test
+  void aStreamThatEndsWithoutTurnEndedThrows() {
+    ProviderModelCallExecutor executor = executorStreaming(new ModelEvent.TextChunk("hi"));
+
+    assertThatThrownBy(() -> executor.execute(state, observed::add))
+        .isInstanceOf(IllegalStateException.class);
   }
 
   // --- fakes ---
