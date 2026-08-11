@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -33,7 +34,6 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.Reducer;
-import org.jwcarman.nessy.spi.Step;
 
 /**
  * {@link Compactors#window}: the zero-spend, lossy alternative to the summarizing default. Pure

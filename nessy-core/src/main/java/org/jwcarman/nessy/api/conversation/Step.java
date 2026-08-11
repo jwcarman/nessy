@@ -13,21 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi;
+package org.jwcarman.nessy.api.conversation;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.message.Message;
 
-/** What one turn of the reducer produced: the next state, and what to do about it. */
-public record Step(ConversationState state, List<Effect> effects) {
+/**
+ * What one fold produced: the next state, what to remember, and what to do about it.
+ *
+ * <p>{@code remember} is the fold's message births — the user message a tell rendered, the
+ * assistant message a response carried, the results message a cleared debt flushed — in birth
+ * order, for the loop to tell Memory before performing any effect.
+ */
+public record Step(ConversationState state, List<Message> remember, List<Effect> effects) {
 
   public Step {
     Objects.requireNonNull(state, "state must not be null");
+    remember = List.copyOf(remember);
     effects = List.copyOf(effects);
   }
 
   public static Step of(ConversationState state, Effect... effects) {
-    return new Step(state, List.of(effects));
+    return new Step(state, List.of(), List.of(effects));
+  }
+
+  public static Step of(ConversationState state, List<Message> remember, Effect... effects) {
+    return new Step(state, remember, List.of(effects));
   }
 }

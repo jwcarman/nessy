@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi;
+package org.jwcarman.nessy.api.conversation;
 
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ToolCall;

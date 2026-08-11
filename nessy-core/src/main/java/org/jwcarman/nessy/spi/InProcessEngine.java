@@ -34,6 +34,8 @@ import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.Effect;
+import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.event.EventEmitter;

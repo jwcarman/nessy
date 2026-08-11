@@ -22,11 +22,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.Effect;
+import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.spi.Effect;
-import org.jwcarman.nessy.spi.Step;
 
 class ConversationEventTest {
 

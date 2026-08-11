@@ -18,9 +18,13 @@ package org.jwcarman.nessy.api.conversation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -295,5 +299,142 @@ public record ConversationState(
         generation,
         reason,
         status);
+  }
+
+  /**
+   * The fold: one fact in, the next state plus its message births and effects out. The whole of the
+   * agent's semantics — pure, deterministic, exhaustive over the fact grammar. The misdelivery
+   * guard runs first: a fact addressed to one conversation can never fold into another's state.
+   */
+  public Step fold(ConversationEvent event) {
+    if (!event.conversationId().equals(id)) {
+      throw new IllegalArgumentException(
+          "misdelivered fact: event for " + event.conversationId() + " folded into " + id);
+    }
+    return switch (event) {
+      case ConversationEvent.AgentTold e -> told(e);
+      case ConversationEvent.ModelResponded e -> modelResponded(e);
+      case ConversationEvent.ModelCallFailed e -> modelCallFailed(e);
+      case ConversationEvent.ToolFinished e -> toolFinished(e);
+      // Scaffolding until the cutover (plan 2026-08-11, Task 9): legacy variants are
+      // never fed to the fold — only the legacy reducer ever sees them.
+      case ConversationEvent.TextDelta e -> throw legacy(e);
+      case ConversationEvent.ThinkingDelta e -> throw legacy(e);
+      case ConversationEvent.ThinkingSigned e -> throw legacy(e);
+      case ConversationEvent.RedactedThinkingArrived e -> throw legacy(e);
+      case ConversationEvent.ToolCallRequested e -> throw legacy(e);
+      case ConversationEvent.ModelTurnEnded e -> throw legacy(e);
+      case ConversationEvent.ApprovalDecided e -> throw legacy(e);
+      case ConversationEvent.Compacted e -> throw legacy(e);
+      case ConversationEvent.CompactionSkipped e -> throw legacy(e);
+    };
+  }
+
+  private static IllegalStateException legacy(ConversationEvent event) {
+    return new IllegalStateException("legacy event fed to the fold: " + event);
+  }
+
+  /** A tell starts a fresh error streak: a new instruction is not part of the previous failure. */
+  private Step told(ConversationEvent.AgentTold event) {
+    ConversationState next =
+        withConsecutiveErrors(0).withFailureReason(null).with(ConversationStatus.AWAITING_MODEL);
+    return Step.of(next, List.of(Message.user(event.content())), Effect.callModel());
+  }
+
+  /**
+   * The model's settled contribution folds in: account the call, remember the message, then decide
+   * — fatal stop reason fails (answering any homework the truncated message opened), no homework
+   * completes, homework fans out one effect per call.
+   */
+  private Step modelResponded(ConversationEvent.ModelResponded event) {
+    List<ToolCall> calls =
+        event.message().content().stream()
+            .filter(ToolUseBlock.class::isInstance)
+            .map(block -> ((ToolUseBlock) block).call())
+            .toList();
+    ConversationState accounted =
+        withTurns(turns + 1).withUsage(usage.plus(event.usage())).withPendingCalls(calls);
+    Optional<String> fatal = fatalStop(event.reason());
+    if (fatal.isPresent()) {
+      Step closed = accounted.halted(fatal.get());
+      List<Message> remember = new ArrayList<>();
+      remember.add(event.message());
+      remember.addAll(closed.remember());
+      return new Step(closed.state(), remember, List.of());
+    }
+    if (calls.isEmpty()) {
+      return Step.of(accounted.with(ConversationStatus.COMPLETE), List.of(event.message()));
+    }
+    List<Effect> effects =
+        calls.stream().map(call -> (Effect) new Effect.ExecuteTool(call)).toList();
+    return new Step(
+        accounted.with(ConversationStatus.EXECUTING_TOOL), List.of(event.message()), effects);
+  }
+
+  /** Fate, not data: no party remains in the dialogue to read a failed call. */
+  private Step modelCallFailed(ConversationEvent.ModelCallFailed event) {
+    return Step.of(withFailureReason(event.reason()).with(ConversationStatus.FAILED));
+  }
+
+  /**
+   * One piece of homework settles. Results arrive in any order; the flush waits for the last one,
+   * because providers require every result for a turn to arrive together in the following message.
+   */
+  private Step toolFinished(ConversationEvent.ToolFinished event) {
+    List<ToolResultBlock> results = new ArrayList<>(pendingResults);
+    results.add(
+        new ToolResultBlock(event.call().id(), event.result().content(), event.result().isError()));
+    List<ToolCall> remaining = new ArrayList<>(pendingCalls);
+    removeFirstMatch(remaining, event.call().id());
+    int errors = event.result().isError() ? consecutiveErrors + 1 : 0;
+    ConversationState next =
+        withPendingResults(results).withPendingCalls(remaining).withConsecutiveErrors(errors);
+    if (!remaining.isEmpty()) {
+      return Step.of(next);
+    }
+    Message flush = Message.toolResults(List.copyOf(results));
+    return Step.of(
+        next.withPendingResults(List.of()).with(ConversationStatus.AWAITING_MODEL),
+        List.of(flush),
+        Effect.callModel());
+  }
+
+  /**
+   * The closure every failing path owes: answer outstanding homework with abandoned-error results
+   * and flush, so the record never holds a tool_use without its tool_result, then fail with the
+   * reason. Consulted by the loop when the termination policy halts, and reused by fatal stop
+   * reasons.
+   */
+  public Step halted(String reason) {
+    ConversationState failed = withFailureReason(reason).with(ConversationStatus.FAILED);
+    if (pendingCalls.isEmpty() && pendingResults.isEmpty()) {
+      return Step.of(failed);
+    }
+    List<ToolResultBlock> results = new ArrayList<>(pendingResults);
+    for (ToolCall pending : pendingCalls) {
+      results.add(
+          new ToolResultBlock(
+              pending.id(), "Abandoned: the conversation failed before this tool ran.", true));
+    }
+    Message flush = Message.toolResults(List.copyOf(results));
+    return Step.of(
+        failed.withPendingCalls(List.of()).withPendingResults(List.of()), List.of(flush));
+  }
+
+  private static Optional<String> fatalStop(StopReason reason) {
+    return switch (reason) {
+      case MAX_TOKENS -> Optional.of("model hit the token ceiling (MAX_TOKENS)");
+      case REFUSAL -> Optional.of("model refused to continue (REFUSAL)");
+      case END_TURN, TOOL_USE -> Optional.empty();
+    };
+  }
+
+  private static void removeFirstMatch(List<ToolCall> calls, String callId) {
+    for (int i = 0; i < calls.size(); i++) {
+      if (calls.get(i).id().equals(callId)) {
+        calls.remove(i);
+        return;
+      }
+    }
   }
 }

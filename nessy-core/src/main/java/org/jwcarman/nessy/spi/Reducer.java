@@ -24,6 +24,8 @@ import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.Effect;
+import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
