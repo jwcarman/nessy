@@ -207,9 +207,11 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
   }
 
   /**
-   * Runs a cleared call, narrating {@link TurnEvent.ToolCallCompleted} regardless of outcome. An
-   * unknown tool yields the one model-visible "No such tool" error without opening a span or
-   * narrating a gate verdict — no verdict happened.
+   * Runs a cleared call. {@link TurnEvent.ToolCallCompleted} is narrated exactly when a {@code
+   * ToolFinished} fact is yielded — every outcome except a park, since a parked tool has not
+   * finished; {@link #resume} narrates it later once the slow completion arrives. An unknown tool
+   * yields the one model-visible "No such tool" error without opening a span or narrating a gate
+   * verdict — no verdict happened.
    */
   private Awaited<ConversationEvent> invoke(
       ToolCall call, ConversationState state, TurnObserver observer) {

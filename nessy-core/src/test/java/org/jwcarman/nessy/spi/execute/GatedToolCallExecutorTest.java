@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.execute;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.event.ApprovalRequested;
 import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -150,6 +152,95 @@ class GatedToolCallExecutorTest {
     @Override
     public List<ToolSpec> specs() {
       return List.of();
+    }
+  }
+
+  /** A tool that always parks, to exercise the executor's own park path (not the approver's). */
+  static final class ParkingTool implements Tool<EchoInput> {
+
+    private final ParkToken token;
+
+    ParkingTool(ParkToken token) {
+      this.token = token;
+    }
+
+    @Override
+    public String name() {
+      return "echo";
+    }
+
+    @Override
+    public String description() {
+      return "Always parks";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      return Awaited.parked(token);
+    }
+  }
+
+  /**
+   * An approver that appends a marker to a shared journal when consulted, then answers with a
+   * scripted decision — lets a test interleave the approver's own consultation with whatever else
+   * writes into the same journal (the emitter, here) to assert relative order.
+   */
+  static final class JournalingApprover implements Approver {
+
+    private final List<Object> journal;
+    private final Awaited<Decision> scripted;
+
+    JournalingApprover(List<Object> journal, Awaited<Decision> scripted) {
+      this.journal = journal;
+      this.scripted = scripted;
+    }
+
+    @Override
+    public Awaited<Decision> approve(ApprovalRequest request) {
+      journal.add("approver consulted");
+      return scripted;
+    }
+  }
+
+  /** An emitter that appends every event it is handed to a shared journal, in arrival order. */
+  static final class RecordingEmitter implements EventEmitter {
+
+    private final List<Object> journal;
+
+    RecordingEmitter(List<Object> journal) {
+      this.journal = journal;
+    }
+
+    @Override
+    public void emit(Object event) {
+      journal.add(event);
+    }
+  }
+
+  @Nested
+  class Construction {
+
+    @Test
+    void a_grant_map_missing_a_registered_tool_is_rejected() {
+      ToolRegistry registry = ToolRegistry.of(new EchoTool(false));
+      Map<String, ToolGrant> emptyGrants = Map.of();
+
+      assertThatThrownBy(
+              () ->
+                  new GatedToolCallExecutor(
+                      registry,
+                      emptyGrants,
+                      Approver.allowAll(),
+                      new ObjectMapper(),
+                      EventEmitter.noop(),
+                      ObservationRegistry.NOOP))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("echo");
     }
   }
 
@@ -303,6 +394,52 @@ class GatedToolCallExecutorTest {
       ToolResult result = resultOf(outcome);
       assertThat(result.isError()).isTrue();
       assertThat(result.content()).contains("kaboom");
+    }
+  }
+
+  @Nested
+  class ToolParksMidInvoke {
+
+    @Test
+    void a_tool_that_parks_makes_execute_return_parked_without_narrating_completion() {
+      ParkToken token = ParkToken.generate();
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(new ParkingTool(token), UsagePolicy.allow()), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(echoCall("hi"), state, observed::add);
+
+      assertThat(outcome).isEqualTo(Awaited.parked(token));
+      assertThat(observed).hasSize(1);
+      assertThat(observed.getFirst()).isInstanceOf(TurnEvent.ToolCallDecided.class);
+    }
+  }
+
+  @Nested
+  class ApprovalRequestEmission {
+
+    @Test
+    void narrates_approval_requested_to_the_emitter_before_consulting_the_approver() {
+      List<Object> journal = new ArrayList<>();
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      JournalingApprover approver =
+          new JournalingApprover(journal, Awaited.ready(Decision.allow()));
+      ToolGrant grant = ToolGrant.grant(new EchoTool(false), UsagePolicy.requireApproval());
+      ToolRegistry registry = ToolRegistry.of(grant.tool());
+      Map<String, ToolGrant> grants = Map.of(grant.tool().name(), grant);
+      GatedToolCallExecutor executor =
+          new GatedToolCallExecutor(
+              registry, grants, approver, new ObjectMapper(), emitter, ObservationRegistry.NOOP);
+      ToolCall call = echoCall("hi");
+
+      executor.execute(call, state, observed::add);
+
+      assertThat(journal).hasSize(2);
+      assertThat(journal.get(0)).isInstanceOf(ApprovalRequested.class);
+      assertThat(journal.get(1)).isEqualTo("approver consulted");
+      ApprovalRequested requested = (ApprovalRequested) journal.get(0);
+      assertThat(requested.conversationId()).isEqualTo(id);
+      assertThat(requested.request().call()).isEqualTo(call);
     }
   }
 

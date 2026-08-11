@@ -35,8 +35,10 @@ public interface ToolCallExecutor {
 
   /**
    * Gates {@code call} against its grant's policy, consulting the approver only when the policy
-   * defers, then invokes it if the gate clears. Returns {@link Awaited.Parked} when the approver
-   * itself parks — the executor contract, not an error; the loop decides tolerance.
+   * defers, then invokes it if the gate clears. Returns {@link Awaited.Parked} whenever the wait
+   * must outlive this call — either the approver parks, or the tool itself parks once invoked —
+   * with no {@code ToolCallCompleted} narrated for that outcome; a park is the executor contract,
+   * not an error, and the loop decides tolerance for it.
    */
   Awaited<ConversationEvent> execute(ToolCall call, ConversationState state, TurnObserver observer);
 
