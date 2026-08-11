@@ -67,6 +67,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
 class ConversationLoopTest {
 
   private static final ConversationId ID = new ConversationId("s1");
+  private static final TurnObserver OBSERVER = TurnObserver.noop();
 
   private static ToolCall toolCall(String id, String name) {
     return new ToolCall(id, name, JsonNodeFactory.instance.objectNode());
@@ -198,6 +199,45 @@ class ConversationLoopTest {
     }
   }
 
+  /**
+   * A {@link Memory} that remembers normally until its {@code throwOnCall}-th telling, which it
+   * throws instead of recording — placed to land between the loop's {@code progress.set(state)} and
+   * that fold's own {@code store.save(state)}, so only {@code run}'s {@code finally} can still
+   * persist the state that was folded on the way to the throw.
+   */
+  private static final class ThrowOnNthRememberMemory implements Memory {
+
+    private final Memory delegate = new ListMemory();
+    private final List<Message> remembered = new ArrayList<>();
+    private final int throwOnCall;
+    private final RuntimeException exception;
+    private int calls;
+
+    ThrowOnNthRememberMemory(int throwOnCall, RuntimeException exception) {
+      this.throwOnCall = throwOnCall;
+      this.exception = exception;
+    }
+
+    List<Message> remembered() {
+      return remembered;
+    }
+
+    @Override
+    public void remember(ConversationId id, Message message) {
+      calls++;
+      if (calls == throwOnCall) {
+        throw exception;
+      }
+      remembered.add(message);
+      delegate.remember(id, message);
+    }
+
+    @Override
+    public Context recall(ConversationId id) {
+      return delegate.recall(id);
+    }
+  }
+
   /** Records every fact emitted, by its simple class name, in emission order. */
   private static final class RecordingEmitter implements EventEmitter {
 
@@ -284,7 +324,7 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
 
       RunOutcome outcome =
-          loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), TurnObserver.noop());
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
@@ -321,10 +361,13 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
 
       RunOutcome outcome =
-          loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"), TurnObserver.noop());
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"), OBSERVER);
 
       assertThat(journal).isNotEmpty();
-      assertThat(journal).containsSubsequence("model", "tool:c1", "tool:c2", "model");
+      // "save" between tool:c1 and tool:c2 proves c1's ToolFinished fact folded (and was
+      // persisted) before c2 was performed — fold-between-performances, not a batch drain of
+      // the whole effect queue followed by folding both results at once.
+      assertThat(journal).containsSubsequence("model", "tool:c1", "save", "tool:c2", "model");
       assertThat(memory.remembered()).hasSize(4);
       assertThat(memory.remembered().get(2))
           .isEqualTo(
@@ -356,7 +399,7 @@ class ConversationLoopTest {
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
-      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), TurnObserver.noop());
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
 
       // Two facts fold in this run: AgentTold, then ModelResponded.
       assertThat(termination.consultations()).isEqualTo(2);
@@ -387,7 +430,7 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
 
       RunOutcome outcome =
-          loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"), TurnObserver.noop());
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"), OBSERVER);
 
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(outcome.state().failureReason())
@@ -402,6 +445,45 @@ class ConversationLoopTest {
               new ToolResultBlock("c1", "boom", true),
               new ToolResultBlock(
                   "c2", "Abandoned: the conversation failed before this tool ran.", true));
+    }
+
+    /**
+     * A halt that lands on the very fold that opened the homework — before any effect for it is
+     * ever performed — has two message births to tell Memory: the folding step's own birth ({@code
+     * modelResponded}'s assistant message) and the closure's birth ({@code halted}'s
+     * abandoned-results flush). The loop must tell both, in that order; it must not drop the step's
+     * own birth in favor of only the closure's.
+     */
+    @Test
+    void the_folds_own_birth_is_remembered_before_the_closures_abandoned_flush() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "echo");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      RecordingMemory memory = new RecordingMemory(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+              memory,
+              TerminationPolicy.maxTurns(1),
+              new RecordingStore(journal),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+
+      RunOutcome outcome = loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), OBSERVER);
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.FAILED);
+      // The homework's own effect is never performed: the halt fires on the fold that opened it.
+      assertThat(journal).doesNotContain("tool:c1");
+      assertThat(memory.remembered())
+          .containsExactly(
+              Message.user("echo a"),
+              Message.assistant(List.of(new ToolUseBlock(c1))),
+              Message.toolResults(
+                  List.of(
+                      new ToolResultBlock(
+                          "c1",
+                          "Abandoned: the conversation failed before this tool ran.",
+                          true))));
     }
   }
 
@@ -426,7 +508,7 @@ class ConversationLoopTest {
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
-      loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), TurnObserver.noop());
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), OBSERVER);
 
       assertThat(journal).isNotEmpty();
       assertThat(journal)
@@ -445,42 +527,49 @@ class ConversationLoopTest {
   @Nested
   class Durability {
 
+    /**
+     * A model executor that throws mid-turn does not pin the progress-holder contract on its own:
+     * the loop already saves after every successful fold, so the store would hold the same state
+     * whether or not {@code run}'s {@code try}/{@code finally} exists — the prior fold's own
+     * in-loop {@code store.save} already got there first. To actually exercise the {@code finally},
+     * the throw has to land <em>between</em> {@code progress.set(state)} and that fold's own {@code
+     * store.save} — inside {@code remember}, which the loop calls first. A memory that throws on
+     * its second telling does exactly that: the first telling (the {@code AgentTold} fold's user
+     * message) succeeds and is saved normally; the second telling (the {@code ModelResponded}
+     * fold's assistant message) throws after {@code progress} has already been advanced to the
+     * newly-folded state but before that fold's own save runs. Only the run-level {@code finally}
+     * persists it after that — delete the {@code finally} and this assertion fails, because the
+     * store would still hold the {@code AgentTold} fold's state.
+     */
     @Test
-    void the_last_folded_state_is_saved_even_when_a_later_perform_throws() {
-      List<String> journal = new ArrayList<>();
+    void the_finally_block_saves_the_just_folded_state_when_remembering_it_throws() {
       ToolCall c1 = toolCall("c1", "echo");
-      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
-      model.thenThrow(new IllegalStateException("model blew up mid-turn"));
-      ScriptedToolCallExecutor tools =
-          new ScriptedToolCallExecutor(journal)
-              .andFor("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
-      RecordingStore store = new RecordingStore(journal);
-      RecordingMemory memory = new RecordingMemory(journal);
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(new ArrayList<>(), homework(c1));
+      ThrowOnNthRememberMemory memory =
+          new ThrowOnNthRememberMemory(2, new IllegalStateException("remember blew up"));
+      RecordingStore store = new RecordingStore(new ArrayList<>());
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
+              new EffectExecutors(model, new ScriptedToolCallExecutor(new ArrayList<>())),
               memory,
               TerminationPolicy.never(),
               store,
-              new RecordingEmitter(journal),
+              EventEmitter.noop(),
               ObservationRegistry.NOOP);
       ConversationEvent.AgentTold echoA = ConversationEvent.AgentTold.of(ID, "echo a");
 
-      assertThatThrownBy(() -> loop.run(ID, echoA, TurnObserver.noop()))
+      assertThatThrownBy(() -> loop.run(ID, echoA, OBSERVER))
           .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("model blew up mid-turn");
+          .hasMessageContaining("remember blew up");
 
-      // The last fold to complete before the throw was the flush that answered c1's tool_use,
-      // which put the state back into AWAITING_MODEL with no homework left outstanding — the
-      // progress-holder contract: the exception loses no folded progress.
+      // The just-folded state (ModelResponded's homework fold: EXECUTING_TOOL, c1 pending) is
+      // what the finally block must have saved — not the AgentTold fold's earlier AWAITING_MODEL
+      // state, which is all that would remain without it.
       ConversationState saved = store.load(ID).orElseThrow();
-      assertThat(saved.status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
-      assertThat(saved.pendingCalls()).isEmpty();
-      assertThat(saved.pendingResults()).isEmpty();
-      assertThat(memory.remembered())
-          .isNotEmpty()
-          .last()
-          .isEqualTo(Message.toolResults(List.of(new ToolResultBlock("c1", "a", false))));
+      assertThat(saved.status()).isEqualTo(ConversationStatus.EXECUTING_TOOL);
+      assertThat(saved.pendingCalls()).containsExactly(c1);
+      assertThat(memory.remembered()).containsExactly(Message.user("echo a"));
     }
   }
 
@@ -504,7 +593,7 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
       ConversationEvent.AgentTold whatIs2Plus2 = ConversationEvent.AgentTold.of(ID, "what is 2+2?");
 
-      assertThatThrownBy(() -> loop.run(ID, whatIs2Plus2, TurnObserver.noop()))
+      assertThatThrownBy(() -> loop.run(ID, whatIs2Plus2, OBSERVER))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("EXECUTING_TOOL");
     }
@@ -529,7 +618,7 @@ class ConversationLoopTest {
                 ObservationRegistry.NOOP);
 
         RunOutcome outcome =
-            loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), TurnObserver.noop());
+            loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
 
         assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
       }
@@ -554,7 +643,7 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
       ConversationEvent.AgentTold echoA = ConversationEvent.AgentTold.of(ID, "echo a");
 
-      assertThatThrownBy(() -> loop.run(ID, echoA, TurnObserver.noop()))
+      assertThatThrownBy(() -> loop.run(ID, echoA, OBSERVER))
           .isInstanceOf(UnsupportedOperationException.class)
           .hasMessageContaining("echo");
     }
@@ -578,7 +667,7 @@ class ConversationLoopTest {
       ParkToken token = ParkToken.generate();
       ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
 
-      assertThatThrownBy(() -> loop.resume(ID, token, decided, TurnObserver.noop()))
+      assertThatThrownBy(() -> loop.resume(ID, token, decided, OBSERVER))
           .isInstanceOf(UnsupportedOperationException.class);
     }
   }
@@ -601,7 +690,7 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
 
       RunOutcome outcome =
-          loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), TurnObserver.noop());
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
 
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(outcome.state().failureReason()).isEqualTo("boom");
