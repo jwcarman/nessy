@@ -17,14 +17,15 @@ package org.jwcarman.nessy.examples;
 
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
-import org.jwcarman.nessy.Reply;
-import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.RunOutcome;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 
 /**
- * Pattern demonstrated: streaming via {@link Conversation#tell(Object,
- * java.util.function.Consumer)} — the same rendering as {@link AnthropicChat}, with no manual hub
- * subscription and no session-id filtering to get wrong.
+ * Pattern demonstrated: the same live narration as {@link AnthropicChat} — a {@link
+ * org.jwcarman.nessy.api.turn.TurnObserver} handed straight to {@link Conversation#tell(Object,
+ * org.jwcarman.nessy.api.turn.TurnObserver)}, printing the model's prose as it streams.
  */
 public final class OpenAiChat {
 
@@ -52,18 +53,18 @@ public final class OpenAiChat {
       if (input == null || input.isBlank() || input.equals("/quit")) {
         return;
       }
-      Reply reply = conversation.tell(input, OpenAiChat::render);
+      RunOutcome outcome = conversation.tell(input, OpenAiChat::render);
       IO.println();
-      if (reply.failed()) {
-        IO.println("! " + reply.failureReason().orElse("unknown failure"));
+      if (outcome.state().status() == ConversationStatus.FAILED) {
+        IO.println("! " + outcome.state().failureReason());
       }
     }
   }
 
-  private static void render(ConversationEvent event) {
+  private static void render(TurnEvent event) {
     switch (event) {
-      case ConversationEvent.TextDelta textDelta -> IO.print(textDelta.text());
-      case ConversationEvent.ToolCallRequested toolCallRequested ->
+      case TurnEvent.TextDelta textDelta -> IO.print(textDelta.text());
+      case TurnEvent.ToolCallRequested toolCallRequested ->
           IO.println("\n⚙ tool: " + toolCallRequested.call().name());
       default -> {}
     }

@@ -19,21 +19,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.event.CompactionFailed;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolSpec;
-import org.jwcarman.nessy.spi.Reducer;
-import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
@@ -53,20 +47,6 @@ class ValidationTest {
   @Test
   void a_blank_park_token_is_rejected() {
     assertThatThrownBy(() -> new ParkToken(" ")).isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_null_termination_policy_is_rejected() {
-    Compactor compactor = Compactor.disabled();
-
-    assertThatThrownBy(() -> new Reducer(null, compactor)).isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_null_compactor_is_rejected() {
-    TerminationPolicy policy = TerminationPolicy.defaults();
-
-    assertThatThrownBy(() -> new Reducer(policy, null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
@@ -196,52 +176,5 @@ class ValidationTest {
             Context.of(List.of()), "system", "fake-model", 1024, List.of(), Set.of(), schema);
 
     assertThat(request.responseSchema()).isSameAs(schema);
-  }
-
-  @Test
-  void a_compacted_event_without_a_working_set_is_rejected() {
-    ConversationId id = new ConversationId("s1");
-
-    assertThatThrownBy(() -> new ConversationEvent.Compacted(id, null))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compacted_events_working_set_is_defensively_copied() {
-    List<Message> mutable = new ArrayList<>();
-    mutable.add(Message.user("hi"));
-    ConversationEvent.Compacted event =
-        new ConversationEvent.Compacted(new ConversationId("s1"), mutable);
-
-    mutable.add(Message.user("surprise"));
-
-    assertThat(event.workingSet()).hasSize(1);
-  }
-
-  @Test
-  void a_compaction_skipped_event_without_a_reason_is_rejected() {
-    ConversationId id = new ConversationId("s1");
-
-    assertThatThrownBy(() -> new ConversationEvent.CompactionSkipped(id, null))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compactor_result_without_a_working_set_is_rejected() {
-    assertThatThrownBy(() -> new Compactor.Result(null)).isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compaction_failed_event_without_a_conversation_id_is_rejected() {
-    assertThatThrownBy(() -> new CompactionFailed(null, "boom"))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_compaction_failed_event_without_a_reason_is_rejected() {
-    ConversationId id = new ConversationId("s1");
-
-    assertThatThrownBy(() -> new CompactionFailed(id, null))
-        .isInstanceOf(NullPointerException.class);
   }
 }

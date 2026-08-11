@@ -40,16 +40,7 @@ class ConversationEventTest {
               "user:" + ((TextBlock) e.content().getFirst()).text();
           case ConversationEvent.ModelResponded e -> "responded:" + e.message();
           case ConversationEvent.ModelCallFailed e -> "failed:" + e.reason();
-          case ConversationEvent.TextDelta e -> "delta:" + e.text();
-          case ConversationEvent.ThinkingDelta e -> "thinking:" + e.text();
-          case ConversationEvent.ThinkingSigned e -> "signed:" + e.signature();
-          case ConversationEvent.RedactedThinkingArrived e -> "redacted:" + e.data();
-          case ConversationEvent.ToolCallRequested e -> "call:" + e.call().name();
-          case ConversationEvent.ModelTurnEnded e -> "end:" + e.reason();
-          case ConversationEvent.ApprovalDecided e -> "approval:" + e.call().name();
           case ConversationEvent.ToolFinished e -> "finished:" + e.call().name();
-          case ConversationEvent.Compacted e -> "compacted:" + e.workingSet().size();
-          case ConversationEvent.CompactionSkipped e -> "skipped:" + e.reason();
         };
 
     assertThat(described).isEqualTo("user:hello");

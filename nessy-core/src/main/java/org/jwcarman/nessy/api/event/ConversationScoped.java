@@ -21,10 +21,10 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
  * Something self-attributing enough to name the one conversation it belongs to.
  *
  * <p>Implemented by the sealed {@code ConversationEvent} grammar and by every open notice ({@link
- * MessageAppended}, {@link ToolProgress}, {@link CompactionFailed}, {@link EnrichmentFailed}) —
- * this is what a conversation-scoped {@link ConversationEvents} subscription filters on. An emitted
- * object that does not implement this interface is simply invisible to conversation-local delivery;
- * it still reaches whatever declared (harness- or agent-level) listeners are frozen for its type.
+ * ToolProgress}, {@link ApprovalRequested}) — this is what a conversation-scoped {@link
+ * ConversationEvents} subscription filters on. An emitted object that does not implement this
+ * interface is simply invisible to conversation-local delivery; it still reaches whatever declared
+ * (harness- or agent-level) listeners are frozen for its type.
  */
 public interface ConversationScoped {
 

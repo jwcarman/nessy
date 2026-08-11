@@ -46,9 +46,15 @@ class ZoneBoundariesTest {
           );
 
   /**
-   * The api-to-spi ban, covering the top-level spi zone as well as its spi.context and
-   * spi.compaction sub-zones.
+   * The only root-package files allowed to reach into internal machinery, and why: each assembles a
+   * {@link org.jwcarman.nessy.internal.ConversationLoop} (or, for {@code Conversation.java}, drives
+   * one) — the cutover left no {@code spi}-level engine interface to mediate that construction, so
+   * the facade reaches into {@code internal} directly, deliberately, at exactly these three sites.
    */
+  private static final Set<String> SANCTIONED_ROOT_TO_INTERNAL_IMPORTS =
+      Set.of("Agent.java", "AgentBuilder.java", "Conversation.java");
+
+  /** The api-to-spi ban, covering the top-level spi zone. */
   @ParameterizedTest(name = "no file under api imports {0}")
   @MethodSource("apiForbiddenSpiPackages")
   void no_file_under_api_imports_spi_zone(String forbiddenPackage) {
@@ -62,10 +68,7 @@ class ZoneBoundariesTest {
   }
 
   private static Stream<String> apiForbiddenSpiPackages() {
-    return Stream.of(
-        "org.jwcarman.nessy.spi",
-        "org.jwcarman.nessy.spi.context",
-        "org.jwcarman.nessy.spi.compaction");
+    return Stream.of("org.jwcarman.nessy.spi");
   }
 
   @Test
@@ -85,60 +88,16 @@ class ZoneBoundariesTest {
   }
 
   @Test
-  void root_package_files_may_import_api_and_spi_but_not_internal() {
+  void root_package_files_importing_internal_are_exactly_the_sanctioned_set() {
     for (JavaFile file : rootPackageFiles()) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
-          .as(
-              "%s imports org.jwcarman.nessy.internal, but root-package files may only depend on"
-                  + " api and spi",
-              file.relativePath())
-          .isFalse();
-    }
-  }
-
-  /**
-   * {@code spi.context} (the {@link org.jwcarman.nessy.spi.context.Projection}, {@link
-   * org.jwcarman.nessy.spi.context.ContextEnricher}, {@link
-   * org.jwcarman.nessy.spi.context.ContextPipeline} home) is free to depend on {@code api}, the way
-   * {@code spi.model} already does, but it does not get the wider spi zone's licence to reach into
-   * {@code internal}: nothing in its public signatures needs engine machinery — {@link
-   * org.jwcarman.nessy.spi.context.ContextPipeline} mints its own {@code nessy.context.enrich}
-   * observation directly rather than depending on {@code internal.EngineObservations}. {@code
-   * TokenEstimator} (§10.8's edit algebra) lives in {@code api.message} instead, beside {@link
-   * org.jwcarman.nessy.api.message.Context}, which takes it directly in {@code tokens}/{@code
-   * limitTokens} — a type in {@code Context}'s own public signature cannot live in {@code spi}, per
-   * the ban this class enforces.
-   */
-  @Test
-  void no_file_under_spi_context_imports_internal() {
-    List<JavaFile> filesUnderSpiContext = filesUnder("spi/context");
-    assertThat(filesUnderSpiContext).isNotEmpty();
-    for (JavaFile file : filesUnderSpiContext) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
-          .as(
-              "%s imports org.jwcarman.nessy.internal, but spi.context may not",
-              file.relativePath())
-          .isFalse();
-    }
-  }
-
-  /**
-   * {@code spi.compaction} ({@link org.jwcarman.nessy.spi.compaction.Compactor}, {@link
-   * org.jwcarman.nessy.spi.compaction.Summarizer}, {@link
-   * org.jwcarman.nessy.spi.compaction.Compactors} home) holds the whole compaction seam — decision,
-   * transformation, and construction unified behind {@code Compactor} — but, like {@code
-   * spi.context}, it does not get the wider spi zone's licence to reach into {@code internal}.
-   */
-  @Test
-  void no_file_under_spi_compaction_imports_internal() {
-    List<JavaFile> filesUnderSpiCompaction = filesUnder("spi/compaction");
-    assertThat(filesUnderSpiCompaction).isNotEmpty();
-    for (JavaFile file : filesUnderSpiCompaction) {
-      assertThat(file.importsPackage("org.jwcarman.nessy.internal"))
-          .as(
-              "%s imports org.jwcarman.nessy.internal, but spi.compaction may not",
-              file.relativePath())
-          .isFalse();
+      if (file.importsPackage("org.jwcarman.nessy.internal")) {
+        assertThat(SANCTIONED_ROOT_TO_INTERNAL_IMPORTS)
+            .as(
+                "%s imports org.jwcarman.nessy.internal but is not on the sanctioned list; either"
+                    + " widen the sanctioned set deliberately or remove the dependency",
+                file.relativePath())
+            .contains(file.fileName());
+      }
     }
   }
 

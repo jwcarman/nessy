@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
@@ -119,10 +120,11 @@ class HarnessTest {
     FakeProvider provider = new FakeProvider("The answer is 4.");
 
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
-    Reply reply = agent.converse().tell("what is 2+2?");
+    TextObserver observer = new TextObserver();
+    RunOutcome reply = agent.converse().tell("what is 2+2?", observer);
 
-    assertThat(reply.text()).isEqualTo("The answer is 4.");
-    assertThat(reply.failed()).isFalse();
+    assertThat(observer.text()).isEqualTo("The answer is 4.");
+    assertThat(RunOutcomes.failed(reply)).isFalse();
   }
 
   /** Design §17's model resolution chain: agent {@code .model(...)} wins over both. */
@@ -233,9 +235,9 @@ class HarnessTest {
                   t -> {})
               .build();
 
-      Reply reply = agent.converse().tell("hi");
+      RunOutcome reply = agent.converse().tell("hi");
 
-      assertThat(reply.failed()).isFalse();
+      assertThat(RunOutcomes.failed(reply)).isFalse();
       assertThat(handled.await(5, TimeUnit.SECONDS)).isTrue();
     }
   }

@@ -156,11 +156,6 @@ public final class ConversationLoop {
         switch (effect) {
           case Effect.CallModel _ -> executors.callModel().execute(state, observer);
           case Effect.ExecuteTool(var call) -> executors.toolCall().execute(call, state, observer);
-          // Scaffolding until the cutover (Task 9): the fold never emits these.
-          case Effect.RequestApproval e ->
-              throw new IllegalStateException("legacy effect reached the loop: " + e);
-          case Effect.Compact e ->
-              throw new IllegalStateException("legacy effect reached the loop: " + e);
         };
     return switch (outcome) {
       case Awaited.Ready<ConversationEvent>(ConversationEvent value) -> value;

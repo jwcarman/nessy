@@ -29,13 +29,14 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 /**
  * Something that happened to a conversation.
  *
- * <p>Events are the only input to {@code Reducer}. Streaming text arrives as ordinary events, which
- * is why the loop streams natively instead of growing a second code path for it.
+ * <p>Events are the only input to {@link org.jwcarman.nessy.api.conversation.ConversationState#fold
+ * ConversationState.fold}. Four facts, settled rather than streamed — the loop's own executors
+ * narrate texture as it arrives via {@code TurnObserver} instead.
  *
  * <p>Every variant is self-attributing: {@link #conversationId()} names the conversation the event
- * belongs to, carried as each variant's first component. This is what lets {@code Reducer.reduce}
- * reject a fact addressed to one conversation but folded into another's state, and what lets the
- * engine publish the grammar event itself rather than wrapping it in an envelope.
+ * belongs to, carried as each variant's first component. This is what lets {@code fold} reject a
+ * fact addressed to one conversation but folded into another's state, and what lets the loop
+ * publish the grammar event itself rather than wrapping it in an envelope.
  */
 public sealed interface ConversationEvent extends ConversationScoped {
 
@@ -97,104 +98,12 @@ public sealed interface ConversationEvent extends ConversationScoped {
     }
   }
 
-  /** A chunk of assistant prose arrived from the stream. */
-  record TextDelta(ConversationId conversationId, String text) implements ConversationEvent {
-
-    public TextDelta {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-    }
-  }
-
-  /** A chunk of the model's visible reasoning arrived from the stream. */
-  record ThinkingDelta(ConversationId conversationId, String text) implements ConversationEvent {
-
-    public ThinkingDelta {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-    }
-  }
-
-  /** The provider finished a thinking block and delivered its signature. */
-  record ThinkingSigned(ConversationId conversationId, String signature)
-      implements ConversationEvent {
-
-    public ThinkingSigned {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(signature, "signature must not be null");
-    }
-  }
-
-  /** A complete redacted-thinking block arrived; its contents are opaque by design. */
-  record RedactedThinkingArrived(ConversationId conversationId, String data)
-      implements ConversationEvent {
-
-    public RedactedThinkingArrived {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(data, "data must not be null");
-    }
-  }
-
-  /** The model finished emitting one complete tool call. */
-  record ToolCallRequested(ConversationId conversationId, ToolCall call)
-      implements ConversationEvent {
-
-    public ToolCallRequested {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-    }
-  }
-
-  /** The model's turn is over. */
-  record ModelTurnEnded(ConversationId conversationId, StopReason reason, Usage usage)
-      implements ConversationEvent {
-
-    public ModelTurnEnded {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(reason, "reason must not be null");
-      Objects.requireNonNull(usage, "usage must not be null");
-    }
-  }
-
-  /** The approval question for one call has been answered. */
-  record ApprovalDecided(ConversationId conversationId, ToolCall call, Decision decision)
-      implements ConversationEvent {
-
-    public ApprovalDecided {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-    }
-  }
-
   /** A tool ran to completion, successfully or not. */
   record ToolFinished(ConversationId conversationId, ToolCall call, ToolResult result)
       implements ConversationEvent {
 
     public ToolFinished {
       Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-    }
-  }
-
-  /**
-   * A compaction attempt finished. {@code workingSet} is the strategy's result: smaller than the
-   * working set that went in means the reducer replaces its messages wholesale; the same size or
-   * larger is a skip with no other change. Carries no spend — the jurisdiction rule (design §10.6)
-   * reserves the ledger for the loop's own spend; whatever a compactor's own call cost is
-   * telemetry's business, not this event's.
-   */
-  record Compacted(ConversationId conversationId, List<Message> workingSet)
-      implements ConversationEvent {
-
-    public Compacted {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(workingSet, "workingSet must not be null");
-      workingSet = List.copyOf(workingSet);
-    }
-  }
-
-  /** Compaction was attempted but did not happen; the turn proceeds uncompacted. */
-  record CompactionSkipped(ConversationId conversationId, String reason)
-      implements ConversationEvent {
-
-    public CompactionSkipped {
-      Objects.requireNonNull(conversationId, CONVERSATION_ID_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(reason, "reason must not be null");
     }
   }
 }

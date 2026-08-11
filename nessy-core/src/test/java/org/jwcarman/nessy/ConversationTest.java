@@ -26,10 +26,10 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.InputRenderer;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -37,9 +37,9 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@link Conversation}'s own two entry points ({@code tell(I)} and {@code tell(I, Consumer)}), its
- * accessors, and the renderer-failure contract they share — {@code HarnessTest} already covers the
- * dynamic {@code events()} subscription story end to end.
+ * {@link Conversation}'s own two entry points ({@code tell(I)} and {@code tell(I, TurnObserver)}),
+ * its accessors, and the renderer-failure contract they share — {@code HarnessTest} already covers
+ * the dynamic {@code events()} subscription story end to end.
  */
 class ConversationTest {
 
@@ -88,50 +88,36 @@ class ConversationTest {
   }
 
   @Nested
-  class Tell_with_a_tap {
+  class Tell_with_an_observer {
 
     @Test
-    void the_tap_observes_only_this_calls_events_synchronously() {
+    void the_observer_watches_only_this_calls_turn_synchronously() {
       Agent<String> agent =
           Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
       Conversation<String> conversation = agent.converse();
-      List<ConversationEvent> observed = new ArrayList<>();
-
-      Reply reply = conversation.tell("hi", observed::add);
-
-      assertThat(reply.text()).isEqualTo("hi");
-      assertThat(observed)
-          .isNotEmpty()
-          .allSatisfy(e -> assertThat(e.conversationId()).isEqualTo(conversation.conversationId()));
-    }
-
-    @Test
-    void the_tap_is_detached_once_the_call_returns() {
-      Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi", "still there?")).build().agent().model("m").build();
-      Conversation<String> conversation = agent.converse();
-      List<ConversationEvent> observed = new ArrayList<>();
+      List<TurnEvent> observed = new ArrayList<>();
 
       conversation.tell("hi", observed::add);
-      observed.clear();
-      conversation.tell("still there?");
 
-      assertThat(observed).isEmpty();
+      assertThat(observed)
+          .filteredOn(TurnEvent.TextDelta.class::isInstance)
+          .extracting(event -> ((TurnEvent.TextDelta) event).text())
+          .containsExactly("hi");
     }
 
     @Test
-    void a_null_tap_is_rejected() {
+    void a_null_observer_is_rejected() {
       Agent<String> agent =
           Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
       Conversation<String> conversation = agent.converse();
 
       assertThatThrownBy(() -> conversation.tell("hi", null))
           .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("tap");
+          .hasMessageContaining("observer");
     }
 
     @Test
-    void a_throwing_tap_propagates_and_aborts_the_call() {
+    void a_throwing_observer_propagates_and_aborts_the_call() {
       Agent<String> agent =
           Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
       Conversation<String> conversation = agent.converse();
@@ -141,10 +127,10 @@ class ConversationTest {
                   conversation.tell(
                       "hi",
                       e -> {
-                        throw new IllegalStateException("tap blew up");
+                        throw new IllegalStateException("observer blew up");
                       }))
           .isInstanceOf(IllegalStateException.class)
-          .hasMessage("tap blew up");
+          .hasMessage("observer blew up");
     }
   }
 
@@ -152,7 +138,7 @@ class ConversationTest {
   class A_renderer_that_produces_no_blocks {
 
     @Test
-    void an_empty_block_list_fails_tell_before_the_engine_ever_sees_it() {
+    void an_empty_block_list_fails_tell_before_the_loop_ever_sees_it() {
       InputRenderer<String> emptyRenderer = input -> List.of();
       Agent<String> agent =
           Nessy.harness(new FakeProvider())
@@ -170,7 +156,7 @@ class ConversationTest {
     }
 
     @Test
-    void a_null_block_list_fails_tell_with_tap_before_the_engine_ever_sees_it() {
+    void a_null_block_list_fails_tell_with_an_observer_before_the_loop_ever_sees_it() {
       InputRenderer<String> nullRenderer = input -> null;
       Agent<String> agent =
           Nessy.harness(new FakeProvider())

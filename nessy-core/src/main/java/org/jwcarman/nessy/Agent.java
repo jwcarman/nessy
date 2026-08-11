@@ -17,13 +17,12 @@ package org.jwcarman.nessy;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
-import org.jwcarman.nessy.spi.ExecutionEngine;
-import org.jwcarman.nessy.spi.context.ContextPipeline;
+import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
  * A configured agent: a reusable factory of conversations, with the full machinery one call away.
@@ -37,55 +36,51 @@ import org.jwcarman.nessy.spi.conversation.ConversationStore;
  */
 public final class Agent<I> {
 
-  private final ExecutionEngine engine;
+  private final ConversationLoop loop;
   private final ListenerRegistry events;
   private final ConversationStore store;
-  private final ContextPipeline contextPipeline;
+  private final Memory memory;
   private final InputRenderer<I> renderer;
 
   Agent(
-      ExecutionEngine engine,
+      ConversationLoop loop,
       ListenerRegistry events,
       ConversationStore store,
-      ContextPipeline contextPipeline,
+      Memory memory,
       InputRenderer<I> renderer) {
-    this.engine = Objects.requireNonNull(engine, "engine must not be null");
+    this.loop = Objects.requireNonNull(loop, "loop must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
-    this.contextPipeline =
-        Objects.requireNonNull(contextPipeline, "contextPipeline must not be null");
+    this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
   }
 
   /** Opens a fresh conversation. */
   public Conversation<I> converse() {
-    return new Conversation<>(engine, ConversationId.generate(), events, renderer);
+    return new Conversation<>(loop, ConversationId.generate(), events, renderer);
   }
 
-  /** Reopens a stored session. The engine loads its state on the next send. */
+  /** Reopens a stored session. The loop loads its state on the next send. */
   public Conversation<I> resume(ConversationId conversationId) {
-    return new Conversation<>(engine, conversationId, events, renderer);
+    return new Conversation<>(loop, conversationId, events, renderer);
   }
 
   /** The event-level API, for anything the facade does not say. */
-  public ExecutionEngine engine() {
-    return engine;
+  public ConversationLoop loop() {
+    return loop;
   }
 
   /**
    * The debugging affordance: exactly what a conversational call made against {@code id} right now
-   * would see — the same projections, the same enrichments, assembled by the same {@link
-   * ContextPipeline} instance the engine consults on every send. Truthful without a model call,
-   * because assembly is deterministic over state; not free, because a configured {@link
-   * org.jwcarman.nessy.spi.context.ContextEnricher} still performs enrichment I/O to answer.
+   * would see — the same {@link Memory#recall} the loop's own {@code ModelCallExecutor} consults on
+   * every send, since that recall is the sole context-assembly seam left after the cutover (design
+   * §17). Truthful without a model call, because recall is deterministic over what has already been
+   * told.
    *
    * @throws IllegalArgumentException if no conversation {@code id} is stored
    */
   public Context contextFor(ConversationId id) {
-    ConversationState state =
-        store
-            .load(id)
-            .orElseThrow(() -> new IllegalArgumentException("unknown conversation: " + id));
-    return contextPipeline.assemble(state);
+    store.load(id).orElseThrow(() -> new IllegalArgumentException("unknown conversation: " + id));
+    return memory.recall(id);
   }
 }

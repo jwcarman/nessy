@@ -22,9 +22,10 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
+import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Nessy;
-import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -84,10 +85,11 @@ class OpenAiLiveTest {
             .maxTokens(64)
             .build();
 
-    Reply reply = agent.converse().tell("Reply with exactly: pong");
+    TextObserver observer = new TextObserver();
+    RunOutcome outcome = agent.converse().tell("Reply with exactly: pong", observer);
 
-    assertThat(reply.text()).contains("pong");
-    assertThat(reply.state().usage().inputTokens()).isGreaterThan(0);
+    assertThat(observer.text()).contains("pong");
+    assertThat(outcome.state().usage().inputTokens()).isGreaterThan(0);
   }
 
   @Test
@@ -103,11 +105,13 @@ class OpenAiLiveTest {
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
 
-    Reply reply = agent.converse().tell("What is 2+2? Use the add tool to compute it.");
+    Conversation<String> conversation = agent.converse();
+    TextObserver observer = new TextObserver();
+    conversation.tell("What is 2+2? Use the add tool to compute it.", observer);
 
-    assertThat(reply.text()).contains("4");
+    assertThat(observer.text()).contains("4");
     boolean hasToolResult =
-        reply.state().messages().stream()
+        agent.contextFor(conversation.conversationId()).messages().stream()
             .flatMap(message -> message.content().stream())
             .anyMatch(ToolResultBlock.class::isInstance);
     assertThat(hasToolResult).isTrue();
@@ -134,8 +138,9 @@ class OpenAiLiveTest {
             .maxTokens(64)
             .build();
 
-    Reply reply = agent.converse().tell("Reply with exactly: pong");
+    TextObserver observer = new TextObserver();
+    agent.converse().tell("Reply with exactly: pong", observer);
 
-    assertThat(reply.text()).contains("pong");
+    assertThat(observer.text()).contains("pong");
   }
 }

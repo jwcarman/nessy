@@ -43,15 +43,16 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * @param consecutiveErrors errored tool results in a row; any success resets it
  * @param turns model turns completed so far
  * @param usage tokens spent so far, accumulated across every completed turn — the loop's own spend,
- *     reported by {@code ModelTurnEnded}. This is the jurisdiction rule (design §10.6, ruled
- *     2026-08-10): the ledger bills only the loop's own conversational turns; auxiliary spend — a
- *     {@code Compactor}'s own summarization call today, a tool's internal model calls tomorrow — is
- *     telemetry's jurisdiction, instrumented on its own span, and never reaches this field
- * @param lastInputTokens the provider's own measurement of what the most recent model call cost;
- *     read by the reducer's {@code Compactor} to decide when to compact. This reads the provider's
- *     reported input token count as-is; a future message-level prompt-cache breakpoint that
- *     excludes cached tokens from that count would weaken the trigger, since a large cached prefix
- *     would then read as cheap even while still counting toward the model's context window
+ *     reported by {@link ConversationEvent.ModelResponded}. This is the jurisdiction rule (design
+ *     §10.6, ruled 2026-08-10): the ledger bills only the loop's own conversational turns;
+ *     auxiliary spend — a summarizing {@code Memory}'s own call today, a tool's internal model
+ *     calls tomorrow — is telemetry's jurisdiction, instrumented on its own span, and never reaches
+ *     this field
+ * @param lastInputTokens the provider's own measurement of what the most recent model call cost.
+ *     This reads the provider's reported input token count as-is; a future message-level
+ *     prompt-cache breakpoint that excludes cached tokens from that count would weaken any
+ *     token-driven retention policy built on it, since a large cached prefix would then read as
+ *     cheap even while still counting toward the model's context window
  * @param generation bumped whenever compaction rewrites the settled conversation; the store's
  *     signal that it must rewrite rather than append
  * @param failureReason why the session failed, or {@code null} if it has not failed. This is the
@@ -316,22 +317,7 @@ public record ConversationState(
       case ConversationEvent.ModelResponded e -> modelResponded(e);
       case ConversationEvent.ModelCallFailed e -> modelCallFailed(e);
       case ConversationEvent.ToolFinished e -> toolFinished(e);
-      // Scaffolding until the cutover (plan 2026-08-11, Task 9): legacy variants are
-      // never fed to the fold — only the legacy reducer ever sees them.
-      case ConversationEvent.TextDelta e -> throw legacy(e);
-      case ConversationEvent.ThinkingDelta e -> throw legacy(e);
-      case ConversationEvent.ThinkingSigned e -> throw legacy(e);
-      case ConversationEvent.RedactedThinkingArrived e -> throw legacy(e);
-      case ConversationEvent.ToolCallRequested e -> throw legacy(e);
-      case ConversationEvent.ModelTurnEnded e -> throw legacy(e);
-      case ConversationEvent.ApprovalDecided e -> throw legacy(e);
-      case ConversationEvent.Compacted e -> throw legacy(e);
-      case ConversationEvent.CompactionSkipped e -> throw legacy(e);
     };
-  }
-
-  private static IllegalStateException legacy(ConversationEvent event) {
-    return new IllegalStateException("legacy event fed to the fold: " + event);
   }
 
   /** A tell starts a fresh error streak: a new instruction is not part of the previous failure. */

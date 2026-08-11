@@ -33,14 +33,13 @@ import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
-import org.jwcarman.nessy.spi.ExecutionEngine;
-import org.jwcarman.nessy.spi.InProcessEngine;
-import org.jwcarman.nessy.spi.Reducer;
-import org.jwcarman.nessy.spi.compaction.Compactor;
-import org.jwcarman.nessy.spi.compaction.Compactors;
-import org.jwcarman.nessy.spi.compaction.Summarizer;
-import org.jwcarman.nessy.spi.context.ContextPipeline;
+import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.execute.EffectExecutors;
+import org.jwcarman.nessy.spi.execute.GatedToolCallExecutor;
+import org.jwcarman.nessy.spi.execute.ProviderModelCallExecutor;
+import org.jwcarman.nessy.spi.memory.ListMemory;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -85,9 +84,8 @@ public final class AgentBuilder<I> {
   private Map<String, ToolGrant> explicitGrants;
   private Approver approver;
   private TerminationPolicy termination;
-  private Compactor compactor;
+  private Memory memory;
   private Long contextWindow;
-  private Consumer<ContextPipeline.Builder> contextCustomizer;
   private InputRenderer<I> renderer;
 
   /**
@@ -167,58 +165,22 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * Replaces the default, summarizing compactor entirely — the one compaction-related method on
-   * this builder. Wins over {@link #contextWindow(long)}, whether or not that was called, since
-   * there is no default left for it to feed.
-   *
-   * <p>The default, uncustomized compactor is assembled entirely internally — {@link
-   * Summarizer#usingProvider(ModelProvider, String, int, String,
-   * io.micrometer.observation.ObservationRegistry)} over the harness's provider and model, a
-   * 2,048-token summary ceiling, {@link Summarizer#DEFAULT_INSTRUCTIONS}, and the harness's
-   * observation registry, wrapped in {@link Compactors#summarizing(Summarizer)}'s defaults (100k
-   * trigger, or a window-derived one when {@link #contextWindow(long)} is declared; the last 10
-   * messages kept verbatim). To tune any of that, build a {@link Compactor} explicitly with {@link
-   * Summarizer#usingProvider(ModelProvider, String, int, String,
-   * io.micrometer.observation.ObservationRegistry)} and {@link Compactors#summarizing(Summarizer)}
-   * and pass the result here — every knob (summary ceiling, instructions, trigger tokens, window
-   * derivation, how many recent messages survive verbatim) is that builder's alone now, not this
-   * method's.
+   * Replaces the default {@link ListMemory} floor entirely: the content jurisdiction — told every
+   * message-grade happening, asked for the finished {@link org.jwcarman.nessy.api.message.Context}
+   * the loop's own {@code ModelCallExecutor} calls the model with. Freedom of retention, rule of
+   * law at the border (see {@link Memory}'s own javadoc): summarizing, checkpointing, or embedding
+   * memory all implement this one seam.
    */
-  public AgentBuilder<I> compaction(Compactor compactor) {
-    this.compactor = Objects.requireNonNull(compactor, "compaction must not be null");
+  public AgentBuilder<I> memory(Memory memory) {
+    this.memory = Objects.requireNonNull(memory, "memory must not be null");
     return this;
   }
 
   /**
-   * Declares the model's total token budget. When set and {@link #compaction(Compactor)} is never
-   * called, {@link #build()} derives the default compactor's trigger from it via {@link
-   * Compactors.SummarizingBuilder#window}; an explicit {@code compaction(...)} call always wins.
+   * Declares the model's total token budget, folded into {@link #build()}'s {@code ModelSettings}.
    */
   public AgentBuilder<I> contextWindow(long contextWindow) {
     this.contextWindow = contextWindow;
-    return this;
-  }
-
-  /**
-   * Declares this agent's Contextualize phase (§6.1): the ordered {@code project} transforms and
-   * {@code enrich} contributors a {@link ContextPipeline} runs to turn ledger into {@link
-   * org.jwcarman.nessy.api.message.Context} for one conversational call, plus where enriched
-   * material lands relative to the projected transcript. Declared once, at build time, in
-   * reviewable code — the one fully-open phase, but still closed to runtime registration.
-   *
-   * <p>Default: no projections, no enrichers, {@link ContextPipeline.Placement#ENRICHMENTS_FIRST} —
-   * the model sees the full working set unchanged, scoped to this one agent, never a harness-level
-   * default.
-   *
-   * <pre>{@code
-   * builder.context(pipeline -> pipeline
-   *     .project(ctx -> ctx.elideToolResults(2))
-   *     .enrich(graphMemory)
-   *     .placement(ContextPipeline.Placement.ENRICHMENTS_FIRST));
-   * }</pre>
-   */
-  public AgentBuilder<I> context(Consumer<ContextPipeline.Builder> customizer) {
-    this.contextCustomizer = Objects.requireNonNull(customizer, "customizer must not be null");
     return this;
   }
 
@@ -279,34 +241,33 @@ public final class AgentBuilder<I> {
             resolvedMaxTokens,
             Optional.ofNullable(capabilities).orElseGet(this::defaultCapabilities),
             contextWindow);
-    Compactor resolvedCompactor =
-        Optional.ofNullable(compactor)
-            .orElseGet(() -> defaultCompactor(resolvedModel, resolvedMaxTokens));
     ListenerRegistry events = seededRegistry.extendedWith(registrations);
-    // Constructed once here and handed to both the engine and the Agent: the invariant is one
-    // ContextPipeline instance per agent, so requestFor and contextFor never disagree about what
-    // a call sees.
-    ContextPipeline.Builder pipelineBuilder = ContextPipeline.builder();
-    Optional.ofNullable(contextCustomizer)
-        .orElseGet(this::defaultContextCustomizer)
-        .accept(pipelineBuilder);
-    ContextPipeline contextPipeline = pipelineBuilder.build(events, observations);
-    ExecutionEngine engine =
-        new InProcessEngine(
-            provider,
-            Optional.ofNullable(tools).orElseGet(this::defaultTools),
-            Optional.ofNullable(explicitGrants).orElseGet(this::defaultGrants),
-            Optional.ofNullable(approver).orElseGet(this::defaultApprover),
+    ToolRegistry resolvedTools = Optional.ofNullable(tools).orElseGet(this::defaultTools);
+    Map<String, ToolGrant> resolvedGrants =
+        Optional.ofNullable(explicitGrants).orElseGet(this::defaultGrants);
+    // Constructed once here and handed to both the model-call executor and the Agent: the
+    // invariant is one Memory instance per agent, so the wire request and contextFor never
+    // disagree about what a call sees.
+    Memory resolvedMemory = Optional.ofNullable(memory).orElseGet(this::defaultMemory);
+    EffectExecutors executors =
+        new EffectExecutors(
+            new ProviderModelCallExecutor(provider, settings, resolvedTools, resolvedMemory),
+            new GatedToolCallExecutor(
+                resolvedTools,
+                resolvedGrants,
+                Optional.ofNullable(approver).orElseGet(this::defaultApprover),
+                mapper,
+                events,
+                observations));
+    ConversationLoop loop =
+        new ConversationLoop(
+            executors,
+            resolvedMemory,
+            Optional.ofNullable(termination).orElseGet(this::defaultTermination),
             store,
             events,
-            new Reducer(
-                Optional.ofNullable(termination).orElseGet(this::defaultTermination),
-                resolvedCompactor),
-            settings,
-            mapper,
-            observations,
-            contextPipeline);
-    return new Agent<>(engine, events, store, contextPipeline, renderer);
+            observations);
+    return new Agent<>(loop, events, store, resolvedMemory, renderer);
   }
 
   /** {@link #DEFAULT_MAX_TOKENS}. */
@@ -325,9 +286,9 @@ public final class AgentBuilder<I> {
   }
 
   /**
-   * The grant map the engine consults, keyed by tool name. Only {@link #tools(ToolGrant...)}
-   * populates {@link #explicitGrants} — there is no derivation to fall back to, so the default is
-   * simply empty.
+   * The grant map the loop's tool-call executor consults, keyed by tool name. Only {@link
+   * #tools(ToolGrant...)} populates {@link #explicitGrants} — there is no derivation to fall back
+   * to, so the default is simply empty.
    */
   private Map<String, ToolGrant> defaultGrants() {
     return Map.of();
@@ -352,48 +313,8 @@ public final class AgentBuilder<I> {
     return TerminationPolicy.defaults();
   }
 
-  /** No projections, no enrichers — the working set reaches the model unchanged. */
-  private Consumer<ContextPipeline.Builder> defaultContextCustomizer() {
-    return pipeline -> {};
-  }
-
-  /**
-   * Assembles the default, summarizing compactor entirely internally: {@link
-   * Summarizer#usingProvider(ModelProvider, String, int, String,
-   * io.micrometer.observation.ObservationRegistry)} over the harness's provider and {@code
-   * resolvedModel}, a 2,048-token summary ceiling, and {@link Summarizer#DEFAULT_INSTRUCTIONS},
-   * plus a declared {@link #contextWindow(long)}, when there is one, to derive the trigger from. No
-   * window declared means {@link Compactors#summarizing}'s own default trigger (100k measured input
-   * tokens) stands.
-   *
-   * <p>Logs a warning once per agent {@link #build()} naming the algorithm, the trigger, {@code
-   * keepRecent}, the summarizing model, and how to configure a different compactor via {@link
-   * #compaction(Compactor)} — trading tokens for fidelity is a real cost an application should
-   * choose, not inherit silently.
-   */
-  private Compactor defaultCompactor(String resolvedModel, int resolvedMaxTokens) {
-    Summarizer summarizer =
-        Summarizer.usingProvider(
-            provider, resolvedModel, 2_048, Summarizer.DEFAULT_INSTRUCTIONS, observations);
-    Compactors.SummarizingBuilder builder = Compactors.summarizing(summarizer);
-    if (contextWindow != null) {
-      builder = builder.window(contextWindow, resolvedMaxTokens);
-      LOGGER.warn(
-          "no compactor configured for this agent: defaulting to a summarizing compactor"
-              + " (algorithm=summarizing, trigger=derived from contextWindow={} and"
-              + " maxTokens={}, keepRecent={}, model={}); call .compaction(...) to configure",
-          contextWindow,
-          resolvedMaxTokens,
-          Compactors.SummarizingBuilder.DEFAULT_KEEP_RECENT,
-          resolvedModel);
-    } else {
-      LOGGER.warn(
-          "no compactor configured for this agent: defaulting to a summarizing compactor"
-              + " (algorithm=summarizing, trigger=100000 input tokens, keepRecent={},"
-              + " model={}); call .compaction(...) to configure",
-          Compactors.SummarizingBuilder.DEFAULT_KEEP_RECENT,
-          resolvedModel);
-    }
-    return builder.build();
+  /** The floor: remembers everything verbatim, recalls it whole. */
+  private Memory defaultMemory() {
+    return new ListMemory();
   }
 }

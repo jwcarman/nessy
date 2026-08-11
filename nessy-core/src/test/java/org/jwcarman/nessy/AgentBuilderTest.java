@@ -34,14 +34,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -49,7 +47,6 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.compaction.Compactor;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -58,8 +55,8 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
  * {@code AgentBuilder}'s own validation and configuration wiring: every setter actually reaches the
- * {@link org.jwcarman.nessy.spi.ExecutionEngine} it configures, isolated from the full build path
- * {@code HarnessTest} exercises for the model-resolution and declared-listening stories.
+ * {@link org.jwcarman.nessy.internal.ConversationLoop} it configures, isolated from the full build
+ * path {@code HarnessTest} exercises for the model-resolution and declared-listening stories.
  */
 class AgentBuilderTest {
 
@@ -169,10 +166,11 @@ class AgentBuilderTest {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
           Nessy.harness(provider).build().agent().model("fake-model").tools().build();
+      TextObserver observer = new TextObserver();
 
-      Reply reply = agent.converse().tell("hi");
+      agent.converse().tell("hi", observer);
 
-      assertThat(reply.text()).isEqualTo("hi");
+      assertThat(observer.text()).isEqualTo("hi");
     }
   }
 
@@ -299,36 +297,7 @@ class AgentBuilderTest {
     }
 
     @Test
-    void the_compaction_override_replaces_the_default_summarizing_compactor() {
-      FakeProvider provider = new FakeProvider("hi");
-      AtomicBoolean consulted = new AtomicBoolean(false);
-      Compactor recording =
-          new Compactor() {
-            @Override
-            public boolean requiresCompaction(ConversationState state) {
-              consulted.set(true);
-              return false;
-            }
-
-            @Override
-            public Result compact(ConversationState state) {
-              throw new AssertionError("never triggered in this scenario");
-            }
-          };
-      Agent<String> agent =
-          Nessy.harness(provider).build().agent().model("fake-model").compaction(recording).build();
-
-      agent.converse().tell("hi");
-
-      assertThat(consulted).isTrue();
-    }
-
-    @Test
-    void a_declared_context_window_wires_into_the_default_compactor_without_throwing() {
-      // SummarizerTest and WindowCompactionTest already pin the exact 0.8x(window - maxTokens)
-      // trigger arithmetic; this only pins that AgentBuilder.contextWindow(...) actually reaches
-      // defaultCompactor's window-derived branch (as opposed to the plain-trigger branch every
-      // other test in this file exercises) rather than being silently ignored.
+    void a_declared_context_window_reaches_model_settings_without_throwing() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
           Nessy.harness(provider)
@@ -339,28 +308,9 @@ class AgentBuilderTest {
               .maxTokens(1_000)
               .build();
 
-      Reply reply = agent.converse().tell("hi");
+      RunOutcome reply = agent.converse().tell("hi");
 
-      assertThat(reply.failed()).isFalse();
-    }
-
-    @Test
-    void the_context_customizer_configures_the_pipeline_the_engine_and_contextFor_both_use() {
-      FakeProvider provider = new FakeProvider("hi");
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .model("fake-model")
-              .context(
-                  pipeline ->
-                      pipeline.project(ctx -> Context.of(List.of(Message.user("overridden")))))
-              .build();
-
-      agent.converse().tell("hi");
-
-      assertThat(provider.requests().getFirst().context().messages())
-          .containsExactly(Message.user("overridden"));
+      assertThat(RunOutcomes.failed(reply)).isFalse();
     }
 
     @Test
@@ -381,9 +331,9 @@ class AgentBuilderTest {
                   })
               .build();
 
-      Reply reply = agent.converse().tell("hi");
+      RunOutcome reply = agent.converse().tell("hi");
 
-      assertThat(reply.failed()).isFalse();
+      assertThat(RunOutcomes.failed(reply)).isFalse();
       assertThat(handled.await(5, TimeUnit.SECONDS)).isTrue();
     }
 

@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -105,7 +106,7 @@ class HarnessBuilderTest {
 
     agent.converse().tell("hi");
 
-    assertThat(observations).hasObservationWithNameEqualTo("nessy.turn");
+    assertThat(observations).hasObservationWithNameEqualTo("nessy.run");
   }
 
   @Test
@@ -156,9 +157,9 @@ class HarnessBuilderTest {
               .model("fake-model")
               .build();
 
-      Reply reply = agent.converse().tell("hi");
+      RunOutcome reply = agent.converse().tell("hi");
 
-      assertThat(reply.failed()).isFalse();
+      assertThat(RunOutcomes.failed(reply)).isFalse();
       assertThat(errorHandled.await(5, TimeUnit.SECONDS)).isTrue();
       assertThat(errors.getFirst()).hasMessage("harness async listener blew up");
     }
@@ -201,9 +202,9 @@ class HarnessBuilderTest {
               .model("fake-model")
               .build();
 
-      Reply reply = agent.converse().tell("hi");
+      RunOutcome reply = agent.converse().tell("hi");
 
-      assertThat(reply.failed()).isFalse();
+      assertThat(RunOutcomes.failed(reply)).isFalse();
       assertThat(handled.await(5, TimeUnit.SECONDS)).isTrue();
     }
   }

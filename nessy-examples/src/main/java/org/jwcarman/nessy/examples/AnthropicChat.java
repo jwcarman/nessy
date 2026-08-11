@@ -17,16 +17,16 @@ package org.jwcarman.nessy.examples;
 
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
-import org.jwcarman.nessy.Reply;
-import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.RunOutcome;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 
 /**
- * Pattern demonstrated: streaming via {@link Conversation#events()} — the one dynamic listening
- * level (design §17), already scoped to this conversation, so no manual id filtering is needed.
- * Reach for this when a listener needs to attach and detach at runtime, outliving a single {@code
- * tell}; a single call's own stream is simpler as {@link Conversation#tell(Object,
- * java.util.function.Consumer)} (see {@link OpenAiChat}).
+ * Pattern demonstrated: narrating one turn live via a {@link
+ * org.jwcarman.nessy.api.turn.TurnObserver} handed straight to {@link Conversation#tell(Object,
+ * org.jwcarman.nessy.api.turn.TurnObserver)} — the model's prose prints as it streams, and homework
+ * prints as it is requested.
  */
 public final class AnthropicChat {
 
@@ -45,7 +45,6 @@ public final class AnthropicChat {
     AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
     Agent<String> agent = DemoAgent.agentFor(provider, MODEL);
     Conversation<String> conversation = agent.converse();
-    conversation.events().subscribe(ConversationEvent.class, AnthropicChat::render);
 
     IO.println("Nessy demo (Anthropic, " + MODEL + "). Empty line or /quit to exit.");
     while (true) {
@@ -55,18 +54,18 @@ public final class AnthropicChat {
       if (input == null || input.isBlank() || input.equals("/quit")) {
         return;
       }
-      Reply reply = conversation.tell(input);
+      RunOutcome outcome = conversation.tell(input, AnthropicChat::render);
       IO.println();
-      if (reply.failed()) {
-        IO.println("! " + reply.failureReason().orElse("unknown failure"));
+      if (outcome.state().status() == ConversationStatus.FAILED) {
+        IO.println("! " + outcome.state().failureReason());
       }
     }
   }
 
-  private static void render(ConversationEvent event) {
+  private static void render(TurnEvent event) {
     switch (event) {
-      case ConversationEvent.TextDelta textDelta -> IO.print(textDelta.text());
-      case ConversationEvent.ToolCallRequested toolCallRequested ->
+      case TurnEvent.TextDelta textDelta -> IO.print(textDelta.text());
+      case TurnEvent.ToolCallRequested toolCallRequested ->
           IO.println("\n⚙ tool: " + toolCallRequested.call().name());
       default -> {}
     }

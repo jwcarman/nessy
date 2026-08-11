@@ -75,13 +75,4 @@ public final class EngineObservations {
     return Observation.start("nessy.approval.wait", registry)
         .lowCardinalityKeyValue("gen_ai.tool.name", toolName);
   }
-
-  // No GenAI semconv concept exists for summarization-as-context-management either; ours again.
-  public static Observation compaction(ObservationRegistry registry) {
-    return Observation.start("nessy.compaction", registry).contextualName("compact");
-  }
-
-  // nessy.context.enrich lives on org.jwcarman.nessy.spi.context.ContextPipeline, not here:
-  // spi.context may not import org.jwcarman.nessy.internal (see ZoneBoundariesTest), so that
-  // pipeline mints its own "nessy.context.enrich" / "enrich" observation directly.
 }

@@ -25,9 +25,12 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -35,7 +38,7 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@link Agent}'s own surface: {@code converse()} versus {@code resume(...)}, the {@code engine()}
+ * {@link Agent}'s own surface: {@code converse()} versus {@code resume(...)}, the {@code loop()}
  * escape hatch, and {@code contextFor(...)}'s both branches (an unknown id, and the same assembly a
  * live {@code tell} would see).
  */
@@ -77,10 +80,10 @@ class AgentTest {
   }
 
   @Test
-  void engine_exposes_the_same_engine_the_facade_runs_calls_through() {
+  void loop_exposes_the_same_loop_the_facade_runs_calls_through() {
     Agent<String> agent = Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
 
-    assertThat(agent.engine()).isNotNull();
+    assertThat(agent.loop()).isNotNull();
   }
 
   @Nested
@@ -91,11 +94,12 @@ class AgentTest {
       Agent<String> agent =
           Nessy.harness(new FakeProvider("first", "second")).build().agent().model("m").build();
       ConversationId id = agent.converse().tell("first").state().id();
+      TextObserver observer = new TextObserver();
 
-      var reply = agent.resume(id).tell("second");
+      RunOutcome reply = agent.resume(id).tell("second", observer);
 
       assertThat(reply.state().id()).isEqualTo(id);
-      assertThat(reply.text()).isEqualTo("second");
+      assertThat(observer.text()).isEqualTo("second");
     }
   }
 
@@ -118,11 +122,13 @@ class AgentTest {
     void a_stored_conversation_yields_the_same_assembly_a_live_call_would_see() {
       Agent<String> agent =
           Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
-      var reply = agent.converse().tell("hi");
+      Conversation<String> conversation = agent.converse();
+      conversation.tell("hi");
 
-      var context = agent.contextFor(reply.state().id());
+      var context = agent.contextFor(conversation.conversationId());
 
-      assertThat(context.messages()).isEqualTo(reply.state().messages());
+      assertThat(context.messages())
+          .containsExactly(Message.user("hi"), Message.assistant(List.of(new TextBlock("hi"))));
     }
   }
 }

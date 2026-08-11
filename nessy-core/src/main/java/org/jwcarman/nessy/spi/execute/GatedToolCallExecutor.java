@@ -45,10 +45,10 @@ import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
 
 /**
- * The one door into a tool's execution: gate, then invoke. Ported from {@code InProcessEngine}'s
- * {@code decide}/{@code requestApproval}/{@code executeTool} trio, now living at the executor seam
- * so a call's authority question and its performance are answered by the same method instead of two
- * effects the loop has to sequence itself.
+ * The one door into a tool's execution: gate, then invoke. Ported from the retired in-process
+ * engine's {@code decide}/{@code requestApproval}/{@code executeTool} trio, now living at the
+ * executor seam so a call's authority question and its performance are answered by the same method
+ * instead of two effects the loop has to sequence itself.
  *
  * <p>A grant's {@link UsagePolicy} is consulted first, fail-closed on a broken policy; only {@link
  * PolicyDecision.RequireApproval} ever reaches {@link #approver}. A call to a tool this executor
@@ -85,7 +85,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
   /**
    * The wiring-time belt for the {@code tools}/{@code grants} pair: every tool {@code
    * tools.specs()} advertises to the model must have a grant, or the model could be offered a tool
-   * whose authority was never decided. Ported unchanged from {@code InProcessEngine}.
+   * whose authority was never decided. Ported unchanged from the retired in-process engine.
    */
   private static void requireEveryRegisteredToolIsGranted(
       ToolRegistry tools, Map<String, ToolGrant> grants) {
@@ -182,7 +182,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
 
   /**
    * Runs one policy, fail-closed: a policy is supposed to be pure and total, but a broken or
-   * incomplete one must never become an allow. Ported unchanged from {@code InProcessEngine}.
+   * incomplete one must never become an allow. Ported unchanged from the retired in-process engine.
    */
   private static PolicyDecision evaluate(
       UsagePolicy policy, ToolCall call, ConversationState state) {
@@ -196,7 +196,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
 
   /**
    * Renders a call for the approval prompt without letting malformed arguments blow up the session.
-   * Ported unchanged from {@code InProcessEngine}.
+   * Ported unchanged from the retired in-process engine.
    */
   private String describeForApproval(Tool<?> tool, ToolCall call) {
     try {

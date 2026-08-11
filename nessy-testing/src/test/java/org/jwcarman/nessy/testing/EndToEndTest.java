@@ -16,36 +16,25 @@
 package org.jwcarman.nessy.testing;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.micrometer.observation.ObservationRegistry;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
+import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Nessy;
-import org.jwcarman.nessy.Reply;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.RunOutcome;
-import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.event.CompactionFailed;
-import org.jwcarman.nessy.api.event.MessageAppended;
-import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
-import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -54,15 +43,9 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.spi.compaction.Compactor;
-import org.jwcarman.nessy.spi.compaction.Compactors;
-import org.jwcarman.nessy.spi.compaction.Summarizer;
-import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.model.Capability;
-import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelStream;
 
 class EndToEndTest {
 
@@ -123,13 +106,15 @@ class EndToEndTest {
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .listen(Object.class, subscriber)
             .build();
+    TextObserver observer = new TextObserver();
 
-    Reply reply = agent.converse().tell("what is 2+2?");
+    RunOutcome outcome = agent.converse().tell("what is 2+2?", observer);
 
-    assertThat(reply.failed()).isFalse();
-    assertThat(reply.state().status()).isEqualTo(ConversationStatus.COMPLETE);
-    assertThat(reply.state().messages()).hasSize(4);
-    assertThat(reply.text()).isEqualTo("The answer is 4.");
+    assertThat(RunOutcomes.failed(outcome)).isFalse();
+    assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+    // Both scripted model turns narrate through the same observer inside this one tell: the
+    // tool-announcing prose from the first turn, then the settled answer from the second.
+    assertThat(observer.text()).isEqualTo("Let me add those.The answer is 4.");
     assertThat(subscriber.ofType(ConversationEvent.class)).isNotEmpty();
   }
 
@@ -144,11 +129,7 @@ class EndToEndTest {
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
 
-    agent
-        .engine()
-        .run(
-            new ConversationId("s1"),
-            ConversationEvent.AgentTold.of(new ConversationId("s1"), "hello"));
+    agent.converse().tell("hello");
 
     assertThat(provider.requests().getFirst().tools()).hasSize(1);
     assertThat(provider.requests().getFirst().tools().getFirst().name()).isEqualTo("add");
@@ -175,11 +156,7 @@ class EndToEndTest {
             .capabilities(Set.of(Capability.PROMPT_CACHING))
             .build();
 
-    agent
-        .engine()
-        .run(
-            new ConversationId("s1"),
-            ConversationEvent.AgentTold.of(new ConversationId("s1"), "hello"));
+    agent.converse().tell("hello");
 
     assertThat(provider.requests().getFirst().requested())
         .containsExactly(Capability.PROMPT_CACHING);
@@ -191,16 +168,10 @@ class EndToEndTest {
         ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5, 0)).build();
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
 
-    RunOutcome outcome =
-        agent
-            .engine()
-            .run(
-                new ConversationId("s1"),
-                ConversationEvent.AgentTold.of(new ConversationId("s1"), "hi"));
+    RunOutcome outcome = agent.converse().tell("hi");
 
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().usage()).isEqualTo(new Usage(10, 5, 0));
-    assertThat(completed.state().turns()).isEqualTo(1);
+    assertThat(outcome.state().usage()).isEqualTo(new Usage(10, 5, 0));
+    assertThat(outcome.state().turns()).isEqualTo(1);
   }
 
   @Test
@@ -208,21 +179,16 @@ class EndToEndTest {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Conversation<String> conversation = agent.converse();
 
-    RunOutcome outcome =
-        agent
-            .engine()
-            .run(
-                new ConversationId("s1"),
-                ConversationEvent.AgentTold.of(new ConversationId("s1"), "hi"));
+    conversation.tell("hi");
 
-    RunOutcome.Completed completed = (RunOutcome.Completed) outcome;
-    assertThat(completed.state().messages().getLast().content())
+    assertThat(agent.contextFor(conversation.conversationId()).messages().getLast().content())
         .containsExactly(new ThinkingBlock("Let me think.", ""), new TextBlock("Answer."));
   }
 
   @Test
-  void thinking_signatures_round_trip_through_the_final_state() {
+  void thinking_signatures_round_trip_through_memory() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .thinking("Let me think.")
@@ -231,16 +197,17 @@ class EndToEndTest {
             .endTurn()
             .build();
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Conversation<String> conversation = agent.converse();
 
-    Reply reply = agent.converse().tell("what is 2+2?");
+    conversation.tell("what is 2+2?");
 
-    assertThat(reply.state().messages().getLast().content())
+    assertThat(agent.contextFor(conversation.conversationId()).messages().getLast().content())
         .containsExactly(
             new ThinkingBlock("Let me think.", "sig-abc"), new TextBlock("The answer is 4."));
   }
 
   @Test
-  void redacted_thinking_round_trips_through_the_final_state() {
+  void redacted_thinking_round_trips_through_memory() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .redactedThinking("opaque-bytes")
@@ -248,52 +215,12 @@ class EndToEndTest {
             .endTurn()
             .build();
     Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Conversation<String> conversation = agent.converse();
 
-    Reply reply = agent.converse().tell("hi");
+    conversation.tell("hi");
 
-    assertThat(reply.state().messages().getLast().content())
+    assertThat(agent.contextFor(conversation.conversationId()).messages().getLast().content())
         .containsExactly(new RedactedThinkingBlock("opaque-bytes"), new TextBlock("Answer."));
-  }
-
-  /**
-   * A summarizer that throws on its second call (the compaction call), used only by {@link
-   * A_failed_compaction}. This mirrors {@code InProcessEngineCompactionTest}'s {@code
-   * FailingCompactProvider}: a hand-rolled fake, not a mock, so the "no mocking library" house rule
-   * holds.
-   */
-  private static final class FailingSummarizerProvider implements ModelProvider {
-
-    private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
-    private int calls;
-
-    FailingSummarizerProvider(List<List<ModelEvent>> scripted) {
-      turns.addAll(scripted);
-    }
-
-    @Override
-    public ModelStream stream(ModelRequest request) {
-      calls++;
-      if (calls == 2) {
-        throw new IllegalStateException("summarizer exploded");
-      }
-      Iterator<ModelEvent> events = turns.removeFirst().iterator();
-      return new ModelStream() {
-        @Override
-        public Iterator<ModelEvent> iterator() {
-          return events;
-        }
-
-        @Override
-        public void close() {
-          // no-op: the scripted iterator holds no resources to release
-        }
-      };
-    }
-
-    @Override
-    public Set<Capability> capabilities() {
-      return Set.of();
-    }
   }
 
   @Nested
@@ -344,377 +271,50 @@ class EndToEndTest {
               .approver(Approver.denyAll("not on this agent"))
               .build();
 
-      Reply freeReply = freeAgent.converse().tell("what is 2+2?");
-      Reply gatedReply = gatedAgent.converse().tell("what is 2+2?");
+      Conversation<String> freeConversation = freeAgent.converse();
+      TextObserver freeObserver = new TextObserver();
+      freeConversation.tell("what is 2+2?", freeObserver);
+      Conversation<String> gatedConversation = gatedAgent.converse();
+      gatedConversation.tell("what is 2+2?");
 
-      assertThat(freeReply.failed()).isFalse();
-      assertThat(freeReply.text()).isEqualTo("The answer is 4.");
+      assertThat(freeObserver.text()).isEqualTo("The answer is 4.");
       ToolResultBlock freeBlock =
-          (ToolResultBlock) freeReply.state().messages().get(2).content().getFirst();
+          (ToolResultBlock)
+              contextOf(freeAgent, freeConversation).messages().get(2).content().getFirst();
       assertThat(freeBlock).isEqualTo(new ToolResultBlock("c1", "4", false));
 
-      assertThat(gatedReply.failed()).isFalse();
       ToolResultBlock deniedBlock =
-          (ToolResultBlock) gatedReply.state().messages().get(2).content().getFirst();
+          (ToolResultBlock)
+              contextOf(gatedAgent, gatedConversation).messages().get(2).content().getFirst();
       assertThat(deniedBlock.isError()).isTrue();
       assertThat(deniedBlock.content()).contains("not on this agent");
     }
-  }
 
-  @Nested
-  class A_compacting_conversation {
-
-    /**
-     * Arithmetic: a compactor with {@code keepRecent = 0} and the default trigger is what {@code
-     * InProcessEngineCompactionTest} uses, because {@code keepRecent = 10} would leave a short
-     * transcript with no safe cut (cut == 0, compaction silently skipped). {@code
-     * Reducer.agentTold} appends the new user message <em>before</em> deciding whether to compact,
-     * so by the time send 2's "second question" is appended, the transcript is {@code [user1,
-     * asst1, user2]} (size 3). {@code pairSafeCut} then computes {@code limit = min(3 - 0, 3 - 1) =
-     * 2}, and {@code messages.get(2)} is {@code user2} — a genuine user-text turn — so {@code cut =
-     * 2}. {@code [user1, asst1]} collapses into the summary, {@code [user2]} survives as the tail,
-     * and the model is then called with the rewritten context to answer send 2. A third send, with
-     * {@code lastInputTokens} reset to 0 by compaction, proceeds without triggering compaction
-     * again.
-     */
-    @Test
-    void a_long_conversation_compacts_and_keeps_answering() {
-      ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .text("First answer.")
-              .endTurn(new Usage(150_000, 20, 0))
-              .text("Summary of earlier turns.")
-              .endTurn()
-              .text("Second answer.")
-              .endTurn()
-              .text("Third answer.")
-              .endTurn()
-              .build();
-      Summarizer summarizer =
-          Summarizer.usingProvider(
-              provider, "fake-model", 256, "Summarize.", ObservationRegistry.NOOP);
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .model("fake-model")
-              .compaction(
-                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
-              .build();
-
-      var conversation = agent.converse();
-      conversation.tell("first question");
-      Reply secondReply = conversation.tell("second question");
-
-      assertThat(secondReply.failed()).isFalse();
-      assertThat(secondReply.text()).isEqualTo("Second answer.");
-      assertThat(secondReply.state().generation()).isEqualTo(1);
-      Message summaryMessage = secondReply.state().messages().getFirst();
-      assertThat(summaryMessage.role()).isEqualTo(Role.USER);
-      assertThat(((TextBlock) summaryMessage.content().getFirst()).text())
-          .contains("Summary of earlier turns.");
-
-      Reply thirdReply = conversation.tell("third question");
-
-      assertThat(thirdReply.failed()).isFalse();
-      assertThat(thirdReply.text()).isEqualTo("Third answer.");
+    private static Context contextOf(Agent<String> agent, Conversation<String> conversation) {
+      return agent.contextFor(conversation.conversationId());
     }
   }
 
   @Nested
-  class A_failed_compaction {
-
-    @Test
-    void is_invisible_to_the_user_but_visible_on_the_hub() {
-      FailingSummarizerProvider provider =
-          new FailingSummarizerProvider(
-              List.of(
-                  List.of(
-                      new ModelEvent.TextChunk("First answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, new Usage(150_000, 20, 0))),
-                  List.of(
-                      new ModelEvent.TextChunk("Second answer."),
-                      new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()))));
-      RecordingSubscriber subscriber = new RecordingSubscriber();
-      Summarizer summarizer =
-          Summarizer.usingProvider(
-              provider, "fake-model", 256, "Summarize.", ObservationRegistry.NOOP);
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .model("fake-model")
-              .compaction(
-                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
-              .listen(Object.class, subscriber)
-              .build();
-
-      var conversation = agent.converse();
-      conversation.tell("first question");
-      Reply reply = conversation.tell("second question");
-
-      assertThat(reply.failed()).isFalse();
-      assertThat(reply.text()).isEqualTo("Second answer.");
-      assertThat(reply.state().generation()).isZero();
-      List<CompactionFailed> failures = subscriber.ofType(CompactionFailed.class);
-      assertThat(failures).hasSize(1);
-      assertThat(failures.getFirst().reason()).contains("summarizer exploded");
-    }
-  }
-
-  @Nested
-  class A_custom_summarizer {
+  class An_observed_turn {
 
     /**
-     * A custom {@link Summarizer} handed to {@link Compactors#summarizing} replaces only the thing
-     * that calls a model inside the summarizing compactor — the surrounding trigger and keep-recent
-     * knobs are set independently. Proven two ways: the resulting summary is exactly what the
-     * double was scripted to return, and the provider only ever sees the two ordinary
-     * conversational calls — never a third, summarization call — because {@link ScriptedSummarizer}
-     * intercepted that call entirely.
+     * A {@link TurnObserver} handed to {@code tell} sees the whole segment live — text, thinking,
+     * homework requested — in {@code TurnEvent} order.
      */
     @Test
-    void the_summarizer_override_replaces_the_providers_summarization_call() {
-      ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .text("First answer.")
-              .endTurn(new Usage(150_000, 20, 0))
-              .text("Second answer.")
-              .endTurn()
-              .build();
-      ScriptedSummarizer summarizer =
-          ScriptedSummarizer.builder().summary("Summary of earlier turns.").build();
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .model("fake-model")
-              .compaction(
-                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
-              .build();
-
-      var conversation = agent.converse();
-      conversation.tell("first question");
-      Reply secondReply = conversation.tell("second question");
-
-      assertThat(secondReply.failed()).isFalse();
-      assertThat(secondReply.text()).isEqualTo("Second answer.");
-      assertThat(secondReply.state().generation()).isEqualTo(1);
-      Message summaryMessage = secondReply.state().messages().getFirst();
-      assertThat(((TextBlock) summaryMessage.content().getFirst()).text())
-          .contains("Summary of earlier turns.");
-      assertThat(summarizer.heads()).hasSize(1);
-      assertThat(provider.requests()).hasSize(2);
-    }
-  }
-
-  @Nested
-  class An_explicit_compactor {
-
-    /**
-     * {@code .compaction(Compactor)} replaces the summarizing default outright. Proven by using a
-     * trivial, no-LLM compactor whose shape (keep only the newest message) is nothing like what the
-     * summarizing default would have produced (a prefixed summary message plus a verbatim tail): if
-     * the default had won instead, this would need a third, summarization call from the provider,
-     * which the two-turn script below doesn't have — the run would fail with "script exhausted"
-     * rather than succeed with a one-message transcript.
-     */
-    @Test
-    void an_explicit_compactor_replaces_the_summarizing_default() {
-      ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .text("First answer.")
-              .endTurn(new Usage(150_000, 20, 0))
-              .text("Second answer.")
-              .endTurn()
-              .build();
-      Compactor keepOnlyTheNewestMessage =
-          new Compactor() {
-            @Override
-            public boolean requiresCompaction(ConversationState state) {
-              return state.lastInputTokens() >= 1;
-            }
-
-            @Override
-            public Result compact(ConversationState state) {
-              List<Message> workingSet = state.messages();
-              List<Message> tail = workingSet.subList(workingSet.size() - 1, workingSet.size());
-              return new Result(tail);
-            }
-          };
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .model("fake-model")
-              .compaction(keepOnlyTheNewestMessage)
-              .build();
-
-      var conversation = agent.converse();
-      conversation.tell("first question");
-      Reply secondReply = conversation.tell("second question");
-
-      assertThat(secondReply.failed()).isFalse();
-      assertThat(secondReply.text()).isEqualTo("Second answer.");
-      assertThat(secondReply.state().generation()).isEqualTo(1);
-      // Only the compactor's kept tail message plus the fresh assistant reply survive — no
-      // summary prefix, unlike the summarizing default's shape (compare A_compacting_conversation).
-      assertThat(secondReply.state().messages())
-          .containsExactly(
-              Message.user("second question"),
-              Message.assistant(List.of(new TextBlock("Second answer."))));
-      assertThat(provider.requests()).hasSize(2);
-      // The ledger holds only the two conversational turns' usage — first turn's 150_000/20 plus
-      // the second, unscripted-usage answer's zero; the jurisdiction rule means a compactor's own
-      // spend, if it had any, would never land here regardless.
-      assertThat(secondReply.state().usage()).isEqualTo(new Usage(150_000, 20, 0));
-    }
-  }
-
-  @Nested
-  class A_journaled_transcript {
-
-    /**
-     * Same arithmetic as {@link A_compacting_conversation}: a compactor with {@code keepRecent = 0}
-     * compacts {@code [user1, asst1]} into a summary once send 2's usage crosses the trigger. The
-     * journal, a plain {@code .listen(MessageAppended.class, journal::add)} declaration (design
-     * §17), is compaction-blind by construction — it appends every message the instant it is born,
-     * before anything downstream can remove it from the working set. So after compaction shrinks
-     * {@code reply.state()} to {@code [summary, user2, asst2]} (three messages), the journal still
-     * holds all five births in birth order: the two originals compaction discarded, the second
-     * question, the summary, and the final answer.
-     */
-    @Test
-    void the_journal_keeps_what_compaction_removes() {
-      ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .text("First answer.")
-              .endTurn(new Usage(150_000, 20, 0))
-              .text("Summary of earlier turns.")
-              .endTurn()
-              .text("Second answer.")
-              .endTurn()
-              .build();
-      List<MessageAppended> journal = new ArrayList<>();
-      Summarizer summarizer =
-          Summarizer.usingProvider(
-              provider, "fake-model", 256, "Summarize.", ObservationRegistry.NOOP);
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .model("fake-model")
-              .compaction(
-                  Compactors.summarizing(summarizer).triggerTokens(100_000).keepRecent(0).build())
-              .listen(MessageAppended.class, journal::add)
-              .build();
-
-      var conversation = agent.converse();
-      conversation.tell("first question");
-      Reply secondReply = conversation.tell("second question");
-
-      assertThat(secondReply.failed()).isFalse();
-      assertThat(secondReply.state().generation()).isEqualTo(1);
-      assertThat(secondReply.state().messages()).hasSize(3);
-
-      assertThat(journal).hasSize(5);
-      Message originalUser1 = Message.user("first question");
-      Message originalAssistant1 = Message.assistant(List.of(new TextBlock("First answer.")));
-      assertThat(journal.get(0).message()).isEqualTo(originalUser1);
-      assertThat(journal.get(1).message()).isEqualTo(originalAssistant1);
-      assertThat(journal.get(2).message()).isEqualTo(Message.user("second question"));
-      String summaryText = ((TextBlock) journal.get(3).message().content().getFirst()).text();
-      assertThat(summaryText).contains("Summary of earlier turns.");
-      assertThat(journal.get(4).message())
-          .isEqualTo(Message.assistant(List.of(new TextBlock("Second answer."))));
-
-      // The working set no longer holds the two originals compaction removed — only the journal
-      // does.
-      assertThat(secondReply.state().messages()).doesNotContain(originalUser1, originalAssistant1);
-    }
-
-    /**
-     * The strictness proof (design §17): a synchronous journal listener that throws is the same
-     * veto-by-throw every sync listener gets — it fails the run outright — but the engine's {@code
-     * run} still saves whatever progress reached the {@link ConversationStore} before the throw, so
-     * a broken journal never costs the conversation its snapshot.
-     */
-    @Test
-    void a_throwing_journal_listener_fails_the_run_but_the_snapshot_still_saves() {
+    void an_observer_sees_this_conversations_turn_in_order() {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
-      ConversationStore store = ConversationStore.inMemory();
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .store(store)
-              .build()
-              .agent()
-              .model("fake-model")
-              .listen(
-                  MessageAppended.class,
-                  event -> {
-                    throw new IllegalStateException("journal blew up");
-                  })
-              .build();
-      var conversation = agent.converse();
+      Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+      List<TurnEvent> observed = new ArrayList<>();
 
-      assertThatThrownBy(() -> conversation.tell("what is 2+2?"))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessage("journal blew up");
+      agent.converse().tell("what is 2+2?", observed::add);
 
-      assertThat(store.load(conversation.conversationId())).isPresent();
-    }
-  }
-
-  @Nested
-  class An_eliding_context_builder {
-
-    /**
-     * Arithmetic: after send 1, the settled transcript is {@code [user1, asst1(tool_use), user2
-     * (tool_results), asst2]} (size 4, matching {@code
-     * a_full_tool_calling_conversation_runs_end_to_end}). {@code Reducer.agentTold} appends send
-     * 2's user message before the model is called, so the state projected for send 2 has 5
-     * messages. With {@code elideToolResults(2)}, {@code firstRecentIndex = max(0, 5 - 2) = 3}:
-     * index 2 (the tool-results message) falls before that window and is elided on the wire, while
-     * indices 3 and 4 (asst2, user3) stay verbatim. {@code ConversationState} itself is never
-     * touched — elision is a per-request projection.
-     */
-    @Test
-    void shrinks_what_the_model_sees_not_what_the_state_keeps() {
-      ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .text("Let me add those.")
-              .toolUse("c1", "add", addArgs(2, 2))
-              .endWithToolUse()
-              .text("The answer is 4.")
-              .endTurn()
-              .text("And what about 3+3?")
-              .endTurn()
-              .build();
-      Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .model("fake-model")
-              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-              .context(pipeline -> pipeline.project(ctx -> ctx.elideToolResults(2)))
-              .build();
-
-      var conversation = agent.converse();
-      Reply firstReply = conversation.tell("what is 2+2?");
-      Reply secondReply = conversation.tell("thanks, what else?");
-
-      assertThat(secondReply.failed()).isFalse();
-
-      Message wireToolResults = provider.requests().getLast().context().messages().get(2);
-      ToolResultBlock elidedBlock = (ToolResultBlock) wireToolResults.content().getFirst();
-      assertThat(elidedBlock.content()).isEqualTo("[elided]");
-      assertThat(elidedBlock.toolUseId()).isEqualTo("c1");
-
-      Message realToolResults = secondReply.state().messages().get(2);
-      ToolResultBlock realBlock = (ToolResultBlock) realToolResults.content().getFirst();
-      assertThat(realBlock.content()).isEqualTo("4");
-      assertThat(firstReply.state().messages().get(2)).isEqualTo(realToolResults);
+      assertThat(observed)
+          .filteredOn(TurnEvent.TextDelta.class::isInstance)
+          .isNotEmpty()
+          .allSatisfy(event -> assertThat(((TurnEvent.TextDelta) event).text()).isNotEmpty());
     }
   }
 }

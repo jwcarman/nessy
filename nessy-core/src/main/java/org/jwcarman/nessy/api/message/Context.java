@@ -43,9 +43,9 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * verbs built on that kernel, demonstrating its sufficiency. The admission rule: a verb joins
  * {@code Context} only if its correctness depends on the context's own structure — pairing,
  * position, size — never for anything semantic. Redaction, summarization, and reordering are
- * deliberately not verbs here; compose redaction from {@link #map}/{@link #drop}, reach for {@code
- * Compactor} for summarization, and treat reordering as inexpressible on purpose, because order is
- * meaning.
+ * deliberately not verbs here; compose redaction from {@link #map}/{@link #drop}, reach for a
+ * custom {@code Memory} implementation for summarization, and treat reordering as inexpressible on
+ * purpose, because order is meaning.
  */
 public record Context(List<Message> messages) {
 
