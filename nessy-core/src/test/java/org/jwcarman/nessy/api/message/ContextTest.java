@@ -126,6 +126,18 @@ class ContextTest {
 
       assertThat(context.messages()).isEmpty();
     }
+
+    @Test
+    void a_results_message_may_carry_trailing_blocks_after_the_answers() {
+      Message assistant = toolUse("c1");
+      Message results =
+          Message.toolResults(
+              List.of(new ToolResultBlock("c1", "ok", false), new TextBlock("btw")));
+
+      Context context = Context.of(List.of(assistant, results));
+
+      assertThat(context.messages()).containsExactly(assistant, results);
+    }
   }
 
   @Nested

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.internal;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
@@ -154,12 +155,23 @@ public final class ConversationLoop {
         progress.set(state);
         return state;
       }
+      List<Message> births = new ArrayList<>(step.remember());
+      List<Effect> effects = new ArrayList<>(step.effects());
+      // Scaffolding until the unified drive (plan 2026-08-12, Task 4): the note fold alone never
+      // asks for the model, so the loop opens the turn itself once the fold lands quiescent with
+      // unread notes. A transition, not a fact: it rides the same fact's remember/save, no emit.
+      if (effects.isEmpty() && RESUMABLE.contains(state.status()) && !state.told().isEmpty()) {
+        Step opened = state.openTurn();
+        state = opened.state();
+        births.addAll(opened.remember());
+        effects.addAll(opened.effects());
+      }
       progress.set(state);
-      remember(state.id(), step.remember());
+      remember(state.id(), births);
       emitter.emit(fact);
       state = store.save(state, List.of());
       progress.set(state);
-      step.effects().forEach(queue::addLast);
+      effects.forEach(queue::addLast);
       if (queue.isEmpty()) {
         return state;
       }

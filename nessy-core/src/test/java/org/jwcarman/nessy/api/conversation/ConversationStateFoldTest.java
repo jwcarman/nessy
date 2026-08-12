@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -41,20 +42,15 @@ class ConversationStateFoldTest {
   // --- AgentTold ---
 
   @Test
-  void a_tell_births_the_user_message_and_asks_for_the_model() {
-    Step step = fresh.fold(ConversationEvent.AgentTold.of(id, "hello"));
+  void a_told_fact_is_a_pure_note() {
+    ConversationState scarred = fresh.withConsecutiveErrors(2);
+    Step step = scarred.fold(ConversationEvent.AgentTold.of(id, "psst"));
 
-    assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
-    assertThat(step.remember()).containsExactly(Message.user(List.of(new TextBlock("hello"))));
-    assertThat(step.effects()).containsExactly(Effect.callModel());
-  }
-
-  @Test
-  void a_tell_starts_a_fresh_error_streak() {
-    ConversationState scarred = fresh.withConsecutiveErrors(2).withFailureReason("old");
-    Step step = scarred.fold(ConversationEvent.AgentTold.of(id, "again"));
-    assertThat(step.state().consecutiveErrors()).isZero();
-    assertThat(step.state().failureReason()).isNull();
+    assertThat(step.state().told()).containsExactly(List.of(new TextBlock("psst")));
+    assertThat(step.state().status()).isEqualTo(scarred.status());
+    assertThat(step.state().consecutiveErrors()).isEqualTo(2);
+    assertThat(step.remember()).isEmpty();
+    assertThat(step.effects()).isEmpty();
   }
 
   @Test
@@ -63,6 +59,52 @@ class ConversationStateFoldTest {
     assertThatThrownBy(() -> fresh.fold(stray))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("misdelivered");
+  }
+
+  // --- openTurn ---
+
+  @Test
+  void open_turn_merges_every_note_into_one_user_message_in_arrival_order() {
+    TextBlock a = new TextBlock("a");
+    TextBlock b = new TextBlock("b");
+    TextBlock c = new TextBlock("c");
+    ConversationState scarred =
+        fresh
+            .withConsecutiveErrors(2)
+            .withFailureReason("old failure")
+            .fold(new ConversationEvent.AgentTold(id, List.of(a)))
+            .state()
+            .fold(new ConversationEvent.AgentTold(id, List.of(b)))
+            .state()
+            .fold(new ConversationEvent.AgentTold(id, List.of(c)))
+            .state();
+
+    Step step = scarred.openTurn();
+
+    assertThat(step.remember()).containsExactly(Message.user(List.of(a, b, c)));
+    assertThat(step.state().told()).isEmpty();
+    assertThat(step.state().consecutiveErrors()).isZero();
+    assertThat(step.state().failureReason()).isNull();
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
+    assertThat(step.effects()).containsExactly(Effect.callModel());
+  }
+
+  @Test
+  void open_turn_refuses_to_open_over_an_open_turn() {
+    ConversationState open =
+        fresh
+            .fold(ConversationEvent.AgentTold.of(id, "go"))
+            .state()
+            .with(ConversationStatus.AWAITING_MODEL);
+
+    assertThatThrownBy(open::openTurn)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("AWAITING_MODEL");
+  }
+
+  @Test
+  void open_turn_refuses_to_open_with_nothing_to_say() {
+    assertThatThrownBy(fresh::openTurn).isInstanceOf(IllegalStateException.class);
   }
 
   // --- ModelResponded ---
@@ -75,10 +117,46 @@ class ConversationStateFoldTest {
             .fold(new ConversationEvent.ModelResponded(id, answer, StopReason.END_TURN, usage(7)));
 
     assertThat(step.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+    // The empty-lane clause: nothing left to continue with.
+    assertThat(step.state().told()).isEmpty();
     assertThat(step.remember()).containsExactly(answer);
     assertThat(step.effects()).isEmpty();
     assertThat(step.state().modelCalls()).isEqualTo(1);
     assertThat(step.state().usage().inputTokens()).isEqualTo(7);
+  }
+
+  @Test
+  void a_clean_response_with_no_notes_still_completes() {
+    Message answer = Message.assistant(List.of(new TextBlock("done")));
+    Step step =
+        awaitingModel()
+            .fold(new ConversationEvent.ModelResponded(id, answer, StopReason.END_TURN, usage(1)));
+
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+    assertThat(step.state().told()).isEmpty();
+    assertThat(step.remember()).containsExactly(answer);
+    assertThat(step.effects()).isEmpty();
+  }
+
+  @Test
+  void a_clean_response_with_unread_notes_continues_instead_of_completing() {
+    ConversationState mid =
+        awaitingModel()
+            .withConsecutiveErrors(3)
+            .fold(ConversationEvent.AgentTold.of(id, "psst"))
+            .state();
+    Message answer = Message.assistant(List.of(new TextBlock("done")));
+
+    Step step =
+        mid.fold(new ConversationEvent.ModelResponded(id, answer, StopReason.END_TURN, usage(2)));
+
+    assertThat(step.remember())
+        .containsExactly(answer, Message.user(List.of(new TextBlock("psst"))));
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
+    assertThat(step.effects()).containsExactly(Effect.callModel());
+    assertThat(step.state().told()).isEmpty();
+    // Mid-turn tells don't reset the streak; only openTurn does.
+    assertThat(step.state().consecutiveErrors()).isEqualTo(3);
   }
 
   @Test
@@ -92,7 +170,7 @@ class ConversationStateFoldTest {
             .state();
 
     ConversationState awaitingSecond =
-        afterFirst.fold(ConversationEvent.AgentTold.of(id, "again")).state();
+        afterFirst.fold(ConversationEvent.AgentTold.of(id, "again")).state().openTurn().state();
     Message secondAnswer = Message.assistant(List.of(new TextBlock("second")));
     ConversationState afterSecond =
         awaitingSecond
@@ -198,6 +276,35 @@ class ConversationStateFoldTest {
     assertThat(afterSuccess.consecutiveErrors()).isZero();
   }
 
+  @Test
+  void notes_ride_the_flush_beside_the_results() {
+    ToolCall owed = call("call-1", "search");
+    ConversationState owing =
+        midHomework(owed).fold(ConversationEvent.AgentTold.of(id, "psst")).state();
+
+    Step step = owing.fold(new ConversationEvent.ToolFinished(id, owed, ToolResult.ok("found")));
+
+    Message expectedFlush =
+        Message.toolResults(
+            List.<ContentBlock>of(
+                new ToolResultBlock("call-1", "found", false), new TextBlock("psst")));
+    assertThat(step.remember()).containsExactly(expectedFlush);
+    assertThat(step.state().told()).isEmpty();
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
+    assertThat(step.effects()).containsExactly(Effect.callModel());
+  }
+
+  @Test
+  void a_resumed_call_finishing_clears_its_park() {
+    ToolCall resumed = call("call-1", "search");
+    ParkedCall parked = new ParkedCall(ParkToken.generate(), resumed);
+    ConversationState owing = awaitingModel().withParkedCalls(List.of(parked));
+
+    Step step = owing.fold(new ConversationEvent.ToolFinished(id, resumed, ToolResult.ok("found")));
+
+    assertThat(step.state().parkedCalls()).isEmpty();
+  }
+
   // --- ModelCallFailed ---
 
   @Test
@@ -233,10 +340,42 @@ class ConversationStateFoldTest {
     assertThat(step.remember()).isEmpty();
   }
 
+  @Test
+  void halting_with_only_notes_and_no_tool_debt_still_flushes_them() {
+    ConversationState owing =
+        awaitingModel().fold(ConversationEvent.AgentTold.of(id, "psst")).state();
+
+    Step step = owing.halted("hit the ceiling");
+
+    Message expectedFlush = Message.toolResults(List.<ContentBlock>of(new TextBlock("psst")));
+    assertThat(step.remember()).containsExactly(expectedFlush);
+    assertThat(step.state().told()).isEmpty();
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
+  }
+
+  @Test
+  void a_halting_conversation_still_delivers_the_worlds_words() {
+    ToolCall owed = call("call-1", "search");
+    ConversationState owing =
+        midHomework(owed).fold(ConversationEvent.AgentTold.of(id, "psst")).state();
+
+    Step step = owing.halted("hit the ceiling");
+
+    Message expectedFlush =
+        Message.toolResults(
+            List.<ContentBlock>of(
+                new ToolResultBlock(
+                    "call-1", "Abandoned: the conversation failed before this tool ran.", true),
+                new TextBlock("psst")));
+    assertThat(step.remember()).containsExactly(expectedFlush);
+    assertThat(step.state().told()).isEmpty();
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.FAILED);
+  }
+
   // --- helpers ---
 
   private ConversationState awaitingModel() {
-    return fresh.fold(ConversationEvent.AgentTold.of(id, "go")).state();
+    return fresh.fold(ConversationEvent.AgentTold.of(id, "go")).state().openTurn().state();
   }
 
   private ConversationState midHomework(ToolCall... calls) {

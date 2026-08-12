@@ -265,18 +265,50 @@ public record ConversationState(
           "misdelivered fact: event for " + event.conversationId() + " folded into " + id);
     }
     return switch (event) {
-      case ConversationEvent.AgentTold e -> told(e);
+      case ConversationEvent.AgentTold e -> noted(e);
       case ConversationEvent.ModelResponded e -> modelResponded(e);
       case ConversationEvent.ModelCallFailed e -> modelCallFailed(e);
       case ConversationEvent.ToolFinished e -> toolFinished(e);
     };
   }
 
-  /** A tell starts a fresh error streak: a new instruction is not part of the previous failure. */
-  private Step told(ConversationEvent.AgentTold event) {
+  /**
+   * A tell is a pure note: it joins the {@link #told} accumulator and nothing else changes — no
+   * remember, no effect, no status move, no streak reset. Turn-opening is a separate, deliberate
+   * act ({@link #openTurn()}), invoked by the loop once the fold's quiescent.
+   */
+  private Step noted(ConversationEvent.AgentTold event) {
+    List<List<ContentBlock>> newTold = new ArrayList<>(told);
+    newTold.add(event.content());
+    return Step.of(withTold(newTold));
+  }
+
+  private static final List<ConversationStatus> QUIESCENT_STATUSES =
+      List.of(ConversationStatus.IDLE, ConversationStatus.COMPLETE, ConversationStatus.FAILED);
+
+  /**
+   * The closure transition that turns accumulated notes into an open turn: every {@link #told}
+   * entry merges into one {@link Message#user(List) user} message, in arrival order, the streak and
+   * any prior failure reason are cleared — a new turn owes nothing to the last one — and a model
+   * call is asked for. Precondition: the conversation is quiescent ({@code IDLE}, {@code COMPLETE},
+   * or {@code FAILED}) and {@link #told} is non-empty; violating either is a loop bug, so it fails
+   * loud rather than folding something nonsensical.
+   */
+  public Step openTurn() {
+    if (!QUIESCENT_STATUSES.contains(status)) {
+      throw new IllegalStateException(
+          "openTurn refuses to open over an open turn: status is " + status);
+    }
+    if (told.isEmpty()) {
+      throw new IllegalStateException("openTurn called with no notes to open a turn with");
+    }
+    Message merged = Message.user(mergedTold());
     ConversationState next =
-        withConsecutiveErrors(0).withFailureReason(null).with(ConversationStatus.AWAITING_MODEL);
-    return Step.of(next, List.of(Message.user(event.content())), Effect.callModel());
+        withTold(List.of())
+            .withConsecutiveErrors(0)
+            .withFailureReason(null)
+            .with(ConversationStatus.AWAITING_MODEL);
+    return Step.of(next, List.of(merged), Effect.callModel());
   }
 
   /**
@@ -301,7 +333,13 @@ public record ConversationState(
       return new Step(closed.state(), remember, List.of());
     }
     if (calls.isEmpty()) {
-      return Step.of(accounted.with(ConversationStatus.COMPLETE), List.of(event.message()));
+      if (told.isEmpty()) {
+        return Step.of(accounted.with(ConversationStatus.COMPLETE), List.of(event.message()));
+      }
+      Message merged = Message.user(mergedTold());
+      ConversationState continued =
+          accounted.withTold(List.of()).with(ConversationStatus.AWAITING_MODEL);
+      return Step.of(continued, List.of(event.message(), merged), Effect.callModel());
     }
     List<Effect> effects =
         calls.stream().map(call -> (Effect) new Effect.ExecuteTool(call)).toList();
@@ -324,39 +362,65 @@ public record ConversationState(
         new ToolResultBlock(event.call().id(), event.result().content(), event.result().isError()));
     List<ToolCall> remaining = new ArrayList<>(pendingCalls);
     removeFirstMatch(remaining, event.call().id());
+    List<ParkedCall> remainingParked = new ArrayList<>(parkedCalls);
+    removeFirstMatchParked(remainingParked, event.call().id());
     int errors = event.result().isError() ? consecutiveErrors + 1 : 0;
     ConversationState next =
-        withPendingResults(results).withPendingCalls(remaining).withConsecutiveErrors(errors);
+        withPendingResults(results)
+            .withPendingCalls(remaining)
+            .withParkedCalls(remainingParked)
+            .withConsecutiveErrors(errors);
     if (!remaining.isEmpty()) {
       return Step.of(next);
     }
-    Message flush = Message.toolResults(List.copyOf(results));
+    List<ContentBlock> flushContent = new ArrayList<>(results);
+    flushContent.addAll(next.mergedTold());
+    Message flush = Message.toolResults(List.copyOf(flushContent));
     return Step.of(
-        next.withPendingResults(List.of()).with(ConversationStatus.AWAITING_MODEL),
+        next.withPendingResults(List.of())
+            .withTold(List.of())
+            .with(ConversationStatus.AWAITING_MODEL),
         List.of(flush),
         Effect.callModel());
   }
 
   /**
-   * The closure every failing path owes: answer outstanding homework with abandoned-error results
-   * and flush, so the record never holds a tool_use without its tool_result, then fail with the
-   * reason. Consulted by the loop when the termination policy halts, and reused by fatal stop
-   * reasons.
+   * The closure every failing path owes: answer outstanding homework with abandoned-error results,
+   * ride any unread notes beside them — a dying conversation still delivers the world's words to
+   * the record — flush, so the record never holds a tool_use without its tool_result, then fail
+   * with the reason. Consulted by the loop when the termination policy halts, and reused by fatal
+   * stop reasons.
    */
   public Step halted(String reason) {
     ConversationState failed = withFailureReason(reason).with(ConversationStatus.FAILED);
-    if (pendingCalls.isEmpty() && pendingResults.isEmpty()) {
+    List<ContentBlock> notes = mergedTold();
+    if (pendingCalls.isEmpty() && pendingResults.isEmpty() && notes.isEmpty()) {
       return Step.of(failed);
     }
-    List<ToolResultBlock> results = new ArrayList<>(pendingResults);
+    List<ContentBlock> content = new ArrayList<>(pendingResults);
     for (ToolCall pending : pendingCalls) {
-      results.add(
+      content.add(
           new ToolResultBlock(
               pending.id(), "Abandoned: the conversation failed before this tool ran.", true));
     }
-    Message flush = Message.toolResults(List.copyOf(results));
+    content.addAll(notes);
+    Message flush = Message.toolResults(List.copyOf(content));
     return Step.of(
-        failed.withPendingCalls(List.of()).withPendingResults(List.of()), List.of(flush));
+        failed.withPendingCalls(List.of()).withPendingResults(List.of()).withTold(List.of()),
+        List.of(flush));
+  }
+
+  /**
+   * Every {@link #told} entry concatenated in arrival order, block boundaries preserved — no
+   * joining, no separators. The shape the open-turn message, the clean-continue message, and every
+   * flush's riders are built from.
+   */
+  private List<ContentBlock> mergedTold() {
+    List<ContentBlock> merged = new ArrayList<>();
+    for (List<ContentBlock> entry : told) {
+      merged.addAll(entry);
+    }
+    return merged;
   }
 
   private static Optional<String> fatalStop(StopReason reason) {
@@ -370,6 +434,15 @@ public record ConversationState(
   private static void removeFirstMatch(List<ToolCall> calls, String callId) {
     for (int i = 0; i < calls.size(); i++) {
       if (calls.get(i).id().equals(callId)) {
+        calls.remove(i);
+        return;
+      }
+    }
+  }
+
+  private static void removeFirstMatchParked(List<ParkedCall> calls, String callId) {
+    for (int i = 0; i < calls.size(); i++) {
+      if (calls.get(i).call().id().equals(callId)) {
         calls.remove(i);
         return;
       }
