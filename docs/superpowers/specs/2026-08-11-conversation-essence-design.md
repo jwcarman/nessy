@@ -207,6 +207,10 @@ parent's grammar never learns its tool was an agent.
 
 ## 6. The loop, the turn, and failure routing
 
+> **Amended by the durable generation.** The §6 refusal contract this section
+> ships (below) retired in favor of fencing + re-drive; see
+> `2026-08-12-durable-execution-design.md` §7 for the full amendment ledger.
+
 **The loop** (invariant, core-owned): ask the state to fold the fact; consult
 the `TerminationPolicy` with the new state — a halt discards the step's
 unperformed effects (intents, not obligations) and applies the closure
@@ -445,6 +449,12 @@ transitions, and the flush decision (when debt clears, the results message is
 born and told to Memory). The termination *consultation* is the loop's (§6).
 
 ## 10. The facade
+
+> **Amended by the durable generation.** "The entry point must not become
+> enqueue" (below) is amended, reason intact: acceptance is now
+> unconditional because appending is a durable, fold-visible act, not a
+> delivery promise. See `2026-08-12-durable-execution-design.md` §7 for the
+> full amendment ledger.
 
 **Settled principle:** *the outcome of a turn is a reading, not a delivery.*
 The segment ends; its outcome exists; a waiting caller reads it, a

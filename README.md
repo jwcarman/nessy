@@ -208,10 +208,13 @@ Agent<String> agent =
 
 The `on*`/`on*Async` methods are per-type sugar over `listen`/`listenAsync` —
 one pair for each of the four conversation facts plus `ToolProgress` and
-`ApprovalRequested`, mirroring `TurnObserver.builder()`'s hooks. The
-class-keyed primitives remain for anything else — including the
-`.listen(ConversationEvent.class, ...)` catch-all above, which deliberately
-has no sugar.
+`ApprovalRequested`, mirroring `TurnObserver.builder()`'s hooks (`onTextDelta`,
+`onThinkingDelta`, `onRedactedThinking`, `onToolCallRequested`,
+`onToolCallDecided`, `onToolCallCompleted`, and — the durable generation's
+addition — `onToolCallProgressed`, narrating a running tool's `ToolProgress`
+onto the live segment). The class-keyed primitives remain for anything else —
+including the `.listen(ConversationEvent.class, ...)` catch-all above, which
+deliberately has no sugar.
 
 Delivery order per emitted event: this conversation's dynamic subscribers
 first (see below), then the frozen chain — the harness's declarations, then
@@ -309,8 +312,10 @@ feeding facts," resuming is "load the state and keep feeding," whether the gap
 is 200 milliseconds or two days — while `Memory` (not `ConversationState`)
 holds the settled transcript a model call actually sees. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
-and its amendment,
-[`docs/superpowers/specs/2026-08-11-conversation-essence-design.md`](docs/superpowers/specs/2026-08-11-conversation-essence-design.md),
+and its amendments,
+[`docs/superpowers/specs/2026-08-11-conversation-essence-design.md`](docs/superpowers/specs/2026-08-11-conversation-essence-design.md)
+and
+[`docs/superpowers/specs/2026-08-12-durable-execution-design.md`](docs/superpowers/specs/2026-08-12-durable-execution-design.md),
 for the full design.
 
 ## The zones
@@ -472,6 +477,56 @@ read when deciding what to keep. A custom `Memory` is free to ignore it
 entirely, or to derive its own retention trigger from it, the way a future
 in-core implementation will.
 
+## Durable, autonomous agents
+
+A conversation is a plain serializable record and a durable, append-only
+lane, so an agent's conversation can run on **any node**, be driven by
+whatever process gets to it next, and pick up a wait that started days ago
+and a process ago. Nothing about the shape above changes to get this —
+`tell` already appends and drives; the durable generation adds one more entry
+point that does the same thing for the other direction a conversation moves:
+
+```java
+RunOutcome outcome = harness.resume(token, ToolResolution.completed(result));
+```
+
+`harness.resume(token, resolution[, observer])` answers a parked call by
+token — the `ParkToken` a tool (or an `Approver`) handed back when it parked
+— appends the resolution to the conversation's lane, and drives, exactly the
+way `tell` does. Appending always succeeds: a tell or a resolution is never
+refused for arriving while the conversation is busy, mid-turn, or even
+parked — it queues on the durable lane and the next drive (this call's own,
+or a re-drive from any other node) picks it up. `harness.progress(token,
+message)` is `resume`'s non-terminal sibling: it never consumes the token,
+only narrates a still-running tool's progress to whoever is listening for
+`ToolProgress` — the token is the whole correlation contract, and transport
+home (a webhook, a queue, a cron poll) is the tool author's business.
+
+Two write disciplines carry this: a version-fenced control block (one writer
+wins; a stale writer reloads and re-drives, never overwrites) and an
+append-only lane the fence doesn't gate, so a chatty world can never
+fence-fail a working driver. `ConversationStatus.PARKED` joins the other
+statuses — a parked conversation self-describes to any ops surface: no
+driver, no lease, durable patience.
+
+`ConversationStore.inMemory()` (the default) does not survive a process
+restart; `nessy-store-jdbc` does, against one Postgres, no cluster membership
+required:
+
+```java
+ConversationStore store =
+    JdbcConversationStore.create(dataSource, objectMapper); // idempotent schema bootstrap
+
+Harness harness = Nessy.harness(anthropic).store(store).build();
+```
+
+`nessy-store-jdbc`'s own test suite includes container-backed tests against a
+real `postgres:16-alpine` (via Testcontainers), tagged `container` and
+excluded from the default build the same way `live` tests are — `./mvnw
+verify` needs no Docker daemon. `./mvnw test -Dnessy.excludedGroups=live`
+runs them (needs a Docker daemon); clearing the exclusion entirely
+(`-Dnessy.excludedGroups=`) runs both `container` and `live`.
+
 ## Testing
 
 **You will never need a mocking library to test a Nessy agent.** The fold is
@@ -537,9 +592,15 @@ sees, free to summarize, checkpoint, or embed behind that one contract. The
 declared `contextWindow` dial survives, deliberately unconsumed by anything
 in the loop today, reserved for a future token-aware `Memory` to read.
 
-Not yet built: a durable execution seam, the Spring Boot starter, a TUI, the
-agent-as-a-tool adapter (wrapping an `Agent<I>` as one tool for a parent
-agent), and publishing a typed agent's input schema into the system prompt. See
+The durable kernel has landed too: every entry — a `tell`, a `resume` —
+appends to the conversation's durable lane and drives with the same
+re-entrant verb, `PARKED` conversations wait for a `harness.resume`/
+`harness.progress` from any node, and `nessy-store-jdbc` gives that a real
+Postgres-backed `ConversationStore` — see
+[Durable, autonomous agents](#durable-autonomous-agents) above. Not yet
+built: the Spring Boot starter, a TUI, the agent-as-a-tool adapter (wrapping
+an `Agent<I>` as one tool for a parent agent), and publishing a typed agent's
+input schema into the system prompt. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
 

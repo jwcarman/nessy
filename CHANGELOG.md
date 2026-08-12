@@ -184,6 +184,114 @@ sequence of renames and interim shapes that produced it.
   story, subscribing `ConversationEvent.ToolFinished` to print which tool
   just settled, so the two mains demonstrate the observer and the
   fact-tapping paths rather than the same pattern twice.
+- **The durable kernel: every entry appends, one verb drives.** A conversation
+  now outlives the process that started it. `Conversation#tell` and the new
+  `Harness#resume(ParkToken, ToolResolution[, TurnObserver])` are the same
+  shape underneath — append to the conversation's durable lane, then drive —
+  because **appending always succeeds** (there is no "busy" answer; a tell
+  mid-turn is never refused) and **driving is one re-entrant act**,
+  `ConversationLoop#drive`, walking the status pointer from wherever it sits:
+  idle with queued mail, a crashed in-flight turn, a parked wait past its
+  resolution. What a queued tell becomes is a fold decision by status —
+  quiescent opens a turn, mid-turn-with-debt rides the flush as an
+  interjection, mid-turn-and-clean keeps the turn open instead of completing
+  it (a clean `ModelResponded` folding against a non-empty lane drains and
+  continues — one fold rule replaces what a first-draft mailbox would have
+  needed a whole subsystem for), and `PARKED` simply waits. `RunOutcome` is
+  unchanged in shape and widened in meaning: a reading of the state either
+  way, whether this call drove or another driver already holds the
+  conversation.
+- **Merge-at-drain, and the "cancel that" rule.** Every queued tell keeps its
+  own `AgentTold` fact — one per arrival, in order — but drains into **one**
+  user message, as distinct content blocks in UUIDv7 arrival order: the wire
+  forbids consecutive user messages, and a driver that acted on tell 1 while
+  durably holding tell 2 unread is the stale-instruction bug ("cancel that"
+  must never sit unread behind the thing it cancels). Mid-turn tells do not
+  reset the error streak and do not open a turn — streak reset is a property
+  of the drain that opens one, not of being told something.
+- **Two write disciplines, and nothing in between.** `ConversationStore#save
+  (ConversationState, Collection<String> drainedLaneIds)` is the fenced core:
+  optimistic-locked on `state.version()`, throwing `StaleStateException` when
+  another driver already moved the base — plain CAS, and the only thing that
+  stops the zombie case (a stalled driver saving late after a re-drive already
+  ran). `ConversationLoop#drive` retries up to `MAX_DRIVE_ATTEMPTS` (5) reloads
+  on that exception before letting it surface. Beside it, `appendLane` is
+  unconditional and never contended — a `LaneEntry.Told` or `LaneEntry.Resolved`
+  row the fence doesn't know about, so a chatty world can never fence-fail a
+  working driver. `ConversationState` carries the lane as a loaded view
+  (`ConversationStore.Loaded(state, lane)`) rather than a state field — told
+  ids drain transactionally with the very fold that consumes them (the note
+  is never left in the lane once its fold has landed); resolved ids drain only
+  after the resumed fold *succeeds*, so a throwing `resume` leaves the
+  resolution replayable rather than destroyed. A lane with no state row behind
+  it loads as `newConversation@v0` — a tell can arrive before a conversation
+  has ever been driven.
+- **`PARKED`, the parked lane, and real `resume`/`progress`.** `PARKED` joins
+  `ConversationStatus`: a parked conversation self-describes to any ops
+  surface — no driver, no lease, durable patience. State gained
+  `parkedCalls: List<ParkedCall(token, call)>` beside `pendingCalls`; parking
+  is a loop-applied closure transition (`state.parked(call, token)`), the same
+  shape as `halted`. `Harness#resume(token, resolution[, observer])` consumes
+  the token (`ConversationStore#consumeToken`, at-least-once-safe — a redelivered
+  resolution is read, not replayed), appends a `LaneEntry.Resolved`, and
+  drives; `Harness#progress(token, message) -> boolean` is `resume`'s
+  non-terminal sibling — it only ever *peeks* the token via `findPark`, never
+  consumes it, and emits `ToolProgress` on the built agent's own registry, the
+  same audience the in-process tee reaches. Re-parking an already-resumed call
+  is unsupported this generation and fails loud (`IllegalStateException`)
+  rather than silently losing the call. Both `resume` and `progress` are
+  single-agent this generation too: a second agent built from the same
+  harness makes either throw loudly, because a park token does not yet carry
+  which agent's loop and registry it belongs to — a recorded design gap, not
+  a silent one.
+- **The tee, and `ToolCallProgressed`.** `TurnEvent.ToolCallProgressed(call,
+  message)` narrates a running tool's progress to whoever is watching the live
+  segment. `GatedToolCallExecutor` wraps the `ToolContext` emitter so every
+  `ToolProgress` a tool emits is teed to the segment's `TurnObserver` as a
+  `ToolCallProgressed` carrying the *executor's own authoritative* `ToolCall`
+  — a tool's self-reported id is never trusted for narration. Only
+  `ToolProgress` is teed; every other system-channel event passes through
+  untouched. The tee catches and logs an observer's throw rather than letting
+  it propagate — texture must never alter the record, so a UI bug narrating
+  progress cannot become a model-visible tool failure — the opposite ruling
+  from the model path's own propagate-on-throw semantics, and both are
+  documented side by side on `TurnObserver`.
+- **`nessy-store-jdbc`.** A `ConversationStore` for one Postgres, no cluster
+  membership: `nessy_conversation` (fenced state), `nessy_lane` (told/resolved
+  entries), `nessy_park`, and `nessy_token` (consumed-token markers), created
+  idempotently by `JdbcConversationStore.create(DataSource, ObjectMapper)`.
+  Saves run at `READ_COMMITTED` (the version check is the only isolation this
+  discipline needs); loads run at `REPEATABLE READ` so a reader never sees the
+  state, the lane, and the park index from mixed generations. `StateCodec`
+  carries the Jackson mixins state's records need to round-trip through
+  `jsonb`, with drift guards that fail the build if the mapped shape and the
+  domain type disagree. Container-backed tests run against `postgres:16-alpine`
+  via Testcontainers (pinned at the 1.21 line deliberately — 2.0 renames every
+  module artifact) behind `@Tag("container")`, excluded from the default build
+  the same way `live` is (`-Dnessy.excludedGroups=live,container` is the
+  default; CI runs with `-Dnessy.excludedGroups=live` so containers execute
+  there without needing a real model key).
+- **At-least-once, on the record.** Re-driving a stalled `EXECUTING_TOOL`
+  conversation re-performs its pending calls — the fence keeps concurrent
+  duplicates from corrupting state, but it does not stop a tool from running
+  twice. `Tool`'s javadoc now says so directly: a tool that cannot be safely
+  re-run makes itself idempotent, or parks and lets its remote side dedup by
+  token. One paragraph, no machinery — the litmus that shaped the whole design
+  (does the world already provide it?) answered this one too.
+- **What this generation deliberately did not build.** The mailbox-as-API
+  (`Mail`, `MailReceipt`, `post`) that the durable spec's first draft carried
+  — review killed it against the litmus (*does the world already provide
+  it?*); its one irreplaceable service, accepting input for a busy
+  conversation, survives as the append-only lane the fold itself drains, no
+  broker required. Also unbuilt, deliberately: claims/leases (fencing already
+  makes concurrent drivers *safe*; a claim would only save wasted *spend*, and
+  can arrive later as one column with no semantic change), sweepers (every
+  lane entry is followed by a driving entry, or the conversation is wedged
+  regardless of any sweep), park timeouts (`ParkPolicy` — real, deferred until
+  a deployment demands wall-clock eviction), cross-node event fan-out (the
+  application's own bus sits behind a declared listener, unchanged from v2),
+  and model-call parking (the contract shape permits it; nothing exercises it
+  yet).
 - **What this generation retired.** The two-effect/four-fact core loop above
   replaced a wider grammar and a multi-object engine split: the standalone
   `Reducer` and `ExecutionEngine` types dissolved into `ConversationState

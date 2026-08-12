@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-12 (kernel rewrite, same day — the first draft grew a message
 broker; review whittled it back to physics)
-**Status:** DRAFT — pending review
+**Status:** IMPLEMENTED (see plan 2026-08-12-durable-kernel)
 **Builds on:** `2026-08-11-conversation-essence-design.md` and the seams it left
 dark: `ParkToken`, `ToolResolution`, `RunOutcome.Parked`,
 `ConversationLoop.resume`, `ConversationStore.consumeToken`,
@@ -64,11 +64,19 @@ harness.resume(token, resolution[, observer]) // appends a call's answer, then d
 
 **Appending always succeeds.** A tell is durably appended to the
 conversation's lane regardless of status — idle, mid-turn, parked. Nothing is
-ever refused; there is no "busy" answer. **Driving is opportunistic**: after
-appending, the entry drives if the conversation is quiescent, and otherwise
-returns immediately — the active driver's own fold points will consume the
-lane. Either way the caller gets back the state as read: *the outcome is a
-reading, not a delivery* (essence §10, now doing fleet duty).
+ever refused; there is no "busy" answer. **Driving is unconditional, not
+opportunistic — implementation note (2026-08-12-durable-kernel, Task 4)
+amends this sentence to the shipped truth:** every entry re-drives after
+appending, whatever the status; there is no quiescence check that skips the
+drive when another driver might already be running. Two loaded drivers on the
+same conversation both walk `driveOnce` against their own load; the version
+fence is what keeps that race *correct* — the loser's save throws
+`StaleStateException` and it reloads and re-enters — not what makes driving
+*thrifty*. A caller behind an already-busy conversation pays a redundant
+load-and-fold, not a skipped one; that cost is the price of never having to
+ask "is anyone driving this?" before entering. Either way the caller gets back
+the state as read: *the outcome is a reading, not a delivery* (essence §10,
+now doing fleet duty).
 
 What an appended tell **means** is a fold decision, by status:
 
@@ -122,6 +130,13 @@ holds everything settled. Lanes drain; records don't.* (Honest note: a
 long park can grow the lane; entries are human-scale mid-turn words, and a
 durable store may page lane rows without semantic change.)
 
+> **Implementation note (2026-08-12-durable-kernel, Tasks 1–4).** "The lane as
+> a loaded view" landed precisely as `ConversationStore.Loaded(ConversationState
+> state, List<LaneEntry> lane)` — `load` hands the loop the pair rather than a
+> state with the lane folded into a field, and the loop's own `driveOnce` is
+> what turns that pair into the `told` accumulator the fold reads. The state
+> itself never carries raw lane rows.
+
 **No claims, no leases — v1.** With fencing, concurrent drivers are *safe*:
 one save wins, the loser discards its segment. Claims (a start-of-segment CAS
 on a claimant column) prevent duplicate *spend*, not incorrectness, and races
@@ -148,6 +163,16 @@ broker talking.
   conversation re-performs calls. Documented on `Tool`: a tool that cannot be
   safely re-run makes itself idempotent, or parks and lets its remote side
   dedup by token. One javadoc paragraph, no machinery.
+
+> **Implementation note (2026-08-12-durable-kernel, Task 4).** Resolutions
+> drain **loop-side**, not fold-side: `ConversationLoop.driveOnce` walks the
+> loaded lane's `Resolved` entries itself, routes each to the parked
+> executor's own `resume`, and only marks the entry drained once that resume
+> *and* its resulting fold both succeed — a throw in between leaves the
+> resolution in the lane for a future drive to find rather than destroying the
+> only copy that arrived. The fact itself is minted at that drain, from the
+> executor's yield, exactly the way a told entry's `AgentTold` fact is minted
+> at its own drain rather than at append time.
 
 ## 6. Signals: progress from afar and the tee
 
@@ -206,6 +231,36 @@ permits it; still unbuilt.
 3. **Drain-policy seam** (sequenced turns within one conversation): not
    built; noted so the first genuine need argues against the
    conversation-as-concern principle on the record.
+
+**Recorded follow-ups (2026-08-12-durable-kernel implementation, Tasks 4–7).**
+Four gaps the build surfaced, none of them silent:
+
+a. **Parks don't carry agent identity.** `Harness.resume` and
+   `Harness.progress` both need to know which agent's loop and
+   `ListenerRegistry` a token belongs to; a `ParkToken` today names a
+   conversation, not an agent. With exactly one agent built per harness this
+   is unambiguous, so both methods work *and check*: a second (or later)
+   agent built from the same harness makes either throw
+   `IllegalStateException` rather than silently guessing. Deferred design
+   escalation — routing by agent identity, not a bug to fix quietly.
+b. **§3's "returns immediately" amended to the shipped truth**, above: every
+   entry re-drives unconditionally after appending; the fence, not a
+   quiescence check, is what keeps concurrent drivers correct.
+c. **`ListMemory`'s consecutive-duplicate dedup can be defeated by fence
+   retries.** A stale-save retry re-drives from a fresh load and can re-fold
+   a fact whose birth was already remembered once, but not as the
+   *immediately preceding* remembered message — non-consecutive duplicates
+   slip past `ListMemory`'s idempotency check. Known limitation, not
+   corrected this generation: the essence's "tellings are at-least-once;
+   `remember` is idempotent" ruling (essence §13.6) is a per-implementation
+   contract, and `ListMemory`'s particular idempotency strategy (consecutive
+   only) does not yet cover this case.
+d. **Re-parking is unsupported this generation.** A resumed call whose own
+   tool parks again (the contract shape allows it — an approved call whose
+   tool itself then parks) fails loud with `IllegalStateException` rather
+   than being silently dropped or silently re-queued (`ConversationLoop
+   .resumeParkedCall`). A future generation that needs it has a clear,
+   loud-guarded seam to build against.
 
 ## 10. Testing posture
 
