@@ -22,7 +22,8 @@ package org.jwcarman.nessy.api.turn;
  * agent runs every turn against {@link #noop()} and loses nothing.
  *
  * <p>Implement directly (a lambda) when one concern covers every event; extend {@link
- * TurnObserverAdapter} to override per-variant hooks and ignore the rest.
+ * TurnObserverAdapter} to override per-variant hooks and ignore the rest; or compose one from
+ * per-variant lambdas via {@link #builder()}.
  */
 public interface TurnObserver {
 
@@ -31,5 +32,12 @@ public interface TurnObserver {
   /** The absent audience: accepts everything, tells no one. */
   static TurnObserver noop() {
     return event -> {};
+  }
+
+  /**
+   * A builder composing an observer from per-variant consumers; see {@link TurnObserverBuilder}.
+   */
+  static TurnObserverBuilder builder() {
+    return new TurnObserverBuilder();
   }
 }
