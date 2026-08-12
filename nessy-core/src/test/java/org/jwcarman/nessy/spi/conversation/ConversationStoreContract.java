@@ -168,6 +168,24 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
+  void a_save_that_leaves_a_park_untouched_never_disturbs_its_index() {
+    ConversationId id = ConversationId.generate();
+    ParkToken token = ParkToken.generate();
+    ParkedCall parked = new ParkedCall(token, toolCall("c1"));
+    ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
+    ConversationState v2 = store().save(v1.withParkedCalls(List.of(parked)), List.of());
+
+    assertThat(store().findPark(token)).contains(parked);
+
+    // Same parkedCalls as v2 — only the version moves. A churn-and-rebuild sync would remove and
+    // re-put this token on every such save; the surgical sync leaves it alone.
+    store().save(v2, List.of());
+
+    assertThat(store().findPark(token)).contains(parked);
+    assertThat(store().findParkConversation(token)).contains(id);
+  }
+
+  @Test
   void a_token_consumes_exactly_once() {
     ParkToken token = ParkToken.generate();
 
