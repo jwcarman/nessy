@@ -76,11 +76,7 @@ RunOutcome outcome =
         .converse()
         .tell(
             "what is 2+2?",
-            event -> {
-              if (event instanceof TurnEvent.TextDelta delta) {
-                text.append(delta.text());
-              }
-            });
+            TurnObserver.builder().onTextDelta(delta -> text.append(delta.text())).build());
 
 text.toString(); // "The answer is 4."
 outcome.state().status(); // ConversationStatus.COMPLETE
@@ -112,11 +108,11 @@ AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().bui
 Agent<String> agent =
     Nessy.harness(provider).build().agent().model("claude-haiku-4-5-20251001").build();
 RunOutcome outcome =
-    agent.converse().tell("what is 2+2?", event -> {
-      if (event instanceof TurnEvent.TextDelta delta) {
-        System.out.print(delta.text());
-      }
-    });
+    agent
+        .converse()
+        .tell(
+            "what is 2+2?",
+            TurnObserver.builder().onTextDelta(delta -> System.out.print(delta.text())).build());
 ```
 
 ## The harness
@@ -403,11 +399,21 @@ tokens over SSE:
 
 ```java
 Conversation<String> conversation = agent.converse();
-RunOutcome outcome = conversation.tell("what is 2+2?", event -> System.out.println(event));
+RunOutcome outcome =
+    conversation.tell(
+        "what is 2+2?",
+        TurnObserver.builder()
+            .onTextDelta(delta -> sse.send("text", delta.text()))
+            .onToolCallRequested(call -> sse.send("tool", call.call().name()))
+            .build());
 ```
 
 The observer sees only this one call's `TurnEvent`s, in order, for the
-duration of that one `tell`.
+duration of that one `tell`. Three ways to make one: a bare lambda when a
+single concern covers every event, `TurnObserver.builder()` to compose
+per-variant consumers (repeat registrations chain, so a journal and a renderer
+can both listen), or extend `TurnObserverAdapter` and override only the hooks
+you watch.
 
 ## Context management
 
