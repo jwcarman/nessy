@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.StaleStateException;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.memory.Memory;
 
@@ -91,7 +92,10 @@ public final class ConversationLoop {
     Observation observation = EngineObservations.run(observations, id);
     try (var _ = observation.openScope()) {
       ConversationState loaded =
-          store.load(id).orElseGet(() -> ConversationState.newConversation(id));
+          store
+              .load(id)
+              .map(ConversationStore.Loaded::state)
+              .orElseGet(() -> ConversationState.newConversation(id));
       if (!RESUMABLE.contains(loaded.status())) {
         throw new IllegalStateException(
             "conversation " + id + " is in flight (" + loaded.status() + "); refusing to run");
@@ -100,7 +104,14 @@ public final class ConversationLoop {
       try {
         return new RunOutcome.Completed(drive(progress, input, observer));
       } finally {
-        store.save(progress.get());
+        try {
+          progress.set(store.save(progress.get(), List.of()));
+        } catch (StaleStateException e) {
+          // This generation is still single-driver: nothing else can move the stored version
+          // out from under us, so this can never actually fire here. It is caught anyway so a
+          // future concurrent driver (Task 4: the winning driver owns the base) can never let a
+          // finally-holder save mask the primary exception this block exists to let propagate.
+        }
       }
     } catch (RuntimeException e) {
       observation.error(e);
@@ -139,13 +150,15 @@ public final class ConversationLoop {
         remember(state.id(), step.remember());
         remember(state.id(), closed.remember());
         emitter.emit(fact);
-        store.save(state);
+        state = store.save(state, List.of());
+        progress.set(state);
         return state;
       }
       progress.set(state);
       remember(state.id(), step.remember());
       emitter.emit(fact);
-      store.save(state);
+      state = store.save(state, List.of());
+      progress.set(state);
       step.effects().forEach(queue::addLast);
       if (queue.isEmpty()) {
         return state;

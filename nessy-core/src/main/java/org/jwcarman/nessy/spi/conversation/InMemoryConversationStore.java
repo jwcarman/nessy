@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.spi.conversation;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -22,21 +25,100 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.LaneEntry;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 
-/** The default {@link ConversationStore#inMemory()} implementation. */
+/**
+ * The default {@link ConversationStore#inMemory()} implementation.
+ *
+ * <p>Every list ever handed to a caller or held in a map value is an immutable snapshot: an append
+ * always builds and stores a fresh {@link List#copyOf}, never mutates a list already published —
+ * the same {@code ListMemory} discipline, for the same reason. {@link ConcurrentHashMap}'s per-key
+ * happens-before on the reference swap is all the safety a read of an immutable value ever needs,
+ * with no risk of observing a torn or concurrently-modified list.
+ *
+ * <p>The version fence lives inside {@code state.version()} itself, so {@link #save} is a single
+ * {@link ConcurrentHashMap#compute} that compares the incoming version against whatever is stored
+ * and throws {@link StaleStateException} from inside the remapping function when they differ — the
+ * map's own per-key lock makes the compare-and-bump atomic without any lock of ours.
+ *
+ * <p>The lane and the park index are separate maps, so the save cannot fold their updates into that
+ * same {@code compute} without running side effects inside a remapping function — unsafe if the map
+ * ever retries it. Instead each conversation gets a dedicated monitor ({@code locks}, one object
+ * per id) and {@link #save} holds it for the fenced CAS, the lane drain, and the park-index sync
+ * together — simple, correct, and sufficient for a single JVM with no cross-process contender.
+ *
+ * <p>Every conversation it has ever seen — its state, its lane, its parks, its consumed tokens —
+ * grows without eviction for the life of the process; there is no forgetting, no cap, no
+ * compaction. That suits a process that owns its sessions, not a long-lived multi-tenant server.
+ */
 final class InMemoryConversationStore implements ConversationStore {
 
   private final Map<ConversationId, ConversationState> sessions = new ConcurrentHashMap<>();
+  private final Map<ConversationId, List<LaneEntry>> lanes = new ConcurrentHashMap<>();
+  private final Map<ParkToken, ParkedCallAt> parks = new ConcurrentHashMap<>();
+  private final Map<ConversationId, Object> locks = new ConcurrentHashMap<>();
   private final Set<ParkToken> consumed = ConcurrentHashMap.newKeySet();
 
+  private record ParkedCallAt(ConversationId id, ParkedCall call) {}
+
   @Override
-  public Optional<ConversationState> load(ConversationId id) {
-    return Optional.ofNullable(sessions.get(id));
+  public Optional<Loaded> load(ConversationId id) {
+    ConversationState state = sessions.get(id);
+    if (state == null) {
+      return Optional.empty();
+    }
+    List<LaneEntry> lane = lanes.getOrDefault(id, List.of());
+    return Optional.of(new Loaded(state, lane));
   }
 
   @Override
-  public void save(ConversationState state) {
-    sessions.put(state.id(), state);
+  public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
+    ConversationId id = state.id();
+    Object lock = locks.computeIfAbsent(id, key -> new Object());
+    synchronized (lock) {
+      ConversationState existing = sessions.get(id);
+      long storedVersion = existing == null ? 0L : existing.version();
+      if (storedVersion != state.version()) {
+        throw new StaleStateException(id, state.version(), storedVersion);
+      }
+      ConversationState bumped = state.withVersion(state.version() + 1);
+      sessions.put(id, bumped);
+
+      Set<String> drained = Set.copyOf(drainedLaneIds);
+      lanes.computeIfPresent(
+          id,
+          (key, entries) ->
+              entries.stream().filter(entry -> !drained.contains(entry.id())).toList());
+
+      parks.entrySet().removeIf(entry -> entry.getValue().id().equals(id));
+      for (ParkedCall parked : bumped.parkedCalls()) {
+        parks.put(parked.token(), new ParkedCallAt(id, parked));
+      }
+
+      return bumped;
+    }
+  }
+
+  @Override
+  public void appendLane(ConversationId id, LaneEntry entry) {
+    lanes.compute(
+        id,
+        (key, existing) -> {
+          List<LaneEntry> appended = new ArrayList<>(existing == null ? List.of() : existing);
+          appended.add(entry);
+          return List.copyOf(appended);
+        });
+  }
+
+  @Override
+  public Optional<ParkedCall> findPark(ParkToken token) {
+    return Optional.ofNullable(parks.get(token)).map(ParkedCallAt::call);
+  }
+
+  @Override
+  public Optional<ConversationId> findParkConversation(ParkToken token) {
+    return Optional.ofNullable(parks.get(token)).map(ParkedCallAt::id);
   }
 
   @Override

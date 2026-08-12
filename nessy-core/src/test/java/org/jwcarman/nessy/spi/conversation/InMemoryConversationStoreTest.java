@@ -17,52 +17,24 @@ package org.jwcarman.nessy.spi.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 
-class InMemoryConversationStoreTest {
+class InMemoryConversationStoreTest extends ConversationStoreContract {
 
-  private final ConversationStore store = new InMemoryConversationStore();
-  private final ConversationId id = new ConversationId("s1");
-
-  @Test
-  void loading_an_unknown_session_is_empty() {
-    assertThat(store.load(id)).isEmpty();
-  }
-
-  @Test
-  void saved_state_comes_back() {
-    ConversationState state =
-        ConversationState.newConversation(id).with(ConversationStatus.COMPLETE);
-
-    store.save(state);
-
-    assertThat(store.load(id)).contains(state);
-  }
-
-  @Test
-  void saving_again_replaces() {
-    store.save(ConversationState.newConversation(id).with(ConversationStatus.AWAITING_MODEL));
-    store.save(ConversationState.newConversation(id).with(ConversationStatus.COMPLETE));
-
-    assertThat(store.load(id).orElseThrow().status()).isEqualTo(ConversationStatus.COMPLETE);
-  }
-
-  @Test
-  void a_token_can_be_consumed_exactly_once() {
-    ParkToken token = ParkToken.generate();
-
-    assertThat(store.consumeToken(token)).isTrue();
-    assertThat(store.consumeToken(token)).isFalse();
+  @Override
+  protected ConversationStore newStore() {
+    return ConversationStore.inMemory();
   }
 
   @Test
   void in_memory_factory_returns_a_working_store() {
+    ConversationId id = ConversationId.generate();
     ConversationStore inMemoryStore = ConversationStore.inMemory();
-    inMemoryStore.save(ConversationState.newConversation(id));
+
+    inMemoryStore.save(ConversationState.newConversation(id), List.of());
 
     assertThat(inMemoryStore.load(id)).isPresent();
   }

@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +42,8 @@ import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.LaneEntry;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EventEmitter;
@@ -281,14 +284,29 @@ class ConversationLoopTest {
     }
 
     @Override
-    public Optional<ConversationState> load(ConversationId id) {
+    public Optional<Loaded> load(ConversationId id) {
       return delegate.load(id);
     }
 
     @Override
-    public void save(ConversationState state) {
+    public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
       journal.add("save");
-      delegate.save(state);
+      return delegate.save(state, drainedLaneIds);
+    }
+
+    @Override
+    public void appendLane(ConversationId id, LaneEntry entry) {
+      delegate.appendLane(id, entry);
+    }
+
+    @Override
+    public Optional<ParkedCall> findPark(ParkToken token) {
+      return delegate.findPark(token);
+    }
+
+    @Override
+    public Optional<ConversationId> findParkConversation(ParkToken token) {
+      return delegate.findParkConversation(token);
     }
 
     @Override
@@ -558,7 +576,7 @@ class ConversationLoopTest {
       // The just-folded state (ModelResponded's homework fold: EXECUTING_TOOL, c1 pending) is
       // what the finally block must have saved — not the AgentTold fold's earlier AWAITING_MODEL
       // state, which is all that would remain without it.
-      ConversationState saved = store.load(ID).orElseThrow();
+      ConversationState saved = store.load(ID).orElseThrow().state();
       assertThat(saved.status()).isEqualTo(ConversationStatus.EXECUTING_TOOL);
       assertThat(saved.pendingCalls()).containsExactly(c1);
       assertThat(memory.remembered()).containsExactly(Message.user("echo a"));
@@ -572,7 +590,8 @@ class ConversationLoopTest {
     void a_run_in_flight_as_executing_tool_is_refused_naming_the_status() {
       List<String> journal = new ArrayList<>();
       RecordingStore store = new RecordingStore(journal);
-      store.save(ConversationState.newConversation(ID).with(ConversationStatus.EXECUTING_TOOL));
+      store.save(
+          ConversationState.newConversation(ID).with(ConversationStatus.EXECUTING_TOOL), List.of());
       ScriptedModelCallExecutor model =
           new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
       ConversationLoop loop =
@@ -597,7 +616,7 @@ class ConversationLoopTest {
               ConversationStatus.IDLE, ConversationStatus.COMPLETE, ConversationStatus.FAILED)) {
         List<String> journal = new ArrayList<>();
         RecordingStore store = new RecordingStore(journal);
-        store.save(ConversationState.newConversation(ID).with(resumable));
+        store.save(ConversationState.newConversation(ID).with(resumable), List.of());
         ScriptedModelCallExecutor model =
             new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
         ConversationLoop loop =

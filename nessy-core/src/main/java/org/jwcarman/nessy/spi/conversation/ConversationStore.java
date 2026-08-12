@@ -15,36 +15,63 @@
  */
 package org.jwcarman.nessy.spi.conversation;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.LaneEntry;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 
 /**
  * Where a session lives between steps.
  *
  * <p>Because {@code ConversationState} is a plain serializable record, durable resume is an
- * implementation of this interface rather than a change to the loop.
+ * implementation of this interface rather than a change to the loop. The control block and the lane
+ * are two different durability shapes sharing one store: {@code state} is fenced —
+ * compare-and-swap, one writer wins — while the lane is an append-only log any number of tells and
+ * resolutions can write to concurrently, drained only by the winning save.
  */
 public interface ConversationStore {
 
-  /**
-   * The zero-configuration default: sessions live in this JVM and die with it.
-   *
-   * <p>Correct for a CLI, a test, or any front-end that owns the whole session. Anything that needs
-   * a session to survive a restart wants a durable store.
-   *
-   * <p>Last write wins: there is no compare-and-set, so two threads running the same session will
-   * clobber each other, and the consumed-token set grows without eviction for the life of the
-   * process. That suits a process that owns its sessions, not a long-lived multi-tenant server.
-   */
+  /** The zero-configuration default: sessions live in this JVM and die with it. */
   static ConversationStore inMemory() {
     return new InMemoryConversationStore();
   }
 
-  Optional<ConversationState> load(ConversationId id);
+  /** A conversation's control block together with whatever the lane still holds for it. */
+  record Loaded(ConversationState state, List<LaneEntry> lane) {
 
-  void save(ConversationState state);
+    public Loaded {
+      Objects.requireNonNull(state, "state must not be null");
+      Objects.requireNonNull(lane, "lane must not be null");
+      lane = List.copyOf(lane);
+    }
+  }
+
+  Optional<Loaded> load(ConversationId id);
+
+  /**
+   * The fenced save: persists {@code state} iff the stored version equals {@code state.version()},
+   * atomically bumping to {@code version()+1}, deleting the drained lane entries, and syncing the
+   * park index from {@code state.parkedCalls()} — one atomic act. Returns the state with the bumped
+   * version (the caller's new read-base).
+   *
+   * @throws StaleStateException when the stored version differs — the caller read a base that has
+   *     since moved; reload and re-drive.
+   */
+  ConversationState save(ConversationState state, Collection<String> drainedLaneIds);
+
+  /** Unconditional, atomic, never contended with saves. */
+  void appendLane(ConversationId id, LaneEntry entry);
+
+  /** The park index: token → the conversation and call it belongs to. */
+  Optional<ParkedCall> findPark(ParkToken token);
+
+  /** The conversation a token parks under, for driving after a resolution. */
+  Optional<ConversationId> findParkConversation(ParkToken token);
 
   /**
    * Claims a park token, returning {@code false} if it was already claimed.
