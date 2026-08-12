@@ -201,6 +201,23 @@ class ConversationStateFoldTest {
   }
 
   @Test
+  void homework_never_jumps_the_queue_ahead_of_unread_notes() {
+    ToolCall call = call("call-1", "search");
+    Message homework = Message.assistant(List.of(new ToolUseBlock(call)));
+    ConversationState mid =
+        awaitingModel().fold(ConversationEvent.AgentTold.of(id, "psst")).state();
+
+    Step step =
+        mid.fold(new ConversationEvent.ModelResponded(id, homework, StopReason.TOOL_USE, usage(3)));
+
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.EXECUTING_TOOL);
+    assertThat(step.effects()).containsExactly(new Effect.ExecuteTool(call));
+    assertThat(step.remember()).containsExactly(homework);
+    // the note is not consumed here: it rides the eventual flush, once the homework settles
+    assertThat(step.state().told()).containsExactly(List.of(new TextBlock("psst")));
+  }
+
+  @Test
   void a_token_ceiling_response_fails_the_conversation_and_answers_its_own_homework() {
     ToolCall orphan = call("call-1", "search");
     Message truncatedAssistantMessage = Message.assistant(List.of(new ToolUseBlock(orphan)));
