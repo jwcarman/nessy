@@ -59,7 +59,7 @@ import org.slf4j.LoggerFactory;
  *
  * @param <I> the input vocabulary the built {@link Agent} will accept via {@code tell}
  */
-public final class AgentBuilder<I> {
+public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<I>> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AgentBuilder.class);
 
@@ -190,6 +190,7 @@ public final class AgentBuilder<I> {
    * throw from {@code listener} propagates and stops the emitting operation — the veto is the
    * throw.
    */
+  @Override
   public <T> AgentBuilder<I> listen(Class<T> type, Consumer<T> listener) {
     registrations.add(ListenerRegistration.sync(type, listener));
     return this;
@@ -210,6 +211,7 @@ public final class AgentBuilder<I> {
    * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to an SLF4J {@link
    * Logger} rather than requiring every caller to supply its own handler.
    */
+  @Override
   public <T> AgentBuilder<I> listenAsync(Class<T> type, Consumer<T> listener) {
     Objects.requireNonNull(listener, "listener must not be null");
     return listenAsync(type, listener, t -> LOGGER.error("async event listener failed", t));

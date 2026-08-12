@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * §17's razor). {@code provider} is required, by constructor signature via {@link
  * Nessy#harness(ModelProvider)}; everything else here has a default that works.
  */
-public final class HarnessBuilder {
+public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HarnessBuilder.class);
 
@@ -88,6 +88,7 @@ public final class HarnessBuilder {
    * path exists afterward. A throw from {@code listener} propagates and stops the emitting
    * operation — the veto is the throw.
    */
+  @Override
   public <T> HarnessBuilder listen(Class<T> type, Consumer<T> listener) {
     registrations.add(ListenerRegistration.sync(type, listener));
     return this;
@@ -108,6 +109,7 @@ public final class HarnessBuilder {
    * {@link #listenAsync(Class, Consumer, Consumer)}, reporting a failed listener to an SLF4J {@link
    * Logger} rather than requiring every caller to supply its own handler.
    */
+  @Override
   public <T> HarnessBuilder listenAsync(Class<T> type, Consumer<T> listener) {
     Objects.requireNonNull(listener, "listener must not be null");
     return listenAsync(type, listener, t -> LOGGER.error("async event listener failed", t));
