@@ -134,6 +134,22 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
+  void a_load_after_a_draining_save_never_pairs_the_bumped_version_with_the_drained_entry() {
+    ConversationId id = ConversationId.generate();
+    ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
+    LaneEntry.Told keep = LaneEntry.told(List.of(new TextBlock("keep")));
+    LaneEntry.Told drain = LaneEntry.told(List.of(new TextBlock("drain")));
+    store().appendLane(id, keep);
+    store().appendLane(id, drain);
+
+    ConversationState v2 = store().save(v1, List.of(drain.id()));
+
+    ConversationStore.Loaded loaded = store().load(id).orElseThrow();
+    assertThat(loaded.state().version()).isEqualTo(v2.version());
+    assertThat(loaded.lane()).containsExactly(keep);
+  }
+
+  @Test
   void the_park_index_follows_the_saved_state() {
     ConversationId id = ConversationId.generate();
     ParkToken token = ParkToken.generate();

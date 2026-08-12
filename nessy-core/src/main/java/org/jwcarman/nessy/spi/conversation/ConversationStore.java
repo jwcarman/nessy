@@ -57,7 +57,10 @@ public interface ConversationStore {
    * The fenced save: persists {@code state} iff the stored version equals {@code state.version()},
    * atomically bumping to {@code version()+1}, deleting the drained lane entries, and syncing the
    * park index from {@code state.parkedCalls()} — one atomic act. Returns the state with the bumped
-   * version (the caller's new read-base).
+   * version (the caller's new read-base). Readers observe this act atomically too: {@link #load},
+   * {@link #findPark}, and {@link #findParkConversation} never see the state, the lane, or a park
+   * from one generation mixed with either of the others from a different one — a concurrent reader
+   * sees either every effect of this save or none of them.
    *
    * @throws StaleStateException when the stored version differs — the caller read a base that has
    *     since moved; reload and re-drive.
