@@ -34,6 +34,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  */
 public sealed interface TurnEvent {
 
+  /** Shared across the {@code call}-carrying variants below. */
+  String CALL_MUST_NOT_BE_NULL = "call must not be null";
+
   /** A chunk of assistant prose arrived from the stream. */
   record TextDelta(String text) implements TurnEvent {
     public TextDelta {
@@ -58,14 +61,14 @@ public sealed interface TurnEvent {
   /** The model asked for homework — emitted mid-stream as the tool-use block materializes. */
   record ToolCallRequested(ToolCall call) implements TurnEvent {
     public ToolCallRequested {
-      Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
     }
   }
 
   /** The gate's verdict for one call: approved, or denied with reason. */
   record ToolCallDecided(ToolCall call, Decision decision) implements TurnEvent {
     public ToolCallDecided {
-      Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
       Objects.requireNonNull(decision, "decision must not be null");
     }
   }
@@ -73,7 +76,7 @@ public sealed interface TurnEvent {
   /** One piece of homework settled — result in hand, success or error. */
   record ToolCallCompleted(ToolCall call, ToolResult result) implements TurnEvent {
     public ToolCallCompleted {
-      Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
       Objects.requireNonNull(result, "result must not be null");
     }
   }

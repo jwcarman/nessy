@@ -281,7 +281,9 @@ class ProviderModelCallExecutorTest {
       }
 
       @Override
-      public void close() {}
+      public void close() {
+        // scripted stream owns no resource; nothing to release.
+      }
     };
   }
 

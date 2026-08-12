@@ -59,6 +59,8 @@ import org.jwcarman.nessy.internal.ToolInvoker;
  */
 public final class GatedToolCallExecutor implements ToolCallExecutor {
 
+  private static final String DENIED_PREFIX = "Denied: ";
+
   private final ToolRegistry tools;
   private final Map<String, ToolGrant> grants;
   private final Approver approver;
@@ -117,7 +119,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
           finished(
               call,
               state,
-              ToolResult.error("Denied: " + reason),
+              ToolResult.error(DENIED_PREFIX + reason),
               observer,
               new Decision.Deny(reason));
       case PolicyDecision.RequireApproval _ -> gate(grant, call, state, observer);
@@ -135,7 +137,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
               yield invoke(call, state, observer);
             }
             case Decision.Deny(String reason) ->
-                finished(call, state, ToolResult.error("Denied: " + reason), observer, decision);
+                finished(call, state, ToolResult.error(DENIED_PREFIX + reason), observer, decision);
           };
       case ToolResolution.Completed(ToolResult result) ->
           finished(call, state, result, observer, null);
@@ -165,7 +167,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
       observation.stop();
     }
     return switch (decision) {
-      case Awaited.Ready<Decision>(Decision.Allow _) -> {
+      case Awaited.Ready<Decision>(Decision.Allow()) -> {
         observer.on(new TurnEvent.ToolCallDecided(call, Decision.allow()));
         yield invoke(call, state, observer);
       }
@@ -173,7 +175,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
           finished(
               call,
               state,
-              ToolResult.error("Denied: " + reason),
+              ToolResult.error(DENIED_PREFIX + reason),
               observer,
               new Decision.Deny(reason));
       case Awaited.Parked<Decision>(var token) -> Awaited.parked(token);

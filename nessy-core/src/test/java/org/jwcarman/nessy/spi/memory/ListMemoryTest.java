@@ -86,8 +86,10 @@ class ListMemoryTest {
     Context earlySnapshot = memory.recall(id);
     memory.remember(id, Message.user("second"));
 
-    assertThat(earlySnapshot.messages()).containsExactly(first);
-    assertThatThrownBy(() -> earlySnapshot.messages().add(Message.user("mutation")))
+    List<Message> messages = earlySnapshot.messages();
+
+    assertThat(messages).containsExactly(first);
+    assertThatThrownBy(() -> messages.add(Message.user("mutation")))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 }

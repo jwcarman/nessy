@@ -40,18 +40,11 @@ class ConversationEventTest {
 
     String described =
         switch (event) {
-          case ConversationEvent.AgentTold(ConversationId _, List<ContentBlock> content) ->
+          case ConversationEvent.AgentTold(_, List<ContentBlock> content) ->
               "user:" + ((TextBlock) content.getFirst()).text();
-          case ConversationEvent.ModelResponded(
-                  ConversationId _,
-                  Message message,
-                  StopReason _,
-                  Usage _) ->
-              "responded:" + message;
-          case ConversationEvent.ModelCallFailed(ConversationId _, String reason) ->
-              "failed:" + reason;
-          case ConversationEvent.ToolFinished(ConversationId _, ToolCall call, ToolResult _) ->
-              "finished:" + call.name();
+          case ConversationEvent.ModelResponded(_, Message message, _, _) -> "responded:" + message;
+          case ConversationEvent.ModelCallFailed(_, String reason) -> "failed:" + reason;
+          case ConversationEvent.ToolFinished(_, ToolCall call, _) -> "finished:" + call.name();
         };
 
     assertThat(described).isEqualTo("user:hello");
@@ -79,9 +72,10 @@ class ConversationEventTest {
   @Test
   void model_responded_rejects_null_message() {
     ConversationId id = ConversationId.generate();
+    Usage usage = Usage.zero();
 
     assertThatThrownBy(
-            () -> new ConversationEvent.ModelResponded(id, null, StopReason.END_TURN, Usage.zero()))
+            () -> new ConversationEvent.ModelResponded(id, null, StopReason.END_TURN, usage))
         .isInstanceOf(NullPointerException.class);
   }
 

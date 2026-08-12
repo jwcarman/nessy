@@ -166,7 +166,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
 
   /** Lands a signature on the trailing thinking block; a no-op when nothing trails to sign. */
   private static void sign(List<ContentBlock> blocks, String signature) {
-    if (!blocks.isEmpty() && blocks.getLast() instanceof ThinkingBlock(String text, String _)) {
+    if (!blocks.isEmpty() && blocks.getLast() instanceof ThinkingBlock(String text, _)) {
       blocks.set(blocks.size() - 1, new ThinkingBlock(text, signature));
     }
   }

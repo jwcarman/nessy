@@ -112,8 +112,15 @@ public final class ConversationLoop {
 
   public RunOutcome resume(
       ConversationId id, ParkToken token, ToolResolution resolution, TurnObserver observer) {
+    Objects.requireNonNull(observer, "observer must not be null");
     throw new UnsupportedOperationException(
-        "this assembly never parks, so there is nothing to resume");
+        "this assembly never parks, so there is nothing to resume for "
+            + id
+            + " (token "
+            + token
+            + ", resolution "
+            + resolution
+            + ")");
   }
 
   private ConversationState drive(

@@ -229,15 +229,18 @@ class GatedToolCallExecutorTest {
     void a_grant_map_missing_a_registered_tool_is_rejected() {
       ToolRegistry registry = ToolRegistry.of(new EchoTool(false));
       Map<String, ToolGrant> emptyGrants = Map.of();
+      Approver approver = Approver.allowAll();
+      ObjectMapper objectMapper = new ObjectMapper();
+      EventEmitter emitter = EventEmitter.noop();
 
       assertThatThrownBy(
               () ->
                   new GatedToolCallExecutor(
                       registry,
                       emptyGrants,
-                      Approver.allowAll(),
-                      new ObjectMapper(),
-                      EventEmitter.noop(),
+                      approver,
+                      objectMapper,
+                      emitter,
                       ObservationRegistry.NOOP))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("echo");
@@ -470,8 +473,7 @@ class GatedToolCallExecutorTest {
 
       executor.execute(echoCall("hi"), state, observed::add);
 
-      assertThat(observed).isNotEmpty();
-      assertThat(observed).hasSize(2);
+      assertThat(observed).isNotEmpty().hasSize(2);
       assertThat(observed.get(0)).isInstanceOf(TurnEvent.ToolCallDecided.class);
       assertThat(observed.get(1)).isInstanceOf(TurnEvent.ToolCallCompleted.class);
     }

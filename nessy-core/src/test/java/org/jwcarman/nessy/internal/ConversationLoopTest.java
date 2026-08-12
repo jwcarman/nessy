@@ -321,8 +321,7 @@ class ConversationLoopTest {
 
       assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
-      assertThat(journal).isNotEmpty();
-      assertThat(journal).containsSubsequence("emit:AgentTold", "emit:ModelResponded");
+      assertThat(journal).isNotEmpty().containsSubsequence("emit:AgentTold", "emit:ModelResponded");
       assertThat(memory.remembered())
           .containsExactly(
               Message.user("what is 2+2?"), Message.assistant(List.of(new TextBlock("Four."))));
@@ -356,11 +355,12 @@ class ConversationLoopTest {
       RunOutcome outcome =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"), OBSERVER);
 
-      assertThat(journal).isNotEmpty();
       // "save" between tool:c1 and tool:c2 proves c1's ToolFinished fact folded (and was
       // persisted) before c2 was performed — fold-between-performances, not a batch drain of
       // the whole effect queue followed by folding both results at once.
-      assertThat(journal).containsSubsequence("model", "tool:c1", "save", "tool:c2", "model");
+      assertThat(journal)
+          .isNotEmpty()
+          .containsSubsequence("model", "tool:c1", "save", "tool:c2", "model");
       assertThat(memory.remembered()).hasSize(4);
       assertThat(memory.remembered().get(2))
           .isEqualTo(
@@ -429,8 +429,7 @@ class ConversationLoopTest {
       assertThat(outcome.state().failureReason())
           .isEqualTo("hit the error ceiling (1 consecutive tool errors)");
       assertThat(model.calls()).isEqualTo(1);
-      assertThat(journal).contains("tool:c1");
-      assertThat(journal).doesNotContain("tool:c2");
+      assertThat(journal).contains("tool:c1").doesNotContain("tool:c2");
       assertThat(memory.remembered()).isNotEmpty();
       Message flush = memory.remembered().getLast();
       assertThat(flush.content())
@@ -503,8 +502,8 @@ class ConversationLoopTest {
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), OBSERVER);
 
-      assertThat(journal).isNotEmpty();
       assertThat(journal)
+          .isNotEmpty()
           .containsSubsequence(
               "remember:user",
               "emit:AgentTold",
