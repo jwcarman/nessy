@@ -272,7 +272,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
             store,
             events,
             observations);
-    harness.loop(loop);
+    harness.loop(loop, events);
     return new Agent<>(loop, events, store, resolvedMemory, renderer);
   }
 

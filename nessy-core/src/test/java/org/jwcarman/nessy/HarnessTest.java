@@ -21,9 +21,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -39,7 +41,10 @@ import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.LaneEntry;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.event.ToolProgress;
@@ -570,6 +575,138 @@ class HarnessTest {
 
       assertThat(emitted).isFalse();
       assertThat(heard).isEmpty();
+    }
+
+    /**
+     * Task-5 review, Finding 1 (Important): the tee narrates {@code ToolProgress} on the built
+     * agent's own extended registry — this harness's {@link
+     * org.jwcarman.nessy.api.event.ListenerRegistry} plus that agent's own declared registrations —
+     * so {@link #progress} must emit there too, not on the bare harness registry, or an
+     * agent-declared listener never hears a remote signal the in-process tee would have delivered.
+     */
+    @Test
+    void progress_reaches_an_agent_declared_listener_the_same_as_the_in_process_tee() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      List<ToolProgress> heard = new ArrayList<>();
+      Harness harness = Nessy.harness(provider).build();
+      Agent<String> agent =
+          harness
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .listen(ToolProgress.class, heard::add)
+              .build();
+
+      agent.converse().tell("search for x");
+      ParkToken token = approver.token();
+
+      boolean emitted = harness.progress(token, "halfway");
+
+      assertThat(emitted).isTrue();
+      assertThat(heard).hasSize(1);
+      assertThat(heard.getFirst().toolCallId()).isEqualTo(call.id());
+      assertThat(heard.getFirst().message()).isEqualTo("halfway");
+    }
+
+    /**
+     * Task-5 review, Finding 4 (mirrors {@code resume}'s existing multi-agent refusal): a park
+     * token carries no agent identity, so a harness that has built more than one agent can no
+     * longer tell which agent's registry a token's progress belongs to.
+     */
+    @Test
+    void progress_on_a_multi_agent_harness_refuses_naming_the_agent_count() {
+      Harness harness = Nessy.harness(new FakeProvider("hi", "there")).build();
+      harness.agent().model("model-a").build();
+      harness.agent().model("model-b").build();
+      ParkToken token = ParkToken.generate();
+
+      assertThatThrownBy(() -> harness.progress(token, "halfway"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("single-agent")
+          .hasMessageContaining("2");
+    }
+
+    /**
+     * A store whose {@link #findParkConversation} always reports the token unfound, standing in for
+     * a concurrent {@code resume} that settles the token between {@link #progress}'s peek and its
+     * conversation-id lookup — everything else delegates to a real in-memory store so the park
+     * itself is genuinely there for the first read.
+     */
+    static final class SettlesBetweenReadsStore implements ConversationStore {
+
+      private final ConversationStore delegate = ConversationStore.inMemory();
+
+      @Override
+      public Optional<Loaded> load(ConversationId id) {
+        return delegate.load(id);
+      }
+
+      @Override
+      public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
+        return delegate.save(state, drainedLaneIds);
+      }
+
+      @Override
+      public void appendLane(ConversationId id, LaneEntry entry) {
+        delegate.appendLane(id, entry);
+      }
+
+      @Override
+      public Optional<ParkedCall> findPark(ParkToken token) {
+        return delegate.findPark(token);
+      }
+
+      @Override
+      public Optional<ConversationId> findParkConversation(ParkToken token) {
+        return Optional.empty();
+      }
+
+      @Override
+      public boolean consumeToken(ParkToken token) {
+        return delegate.consumeToken(token);
+      }
+    }
+
+    /**
+     * Task-5 review, Finding 2 (Minor but contract-violating under race): the two-phase {@code
+     * findPark} → {@code findParkConversation} read can straddle a concurrent settle. The contract
+     * says an unresolvable token reports {@code false}, never throws — the same "dropped, not an
+     * error" treatment as an unknown token from the start.
+     */
+    @Test
+    void progress_racing_a_concurrent_settle_between_its_two_reads_reports_false_not_a_throw() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      SettlesBetweenReadsStore store = new SettlesBetweenReadsStore();
+      Harness harness = Nessy.harness(provider).store(store).build();
+      harness
+          .agent()
+          .model("fake-model")
+          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+          .approver(approver)
+          .build()
+          .converse()
+          .tell("search for x");
+      ParkToken token = approver.token();
+
+      boolean emitted = harness.progress(token, "halfway");
+
+      assertThat(emitted).isFalse();
     }
   }
 }

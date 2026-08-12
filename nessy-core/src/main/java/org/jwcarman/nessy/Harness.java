@@ -62,19 +62,30 @@ public final class Harness {
   /**
    * Wired by {@link AgentBuilder#build()}, once an agent's own {@link ConversationLoop} exists to
    * drive with — {@link #resume} has nothing to drive before the first agent is built. {@code
-   * volatile} because {@link #loop(ConversationLoop)} and {@link #resume} may run on different
-   * threads (a build on one, a webhook callback on another) with no other synchronization between
-   * them — unsafe publication of a non-volatile reference is a real hazard here, not a theoretical
-   * one.
+   * volatile} because {@link #loop(ConversationLoop, ListenerRegistry)} and {@link #resume} may run
+   * on different threads (a build on one, a webhook callback on another) with no other
+   * synchronization between them — unsafe publication of a non-volatile reference is a real hazard
+   * here, not a theoretical one.
    */
   private volatile ConversationLoop loop;
 
   /**
+   * The last-built agent's own {@link ListenerRegistry} — this harness's {@link #registry} extended
+   * with that agent's own declared registrations (design §17's seeding), the exact instance {@link
+   * AgentBuilder#build()} hands to its {@code GatedToolCallExecutor} as the emitter the in-process
+   * tee narrates on. {@link #progress} emits here rather than on {@link #registry} so the two
+   * progress lanes — the tee up close, the token from afar — reach the same audience: a harness- or
+   * agent-declared {@code ToolProgress} listener hears both, never just one. {@code volatile} for
+   * the same cross-thread-publication reason as {@link #loop}.
+   */
+  private volatile ListenerRegistry agentRegistry;
+
+  /**
    * How many agents this harness has built. A second (or later) registration means {@link #resume}
-   * can no longer know which agent's loop — which tools, which grants, which policy — a given park
-   * token belongs to: parks do not yet carry agent identity (a design escalation, out of this
-   * generation's scope), so {@link #resume} refuses outright rather than silently routing a call
-   * through the wrong agent's executors.
+   * and {@link #progress} can no longer know which agent's loop or registry — which tools, which
+   * grants, which policy, which listeners — a given park token belongs to: parks do not yet carry
+   * agent identity (a design escalation, out of this generation's scope), so both refuse outright
+   * rather than silently routing through the wrong agent.
    */
   private final AtomicInteger loopRegistrations = new AtomicInteger();
 
@@ -136,9 +147,14 @@ public final class Harness {
     return registry;
   }
 
-  /** {@link AgentBuilder#build()}'s wire-through: the loop {@link #resume} will drive with. */
-  void loop(ConversationLoop loop) {
+  /**
+   * {@link AgentBuilder#build()}'s wire-through: the loop {@link #resume} will drive with, and the
+   * agent-extended registry {@link #progress} will emit on — the same registry instance the built
+   * agent's own tee narrates {@link ToolProgress} onto.
+   */
+  void loop(ConversationLoop loop, ListenerRegistry agentRegistry) {
     this.loop = Objects.requireNonNull(loop, "loop must not be null");
+    this.agentRegistry = Objects.requireNonNull(agentRegistry, "agentRegistry must not be null");
     loopRegistrations.incrementAndGet();
   }
 
@@ -191,25 +207,35 @@ public final class Harness {
    * the wait it parked under. {@code token} is only ever peeked, via {@link
    * ConversationStore#findPark}, never consumed — this is narration, not a resolution, and the wait
    * itself remains exactly as resumable afterward as it was before. An unknown or already-settled
-   * token is not an error; the signal simply has nowhere left to land, so it is dropped and {@code
-   * false} says so. A live token emits {@link ToolProgress} on this harness's {@link #registry},
-   * carrying the park's own conversation and call id, and returns {@code true}.
+   * token is not an error — nor is a token that settles between the peek and the conversation-id
+   * lookup below, a race against a concurrent {@link #resume}; either way the signal simply has
+   * nowhere left to land, so it is dropped and {@code false} says so. A live token emits {@link
+   * ToolProgress} on the (single) built agent's own system channel — the same {@link
+   * ListenerRegistry} the in-process tee narrates on — reaching harness-seeded and agent-declared
+   * listeners alike, the identical audience the tee reaches, carrying the park's own conversation
+   * and call id, and returns {@code true}.
+   *
+   * @throws IllegalStateException if more than one agent has been built from this harness — {@code
+   *     progress} cannot yet tell which agent's registry a token belongs to (see {@link
+   *     #loopRegistrations})
    */
   public boolean progress(ParkToken token, String message) {
     Objects.requireNonNull(token, "token must not be null");
     Objects.requireNonNull(message, "message must not be null");
+    int agents = loopRegistrations.get();
+    if (agents > 1) {
+      throw new IllegalStateException(
+          "progress is single-agent this generation: " + agents + " agents built");
+    }
     Optional<ParkedCall> park = store.findPark(token);
     if (park.isEmpty()) {
       return false;
     }
-    ConversationId conversationId =
-        store
-            .findParkConversation(token)
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "park token indexed without a conversation: " + token));
-    registry.emit(new ToolProgress(conversationId, park.get().call().id(), message));
+    Optional<ConversationId> conversationId = store.findParkConversation(token);
+    if (conversationId.isEmpty()) {
+      return false; // settled concurrently between the two reads — dropped, not an error
+    }
+    agentRegistry.emit(new ToolProgress(conversationId.get(), park.get().call().id(), message));
     return true;
   }
 }
