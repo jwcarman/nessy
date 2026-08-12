@@ -43,10 +43,10 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
  * harnessRegistry.extendedWith(agentRegistrations)} reads as "the harness's registrations, extended
  * with the agent's own."
  *
- * <p>Deliberately narrower than the retired {@code EventHub}: there is no general, agent-wide
- * {@code subscribe} here. An agent-wide observer is declared once, at build time, via {@code
- * listen}/{@code listenAsync} on the builder; the only thing left to attach at runtime is a single
- * conversation's own traffic, through {@link #forConversation}.
+ * <p>Deliberately narrow: there is no general, agent-wide {@code subscribe} here. An agent-wide
+ * observer is declared once, at build time, via {@code listen}/{@code listenAsync} on the builder;
+ * the only thing left to attach at runtime is a single conversation's own traffic, through {@link
+ * #forConversation}.
  */
 public final class ListenerRegistry implements EventEmitter {
 
@@ -111,9 +111,9 @@ public final class ListenerRegistry implements EventEmitter {
   }
 
   /**
-   * A private, identity-equality class rather than a record — see the retired {@code
-   * SynchronousEventHub}'s javadoc for why: two registrations that look alike (same conversation,
-   * type, and consumer) must still be independently closable.
+   * A private, identity-equality class rather than a record: two registrations that look alike
+   * (same conversation, type, and consumer) must still be independently closable — record equality
+   * would make closing the second one silently remove the first.
    */
   private static final class LocalRegistration<E> {
 

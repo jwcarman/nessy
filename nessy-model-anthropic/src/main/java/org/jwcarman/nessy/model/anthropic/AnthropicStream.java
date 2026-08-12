@@ -228,7 +228,7 @@ public final class AnthropicStream implements ModelStream {
     // instead of the SDK's own exception type, which is the contract this method exists to keep.
     //
     // "model_context_window_exceeded" maps to StopReason.MAX_TOKENS: semantically it is also "ran
-    // out of room" (context, not output budget), and the reducer already halts cleanly on
+    // out of room" (context, not output budget), and the fold already halts cleanly on
     // MAX_TOKENS, so no new StopReason variant is needed to handle it correctly.
     //
     // "pause_turn" is a KNOWN SDK value that this method still deliberately throws on: it is

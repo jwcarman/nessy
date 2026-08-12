@@ -19,11 +19,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
- * The virtual-thread machinery behind {@link EventHub#subscribeAsync(Class, Consumer, Consumer)}.
+ * The virtual-thread machinery behind asynchronous listener delivery ({@code
+ * AgentBuilder#listenAsync}).
  *
- * <p>Package-private and stateful (a counter), so it cannot live as a field directly on the {@link
- * EventHub} interface — interface fields are implicitly {@code public static final}, which would
- * expose the counter as part of the public API for no reason.
+ * <p>Package-private and stateful (a counter), so it lives in its own class rather than on any of
+ * the listener interfaces — interface fields are implicitly {@code public static final}, which
+ * would expose the counter as part of the public API for no reason.
  */
 final class AsyncDelivery {
 
