@@ -152,15 +152,21 @@ public final class ConversationLoop {
     List<String> drained = new ArrayList<>();
     boolean settled = false;
     try {
-      // 1. Notes: fold every Told entry, in order (facts minted here, one per entry).
+      // 1. Notes: fold every Told entry, in order (facts minted here, one per entry). The entry's
+      //    own id joins `drained` BEFORE its fold, transactional with that fold's own save (design
+      //    §4): a note is never left in the lane once the fold that consumed it has landed.
       for (LaneEntry entry : loaded.lane()) {
         if (entry instanceof LaneEntry.Told(String entryId, List<ContentBlock> content)) {
-          fold(progress, new ConversationEvent.AgentTold(id, content), drained);
           drained.add(entryId);
+          fold(progress, new ConversationEvent.AgentTold(id, content), drained);
         }
       }
 
-      // 2. Resolutions: while parked, route Resolved entries to the parked executor.
+      // 2. Resolutions: while parked, route Resolved entries to the parked executor. Unlike a
+      //    note's fold, resuming a call can throw before ever reaching a fold (the re-park guard,
+      //    below) — so the entry's id joins `drained` only once resumeParkedCall and its fold have
+      //    both succeeded; a throw between them must leave the entry in the lane for a future
+      //    retry to find, not destroy the only copy of the resolution that arrived.
       for (LaneEntry entry : loaded.lane()) {
         if (progress.get().status() == ConversationStatus.PARKED
             && entry
@@ -174,10 +180,10 @@ public final class ConversationLoop {
             drained.add(entryId); // stale resolution: token's call already settled
             continue;
           }
-          drained.add(entryId);
           ConversationEvent fact =
               resumeParkedCall(park.get(), resolution, progress.get(), observer);
           FoldOutcome folded = fold(progress, fact, drained);
+          drained.add(entryId);
           runCycle(progress, new ArrayDeque<>(folded.effects()), drained, observer);
         }
       }

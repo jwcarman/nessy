@@ -363,8 +363,17 @@ public record ConversationState(
   }
 
   /**
-   * One piece of homework settles. Results arrive in any order; the flush waits for the last one,
-   * because providers require every result for a turn to arrive together in the following message.
+   * One piece of homework settles. Results arrive in any order; the flush waits for every sibling —
+   * pending <em>and</em> parked — because providers require every result for a turn to arrive
+   * together in the following message: flushing {@code [result:c2]} while {@code c1} is still
+   * parked would answer the wire with a {@code tool_use} nobody ever settled.
+   *
+   * <p>When the last <em>pending</em> sibling settles but a parked one remains outstanding, this
+   * fold does not flush — it moves straight to {@link ConversationStatus#PARKED}, holding the
+   * settled results in {@link #pendingResults} for the parked sibling's own eventual {@code
+   * toolFinished} fold to gather and flush together, riders included. That later fold is this same
+   * method: once it removes the resuming call and finds neither pending nor parked siblings left,
+   * it takes the flush branch below exactly as if nothing had ever waited.
    */
   private Step toolFinished(ConversationEvent.ToolFinished event) {
     List<ToolResultBlock> results = new ArrayList<>(pendingResults);
@@ -382,6 +391,9 @@ public record ConversationState(
             .withConsecutiveErrors(errors);
     if (!remaining.isEmpty()) {
       return Step.of(next);
+    }
+    if (!remainingParked.isEmpty()) {
+      return Step.of(next.with(ConversationStatus.PARKED));
     }
     List<ContentBlock> flushContent = new ArrayList<>(results);
     flushContent.addAll(next.mergedTold());

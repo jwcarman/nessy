@@ -322,6 +322,67 @@ class ConversationStateFoldTest {
     assertThat(step.state().parkedCalls()).isEmpty();
   }
 
+  /**
+   * Opus fix round 1, Finding 1 (Critical): the last <em>pending</em> sibling settling must not
+   * flush while a <em>parked</em> sibling is still outstanding — that would answer the wire with
+   * {@code [result:c2]} alone, leaving {@code tool_use:c1} forever unanswered. The fold instead
+   * waits, moving straight to {@code PARKED} with the settled result held in {@code
+   * pendingResults}.
+   */
+  @Test
+  void toolFinished_with_a_parked_sibling_holds_the_flush() {
+    ToolCall c1 = call("call-1", "search");
+    ToolCall c2 = call("call-2", "fetch");
+    ParkToken token = ParkToken.generate();
+    ConversationState c1Parked = midHomework(c1, c2).parked(c1, token);
+    assertThat(c1Parked.status()).isEqualTo(ConversationStatus.EXECUTING_TOOL);
+
+    Step step = c1Parked.fold(new ConversationEvent.ToolFinished(id, c2, ToolResult.ok("b")));
+
+    assertThat(step.remember()).isEmpty();
+    assertThat(step.effects()).isEmpty();
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.PARKED);
+    assertThat(step.state().pendingCalls()).isEmpty();
+    assertThat(step.state().parkedCalls()).containsExactly(new ParkedCall(token, c1));
+    assertThat(step.state().pendingResults())
+        .containsExactly(new ToolResultBlock("call-2", "b", false));
+  }
+
+  /**
+   * The other half of Finding 1: once the parked sibling itself finishes (the resume's own {@code
+   * ToolFinished}), that fold is the one that flushes everything together — the sibling's earlier
+   * result and this one, riders included — exactly as if nothing had ever waited.
+   */
+  @Test
+  void the_parked_siblings_own_finish_flushes_everything_held_for_it() {
+    ToolCall c1 = call("call-1", "search");
+    ToolCall c2 = call("call-2", "fetch");
+    ParkToken token = ParkToken.generate();
+    ConversationState waiting =
+        midHomework(c1, c2)
+            .parked(c1, token)
+            .fold(new ConversationEvent.ToolFinished(id, c2, ToolResult.ok("b")))
+            .state()
+            .fold(ConversationEvent.AgentTold.of(id, "psst"))
+            .state();
+    assertThat(waiting.status()).isEqualTo(ConversationStatus.PARKED);
+
+    Step step = waiting.fold(new ConversationEvent.ToolFinished(id, c1, ToolResult.ok("a")));
+
+    Message expectedFlush =
+        Message.toolResults(
+            List.<ContentBlock>of(
+                new ToolResultBlock("call-2", "b", false),
+                new ToolResultBlock("call-1", "a", false),
+                new TextBlock("psst")));
+    assertThat(step.remember()).containsExactly(expectedFlush);
+    assertThat(step.state().status()).isEqualTo(ConversationStatus.AWAITING_MODEL);
+    assertThat(step.state().parkedCalls()).isEmpty();
+    assertThat(step.state().pendingResults()).isEmpty();
+    assertThat(step.state().told()).isEmpty();
+    assertThat(step.effects()).containsExactly(Effect.callModel());
+  }
+
   // --- ModelCallFailed ---
 
   @Test

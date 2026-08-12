@@ -416,5 +416,26 @@ class HarnessTest {
 
       assertThat(resumed.state().status()).isEqualTo(ConversationStatus.COMPLETE);
     }
+
+    /**
+     * Opus fix round 1, Finding 4 (Important): a park token carries no agent identity, so a harness
+     * that has built more than one agent can no longer tell which agent's loop — which tools,
+     * grants, policy — a token belongs to. Rather than silently routing through whichever agent
+     * happened to build last, {@code resume} refuses outright. (The proper fix — parks carrying
+     * agent identity — is a design escalation outside this generation's scope.)
+     */
+    @Test
+    void resume_on_a_multi_agent_harness_refuses_naming_the_agent_count() {
+      Harness harness = Nessy.harness(new FakeProvider("hi", "there")).build();
+      harness.agent().model("model-a").build();
+      harness.agent().model("model-b").build();
+      ParkToken token = ParkToken.generate();
+      ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
+
+      assertThatThrownBy(() -> harness.resume(token, decided))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("single-agent")
+          .hasMessageContaining("2");
+    }
   }
 }

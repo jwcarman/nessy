@@ -161,7 +161,9 @@ class ConversationLoopTest {
 
     private final List<String> journal;
     private final Map<String, ParkToken> tokens = new HashMap<>();
+    private final Map<String, ConversationEvent> settleResults = new HashMap<>();
     private final Map<String, ConversationEvent> resumeResults = new HashMap<>();
+    private final Map<String, ParkToken> reparkOnResume = new HashMap<>();
     private int resumeCalls;
 
     ParkingToolCallExecutor(List<String> journal) {
@@ -174,8 +176,23 @@ class ConversationLoopTest {
       return token;
     }
 
+    /** A call this executor settles immediately, instead of parking — a non-parking sibling. */
+    ParkingToolCallExecutor andFor(String callId, ConversationEvent fact) {
+      settleResults.put(callId, fact);
+      return this;
+    }
+
     ParkingToolCallExecutor resumesTo(String callId, ConversationEvent fact) {
       resumeResults.put(callId, fact);
+      return this;
+    }
+
+    /**
+     * A legitimate executor outcome the loop's own re-park guard refuses this generation:
+     * approval-resume invokes the tool, and the tool itself parks again.
+     */
+    ParkingToolCallExecutor reparksOnResume(String callId) {
+      reparkOnResume.put(callId, ParkToken.generate());
       return this;
     }
 
@@ -186,6 +203,11 @@ class ConversationLoopTest {
     @Override
     public Awaited<ConversationEvent> execute(
         ToolCall call, ConversationState state, TurnObserver observer) {
+      ConversationEvent settled = settleResults.get(call.id());
+      if (settled != null) {
+        journal.add("settle:" + call.id());
+        return Awaited.ready(settled);
+      }
       journal.add("park:" + call.id());
       ParkToken token = tokens.get(call.id());
       if (token == null) {
@@ -199,11 +221,67 @@ class ConversationLoopTest {
         ToolCall call, ToolResolution resolution, ConversationState state, TurnObserver observer) {
       journal.add("resume:" + call.id());
       resumeCalls++;
+      ParkToken reparkToken = reparkOnResume.get(call.id());
+      if (reparkToken != null) {
+        return Awaited.parked(reparkToken);
+      }
       ConversationEvent fact = resumeResults.get(call.id());
       if (fact == null) {
         throw new IllegalStateException("no scripted resume result for call " + call.id());
       }
       return Awaited.ready(fact);
+    }
+  }
+
+  /**
+   * Records the lane's contents immediately after every {@code save}, so a test can pin that a
+   * particular entry's id rode a particular fold's own save — not a later one — without having to
+   * interrupt the drive mid-flight to look.
+   */
+  private static final class LaneSnapshottingStore implements ConversationStore {
+
+    private final ConversationStore delegate = ConversationStore.inMemory();
+    private final ConversationId id;
+    private final List<List<LaneEntry>> laneAfterEachSave = new ArrayList<>();
+
+    LaneSnapshottingStore(ConversationId id) {
+      this.id = id;
+    }
+
+    List<List<LaneEntry>> laneAfterEachSave() {
+      return laneAfterEachSave;
+    }
+
+    @Override
+    public Optional<Loaded> load(ConversationId conversationId) {
+      return delegate.load(conversationId);
+    }
+
+    @Override
+    public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
+      ConversationState saved = delegate.save(state, drainedLaneIds);
+      laneAfterEachSave.add(delegate.load(id).map(Loaded::lane).orElse(List.of()));
+      return saved;
+    }
+
+    @Override
+    public void appendLane(ConversationId conversationId, LaneEntry entry) {
+      delegate.appendLane(conversationId, entry);
+    }
+
+    @Override
+    public Optional<ParkedCall> findPark(ParkToken token) {
+      return delegate.findPark(token);
+    }
+
+    @Override
+    public Optional<ConversationId> findParkConversation(ParkToken token) {
+      return delegate.findParkConversation(token);
+    }
+
+    @Override
+    public boolean consumeToken(ParkToken token) {
+      return delegate.consumeToken(token);
     }
   }
 
@@ -786,6 +864,36 @@ class ConversationLoopTest {
           .containsExactly(new TextBlock("one"), new TextBlock("two"), new TextBlock("three"));
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
     }
+
+    /**
+     * Opus fix round 1, Finding 3 (Important, design §4 governs): a note's id must ride its own
+     * fold's save, transactionally — not linger in the lane until some later save happens to flush
+     * it. Two notes, so the first note's own save is directly observable before the second's fold
+     * ever runs.
+     */
+    @Test
+    void a_notes_id_rides_its_own_folds_save_not_a_later_one() {
+      List<String> journal = new ArrayList<>();
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, plainAnswer("Ok."));
+      LaneSnapshottingStore store = new LaneSnapshottingStore(ID);
+      LaneEntry.Told first = LaneEntry.told(List.of(new TextBlock("one")));
+      LaneEntry.Told second = LaneEntry.told(List.of(new TextBlock("two")));
+      store.appendLane(ID, first);
+      store.appendLane(ID, second);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+
+      loop.drive(ID, OBSERVER);
+
+      List<LaneEntry> laneAfterFirstNotesSave = store.laneAfterEachSave().getFirst();
+      assertThat(laneAfterFirstNotesSave).doesNotContain(first);
+    }
   }
 
   @Nested
@@ -879,6 +987,60 @@ class ConversationLoopTest {
       assertThat(outcome.state().parkedCalls()).containsExactly(new ParkedCall(token, c1));
       assertThat(store.load(ID).orElseThrow().state().status())
           .isEqualTo(ConversationStatus.PARKED);
+    }
+
+    /**
+     * Opus fix round 1, Finding 1 (Critical), the reviewer's exact trace: two calls fan out, one
+     * parks, its sibling settles. The turn must not flush on the sibling's completion alone (that
+     * would answer the wire with one result and an unanswered {@code tool_use}); it holds, PARKED,
+     * until the resume brings the parked call's own result — then one flush carries both, riders
+     * included, and the turn completes.
+     */
+    @Test
+    void a_parked_call_with_a_settling_sibling_holds_the_flush_until_resume() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ToolCall c2 = toolCall("c2", "fetch");
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, homework(c1, c2), plainAnswer("Both in."));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken token = tools.parksWhen("c1");
+      tools.andFor("c2", new ConversationEvent.ToolFinished(ID, c2, ToolResult.ok("b")));
+      tools.resumesTo("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
+      RecordingMemory memory = new RecordingMemory(journal);
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              memory,
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+
+      RunOutcome parked =
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "search and fetch"), OBSERVER);
+
+      assertThat(parked.state().status()).isEqualTo(ConversationStatus.PARKED);
+      assertThat(((RunOutcome.Parked) parked).token()).isEqualTo(token);
+      assertThat(parked.state().pendingResults()).hasSize(1); // c2's result, held — not flushed
+      assertThat(model.calls()).isEqualTo(1); // no second model call: the turn never continued
+
+      store.consumeToken(token);
+      store.appendLane(
+          ID, LaneEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
+      RunOutcome finished = loop.drive(ID, OBSERVER);
+
+      assertThat(finished.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(model.calls()).isEqualTo(2);
+      Message flush =
+          memory.remembered().stream()
+              .filter(m -> m.content().stream().anyMatch(ToolResultBlock.class::isInstance))
+              .reduce((first, last) -> last)
+              .orElseThrow();
+      assertThat(flush.content())
+          .containsExactly(
+              new ToolResultBlock("c2", "b", false), new ToolResultBlock("c1", "a", false));
     }
 
     /**
@@ -980,6 +1142,40 @@ class ConversationLoopTest {
       assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
       assertThat(((RunOutcome.Parked) outcome).token()).isEqualTo(activeToken);
       assertThat(store.load(ID).orElseThrow().lane()).isEmpty();
+    }
+
+    /**
+     * Opus fix round 1, Finding 2 (Important): a throw between accepting a resolution and folding
+     * its fact must not destroy the only copy of that resolution. The re-park guard is a real,
+     * reachable throw (approval-resume invokes the tool, and the tool parks again) — this pins that
+     * the Resolved entry survives it, in the lane, for a future retry.
+     */
+    @Test
+    void a_throwing_resume_leaves_the_resolution_in_the_lane_for_retry() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken token = tools.parksWhen("c1");
+      tools.reparksOnResume("c1");
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
+      store.consumeToken(token);
+      LaneEntry.Resolved resolvedEntry =
+          LaneEntry.resolved(token, new ToolResolution.Decided(Decision.allow()));
+      store.appendLane(ID, resolvedEntry);
+
+      assertThatThrownBy(() -> loop.drive(ID, OBSERVER)).isInstanceOf(IllegalStateException.class);
+
+      assertThat(store.load(ID).orElseThrow().lane()).containsExactly(resolvedEntry);
     }
   }
 

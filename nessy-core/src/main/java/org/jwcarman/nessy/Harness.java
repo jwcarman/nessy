@@ -18,6 +18,7 @@ package org.jwcarman.nessy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
@@ -57,11 +58,22 @@ public final class Harness {
 
   /**
    * Wired by {@link AgentBuilder#build()}, once an agent's own {@link ConversationLoop} exists to
-   * drive with — {@link #resume} has nothing to drive before the first agent is built. Every agent
-   * built from this harness re-wires it, last build wins; a harness meant to field {@link #resume}
-   * calls is a one-agent harness in practice, the common case this seam serves.
+   * drive with — {@link #resume} has nothing to drive before the first agent is built. {@code
+   * volatile} because {@link #loop(ConversationLoop)} and {@link #resume} may run on different
+   * threads (a build on one, a webhook callback on another) with no other synchronization between
+   * them — unsafe publication of a non-volatile reference is a real hazard here, not a theoretical
+   * one.
    */
-  private ConversationLoop loop;
+  private volatile ConversationLoop loop;
+
+  /**
+   * How many agents this harness has built. A second (or later) registration means {@link #resume}
+   * can no longer know which agent's loop — which tools, which grants, which policy — a given park
+   * token belongs to: parks do not yet carry agent identity (a design escalation, out of this
+   * generation's scope), so {@link #resume} refuses outright rather than silently routing a call
+   * through the wrong agent's executors.
+   */
+  private final AtomicInteger loopRegistrations = new AtomicInteger();
 
   Harness(
       ModelProvider provider,
@@ -124,6 +136,7 @@ public final class Harness {
   /** {@link AgentBuilder#build()}'s wire-through: the loop {@link #resume} will drive with. */
   void loop(ConversationLoop loop) {
     this.loop = Objects.requireNonNull(loop, "loop must not be null");
+    loopRegistrations.incrementAndGet();
   }
 
   /**
@@ -145,11 +158,19 @@ public final class Harness {
    * what happens next.
    *
    * @throws IllegalArgumentException if {@code token} names no conversation this store still parks
+   * @throws IllegalStateException if more than one agent has been built from this harness — {@code
+   *     resume} cannot yet tell which agent's loop a token belongs to (see {@link
+   *     #loopRegistrations})
    */
   public RunOutcome resume(ParkToken token, ToolResolution resolution, TurnObserver observer) {
     Objects.requireNonNull(token, "token must not be null");
     Objects.requireNonNull(resolution, "resolution must not be null");
     Objects.requireNonNull(observer, "observer must not be null");
+    int agents = loopRegistrations.get();
+    if (agents > 1) {
+      throw new IllegalStateException(
+          "resume is single-agent this generation: " + agents + " agents built");
+    }
     ConversationId id =
         store
             .findParkConversation(token)
