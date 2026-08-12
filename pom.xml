@@ -59,6 +59,7 @@
     <module>nessy-testing</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
+    <module>nessy-store-jdbc</module>
     <module>nessy-examples</module>
   </modules>
 
@@ -87,10 +88,16 @@
     <micrometer.version>1.16.2</micrometer.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+    <!-- Held at the 1.21 line deliberately: testcontainers 2.0 renamed every module artifact
+         (org.testcontainers:postgresql -> org.testcontainers:testcontainers-postgresql) and
+         relocated container classes to per-module packages, dropping the generic
+         PostgreSQLContainer<?> shape nessy-store-jdbc's container test relies on. -->
+    <testcontainers.version>1.21.4</testcontainers.version>
+    <postgresql.version>42.7.13</postgresql.version>
 
     <!-- Test groups the default build skips. Override to empty to run them:
          ./mvnw test -Dnessy.excludedGroups= -->
-    <nessy.excludedGroups>live</nessy.excludedGroups>
+    <nessy.excludedGroups>live,container</nessy.excludedGroups>
 
     <!-- Build plugin versions (pinned explicitly since this POM has no parent
          to inherit plugin management from) -->
@@ -130,9 +137,28 @@
         <scope>import</scope>
       </dependency>
       <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-core</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-core</artifactId>
+        <version>${project.version}</version>
+        <classifier>tests</classifier>
+        <type>test-jar</type>
+      </dependency>
+      <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>${postgresql.version}</version>
       </dependency>
       <dependency>
         <groupId>com.anthropic</groupId>
