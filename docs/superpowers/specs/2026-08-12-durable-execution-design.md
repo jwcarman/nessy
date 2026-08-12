@@ -107,12 +107,30 @@ identical to today.
 
 `ConversationStore` grows from load/save/consumeToken into the coordination
 contract. The loop never learns what a node is; every fleet concern is a
-store method:
+store method. Two mechanisms carry two different loads, and neither can do
+the other's job:
+
+- **Fenced writes carry correctness.** State carries a version; `save`
+  carries the expected version; a stale writer loses loudly. A driver may
+  never write to a base it didn't read — including the zombie case (a driver
+  GC-pauses past its lease, another node legitimately reclaims, the zombie
+  wakes and saves late: only the write-time check stops it). This is plain
+  optimistic concurrency, and it is the load-bearing mechanism: remove
+  everything else and the system stays *correct*.
+- **Claims carry economy.** A segment is not just a state write — it is
+  model calls that cost money and tools that act on the world, and
+  version-checking detects a race only *after* that spend. A claim is itself
+  just optimistic locking on a different column at segment *start* (one
+  conditional `UPDATE … WHERE claimant IS NULL`, no locks, no blocking) so
+  duplicate work almost never begins. The lease is a TTL on the claim so
+  crashes self-heal. Remove claims and races cost dollars and duplicate side
+  effects; remove the fence and the system is simply wrong.
 
 | Concern | Contract sketch |
 |---|---|
-| Simultaneous claim | `claim(id, lease)` — atomic compare-and-set on an unclaimed conversation; exactly one caller wins. The essence's read-then-act §6 refusal check becomes this CAS. |
-| Crashed claimant | claims carry a **lease** (expiry + renewal while driving). An expired lease is reclaimable; recovery is re-driving from the status pointer. |
+| Torn writes / zombie writers | `save(state, expectedVersion)` — version-fenced CAS; stale writers fail loudly and discard their segment. |
+| Simultaneous drivers | `claim(id, lease)` — CAS on an unclaimed conversation; exactly one caller wins, before any spend. The essence's read-then-act §6 refusal check becomes this CAS. |
+| Crashed claimant | claims carry a **lease** (expiry + renewal while driving). An expired lease is reclaimable; recovery is re-driving from the status pointer, fenced by the version check. |
 | Parked turns | **parking releases the claim.** A parked conversation has no driver and needs no lease — that is the point of parking. Resume re-claims before re-driving. |
 | Resume dedup | `consumeToken(token)` (already shipped): resolutions are at-least-once in every real transport; the token is single-use. Progress peeks; only resolution consumes. |
 | Mail | append (unconditional), read-in-order, acknowledge-drained. |
