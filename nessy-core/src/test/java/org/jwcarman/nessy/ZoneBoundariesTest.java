@@ -50,10 +50,13 @@ class ZoneBoundariesTest {
    * The only root-package files allowed to reach into internal machinery, and why: each assembles a
    * {@link org.jwcarman.nessy.internal.ConversationLoop} (or, for {@code Conversation.java}, drives
    * one) — the cutover left no {@code spi}-level engine interface to mediate that construction, so
-   * the facade reaches into {@code internal} directly, deliberately, at exactly these three sites.
+   * the facade reaches into {@code internal} directly, deliberately, at exactly these sites. {@code
+   * Harness.java} joins the set with the unified drive (design 2026-08-12): {@code resume} drives
+   * the same {@link org.jwcarman.nessy.internal.ConversationLoop} {@code AgentBuilder} wires
+   * through to it, rather than mediating through a {@code spi}-level type that does not exist.
    */
   private static final Set<String> SANCTIONED_ROOT_TO_INTERNAL_IMPORTS =
-      Set.of("Agent.java", "AgentBuilder.java", "Conversation.java");
+      Set.of("Agent.java", "AgentBuilder.java", "Conversation.java", "Harness.java");
 
   /**
    * The only spi types allowed to reach into internal machinery, and why: each is an executor

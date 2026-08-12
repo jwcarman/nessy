@@ -18,8 +18,15 @@ package org.jwcarman.nessy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
+import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.RunOutcome;
+import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.LaneEntry;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.InputRenderer;
+import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
@@ -47,6 +54,14 @@ public final class Harness {
   private final ObjectMapper mapper;
   private final String defaultModel;
   private final ListenerRegistry registry;
+
+  /**
+   * Wired by {@link AgentBuilder#build()}, once an agent's own {@link ConversationLoop} exists to
+   * drive with — {@link #resume} has nothing to drive before the first agent is built. Every agent
+   * built from this harness re-wires it, last build wins; a harness meant to field {@link #resume}
+   * calls is a one-agent harness in practice, the common case this seam serves.
+   */
+  private ConversationLoop loop;
 
   Harness(
       ModelProvider provider,
@@ -104,5 +119,46 @@ public final class Harness {
 
   ListenerRegistry registry() {
     return registry;
+  }
+
+  /** {@link AgentBuilder#build()}'s wire-through: the loop {@link #resume} will drive with. */
+  void loop(ConversationLoop loop) {
+    this.loop = Objects.requireNonNull(loop, "loop must not be null");
+  }
+
+  /**
+   * Answers a parked call, watched by no one ({@link TurnObserver#noop()}).
+   *
+   * @see #resume(ParkToken, ToolResolution, TurnObserver)
+   */
+  public RunOutcome resume(ParkToken token, ToolResolution resolution) {
+    return resume(token, resolution, TurnObserver.noop());
+  }
+
+  /**
+   * Answers a parked call: {@code token} names a wait some prior turn is durably patient for.
+   * Unknown or already-settled tokens are rejected loud rather than silently dropped; a token this
+   * store still recognizes but has already consumed is redelivery (every real transport is
+   * at-least-once) — the call is not replayed, the drive simply reads whatever the first delivery
+   * already produced. Either way, appending always succeeds and driving is the same re-entrant act
+   * {@link #resume} shares with {@code tell}: the lane absorbs the answer, the status pointer says
+   * what happens next.
+   *
+   * @throws IllegalArgumentException if {@code token} names no conversation this store still parks
+   */
+  public RunOutcome resume(ParkToken token, ToolResolution resolution, TurnObserver observer) {
+    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(resolution, "resolution must not be null");
+    Objects.requireNonNull(observer, "observer must not be null");
+    ConversationId id =
+        store
+            .findParkConversation(token)
+            .orElseThrow(
+                () -> new IllegalArgumentException("unknown or settled park token: " + token));
+    if (!store.consumeToken(token)) {
+      return loop.drive(id, observer); // idempotent re-delivery: read current truth, do not replay
+    }
+    store.appendLane(id, LaneEntry.resolved(token, resolution));
+    return loop.drive(id, observer);
   }
 }

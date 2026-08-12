@@ -93,6 +93,18 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
+  void an_append_before_any_save_still_loads_as_a_fresh_conversation() {
+    ConversationId id = ConversationId.generate();
+    LaneEntry told = LaneEntry.told(List.of(new TextBlock("hi")));
+
+    store().appendLane(id, told);
+
+    ConversationStore.Loaded loaded = store().load(id).orElseThrow();
+    assertThat(loaded.state()).isEqualTo(ConversationState.newConversation(id));
+    assertThat(loaded.lane()).containsExactly(told);
+  }
+
+  @Test
   void appends_are_unconditional_and_ordered() {
     ConversationId id = ConversationId.generate();
     store().save(ConversationState.newConversation(id), List.of());

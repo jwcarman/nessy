@@ -80,11 +80,16 @@ final class InMemoryConversationStore implements ConversationStore {
     Object lock = locks.computeIfAbsent(id, key -> new Object());
     synchronized (lock) {
       ConversationState state = sessions.get(id);
-      if (state == null) {
+      List<LaneEntry> lane = lanes.getOrDefault(id, List.of());
+      if (state == null && lane.isEmpty()) {
         return Optional.empty();
       }
-      List<LaneEntry> lane = lanes.getOrDefault(id, List.of());
-      return Optional.of(new Loaded(state, lane));
+      // The unified drive appends before it ever saves: a brand-new conversation's first entry
+      // lands in the lane with no state row behind it yet. A conversation this store has never
+      // saved but has already taken mail for is not "unknown" — it is a fresh conversation
+      // (version 0) whose lane load must not discard what appendLane already durably holds.
+      ConversationState effective = state == null ? ConversationState.newConversation(id) : state;
+      return Optional.of(new Loaded(effective, lane));
     }
   }
 

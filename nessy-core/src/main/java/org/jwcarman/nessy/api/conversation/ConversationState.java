@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -287,6 +288,15 @@ public record ConversationState(
       List.of(ConversationStatus.IDLE, ConversationStatus.COMPLETE, ConversationStatus.FAILED);
 
   /**
+   * Whether this conversation is at rest — {@code IDLE}, {@code COMPLETE}, or {@code FAILED} — the
+   * one source of truth {@link #openTurn()}'s own precondition and the loop's continuation pointer
+   * both consult, so the two never drift into two different ideas of "resumable."
+   */
+  public boolean isQuiescent() {
+    return QUIESCENT_STATUSES.contains(status);
+  }
+
+  /**
    * The closure transition that turns accumulated notes into an open turn: every {@link #told}
    * entry merges into one {@link Message#user(List) user} message, in arrival order, the streak and
    * any prior failure reason are cleared — a new turn owes nothing to the last one — and a model
@@ -295,7 +305,7 @@ public record ConversationState(
    * loud rather than folding something nonsensical.
    */
   public Step openTurn() {
-    if (!QUIESCENT_STATUSES.contains(status)) {
+    if (!isQuiescent()) {
       throw new IllegalStateException(
           "openTurn refuses to open over an open turn: status is " + status);
     }
@@ -408,6 +418,27 @@ public record ConversationState(
     return Step.of(
         failed.withPendingCalls(List.of()).withPendingResults(List.of()).withTold(List.of()),
         List.of(flush));
+  }
+
+  /**
+   * The closure transition a park applies: {@code call} moves from {@link #pendingCalls} to {@link
+   * #parkedCalls}, named by {@code token} for the resume that must later present it. Status becomes
+   * {@link ConversationStatus#PARKED} iff no {@link #pendingCalls} remain un-parked once {@code
+   * call} is moved — a sibling call still running keeps the conversation {@code EXECUTING_TOOL}
+   * until it too settles or parks. Fold-free and loop-applied, like {@link #halted(String)}: no
+   * message is born, so unlike {@code halted} there is nothing for the loop to remember, only to
+   * save.
+   */
+  public ConversationState parked(ToolCall call, ParkToken token) {
+    Objects.requireNonNull(call, "call must not be null");
+    Objects.requireNonNull(token, "token must not be null");
+    List<ToolCall> remaining = new ArrayList<>(pendingCalls);
+    removeFirstMatch(remaining, call.id());
+    List<ParkedCall> newParkedCalls = new ArrayList<>(parkedCalls);
+    newParkedCalls.add(new ParkedCall(token, call));
+    ConversationStatus newStatus =
+        remaining.isEmpty() ? ConversationStatus.PARKED : ConversationStatus.EXECUTING_TOOL;
+    return withPendingCalls(remaining).withParkedCalls(newParkedCalls).with(newStatus);
   }
 
   /**

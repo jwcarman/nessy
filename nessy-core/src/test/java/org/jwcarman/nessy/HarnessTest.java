@@ -18,6 +18,7 @@ package org.jwcarman.nessy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -28,12 +29,25 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -275,6 +289,132 @@ class HarnessTest {
       chatB.tell("hi");
 
       assertThat(observedByA).isEmpty();
+    }
+  }
+
+  /**
+   * {@code Harness.resume} (design 2026-08-12): the facade over {@code findParkConversation} +
+   * {@code consumeToken} + {@code appendLane} + {@code drive} — pinned end to end through a real
+   * {@link Agent}, wired the way an application actually would.
+   */
+  @Nested
+  class Resume {
+
+    /** A provider that replays one scripted turn (a list of {@link ModelEvent}) per call. */
+    private static final class ScriptedProvider implements ModelProvider {
+
+      private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
+
+      ScriptedProvider turn(ModelEvent... events) {
+        turns.addLast(List.of(events));
+        return this;
+      }
+
+      @Override
+      public ModelStream stream(ModelRequest request) {
+        Iterator<ModelEvent> events = turns.removeFirst().iterator();
+        return new ModelStream() {
+          @Override
+          public Iterator<ModelEvent> iterator() {
+            return events;
+          }
+
+          @Override
+          public void close() {
+            // intentionally empty: this fake stream holds no resources to release
+          }
+        };
+      }
+
+      @Override
+      public Set<Capability> capabilities() {
+        return Set.of();
+      }
+    }
+
+    record SearchInput(String query) {}
+
+    /** A tool that always succeeds once invoked — the gate is what parks, not the tool itself. */
+    static final class SearchTool implements Tool<SearchInput> {
+
+      @Override
+      public String name() {
+        return "search";
+      }
+
+      @Override
+      public String description() {
+        return "Searches for something";
+      }
+
+      @Override
+      public Class<SearchInput> inputType() {
+        return SearchInput.class;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(SearchInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok("found:" + input.query()));
+      }
+    }
+
+    /** Parks the first call it is asked, remembering the token it handed out. */
+    static final class ParkingApprover implements Approver {
+
+      private ParkToken token;
+
+      @Override
+      public Awaited<Decision> approve(ApprovalRequest request) {
+        token = ParkToken.generate();
+        return Awaited.parked(token);
+      }
+
+      ParkToken token() {
+        return token;
+      }
+    }
+
+    @Test
+    void resume_of_an_unknown_token_throws() {
+      Harness harness = Nessy.harness(new FakeProvider("hi")).build();
+      ParkToken token = ParkToken.generate();
+      ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
+
+      assertThatThrownBy(() -> harness.resume(token, decided))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("unknown");
+    }
+
+    @Test
+    void resume_answers_a_parked_call_and_finishes_the_turn() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Harness harness = Nessy.harness(provider).build();
+      Agent<String> agent =
+          harness
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+
+      RunOutcome parked = agent.converse().tell("search for x");
+
+      assertThat(parked).isInstanceOf(RunOutcome.Parked.class);
+      ParkToken token = approver.token();
+      assertThat(((RunOutcome.Parked) parked).token()).isEqualTo(token);
+
+      RunOutcome resumed = harness.resume(token, new ToolResolution.Decided(Decision.allow()));
+
+      assertThat(resumed.state().status()).isEqualTo(ConversationStatus.COMPLETE);
     }
   }
 }

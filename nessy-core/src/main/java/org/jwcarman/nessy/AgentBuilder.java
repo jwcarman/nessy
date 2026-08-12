@@ -68,6 +68,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   /** {@code ""} — no system prompt. */
   private static final String DEFAULT_SYSTEM_PROMPT = "";
 
+  private final Harness harness;
   private final ModelProvider provider;
   private final ConversationStore store;
   private final ObservationRegistry observations;
@@ -102,6 +103,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   AgentBuilder(Harness harness, Class<I> vocabulary, InputRenderer<I> defaultRenderer) {
     Objects.requireNonNull(vocabulary, "vocabulary must not be null");
     this.renderer = Objects.requireNonNull(defaultRenderer, "defaultRenderer must not be null");
+    this.harness = harness;
     this.provider = harness.provider();
     this.store = harness.store();
     this.observations = harness.observations();
@@ -270,6 +272,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
             store,
             events,
             observations);
+    harness.loop(loop);
     return new Agent<>(loop, events, store, resolvedMemory, renderer);
   }
 

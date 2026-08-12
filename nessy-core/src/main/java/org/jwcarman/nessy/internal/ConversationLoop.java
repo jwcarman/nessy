@@ -23,7 +23,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
@@ -34,10 +33,14 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Effect;
+import org.jwcarman.nessy.api.conversation.LaneEntry;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
@@ -49,20 +52,23 @@ import org.jwcarman.nessy.spi.memory.Memory;
  * exist anymore; this is the machinery every assembly shares, varying only in the executors,
  * memory, store, and policy handed to it.
  *
- * <p>The cycle, per fact: ask the state to fold it; consult the termination policy (after every
- * fold — a law, not a list of check sites); tell Memory the fold's message births; emit the fact on
- * the system channel; persist; then perform the emitted effects, each yielding the next fact. A
- * halt discards unperformed effects — intents, not obligations — and applies the closure transition
- * {@code halted(reason)}.
+ * <p>The unified drive (design 2026-08-12): every entry — a tell, a resolution — appends to the
+ * conversation's durable lane regardless of status; nothing is ever refused. Exactly one verb,
+ * {@link #drive}, walks that lane and the conversation's status pointer and does whatever is next —
+ * re-entrant from any status, retried on a fenced save's contention, park-aware. The cycle per fact
+ * is unchanged: fold it; consult the termination policy after every fold — a law, not a list of
+ * check sites; tell {@link Memory} the fold's message births; emit the fact on the system channel;
+ * persist; then perform the emitted effects, each yielding the next fact. A halt discards
+ * unperformed effects — intents, not obligations — and applies the closure transition {@code
+ * halted(reason)}; a park applies {@code parked(call, token)} the same fold-free, loop-applied way.
  *
  * <p>Durability: the most recent state is saved on every exit path, including exceptions — the
- * progress-holder contract. Parks: this generation refuses them loudly (there is nowhere to park
- * to); {@link #resume} is the seam where the durable generation lands.
+ * progress-holder contract, now shared by every closure transition this loop applies, not just the
+ * terminal one.
  */
 public final class ConversationLoop {
 
-  private static final Set<ConversationStatus> RESUMABLE =
-      Set.of(ConversationStatus.IDLE, ConversationStatus.COMPLETE, ConversationStatus.FAILED);
+  private static final int MAX_DRIVE_ATTEMPTS = 5;
 
   private final EffectExecutors executors;
   private final Memory memory;
@@ -70,6 +76,14 @@ public final class ConversationLoop {
   private final ConversationStore store;
   private final EventEmitter emitter;
   private final ObservationRegistry observations;
+
+  /** What one performed effect yielded: a settled fact to fold, or a park to apply. */
+  private sealed interface PerformOutcome {
+
+    record Settled(ConversationEvent fact) implements PerformOutcome {}
+
+    record Parked(ToolCall call, ParkToken token) implements PerformOutcome {}
+  }
 
   public ConversationLoop(
       EffectExecutors executors,
@@ -86,32 +100,32 @@ public final class ConversationLoop {
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
-  /** Runs one segment to completion. See the §6 resume-refusal contract for the status guard. */
+  /** {@code tell}: appends nothing but a note, then drives. The fact itself is minted at drain. */
   public RunOutcome run(
       ConversationId id, ConversationEvent.AgentTold input, TurnObserver observer) {
     Objects.requireNonNull(observer, "observer must not be null");
+    store.appendLane(id, LaneEntry.told(input.content()));
+    return drive(id, observer);
+  }
+
+  /**
+   * Appends nothing; drives the conversation from wherever its status points. Re-entrant from any
+   * status: idle with queued mail, a crashed in-flight turn, a parked wait past its resolution.
+   * Retried up to {@link #MAX_DRIVE_ATTEMPTS} times on {@link StaleStateException} — another driver
+   * moved the fenced base out from under this attempt — before letting the exception surface.
+   */
+  public RunOutcome drive(ConversationId id, TurnObserver observer) {
+    Objects.requireNonNull(observer, "observer must not be null");
     Observation observation = EngineObservations.run(observations, id);
     try (var _ = observation.openScope()) {
-      ConversationState loaded =
-          store
-              .load(id)
-              .map(ConversationStore.Loaded::state)
-              .orElseGet(() -> ConversationState.newConversation(id));
-      if (!RESUMABLE.contains(loaded.status())) {
-        throw new IllegalStateException(
-            "conversation " + id + " is in flight (" + loaded.status() + "); refusing to run");
-      }
-      AtomicReference<ConversationState> progress = new AtomicReference<>(loaded);
-      try {
-        return new RunOutcome.Completed(drive(progress, input, observer));
-      } finally {
+      for (int attempt = 1; ; attempt++) {
         try {
-          progress.set(store.save(progress.get(), List.of()));
+          return driveOnce(id, observer);
         } catch (StaleStateException e) {
-          // This generation is still single-driver: nothing else can move the stored version
-          // out from under us, so this can never actually fire here. It is caught anyway so a
-          // future concurrent driver (Task 4: the winning driver owns the base) can never let a
-          // finally-holder save mask the primary exception this block exists to let propagate.
+          if (attempt >= MAX_DRIVE_ATTEMPTS) {
+            throw e; // somebody keeps winning; the caller retries or reads
+          }
+          // another driver moved the base — reload and re-enter
         }
       }
     } catch (RuntimeException e) {
@@ -122,78 +136,238 @@ public final class ConversationLoop {
     }
   }
 
-  public RunOutcome resume(
-      ConversationId id, ParkToken token, ToolResolution resolution, TurnObserver observer) {
-    Objects.requireNonNull(observer, "observer must not be null");
-    throw new UnsupportedOperationException(
-        "this assembly never parks, so there is nothing to resume for "
-            + id
-            + " (token "
-            + token
-            + ", resolution "
-            + resolution
-            + ")");
+  /**
+   * One drive attempt against one load: drains queued notes, routes any resolutions the parked lane
+   * is waiting on, then continues by whatever the status pointer says. Every exit path — return or
+   * exception — saves the furthest state this attempt reached, exactly once.
+   */
+  private RunOutcome driveOnce(ConversationId id, TurnObserver observer) {
+    ConversationStore.Loaded loaded =
+        store
+            .load(id)
+            .orElseGet(
+                () ->
+                    new ConversationStore.Loaded(ConversationState.newConversation(id), List.of()));
+    AtomicReference<ConversationState> progress = new AtomicReference<>(loaded.state());
+    List<String> drained = new ArrayList<>();
+    boolean settled = false;
+    try {
+      // 1. Notes: fold every Told entry, in order (facts minted here, one per entry).
+      for (LaneEntry entry : loaded.lane()) {
+        if (entry instanceof LaneEntry.Told(String entryId, List<ContentBlock> content)) {
+          fold(progress, new ConversationEvent.AgentTold(id, content), drained);
+          drained.add(entryId);
+        }
+      }
+
+      // 2. Resolutions: while parked, route Resolved entries to the parked executor.
+      for (LaneEntry entry : loaded.lane()) {
+        if (progress.get().status() == ConversationStatus.PARKED
+            && entry
+                instanceof
+                LaneEntry.Resolved(String entryId, ParkToken token, ToolResolution resolution)) {
+          Optional<ParkedCall> park =
+              progress.get().parkedCalls().stream()
+                  .filter(candidate -> candidate.token().equals(token))
+                  .findFirst();
+          if (park.isEmpty()) {
+            drained.add(entryId); // stale resolution: token's call already settled
+            continue;
+          }
+          drained.add(entryId);
+          ConversationEvent fact =
+              resumeParkedCall(park.get(), resolution, progress.get(), observer);
+          FoldOutcome folded = fold(progress, fact, drained);
+          runCycle(progress, new ArrayDeque<>(folded.effects()), drained, observer);
+        }
+      }
+
+      // 3. The continuation pointer: do what status says until quiescent or parked.
+      continueByStatus(progress, drained, observer);
+
+      if (!drained.isEmpty()) {
+        save(progress, drained);
+      }
+      settled = true;
+      return outcomeOf(progress.get());
+    } finally {
+      if (!settled) {
+        try {
+          save(progress, drained);
+        } catch (StaleStateException e) {
+          // The winning driver owns the base now: whatever this attempt was trying to persist is
+          // superseded, and the exception (or the original one already propagating) is the true
+          // signal — a redundant stale save here must never mask it.
+        }
+      }
+    }
   }
 
-  private ConversationState drive(
-      AtomicReference<ConversationState> progress, ConversationEvent first, TurnObserver observer) {
-    ConversationState state = progress.get();
-    Deque<Effect> queue = new ArrayDeque<>();
-    ConversationEvent fact = first;
-    while (true) {
-      Step step = state.fold(fact);
-      state = step.state();
-      Optional<String> halt = termination.shouldHalt(state);
-      if (halt.isPresent()) {
-        Step closed = state.halted(halt.get());
-        state = closed.state();
-        progress.set(state);
-        remember(state.id(), step.remember());
-        remember(state.id(), closed.remember());
-        emitter.emit(fact);
-        state = store.save(state, List.of());
-        progress.set(state);
-        return state;
-      }
-      List<Message> births = new ArrayList<>(step.remember());
-      List<Effect> effects = new ArrayList<>(step.effects());
-      // Scaffolding until the unified drive (plan 2026-08-12, Task 4): the note fold alone never
-      // asks for the model, so the loop opens the turn itself once the fold lands quiescent with
-      // unread notes. A transition, not a fact: it rides the same fact's remember/save, no emit.
-      if (effects.isEmpty() && RESUMABLE.contains(state.status()) && !state.told().isEmpty()) {
-        Step opened = state.openTurn();
-        state = opened.state();
-        births.addAll(opened.remember());
-        effects.addAll(opened.effects());
-      }
-      progress.set(state);
-      remember(state.id(), births);
-      emitter.emit(fact);
-      state = store.save(state, List.of());
-      progress.set(state);
-      effects.forEach(queue::addLast);
-      if (queue.isEmpty()) {
-        return state;
-      }
-      fact = perform(queue.pollFirst(), state, observer);
+  private static RunOutcome outcomeOf(ConversationState state) {
+    if (state.status() == ConversationStatus.PARKED) {
+      return new RunOutcome.Parked(state, state.parkedCalls().getFirst().token());
     }
+    return new RunOutcome.Completed(state);
+  }
+
+  /**
+   * Advances {@code progress} by whatever its current status calls for, re-entrant from a crash at
+   * any point in a turn: quiescent with unread notes opens one; a crashed or continued model call
+   * is re-performed; crashed tool debt is re-performed (at-least-once — parked calls are not among
+   * it). Every other status (quiescent with nothing queued, or parked) is left exactly as found.
+   */
+  private void continueByStatus(
+      AtomicReference<ConversationState> progress, List<String> drained, TurnObserver observer) {
+    ConversationState state = progress.get();
+    if (state.isQuiescent() && !state.told().isEmpty()) {
+      Step opened = state.openTurn();
+      progress.set(opened.state());
+      remember(opened.state().id(), opened.remember());
+      save(progress, drained);
+      runCycle(progress, new ArrayDeque<>(opened.effects()), drained, observer);
+    } else if (state.status() == ConversationStatus.AWAITING_MODEL) {
+      runCycle(progress, new ArrayDeque<>(List.of(Effect.callModel())), drained, observer);
+    } else if (state.status() == ConversationStatus.EXECUTING_TOOL) {
+      Deque<Effect> queue = new ArrayDeque<>();
+      for (ToolCall call : state.pendingCalls()) {
+        queue.addLast(new Effect.ExecuteTool(call));
+      }
+      runCycle(progress, queue, drained, observer);
+    }
+  }
+
+  /** One fold's outcome for a cycle: the effects it yields, and whether it halted the turn. */
+  private record FoldOutcome(List<Effect> effects, boolean halted) {}
+
+  /**
+   * Drains an effect queue to empty: perform, then either fold the settled fact's own effects onto
+   * the same queue, or apply the park closure and move on to whatever else was queued (park
+   * physics: a sibling call queued beside a parking one still gets performed). A halt abandons
+   * whatever else is still queued — intents, not obligations — and returns immediately rather than
+   * performing it. Returns once the queue empties — quiescent, halted, or parked with nothing left
+   * to run.
+   */
+  private void runCycle(
+      AtomicReference<ConversationState> progress,
+      Deque<Effect> queue,
+      List<String> drained,
+      TurnObserver observer) {
+    while (!queue.isEmpty()) {
+      Effect effect = queue.pollFirst();
+      PerformOutcome outcome = perform(effect, progress.get(), observer);
+      switch (outcome) {
+        case PerformOutcome.Settled(ConversationEvent fact) -> {
+          FoldOutcome folded = fold(progress, fact, drained);
+          if (folded.halted()) {
+            return;
+          }
+          folded.effects().forEach(queue::addLast);
+        }
+        case PerformOutcome.Parked(ToolCall call, ParkToken token) ->
+            applyParked(progress, call, token, drained);
+      }
+    }
+  }
+
+  /**
+   * The per-fact ordering law, unchanged: fold, consult the termination policy, remember the fold's
+   * births, emit the fact, save (draining {@code drained}, which is cleared after). A halt discards
+   * the fold's own effects and applies {@code halted(reason)} in the same beat, remembering both
+   * the fold's own birth and the closure's abandoned-work flush before saving.
+   */
+  private FoldOutcome fold(
+      AtomicReference<ConversationState> progress, ConversationEvent fact, List<String> drained) {
+    Step step = progress.get().fold(fact);
+    ConversationState folded = step.state();
+    Optional<String> halt = termination.shouldHalt(folded);
+    if (halt.isPresent()) {
+      Step closed = folded.halted(halt.get());
+      progress.set(closed.state());
+      remember(closed.state().id(), step.remember());
+      remember(closed.state().id(), closed.remember());
+      emitter.emit(fact);
+      save(progress, drained);
+      return new FoldOutcome(List.of(), true);
+    }
+    progress.set(folded);
+    remember(folded.id(), step.remember());
+    emitter.emit(fact);
+    save(progress, drained);
+    return new FoldOutcome(step.effects(), false);
   }
 
   private void remember(ConversationId id, List<Message> births) {
     births.forEach(message -> memory.remember(id, message));
   }
 
-  private ConversationEvent perform(Effect effect, ConversationState state, TurnObserver observer) {
+  /** Persists {@code progress}'s current state, draining {@code drained} — exactly once. */
+  private void save(AtomicReference<ConversationState> progress, List<String> drained) {
+    ConversationState saved = store.save(progress.get(), List.copyOf(drained));
+    drained.clear();
+    progress.set(saved);
+  }
+
+  /**
+   * Applies the fold-free, loop-applied {@code parked} closure transition and saves it — no message
+   * is born, so unlike {@code halted} there is nothing to remember, only to persist.
+   */
+  private void applyParked(
+      AtomicReference<ConversationState> progress,
+      ToolCall call,
+      ParkToken token,
+      List<String> drained) {
+    progress.set(progress.get().parked(call, token));
+    save(progress, drained);
+  }
+
+  /**
+   * Routes a resolved lane entry to the parked executor's own {@code resume} and returns its
+   * settled fact. The executor contract allows a resumed call to park again (an approved call whose
+   * tool itself then parks); this generation does not support re-parking an already-parked call, so
+   * that outcome fails loud rather than silently losing the call.
+   */
+  private ConversationEvent resumeParkedCall(
+      ParkedCall parked,
+      ToolResolution resolution,
+      ConversationState state,
+      TurnObserver observer) {
     Awaited<ConversationEvent> outcome =
-        switch (effect) {
-          case Effect.CallModel _ -> executors.callModel().execute(state, observer);
-          case Effect.ExecuteTool(var call) -> executors.toolCall().execute(call, state, observer);
-        };
+        executors.toolCall().resume(parked.call(), resolution, state, observer);
     return switch (outcome) {
       case Awaited.Ready<ConversationEvent>(ConversationEvent value) -> value;
       case Awaited.Parked<ConversationEvent> _ ->
+          throw new IllegalStateException(
+              "resumed call "
+                  + parked.call().id()
+                  + " parked again; this generation does not support re-parking an already-parked"
+                  + " call");
+    };
+  }
+
+  private PerformOutcome perform(Effect effect, ConversationState state, TurnObserver observer) {
+    return switch (effect) {
+      case Effect.CallModel _ -> settled(executors.callModel().execute(state, observer));
+      case Effect.ExecuteTool(var call) ->
+          settledOrParked(call, executors.toolCall().execute(call, state, observer));
+    };
+  }
+
+  private static PerformOutcome settled(Awaited<ConversationEvent> outcome) {
+    return switch (outcome) {
+      case Awaited.Ready<ConversationEvent>(ConversationEvent value) ->
+          new PerformOutcome.Settled(value);
+      case Awaited.Parked<ConversationEvent> _ ->
           throw new UnsupportedOperationException(
-              "this assembly cannot park, but performing " + effect + " asked to");
+              "a model call effect parked, but model calls never park (this generation)");
+    };
+  }
+
+  private static PerformOutcome settledOrParked(ToolCall call, Awaited<ConversationEvent> outcome) {
+    return switch (outcome) {
+      case Awaited.Ready<ConversationEvent>(ConversationEvent value) ->
+          new PerformOutcome.Settled(value);
+      case Awaited.Parked<ConversationEvent>(ParkToken token) ->
+          new PerformOutcome.Parked(call, token);
     };
   }
 }
