@@ -83,22 +83,45 @@ class ConversationStateTest {
   }
 
   @Test
-  void withers_replace_only_their_own_lane() {
+  void with_told_replaces_only_the_told_lane() {
     List<ContentBlock> spoken = List.of(new TextBlock("hi"));
-    ParkedCall parked =
-        new ParkedCall(
-            ParkToken.generate(), new ToolCall("call-1", "tool", NullNode.getInstance()));
-    ConversationState seeded =
-        ConversationState.newConversation(ID)
-            .withTold(List.of(spoken))
-            .withParkedCalls(List.of(parked))
-            .withVersion(3L);
+    ParkedCall parked = parkedCall();
+    ConversationState seeded = seededState(parked).withVersion(3L);
+
+    ConversationState toldChanged = seeded.withTold(List.of(spoken));
+
+    assertThat(toldChanged.told()).isEqualTo(List.of(spoken));
+    assertThat(toldChanged.parkedCalls()).isEqualTo(List.of(parked));
+    assertThat(toldChanged.version()).isEqualTo(3L);
+    assertThat(toldChanged.status()).isEqualTo(ConversationStatus.IDLE);
+  }
+
+  @Test
+  void with_parked_calls_replaces_only_the_parked_lane() {
+    List<ContentBlock> spoken = List.of(new TextBlock("hi"));
+    ParkedCall replacement = parkedCall();
+    ConversationState seeded = seededState(spoken).withVersion(3L);
+
+    ConversationState parkedChanged = seeded.withParkedCalls(List.of(replacement));
+
+    assertThat(parkedChanged.parkedCalls()).isEqualTo(List.of(replacement));
+    assertThat(parkedChanged.told()).isEqualTo(List.of(spoken));
+    assertThat(parkedChanged.version()).isEqualTo(3L);
+    assertThat(parkedChanged.status()).isEqualTo(ConversationStatus.IDLE);
+  }
+
+  @Test
+  void with_version_replaces_only_the_version() {
+    List<ContentBlock> spoken = List.of(new TextBlock("hi"));
+    ParkedCall parked = parkedCall();
+    ConversationState seeded = seededState(spoken, parked).withVersion(3L);
 
     ConversationState versionChanged = seeded.withVersion(4L);
 
     assertThat(versionChanged.version()).isEqualTo(4L);
     assertThat(versionChanged.told()).isEqualTo(List.of(spoken));
     assertThat(versionChanged.parkedCalls()).isEqualTo(List.of(parked));
+    assertThat(versionChanged.status()).isEqualTo(ConversationStatus.IDLE);
   }
 
   @Test
@@ -107,5 +130,24 @@ class ConversationStateTest {
 
     assertThat(state.told()).isUnmodifiable();
     assertThat(state.parkedCalls()).isUnmodifiable();
+  }
+
+  private static ParkedCall parkedCall() {
+    return new ParkedCall(
+        ParkToken.generate(), new ToolCall("call-1", "tool", NullNode.getInstance()));
+  }
+
+  private static ConversationState seededState(List<ContentBlock> spoken) {
+    return ConversationState.newConversation(ID).withTold(List.of(spoken));
+  }
+
+  private static ConversationState seededState(ParkedCall parked) {
+    return ConversationState.newConversation(ID).withParkedCalls(List.of(parked));
+  }
+
+  private static ConversationState seededState(List<ContentBlock> spoken, ParkedCall parked) {
+    return ConversationState.newConversation(ID)
+        .withTold(List.of(spoken))
+        .withParkedCalls(List.of(parked));
   }
 }
