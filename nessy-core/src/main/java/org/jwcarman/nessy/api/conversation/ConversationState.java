@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
@@ -54,6 +55,12 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  *     one sanctioned nullable field on this record: most sessions never fail, and forcing every
  *     caller to thread an empty string through the happy path would be worse than the null check
  *     the few failure sites already need.
+ * @param told words interjected — the drained-tell accumulator: each entry is one tell's content,
+ *     kept in arrival order for a durable resume to replay against the transcript.
+ * @param parkedCalls homework waiting on the world — tool calls that yielded rather than settled,
+ *     each named by the {@link org.jwcarman.nessy.api.ParkToken} a later resume must present.
+ * @param version the fence's token — bumped on every durable write so a store can reject a stale
+ *     save out from under a concurrent resume.
  * @param status lifecycle position
  */
 public record ConversationState(
@@ -64,19 +71,37 @@ public record ConversationState(
     int modelCalls,
     Usage usage,
     String failureReason,
+    List<List<ContentBlock>> told,
+    List<ParkedCall> parkedCalls,
+    long version,
     ConversationStatus status) {
 
   public ConversationState {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(usage, "usage must not be null");
     Objects.requireNonNull(status, "status must not be null");
+    if (version < 0) {
+      throw new IllegalArgumentException("version must not be negative");
+    }
     pendingCalls = List.copyOf(pendingCalls);
     pendingResults = List.copyOf(pendingResults);
+    told = List.copyOf(told);
+    parkedCalls = List.copyOf(parkedCalls);
   }
 
   public static ConversationState newConversation(ConversationId id) {
     return new ConversationState(
-        id, List.of(), List.of(), 0, 0, Usage.zero(), null, ConversationStatus.IDLE);
+        id,
+        List.of(),
+        List.of(),
+        0,
+        0,
+        Usage.zero(),
+        null,
+        List.of(),
+        List.of(),
+        0L,
+        ConversationStatus.IDLE);
   }
 
   public ConversationState with(ConversationStatus newStatus) {
@@ -88,22 +113,55 @@ public record ConversationState(
         modelCalls,
         usage,
         failureReason,
+        told,
+        parkedCalls,
+        version,
         newStatus);
   }
 
   public ConversationState withPendingCalls(List<ToolCall> calls) {
     return new ConversationState(
-        id, calls, pendingResults, consecutiveErrors, modelCalls, usage, failureReason, status);
+        id,
+        calls,
+        pendingResults,
+        consecutiveErrors,
+        modelCalls,
+        usage,
+        failureReason,
+        told,
+        parkedCalls,
+        version,
+        status);
   }
 
   public ConversationState withPendingResults(List<ToolResultBlock> results) {
     return new ConversationState(
-        id, pendingCalls, results, consecutiveErrors, modelCalls, usage, failureReason, status);
+        id,
+        pendingCalls,
+        results,
+        consecutiveErrors,
+        modelCalls,
+        usage,
+        failureReason,
+        told,
+        parkedCalls,
+        version,
+        status);
   }
 
   public ConversationState withConsecutiveErrors(int errors) {
     return new ConversationState(
-        id, pendingCalls, pendingResults, errors, modelCalls, usage, failureReason, status);
+        id,
+        pendingCalls,
+        pendingResults,
+        errors,
+        modelCalls,
+        usage,
+        failureReason,
+        told,
+        parkedCalls,
+        version,
+        status);
   }
 
   public ConversationState withModelCalls(int newModelCalls) {
@@ -115,6 +173,9 @@ public record ConversationState(
         newModelCalls,
         usage,
         failureReason,
+        told,
+        parkedCalls,
+        version,
         status);
   }
 
@@ -127,12 +188,70 @@ public record ConversationState(
         modelCalls,
         newUsage,
         failureReason,
+        told,
+        parkedCalls,
+        version,
         status);
   }
 
   public ConversationState withFailureReason(String reason) {
     return new ConversationState(
-        id, pendingCalls, pendingResults, consecutiveErrors, modelCalls, usage, reason, status);
+        id,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        modelCalls,
+        usage,
+        reason,
+        told,
+        parkedCalls,
+        version,
+        status);
+  }
+
+  public ConversationState withTold(List<List<ContentBlock>> newTold) {
+    return new ConversationState(
+        id,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        modelCalls,
+        usage,
+        failureReason,
+        newTold,
+        parkedCalls,
+        version,
+        status);
+  }
+
+  public ConversationState withParkedCalls(List<ParkedCall> newParkedCalls) {
+    return new ConversationState(
+        id,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        modelCalls,
+        usage,
+        failureReason,
+        told,
+        newParkedCalls,
+        version,
+        status);
+  }
+
+  public ConversationState withVersion(long newVersion) {
+    return new ConversationState(
+        id,
+        pendingCalls,
+        pendingResults,
+        consecutiveErrors,
+        modelCalls,
+        usage,
+        failureReason,
+        told,
+        parkedCalls,
+        newVersion,
+        status);
   }
 
   /**

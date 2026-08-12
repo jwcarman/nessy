@@ -35,5 +35,11 @@ public enum ConversationStatus {
    * {@code ModelCallFailed} fact, or a {@link TerminationPolicy} halt (too many consecutive tool
    * errors, too many model calls). The loop gave up rather than burn tokens.
    */
-  FAILED
+  FAILED,
+
+  /**
+   * The open turn is waiting on the world — a parked call holds it; no driver, no lease, durable
+   * patience.
+   */
+  PARKED
 }

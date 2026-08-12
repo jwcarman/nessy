@@ -17,7 +17,13 @@ package org.jwcarman.nessy.api.conversation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.node.NullNode;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 class ConversationStateTest {
 
@@ -65,5 +71,41 @@ class ConversationStateTest {
 
     assertThat(state.pendingCalls()).isUnmodifiable();
     assertThat(state.pendingResults()).isUnmodifiable();
+  }
+
+  @Test
+  void a_new_conversation_has_no_told_material_no_parks_and_version_zero() {
+    ConversationState state = ConversationState.newConversation(ID);
+
+    assertThat(state.told()).isEmpty();
+    assertThat(state.parkedCalls()).isEmpty();
+    assertThat(state.version()).isZero();
+  }
+
+  @Test
+  void withers_replace_only_their_own_lane() {
+    List<ContentBlock> spoken = List.of(new TextBlock("hi"));
+    ParkedCall parked =
+        new ParkedCall(
+            ParkToken.generate(), new ToolCall("call-1", "tool", NullNode.getInstance()));
+    ConversationState seeded =
+        ConversationState.newConversation(ID)
+            .withTold(List.of(spoken))
+            .withParkedCalls(List.of(parked))
+            .withVersion(3L);
+
+    ConversationState versionChanged = seeded.withVersion(4L);
+
+    assertThat(versionChanged.version()).isEqualTo(4L);
+    assertThat(versionChanged.told()).isEqualTo(List.of(spoken));
+    assertThat(versionChanged.parkedCalls()).isEqualTo(List.of(parked));
+  }
+
+  @Test
+  void told_and_parked_lanes_are_unmodifiable() {
+    ConversationState state = ConversationState.newConversation(ID);
+
+    assertThat(state.told()).isUnmodifiable();
+    assertThat(state.parkedCalls()).isUnmodifiable();
   }
 }
