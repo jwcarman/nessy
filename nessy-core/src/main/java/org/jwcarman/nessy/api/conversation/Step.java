@@ -22,9 +22,11 @@ import org.jwcarman.nessy.api.message.Message;
 /**
  * What one fold produced: the next state, what to remember, and what to do about it.
  *
- * <p>{@code remember} is the fold's message births — the user message a tell rendered, the
- * assistant message a response carried, the results message a cleared debt flushed — in birth
- * order, for the loop to tell Memory before performing any effect.
+ * <p>{@code remember} is the fold's message births — a tell's own fold births nothing (it only
+ * joins the {@link ConversationState#told()} accumulator); the user message is born when the drain
+ * ({@link ConversationState#openTurn()}) merges those queued notes into an open turn, the assistant
+ * message a response carried, the results message a cleared debt flushed — in birth order, for the
+ * loop to tell Memory before performing any effect.
  */
 public record Step(ConversationState state, List<Message> remember, List<Effect> effects) {
 

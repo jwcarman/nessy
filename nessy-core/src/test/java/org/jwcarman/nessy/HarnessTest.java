@@ -25,8 +25,10 @@ import java.util.Collection;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Nested;
@@ -391,6 +393,33 @@ class HarnessTest {
           .hasMessageContaining("unknown");
     }
 
+    /**
+     * Opus final review, Finding F10: a durable store can carry parks left behind by a prior
+     * process — this harness never built an agent of its own, so {@code loop} is still {@code
+     * null}, but the token names a park the store genuinely still has. Before the fix, driving that
+     * park NPE'd bare, past the token lookup, once {@code resume} finally touched the (unset) loop.
+     * It must instead refuse loud, the same {@link IllegalStateException} style as the multi-agent
+     * guard, once it knows the token is real but has nothing built to drive it with.
+     */
+    @Test
+    void resume_of_a_known_token_with_no_agent_built_refuses_loud_not_npe() {
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationId id = ConversationId.generate();
+      ParkToken token = ParkToken.generate();
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ConversationState seeded =
+          ConversationState.newConversation(id)
+              .withParkedCalls(List.of(new ParkedCall(token, call)))
+              .with(ConversationStatus.PARKED);
+      store.save(seeded, List.of());
+      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).build();
+      ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
+
+      assertThatThrownBy(() -> harness.resume(token, decided))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("no agent");
+    }
+
     @Test
     void resume_answers_a_parked_call_and_finishes_the_turn() {
       ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
@@ -442,6 +471,126 @@ class HarnessTest {
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("single-agent")
           .hasMessageContaining("2");
+    }
+
+    /** Counts invocations, so a redelivered resume can be pinned as not re-executing the tool. */
+    static final class CountingSearchTool implements Tool<SearchInput> {
+
+      private int invocations;
+
+      int invocations() {
+        return invocations;
+      }
+
+      @Override
+      public String name() {
+        return "search";
+      }
+
+      @Override
+      public String description() {
+        return "Searches for something";
+      }
+
+      @Override
+      public Class<SearchInput> inputType() {
+        return SearchInput.class;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(SearchInput input, ToolContext context) {
+        invocations++;
+        return Awaited.ready(ToolResult.ok("found:" + input.query()));
+      }
+    }
+
+    /**
+     * A store whose {@link #findParkConversation} keeps answering for a token even after the
+     * conversation that once parked it has settled and the live park index no longer names it — the
+     * same way a durable store's own park bookkeeping might reasonably outlive the park itself.
+     * Lets a sequential two-call test reach {@code Harness.resume}'s already-claimed branch (the
+     * token is still recognized, but {@code consumeToken} reports it already spent) without a real
+     * store's own park-index cleanup making the second call see an unknown token instead — a timing
+     * detail of the store, orthogonal to what this test pins about the facade.
+     */
+    static final class StickyParkConversationStore implements ConversationStore {
+
+      private final ConversationStore delegate = ConversationStore.inMemory();
+      private final Map<ParkToken, ConversationId> everParked = new ConcurrentHashMap<>();
+
+      @Override
+      public Optional<Loaded> load(ConversationId id) {
+        return delegate.load(id);
+      }
+
+      @Override
+      public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
+        ConversationState saved = delegate.save(state, drainedLaneIds);
+        saved.parkedCalls().forEach(parked -> everParked.put(parked.token(), state.id()));
+        return saved;
+      }
+
+      @Override
+      public void appendLane(ConversationId id, LaneEntry entry) {
+        delegate.appendLane(id, entry);
+      }
+
+      @Override
+      public Optional<ParkedCall> findPark(ParkToken token) {
+        return delegate.findPark(token);
+      }
+
+      @Override
+      public Optional<ConversationId> findParkConversation(ParkToken token) {
+        Optional<ConversationId> live = delegate.findParkConversation(token);
+        return live.isPresent() ? live : Optional.ofNullable(everParked.get(token));
+      }
+
+      @Override
+      public boolean consumeToken(ParkToken token) {
+        return delegate.consumeToken(token);
+      }
+    }
+
+    /**
+     * F16-adjacent (rides with F1's fix): the facade-level pin of the loop-level redelivery
+     * contract already pinned at {@code ConversationLoopTest}'s {@code
+     * a_second_resume_with_the_same_token_is_a_read_not_a_replay} — here through the real {@code
+     * Harness.resume} entry point end to end. A redelivered resume (the same token presented twice
+     * — every real transport is at-least-once) must not re-invoke the tool a second time; it reads
+     * whatever the first delivery already produced.
+     */
+    @Test
+    void resume_with_an_already_consumed_token_drives_current_truth_without_reinvoking_the_tool() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      CountingSearchTool tool = new CountingSearchTool();
+      StickyParkConversationStore store = new StickyParkConversationStore();
+      Harness harness = Nessy.harness(provider).store(store).build();
+      Agent<String> agent =
+          harness
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+      agent.converse().tell("search for x");
+      ParkToken token = approver.token();
+
+      RunOutcome first = harness.resume(token, new ToolResolution.Decided(Decision.allow()));
+      RunOutcome second = harness.resume(token, new ToolResolution.Decided(Decision.allow()));
+
+      assertThat(first.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(second.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(tool.invocations()).isEqualTo(1);
     }
   }
 
@@ -634,6 +783,30 @@ class HarnessTest {
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("single-agent")
           .hasMessageContaining("2");
+    }
+
+    /**
+     * Opus final review, Finding F10 (mirrors {@code resume}'s own zero-agent guard): a durable
+     * store can carry parks left behind by a prior process — this harness never built an agent of
+     * its own, so {@code agentRegistry} is still {@code null}. Before the fix, a live token found
+     * both peeks and then NPE'd bare on {@code agentRegistry.emit}. It must instead refuse loud.
+     */
+    @Test
+    void progress_of_a_known_token_with_no_agent_built_refuses_loud_not_npe() {
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationId id = ConversationId.generate();
+      ParkToken token = ParkToken.generate();
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ConversationState seeded =
+          ConversationState.newConversation(id)
+              .withParkedCalls(List.of(new ParkedCall(token, call)))
+              .with(ConversationStatus.PARKED);
+      store.save(seeded, List.of());
+      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).build();
+
+      assertThatThrownBy(() -> harness.progress(token, "halfway"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("no agent");
     }
 
     /**

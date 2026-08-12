@@ -179,7 +179,8 @@ public final class Harness {
    * @throws IllegalArgumentException if {@code token} names no conversation this store still parks
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
    *     resume} cannot yet tell which agent's loop a token belongs to (see {@link
-   *     #loopRegistrations})
+   *     #loopRegistrations}) — or if no agent has been built at all, reachable when a durable store
+   *     carries parks left behind by a prior process and this one never called {@link #agent()}
    */
   public RunOutcome resume(ParkToken token, ToolResolution resolution, TurnObserver observer) {
     Objects.requireNonNull(token, "token must not be null");
@@ -195,6 +196,10 @@ public final class Harness {
             .findParkConversation(token)
             .orElseThrow(
                 () -> new IllegalArgumentException("unknown or settled park token: " + token));
+    if (agents == 0) {
+      throw new IllegalStateException(
+          "no agent built on this harness — resume has no loop to drive with");
+    }
     if (!store.consumeToken(token)) {
       return loop.drive(id, observer); // idempotent re-delivery: read current truth, do not replay
     }
@@ -217,7 +222,8 @@ public final class Harness {
    *
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
    *     progress} cannot yet tell which agent's registry a token belongs to (see {@link
-   *     #loopRegistrations})
+   *     #loopRegistrations}) — or if no agent has been built at all, reachable when a durable store
+   *     carries parks left behind by a prior process and this one never called {@link #agent()}
    */
   public boolean progress(ParkToken token, String message) {
     Objects.requireNonNull(token, "token must not be null");
@@ -234,6 +240,10 @@ public final class Harness {
     Optional<ConversationId> conversationId = store.findParkConversation(token);
     if (conversationId.isEmpty()) {
       return false; // settled concurrently between the two reads — dropped, not an error
+    }
+    if (agents == 0) {
+      throw new IllegalStateException(
+          "no agent built on this harness — progress has no registry to emit on");
     }
     agentRegistry.emit(new ToolProgress(conversationId.get(), park.get().call().id(), message));
     return true;

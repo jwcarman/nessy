@@ -192,7 +192,7 @@ public final class JdbcConversationStore implements ConversationStore {
             }
           }
 
-          drainLane(connection, drainedLaneIds);
+          drainLane(connection, id, drainedLaneIds);
           syncParks(connection, id, bumped.parkedCalls());
           return bumped;
         });
@@ -224,12 +224,15 @@ public final class JdbcConversationStore implements ConversationStore {
     }
   }
 
-  private void drainLane(Connection connection, Collection<String> drainedLaneIds)
+  private void drainLane(
+      Connection connection, ConversationId id, Collection<String> drainedLaneIds)
       throws SQLException {
     Array ids = connection.createArrayOf("text", drainedLaneIds.toArray(new String[0]));
     try (PreparedStatement ps =
-        connection.prepareStatement("DELETE FROM nessy_lane WHERE entry_id = ANY(?)")) {
+        connection.prepareStatement(
+            "DELETE FROM nessy_lane WHERE entry_id = ANY(?) AND conversation_id = ?")) {
       ps.setArray(1, ids);
+      ps.setString(2, id.value());
       ps.executeUpdate();
     }
   }
@@ -353,7 +356,15 @@ public final class JdbcConversationStore implements ConversationStore {
     }
   }
 
-  /** Runs {@code body} on its own auto-commit connection; no transaction, one statement. */
+  /**
+   * Runs {@code body} on a connection borrowed fresh from the pool; no transaction of its own, one
+   * statement, autocommit exactly as the pool hands it back. That last clause is an invariant
+   * {@link #inTransaction} owes this method, not something {@code withConnection} enforces itself:
+   * a pool that does not reset a connection between borrowers would otherwise let a prior {@code
+   * inTransaction} call's {@code setAutoCommit(false)} leak into whatever this method's next caller
+   * does — an INSERT here would sit uncommitted and vanish, silently, when the connection closes
+   * back into the pool.
+   */
   private <T> T withConnection(SqlFunction<Connection, T> body) {
     try (Connection connection = dataSource.getConnection()) {
       return body.apply(connection);
@@ -365,10 +376,15 @@ public final class JdbcConversationStore implements ConversationStore {
   /**
    * Runs {@code body} inside one explicit transaction at {@code isolationLevel}, committing on a
    * normal return and rolling back on any exception — a {@link StaleStateException} included, so
-   * the caller's failed save leaves no partial effect behind either.
+   * the caller's failed save leaves no partial effect behind either. Restores the borrowed
+   * connection's autocommit and isolation to what it had on loan before returning it to the pool:
+   * on a non-resetting pool, handing back a connection still in {@code autoCommit(false)} would
+   * silently discard the next borrower's own INSERT at close, with nothing marking the loss — see
+   * {@link #withConnection}.
    */
   private <T> T inTransaction(int isolationLevel, SqlFunction<Connection, T> body) {
     try (Connection connection = dataSource.getConnection()) {
+      int originalIsolation = connection.getTransactionIsolation();
       connection.setAutoCommit(false);
       connection.setTransactionIsolation(isolationLevel);
       try {
@@ -376,14 +392,41 @@ public final class JdbcConversationStore implements ConversationStore {
         connection.commit();
         return result;
       } catch (SQLException e) {
-        connection.rollback();
+        rollbackQuietly(connection, e);
         throw new IllegalStateException("jdbc conversation store operation failed", e);
       } catch (RuntimeException e) {
-        connection.rollback();
+        rollbackQuietly(connection, e);
         throw e;
+      } finally {
+        restoreConnection(connection, originalIsolation);
       }
     } catch (SQLException e) {
       throw new IllegalStateException("jdbc conversation store operation failed", e);
+    }
+  }
+
+  /** Rolls back, folding a rollback failure into {@code cause} rather than losing either one. */
+  private static void rollbackQuietly(Connection connection, Exception cause) {
+    try {
+      connection.rollback();
+    } catch (SQLException rollbackFailure) {
+      cause.addSuppressed(rollbackFailure);
+    }
+  }
+
+  /**
+   * Best-effort: puts the connection's autocommit and isolation back the way {@code inTransaction}
+   * found them, before it returns to the pool. A failure here is swallowed rather than thrown —
+   * throwing from this {@code finally} would replace whatever exception is already propagating from
+   * the transaction body above, and a connection too broken to restore is the pool's own problem to
+   * evict on next borrow, not this method's to escalate.
+   */
+  private static void restoreConnection(Connection connection, int originalIsolation) {
+    try {
+      connection.setAutoCommit(true);
+      connection.setTransactionIsolation(originalIsolation);
+    } catch (SQLException ignored) {
+      // best-effort restore; see method javadoc
     }
   }
 

@@ -1145,6 +1145,100 @@ class ConversationLoopTest {
     }
 
     /**
+     * Opus final review, Finding F1 (Major, the composition bug): the routing predicate used to
+     * gate on {@code status == PARKED}, but a resolution can legitimately arrive while a fan-out
+     * sibling is still unsettled — crash mid-fan-out, {@code EXECUTING_TOOL} with c1 already parked
+     * and c2 still pending. The old gate stranded a resolution that arrived in that window: resume
+     * consumed the token and appended {@code Resolved}, but the status-gated pass skipped it
+     * (status was {@code EXECUTING_TOOL}, not {@code PARKED}), and the pointer pass re-performed
+     * only the pending sibling — wedging the conversation forever with an un-routed resolution
+     * sitting in the lane. Routing by park membership instead of status fixes it: this seeds
+     * exactly that crash-shaped state directly at the store (as if a crash landed right after c1's
+     * park was applied and right before c2 was ever performed) and pins that a drive still lands —
+     * c2 re-performs, c1's resolution routes, and one combined flush carries both results.
+     */
+    @Test
+    void a_resolution_for_a_park_with_a_still_pending_sibling_routes_while_executing_tool() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ToolCall c2 = toolCall("c2", "fetch");
+      ParkToken token = ParkToken.generate();
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, plainAnswer("Both in."));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.andFor("c2", new ConversationEvent.ToolFinished(ID, c2, ToolResult.ok("b")));
+      tools.resumesTo("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
+      RecordingMemory memory = new RecordingMemory(journal);
+      ConversationStore store = ConversationStore.inMemory();
+      // Crash-shaped seed: c1 already parked, c2 still pending, status EXECUTING_TOOL — exactly
+      // what applyParked leaves behind mid fan-out, before c2's own effect is ever performed.
+      ConversationState seeded =
+          ConversationState.newConversation(ID)
+              .withPendingCalls(List.of(c2))
+              .withParkedCalls(List.of(new ParkedCall(token, c1)))
+              .with(ConversationStatus.EXECUTING_TOOL);
+      store.save(seeded, List.of());
+      store.consumeToken(token);
+      store.appendLane(
+          ID, LaneEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              memory,
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+
+      RunOutcome outcome = loop.drive(ID, OBSERVER);
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(tools.resumeCalls()).isEqualTo(1);
+      Message flush =
+          memory.remembered().stream()
+              .filter(m -> m.content().stream().anyMatch(ToolResultBlock.class::isInstance))
+              .reduce((first, last) -> last)
+              .orElseThrow();
+      assertThat(flush.content())
+          .containsExactly(
+              new ToolResultBlock("c1", "a", false), new ToolResultBlock("c2", "b", false));
+    }
+
+    /**
+     * Opus final review, Finding F1/F3: the old gate also left a stale {@code Resolved} entry stuck
+     * forever in a conversation that had already finished — status {@code COMPLETE} is not {@code
+     * PARKED}, so the old predicate never even looked at the entry. Routing by park membership
+     * drains it quietly instead, the same way {@code
+     * a_resolution_for_a_settled_call_drains_quietly} pins it for a {@code PARKED} conversation,
+     * but here for one that is not, and will never again be, {@code PARKED}.
+     */
+    @Test
+    void a_stale_resolution_in_a_complete_conversations_lane_drains_quietly() {
+      List<String> journal = new ArrayList<>();
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationState seeded =
+          ConversationState.newConversation(ID).with(ConversationStatus.COMPLETE);
+      store.save(seeded, List.of());
+      ParkToken staleToken = ParkToken.generate();
+      store.appendLane(
+          ID, LaneEntry.resolved(staleToken, new ToolResolution.Decided(Decision.allow())));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(
+                  new ScriptedModelCallExecutor(journal), new ScriptedToolCallExecutor(journal)),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+
+      RunOutcome outcome = loop.drive(ID, OBSERVER);
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(store.load(ID).orElseThrow().lane()).isEmpty();
+    }
+
+    /**
      * Opus fix round 1, Finding 2 (Important): a throw between accepting a resolution and folding
      * its fact must not destroy the only copy of that resolution. The re-park guard is a real,
      * reachable throw (approval-resume invokes the tool, and the tool parks again) — this pins that

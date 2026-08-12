@@ -138,8 +138,13 @@ public final class ConversationLoop {
 
   /**
    * One drive attempt against one load: drains queued notes, routes any resolutions the parked lane
-   * is waiting on, then continues by whatever the status pointer says. Every exit path — return or
-   * exception — saves the furthest state this attempt reached, exactly once.
+   * is waiting on, then continues by whatever the status pointer says. Saving is not one act per
+   * attempt: every fold along the way ({@link #fold}) persists as soon as it lands, draining
+   * whatever lane ids have accumulated so far — that per-entry drain is the thing that is exactly
+   * once (design §4: an entry joins {@code drained} only alongside the save that actually consumes
+   * it). What this method's own exit paths add on top is at most one further tail save, for state
+   * this attempt reached without a fold of its own to carry it — a pointer pass that found nothing
+   * left to do, or an exception escaping before landing a save.
    */
   private RunOutcome driveOnce(ConversationId id, TurnObserver observer) {
     ConversationStore.Loaded loaded =
@@ -162,16 +167,24 @@ public final class ConversationLoop {
         }
       }
 
-      // 2. Resolutions: while parked, route Resolved entries to the parked executor. Unlike a
-      //    note's fold, resuming a call can throw before ever reaching a fold (the re-park guard,
-      //    below) — so the entry's id joins `drained` only once resumeParkedCall and its fold have
-      //    both succeeded; a throw between them must leave the entry in the lane for a future
-      //    retry to find, not destroy the only copy of the resolution that arrived.
+      // 2. Resolutions: route every Resolved entry whose token still names a live park —
+      //    regardless of the conversation's current status. A resolution can legitimately arrive
+      //    while a fan-out sibling is still unsettled (crash mid-fan-out: EXECUTING_TOOL with
+      //    parkedCalls non-empty, not PARKED), and gating this pass on status == PARKED alone
+      //    stranded that resolution — consumed by resume, appended to the lane, but never routed,
+      //    wedging the conversation. Routing by park membership instead fixes both directions: a
+      //    resolution whose token IS a live park routes here no matter the status; a resolution
+      //    whose token is NOT a live park drains quietly no matter the status too (a stale entry
+      //    left behind by a settled call no longer lingers outside PARKED waiting for a status it
+      //    will never see again). Unlike a note's fold, resuming a call can throw before ever
+      //    reaching a fold (the re-park guard, below) — so the entry's id joins `drained` only once
+      //    resumeParkedCall and its fold have both succeeded; a throw between them must leave the
+      //    entry in the lane for a future retry to find, not destroy the only copy of the
+      //    resolution that arrived.
       for (LaneEntry entry : loaded.lane()) {
-        if (progress.get().status() == ConversationStatus.PARKED
-            && entry
-                instanceof
-                LaneEntry.Resolved(String entryId, ParkToken token, ToolResolution resolution)) {
+        if (entry
+            instanceof
+            LaneEntry.Resolved(String entryId, ParkToken token, ToolResolution resolution)) {
           Optional<ParkedCall> park =
               progress.get().parkedCalls().stream()
                   .filter(candidate -> candidate.token().equals(token))

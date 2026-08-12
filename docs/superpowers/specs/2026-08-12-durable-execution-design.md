@@ -246,15 +246,26 @@ a. **Parks don't carry agent identity.** `Harness.resume` and
 b. **§3's "returns immediately" amended to the shipped truth**, above: every
    entry re-drives unconditionally after appending; the fence, not a
    quiescence check, is what keeps concurrent drivers correct.
-c. **`ListMemory`'s consecutive-duplicate dedup can be defeated by fence
-   retries.** A stale-save retry re-drives from a fresh load and can re-fold
-   a fact whose birth was already remembered once, but not as the
-   *immediately preceding* remembered message — non-consecutive duplicates
-   slip past `ListMemory`'s idempotency check. Known limitation, not
-   corrected this generation: the essence's "tellings are at-least-once;
-   `remember` is idempotent" ruling (essence §13.6) is a per-implementation
-   contract, and `ListMemory`'s particular idempotency strategy (consecutive
-   only) does not yet cover this case.
+c. **A fence-losing retry re-tells Memory a different message, not a
+   duplicate of the one already told — a transcript-invariant hazard, not
+   merely a dedup gap.** The original framing here undersold this: a
+   fence-losing segment has already told Memory before its own save loses
+   the race (design §4 — every fold tells Memory before it persists), so the
+   winning retry that re-drives from a fresh load does not re-fold the
+   *same* fact. It folds forward from the winner's own state, producing a
+   *different* assistant message — new content, a new id, sometimes new
+   tool_use blocks — and tells that instead. `ListMemory`'s consecutive-
+   duplicate dedup cannot catch this: the two messages are not duplicates of
+   each other, so there is nothing for a duplicate check to match. The
+   result is a losing-timeline assistant message sitting in recalled context
+   whose `tool_use` blocks the fenced state never answered and never will —
+   a transcript that can misrepresent what the conversation actually did,
+   not just repeat itself. Known limitation this generation, not corrected:
+   the essence's "tellings are at-least-once; `remember` is idempotent"
+   ruling (essence §13.6) governs duplicate *re*-telling of the same fact,
+   not this divergent-retelling shape; fencing Memory tellings themselves
+   (so a losing segment's telling is rolled back, not merely its state save)
+   is future work.
 d. **Re-parking is unsupported this generation.** A resumed call whose own
    tool parks again (the contract shape allows it — an approved call whose
    tool itself then parks) fails loud with `IllegalStateException` rather
