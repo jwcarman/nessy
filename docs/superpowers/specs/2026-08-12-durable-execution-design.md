@@ -1,317 +1,221 @@
 # Durable Execution — design
 
-**Date:** 2026-08-12
+**Date:** 2026-08-12 (kernel rewrite, same day — the first draft grew a message
+broker; review whittled it back to physics)
 **Status:** DRAFT — pending review
-**Builds on:** `2026-08-11-conversation-essence-design.md` (the essence) and the seams it
-deliberately left dark: `ParkToken`, `ToolResolution`, `RunOutcome.Parked`,
-`ConversationLoop.resume`, `ConversationStore.consumeToken`, and the
-status-as-continuation-pointer property. The headline constraint, stated up
-front because it is the whole design's shape: **no new facts, no new effects.**
-The essence grammar survives untouched; everything durable execution adds is
-store contract and facade.
+**Builds on:** `2026-08-11-conversation-essence-design.md` and the seams it left
+dark: `ParkToken`, `ToolResolution`, `RunOutcome.Parked`,
+`ConversationLoop.resume`, `ConversationStore.consumeToken`,
+status-as-continuation-pointer.
+
+The headline constraints, because they are the design:
+
+1. **No new facts, no new effects.** The essence grammar is untouched.
+2. **Every entry appends; one verb drives.** `tell` and `resume` differ only
+   in what they append; driving is a single re-entrant act from the status
+   pointer.
+3. **Exactly two write disciplines.** A version-fenced core and an
+   append-only lane. Everything the first draft called mailbox, claim, lease,
+   receipt, dispatcher, or sweeper is either one of these two or deliberately
+   not built.
 
 ---
 
 ## 1. What this is for
 
-The autonomous agent: a conversation that lives on independently of any
-process, receiving periodic tells from the outside world — cron, webhook,
-another agent — and able to run **on any node** the software runs on. Its
-turns park for HITL approvals and long-running remote tools, survive process
-death, and resume wherever the resolution lands.
+The autonomous agent: a conversation that outlives every process, receives
+tells from the world (cron, webhook, another agent), parks for HITL approvals
+and long-running remote tools, and can be driven **on any node**. The essence
+made this nearly free — thin control block, pure fold, save-per-step, status
+as continuation pointer. What remains is storage physics and nothing else.
 
-The essence made this cheap without meaning to: a conversation is a thin
-control block advanced by a pure fold, saved at every step, whose status says
-exactly what happens next. Segments are short-lived; waiting is a durable
-park, never a held thread. "Run anywhere" reduces to exactly three problems —
-the simultaneous-claim race, the crashed claimant, and the mid-turn tell —
-and all three land in the same jurisdiction: **the store is the referee.**
+**The litmus that shaped this spec:** *does the world already provide it?*
+Webhooks retry; crons re-fire; queues and brokers exist and are excellent.
+The harness provides only what the caller's infrastructure cannot: durable
+conversation state, safe concurrent writes, and wire-legal folding of
+whatever arrives.
 
 ## 2. Prior art (surveyed 2026-08-12)
 
-Three schools, converging hard on the seams the essence already cut:
+Three schools. Durable-execution engines (Temporal, Restate, Azure Durable
+Functions, DBOS): Restate's awakeables are `ParkToken`/`resume` nearly
+verbatim; Temporal's signals are durable buffered mail; all of them separate
+progress from the durable event lane (heartbeats, custom status) — nobody
+queues progress. Actor runtimes (Akka, Orleans, Durable Objects): native
+mailboxes, claim problem solved by runtime-managed single activation — at the
+cost of operating cluster membership. Agent frameworks (LangGraph, Mastra):
+checkpoint + `interrupt()`/resume against Postgres; weak multi-worker claim
+stories.
 
-- **Durable-execution engines** (Temporal/Cadence, Restate, Azure Durable
-  Functions, Inngest, DBOS). Restate's *awakeables* are `ParkToken`/`resume`
-  nearly verbatim; OpenAI's `requires_action` → `submit_tool_outputs` was the
-  same shape server-side. Temporal *signals* are our mail — durable, buffered
-  while the workflow is busy, ordered, at-least-once — and `signalWithStart`
-  is our post-then-opportunistic-claim. Critically, **every mature engine
-  separates progress from the durable event lane** (Temporal heartbeats,
-  Azure `setCustomStatus`): nobody queues progress, because progress behind a
-  blocked consumer is stale by definition.
-- **Actor runtimes** (Akka Cluster, Orleans, Dapr actors, Cloudflare Durable
-  Objects). The mailbox is native and the claim problem is solved by
-  runtime-managed single activation — elegant, and expensive: cluster
-  membership, gossip, failure detection. The runtime referees so the store
-  doesn't have to.
-- **Agent frameworks** (LangGraph, Mastra). LangGraph's checkpointer +
-  `interrupt()` + `Command(resume=…)` is park/resolution/re-drive against
-  Postgres; its weak multi-worker claim story is the gap this design closes.
-  Tool progress flows through a stream writer *outside* checkpoint history —
-  the two-lane rule again.
+**Where nessy lands:** the DBOS school — durability as a database discipline,
+one Postgres, no membership protocol. **What we deliberately did not adopt:**
+the mailbox-as-API (Temporal signals, Akka mail). The first draft had one;
+review killed it with the litmus above. Its one irreplaceable service —
+accepting input for a busy conversation — survives as an append-only lane the
+*fold* drains, which is smaller, deterministic, and already had a precedent
+lane in the control block.
 
-**Where nessy lands:** the DBOS/Restate school — durability and coordination
-as a database discipline, not a cluster runtime. One database, no membership
-protocol; the library stays a library. One genuine differentiation: our
-progress lane is *push-observable* (system-channel emission) where Temporal's
-heartbeats are server-side-only.
-
-## 3. The mailbox
-
-Every conversation has a durable mailbox. The world's two kinds of arrival
-are one envelope grammar:
+## 3. The unified entry
 
 ```java
-sealed interface Mail {
-  record Told(List<ContentBlock> content) implements Mail {}
-  record Resolved(ParkToken token, ToolResolution resolution) implements Mail {}
-}
+conversation.tell(input[, observer])      // appends the world's words, then drives
+harness.resume(token, resolution[, observer]) // appends a call's answer, then drives
 ```
 
-- **Nothing is ever turned away.** Posting mail is an unconditional, atomic
-  append — cheap on any store. It is *driving* that needs coordination, never
-  accepting. A tell landing on a busy conversation queues; a resolution
-  landing before its turn resumes queues; arrival order is preserved
-  (UUIDv7 mail ids — the v2 identifier ruling, paying off again).
-- **Mail is not grammar.** A `Told` becomes the `AgentTold` fact at fold
-  time; a `Resolved` routes to the parked executor exactly as `resume` does
-  today. The fact-log of a mailbox-fed conversation is indistinguishable from
-  an interactively-fed one.
-- **A parked turn holds its mail.** The turn definition (tell → clean
-  response) is a logical span; mail arriving mid-turn — including while
-  parked — waits behind the open turn, in order. A `Resolved` for the parked
-  call is the exception that *closes* the span, so in practice: resolutions
-  unblock, tells wait.
+**Appending always succeeds.** A tell is durably appended to the
+conversation's lane regardless of status — idle, mid-turn, parked. Nothing is
+ever refused; there is no "busy" answer. **Driving is opportunistic**: after
+appending, the entry drives if the conversation is quiescent, and otherwise
+returns immediately — the active driver's own fold points will consume the
+lane. Either way the caller gets back the state as read: *the outcome is a
+reading, not a delivery* (essence §10, now doing fleet duty).
 
-### The claimant drains — the whole dispatcher
+What an appended tell **means** is a fold decision, by status:
 
-Post mail, then *opportunistically try to claim* the conversation:
-
-- **Claim won:** drive right there, on a virtual thread — drain the mailbox
-  one envelope at a time (each a fold-and-segment), including mail that
-  arrives while driving, then release when the box is empty.
-- **Claim lost:** walk away. Whoever holds the claim drains your mail before
-  releasing.
-- **Nobody comes at all** (mail posted to an unclaimed conversation by a
-  crashed poster): a lazy sweeper — or simply the next poster — finds
-  claimable conversations with non-empty mailboxes and drives them.
-
-This is Akka's dispatcher rebuilt over a database, with no worker
-infrastructure required for the common case. And the in-process story
-becomes a degenerate fleet: interactive `tell` = post + claim (always wins,
-single process, in-memory store) + drain + read the outcome — observably
-identical to today.
-
-## 4. The store is the referee
-
-`ConversationStore` grows from load/save/consumeToken into the coordination
-contract. The loop never learns what a node is; every fleet concern is a
-store method. Two mechanisms carry two different loads, and neither can do
-the other's job:
-
-- **Fenced writes carry correctness.** State carries a version; `save`
-  carries the expected version; a stale writer loses loudly. A driver may
-  never write to a base it didn't read — including the zombie case (a driver
-  GC-pauses past its lease, another node legitimately reclaims, the zombie
-  wakes and saves late: only the write-time check stops it). This is plain
-  optimistic concurrency, and it is the load-bearing mechanism: remove
-  everything else and the system stays *correct*.
-- **Claims carry economy.** A segment is not just a state write — it is
-  model calls that cost money and tools that act on the world, and
-  version-checking detects a race only *after* that spend. A claim is itself
-  just optimistic locking on a different column at segment *start* (one
-  conditional `UPDATE … WHERE claimant IS NULL`, no locks, no blocking) so
-  duplicate work almost never begins. The lease is a TTL on the claim so
-  crashes self-heal. Remove claims and races cost dollars and duplicate side
-  effects; remove the fence and the system is simply wrong.
-
-| Concern | Contract sketch |
+| Conversation is… | The lane entry becomes… |
 |---|---|
-| Torn writes / zombie writers | `save(state, expectedVersion)` — version-fenced CAS; stale writers fail loudly and discard their segment. |
-| Simultaneous drivers | `claim(id, lease)` — CAS on an unclaimed conversation; exactly one caller wins, before any spend. The essence's read-then-act §6 refusal check becomes this CAS. |
-| Crashed claimant | claims carry a **lease** (expiry + renewal while driving). An expired lease is reclaimable; recovery is re-driving from the status pointer, fenced by the version check. |
-| Parked turns | **parking releases the claim.** A parked conversation has no driver and needs no lease — that is the point of parking. Resume re-claims before re-driving. |
-| Resume dedup | `consumeToken(token)` (already shipped): resolutions are at-least-once in every real transport; the token is single-use. Progress peeks; only resolution consumes. |
-| Mail | append (unconditional), read-in-order, acknowledge-drained. |
-| Park bookkeeping | token → (conversation, call), written at park, read by `resume`/`progress`. Load-bearing now; see §7. |
+| Quiescent (`IDLE`/`COMPLETE`/`FAILED`) | The turn-opener: the drain births one user message, resets the error streak, `AWAITING_MODEL`, `CallModel`. |
+| Mid-turn with tool debt | A flush rider: the results message is born as `[tool_results…, interjections…]` — the wire-legal seat for mid-turn words (the Claude Code shape). |
+| Mid-turn, ending clean | The next turn's opener: a clean `ModelResponded` folding against a non-empty lane does not `COMPLETE`; it drains and continues. One fold rule is the whole "mailbox." |
+| `PARKED` | Durable patience: waits for the resume that will drive past it. |
 
-The in-memory store implements all of it trivially (single process, claims
-always win, leases never expire). A reference durable implementation —
-`nessy-store-jdbc`, Postgres-first — is a new module in plan scope, and the
-contract is designed against it.
+**Merge-at-drain.** All queued tells drain into **one user message, as
+distinct blocks in arrival order** (UUIDv7 lane ids). Three forces settle
+this: the wire forbids consecutive user messages; acting on tell 1 while
+durably holding tell 2 is the stale-instruction bug ("cancel that" must never
+sit unread behind the thing it cancels); and one model call beats N. Each
+tell keeps its block boundaries — the model sees N voices, and the
+`InputRenderer` owns any labeling. Accounting stays honest: one `AgentTold`
+fact per tell as it arrived; one merged message told to Memory at drain.
 
-**At-least-once tool physics.** Re-driving a lease-expired `EXECUTING_TOOL`
-conversation re-performs tool calls. That is the fleet's physics, not a bug,
-and it becomes part of `Tool`'s documented contract: a tool that cannot be
-safely re-run makes itself idempotent (or parks and lets its remote side
-dedup by token). One javadoc paragraph, no machinery.
+**Concern isolation is the conversation's job, not the turn's.** Sequential
+turns in one conversation share a transcript anyway — they sequence concerns
+without isolating them. Genuinely independent matters belong in separate
+conversations, and routing a tell to a `conversationId` is the application's
+decision at the front door. Within a conversation, everything is one evolving
+matter, and completeness beats sequencing.
 
-## 5. The two lanes: mail and signals
+Mid-turn tells do **not** reset the error streak and do not start a turn —
+streak reset is a property of the drain that opens one.
 
-**Mail changes the conversation; signals describe it.** Mail folds; signals
-don't. Mail is durable, ordered, and claimed; signals are best-effort,
-immediate, and never queued.
+## 4. The two write disciplines
 
-The facade grows a sibling pair, correlated by the same token:
+**The fenced core carries correctness.** Status, debt lanes, dials, and a
+version. `save(state, expectedVersion)`: a driver may never write to a base
+it didn't read — including the zombie case (a driver stalls, another node
+re-drives, the zombie wakes and saves late; only the write-time check stops
+it). This is plain optimistic locking and it is the load-bearing mechanism.
 
-```java
-harness.resume(token, resolution)   // terminal: consumes the token, re-drives the turn
-harness.progress(token, message)    // interim: peeks the token, emits ToolProgress
-```
+**The append-only lane carries acceptance.** Lane entries (a told's content;
+a resolution and its token) are append-only rows the fence ignores — so a
+chatty world can never fence-fail a working driver, which is what makes
+always-accept compatible with always-progressing. The lane is drained
+*transactionally with the fenced save* of the fold that consumes it.
 
-`progress` validates the token *without consuming it*, resolves the
-conversation and call from park bookkeeping, and emits a `ToolProgress` on
-the receiving node's system channel. Duplicates are harmless. How the remote
-executor transports progress home (webhook, queue) is the tool author's
-business — the token is the harness's whole correlation contract.
+**The fold stays pure and owns message construction.** `ConversationState`
+carries the lane as a loaded view — physically rows, logically a field, read
+at load, drained by folds. Both halves of the state debate resolve: the
+fenced core stays thin (no content growth under the version), and message
+construction never leaves the fold. The lane joins `pendingResults` under the
+essence's real rule: *state holds the open turn's unsettled material; Memory
+holds everything settled. Lanes drain; records don't.* (Honest note: a
+long park can grow the lane; entries are human-scale mid-turn words, and a
+durable store may page lane rows without semantic change.)
 
-Progress-as-mail was considered and is disqualified on staleness: mail is
-drained between segments, and a parked turn holds the mailbox closed — the
-parked call's own progress would queue behind the park producing it,
-delivered only at resume, when it is worthless.
+**No claims, no leases — v1.** With fencing, concurrent drivers are *safe*:
+one save wins, the loser discards its segment. Claims (a start-of-segment CAS
+on a claimant column) prevent duplicate *spend*, not incorrectness, and races
+are rare for cron-and-webhook agents. They can be added later as pure
+optimization, one column, no semantic change. Shipping them first was the
+broker talking.
 
-**The system channel stays process-local.** `progress` emits on whichever
-node received the relay; a fleet-wide dashboard aggregates via the
-application's own bus behind a declared listener. Declaring listeners is the
-harness's seam; distributing their delivery is not its job (v2's line, kept).
+## 5. Park and resume
 
-### In-process tool narration (the tee)
+- **`PARKED` joins `ConversationStatus`.** A parked conversation self-
+  describes to any ops surface; no driver, no contention, durable patience.
+- **State gains the parked lane**: `parkedCalls: List<ParkedCall(token,
+  call)>` beside `pendingCalls` — parking moves a call over (a loop-applied
+  closure transition, like `halted`); the executor's resumed yield moves it
+  back. Token → (conversation, call) is thereby fold-visible and
+  fleet-visible.
+- **`resume(token, resolution)`** consumes the token (`consumeToken`, already
+  shipped — resolutions are at-least-once in every real transport), appends,
+  and drives. Contention (a resolution arriving while another entry drives —
+  fan-out parks make this real) is the lane absorbing it: the active driver's
+  loop consumes resolution entries and routes them to the parked executor's
+  `resume`, exactly as the essence ruled — the fold never learns time passed.
+- **At-least-once tool physics.** Re-driving a stalled `EXECUTING_TOOL`
+  conversation re-performs calls. Documented on `Tool`: a tool that cannot be
+  safely re-run makes itself idempotent, or parks and lets its remote side
+  dedup by token. One javadoc paragraph, no machinery.
 
-The sitting consumer's tool observability gains its missing beat:
-`TurnEvent.ToolCallProgressed(ToolCall call, String message)`. The gated
-executor tees it — the `ToolContext` it hands a tool wraps the emitter so
-`ToolProgress` emissions are *also* narrated to the segment's observer
-(authoritative `ToolCall` attached by the executor; the tool's self-reported
-id is not trusted for narration). Only `ToolProgress` is teed; everything
-else a tool emits passes through untouched. The system channel keeps its copy
-— same information, both channels, different consumers, deliberately.
+## 6. Signals: progress from afar and the tee
 
-Two rulings this forces (see §9): narration threading (progress arrives on
-whatever thread the tool emits from — documented on `TurnObserver`) and
-narration-throw semantics (the tee must not let an observer bug masquerade as
-tool failure — texture never alters the record).
+**Mail changes the conversation; signals describe it.** Signals are
+best-effort, immediate, never queued (progress behind a blocked consumer is
+stale by definition — the industry's unanimous heartbeat lesson).
 
-## 6. The facade
+- `harness.progress(token, message)` — the non-terminal sibling of `resume`:
+  *peeks* the token (never consumes), resolves the call from the parked lane,
+  emits `ToolProgress` on the receiving node's system channel. Transport home
+  is the tool author's business; the token is the whole correlation contract.
+- **The in-process tee**: `TurnEvent.ToolCallProgressed(call, message)`. The
+  gated executor wraps the `ToolContext` emitter so a tool's `ToolProgress`
+  is also narrated to the segment's observer, with the *authoritative*
+  `ToolCall` attached (the tool's self-reported id is not trusted for
+  narration). Only `ToolProgress` is teed. Two rulings ride along: the tee
+  catches-and-logs observer throws (texture never alters the record — a UI
+  bug must not become a model-visible tool failure), documented beside the
+  model-path's propagate semantics on `TurnObserver`; and progress narration
+  arrives on whatever thread the tool emits from, documented likewise.
+- The system channel stays **process-local**; fleet-wide aggregation is the
+  application's bus behind a declared listener (v2's line, kept).
 
-The durable entry is **mail, with a receipt**:
-
-```java
-MailReceipt receipt = conversation.post(input);                    // Told
-MailReceipt receipt = harness.resume(token, resolution, observer); // Resolved
-record MailReceipt(MailId id) {}                       // UUIDv7 — correlate in logs/events
-```
-
-- `post` appends, opportunistically claims-and-drains (driving on a virtual
-  thread when it wins, walking away when it loses), and returns the receipt
-  either way. Prior art is unanimous that fire-and-forget still hands back a
-  correlation handle (Temporal's signal handle, OpenAI's run).
-- `resume` is the same shape for the same reason: with fan-out, several calls
-  can park in one turn, so a resolution can arrive *while another resume is
-  already driving* — exactly when `Resolved` must queue as mail. So `resume`
-  cannot promise a `RunOutcome`; it posts, claims opportunistically, and
-  returns the receipt. The observer binds to the segment when the claim is
-  won (the HITL UI still watches its own resume drive live); a caller who
-  needs the settled outcome reads the store or listens on the system channel.
-  *(Return shape — receipt-always vs a dual outcome type — open, §10.)*
-- **Interactive `tell` is unchanged**: `tell(I[, TurnObserver]) → RunOutcome`
-  — post + always-winning claim + drain + read, on an in-memory assembly. The
-  waiting teller keeps their synchronous read; the autonomous caller uses
-  `post` and reads the receipt. Two verbs, one machinery, intent legible at
-  the call site. *(Verb name `post` vs `deliver` — open question §10.)*
-
-**Amendment ledger against the essence spec:**
+## 7. Amendment ledger against the essence
 
 | Essence ruling | Disposition |
 |---|---|
-| "The entry point must not become enqueue" (§10) | **Amended, reason intact.** The interactive facade stays synchronous and collision behavior stays loud-by-outcome. The durable lane is *explicitly* mail — enqueue by name, not by stealth. What the ruling protected (no silent queueing behind a synchronous verb) still holds: `tell` never queues; `post` never pretends to be synchronous. |
-| §6 refusal contract ("in-flight statuses refuse `run` loudly") | **Evolved into the claim protocol.** The invariant it enforced — never two drivers — is kept by CAS instead of by exception. "Claim lost" is the system working, not an error. The crashed-turn story ("inspect or abandon deliberately") becomes lease expiry + re-drive. |
-| Parks invisible to the grammar; observer bound per entry; resolutions route to the executor | **Unchanged.** This design is those rulings' payoff. |
-| Statuses: `EXECUTING_TOOL` covers parked | **Amended: `PARKED` joins `ConversationStatus`.** The claim rules need it legible: leases apply to in-flight statuses; `PARKED` carries no lease (no driver); resume targets `PARKED` alone. An ops surface reading status must not need park-table joins to see "waiting on the world." |
+| "The entry point must not become enqueue" (§10) | **Amended, reason intact.** What it protected — no silent queueing behind a synchronous verb — holds: `tell` appends *and drives when it can*, and always returns a reading. What changes: acceptance is unconditional, because the append is a durable, fold-visible act, not a delivery promise. |
+| §6 refusal contract (in-flight statuses refuse `run` loudly) | **Retired in favor of fencing + re-drive.** The invariant (never two *effective* drivers) is kept by the version fence; a crashed turn is no longer a quarantine case but simply re-drivable from the pointer by the next entry. |
+| Turn = tell → clean response | **Refined:** a clean response folding against a non-empty lane continues rather than completing. The turn ends at a clean response *with an empty lane* — "no homework" now includes "no unread mail." |
+| `tell` returns `RunOutcome` | **Unchanged in shape, widened in meaning:** when the entry drives, it is the drive's outcome; when another driver holds the conversation, it is the state as read. A reading, either way. |
+| Parks invisible to grammar; observer per entry; resolutions route to the executor | **Unchanged** — this design is their payoff. |
+| Statuses | `PARKED` added; nothing removed. |
 
-## 7. State: the parked lane
+## 8. Deliberately not built
 
-Park bookkeeping is control-block business — the debt lane already tracks
-which calls are owed; parked is a sub-state of owed:
+The mailbox-as-API (`Mail`, `MailReceipt`, `post`) — the lane is store rows
+and fold semantics, not surface. Claims and leases (v1) — fencing carries
+correctness; economy can come later as one column. Sweepers — every lane
+entry is followed by a driving entry or the conversation is wedged regardless.
+Park timeouts (`ParkPolicy`) — real, deferred; wall-clock policy arrives when
+a deployment demands it, likely as a sweeper-sibling the app schedules.
+Cross-node event fan-out — the application's bus. Brokers in front of `tell`
+— the caller's architecture. Model-call parking — the contract shape still
+permits it; still unbuilt.
 
-```java
-ConversationState(…, List<ToolCall> pendingCalls,
-                     List<ParkedCall> parkedCalls,   // new: (ParkToken, ToolCall)
-                     List<ToolResultBlock> pendingResults, …)
-```
+## 9. Open questions
 
-Parking moves a call from pending to parked (a fold-free transition performed
-by the loop via a small closure method, like `halted`); resuming moves it
-back through the executor's yield. State stays thin — two scalars' worth of
-lane — and `resume`/`progress` resolve token → call from state, with the
-store's park table as the fleet-visible index of the same information.
+1. **Narration-throw asymmetry** (§6): tee catches-and-logs while the
+   model-path propagates. Lean: ship the asymmetry, documented — propagation
+   on the model path is cleanly attributed to the caller's own `tell`;
+   propagation through the tee misattributes a UI bug as tool failure.
+2. **`nessy-store-jdbc` in the same plan** (lean: yes — the two write
+   disciplines aren't real until Postgres implements them; Testcontainers,
+   excluded from offline `verify` like the live tests).
+3. **Drain-policy seam** (sequenced turns within one conversation): not
+   built; noted so the first genuine need argues against the
+   conversation-as-concern principle on the record.
 
-## 8. What this activates from the shipped scaffolding
+## 10. Testing posture
 
-- `RunOutcome.Parked` gets constructed; `ConversationLoop.resume` gets its
-  body; `GatedToolCallExecutor.resume` becomes reachable; `consumeToken`
-  gets its caller. (The merge-time backlog, redeemed.)
-- The loop's missing terminal-status brake gets built — with adversarial
-  mail and multi-node timing, "unreachable with in-family executors" is no
-  longer an assumption worth carrying.
-- The listener-veto sharp edge (a throwing sync subscriber stranding an
-  in-flight conversation) gets its real fix: a stranded conversation is now
-  just an expired lease — re-drivable.
-
-## 9. Open rulings folded in from the tee discussion
-
-1. **Narration-throw semantics.** The tee catches and logs observer throws —
-   texture never alters the record; a UI bug must not become a model-visible
-   tool failure. This ships as a *documented asymmetry*: on the model-call
-   path a throwing observer still aborts the caller's own `tell` (cleanly
-   attributed), on the tool-progress path it is logged and dropped
-   (propagation would misattribute). Both semantics land in `TurnObserver`'s
-   javadoc. *(Lean recorded; uniform narration-never-throws was the
-   alternative — see §10.)*
-2. **Narration threading.** `TurnObserver` documents that tool-progress
-   narration arrives on whatever thread the tool emits from; observers that
-   accumulate state make themselves thread-safe or stay delta-only.
-
-## 10. Open questions
-
-1. **The durable verb:** `post` vs `deliver` vs `send`. Lean: `post` — mail
-   vocabulary, no collision with existing verbs, reads at the call site.
-2. **Narration-throw asymmetry** (§9.1): tee-only swallow (lean) vs uniform
-   narration-never-throws across all observer paths.
-3. **Lease mechanics:** duration, renewal cadence, and whether renewal is the
-   loop's per-fold side effect or a background heartbeat. Lean: renew at the
-   same chokepoint as `save` — one store round-trip, no extra threads.
-4. **Sweeper:** does the harness ship a minimal claimable-conversation
-   sweeper (a `Runnable` the app schedules), or is "the next poster drives"
-   plus app-scheduled sweeping enough for v1? Lean: ship the `Runnable`,
-   schedule nothing.
-5. **Park timeouts:** a park that never resolves starves its mailbox.
-   Whose policy? Lean: a `ParkPolicy` sibling of `TerminationPolicy`,
-   consulted by the sweeper (wall-clock is the sweeper's jurisdiction; the
-   loop still never learns time passed) — spec'd but minimal in v1.
-6. **`nessy-store-jdbc` scope:** schema (conversations, mail, parks, tokens),
-   Postgres-first. In plan scope as the reference implementation, or a
-   follow-on plan? Lean: same plan — the contract isn't real until a durable
-   store implements it.
-7. **`resume`'s return shape:** receipt-always (lean — uniform with `post`,
-   honest about the queued case; the winning claim still narrates live
-   through the bound observer) vs a dual outcome type distinguishing
-   drove-to-completion from queued-behind-another-driver.
-
-## 11. Out of scope, on purpose
-
-Cross-node fan-out of the system channel (application's bus); brokers and
-queues in front of `post` (application's architecture); model-call parking
-(batch APIs — the contract shape still permits it; still unbuilt); mailbox
-fairness/starvation beyond FIFO-per-conversation; multi-conversation
-transactions.
-
-## 12. Testing posture
-
-The essence's promises extend: the claim/lease/mail contract gets a
-store-agnostic TCK-style test suite run against both the in-memory store and
-`nessy-store-jdbc` (Testcontainers for Postgres, excluded from the offline
-`verify` like the live model tests). The loop's drain discipline is tested
-with fake stores whose claims can be scripted to lose, expire, and race.
-Park/resume round-trips run entirely in-process against the in-memory store —
-durability of the *contract*, not the disk, is what the core suite pins.
+The store contract (fenced save, lane append/drain atomicity, token
+consume/peek) gets a store-agnostic suite run against in-memory and JDBC
+implementations. The loop's new laws — append-always, drive-when-quiescent,
+drain-at-the-consuming-fold, merge-at-drain block ordering, mid-turn tells
+riding the flush, clean-response-with-mail continuing the conversation,
+park/resume round-trips, resolution-during-drive absorption — are fold and
+loop tests against the in-memory store, in-process, offline. The fence's
+zombie case is directly testable: two loaded states, interleaved saves, the
+stale one must fail loudly. Durability of the *contract*, not the disk, is
+what the core suite pins.
