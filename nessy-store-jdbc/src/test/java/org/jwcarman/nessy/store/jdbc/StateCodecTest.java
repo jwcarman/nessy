@@ -18,10 +18,14 @@ package org.jwcarman.nessy.store.jdbc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidTypeIdException;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
@@ -212,6 +216,59 @@ class StateCodecTest {
       assertThatThrownBy(() -> codec.readLaneEntry(payload))
           .isInstanceOf(IllegalArgumentException.class)
           .hasCauseInstanceOf(InvalidTypeIdException.class);
+    }
+  }
+
+  /**
+   * §7's sealing-has-teeth promise, held against the codec: a new permitted subclass added to one
+   * of these sealed types compiles fine and only explodes at first runtime serialization if the
+   * mixin's {@code @JsonSubTypes} forgets to list it. These four tests pin that the mixin's
+   * registered set is always exactly the sealed type's own {@link Class#getPermittedSubclasses()} —
+   * so a drift between the two fails loudly here, in a fast offline test, rather than in production
+   * JSON.
+   */
+  @Nested
+  class Sealed_grammar_coverage {
+
+    @Test
+    void the_codec_registers_every_permitted_content_block() {
+      assertRegistersEveryPermittedSubclass(ContentBlock.class, "ContentBlockMixin");
+    }
+
+    @Test
+    void the_codec_registers_every_permitted_lane_entry() {
+      assertRegistersEveryPermittedSubclass(LaneEntry.class, "LaneEntryMixin");
+    }
+
+    @Test
+    void the_codec_registers_every_permitted_tool_resolution() {
+      assertRegistersEveryPermittedSubclass(ToolResolution.class, "ToolResolutionMixin");
+    }
+
+    @Test
+    void the_codec_registers_every_permitted_decision() {
+      assertRegistersEveryPermittedSubclass(Decision.class, "DecisionMixin");
+    }
+
+    private void assertRegistersEveryPermittedSubclass(
+        Class<?> sealedType, String mixinSimpleName) {
+      Class<?>[] permitted = sealedType.getPermittedSubclasses();
+      assertThat(permitted).isNotEmpty();
+
+      JsonSubTypes subTypes = mixinNamed(mixinSimpleName).getAnnotation(JsonSubTypes.class);
+      assertThat(subTypes).isNotNull();
+      Set<Class<?>> registered =
+          Arrays.stream(subTypes.value()).map(JsonSubTypes.Type::value).collect(Collectors.toSet());
+      assertThat(registered).isNotEmpty();
+
+      assertThat(registered).containsExactlyInAnyOrder(permitted);
+    }
+
+    private Class<?> mixinNamed(String simpleName) {
+      return Arrays.stream(StateCodec.class.getDeclaredClasses())
+          .filter(candidate -> candidate.getSimpleName().equals(simpleName))
+          .findFirst()
+          .orElseThrow();
     }
   }
 

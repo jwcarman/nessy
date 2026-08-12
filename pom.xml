@@ -89,9 +89,11 @@
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
     <!-- Held at the 1.21 line deliberately: testcontainers 2.0 renamed every module artifact
-         (org.testcontainers:postgresql -> org.testcontainers:testcontainers-postgresql) and
-         relocated container classes to per-module packages, dropping the generic
-         PostgreSQLContainer<?> shape nessy-store-jdbc's container test relies on. -->
+         (org.testcontainers:postgresql -> org.testcontainers:testcontainers-postgresql) and moved
+         the container classes to per-module packages. 2.0.x still ships the old
+         org.testcontainers.containers.PostgreSQLContainer<?> shape nessy-store-jdbc's container
+         test relies on as a deprecated shim, so this isn't a compatibility blocker — migrating is
+         a small deferred follow-up, not a reason to skip 2.0 forever. -->
     <testcontainers.version>1.21.4</testcontainers.version>
     <postgresql.version>42.7.13</postgresql.version>
 

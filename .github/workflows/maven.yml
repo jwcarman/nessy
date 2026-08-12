@@ -30,7 +30,7 @@ jobs:
         cache: maven
 
     - name: Build with Maven
-      run: mvn -B verify
+      run: mvn -B verify -Dnessy.excludedGroups=live
 
     - name: Verify release profile (javadoc, sources, signing skipped)
       run: mvn -B -P release -DskipTests -Dgpg.skip=true verify
@@ -54,4 +54,4 @@ jobs:
     - name: Build and analyze with SonarCloud
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      run: mvn -Pci -B verify sonar:sonar
+      run: mvn -Pci -B verify sonar:sonar -Dnessy.excludedGroups=live
