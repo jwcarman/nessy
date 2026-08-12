@@ -80,4 +80,15 @@ public sealed interface TurnEvent {
       Objects.requireNonNull(result, "result must not be null");
     }
   }
+
+  /**
+   * A running tool reported progress — the executor attaches the authoritative call; the tool's
+   * self-reported id is not trusted for narration.
+   */
+  record ToolCallProgressed(ToolCall call, String message) implements TurnEvent {
+    public ToolCallProgressed {
+      Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(message, "message must not be null");
+    }
+  }
 }

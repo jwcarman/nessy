@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.ApprovalRequested;
 import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -43,6 +44,8 @@ import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.internal.EngineObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The one door into a tool's execution: gate, then invoke. Ported from the retired in-process
@@ -59,6 +62,7 @@ import org.jwcarman.nessy.internal.ToolInvoker;
  */
 public final class GatedToolCallExecutor implements ToolCallExecutor {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(GatedToolCallExecutor.class);
   private static final String DENIED_PREFIX = "Denied: ";
 
   private final ToolRegistry tools;
@@ -245,7 +249,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
       Observation observation) {
     Awaited<ToolResult> awaited;
     try {
-      awaited = invoker.invoke(tool, call, new ToolContext(state.id(), emitter));
+      awaited = invoker.invoke(tool, call, new ToolContext(state.id(), teed(call, observer)));
     } catch (RuntimeException e) {
       // Factor 9: the model sees a compact error and gets to recover. It
       // never sees a stack trace, and the loop never dies on a bad tool. The
@@ -262,6 +266,27 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
         yield finished(call, state, result, observer, null);
       }
       case Awaited.Parked<ToolResult>(var token) -> Awaited.parked(token);
+    };
+  }
+
+  /**
+   * The emitter a running tool is handed: everything passes through to {@link #emitter} untouched,
+   * but a {@link ToolProgress} is also narrated to {@code observer} as {@link
+   * TurnEvent.ToolCallProgressed}, carrying the executor's own authoritative {@code call} rather
+   * than trusting whatever the tool self-reported. A throwing observer here is the ruled exception
+   * to fail-loud (texture never alters the record): the throw is caught, logged, and dropped, so a
+   * bug in a UI's narration can never turn a succeeding tool call into a failed one.
+   */
+  private EventEmitter teed(ToolCall call, TurnObserver observer) {
+    return event -> {
+      emitter.emit(event);
+      if (event instanceof ToolProgress(var _, var _, String message)) {
+        try {
+          observer.on(new TurnEvent.ToolCallProgressed(call, message));
+        } catch (RuntimeException e) {
+          LOGGER.warn("turn observer failed during tool-progress narration; narration dropped", e);
+        }
+      }
     };
   }
 

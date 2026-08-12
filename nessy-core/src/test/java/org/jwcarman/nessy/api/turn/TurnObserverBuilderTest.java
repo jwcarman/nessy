@@ -38,7 +38,8 @@ class TurnObserverBuilderTest {
         new TurnEvent.RedactedThinking("opaque"),
         new TurnEvent.ToolCallRequested(CALL),
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
-        new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")));
+        new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
+        new TurnEvent.ToolCallProgressed(CALL, "halfway"));
   }
 
   @Test
@@ -52,6 +53,7 @@ class TurnObserverBuilderTest {
             .onToolCallRequested(requested -> heard.add("requested:" + requested.call().name()))
             .onToolCallDecided(decided -> heard.add("decided:" + decided.call().name()))
             .onToolCallCompleted(completed -> heard.add("completed:" + completed.call().name()))
+            .onToolCallProgressed(progressed -> heard.add("progressed:" + progressed.message()))
             .build();
 
     oneOfEveryVariant().forEach(observer::on);
@@ -63,7 +65,8 @@ class TurnObserverBuilderTest {
             "redacted:opaque",
             "requested:search",
             "decided:search",
-            "completed:search");
+            "completed:search",
+            "progressed:halfway");
   }
 
   @Test

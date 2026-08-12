@@ -43,6 +43,7 @@ public final class TurnObserverBuilder {
   private Consumer<TurnEvent.ToolCallRequested> onToolCallRequested = event -> {};
   private Consumer<TurnEvent.ToolCallDecided> onToolCallDecided = event -> {};
   private Consumer<TurnEvent.ToolCallCompleted> onToolCallCompleted = event -> {};
+  private Consumer<TurnEvent.ToolCallProgressed> onToolCallProgressed = event -> {};
 
   TurnObserverBuilder() {}
 
@@ -76,6 +77,11 @@ public final class TurnObserverBuilder {
     return this;
   }
 
+  public TurnObserverBuilder onToolCallProgressed(Consumer<TurnEvent.ToolCallProgressed> consumer) {
+    onToolCallProgressed = onToolCallProgressed.andThen(require(consumer));
+    return this;
+  }
+
   /** The assembled observer; the builder may keep being used and rebuilt without affecting it. */
   public TurnObserver build() {
     Consumer<TurnEvent.TextDelta> text = onTextDelta;
@@ -84,6 +90,7 @@ public final class TurnObserverBuilder {
     Consumer<TurnEvent.ToolCallRequested> requested = onToolCallRequested;
     Consumer<TurnEvent.ToolCallDecided> decided = onToolCallDecided;
     Consumer<TurnEvent.ToolCallCompleted> completed = onToolCallCompleted;
+    Consumer<TurnEvent.ToolCallProgressed> progressed = onToolCallProgressed;
     return new TurnObserverAdapter() {
       @Override
       protected void onTextDelta(TurnEvent.TextDelta event) {
@@ -113,6 +120,11 @@ public final class TurnObserverBuilder {
       @Override
       protected void onToolCallCompleted(TurnEvent.ToolCallCompleted event) {
         completed.accept(event);
+      }
+
+      @Override
+      protected void onToolCallProgressed(TurnEvent.ToolCallProgressed event) {
+        progressed.accept(event);
       }
     };
   }

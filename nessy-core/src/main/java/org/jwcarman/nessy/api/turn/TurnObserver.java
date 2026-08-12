@@ -24,6 +24,19 @@ package org.jwcarman.nessy.api.turn;
  * <p>Implement directly (a lambda) when one concern covers every event; extend {@link
  * TurnObserverAdapter} to override per-variant hooks and ignore the rest; or compose one from
  * per-variant lambdas via {@link #builder()}.
+ *
+ * <p>Throw semantics are asymmetric by design: a throwing observer aborts the call it narrates on
+ * the model path, attributed to the caller's own {@code tell} — the observer is the caller's code,
+ * so its exception is the caller's exception. Tool-progress narration ({@link
+ * TurnEvent.ToolCallProgressed}) is different — logged and dropped rather than propagated, because
+ * letting it propagate would misattribute a bug in the UI's narration to the tool itself, killing a
+ * call that was otherwise succeeding.
+ *
+ * <p>Threading: progress narration arrives on whatever thread the tool that emits it is running on,
+ * which need not be the thread that drove the turn. An observer that only appends deltas to a
+ * buffer it owns exclusively is fine either way; an observer that accumulates across events must
+ * make itself thread-safe, or restrict itself to delta-only bookkeeping that tolerates out-of-order
+ * or concurrent arrival.
  */
 public interface TurnObserver {
 

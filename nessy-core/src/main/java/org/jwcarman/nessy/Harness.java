@@ -18,13 +18,16 @@ package org.jwcarman.nessy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.LaneEntry;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
+import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.internal.ConversationLoop;
@@ -181,5 +184,32 @@ public final class Harness {
     }
     store.appendLane(id, LaneEntry.resolved(token, resolution));
     return loop.drive(id, observer);
+  }
+
+  /**
+   * The remote signal lane: a tool still running out in the world reports {@code message} against
+   * the wait it parked under. {@code token} is only ever peeked, via {@link
+   * ConversationStore#findPark}, never consumed — this is narration, not a resolution, and the wait
+   * itself remains exactly as resumable afterward as it was before. An unknown or already-settled
+   * token is not an error; the signal simply has nowhere left to land, so it is dropped and {@code
+   * false} says so. A live token emits {@link ToolProgress} on this harness's {@link #registry},
+   * carrying the park's own conversation and call id, and returns {@code true}.
+   */
+  public boolean progress(ParkToken token, String message) {
+    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(message, "message must not be null");
+    Optional<ParkedCall> park = store.findPark(token);
+    if (park.isEmpty()) {
+      return false;
+    }
+    ConversationId conversationId =
+        store
+            .findParkConversation(token)
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "park token indexed without a conversation: " + token));
+    registry.emit(new ToolProgress(conversationId, park.get().call().id(), message));
+    return true;
   }
 }

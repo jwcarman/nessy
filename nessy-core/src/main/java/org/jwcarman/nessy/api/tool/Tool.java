@@ -25,6 +25,9 @@ import org.jwcarman.nessy.internal.Schemas;
  * a method that runs. The JSON Schema is derived from {@link #inputType()} rather than written by
  * hand.
  *
+ * <p>Durable re-drives execute at-least-once: a tool that cannot be safely re-run makes itself
+ * idempotent, or parks and lets its remote side deduplicate by token.
+ *
  * @param <T> the record this tool's arguments arrive in
  */
 public interface Tool<T> {

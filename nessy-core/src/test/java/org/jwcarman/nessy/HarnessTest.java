@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
+import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -436,6 +437,139 @@ class HarnessTest {
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("single-agent")
           .hasMessageContaining("2");
+    }
+  }
+
+  /**
+   * {@code Harness.progress} (design 2026-08-12): the remote signal lane — a peek at {@code
+   * findPark}, never a consume, so the token stays fully resumable afterward.
+   */
+  @Nested
+  class Progress {
+
+    /** A provider that replays one scripted turn (a list of {@link ModelEvent}) per call. */
+    private static final class ScriptedProvider implements ModelProvider {
+
+      private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
+
+      ScriptedProvider turn(ModelEvent... events) {
+        turns.addLast(List.of(events));
+        return this;
+      }
+
+      @Override
+      public ModelStream stream(ModelRequest request) {
+        Iterator<ModelEvent> events = turns.removeFirst().iterator();
+        return new ModelStream() {
+          @Override
+          public Iterator<ModelEvent> iterator() {
+            return events;
+          }
+
+          @Override
+          public void close() {
+            // intentionally empty: this fake stream holds no resources to release
+          }
+        };
+      }
+
+      @Override
+      public Set<Capability> capabilities() {
+        return Set.of();
+      }
+    }
+
+    record SearchInput(String query) {}
+
+    /** A tool that always succeeds once invoked — the gate is what parks, not the tool itself. */
+    static final class SearchTool implements Tool<SearchInput> {
+
+      @Override
+      public String name() {
+        return "search";
+      }
+
+      @Override
+      public String description() {
+        return "Searches for something";
+      }
+
+      @Override
+      public Class<SearchInput> inputType() {
+        return SearchInput.class;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(SearchInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok("found:" + input.query()));
+      }
+    }
+
+    /** Parks the first call it is asked, remembering the token it handed out. */
+    static final class ParkingApprover implements Approver {
+
+      private ParkToken token;
+
+      @Override
+      public Awaited<Decision> approve(ApprovalRequest request) {
+        token = ParkToken.generate();
+        return Awaited.parked(token);
+      }
+
+      ParkToken token() {
+        return token;
+      }
+    }
+
+    @Test
+    void progress_peeks_the_park_and_emits_tool_progress() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      List<ToolProgress> heard = new ArrayList<>();
+      Harness harness = Nessy.harness(provider).listen(ToolProgress.class, heard::add).build();
+      Agent<String> agent =
+          harness
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+
+      RunOutcome parked = agent.converse().tell("search for x");
+      assertThat(parked).isInstanceOf(RunOutcome.Parked.class);
+      ParkToken token = approver.token();
+
+      boolean emitted = harness.progress(token, "halfway");
+
+      assertThat(emitted).isTrue();
+      assertThat(heard).hasSize(1);
+      assertThat(heard.getFirst().toolCallId()).isEqualTo(call.id());
+      assertThat(heard.getFirst().message()).isEqualTo("halfway");
+
+      RunOutcome resumed = harness.resume(token, new ToolResolution.Decided(Decision.allow()));
+
+      assertThat(resumed.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+    }
+
+    @Test
+    void progress_for_an_unknown_token_reports_false_and_emits_nothing() {
+      List<ToolProgress> heard = new ArrayList<>();
+      Harness harness =
+          Nessy.harness(new FakeProvider("hi")).listen(ToolProgress.class, heard::add).build();
+      ParkToken token = ParkToken.generate();
+
+      boolean emitted = harness.progress(token, "halfway");
+
+      assertThat(emitted).isFalse();
+      assertThat(heard).isEmpty();
     }
   }
 }

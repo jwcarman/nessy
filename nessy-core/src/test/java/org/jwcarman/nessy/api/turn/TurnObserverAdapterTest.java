@@ -37,7 +37,8 @@ class TurnObserverAdapterTest {
         new TurnEvent.RedactedThinking("opaque"),
         new TurnEvent.ToolCallRequested(CALL),
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
-        new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")));
+        new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
+        new TurnEvent.ToolCallProgressed(CALL, "halfway"));
   }
 
   @Test
@@ -74,6 +75,11 @@ class TurnObserverAdapterTest {
           protected void onToolCallCompleted(TurnEvent.ToolCallCompleted event) {
             routed.add("completed:" + event.call().name());
           }
+
+          @Override
+          protected void onToolCallProgressed(TurnEvent.ToolCallProgressed event) {
+            routed.add("progressed:" + event.message());
+          }
         };
 
     oneOfEveryVariant().forEach(observer::on);
@@ -85,7 +91,8 @@ class TurnObserverAdapterTest {
             "redacted:opaque",
             "requested:search",
             "decided:search",
-            "completed:search");
+            "completed:search",
+            "progressed:halfway");
   }
 
   @Test

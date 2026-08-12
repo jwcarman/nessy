@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.ApprovalRequested;
 import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -48,6 +49,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 
 class GatedToolCallExecutorTest {
 
@@ -476,6 +478,94 @@ class GatedToolCallExecutorTest {
       assertThat(observed).isNotEmpty().hasSize(2);
       assertThat(observed.get(0)).isInstanceOf(TurnEvent.ToolCallDecided.class);
       assertThat(observed.get(1)).isInstanceOf(TurnEvent.ToolCallCompleted.class);
+    }
+  }
+
+  @Nested
+  class ProgressNarration {
+
+    record ProgressInput(String value) {}
+
+    /** Reports progress under a deliberately wrong call id, then finishes normally. */
+    static final class ProgressTool implements Tool<ProgressInput> {
+
+      @Override
+      public String name() {
+        return "echo";
+      }
+
+      @Override
+      public String description() {
+        return "Reports progress then finishes";
+      }
+
+      @Override
+      public Class<ProgressInput> inputType() {
+        return ProgressInput.class;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(ProgressInput input, ToolContext context) {
+        context
+            .events()
+            .emit(new ToolProgress(context.conversationId(), "not-the-real-call-id", "halfway"));
+        return Awaited.ready(ToolResult.ok("done"));
+      }
+    }
+
+    private GatedToolCallExecutor progressExecutor(EventEmitter emitter) {
+      ToolGrant grant = ToolGrant.grant(new ProgressTool(), UsagePolicy.allow());
+      ToolRegistry registry = ToolRegistry.of(grant.tool());
+      Map<String, ToolGrant> grants = Map.of(grant.tool().name(), grant);
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      return new GatedToolCallExecutor(
+          registry, grants, approver, new ObjectMapper(), emitter, ObservationRegistry.NOOP);
+    }
+
+    @Test
+    void a_tools_progress_is_teed_to_the_observer_with_the_authoritative_call() {
+      List<Object> journal = new ArrayList<>();
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      GatedToolCallExecutor executor = progressExecutor(emitter);
+      ToolCall call = echoCall("hi");
+
+      executor.execute(call, state, observed::add);
+
+      assertThat(journal).hasSize(1);
+      assertThat(journal.getFirst()).isInstanceOf(ToolProgress.class);
+      ToolProgress systemEvent = (ToolProgress) journal.getFirst();
+      assertThat(systemEvent.toolCallId()).isEqualTo("not-the-real-call-id");
+
+      List<TurnEvent.ToolCallProgressed> progressed =
+          observed.stream()
+              .filter(TurnEvent.ToolCallProgressed.class::isInstance)
+              .map(TurnEvent.ToolCallProgressed.class::cast)
+              .toList();
+      assertThat(progressed).hasSize(1);
+      assertThat(progressed.getFirst().call()).isEqualTo(call);
+      assertThat(progressed.getFirst().message()).isEqualTo("halfway");
+    }
+
+    @Test
+    void a_throwing_observer_never_becomes_a_tool_failure() {
+      List<Object> journal = new ArrayList<>();
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      GatedToolCallExecutor executor = progressExecutor(emitter);
+      TurnObserver throwingObserver =
+          event -> {
+            if (event instanceof TurnEvent.ToolCallProgressed) {
+              throw new IllegalStateException("narration blew up");
+            }
+          };
+
+      Awaited<ConversationEvent> outcome =
+          executor.execute(echoCall("hi"), state, throwingObserver);
+
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isFalse();
+      assertThat(result.content()).isEqualTo("done");
+      assertThat(journal).hasSize(1);
+      assertThat(journal.getFirst()).isInstanceOf(ToolProgress.class);
     }
   }
 
