@@ -201,10 +201,17 @@ Agent<String> agent =
     harness
         .agent()
         .model("claude-sonnet-4-5")
-        .listen(ConversationEvent.ToolFinished.class, journal::append) // sync: veto-by-throw
-        .listenAsync(ApprovalRequested.class, ui::renderPending)       // async: never vetoes
+        .onToolFinished(journal::append)          // sync: veto-by-throw
+        .onApprovalRequestedAsync(ui::renderPending) // async: never vetoes
         .build();
 ```
+
+The `on*`/`on*Async` methods are per-type sugar over `listen`/`listenAsync` —
+one pair for each of the four conversation facts plus `ToolProgress` and
+`ApprovalRequested`, mirroring `TurnObserver.builder()`'s hooks. The
+class-keyed primitives remain for anything else — including the
+`.listen(ConversationEvent.class, ...)` catch-all above, which deliberately
+has no sugar.
 
 Delivery order per emitted event: this conversation's dynamic subscribers
 first (see below), then the frozen chain — the harness's declarations, then
@@ -363,9 +370,10 @@ first, then the frozen declared chain, in order, on the emitting thread, and
 **a throwing sync listener stops the operation that emitted** — the veto is
 the throw. Sync or async is chosen once, at declaration time: a listener that
 has to stand in the way of something (an audit write that must not be lost)
-uses `.listen(type, listener)` and lets its exception propagate; a listener
-with no business stopping anything uses `.listenAsync(type, listener,
-onError)` (a `System.Logger`-backed overload needs no `onError`) instead, and
+uses `.listen(type, listener)` — or its per-type sugar, `.onToolFinished(...)`
+and kin — and lets its exception propagate; a listener with no business
+stopping anything uses `.listenAsync(type, listener, onError)` (the
+`on*Async(...)` sugar and a logger-backed overload need no `onError`) instead, and
 delivery runs it on a fresh virtual thread, where nothing it throws can reach
 the emitting thread. The returned `Subscription` from `Conversation#events()`
 is the same type either way. The loop emits each of the four

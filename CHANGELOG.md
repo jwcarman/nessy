@@ -101,6 +101,10 @@ sequence of renames and interim shapes that produced it.
   `TurnObserver.noop()` the default) bound at `Conversation#tell(input,
   observer)` — the observer sees only that call's segment, in order,
   independent of whatever `Memory` and the fact log separately retain.
+  Three ways to make one: a bare lambda for a single concern,
+  `TurnObserver.builder()` composing per-variant consumers (repeat
+  registrations chain in order), or extending `TurnObserverAdapter` and
+  overriding only the hooks you watch — one dispatch switch serves all three.
 - **One path for tool authority.** `ToolGrant.grant(Tool<?>, UsagePolicy)`
   (`api.tool`) is the sole way to attach a tool to an `AgentBuilder`: capability
   and authority, declared together, so the grant line is the complete security
@@ -113,7 +117,10 @@ sequence of renames and interim shapes that produced it.
   parking aside — never leaves the tool-call executor that raised it.
 - **Declared listening + `ListenerRegistry`.** `HarnessBuilder`/`AgentBuilder`
   both expose `listen(Class<T>, Consumer<T>)` and `listenAsync(Class<T>,
-  Consumer<T>[, Consumer<Throwable>])`, frozen at `build()` — an agent-wide
+  Consumer<T>[, Consumer<Throwable>])` — plus per-type sugar via the shared
+  `ListenerDeclarations` interface (`onToolFinished`, `onModelRespondedAsync`,
+  and kin: one `on*`/`on*Async` pair per conversation fact plus `ToolProgress`
+  and `ApprovalRequested`) — frozen at `build()` — an agent-wide
   observer is a build-time declaration, never a runtime-attachable
   subscription. A harness's declarations seed every agent it builds, in
   order, before that agent's own. `Conversation#events()` is the one dynamic
