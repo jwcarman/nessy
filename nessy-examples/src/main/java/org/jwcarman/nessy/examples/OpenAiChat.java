@@ -20,6 +20,7 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 
@@ -65,9 +66,8 @@ public final class OpenAiChat {
 
   private static void render(TurnEvent event) {
     switch (event) {
-      case TurnEvent.TextDelta textDelta -> IO.print(textDelta.text());
-      case TurnEvent.ToolCallRequested toolCallRequested ->
-          IO.println("\n⚙ tool: " + toolCallRequested.call().name());
+      case TurnEvent.TextDelta(String text) -> IO.print(text);
+      case TurnEvent.ToolCallRequested(ToolCall call) -> IO.println("\n⚙ tool: " + call.name());
       default -> {}
     }
   }

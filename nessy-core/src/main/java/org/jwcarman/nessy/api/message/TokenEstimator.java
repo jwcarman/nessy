@@ -44,7 +44,7 @@ public interface TokenEstimator {
         characters +=
             switch (block) {
               case TextBlock(String text) -> text.length();
-              case ToolResultBlock toolResult -> toolResult.content().length();
+              case ToolResultBlock(String _, String content, boolean _) -> content.length();
               case ImageBlock _, ThinkingBlock _, RedactedThinkingBlock _, ToolUseBlock _ -> 0;
             };
       }

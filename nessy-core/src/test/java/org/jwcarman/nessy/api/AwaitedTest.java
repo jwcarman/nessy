@@ -28,8 +28,8 @@ class AwaitedTest {
 
     String resolved =
         switch (awaited) {
-          case Awaited.Ready<String> ready -> ready.value();
-          case Awaited.Parked<String> parked -> "parked:" + parked.token().value();
+          case Awaited.Ready<String>(String value) -> value;
+          case Awaited.Parked<String>(ParkToken token) -> "parked:" + token.value();
         };
 
     assertThat(resolved).isEqualTo("done");

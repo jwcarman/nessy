@@ -26,6 +26,7 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.Effect;
 import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -39,11 +40,18 @@ class ConversationEventTest {
 
     String described =
         switch (event) {
-          case ConversationEvent.AgentTold e ->
-              "user:" + ((TextBlock) e.content().getFirst()).text();
-          case ConversationEvent.ModelResponded e -> "responded:" + e.message();
-          case ConversationEvent.ModelCallFailed e -> "failed:" + e.reason();
-          case ConversationEvent.ToolFinished e -> "finished:" + e.call().name();
+          case ConversationEvent.AgentTold(ConversationId _, List<ContentBlock> content) ->
+              "user:" + ((TextBlock) content.getFirst()).text();
+          case ConversationEvent.ModelResponded(
+                  ConversationId _,
+                  Message message,
+                  StopReason _,
+                  Usage _) ->
+              "responded:" + message;
+          case ConversationEvent.ModelCallFailed(ConversationId _, String reason) ->
+              "failed:" + reason;
+          case ConversationEvent.ToolFinished(ConversationId _, ToolCall call, ToolResult _) ->
+              "finished:" + call.name();
         };
 
     assertThat(described).isEqualTo("user:hello");

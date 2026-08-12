@@ -562,7 +562,7 @@ class AnthropicStreamTest {
     @Test
     void model_context_window_exceeded_maps_to_max_tokens() {
       // "ran out of room" either way: max_tokens is the output budget,
-      // model_context_window_exceeded is the context budget. The reducer already halts cleanly on
+      // model_context_window_exceeded is the context budget. The fold already halts cleanly on
       // MAX_TOKENS, so both fold into the same StopReason rather than needing a new grammar
       // variant.
       var modelEvents =
