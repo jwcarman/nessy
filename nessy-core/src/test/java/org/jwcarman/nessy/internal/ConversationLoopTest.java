@@ -342,6 +342,65 @@ class ConversationLoopTest {
   }
 
   /**
+   * Sabotages exactly the save that would persist the {@code parked} closure transition — the one
+   * whose {@code state.status()} is {@link ConversationStatus#PARKED} — the same steal-the-version
+   * trick {@link StaleOnceStore} uses, but keyed on the state being saved rather than call order,
+   * so every earlier save in the same drive (the note's own fold, the model-call fold that opens
+   * the homework) lands normally. Sabotages only the first parked-state save it sees; a retry's own
+   * parked-state save lands clean. Built to catch what {@link StaleOnceStore} and {@link
+   * AlwaysStaleStore} both miss: neither ever fails specifically the save that would commit a park,
+   * so neither can tell an emit-before-save mutant of {@code applyParked} from the real
+   * emit-after-save order.
+   */
+  private static final class SabotagesTheParkedSaveOnceStore implements ConversationStore {
+
+    private final List<String> journal;
+    private final ConversationStore delegate = ConversationStore.inMemory();
+    private boolean sabotagedParkedSave;
+
+    SabotagesTheParkedSaveOnceStore(List<String> journal) {
+      this.journal = journal;
+    }
+
+    @Override
+    public Optional<Loaded> load(ConversationId id) {
+      journal.add("load");
+      return delegate.load(id);
+    }
+
+    @Override
+    public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
+      if (state.status() == ConversationStatus.PARKED && !sabotagedParkedSave) {
+        sabotagedParkedSave = true;
+        journal.add("sabotage:parked-save");
+        ConversationState stolen = delegate.load(state.id()).orElseThrow().state();
+        delegate.save(stolen, List.of());
+      }
+      return delegate.save(state, drainedAgendaIds);
+    }
+
+    @Override
+    public void appendAgenda(ConversationId id, AgendaItem entry) {
+      delegate.appendAgenda(id, entry);
+    }
+
+    @Override
+    public Optional<ParkedCall> findPark(ParkToken token) {
+      return delegate.findPark(token);
+    }
+
+    @Override
+    public Optional<ConversationId> findParkConversation(ParkToken token) {
+      return delegate.findParkConversation(token);
+    }
+
+    @Override
+    public boolean consumeToken(ParkToken token) {
+      return delegate.consumeToken(token);
+    }
+  }
+
+  /**
    * Every {@code save} fails, forever — the permanently-outrun driver {@code drive()} must give up
    * on.
    */
@@ -1076,6 +1135,47 @@ class ConversationLoopTest {
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
 
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.ToolCallParked)
+          .containsExactly(new TurnEvent.ToolCallParked(c1, token));
+    }
+
+    /**
+     * Opus re-review, Task 3 Finding 3 (the gap the prior two tests missed): both of them only ever
+     * sabotage the note-fold's own save, never {@code applyParked}'s own terminal save — so a
+     * mutant that swaps {@code applyParked}'s two lines (emit before save, instead of after) would
+     * pass every test above undetected. {@link SabotagesTheParkedSaveOnceStore} targets exactly the
+     * save that would persist the {@code parked} transition, leaving every earlier save in the
+     * drive untouched. If the emit ever preceded that save, the failed first attempt would already
+     * have narrated before its own save threw — and the landed retry would narrate again, leaving
+     * two events for one park instead of one. This is the placement law itself: the park's own save
+     * failing must cost the attempt its narration, not just its persistence.
+     */
+    @Test
+    void a_park_whose_own_save_fails_is_not_narrated() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken token = tools.parksWhen("c1");
+      SabotagesTheParkedSaveOnceStore store = new SabotagesTheParkedSaveOnceStore(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      RunOutcome outcome =
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
+
+      // The sabotaged first parked-save attempt narrated nothing; the landed retry narrated once —
+      // not twice. A single containsExactly proves both halves at once: two entries would mean the
+      // failed attempt leaked a narration before its own save threw.
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.PARKED);
       assertThat(events)
           .filteredOn(e -> e instanceof TurnEvent.ToolCallParked)
           .containsExactly(new TurnEvent.ToolCallParked(c1, token));
