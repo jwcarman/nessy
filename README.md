@@ -572,7 +572,8 @@ mapping that fails loudly on anything the audit didn't enumerate rather than
 guessing. OpenAI's live suite is fully green against a real key; Anthropic's is
 live-validated too, including the empty-system fix (a real empty-system-block
 bug the live run surfaced is fixed, with regression tests). `nessy-examples`
-ships a runnable two-provider chat app — see [Try it](#try-it) below.
+ships a runnable two-provider chat CLI and a Spring Boot chat-web app — see
+[Examples](#examples) below.
 
 The harness landed too: `Harness` reification, per-grant tool authority
 (`ToolGrant`/`UsagePolicy`), and `agent.contextFor(conversationId)` (now
@@ -596,24 +597,30 @@ The durable kernel has landed too: every entry — a `tell`, a `resume` —
 appends to the conversation's durable agenda and drives with the same
 re-entrant verb, `PARKED` conversations wait for a `harness.resume`/
 `harness.progress` from any node, and `nessy-store-jdbc` gives that a real
-Postgres-backed `ConversationStore` — see
-[Durable, autonomous agents](#durable-autonomous-agents) above. Not yet
+Postgres-backed `ConversationStore` and `Memory` (`JdbcMemory`, the durable
+transcript) — see [Durable, autonomous agents](#durable-autonomous-agents)
+above and the `chat-web` example ([Examples](#examples) below), which
+dogfoods both against a real browser UI and a kill-and-restart. Not yet
 built: the Spring Boot starter, a TUI, the agent-as-a-tool adapter (wrapping
 an `Agent<I>` as one tool for a parent agent), and publishing a typed agent's
 input schema into the system prompt. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
 §14 for the sequencing.
 
-## Try it
+## Examples
 
-With a real key, run the example chat app against either provider:
+`nessy-examples` is a family of two runnable apps, both real key required, no
+mocking, nothing hand-waved.
+
+**`chat-cli`** — a terminal chat loop, one agent definition run against
+either provider:
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.AnthropicChat
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.AnthropicChat
 ```
 
 ```bash
-OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.OpenAiChat
+OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.OpenAiChat
 ```
 
 Both providers' `.fromEnv()` delegates to the underlying SDK's own environment
@@ -628,6 +635,22 @@ OpenAI wire format with `baseUrl(...)`:
 ModelProvider provider =
     OpenAiModelProvider.builder().fromEnv().baseUrl("https://openrouter.ai/api/v1").build();
 ```
+
+**`chat-web`** — the first non-toy dogfood: a Spring Boot chat app against a
+real Postgres, with a browser UI, a tool gated behind human approval, and
+full observability. The whole nessy wiring is a handful of beans a stranger
+can read in one sitting; the demo script survives killing and restarting the
+app mid-approval — the transcript and the pending approval are both durable
+rows, not JVM state. See
+[`nessy-examples/chat-web/README.md`](nessy-examples/chat-web/README.md) for
+the full walkthrough, including the observability tour (Grafana/Tempo/Loki
+via `grafana/otel-lgtm`). To run it:
+
+```bash
+ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/chat-web spring-boot:run
+```
+
+then open <http://localhost:8080>.
 
 ## License
 

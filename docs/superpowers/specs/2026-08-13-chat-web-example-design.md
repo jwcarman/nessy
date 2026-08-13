@@ -1,7 +1,7 @@
 # The Chat-Web Example (and JdbcMemory) — design
 
 **Date:** 2026-08-13
-**Status:** DRAFT — pending review
+**Status:** IMPLEMENTED (see plan 2026-08-13-chat-web-example)
 **Builds on:** the essence (2026-08-11) and the durable kernel (2026-08-12), both
 shipped. This is the first non-toy dogfooding: a Spring Boot chat app against
 Postgres that exercises the whole durable story on one HTML page — and the

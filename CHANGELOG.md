@@ -271,6 +271,26 @@ sequence of renames and interim shapes that produced it.
   the same way `live` is (`-Dnessy.excludedGroups=live,container` is the
   default; CI runs with `-Dnessy.excludedGroups=live` so containers execute
   there without needing a real model key).
+- **`JdbcMemory`, the durable transcript.** `nessy-store-jdbc` also carries a
+  `Memory` implementation now, not just a `ConversationStore`: `nessy_memory`
+  (`conversation_id, seq, message`), bootstrapped idempotently by the same
+  `create(DataSource, ObjectMapper)` discipline as `JdbcConversationStore`.
+  `remember` holds `ListMemory`'s consecutive-duplicate idempotency rule for
+  at-least-once tellings, enforced under a `SELECT ... FOR UPDATE` row lock
+  instead of an in-process map; `recall` reads back in `seq` order into a
+  `Context` — verbatim retention, the durable floor rather than a
+  summarizing memory. One divergence from the `ListMemory` contract it
+  otherwise mirrors: `recall` trims a trailing unanswered tool-use message
+  before building `Context` — the loop remembers a tool-use the moment its
+  fold settles, before it knows whether the call will park, so a parked
+  conversation's raw telling can legitimately end in an open tool-use that
+  `Context`'s wire-safe invariant forbids; dropping that one still-open tail
+  is what keeps a parked conversation's recall legal. `StateCodec` gained the
+  message-codec surface both stores now share, rather than each registering
+  its own Jackson mixins. Tests: codec round-trips offline; remember/recall
+  order, cross-conversation isolation, duplicate tolerance, and empty recall
+  against real Postgres in the container-tagged suite, mirroring
+  `ListMemoryTest`'s own scenarios.
 - **At-least-once, on the record.** Re-driving a stalled `EXECUTING_TOOL`
   conversation re-performs its pending calls — the fence keeps concurrent
   duplicates from corrupting state, but it does not stop a tool from running
@@ -313,3 +333,38 @@ sequence of renames and interim shapes that produced it.
   display-name generator is configured module-wide, so a failing report reads
   `TerminationPolicyTest ▸ Max turns ▸ halts at the ceiling and not below`.
 - Coverage reporting via JaCoCo (report-only; no gate yet).
+- **`nessy-examples` becomes a family.** The module is now a `pom`-packaging
+  aggregator (`nessy-example-chat-cli` and `nessy-example-chat-web`, neither
+  published — same `maven.deploy.skip` discipline as before); the reactor's
+  own `<module>nessy-examples</module>` entry is unchanged. The old
+  two-provider terminal demo (`AnthropicChat`, `OpenAiChat`, `DemoAgent`,
+  `ConsoleApprover`) moved verbatim into `chat-cli`, history intact
+  (`git mv`, not a rewrite). Spring Boot enters the reactor only inside the
+  new `chat-web` module — `nessy-parent` never learns Spring exists.
+- **`nessy-example-chat-web` — the first non-toy dogfood.** A Spring Boot
+  4.1.0 chat app proving nessy's durable story end to end on one HTML page:
+  a real browser UI (vanilla JS, `fetch` + `ReadableStream` SSE parsing, no
+  framework, no build step), a real Postgres behind both `JdbcConversationStore`
+  and `JdbcMemory`, and `IssueCouponTool` gated behind
+  `UsagePolicy.requireApproval()` with an approver that always parks — the
+  browser is the approver. `docker-compose.yml` (`postgres:17-alpine` plus
+  `grafana/otel-lgtm`) starts and stops automatically under
+  `spring-boot-docker-compose` around `mvn spring-boot:run`'s own lifecycle.
+  The whole nessy wiring is four beans in one `@Configuration` class
+  (`NessyConfig`) — the simplicity test the design set out to pass. Ships
+  full local observability, mirroring the mocapi-enterprise-demo recipe: one
+  `grafana/otel-lgtm` compose service fans out OTel Collector, Tempo,
+  Prometheus, Loki, and Grafana (`localhost:3000`, OTLP on `4318`/`4317`),
+  wired via `spring-boot-starter-opentelemetry` (traces),
+  `micrometer-registry-otlp` (metrics), and the OTel Logback appender
+  (trace-correlated logs). The dogfood point: the harness bean takes Boot's
+  own auto-configured `ObservationRegistry`, so nessy's model-call and tool
+  observations land in the same Tempo trace as Boot's own HTTP and JDBC
+  spans — one chat turn, one trace. Tested with one `@SpringBootTest` smoke
+  (`@Tag("container")`, Testcontainers Postgres, a scripted `ModelProvider`
+  swapped in for the real Anthropic bean via `@Profile("!test")` — no key,
+  no network) that drives the whole wiring: post a message, watch SSE events
+  arrive in order, park on the tool call, read the approval card back,
+  resume, complete. o11y export is disabled under that same test profile —
+  no collector in CI, and an exporter left pointed at nothing would retry-spam
+  the log.
