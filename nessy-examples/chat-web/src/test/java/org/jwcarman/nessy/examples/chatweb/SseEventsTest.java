@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -30,6 +31,7 @@ class SseEventsTest {
   @Test
   void every_turn_event_maps_to_a_named_payload() {
     ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
+    ParkToken token = ParkToken.generate();
     assertThat(SseEvents.of(new TurnEvent.TextDelta("hi")))
         .isEqualTo(new SseEvents.Event("delta", Map.of("text", "hi")));
     assertThat(SseEvents.of(new TurnEvent.ThinkingDelta("hmm")))
@@ -41,6 +43,13 @@ class SseEventsTest {
         .isEqualTo(new SseEvents.Event("tool-progress", Map.of("id", "c1", "message", "issuing…")));
     assertThat(SseEvents.of(new TurnEvent.ToolCallCompleted(call, ToolResult.ok("done"))))
         .isEqualTo(new SseEvents.Event("tool-completed", Map.of("id", "c1", "error", false)));
+    // Interim name (Task 3): distinct from ChatController.finish's "approval-needed" card so the
+    // browser's lack of a "tool-parked" handler renders nothing — finish() stays the single card
+    // source until Task 6 swaps authority to this arm with the full (token, tool, args) shape.
+    assertThat(SseEvents.of(new TurnEvent.ToolCallParked(call, token)))
+        .isEqualTo(
+            new SseEvents.Event(
+                "tool-parked", Map.of("token", token.value(), "tool", "issue_coupon")));
   }
 
   @Test

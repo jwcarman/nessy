@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -30,6 +31,7 @@ class TurnObserverBuilderTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+  private static final ParkToken TOKEN = ParkToken.generate();
 
   private static List<TurnEvent> oneOfEveryVariant() {
     return List.of(
@@ -39,7 +41,8 @@ class TurnObserverBuilderTest {
         new TurnEvent.ToolCallRequested(CALL),
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
         new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
-        new TurnEvent.ToolCallProgressed(CALL, "halfway"));
+        new TurnEvent.ToolCallProgressed(CALL, "halfway"),
+        new TurnEvent.ToolCallParked(CALL, TOKEN));
   }
 
   @Test
@@ -54,6 +57,7 @@ class TurnObserverBuilderTest {
             .onToolCallDecided(decided -> heard.add("decided:" + decided.call().name()))
             .onToolCallCompleted(completed -> heard.add("completed:" + completed.call().name()))
             .onToolCallProgressed(progressed -> heard.add("progressed:" + progressed.message()))
+            .onToolCallParked(parked -> heard.add("parked:" + parked.token().value()))
             .build();
 
     oneOfEveryVariant().forEach(observer::on);
@@ -66,7 +70,8 @@ class TurnObserverBuilderTest {
             "requested:search",
             "decided:search",
             "completed:search",
-            "progressed:halfway");
+            "progressed:halfway",
+            "parked:" + TOKEN.value());
   }
 
   @Test

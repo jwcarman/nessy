@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -29,6 +30,7 @@ class TurnObserverAdapterTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+  private static final ParkToken TOKEN = ParkToken.generate();
 
   private static List<TurnEvent> oneOfEveryVariant() {
     return List.of(
@@ -38,7 +40,8 @@ class TurnObserverAdapterTest {
         new TurnEvent.ToolCallRequested(CALL),
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
         new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
-        new TurnEvent.ToolCallProgressed(CALL, "halfway"));
+        new TurnEvent.ToolCallProgressed(CALL, "halfway"),
+        new TurnEvent.ToolCallParked(CALL, TOKEN));
   }
 
   @Test
@@ -80,6 +83,11 @@ class TurnObserverAdapterTest {
           protected void onToolCallProgressed(TurnEvent.ToolCallProgressed event) {
             routed.add("progressed:" + event.message());
           }
+
+          @Override
+          protected void onToolCallParked(TurnEvent.ToolCallParked event) {
+            routed.add("parked:" + event.token().value());
+          }
         };
 
     oneOfEveryVariant().forEach(observer::on);
@@ -92,7 +100,8 @@ class TurnObserverAdapterTest {
             "requested:search",
             "decided:search",
             "completed:search",
-            "progressed:halfway");
+            "progressed:halfway",
+            "parked:" + TOKEN.value());
   }
 
   @Test

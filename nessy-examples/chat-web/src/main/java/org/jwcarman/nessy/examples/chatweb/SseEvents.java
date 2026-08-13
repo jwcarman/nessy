@@ -54,7 +54,12 @@ public final class SseEvents {
       case TurnEvent.ToolCallCompleted e ->
           new Event("tool-completed", Map.of("id", e.call().id(), "error", e.result().isError()));
       case TurnEvent.ToolCallParked e ->
-          new Event("approval-needed", Map.of("token", e.token().value(), "tool", e.call().name()));
+          // Interim arm (Task 3): named distinctly from the "approval-needed" card
+          // ChatController.finish already emits (token, tool, args) from state.parkedCalls() —
+          // app.js has no handler for "tool-parked", so this renders nothing, and finish()'s loop
+          // stays the single card source until Task 6 swaps authority to this arm with the full
+          // card shape, args included.
+          new Event("tool-parked", Map.of("token", e.token().value(), "tool", e.call().name()));
     };
   }
 

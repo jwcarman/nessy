@@ -1014,6 +1014,74 @@ class ConversationLoopTest {
     }
 
     /**
+     * Opus review, Task 3 Finding 3: pins the emit-after-commit placement choice — the narration
+     * test above passes identically whether {@code applyParked} emits before or after its own
+     * {@code save}, so it alone does not prove the ordering. {@link AlwaysStaleStore} fails every
+     * save this drive attempts, permanently, so no fold — not even the note's own — ever lands;
+     * {@code drive} exhausts its retries and the {@link StaleStateException} surfaces. Since no
+     * commit of any kind ever happened, the narration must not have either: this is the "never
+     * narrates a park state itself never confirms" half of the contract, exercised at its coarsest
+     * (nothing at all commits, so nothing at all is narrated).
+     */
+    @Test
+    void a_park_that_never_commits_is_never_narrated() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.parksWhen("c1");
+      AlwaysStaleStore store = new AlwaysStaleStore(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+      ConversationEvent.AgentTold searchX = ConversationEvent.AgentTold.of(ID, "search x");
+
+      assertThatThrownBy(() -> loop.run(ID, searchX, events::add))
+          .isInstanceOf(StaleStateException.class);
+
+      assertThat(events).filteredOn(e -> e instanceof TurnEvent.ToolCallParked).isEmpty();
+    }
+
+    /**
+     * Opus review, Task 3 Finding 3, the other half of the contract: {@link StaleOnceStore}
+     * sabotages only the drive's very first {@code save} (proven by {@code
+     * a_stale_save_makes_the_drive_reload_and_retry}'s two {@code load}s) — the first attempt's
+     * note-fold save is the one that loses the race, the retry reloads and lands cleanly all the
+     * way through the park. The narration fires exactly once, on the attempt that actually
+     * committed the park — not on the failed first attempt, which never got there.
+     */
+    @Test
+    void a_park_that_lands_on_a_retried_attempt_is_narrated_exactly_once() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken token = tools.parksWhen("c1");
+      StaleOnceStore store = new StaleOnceStore(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
+
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.ToolCallParked)
+          .containsExactly(new TurnEvent.ToolCallParked(c1, token));
+    }
+
+    /**
      * Opus fix round 1, Finding 1 (Critical), the reviewer's exact trace: two calls fan out, one
      * parks, its sibling settles. The turn must not flush on the sibling's completion alone (that
      * would answer the wire with one result and an unanswered {@code tool_use}); it holds, PARKED,
