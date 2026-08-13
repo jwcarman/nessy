@@ -62,8 +62,12 @@ ConversationSnapshot snapshot(ConversationId id);
 
 - Total: an unknown id yields `(IDLE, List.of(), Context.empty())` — no throw.
 - One `store.load` + one `Memory.recall` inside; the double load dies.
-- `contextFor(id)` survives as the lighter read and becomes total the same
-  way (empty `Context` for an unknown id); its `@throws` clause is deleted.
+- `contextFor(id)` is **unchanged and stays loud**: it is the debugging
+  affordance, and a debugger's read that answers a typo'd id with a polite
+  empty `Context` is worse at its job than one that throws. The two reads
+  differ on purpose — `snapshot` is total because a browser-minted fresh id
+  is a normal page rebuild; `contextFor` throws because an unknown id under a
+  debugger is a bug. Both javadocs state the division.
 - The store SPI leaves application imports: a UI needs `Agent` and `Harness`,
   nothing from `spi.*`.
 
@@ -101,6 +105,30 @@ case. One stream, two producers.
 Extender switches over `TurnEvent` (chat-web's `SseEvents`) fail to compile
 until they add the arm — sealed-grammar etiquette doing its job, and exactly
 why this ships before 1.0.
+
+**Two contracts this event makes explicit rather than accidental:**
+
+- **Narration is at-least-once.** The loop's write discipline retries on
+  stale saves from fresh loads, and narration is never transactional with the
+  record (texture never alters it) — so a retried segment can emit
+  `ToolCallParked` twice for one token. This is already true of every
+  `TurnEvent`; the parked event just makes duplicates visible (a doubled
+  approval card, not a doubled token-consumption — resume idempotency is
+  untouched). The contract goes in `TurnEvent`'s javadoc, and observers that
+  materialize per-event UI dedupe by the event's natural key — for
+  `ToolCallParked`, the token. The chat-web rewrite (§9) does exactly that,
+  which also retires its parked duplicate-cards minor.
+- **The entry-scoped-observer invariant, named.** The token may ride this
+  event *because* a `TurnObserver` is supplied by the caller of
+  `tell`/`resume`, who already holds tokens via `RunOutcome` — the event
+  grants nothing to anyone who lacks it. That justification is an invariant,
+  not a coincidence: `TurnEvent`'s javadoc states that capability-bearing
+  events are legal only while observers are entry-scoped, so any future
+  agent-wide standing observer must revisit `ToolCallParked` loudly rather
+  than silently becoming a capability broadcast. (History note: this is
+  deliberately narrower than the `ApprovalRequested` system-channel event the
+  essence redesign culled — that was vocabulary on the standing channel this
+  invariant exists to keep capability-free.)
 
 ## 5. Resume ergonomics
 
@@ -157,11 +185,12 @@ behavior, javadoc substance, and the returned handle are untouched.
   `request -> Awaited.parked(ParkToken.generate())`. The durable-HITL posture
   — the UI is the approver — becomes one word, and the chat-web bean loses its
   lambda.
-- `JdbcNessy.create(DataSource, ObjectMapper)` in `nessy-store-jdbc`:
+- `JdbcPersistence.create(DataSource, ObjectMapper)` in `nessy-store-jdbc`
+  (named for what it is — the persistence pair — not a framework variant):
 
   ```java
-  public record JdbcNessy(JdbcConversationStore store, JdbcMemory memory) {
-    public static JdbcNessy create(DataSource dataSource, ObjectMapper mapper) { … }
+  public record JdbcPersistence(JdbcConversationStore store, JdbcMemory memory) {
+    public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) { … }
   }
   ```
 
@@ -187,9 +216,10 @@ rule (nothing in code) is intact.
   IAE guard, and the approval-card stitching in `finish()`; `ApprovalController`
   loses the store injection and narrows its 409 handler to
   `UnknownParkTokenException`; `NessyConfig`'s approver line becomes
-  `Approver.parkAll()` and its two store beans may become one `JdbcNessy`;
+  `Approver.parkAll()` and its two store beans may become one `JdbcPersistence`;
   `SseEvents` gains the `ToolCallParked` arm and emits `approval-needed`
-  inline.
+  inline; the UI dedupes approval cards by token (§4's at-least-once
+  contract), retiring the parked duplicate-cards minor.
 - **Breaking changes (pre-1.0, deliberate):** `RunOutcome.Parked` loses its
   token component; `Agent.resume(id)` is renamed. CHANGELOG documents both
   loudly; nothing else breaks.
