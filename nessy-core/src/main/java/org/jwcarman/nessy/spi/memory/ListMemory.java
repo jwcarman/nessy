@@ -26,7 +26,13 @@ import org.jwcarman.nessy.api.message.Message;
 /**
  * The floor: remembers everything verbatim, recalls it whole.
  *
- * <p>Safe by construction — legal messages went in, so the returned context cannot be illegal.
+ * <p>Safe by construction — legal messages went in, so the returned context cannot be illegal — for
+ * every conversation that is not currently parked. A parked conversation is the one legitimate
+ * exception: the loop remembers the model's tool-use message the moment its fold settles, before it
+ * learns whether the call will park, so a parked conversation's raw telling can legitimately end in
+ * an unanswered tool-use message — an illegal trailing shape {@link #recall} does not yet trim
+ * before handing it to {@link Context#of}. Unlike {@code JdbcMemory}, which does trim that open
+ * tail at recall time, this implementation has not yet closed that gap (a recorded follow-up).
  * Idempotency is the consecutive-duplicate rule: a message equal to the last one remembered is the
  * at-least-once re-telling of crash recovery, not new speech, and is dropped.
  *

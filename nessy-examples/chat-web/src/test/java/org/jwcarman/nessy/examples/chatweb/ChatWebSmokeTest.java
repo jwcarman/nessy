@@ -28,6 +28,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Harness;
@@ -240,7 +241,11 @@ class ChatWebSmokeTest {
    */
   private static final class ScriptedModelProvider implements ModelProvider {
 
-    private int calls;
+    // ChatController and ApprovalController each run their turn on a fresh virtual thread
+    // (Thread.ofVirtual().start), so the two stream() calls in this scenario are not guaranteed to
+    // land on the same thread — an AtomicInteger, not a bare field, is what makes the increment
+    // visible and race-free across them.
+    private final AtomicInteger calls = new AtomicInteger();
 
     @Override
     public Set<Capability> capabilities() {
@@ -249,9 +254,8 @@ class ChatWebSmokeTest {
 
     @Override
     public ModelStream stream(ModelRequest request) {
-      calls++;
       List<ModelEvent> turn =
-          calls == 1
+          calls.incrementAndGet() == 1
               ? List.of(
                   new ModelEvent.ToolUseEmitted(
                       new ToolCall("c1", "issue_coupon", couponArguments())),

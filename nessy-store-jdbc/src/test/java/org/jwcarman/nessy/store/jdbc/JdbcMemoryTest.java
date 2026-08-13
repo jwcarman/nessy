@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -144,6 +145,31 @@ class JdbcMemoryTest {
     Context recalled = memory.recall(id);
 
     assertThat(recalled.messages()).containsExactly(userTurn);
+  }
+
+  @Test
+  void recall_keeps_an_answered_tool_use_pair_intact() {
+    // The trimming above must be narrowly targeted: once the batched results message lands, the
+    // tool-use message is no longer trailing and no longer open — dropping it (or any answered
+    // tool-use message) would be wrong. A recall that always drops the last tool-use-bearing
+    // assistant message, or all of them, would wrongly pass the test above; this one pins the
+    // other direction.
+    ConversationId id = ConversationId.generate();
+    Message userTurn = Message.user("issue a coupon, please");
+    Message answeredToolUse =
+        Message.assistant(
+            List.of(
+                new ToolUseBlock(
+                    new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode()))));
+    Message toolResults =
+        Message.toolResults(List.of(new ToolResultBlock("c1", "coupon issued", false)));
+    memory.remember(id, userTurn);
+    memory.remember(id, answeredToolUse);
+    memory.remember(id, toolResults);
+
+    Context recalled = memory.recall(id);
+
+    assertThat(recalled.messages()).containsExactly(userTurn, answeredToolUse, toolResults);
   }
 
   @Test
