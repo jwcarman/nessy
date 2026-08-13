@@ -15,8 +15,11 @@
  */
 package org.jwcarman.nessy;
 
+import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
@@ -72,10 +75,35 @@ public final class Agent<I> {
    * §17). Truthful without a model call, because recall is deterministic over what has already been
    * told.
    *
+   * <p>{@code contextFor} throws because an unknown id under a debugger is a bug; {@link #snapshot}
+   * is total because a browser-minted fresh id is a normal page rebuild.
+   *
    * @throws IllegalArgumentException if no conversation {@code id} is stored
    */
   public Context contextFor(ConversationId id) {
     store.load(id).orElseThrow(() -> new IllegalArgumentException("unknown conversation: " + id));
     return memory.recall(id);
+  }
+
+  /**
+   * The total page-rebuild read: everything a fresh page load needs to redraw one conversation,
+   * whether or not it has ever been stored. {@code snapshot} is total because a browser-minted
+   * fresh id is a normal page rebuild; {@link #contextFor} throws because an unknown id under a
+   * debugger is a bug.
+   *
+   * <p>One {@link ConversationStore#load} plus, when a stored conversation is found, one {@link
+   * Memory#recall} — the same recall {@link #contextFor} and the loop's own {@code
+   * ModelCallExecutor} consult.
+   */
+  public ConversationSnapshot snapshot(ConversationId id) {
+    Objects.requireNonNull(id, "id must not be null");
+    return store
+        .load(id)
+        .map(
+            loaded ->
+                new ConversationSnapshot(
+                    loaded.state().status(), loaded.state().parkedCalls(), memory.recall(id)))
+        .orElseGet(
+            () -> new ConversationSnapshot(ConversationStatus.IDLE, List.of(), Context.empty()));
   }
 }

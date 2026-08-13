@@ -53,11 +53,10 @@ import org.jwcarman.nessy.spi.memory.Memory;
  * #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its {@code CREATE
  * TABLE IF NOT EXISTS} is safe to run more than once.
  *
- * <p>One divergence from that borrowed contract: {@link #recall} trims a trailing unanswered
- * tool-use message — the loop's own park-in-progress bookkeeping, remembered before the loop knows
- * whether the call will park — before constructing its {@link Context}, so a parked conversation's
- * recall stays legal. {@code ListMemory} does not yet do the same (a recorded follow-up); see
- * {@link #withoutOpenTail}.
+ * <p>{@link #recall} trims a trailing unanswered tool-use message — the loop's own park-in-progress
+ * bookkeeping, remembered before the loop knows whether the call will park — before constructing
+ * its {@link Context}, so a parked conversation's recall stays legal. {@code ListMemory} mirrors
+ * the same trim; see {@link #withoutOpenTail}.
  */
 public final class JdbcMemory implements Memory {
 

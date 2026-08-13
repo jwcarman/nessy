@@ -18,6 +18,7 @@ package org.jwcarman.nessy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Iterator;
@@ -25,12 +26,25 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -122,6 +136,124 @@ class AgentTest {
 
       assertThat(context.messages())
           .containsExactly(Message.user("hi"), Message.assistant(List.of(new TextBlock("hi"))));
+    }
+  }
+
+  @Nested
+  class Snapshot {
+
+    @Test
+    void snapshot_of_an_unknown_conversation_is_idle_and_empty() {
+      Agent<String> agent =
+          Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+
+      ConversationSnapshot snap = agent.snapshot(new ConversationId("never-seen"));
+
+      assertThat(snap.status()).isEqualTo(ConversationStatus.IDLE);
+      assertThat(snap.parkedCalls()).isEmpty();
+      assertThat(snap.context().messages()).isEmpty();
+    }
+
+    @Test
+    void snapshot_of_a_stored_conversation_carries_status_parks_and_recall() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Agent<String> agent =
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+
+      RunOutcome parked = agent.converse().tell("search for x");
+      ConversationId id = parked.state().id();
+
+      ConversationSnapshot snap = agent.snapshot(id);
+
+      assertThat(snap.status()).isEqualTo(ConversationStatus.PARKED);
+      assertThat(snap.parkedCalls()).hasSize(1);
+      assertThat(snap.context().messages()).isNotEmpty();
+    }
+  }
+
+  /** A model that replays one scripted turn per call, one script entry per {@code stream} call. */
+  private static final class ScriptedProvider implements ModelProvider {
+
+    private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
+
+    ScriptedProvider turn(ModelEvent... events) {
+      turns.addLast(List.of(events));
+      return this;
+    }
+
+    @Override
+    public ModelStream stream(ModelRequest request) {
+      Iterator<ModelEvent> events = turns.removeFirst().iterator();
+      return new ModelStream() {
+        @Override
+        public Iterator<ModelEvent> iterator() {
+          return events;
+        }
+
+        @Override
+        public void close() {
+          // intentionally empty: this fake stream holds no resources to release
+        }
+      };
+    }
+
+    @Override
+    public Set<Capability> capabilities() {
+      return Set.of();
+    }
+  }
+
+  record SearchInput(String query) {}
+
+  /** A tool that always succeeds once invoked — the gate is what parks, not the tool itself. */
+  private static final class SearchTool implements Tool<SearchInput> {
+
+    @Override
+    public String name() {
+      return "search";
+    }
+
+    @Override
+    public String description() {
+      return "Searches for something";
+    }
+
+    @Override
+    public Class<SearchInput> inputType() {
+      return SearchInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(SearchInput input, ToolContext context) {
+      return Awaited.ready(ToolResult.ok("found:" + input.query()));
+    }
+  }
+
+  /** Parks the first call it is asked, remembering the token it handed out. */
+  private static final class ParkingApprover implements Approver {
+
+    private ParkToken token;
+
+    @Override
+    public Awaited<Decision> approve(ApprovalRequest request) {
+      token = ParkToken.generate();
+      return Awaited.parked(token);
+    }
+
+    ParkToken token() {
+      return token;
     }
   }
 }

@@ -47,6 +47,11 @@ class ContextTest {
     }
 
     @Test
+    void empty_is_legal_and_has_no_messages() {
+      assertThat(Context.empty().messages()).isEmpty();
+    }
+
+    @Test
     void a_completed_tool_exchange_is_valid() {
       Message assistant =
           Message.assistant(List.of(new ToolUseBlock(call("c1")), new ToolUseBlock(call("c2"))));

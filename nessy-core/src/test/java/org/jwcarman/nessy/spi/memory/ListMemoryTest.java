@@ -18,12 +18,16 @@ package org.jwcarman.nessy.spi.memory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 
 class ListMemoryTest {
 
@@ -92,5 +96,51 @@ class ListMemoryTest {
     Message mutation = Message.user("mutation");
     assertThatThrownBy(() -> messages.add(mutation))
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void recall_drops_a_trailing_unanswered_tool_use_so_the_context_stays_legal() {
+    // The loop remembers the assistant's tool-use message the moment its fold settles, before it
+    // learns whether the call will park — so a parked conversation's raw telling can legitimately
+    // end in an unanswered tool-use message. Memory#recall is contracted to always return a legal
+    // Context, so that open tail must not surface here.
+    ConversationId id = ConversationId.generate();
+    Message userTurn = Message.user("issue a coupon, please");
+    Message openToolUse =
+        Message.assistant(
+            List.of(
+                new ToolUseBlock(
+                    new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode()))));
+    memory.remember(id, userTurn);
+    memory.remember(id, openToolUse);
+
+    Context recalled = memory.recall(id);
+
+    assertThat(recalled.messages()).containsExactly(userTurn);
+  }
+
+  @Test
+  void recall_keeps_an_answered_tool_use_pair_intact() {
+    // The trimming above must be narrowly targeted: once the batched results message lands, the
+    // tool-use message is no longer trailing and no longer open — dropping it (or any answered
+    // tool-use message) would be wrong. A recall that always drops the last tool-use-bearing
+    // assistant message, or all of them, would wrongly pass the test above; this one pins the
+    // other direction.
+    ConversationId id = ConversationId.generate();
+    Message userTurn = Message.user("issue a coupon, please");
+    Message answeredToolUse =
+        Message.assistant(
+            List.of(
+                new ToolUseBlock(
+                    new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode()))));
+    Message toolResults =
+        Message.toolResults(List.of(new ToolResultBlock("c1", "coupon issued", false)));
+    memory.remember(id, userTurn);
+    memory.remember(id, answeredToolUse);
+    memory.remember(id, toolResults);
+
+    Context recalled = memory.recall(id);
+
+    assertThat(recalled.messages()).containsExactly(userTurn, answeredToolUse, toolResults);
   }
 }

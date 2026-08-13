@@ -108,6 +108,11 @@ public record Context(List<Message> messages) {
     return new Context(messages);
   }
 
+  /** The empty context — no messages, trivially valid. */
+  public static Context empty() {
+    return Context.of(List.of());
+  }
+
   /**
    * The largest index {@code cut <= messages.size() - keepRecentMessages} at which {@code
    * messages.get(cut)} is a genuine user turn — a {@link Role#USER} message whose blocks are all
