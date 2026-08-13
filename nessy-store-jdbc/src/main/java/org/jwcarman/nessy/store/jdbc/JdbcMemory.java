@@ -33,6 +33,8 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.Role;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
@@ -127,10 +129,31 @@ public final class JdbcMemory implements Memory {
               while (rs.next()) {
                 messages.add(codec.readMessage(rs.getString("message")));
               }
-              return Context.of(messages);
+              return Context.of(withoutOpenTail(messages));
             }
           }
         });
+  }
+
+  /**
+   * {@code ConversationLoop} (nessy-core) remembers the model's tool-use message the moment its
+   * fold settles, before the loop learns whether the call will park — so a parked conversation's
+   * raw telling legitimately ends in an unanswered assistant tool-use message, an illegal trailing
+   * shape for {@link Context}'s wire-safe invariant. {@link Memory#recall} is nonetheless
+   * contracted to "return a legal {@code Context}" (see {@code Memory}'s javadoc); dropping that
+   * one open tail — the loop's own park-in-progress bookkeeping, not settled dialogue yet — is what
+   * keeps this implementation honest to that contract without touching the fold/remember timing
+   * itself.
+   */
+  private static List<Message> withoutOpenTail(List<Message> messages) {
+    if (messages.isEmpty()) {
+      return messages;
+    }
+    Message last = messages.getLast();
+    boolean openTail =
+        last.role() == Role.ASSISTANT
+            && last.content().stream().anyMatch(ToolUseBlock.class::isInstance);
+    return openTail ? messages.subList(0, messages.size() - 1) : messages;
   }
 
   private Optional<LastRow> readLastForUpdate(Connection connection, ConversationId id)

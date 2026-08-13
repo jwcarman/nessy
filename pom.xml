@@ -212,6 +212,17 @@
         <artifactId>logback-classic</artifactId>
         <version>${logback.version}</version>
       </dependency>
+      <!-- logback-classic 1.6.1 requires its matching logback-core; left unpinned, Boot's own BOM
+           (imported per-module, e.g. nessy-examples/chat-web) wins with an older logback-core and
+           the pair mismatches at runtime (AbstractMethodError: PatternLayoutBase#getDefaultConverterMap
+           — a method logback-core 1.5.x doesn't yet declare). Only surfaces once something actually
+           boots logback at runtime, which is why the container smoke test (the reactor's first
+           @SpringBootTest) is what catches it. -->
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-core</artifactId>
+        <version>${logback.version}</version>
+      </dependency>
       <dependency>
         <groupId>com.fasterxml.uuid</groupId>
         <artifactId>java-uuid-generator</artifactId>

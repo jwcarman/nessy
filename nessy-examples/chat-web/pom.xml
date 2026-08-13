@@ -82,6 +82,14 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-jdbc</artifactId>
     </dependency>
+    <!-- Boot 4's default web stack auto-configures a Jackson 3 (tools.jackson) ObjectMapper;
+         nessy-core and every bean in this module (NessyConfig, ChatController, ApprovalController)
+         are written against classic Jackson 2 (com.fasterxml.jackson.databind). This module pulls
+         Boot's own backward-compat auto-configuration for that generation back in. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-jackson2</artifactId>
+    </dependency>
     <!-- Boot 4's default logging starter only bridges Log4j2/JUL onto SLF4J; it ships no SLF4J
          binding of its own. Compile-scope, unlike every other module's test-only provider (see
          nessy-parent's own root <dependencies> comment): examples are runnable apps, and an app
@@ -155,6 +163,20 @@
         </exclusion>
       </exclusions>
     </dependency>
+    <!-- Boot 4 split TestRestTemplate out of spring-boot-test into its own module; the starter
+         above no longer pulls it in transitively. TestRestTemplateTestAutoConfiguration itself
+         needs RestTemplateBuilder (spring-boot-restclient), which the RestClient-first web starter
+         no longer brings in either. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-resttestclient</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-restclient</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
@@ -169,6 +191,18 @@
 
   <build>
     <plugins>
+      <!-- ChatController and ApprovalController resolve @PathVariable("id")-less parameters
+           (@PathVariable String id, @PathVariable String token) by matching the compiled parameter
+           name itself; nessy-parent's own compiler config never sets -parameters (only Boot's
+           starter-parent does, which this reactor doesn't inherit from), so without this override
+           every such endpoint 500s at request time — javac strips parameter names by default. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
       <!-- Version and repackage-goal wiring come from the BOM's pluginManagement (imported
            above); no repackage execution is declared here — `spring-boot:run` needs none. -->
       <plugin>

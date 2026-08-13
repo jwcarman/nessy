@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -36,6 +37,8 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -120,6 +123,27 @@ class JdbcMemoryTest {
     memory.remember(id, toldAgain);
 
     assertThat(memory.recall(id).messages()).containsExactly(toldFirst);
+  }
+
+  @Test
+  void recall_drops_a_trailing_unanswered_tool_use_so_the_context_stays_legal() {
+    // The loop remembers the assistant's tool-use message the moment its fold settles, before it
+    // learns whether the call will park — so a parked conversation's raw telling can legitimately
+    // end in an unanswered tool-use message. Memory#recall is contracted to always return a legal
+    // Context, so that open tail must not surface here.
+    ConversationId id = ConversationId.generate();
+    Message userTurn = Message.user("issue a coupon, please");
+    Message openToolUse =
+        Message.assistant(
+            List.of(
+                new ToolUseBlock(
+                    new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode()))));
+    memory.remember(id, userTurn);
+    memory.remember(id, openToolUse);
+
+    Context recalled = memory.recall(id);
+
+    assertThat(recalled.messages()).containsExactly(userTurn);
   }
 
   @Test

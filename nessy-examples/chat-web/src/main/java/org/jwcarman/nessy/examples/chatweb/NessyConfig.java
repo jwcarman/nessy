@@ -28,18 +28,27 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
 import org.jwcarman.nessy.store.jdbc.JdbcMemory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 /**
  * The nessy wiring — the simplicity test itself (design §4). Every approval parks; the UI is the
  * approver, one line: {@code request -> Awaited.parked(ParkToken.generate())}.
  *
- * <p>The dogfood point: {@link #harness(ConversationStore, ObservationRegistry)} takes Boot's own
- * auto-configured {@link ObservationRegistry}, so nessy's model-call and tool observations join
- * Boot's HTTP and JDBC spans in the same trace (design §5a).
+ * <p>The dogfood point: {@link #harness(ModelProvider, ConversationStore, ObservationRegistry)}
+ * takes Boot's own auto-configured {@link ObservationRegistry}, so nessy's model-call and tool
+ * observations join Boot's HTTP and JDBC spans in the same trace (design §5a).
+ *
+ * <p>{@link #modelProvider()} and {@link #harness(ModelProvider, ConversationStore,
+ * ObservationRegistry)} are both {@code @Profile("!test")}: constructing the real {@link
+ * AnthropicModelProvider} calls {@code fromEnv()}, which throws without {@code ANTHROPIC_API_KEY}
+ * set. The {@code test} profile (see {@code ChatWebSmokeTest}) supplies its own {@code Harness}
+ * bean built on a scripted {@link ModelProvider} instead, so the container smoke test never needs a
+ * real API key.
  */
 @Configuration
 public class NessyConfig {
@@ -58,11 +67,16 @@ public class NessyConfig {
   }
 
   @Bean
-  Harness harness(ConversationStore store, ObservationRegistry observations) {
-    return Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
-        .store(store)
-        .observations(observations)
-        .build();
+  @Profile("!test")
+  ModelProvider modelProvider() {
+    return AnthropicModelProvider.builder().fromEnv().build();
+  }
+
+  @Bean
+  @Profile("!test")
+  Harness harness(
+      ModelProvider modelProvider, ConversationStore store, ObservationRegistry observations) {
+    return Nessy.harness(modelProvider).store(store).observations(observations).build();
   }
 
   @Bean
