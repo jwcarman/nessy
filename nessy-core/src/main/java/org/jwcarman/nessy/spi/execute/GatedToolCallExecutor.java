@@ -280,7 +280,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
   private EventEmitter teed(ToolCall call, TurnObserver observer) {
     return event -> {
       emitter.emit(event);
-      if (event instanceof ToolProgress(var _, var _, String message)) {
+      if (event instanceof ToolProgress(_, _, String message)) {
         try {
           observer.on(new TurnEvent.ToolCallProgressed(call, message));
         } catch (RuntimeException e) {

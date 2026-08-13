@@ -76,7 +76,9 @@ class ListenerDeclarationsTest {
         }
 
         @Override
-        public void close() {}
+        public void close() {
+          // scripted stream holds no resources to release
+        }
       };
     }
   }

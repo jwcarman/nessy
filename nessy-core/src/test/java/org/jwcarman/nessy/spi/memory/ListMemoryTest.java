@@ -89,7 +89,8 @@ class ListMemoryTest {
     List<Message> messages = earlySnapshot.messages();
 
     assertThat(messages).containsExactly(first);
-    assertThatThrownBy(() -> messages.add(Message.user("mutation")))
+    Message mutation = Message.user("mutation");
+    assertThatThrownBy(() -> messages.add(mutation))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 }

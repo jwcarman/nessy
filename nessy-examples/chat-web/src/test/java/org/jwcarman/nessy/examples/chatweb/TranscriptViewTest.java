@@ -46,8 +46,8 @@ class TranscriptViewTest {
 
     List<TranscriptView.Line> lines = TranscriptView.of(context);
 
-    assertThat(lines).isNotEmpty();
     assertThat(lines)
+        .isNotEmpty()
         .containsExactly(
             new TranscriptView.Line("user", "hi"), new TranscriptView.Line("assistant", "hello"));
   }

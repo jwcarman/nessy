@@ -38,71 +38,71 @@ import org.jwcarman.nessy.api.event.ToolProgress;
  * <p>The async sugar uses the log-and-continue error default; an async listener that needs its own
  * error handler declares through {@code listenAsync(Class, Consumer, Consumer)} directly.
  *
- * @param <SELF> the builder's own type, so sugar calls stay fluent
+ * @param <S> the builder's own type, so sugar calls stay fluent
  */
-public interface ListenerDeclarations<SELF> {
+public interface ListenerDeclarations<S> {
 
-  <T> SELF listen(Class<T> type, Consumer<T> listener);
+  <T> S listen(Class<T> type, Consumer<T> listener);
 
-  <T> SELF listenAsync(Class<T> type, Consumer<T> listener);
+  <T> S listenAsync(Class<T> type, Consumer<T> listener);
 
   /** Sugar: the agent was told something — the entry fact. */
-  default SELF onAgentTold(Consumer<ConversationEvent.AgentTold> listener) {
+  default S onAgentTold(Consumer<ConversationEvent.AgentTold> listener) {
     return listen(ConversationEvent.AgentTold.class, listener);
   }
 
   /** Async sugar for {@link #onAgentTold}. */
-  default SELF onAgentToldAsync(Consumer<ConversationEvent.AgentTold> listener) {
+  default S onAgentToldAsync(Consumer<ConversationEvent.AgentTold> listener) {
     return listenAsync(ConversationEvent.AgentTold.class, listener);
   }
 
   /** Sugar: the model's settled contribution — message, stop reason, and usage. */
-  default SELF onModelResponded(Consumer<ConversationEvent.ModelResponded> listener) {
+  default S onModelResponded(Consumer<ConversationEvent.ModelResponded> listener) {
     return listen(ConversationEvent.ModelResponded.class, listener);
   }
 
   /** Async sugar for {@link #onModelResponded}. */
-  default SELF onModelRespondedAsync(Consumer<ConversationEvent.ModelResponded> listener) {
+  default S onModelRespondedAsync(Consumer<ConversationEvent.ModelResponded> listener) {
     return listenAsync(ConversationEvent.ModelResponded.class, listener);
   }
 
   /** Sugar: a model call failed in a way re-performing cannot fix. */
-  default SELF onModelCallFailed(Consumer<ConversationEvent.ModelCallFailed> listener) {
+  default S onModelCallFailed(Consumer<ConversationEvent.ModelCallFailed> listener) {
     return listen(ConversationEvent.ModelCallFailed.class, listener);
   }
 
   /** Async sugar for {@link #onModelCallFailed}. */
-  default SELF onModelCallFailedAsync(Consumer<ConversationEvent.ModelCallFailed> listener) {
+  default S onModelCallFailedAsync(Consumer<ConversationEvent.ModelCallFailed> listener) {
     return listenAsync(ConversationEvent.ModelCallFailed.class, listener);
   }
 
   /** Sugar: one piece of homework settled — success, failure, or denial. */
-  default SELF onToolFinished(Consumer<ConversationEvent.ToolFinished> listener) {
+  default S onToolFinished(Consumer<ConversationEvent.ToolFinished> listener) {
     return listen(ConversationEvent.ToolFinished.class, listener);
   }
 
   /** Async sugar for {@link #onToolFinished}. */
-  default SELF onToolFinishedAsync(Consumer<ConversationEvent.ToolFinished> listener) {
+  default S onToolFinishedAsync(Consumer<ConversationEvent.ToolFinished> listener) {
     return listenAsync(ConversationEvent.ToolFinished.class, listener);
   }
 
   /** Sugar: a running tool reported progress. */
-  default SELF onToolProgress(Consumer<ToolProgress> listener) {
+  default S onToolProgress(Consumer<ToolProgress> listener) {
     return listen(ToolProgress.class, listener);
   }
 
   /** Async sugar for {@link #onToolProgress}. */
-  default SELF onToolProgressAsync(Consumer<ToolProgress> listener) {
+  default S onToolProgressAsync(Consumer<ToolProgress> listener) {
     return listenAsync(ToolProgress.class, listener);
   }
 
   /** Sugar: the gate is about to consult the approver — a human is being waited on. */
-  default SELF onApprovalRequested(Consumer<ApprovalRequested> listener) {
+  default S onApprovalRequested(Consumer<ApprovalRequested> listener) {
     return listen(ApprovalRequested.class, listener);
   }
 
   /** Async sugar for {@link #onApprovalRequested}. */
-  default SELF onApprovalRequestedAsync(Consumer<ApprovalRequested> listener) {
+  default S onApprovalRequestedAsync(Consumer<ApprovalRequested> listener) {
     return listenAsync(ApprovalRequested.class, listener);
   }
 }

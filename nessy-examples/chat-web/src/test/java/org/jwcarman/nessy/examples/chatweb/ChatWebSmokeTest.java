@@ -124,11 +124,13 @@ class ChatWebSmokeTest {
     JsonNode loadedAfterPark = getConversation(conversationId);
     assertThat(loadedAfterPark.get("status").asText()).isEqualTo("PARKED");
     JsonNode transcriptAfterPark = loadedAfterPark.get("transcript");
-    assertThat(transcriptAfterPark).isNotEmpty();
-    assertThat(transcriptAfterPark).anyMatch(line -> "user".equals(line.get("role").asText()));
+    assertThat(transcriptAfterPark)
+        .isNotEmpty()
+        .anyMatch(line -> "user".equals(line.get("role").asText()));
     JsonNode approvalsAfterPark = loadedAfterPark.get("approvals");
-    assertThat(approvalsAfterPark).isNotEmpty();
-    assertThat(approvalsAfterPark).anyMatch(card -> token.equals(card.get("token").asText()));
+    assertThat(approvalsAfterPark)
+        .isNotEmpty()
+        .anyMatch(card -> token.equals(card.get("token").asText()));
 
     List<SseEvent> secondTurn = postApproval(token, "allow");
 
@@ -149,8 +151,8 @@ class ChatWebSmokeTest {
     assertThat(loadedAfterApproval.get("status").asText()).isEqualTo("COMPLETE");
     assertThat(loadedAfterApproval.get("approvals")).isEmpty();
     JsonNode transcriptAfterApproval = loadedAfterApproval.get("transcript");
-    assertThat(transcriptAfterApproval).isNotEmpty();
     assertThat(transcriptAfterApproval)
+        .isNotEmpty()
         .anyMatch(
             line ->
                 "assistant".equals(line.get("role").asText())
@@ -271,7 +273,9 @@ class ChatWebSmokeTest {
         }
 
         @Override
-        public void close() {}
+        public void close() {
+          // scripted stream holds no resources to release
+        }
       };
     }
 

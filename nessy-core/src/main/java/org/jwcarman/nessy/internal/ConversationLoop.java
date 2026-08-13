@@ -118,21 +118,30 @@ public final class ConversationLoop {
     Objects.requireNonNull(observer, "observer must not be null");
     Observation observation = EngineObservations.run(observations, id);
     try (var _ = observation.openScope()) {
-      for (int attempt = 1; ; attempt++) {
-        try {
-          return driveOnce(id, observer);
-        } catch (StaleStateException e) {
-          if (attempt >= MAX_DRIVE_ATTEMPTS) {
-            throw e; // somebody keeps winning; the caller retries or reads
-          }
-          // another driver moved the base — reload and re-enter
-        }
-      }
+      return driveWithRetries(id, observer);
     } catch (RuntimeException e) {
       observation.error(e);
       throw e;
     } finally {
       observation.stop();
+    }
+  }
+
+  /**
+   * The retry loop of {@link #drive}, extracted so it is not a nested try block: {@link #driveOnce}
+   * up to {@link #MAX_DRIVE_ATTEMPTS} times, retrying on {@link StaleStateException} until another
+   * driver's win must be let through.
+   */
+  private RunOutcome driveWithRetries(ConversationId id, TurnObserver observer) {
+    for (int attempt = 1; ; attempt++) {
+      try {
+        return driveOnce(id, observer);
+      } catch (StaleStateException e) {
+        if (attempt >= MAX_DRIVE_ATTEMPTS) {
+          throw e; // somebody keeps winning; the caller retries or reads
+        }
+        // another driver moved the base — reload and re-enter
+      }
     }
   }
 
@@ -213,7 +222,7 @@ public final class ConversationLoop {
       if (!settled) {
         try {
           save(progress, drained);
-        } catch (StaleStateException e) {
+        } catch (StaleStateException _) {
           // The winning driver owns the base now: whatever this attempt was trying to persist is
           // superseded, and the exception (or the original one already propagating) is the true
           // signal — a redundant stale save here must never mask it.

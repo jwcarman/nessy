@@ -15,10 +15,11 @@
  */
 package org.jwcarman.nessy.api.conversation;
 
+import java.io.Serializable;
 import org.jwcarman.nessy.internal.Identifiers;
 
 /** Identifies one conversation. Opaque on purpose: the store chooses what it means. */
-public record ConversationId(String value) {
+public record ConversationId(String value) implements Serializable {
 
   public ConversationId {
     if (value == null || value.isBlank()) {

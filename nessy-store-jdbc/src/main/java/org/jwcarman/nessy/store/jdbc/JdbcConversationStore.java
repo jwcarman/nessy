@@ -69,6 +69,8 @@ import org.jwcarman.nessy.spi.conversation.StaleStateException;
  */
 public final class JdbcConversationStore implements ConversationStore {
 
+  private static final String TOKEN_MUST_NOT_BE_NULL = "token must not be null";
+
   private final DataSource dataSource;
   private final StateCodec codec;
 
@@ -299,7 +301,7 @@ public final class JdbcConversationStore implements ConversationStore {
 
   @Override
   public Optional<ParkedCall> findPark(ParkToken token) {
-    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
     return withConnection(
         connection -> {
           try (PreparedStatement ps =
@@ -318,7 +320,7 @@ public final class JdbcConversationStore implements ConversationStore {
 
   @Override
   public Optional<ConversationId> findParkConversation(ParkToken token) {
-    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
     return withConnection(
         connection -> {
           try (PreparedStatement ps =
@@ -337,7 +339,7 @@ public final class JdbcConversationStore implements ConversationStore {
 
   @Override
   public boolean consumeToken(ParkToken token) {
-    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
     return withConnection(
         connection -> {
           try (PreparedStatement ps =
@@ -385,24 +387,31 @@ public final class JdbcConversationStore implements ConversationStore {
    */
   private <T> T inTransaction(int isolationLevel, SqlFunction<Connection, T> body) {
     try (Connection connection = dataSource.getConnection()) {
-      int originalIsolation = connection.getTransactionIsolation();
-      try {
-        connection.setAutoCommit(false);
-        connection.setTransactionIsolation(isolationLevel);
-        T result = body.apply(connection);
-        connection.commit();
-        return result;
-      } catch (SQLException e) {
-        rollbackQuietly(connection, e);
-        throw new IllegalStateException("jdbc conversation store operation failed", e);
-      } catch (RuntimeException e) {
-        rollbackQuietly(connection, e);
-        throw e;
-      } finally {
-        restoreConnection(connection, originalIsolation);
-      }
+      return runInTransaction(connection, isolationLevel, body);
     } catch (SQLException e) {
       throw new IllegalStateException("jdbc conversation store operation failed", e);
+    }
+  }
+
+  /** The transaction body of {@link #inTransaction}, extracted so it is not a nested try block. */
+  private static <T> T runInTransaction(
+      Connection connection, int isolationLevel, SqlFunction<Connection, T> body)
+      throws SQLException {
+    int originalIsolation = connection.getTransactionIsolation();
+    try {
+      connection.setAutoCommit(false);
+      connection.setTransactionIsolation(isolationLevel);
+      T result = body.apply(connection);
+      connection.commit();
+      return result;
+    } catch (SQLException e) {
+      rollbackQuietly(connection, e);
+      throw new IllegalStateException("jdbc conversation store operation failed", e);
+    } catch (RuntimeException e) {
+      rollbackQuietly(connection, e);
+      throw e;
+    } finally {
+      restoreConnection(connection, originalIsolation);
     }
   }
 
@@ -426,7 +435,7 @@ public final class JdbcConversationStore implements ConversationStore {
     try {
       connection.setAutoCommit(true);
       connection.setTransactionIsolation(originalIsolation);
-    } catch (SQLException ignored) {
+    } catch (SQLException _) {
       // best-effort restore; see method javadoc
     }
   }

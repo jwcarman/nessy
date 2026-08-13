@@ -215,22 +215,27 @@ public final class JdbcMemory implements Memory {
    */
   private <T> T inTransaction(SqlFunction<Connection, T> body) {
     try (Connection connection = dataSource.getConnection()) {
-      try {
-        connection.setAutoCommit(false);
-        T result = body.apply(connection);
-        connection.commit();
-        return result;
-      } catch (SQLException e) {
-        rollbackQuietly(connection, e);
-        throw new IllegalStateException("jdbc memory operation failed", e);
-      } catch (RuntimeException e) {
-        rollbackQuietly(connection, e);
-        throw e;
-      } finally {
-        restoreConnection(connection);
-      }
+      return runInTransaction(connection, body);
     } catch (SQLException e) {
       throw new IllegalStateException("jdbc memory operation failed", e);
+    }
+  }
+
+  /** The transaction body of {@link #inTransaction}, extracted so it is not a nested try block. */
+  private static <T> T runInTransaction(Connection connection, SqlFunction<Connection, T> body) {
+    try {
+      connection.setAutoCommit(false);
+      T result = body.apply(connection);
+      connection.commit();
+      return result;
+    } catch (SQLException e) {
+      rollbackQuietly(connection, e);
+      throw new IllegalStateException("jdbc memory operation failed", e);
+    } catch (RuntimeException e) {
+      rollbackQuietly(connection, e);
+      throw e;
+    } finally {
+      restoreConnection(connection);
     }
   }
 
@@ -253,7 +258,7 @@ public final class JdbcMemory implements Memory {
   private static void restoreConnection(Connection connection) {
     try {
       connection.setAutoCommit(true);
-    } catch (SQLException ignored) {
+    } catch (SQLException _) {
       // best-effort restore; see method javadoc
     }
   }
