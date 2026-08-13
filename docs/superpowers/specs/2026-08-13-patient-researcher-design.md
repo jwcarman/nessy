@@ -73,8 +73,9 @@ Dispatch on `args[0]`:
      `harness.resume(token, new ToolResolution.Completed(result), observer)` —
      the turn continues in *this* JVM, streaming to the log, usually to
      completion. Delivered jobs are deleted.
-  2. `SELECT` still-ripening jobs past halfway → `harness.progress(token,
-     "archive scan …% complete")`. Tokens the store no longer knows
+  2. `SELECT` still-ripening jobs → `harness.progress(token, "archive scan
+     N% complete")`, N computed from submitted/finish_at. Tokens the store no
+     longer knows
      (settled concurrently) return false and the row is deleted — progress is
      narration, dropping it is legal.
   3. Exit.
@@ -109,8 +110,8 @@ the token *is* the correlation contract, which is the kernel's own claim
 1. `docker compose up -d`; `ask "what did the deep archive hold about the
    voyage of the Nessie?"` — watch the turn stream, the tool submit and park,
    the JVM exit. `show <id>`: status `PARKED`.
-2. `tick` immediately — "archive scan 50% complete" appears (the progress
-   verb, from a process that never saw the ask).
+2. `tick` immediately — an "archive scan N% complete" line appears (the
+   progress verb, narrating from a process that never saw the ask).
 3. Wait out the ripening; `tick` again — the resume streams the rest of the
    turn: tool result delivered, model concludes, `COMPLETE`.
 4. `show <id>` — the finished answer.
