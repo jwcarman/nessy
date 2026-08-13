@@ -42,7 +42,13 @@ CREATE TABLE IF NOT EXISTS nessy_memory (
   (`ListMemory`'s consecutive-duplicate rule, in SQL). Insert and dup-check in
   one transaction.
 - `recall(id)`: select ordered by `seq` → `Context.of(messages)`. Verbatim
-  retention — this is the durable floor, not a summarizing memory.
+  retention — this is the durable floor, not a summarizing memory. One
+  divergence: `recall` trims a trailing unanswered tool-use message — the
+  loop's own park-in-progress bookkeeping, remembered before the loop learns
+  whether the call will park — so a parked conversation's open tail doesn't
+  leave the returned `Context` in an illegal trailing shape. `ListMemory` does
+  not yet share this trimming behavior; that gap is recorded as a framework
+  follow-up, not silently papered over.
 - Message (de)serialization via the existing `StateCodec` mixins (extract the
   message codec surface for reuse rather than duplicating mixin registration).
 - Tests: codec round-trips offline; behavior against real Postgres in the

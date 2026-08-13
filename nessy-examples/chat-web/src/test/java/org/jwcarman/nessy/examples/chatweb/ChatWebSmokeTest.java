@@ -80,7 +80,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class ChatWebSmokeTest {
 
   @Container
-  static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+  static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
 
   @DynamicPropertySource
   static void nessy_chat_web_smoke_test_points_the_datasource_at_the_container(

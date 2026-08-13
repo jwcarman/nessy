@@ -76,21 +76,28 @@ async function stream(response, handlers) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sep;
-    while ((sep = buffer.indexOf("\n\n")) >= 0) {
-      const chunk = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      let event = "message", data = "";
-      for (const line of chunk.split("\n")) {
-        if (line.startsWith("event:")) event = line.slice(6).trim();
-        else if (line.startsWith("data:")) data += line.slice(5).trim();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep;
+      while ((sep = buffer.indexOf("\n\n")) >= 0) {
+        const chunk = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        let event = "message", data = "";
+        for (const line of chunk.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        handlers[event]?.(data ? JSON.parse(data) : {});
       }
-      handlers[event]?.(data ? JSON.parse(data) : {});
     }
+  } catch (err) {
+    // A broken stream (dropped connection, server crash mid-turn) must not leave the app
+    // permanently disabled: re-enable input and surface a retry hint (spec §4).
+    setInputDisabled(false);
+    appendSystemLine("connection lost — try sending again, or refresh the page");
   }
 }
 
@@ -139,7 +146,7 @@ function turnHandlers() {
       openBubble = null;
       toolLines.clear();
       setInputDisabled(false);
-      if (payload.status === "FAILED") {
+      if (payload.status === "FAILED" || payload.status === "ERROR") {
         appendSystemLine(payload.failureReason ?? "the turn failed");
       }
     },
@@ -152,11 +159,23 @@ async function decide(token, decision, cardElement) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decision }),
   });
-  cardElement.remove();
   if (response.status === 409) {
+    // Someone else already settled this park; the card is stale. Rebuild from the server's
+    // actual state rather than trusting the click that just lost the race.
+    cardElement.remove();
     await load();
     return;
   }
+  if (!response.ok) {
+    // Any other failure returns a JSON error body, not an SSE stream — handing it to stream()
+    // would just yield zero events. Leave the card in place (it may still be valid) and restore
+    // known-good state from the server instead of guessing.
+    appendSystemLine("approval failed — try again");
+    await load();
+    return;
+  }
+  // Only drop the card once the resumed stream has actually started.
+  cardElement.remove();
   setInputDisabled(true);
   await stream(response, turnHandlers());
 }

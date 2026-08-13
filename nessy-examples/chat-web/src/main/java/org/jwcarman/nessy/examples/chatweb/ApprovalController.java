@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.examples.chatweb;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.context.ContextSnapshot;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.Harness;
@@ -63,7 +64,12 @@ public final class ApprovalController {
         .orElseThrow(() -> new IllegalArgumentException("unknown or settled park token: " + token));
     Decision decision = toDecision(body);
     SseEmitter emitter = new SseEmitter(0L);
-    Thread.ofVirtual().start(() -> runResume(parkToken, decision, emitter));
+    // Same fix as ChatController#postMessage: a fresh virtual thread has an empty
+    // current-Observation ThreadLocal, so restore this request thread's tracing context inside it
+    // — otherwise the resumed segment's observations root a new trace instead of joining this
+    // HTTP POST's.
+    ContextSnapshot snapshot = ChatController.CONTEXT_SNAPSHOT_FACTORY.captureAll();
+    Thread.ofVirtual().start(snapshot.wrap(() -> runResume(parkToken, decision, emitter)));
     return emitter;
   }
 

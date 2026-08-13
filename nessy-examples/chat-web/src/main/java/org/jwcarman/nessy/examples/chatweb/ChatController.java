@@ -18,6 +18,8 @@ package org.jwcarman.nessy.examples.chatweb;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.context.ContextSnapshot;
+import io.micrometer.context.ContextSnapshotFactory;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
@@ -52,6 +54,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public final class ChatController {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ChatController.class);
+
+  /**
+   * Captures every registered {@code ThreadLocal} accessor (Micrometer's current-{@code
+   * Observation} scope among them) so a turn's virtual thread can restore the HTTP request thread's
+   * tracing context — see {@link #postMessage}. Package-private: {@link ApprovalController}'s
+   * resumed-segment stream shares the exact same wiring.
+   */
+  static final ContextSnapshotFactory CONTEXT_SNAPSHOT_FACTORY =
+      ContextSnapshotFactory.builder().build();
 
   private final Agent<String> agent;
   private final ConversationStore store;
@@ -92,7 +103,12 @@ public final class ChatController {
   public SseEmitter postMessage(@PathVariable String id, @RequestBody MessageRequest body) {
     ConversationId conversationId = new ConversationId(id);
     SseEmitter emitter = new SseEmitter(0L);
-    Thread.ofVirtual().start(() -> runTurn(conversationId, body.text(), emitter));
+    // A fresh virtual thread starts with an empty current-Observation ThreadLocal, so without
+    // this snapshot EngineObservations would parent nessy.run onto nothing and start a NEW trace
+    // instead of continuing this HTTP POST's. Capture it here, on the request thread, and restore
+    // it inside the virtual thread's runnable.
+    ContextSnapshot snapshot = CONTEXT_SNAPSHOT_FACTORY.captureAll();
+    Thread.ofVirtual().start(snapshot.wrap(() -> runTurn(conversationId, body.text(), emitter)));
     return emitter;
   }
 

@@ -48,6 +48,9 @@
          is bumped to the 2.26.x line per that same rule. Bump this only alongside Boot's managed
          opentelemetry version. -->
     <opentelemetry-instrumentation.version>2.26.1-alpha</opentelemetry-instrumentation.version>
+    <!-- Pinned to match mocapi-enterprise-demo (this recipe's source), which pins the same
+         version for the same reason: nothing here manages it for us. -->
+    <datasource-micrometer.version>2.2.1</datasource-micrometer.version>
   </properties>
 
   <dependencyManagement>
@@ -148,6 +151,24 @@
     <dependency>
       <groupId>io.opentelemetry.instrumentation</groupId>
       <artifactId>opentelemetry-logback-appender-1.0</artifactId>
+    </dependency>
+    <!-- JDBC observability: wraps the DataSource so every SQL statement emits a Micrometer
+         Observation. Those Observations flow through the MicrometerTracing -> OTel bridge
+         already wired by spring-boot-starter-opentelemetry above, so SQL spans end up on the
+         same OTLP pipeline as the handler and HTTP spans (README's "one trace" claim). Mirrors
+         mocapi-enterprise-demo's pin. -->
+    <dependency>
+      <groupId>net.ttddyy.observation</groupId>
+      <artifactId>datasource-micrometer-spring-boot</artifactId>
+      <version>${datasource-micrometer.version}</version>
+    </dependency>
+    <!-- Maps datasource-micrometer's legacy jdbc.* attributes onto OTel DB semconv (db.query.text,
+         db.system.name, db.operation.name, db.response.returned_rows). Auto-activates when
+         present on the classpath. -->
+    <dependency>
+      <groupId>net.ttddyy.observation</groupId>
+      <artifactId>datasource-micrometer-opentelemetry</artifactId>
+      <version>${datasource-micrometer.version}</version>
     </dependency>
 
     <dependency>
