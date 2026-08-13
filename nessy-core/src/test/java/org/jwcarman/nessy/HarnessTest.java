@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.UnknownParkTokenException;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.AgendaItem;
@@ -50,6 +51,7 @@ import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.event.ToolProgress;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -312,14 +314,20 @@ class HarnessTest {
     private static final class ScriptedProvider implements ModelProvider {
 
       private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
+      private final List<ModelRequest> requests = new ArrayList<>();
 
       ScriptedProvider turn(ModelEvent... events) {
         turns.addLast(List.of(events));
         return this;
       }
 
+      List<ModelRequest> requests() {
+        return List.copyOf(requests);
+      }
+
       @Override
       public ModelStream stream(ModelRequest request) {
+        requests.add(request);
         Iterator<ModelEvent> events = turns.removeFirst().iterator();
         return new ModelStream() {
           @Override
@@ -389,8 +397,123 @@ class HarnessTest {
       ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
 
       assertThatThrownBy(() -> harness.resume(token, decided))
-          .isInstanceOf(IllegalArgumentException.class)
+          .isInstanceOf(UnknownParkTokenException.class)
           .hasMessageContaining("unknown");
+    }
+
+    /**
+     * Task-4: {@code UnknownParkTokenException} is a named rejection over the raw {@code
+     * IllegalArgumentException} an unknown or already-settled token used to throw, and its message
+     * names the offending token.
+     */
+    @Test
+    void an_unknown_token_is_a_typed_rejection() {
+      Harness harness = Nessy.harness(new FakeProvider("hi")).build();
+      ParkToken unknown = ParkToken.generate();
+      ToolResolution.Decided resolution = new ToolResolution.Decided(Decision.allow());
+
+      assertThatThrownBy(() -> harness.resume(unknown, resolution))
+          .isInstanceOf(UnknownParkTokenException.class)
+          .hasMessageContaining(unknown.value());
+    }
+
+    /**
+     * Task-4: {@code peek} reads the same {@code findPark} row {@code progress} narrates against,
+     * without consuming it — a second peek still finds the park exactly where the first left it.
+     */
+    @Test
+    void peek_reads_a_park_without_consuming_it() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Harness harness = Nessy.harness(provider).build();
+      harness
+          .agent()
+          .model("fake-model")
+          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+          .approver(approver)
+          .build()
+          .converse()
+          .tell("search for x");
+      ParkToken token = approver.token();
+
+      assertThat(harness.peek(token)).isPresent();
+      assertThat(harness.peek(token)).isPresent();
+    }
+
+    /** Task-4: {@code approve} is sugar over {@code resume} with an unconditional allow verdict. */
+    @Test
+    void approve_is_resume_with_an_allow_verdict() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Harness harness = Nessy.harness(provider).build();
+      harness
+          .agent()
+          .model("fake-model")
+          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+          .approver(approver)
+          .build()
+          .converse()
+          .tell("search for x");
+      ParkToken token = approver.token();
+
+      RunOutcome outcome = harness.approve(token);
+
+      assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
+    }
+
+    /**
+     * Task-4: {@code deny} is sugar over {@code resume} with a {@code Decision.Deny} verdict, and
+     * the reason it carries lands in the tool result the same way {@code
+     * GatedToolCallExecutorTest}'s {@code decided_deny_yields_a_denial} pins for the lower layer.
+     */
+    @Test
+    void deny_carries_its_reason_into_the_tool_result() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Harness harness = Nessy.harness(provider).build();
+      harness
+          .agent()
+          .model("fake-model")
+          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+          .approver(approver)
+          .build()
+          .converse()
+          .tell("search for x");
+      ParkToken token = approver.token();
+
+      RunOutcome outcome = harness.deny(token, "not today");
+
+      assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
+      List<ToolResultBlock> denials =
+          provider.requests().getLast().context().messages().stream()
+              .flatMap(message -> message.content().stream())
+              .filter(ToolResultBlock.class::isInstance)
+              .map(ToolResultBlock.class::cast)
+              .filter(ToolResultBlock::isError)
+              .toList();
+      assertThat(denials).isNotEmpty();
+      assertThat(denials.getFirst().content()).isEqualTo("Denied: not today");
     }
 
     /**

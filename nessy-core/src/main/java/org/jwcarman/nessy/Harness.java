@@ -21,9 +21,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.UnknownParkTokenException;
 import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
@@ -177,7 +179,7 @@ public final class Harness {
    * {@link #resume} shares with {@code tell}: the agenda absorbs the answer, the status pointer
    * says what happens next.
    *
-   * @throws IllegalArgumentException if {@code token} names no conversation this store still parks
+   * @throws UnknownParkTokenException if {@code token} names no conversation this store still parks
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
    *     resume} cannot yet tell which agent's loop a token belongs to (see {@link
    *     #loopRegistrations}) — or if no agent has been built at all, reachable when a durable store
@@ -193,10 +195,7 @@ public final class Harness {
           "resume is single-agent this generation: " + agents + " agents built");
     }
     ConversationId id =
-        store
-            .findParkConversation(token)
-            .orElseThrow(
-                () -> new IllegalArgumentException("unknown or settled park token: " + token));
+        store.findParkConversation(token).orElseThrow(() -> new UnknownParkTokenException(token));
     if (agents == 0) {
       throw new IllegalStateException(
           "no agent built on this harness — resume has no loop to drive with");
@@ -207,6 +206,53 @@ public final class Harness {
     }
     store.appendAgenda(id, AgendaItem.resolved(token, resolution));
     return loop.get().drive(id, observer);
+  }
+
+  /**
+   * Approves a parked call, watched by no one ({@link TurnObserver#noop()}).
+   *
+   * @see #approve(ParkToken, TurnObserver)
+   */
+  public RunOutcome approve(ParkToken token) {
+    return approve(token, TurnObserver.noop());
+  }
+
+  /**
+   * Sugar over {@link #resume(ParkToken, ToolResolution, TurnObserver)} for the common HITL
+   * verdict: an unconditional {@link Decision#allow()}. No logic of its own.
+   */
+  public RunOutcome approve(ParkToken token, TurnObserver observer) {
+    return resume(token, new ToolResolution.Decided(Decision.allow()), observer);
+  }
+
+  /**
+   * Denies a parked call, watched by no one ({@link TurnObserver#noop()}).
+   *
+   * @see #deny(ParkToken, String, TurnObserver)
+   */
+  public RunOutcome deny(ParkToken token, String reason) {
+    return deny(token, reason, TurnObserver.noop());
+  }
+
+  /**
+   * Sugar over {@link #resume(ParkToken, ToolResolution, TurnObserver)} for the common HITL
+   * verdict: a {@link Decision.Deny} carrying {@code reason} back to the model. No logic of its
+   * own.
+   */
+  public RunOutcome deny(ParkToken token, String reason, TurnObserver observer) {
+    return resume(token, new ToolResolution.Decided(new Decision.Deny(reason)), observer);
+  }
+
+  /**
+   * Reads a park without consuming it — the same {@link ConversationStore#findPark} peek {@link
+   * #progress} narrates against, exposed directly so a caller can inspect what a token is waiting
+   * on before deciding how to {@link #resume} it. Unlike {@link #resume}, an unknown or
+   * already-settled token is not an error: {@link Optional#empty()} says the wait is not there to
+   * read, exactly as {@link #progress} treats it.
+   */
+  public Optional<ParkedCall> peek(ParkToken token) {
+    Objects.requireNonNull(token, "token must not be null");
+    return store.findPark(token);
   }
 
   /**
@@ -235,7 +281,7 @@ public final class Harness {
       throw new IllegalStateException(
           "progress is single-agent this generation: " + agents + " agents built");
     }
-    Optional<ParkedCall> park = store.findPark(token);
+    Optional<ParkedCall> park = peek(token);
     if (park.isEmpty()) {
       return false;
     }
