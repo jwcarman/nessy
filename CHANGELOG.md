@@ -350,8 +350,9 @@ sequence of renames and interim shapes that produced it.
   browser is the approver. `docker-compose.yml` (`postgres:17-alpine` plus
   `grafana/otel-lgtm`) starts and stops automatically under
   `spring-boot-docker-compose` around `mvn spring-boot:run`'s own lifecycle.
-  The whole nessy wiring is four beans in one `@Configuration` class
-  (`NessyConfig`) — the simplicity test the design set out to pass. Ships
+  The whole nessy wiring is five beans in one `@Configuration` class
+  (`NessyConfig`: `store`, `memory`, `modelProvider`, `harness`, `agent`) —
+  the simplicity test the design set out to pass. Ships
   full local observability, mirroring the mocapi-enterprise-demo recipe: one
   `grafana/otel-lgtm` compose service fans out OTel Collector, Tempo,
   Prometheus, Loki, and Grafana (`localhost:3000`, OTLP on `4318`/`4317`),

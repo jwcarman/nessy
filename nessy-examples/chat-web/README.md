@@ -6,7 +6,7 @@ gated behind human approval, and full observability — all wired in one
 `@Configuration` class a stranger can read in a sitting
 (`NessyConfig.java`).
 
-The whole nessy wiring:
+The whole nessy wiring — five beans in `NessyConfig`:
 
 ```java
 @Bean ConversationStore store(DataSource ds, ObjectMapper mapper) {
@@ -15,6 +15,10 @@ The whole nessy wiring:
 
 @Bean Memory memory(DataSource ds, ObjectMapper mapper) {
   return JdbcMemory.create(ds, mapper);
+}
+
+@Bean ModelProvider modelProvider() {
+  return AnthropicModelProvider.builder().fromEnv().build();
 }
 
 @Bean Harness harness(ModelProvider modelProvider, ConversationStore store, ObservationRegistry observations) {
@@ -35,7 +39,10 @@ The whole nessy wiring:
 The approver is the durable-HITL posture in one line: every approval parks —
 the browser is the approver, and the park survives a restart because
 `Memory` and the `ConversationStore` both live in Postgres, not the JVM's
-heap.
+heap. (`modelProvider()` and `harness(...)` above are `@Profile("!test")` in
+the real source — the container smoke test swaps in a scripted
+`ModelProvider` instead, so it never needs a real key. Elided from the
+snippet as test wiring, not app wiring.)
 
 The demo tool is `IssueCouponTool`: `issue_coupon(customerEmail, amountUsd,
 reason)` returns a fake confirmation string. Obviously consequence-bearing
