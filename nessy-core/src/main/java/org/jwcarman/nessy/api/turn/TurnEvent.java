@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.turn;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -31,6 +32,24 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *
  * <p>Sealed-grammar etiquette: core switches over this type are exhaustive with no {@code default}
  * arm; extender code is advised to include one for forward tolerance across majors.
+ *
+ * <p>Two contracts this event makes explicit rather than accidental:
+ *
+ * <ul>
+ *   <li><b>Narration is at-least-once.</b> The loop's write discipline retries on stale saves from
+ *       fresh loads, and narration is never transactional with the record (texture never alters it)
+ *       — so a retried segment can emit {@link ToolCallParked} twice for one token. This is already
+ *       true of every {@code TurnEvent}; the parked event just makes duplicates visible (a doubled
+ *       approval card, not a doubled token-consumption — resume idempotency is untouched).
+ *       Observers that materialize per-event UI dedupe by the event's natural key — for {@link
+ *       ToolCallParked}, the token.
+ *   <li><b>The entry-scoped-observer invariant.</b> The token may ride {@link ToolCallParked}
+ *       <em>because</em> a {@link TurnObserver} is supplied by the caller of {@code tell}/{@code
+ *       resume}, who already holds tokens via {@code RunOutcome} — the event grants nothing to
+ *       anyone who lacks it. Capability-bearing events like this one are legal only while observers
+ *       are entry-scoped; any future agent-wide standing observer must revisit {@link
+ *       ToolCallParked} loudly rather than silently becoming a capability broadcast.
+ * </ul>
  */
 public sealed interface TurnEvent {
 
@@ -89,6 +108,17 @@ public sealed interface TurnEvent {
     public ToolCallProgressed {
       Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
       Objects.requireNonNull(message, "message must not be null");
+    }
+  }
+
+  /**
+   * The call parked — waiting on something that outlives this process. The token rides this event
+   * deliberately: see the type-level javadoc's entry-scoped-observer invariant.
+   */
+  record ToolCallParked(ToolCall call, ParkToken token) implements TurnEvent {
+    public ToolCallParked {
+      Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(token, "token must not be null");
     }
   }
 }

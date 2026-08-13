@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
@@ -233,7 +234,7 @@ public final class ConversationLoop {
 
   private static RunOutcome outcomeOf(ConversationState state) {
     if (state.status() == ConversationStatus.PARKED) {
-      return new RunOutcome.Parked(state, state.parkedCalls().getFirst().token());
+      return new RunOutcome.Parked(state);
     }
     return new RunOutcome.Completed(state);
   }
@@ -292,7 +293,7 @@ public final class ConversationLoop {
           folded.effects().forEach(queue::addLast);
         }
         case PerformOutcome.Parked(ToolCall call, ParkToken token) ->
-            applyParked(progress, call, token, drained);
+            applyParked(progress, call, token, drained, observer);
       }
     }
   }
@@ -337,15 +338,21 @@ public final class ConversationLoop {
 
   /**
    * Applies the fold-free, loop-applied {@code parked} closure transition and saves it — no message
-   * is born, so unlike {@code halted} there is nothing to remember, only to persist.
+   * is born, so unlike {@code halted} there is nothing to remember, only to persist. The narration
+   * fires after the save lands, not before: a park that never actually commits (a save that throws)
+   * must not have told the observer a story state itself never confirms. Both park paths — the
+   * approver's gate and a tool parking itself — funnel through this one choke point, so this is the
+   * event's single emission site.
    */
   private void applyParked(
       AtomicReference<ConversationState> progress,
       ToolCall call,
       ParkToken token,
-      List<String> drained) {
+      List<String> drained,
+      TurnObserver observer) {
     progress.set(progress.get().parked(call, token));
     save(progress, drained);
+    observer.on(new TurnEvent.ToolCallParked(call, token));
   }
 
   /**

@@ -27,5 +27,5 @@ public sealed interface RunOutcome {
 
   record Completed(ConversationState state) implements RunOutcome {}
 
-  record Parked(ConversationState state, ParkToken token) implements RunOutcome {}
+  record Parked(ConversationState state) implements RunOutcome {}
 }

@@ -51,6 +51,7 @@ public abstract class TurnObserverAdapter implements TurnObserver {
       case TurnEvent.ToolCallDecided e -> onToolCallDecided(e);
       case TurnEvent.ToolCallCompleted e -> onToolCallCompleted(e);
       case TurnEvent.ToolCallProgressed e -> onToolCallProgressed(e);
+      case TurnEvent.ToolCallParked e -> onToolCallParked(e);
     }
   }
 
@@ -86,6 +87,11 @@ public abstract class TurnObserverAdapter implements TurnObserver {
 
   /** A running tool reported progress — the executor attaches the authoritative call. */
   protected void onToolCallProgressed(TurnEvent.ToolCallProgressed event) {
+    // no-op until a subclass cares
+  }
+
+  /** The call parked — waiting on something that outlives this process. */
+  protected void onToolCallParked(TurnEvent.ToolCallParked event) {
     // no-op until a subclass cares
   }
 }

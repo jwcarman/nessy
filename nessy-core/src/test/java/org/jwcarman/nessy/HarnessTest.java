@@ -445,7 +445,7 @@ class HarnessTest {
 
       assertThat(parked).isInstanceOf(RunOutcome.Parked.class);
       ParkToken token = approver.token();
-      assertThat(((RunOutcome.Parked) parked).token()).isEqualTo(token);
+      assertThat(parked.state().parkedCalls()).extracting(ParkedCall::token).containsExactly(token);
 
       RunOutcome resumed = harness.resume(token, new ToolResolution.Decided(Decision.allow()));
 

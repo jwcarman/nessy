@@ -55,6 +55,7 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
@@ -982,11 +983,34 @@ class ConversationLoopTest {
       RunOutcome outcome = loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
-      assertThat(((RunOutcome.Parked) outcome).token()).isEqualTo(token);
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.PARKED);
       assertThat(outcome.state().parkedCalls()).containsExactly(new ParkedCall(token, c1));
       assertThat(store.load(ID).orElseThrow().state().status())
           .isEqualTo(ConversationStatus.PARKED);
+    }
+
+    @Test
+    void a_park_is_narrated_to_the_observer_with_its_token() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken token = tools.parksWhen("c1");
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              ConversationStore.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
+
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.ToolCallParked)
+          .containsExactly(new TurnEvent.ToolCallParked(c1, token));
     }
 
     /**
@@ -1022,7 +1046,7 @@ class ConversationLoopTest {
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "search and fetch"), OBSERVER);
 
       assertThat(parked.state().status()).isEqualTo(ConversationStatus.PARKED);
-      assertThat(((RunOutcome.Parked) parked).token()).isEqualTo(token);
+      assertThat(parked.state().parkedCalls()).extracting(ParkedCall::token).containsExactly(token);
       assertThat(parked.state().pendingResults()).hasSize(1); // c2's result, held — not flushed
       assertThat(model.calls()).isEqualTo(1); // no second model call: the turn never continued
 
@@ -1140,7 +1164,9 @@ class ConversationLoopTest {
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
-      assertThat(((RunOutcome.Parked) outcome).token()).isEqualTo(activeToken);
+      assertThat(outcome.state().parkedCalls())
+          .extracting(ParkedCall::token)
+          .containsExactly(activeToken);
       assertThat(store.load(ID).orElseThrow().agenda()).isEmpty();
     }
 

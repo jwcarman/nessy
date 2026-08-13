@@ -53,6 +53,8 @@ public final class SseEvents {
           new Event("tool-decided", Map.of("id", e.call().id(), "allowed", allowed(e.decision())));
       case TurnEvent.ToolCallCompleted e ->
           new Event("tool-completed", Map.of("id", e.call().id(), "error", e.result().isError()));
+      case TurnEvent.ToolCallParked e ->
+          new Event("approval-needed", Map.of("token", e.token().value(), "tool", e.call().name()));
     };
   }
 
