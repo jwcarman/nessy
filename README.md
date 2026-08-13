@@ -344,7 +344,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | Seam | In-core default | Upgrades Nessy provides | Extenders build |
 |---|---|---|---|
 | `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai` | any vendor |
-| `Memory` | `ListMemory` (verbatim, in-memory) | summarizing/checkpointing implementations | RAG, redaction, external stores |
+| `Memory` | `ListMemory` (verbatim, in-memory) | `JdbcMemory` (`nessy-store-jdbc`); summarizing/checkpointing implementations | RAG, redaction, external stores |
 | `ConversationStore` | `ConversationStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-model-calls | cost budget (post-usage) | custom |
@@ -404,7 +404,11 @@ Wiring is `.observations(ObservationRegistry)` on the builder, default `NOOP`; t
 seams themselves reference Micrometer nowhere. The planned Spring Boot starter
 will wire the registry Boot's Actuator already auto-configures, so observability
 lights up with no configuration at all in a Spring Boot app — that starter does
-not exist yet (see Status).
+not exist yet (see Status). The `chat-web` example ([Examples](#examples))
+shows the wiring done by hand today: Boot's auto-configured registry handed to
+`.observations(...)`, OTLP out to a local Grafana/Tempo/Loki stack, and a chat
+turn reading as one trace — the HTTP POST down through `nessy.model.call`,
+`nessy.tool.call`, and the JDBC saves either side of them.
 
 For narrating a single `tell` live without a standing subscription,
 `Conversation.tell` has a `TurnObserver` overload — a natural fit for pushing
@@ -516,12 +520,19 @@ required:
 ```java
 ConversationStore store =
     JdbcConversationStore.create(dataSource, objectMapper); // idempotent schema bootstrap
+Memory memory = JdbcMemory.create(dataSource, objectMapper); // same discipline, same lifespan
 
 Harness harness = Nessy.harness(anthropic).store(store).build();
+Agent<String> agent = harness.agent().model("claude-sonnet-4-5").memory(memory).build();
 ```
 
+Restart survival needs both halves: the store keeps the control block (status,
+agenda, parks, debt), and `JdbcMemory` keeps the transcript the `Memory` seam
+owns — `ListMemory`, the default, dies with the JVM. The `chat-web` example
+([Examples](#examples)) demonstrates the pair surviving a kill mid-approval.
+
 `nessy-store-jdbc`'s own test suite includes container-backed tests against a
-real `postgres:16-alpine` (via Testcontainers), tagged `container` and
+real `postgres:17-alpine` (via Testcontainers), tagged `container` and
 excluded from the default build the same way `live` tests are — `./mvnw
 verify` needs no Docker daemon. `./mvnw test -Dnessy.excludedGroups=live`
 runs them (needs a Docker daemon); clearing the exclusion entirely

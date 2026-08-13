@@ -265,7 +265,7 @@ sequence of renames and interim shapes that produced it.
   state, the agenda, and the park index from mixed generations. `StateCodec`
   carries the Jackson mixins state's records need to round-trip through
   `jsonb`, with drift guards that fail the build if the mapped shape and the
-  domain type disagree. Container-backed tests run against `postgres:16-alpine`
+  domain type disagree. Container-backed tests run against `postgres:17-alpine`
   via Testcontainers (pinned at the 1.21 line deliberately — 2.0 renames every
   module artifact) behind `@Tag("container")`, excluded from the default build
   the same way `live` is (`-Dnessy.excludedGroups=live,container` is the

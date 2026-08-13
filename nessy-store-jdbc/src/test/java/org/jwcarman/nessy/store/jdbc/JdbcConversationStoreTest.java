@@ -56,7 +56,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class JdbcConversationStoreTest extends ConversationStoreContract {
 
   @Container
-  static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+  static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
 
   private static DataSource dataSource;
 
