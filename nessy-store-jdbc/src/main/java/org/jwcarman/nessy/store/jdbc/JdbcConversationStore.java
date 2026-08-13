@@ -385,9 +385,9 @@ public final class JdbcConversationStore implements ConversationStore {
   private <T> T inTransaction(int isolationLevel, SqlFunction<Connection, T> body) {
     try (Connection connection = dataSource.getConnection()) {
       int originalIsolation = connection.getTransactionIsolation();
-      connection.setAutoCommit(false);
-      connection.setTransactionIsolation(isolationLevel);
       try {
+        connection.setAutoCommit(false);
+        connection.setTransactionIsolation(isolationLevel);
         T result = body.apply(connection);
         connection.commit();
         return result;
