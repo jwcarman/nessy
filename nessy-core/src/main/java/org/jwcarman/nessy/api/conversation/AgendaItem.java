@@ -23,20 +23,23 @@ import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.internal.Identifiers;
 
 /**
- * One durable fact laid on the lane: a tell that arrived, or a park that resolved. Both carry a
+ * One durable fact laid on the agenda: a tell that arrived, or a park that resolved. Both carry a
  * time-ordered {@link #id()} minted the same way {@link ParkToken#generate()} mints its own — the
  * sanctioned api-to-internal precedent.
+ *
+ * <p>Arrival-ordered, never prioritized: the agenda has no reordering, no priority queue — items
+ * are taken up in the order they were laid down.
  *
  * <p>Sealed-grammar etiquette: core switches over this type are exhaustive with no {@code default}
  * arm.
  */
-public sealed interface LaneEntry {
+public sealed interface AgendaItem {
 
   /** This entry's own time-ordered id. */
   String id();
 
   /** Words interjected: content the agent was told, not yet folded. */
-  record Told(String id, List<ContentBlock> content) implements LaneEntry {
+  record Told(String id, List<ContentBlock> content) implements AgendaItem {
     public Told {
       Objects.requireNonNull(id, "id must not be null");
       Objects.requireNonNull(content, "content must not be null");
@@ -45,7 +48,7 @@ public sealed interface LaneEntry {
   }
 
   /** Homework that came back: the token it was waiting on, and what arrived. */
-  record Resolved(String id, ParkToken token, ToolResolution resolution) implements LaneEntry {
+  record Resolved(String id, ParkToken token, ToolResolution resolution) implements AgendaItem {
     public Resolved {
       Objects.requireNonNull(id, "id must not be null");
       Objects.requireNonNull(token, "token must not be null");

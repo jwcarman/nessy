@@ -42,10 +42,10 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.conversation.LaneEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
@@ -302,7 +302,7 @@ class HarnessTest {
 
   /**
    * {@code Harness.resume} (design 2026-08-12): the facade over {@code findParkConversation} +
-   * {@code consumeToken} + {@code appendLane} + {@code drive} — pinned end to end through a real
+   * {@code consumeToken} + {@code appendAgenda} + {@code drive} — pinned end to end through a real
    * {@link Agent}, wired the way an application actually would.
    */
   @Nested
@@ -524,15 +524,15 @@ class HarnessTest {
       }
 
       @Override
-      public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
-        ConversationState saved = delegate.save(state, drainedLaneIds);
+      public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
+        ConversationState saved = delegate.save(state, drainedAgendaIds);
         saved.parkedCalls().forEach(parked -> everParked.put(parked.token(), state.id()));
         return saved;
       }
 
       @Override
-      public void appendLane(ConversationId id, LaneEntry entry) {
-        delegate.appendLane(id, entry);
+      public void appendAgenda(ConversationId id, AgendaItem entry) {
+        delegate.appendAgenda(id, entry);
       }
 
       @Override
@@ -595,7 +595,7 @@ class HarnessTest {
   }
 
   /**
-   * {@code Harness.progress} (design 2026-08-12): the remote signal lane — a peek at {@code
+   * {@code Harness.progress} (design 2026-08-12): the remote signal channel — a peek at {@code
    * findPark}, never a consume, so the token stays fully resumable afterward.
    */
   @Nested
@@ -825,13 +825,13 @@ class HarnessTest {
       }
 
       @Override
-      public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
-        return delegate.save(state, drainedLaneIds);
+      public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
+        return delegate.save(state, drainedAgendaIds);
       }
 
       @Override
-      public void appendLane(ConversationId id, LaneEntry entry) {
-        delegate.appendLane(id, entry);
+      public void appendAgenda(ConversationId id, AgendaItem entry) {
+        delegate.appendAgenda(id, entry);
       }
 
       @Override

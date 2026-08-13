@@ -187,7 +187,7 @@ sequence of renames and interim shapes that produced it.
 - **The durable kernel: every entry appends, one verb drives.** A conversation
   now outlives the process that started it. `Conversation#tell` and the new
   `Harness#resume(ParkToken, ToolResolution[, TurnObserver])` are the same
-  shape underneath — append to the conversation's durable lane, then drive —
+  shape underneath — append to the conversation's durable agenda, then drive —
   because **appending always succeeds** (there is no "busy" answer; a tell
   mid-turn is never refused) and **driving is one re-entrant act**,
   `ConversationLoop#drive`, walking the status pointer from wherever it sits:
@@ -195,7 +195,7 @@ sequence of renames and interim shapes that produced it.
   resolution. What a queued tell becomes is a fold decision by status —
   quiescent opens a turn, mid-turn-with-debt rides the flush as an
   interjection, mid-turn-and-clean keeps the turn open instead of completing
-  it (a clean `ModelResponded` folding against a non-empty lane drains and
+  it (a clean `ModelResponded` folding against a non-empty agenda drains and
   continues — one fold rule replaces what a first-draft mailbox would have
   needed a whole subsystem for), and `PARKED` simply waits. `RunOutcome` is
   unchanged in shape and widened in meaning: a reading of the state either
@@ -210,22 +210,22 @@ sequence of renames and interim shapes that produced it.
   reset the error streak and do not open a turn — streak reset is a property
   of the drain that opens one, not of being told something.
 - **Two write disciplines, and nothing in between.** `ConversationStore#save
-  (ConversationState, Collection<String> drainedLaneIds)` is the fenced core:
+  (ConversationState, Collection<String> drainedAgendaIds)` is the fenced core:
   optimistic-locked on `state.version()`, throwing `StaleStateException` when
   another driver already moved the base — plain CAS, and the only thing that
   stops the zombie case (a stalled driver saving late after a re-drive already
   ran). `ConversationLoop#drive` retries up to `MAX_DRIVE_ATTEMPTS` (5) reloads
-  on that exception before letting it surface. Beside it, `appendLane` is
-  unconditional and never contended — a `LaneEntry.Told` or `LaneEntry.Resolved`
-  row the fence doesn't know about, so a chatty world can never fence-fail a
-  working driver. `ConversationState` carries the lane as a loaded view
-  (`ConversationStore.Loaded(state, lane)`) rather than a state field — told
-  ids drain transactionally with the very fold that consumes them (the note
-  is never left in the lane once its fold has landed); resolved ids drain only
-  after the resumed fold *succeeds*, so a throwing `resume` leaves the
-  resolution replayable rather than destroyed. A lane with no state row behind
-  it loads as `newConversation@v0` — a tell can arrive before a conversation
-  has ever been driven.
+  on that exception before letting it surface. Beside it, `appendAgenda` is
+  unconditional and never contended — an `AgendaItem.Told` or
+  `AgendaItem.Resolved` row the fence doesn't know about, so a chatty world
+  can never fence-fail a working driver. `ConversationState` carries the
+  agenda as a loaded view (`ConversationStore.Loaded(state, agenda)`) rather
+  than a state field — told ids drain transactionally with the very fold that
+  consumes them (the note is never left on the agenda once its fold has
+  landed); resolved ids drain only after the resumed fold *succeeds*, so a
+  throwing `resume` leaves the resolution replayable rather than destroyed.
+  An agenda with no state row behind it loads as `newConversation@v0` — a
+  tell can arrive before a conversation has ever been driven.
 - **`PARKED`, the parked lane, and real `resume`/`progress`.** `PARKED` joins
   `ConversationStatus`: a parked conversation self-describes to any ops
   surface — no driver, no lease, durable patience. State gained
@@ -233,7 +233,7 @@ sequence of renames and interim shapes that produced it.
   is a loop-applied closure transition (`state.parked(call, token)`), the same
   shape as `halted`. `Harness#resume(token, resolution[, observer])` consumes
   the token (`ConversationStore#consumeToken`, at-least-once-safe — a redelivered
-  resolution is read, not replayed), appends a `LaneEntry.Resolved`, and
+  resolution is read, not replayed), appends an `AgendaItem.Resolved`, and
   drives; `Harness#progress(token, message) -> boolean` is `resume`'s
   non-terminal sibling — it only ever *peeks* the token via `findPark`, never
   consumes it, and emits `ToolProgress` on the built agent's own registry, the
@@ -257,12 +257,12 @@ sequence of renames and interim shapes that produced it.
   from the model path's own propagate-on-throw semantics, and both are
   documented side by side on `TurnObserver`.
 - **`nessy-store-jdbc`.** A `ConversationStore` for one Postgres, no cluster
-  membership: `nessy_conversation` (fenced state), `nessy_lane` (told/resolved
+  membership: `nessy_conversation` (fenced state), `nessy_agenda` (told/resolved
   entries), `nessy_park`, and `nessy_token` (consumed-token markers), created
   idempotently by `JdbcConversationStore.create(DataSource, ObjectMapper)`.
   Saves run at `READ_COMMITTED` (the version check is the only isolation this
   discipline needs); loads run at `REPEATABLE READ` so a reader never sees the
-  state, the lane, and the park index from mixed generations. `StateCodec`
+  state, the agenda, and the park index from mixed generations. `StateCodec`
   carries the Jackson mixins state's records need to round-trip through
   `jsonb`, with drift guards that fail the build if the mapped shape and the
   domain type disagree. Container-backed tests run against `postgres:16-alpine`
@@ -282,11 +282,11 @@ sequence of renames and interim shapes that produced it.
   (`Mail`, `MailReceipt`, `post`) that the durable spec's first draft carried
   — review killed it against the litmus (*does the world already provide
   it?*); its one irreplaceable service, accepting input for a busy
-  conversation, survives as the append-only lane the fold itself drains, no
+  conversation, survives as the agenda the fold itself drains, no
   broker required. Also unbuilt, deliberately: claims/leases (fencing already
   makes concurrent drivers *safe*; a claim would only save wasted *spend*, and
   can arrive later as one column with no semantic change), sweepers (every
-  lane entry is followed by a driving entry, or the conversation is wedged
+  agenda entry is followed by a driving entry, or the conversation is wedged
   regardless of any sweep), park timeouts (`ParkPolicy` — real, deferred until
   a deployment demands wall-clock eviction), cross-node event fan-out (the
   application's own bus sits behind a declared listener, unchanged from v2),

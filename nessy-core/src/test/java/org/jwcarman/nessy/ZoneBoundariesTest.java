@@ -42,7 +42,7 @@ class ZoneBoundariesTest {
       Set.of(
           "ConversationId.java", // -> Identifiers, for UUIDv7 generation
           "ParkToken.java", // -> Identifiers, for UUIDv7 generation
-          "LaneEntry.java", // -> Identifiers, for UUIDv7 generation
+          "AgendaItem.java", // -> Identifiers, for UUIDv7 generation
           "Tool.java" // -> Schemas, to derive its wire ToolSpec
           );
 

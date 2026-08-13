@@ -23,8 +23,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.LaneEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.event.ToolProgress;
@@ -173,8 +173,8 @@ public final class Harness {
    * store still recognizes but has already consumed is redelivery (every real transport is
    * at-least-once) — the call is not replayed, the drive simply reads whatever the first delivery
    * already produced. Either way, appending always succeeds and driving is the same re-entrant act
-   * {@link #resume} shares with {@code tell}: the lane absorbs the answer, the status pointer says
-   * what happens next.
+   * {@link #resume} shares with {@code tell}: the agenda absorbs the answer, the status pointer
+   * says what happens next.
    *
    * @throws IllegalArgumentException if {@code token} names no conversation this store still parks
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
@@ -203,13 +203,13 @@ public final class Harness {
     if (!store.consumeToken(token)) {
       return loop.drive(id, observer); // idempotent re-delivery: read current truth, do not replay
     }
-    store.appendLane(id, LaneEntry.resolved(token, resolution));
+    store.appendAgenda(id, AgendaItem.resolved(token, resolution));
     return loop.drive(id, observer);
   }
 
   /**
-   * The remote signal lane: a tool still running out in the world reports {@code message} against
-   * the wait it parked under. {@code token} is only ever peeked, via {@link
+   * The remote signal channel: a tool still running out in the world reports {@code message}
+   * against the wait it parked under. {@code token} is only ever peeked, via {@link
    * ConversationStore#findPark}, never consumed — this is narration, not a resolution, and the wait
    * itself remains exactly as resumable afterward as it was before. An unknown or already-settled
    * token is not an error — nor is a token that settles between the peek and the conversation-id

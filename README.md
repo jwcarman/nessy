@@ -479,8 +479,8 @@ in-core implementation will.
 
 ## Durable, autonomous agents
 
-A conversation is a plain serializable record and a durable, append-only
-lane, so an agent's conversation can run on **any node**, be driven by
+A conversation is a plain serializable record and a durable agenda, so an
+agent's conversation can run on **any node**, be driven by
 whatever process gets to it next, and pick up a wait that started days ago
 and a process ago. Nothing about the shape above changes to get this —
 `tell` already appends and drives; the durable generation adds one more entry
@@ -492,10 +492,10 @@ RunOutcome outcome = harness.resume(token, ToolResolution.completed(result));
 
 `harness.resume(token, resolution[, observer])` answers a parked call by
 token — the `ParkToken` a tool (or an `Approver`) handed back when it parked
-— appends the resolution to the conversation's lane, and drives, exactly the
-way `tell` does. Appending always succeeds: a tell or a resolution is never
-refused for arriving while the conversation is busy, mid-turn, or even
-parked — it queues on the durable lane and the next drive (this call's own,
+— appends the resolution to the conversation's agenda, and drives, exactly
+the way `tell` does. Appending always succeeds: a tell or a resolution is
+never refused for arriving while the conversation is busy, mid-turn, or even
+parked — it joins the durable agenda and the next drive (this call's own,
 or a re-drive from any other node) picks it up. `harness.progress(token,
 message)` is `resume`'s non-terminal sibling: it never consumes the token,
 only narrates a still-running tool's progress to whoever is listening for
@@ -503,9 +503,9 @@ only narrates a still-running tool's progress to whoever is listening for
 home (a webhook, a queue, a cron poll) is the tool author's business.
 
 Two write disciplines carry this: a version-fenced control block (one writer
-wins; a stale writer reloads and re-drives, never overwrites) and an
-append-only lane the fence doesn't gate, so a chatty world can never
-fence-fail a working driver. `ConversationStatus.PARKED` joins the other
+wins; a stale writer reloads and re-drives, never overwrites) and the agenda,
+which the fence doesn't gate, so a chatty world can never fence-fail a
+working driver. `ConversationStatus.PARKED` joins the other
 statuses — a parked conversation self-describes to any ops surface: no
 driver, no lease, durable patience.
 
@@ -593,7 +593,7 @@ declared `contextWindow` dial survives, deliberately unconsumed by anything
 in the loop today, reserved for a future token-aware `Memory` to read.
 
 The durable kernel has landed too: every entry — a `tell`, a `resume` —
-appends to the conversation's durable lane and drives with the same
+appends to the conversation's durable agenda and drives with the same
 re-entrant verb, `PARKED` conversations wait for a `harness.resume`/
 `harness.progress` from any node, and `nessy-store-jdbc` gives that a real
 Postgres-backed `ConversationStore` — see

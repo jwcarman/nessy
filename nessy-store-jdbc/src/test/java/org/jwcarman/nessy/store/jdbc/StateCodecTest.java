@@ -31,10 +31,10 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.conversation.LaneEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.ContentBlock;
@@ -49,7 +49,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
  * The wire shape of the two durable jsonb payloads: {@link ConversationState} and {@link
- * LaneEntry}. Every round trip goes through a mapper the codec copies rather than mutates, so a
+ * AgendaItem}. Every round trip goes through a mapper the codec copies rather than mutates, so a
  * caller's own {@link ObjectMapper} is never left carrying these mixins after handing it in.
  */
 class StateCodecTest {
@@ -60,8 +60,8 @@ class StateCodecTest {
     return new ToolCall(id, "echo", JsonNodeFactory.instance.objectNode().put("text", "hi"));
   }
 
-  private LaneEntry.Told told(ContentBlock block) {
-    return LaneEntry.told(List.of(block));
+  private AgendaItem.Told told(ContentBlock block) {
+    return AgendaItem.told(List.of(block));
   }
 
   @Nested
@@ -69,54 +69,54 @@ class StateCodecTest {
 
     @Test
     void a_text_block_round_trips() {
-      LaneEntry.Told entry = told(new TextBlock("hello"));
+      AgendaItem.Told entry = told(new TextBlock("hello"));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void a_thinking_block_round_trips() {
-      LaneEntry.Told entry = told(new ThinkingBlock("reasoning", "sig-1"));
+      AgendaItem.Told entry = told(new ThinkingBlock("reasoning", "sig-1"));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void a_redacted_thinking_block_round_trips() {
-      LaneEntry.Told entry = told(new RedactedThinkingBlock("opaque-bytes"));
+      AgendaItem.Told entry = told(new RedactedThinkingBlock("opaque-bytes"));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void a_tool_use_block_round_trips() {
-      LaneEntry.Told entry = told(new ToolUseBlock(toolCall("c1")));
+      AgendaItem.Told entry = told(new ToolUseBlock(toolCall("c1")));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void a_tool_result_block_round_trips() {
-      LaneEntry.Told entry = told(new ToolResultBlock("c1", "42", false));
+      AgendaItem.Told entry = told(new ToolResultBlock("c1", "42", false));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void an_image_block_round_trips() {
-      LaneEntry.Told entry = told(new ImageBlock("image/png", "YmFzZTY0"));
+      AgendaItem.Told entry = told(new ImageBlock("image/png", "YmFzZTY0"));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
@@ -152,45 +152,45 @@ class StateCodecTest {
   }
 
   @Nested
-  class Lane_entries {
+  class Agenda_entries {
 
     @Test
     void a_told_entry_round_trips() {
-      LaneEntry.Told entry = LaneEntry.told(List.of(new TextBlock("interjected")));
+      AgendaItem.Told entry = AgendaItem.told(List.of(new TextBlock("interjected")));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void a_resolved_entry_carrying_an_allow_decision_round_trips() {
-      LaneEntry.Resolved entry =
-          LaneEntry.resolved(ParkToken.generate(), new ToolResolution.Decided(Decision.allow()));
+      AgendaItem.Resolved entry =
+          AgendaItem.resolved(ParkToken.generate(), new ToolResolution.Decided(Decision.allow()));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void a_resolved_entry_carrying_a_deny_decision_round_trips() {
-      LaneEntry.Resolved entry =
-          LaneEntry.resolved(
+      AgendaItem.Resolved entry =
+          AgendaItem.resolved(
               ParkToken.generate(), new ToolResolution.Decided(new Decision.Deny("not today")));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
 
     @Test
     void a_resolved_entry_carrying_a_completed_tool_result_round_trips() {
-      LaneEntry.Resolved entry =
-          LaneEntry.resolved(
+      AgendaItem.Resolved entry =
+          AgendaItem.resolved(
               ParkToken.generate(), new ToolResolution.Completed(ToolResult.ok("42")));
 
-      LaneEntry decoded = codec.readLaneEntry(codec.writeLaneEntry(entry));
+      AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
     }
@@ -204,16 +204,16 @@ class StateCodecTest {
       String payload =
           "{\"type\":\"told\",\"id\":\"e1\",\"content\":[{\"type\":\"bogus\",\"text\":\"hi\"}]}";
 
-      assertThatThrownBy(() -> codec.readLaneEntry(payload))
+      assertThatThrownBy(() -> codec.readAgendaItem(payload))
           .isInstanceOf(IllegalArgumentException.class)
           .hasCauseInstanceOf(InvalidTypeIdException.class);
     }
 
     @Test
-    void fails_loudly_not_null_for_a_lane_entry() {
+    void fails_loudly_not_null_for_an_agenda_entry() {
       String payload = "{\"type\":\"bogus\",\"id\":\"e1\"}";
 
-      assertThatThrownBy(() -> codec.readLaneEntry(payload))
+      assertThatThrownBy(() -> codec.readAgendaItem(payload))
           .isInstanceOf(IllegalArgumentException.class)
           .hasCauseInstanceOf(InvalidTypeIdException.class);
     }
@@ -236,8 +236,8 @@ class StateCodecTest {
     }
 
     @Test
-    void the_codec_registers_every_permitted_lane_entry() {
-      assertRegistersEveryPermittedSubclass(LaneEntry.class, "LaneEntryMixin");
+    void the_codec_registers_every_permitted_agenda_entry() {
+      assertRegistersEveryPermittedSubclass(AgendaItem.class, "AgendaItemMixin");
     }
 
     @Test

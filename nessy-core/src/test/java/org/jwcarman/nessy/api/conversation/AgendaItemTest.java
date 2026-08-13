@@ -26,14 +26,14 @@ import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 
-class LaneEntryTest {
+class AgendaItemTest {
 
   @Test
   void told_entries_carry_content_and_a_time_ordered_id() {
     List<ContentBlock> content = List.of(new TextBlock("hello"));
 
-    LaneEntry.Told first = LaneEntry.told(content);
-    LaneEntry.Told second = LaneEntry.told(content);
+    AgendaItem.Told first = AgendaItem.told(content);
+    AgendaItem.Told second = AgendaItem.told(content);
 
     assertThat(first.id()).isNotNull();
     assertThat(second.id()).isNotNull();
@@ -46,7 +46,7 @@ class LaneEntryTest {
     ParkToken token = ParkToken.generate();
     ToolResolution resolution = new ToolResolution.Decided(Decision.allow());
 
-    LaneEntry.Resolved resolved = LaneEntry.resolved(token, resolution);
+    AgendaItem.Resolved resolved = AgendaItem.resolved(token, resolution);
 
     assertThat(resolved.id()).isNotNull();
     assertThat(resolved.token()).isEqualTo(token);
@@ -55,14 +55,14 @@ class LaneEntryTest {
 
   @Test
   void told_rejects_null_content() {
-    assertThatThrownBy(() -> LaneEntry.told(null)).isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> AgendaItem.told(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void resolved_rejects_null_token() {
     ToolResolution resolution = new ToolResolution.Decided(Decision.allow());
 
-    assertThatThrownBy(() -> LaneEntry.resolved(null, resolution))
+    assertThatThrownBy(() -> AgendaItem.resolved(null, resolution))
         .isInstanceOf(NullPointerException.class);
   }
 }

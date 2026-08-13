@@ -14,10 +14,10 @@ The headline constraints, because they are the design:
 2. **Every entry appends; one verb drives.** `tell` and `resume` differ only
    in what they append; driving is a single re-entrant act from the status
    pointer.
-3. **Exactly two write disciplines.** A version-fenced core and an
-   append-only lane. Everything the first draft called mailbox, claim, lease,
-   receipt, dispatcher, or sweeper is either one of these two or deliberately
-   not built.
+3. **Exactly two write disciplines.** A version-fenced core and the agenda.
+   Everything the first draft called mailbox, claim, lease, receipt,
+   dispatcher, or sweeper is either one of these two or deliberately not
+   built.
 
 ---
 
@@ -40,7 +40,7 @@ whatever arrives.
 Three schools. Durable-execution engines (Temporal, Restate, Azure Durable
 Functions, DBOS): Restate's awakeables are `ParkToken`/`resume` nearly
 verbatim; Temporal's signals are durable buffered mail; all of them separate
-progress from the durable event lane (heartbeats, custom status) — nobody
+progress from the durable event log (heartbeats, custom status) — nobody
 queues progress. Actor runtimes (Akka, Orleans, Durable Objects): native
 mailboxes, claim problem solved by runtime-managed single activation — at the
 cost of operating cluster membership. Agent frameworks (LangGraph, Mastra):
@@ -51,8 +51,8 @@ stories.
 one Postgres, no membership protocol. **What we deliberately did not adopt:**
 the mailbox-as-API (Temporal signals, Akka mail). The first draft had one;
 review killed it with the litmus above. Its one irreplaceable service —
-accepting input for a busy conversation — survives as an append-only lane the
-*fold* drains, which is smaller, deterministic, and already had a precedent
+accepting input for a busy conversation — survives as the agenda the *fold*
+drains, which is smaller, deterministic, and already had a precedent debt
 lane in the control block.
 
 ## 3. The unified entry
@@ -63,7 +63,7 @@ harness.resume(token, resolution[, observer]) // appends a call's answer, then d
 ```
 
 **Appending always succeeds.** A tell is durably appended to the
-conversation's lane regardless of status — idle, mid-turn, parked. Nothing is
+conversation's agenda regardless of status — idle, mid-turn, parked. Nothing is
 ever refused; there is no "busy" answer. **Driving is unconditional, not
 opportunistic — implementation note (2026-08-12-durable-kernel, Task 4)
 amends this sentence to the shipped truth:** every entry re-drives after
@@ -80,15 +80,15 @@ now doing fleet duty).
 
 What an appended tell **means** is a fold decision, by status:
 
-| Conversation is… | The lane entry becomes… |
+| Conversation is… | The agenda entry becomes… |
 |---|---|
 | Quiescent (`IDLE`/`COMPLETE`/`FAILED`) | The turn-opener: the drain births one user message, resets the error streak, `AWAITING_MODEL`, `CallModel`. |
 | Mid-turn with tool debt | A flush rider: the results message is born as `[tool_results…, interjections…]` — the wire-legal seat for mid-turn words (the Claude Code shape). |
-| Mid-turn, ending clean | The next turn's opener: a clean `ModelResponded` folding against a non-empty lane does not `COMPLETE`; it drains and continues. One fold rule is the whole "mailbox." |
+| Mid-turn, ending clean | The next turn's opener: a clean `ModelResponded` folding against a non-empty agenda does not `COMPLETE`; it takes it up and continues. One fold rule is the whole "mailbox." |
 | `PARKED` | Durable patience: waits for the resume that will drive past it. |
 
 **Merge-at-drain.** All queued tells drain into **one user message, as
-distinct blocks in arrival order** (UUIDv7 lane ids). Three forces settle
+distinct blocks in arrival order** (UUIDv7 agenda ids). Three forces settle
 this: the wire forbids consecutive user messages; acting on tell 1 while
 durably holding tell 2 is the stale-instruction bug ("cancel that" must never
 sit unread behind the thing it cancels); and one model call beats N. Each
@@ -114,28 +114,28 @@ it didn't read — including the zombie case (a driver stalls, another node
 re-drives, the zombie wakes and saves late; only the write-time check stops
 it). This is plain optimistic locking and it is the load-bearing mechanism.
 
-**The append-only lane carries acceptance.** Lane entries (a told's content;
-a resolution and its token) are append-only rows the fence ignores — so a
+**The agenda carries acceptance.** Agenda entries (a told's content; a
+resolution and its token) are append-only rows the fence ignores — so a
 chatty world can never fence-fail a working driver, which is what makes
-always-accept compatible with always-progressing. The lane is drained
+always-accept compatible with always-progressing. The agenda is drained
 *transactionally with the fenced save* of the fold that consumes it.
 
 **The fold stays pure and owns message construction.** `ConversationState`
-carries the lane as a loaded view — physically rows, logically a field, read
-at load, drained by folds. Both halves of the state debate resolve: the
+carries the agenda as a loaded view — physically rows, logically a field,
+read at load, drained by folds. Both halves of the state debate resolve: the
 fenced core stays thin (no content growth under the version), and message
-construction never leaves the fold. The lane joins `pendingResults` under the
-essence's real rule: *state holds the open turn's unsettled material; Memory
-holds everything settled. Lanes drain; records don't.* (Honest note: a
-long park can grow the lane; entries are human-scale mid-turn words, and a
-durable store may page lane rows without semantic change.)
+construction never leaves the fold. The agenda joins `pendingResults` under
+the essence's real rule: *state holds the open turn's unsettled material;
+Memory holds everything settled. Lanes drain; records don't.* (Honest note: a
+long park can grow the agenda; entries are human-scale mid-turn words, and a
+durable store may page agenda rows without semantic change.)
 
-> **Implementation note (2026-08-12-durable-kernel, Tasks 1–4).** "The lane as
-> a loaded view" landed precisely as `ConversationStore.Loaded(ConversationState
-> state, List<LaneEntry> lane)` — `load` hands the loop the pair rather than a
-> state with the lane folded into a field, and the loop's own `driveOnce` is
-> what turns that pair into the `told` accumulator the fold reads. The state
-> itself never carries raw lane rows.
+> **Implementation note (2026-08-12-durable-kernel, Tasks 1–4).** "The agenda
+> as a loaded view" landed precisely as `ConversationStore.Loaded(ConversationState
+> state, List<AgendaItem> agenda)` — `load` hands the loop the pair rather
+> than a state with the agenda folded into a field, and the loop's own
+> `driveOnce` is what turns that pair into the `told` accumulator the fold
+> reads. The state itself never carries raw agenda rows.
 
 **No claims, no leases — v1.** With fencing, concurrent drivers are *safe*:
 one save wins, the loser discards its segment. Claims (a start-of-segment CAS
@@ -156,9 +156,10 @@ broker talking.
 - **`resume(token, resolution)`** consumes the token (`consumeToken`, already
   shipped — resolutions are at-least-once in every real transport), appends,
   and drives. Contention (a resolution arriving while another entry drives —
-  fan-out parks make this real) is the lane absorbing it: the active driver's
-  loop consumes resolution entries and routes them to the parked executor's
-  `resume`, exactly as the essence ruled — the fold never learns time passed.
+  fan-out parks make this real) is the agenda absorbing it: the active
+  driver's loop consumes resolution entries and routes them to the parked
+  executor's `resume`, exactly as the essence ruled — the fold never learns
+  time passed.
 - **At-least-once tool physics.** Re-driving a stalled `EXECUTING_TOOL`
   conversation re-performs calls. Documented on `Tool`: a tool that cannot be
   safely re-run makes itself idempotent, or parks and lets its remote side
@@ -166,13 +167,13 @@ broker talking.
 
 > **Implementation note (2026-08-12-durable-kernel, Task 4).** Resolutions
 > drain **loop-side**, not fold-side: `ConversationLoop.driveOnce` walks the
-> loaded lane's `Resolved` entries itself, routes each to the parked
+> loaded agenda's `Resolved` entries itself, routes each to the parked
 > executor's own `resume`, and only marks the entry drained once that resume
 > *and* its resulting fold both succeed — a throw in between leaves the
-> resolution in the lane for a future drive to find rather than destroying the
-> only copy that arrived. The fact itself is minted at that drain, from the
-> executor's yield, exactly the way a told entry's `AgentTold` fact is minted
-> at its own drain rather than at append time.
+> resolution on the agenda for a future drive to find rather than destroying
+> the only copy that arrived. The fact itself is minted at that drain, from
+> the executor's yield, exactly the way a told entry's `AgentTold` fact is
+> minted at its own drain rather than at append time.
 
 ## 6. Signals: progress from afar and the tee
 
@@ -202,16 +203,16 @@ stale by definition — the industry's unanimous heartbeat lesson).
 |---|---|
 | "The entry point must not become enqueue" (§10) | **Amended, reason intact.** What it protected — no silent queueing behind a synchronous verb — holds: `tell` appends *and drives when it can*, and always returns a reading. What changes: acceptance is unconditional, because the append is a durable, fold-visible act, not a delivery promise. |
 | §6 refusal contract (in-flight statuses refuse `run` loudly) | **Retired in favor of fencing + re-drive.** The invariant (never two *effective* drivers) is kept by the version fence; a crashed turn is no longer a quarantine case but simply re-drivable from the pointer by the next entry. |
-| Turn = tell → clean response | **Refined:** a clean response folding against a non-empty lane continues rather than completing. The turn ends at a clean response *with an empty lane* — "no homework" now includes "no unread mail." |
+| Turn = tell → clean response | **Refined:** a clean response folding against a non-empty agenda continues rather than completing — you don't adjourn with open items. The turn ends at a clean response *with nothing on the agenda* — "no homework" now includes "nothing on the agenda." |
 | `tell` returns `RunOutcome` | **Unchanged in shape, widened in meaning:** when the entry drives, it is the drive's outcome; when another driver holds the conversation, it is the state as read. A reading, either way. |
 | Parks invisible to grammar; observer per entry; resolutions route to the executor | **Unchanged** — this design is their payoff. |
 | Statuses | `PARKED` added; nothing removed. |
 
 ## 8. Deliberately not built
 
-The mailbox-as-API (`Mail`, `MailReceipt`, `post`) — the lane is store rows
+The mailbox-as-API (`Mail`, `MailReceipt`, `post`) — the agenda is store rows
 and fold semantics, not surface. Claims and leases (v1) — fencing carries
-correctness; economy can come later as one column. Sweepers — every lane
+correctness; economy can come later as one column. Sweepers — every agenda
 entry is followed by a driving entry or the conversation is wedged regardless.
 Park timeouts (`ParkPolicy`) — real, deferred; wall-clock policy arrives when
 a deployment demands it, likely as a sweeper-sibling the app schedules.
@@ -275,7 +276,7 @@ d. **Re-parking is unsupported this generation.** A resumed call whose own
 
 ## 10. Testing posture
 
-The store contract (fenced save, lane append/drain atomicity, token
+The store contract (fenced save, agenda append/drain atomicity, token
 consume/peek) gets a store-agnostic suite run against in-memory and JDBC
 implementations. The loop's new laws — append-always, drive-when-quiescent,
 drain-at-the-consuming-fold, merge-at-drain block ordering, mid-turn tells

@@ -39,10 +39,10 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.conversation.LaneEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
@@ -234,22 +234,22 @@ class ConversationLoopTest {
   }
 
   /**
-   * Records the lane's contents immediately after every {@code save}, so a test can pin that a
+   * Records the agenda's contents immediately after every {@code save}, so a test can pin that a
    * particular entry's id rode a particular fold's own save — not a later one — without having to
    * interrupt the drive mid-flight to look.
    */
-  private static final class LaneSnapshottingStore implements ConversationStore {
+  private static final class AgendaSnapshottingStore implements ConversationStore {
 
     private final ConversationStore delegate = ConversationStore.inMemory();
     private final ConversationId id;
-    private final List<List<LaneEntry>> laneAfterEachSave = new ArrayList<>();
+    private final List<List<AgendaItem>> agendaAfterEachSave = new ArrayList<>();
 
-    LaneSnapshottingStore(ConversationId id) {
+    AgendaSnapshottingStore(ConversationId id) {
       this.id = id;
     }
 
-    List<List<LaneEntry>> laneAfterEachSave() {
-      return laneAfterEachSave;
+    List<List<AgendaItem>> agendaAfterEachSave() {
+      return agendaAfterEachSave;
     }
 
     @Override
@@ -258,15 +258,15 @@ class ConversationLoopTest {
     }
 
     @Override
-    public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
-      ConversationState saved = delegate.save(state, drainedLaneIds);
-      laneAfterEachSave.add(delegate.load(id).map(Loaded::lane).orElse(List.of()));
+    public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
+      ConversationState saved = delegate.save(state, drainedAgendaIds);
+      agendaAfterEachSave.add(delegate.load(id).map(Loaded::agenda).orElse(List.of()));
       return saved;
     }
 
     @Override
-    public void appendLane(ConversationId conversationId, LaneEntry entry) {
-      delegate.appendLane(conversationId, entry);
+    public void appendAgenda(ConversationId conversationId, AgendaItem entry) {
+      delegate.appendAgenda(conversationId, entry);
     }
 
     @Override
@@ -310,18 +310,18 @@ class ConversationLoopTest {
     }
 
     @Override
-    public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
+    public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
       if (!sabotaged) {
         sabotaged = true;
         ConversationState stolen = delegate.load(state.id()).orElseThrow().state();
         delegate.save(stolen, List.of());
       }
-      return delegate.save(state, drainedLaneIds);
+      return delegate.save(state, drainedAgendaIds);
     }
 
     @Override
-    public void appendLane(ConversationId id, LaneEntry entry) {
-      delegate.appendLane(id, entry);
+    public void appendAgenda(ConversationId id, AgendaItem entry) {
+      delegate.appendAgenda(id, entry);
     }
 
     @Override
@@ -360,14 +360,14 @@ class ConversationLoopTest {
     }
 
     @Override
-    public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
+    public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
       journal.add("save");
       throw new StaleStateException(state.id(), state.version(), state.version() + 1);
     }
 
     @Override
-    public void appendLane(ConversationId id, LaneEntry entry) {
-      delegate.appendLane(id, entry);
+    public void appendAgenda(ConversationId id, AgendaItem entry) {
+      delegate.appendAgenda(id, entry);
     }
 
     @Override
@@ -508,15 +508,15 @@ class ConversationLoopTest {
     }
 
     @Override
-    public ConversationState save(ConversationState state, Collection<String> drainedLaneIds) {
+    public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
       journal.add("save");
-      return delegate.save(state, drainedLaneIds);
+      return delegate.save(state, drainedAgendaIds);
     }
 
     @Override
-    public void appendLane(ConversationId id, LaneEntry entry) {
+    public void appendAgenda(ConversationId id, AgendaItem entry) {
       journal.add("append");
-      delegate.appendLane(id, entry);
+      delegate.appendAgenda(id, entry);
     }
 
     @Override
@@ -844,9 +844,9 @@ class ConversationLoopTest {
       ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, plainAnswer("Ok."));
       RecordingMemory memory = new RecordingMemory(journal);
       ConversationStore store = ConversationStore.inMemory();
-      store.appendLane(ID, LaneEntry.told(List.of(new TextBlock("one"))));
-      store.appendLane(ID, LaneEntry.told(List.of(new TextBlock("two"))));
-      store.appendLane(ID, LaneEntry.told(List.of(new TextBlock("three"))));
+      store.appendAgenda(ID, AgendaItem.told(List.of(new TextBlock("one"))));
+      store.appendAgenda(ID, AgendaItem.told(List.of(new TextBlock("two"))));
+      store.appendAgenda(ID, AgendaItem.told(List.of(new TextBlock("three"))));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
@@ -867,19 +867,19 @@ class ConversationLoopTest {
 
     /**
      * Opus fix round 1, Finding 3 (Important, design §4 governs): a note's id must ride its own
-     * fold's save, transactionally — not linger in the lane until some later save happens to flush
-     * it. Two notes, so the first note's own save is directly observable before the second's fold
-     * ever runs.
+     * fold's save, transactionally — not linger on the agenda until some later save happens to
+     * flush it. Two notes, so the first note's own save is directly observable before the second's
+     * fold ever runs.
      */
     @Test
     void a_notes_id_rides_its_own_folds_save_not_a_later_one() {
       List<String> journal = new ArrayList<>();
       ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, plainAnswer("Ok."));
-      LaneSnapshottingStore store = new LaneSnapshottingStore(ID);
-      LaneEntry.Told first = LaneEntry.told(List.of(new TextBlock("one")));
-      LaneEntry.Told second = LaneEntry.told(List.of(new TextBlock("two")));
-      store.appendLane(ID, first);
-      store.appendLane(ID, second);
+      AgendaSnapshottingStore store = new AgendaSnapshottingStore(ID);
+      AgendaItem.Told first = AgendaItem.told(List.of(new TextBlock("one")));
+      AgendaItem.Told second = AgendaItem.told(List.of(new TextBlock("two")));
+      store.appendAgenda(ID, first);
+      store.appendAgenda(ID, second);
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
@@ -891,8 +891,8 @@ class ConversationLoopTest {
 
       loop.drive(ID, OBSERVER);
 
-      List<LaneEntry> laneAfterFirstNotesSave = store.laneAfterEachSave().getFirst();
-      assertThat(laneAfterFirstNotesSave).doesNotContain(first);
+      List<AgendaItem> agendaAfterFirstNotesSave = store.agendaAfterEachSave().getFirst();
+      assertThat(agendaAfterFirstNotesSave).doesNotContain(first);
     }
   }
 
@@ -915,7 +915,7 @@ class ConversationLoopTest {
               .withPendingCalls(List.of(c1))
               .with(ConversationStatus.EXECUTING_TOOL),
           List.of());
-      store.appendLane(ID, LaneEntry.told(List.of(new TextBlock("also check y"))));
+      store.appendAgenda(ID, AgendaItem.told(List.of(new TextBlock("also check y"))));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(model, tools),
@@ -942,7 +942,7 @@ class ConversationLoopTest {
       ConversationStore store = ConversationStore.inMemory();
       store.save(
           ConversationState.newConversation(ID).with(ConversationStatus.AWAITING_MODEL), List.of());
-      store.appendLane(ID, LaneEntry.told(List.of(new TextBlock("more context"))));
+      store.appendAgenda(ID, AgendaItem.told(List.of(new TextBlock("more context"))));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
@@ -1027,8 +1027,8 @@ class ConversationLoopTest {
       assertThat(model.calls()).isEqualTo(1); // no second model call: the turn never continued
 
       store.consumeToken(token);
-      store.appendLane(
-          ID, LaneEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
+      store.appendAgenda(
+          ID, AgendaItem.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
       RunOutcome finished = loop.drive(ID, OBSERVER);
 
       assertThat(finished.state().status()).isEqualTo(ConversationStatus.COMPLETE);
@@ -1045,8 +1045,8 @@ class ConversationLoopTest {
 
     /**
      * Stands in for {@code Harness.resume}'s own three steps ({@code findParkConversation}, {@code
-     * consumeToken}, {@code appendLane} + {@code drive}) at the store the loop itself uses — {@code
-     * HarnessTest} pins the facade that wraps this same sequence end to end.
+     * consumeToken}, {@code appendAgenda} + {@code drive}) at the store the loop itself uses —
+     * {@code HarnessTest} pins the facade that wraps this same sequence end to end.
      */
     @Test
     void resume_consumes_the_token_routes_the_executor_and_finishes_the_turn() {
@@ -1069,8 +1069,8 @@ class ConversationLoopTest {
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
 
       assertThat(store.consumeToken(token)).isTrue();
-      store.appendLane(
-          ID, LaneEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("found"))));
+      store.appendAgenda(
+          ID, AgendaItem.resolved(token, new ToolResolution.Completed(ToolResult.ok("found"))));
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
@@ -1099,8 +1099,8 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
       store.consumeToken(token);
-      store.appendLane(
-          ID, LaneEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("found"))));
+      store.appendAgenda(
+          ID, AgendaItem.resolved(token, new ToolResolution.Completed(ToolResult.ok("found"))));
       loop.drive(ID, OBSERVER);
 
       // Redelivery: the same token arrives again. consumeToken now reports it already claimed, so
@@ -1125,8 +1125,8 @@ class ConversationLoopTest {
               .with(ConversationStatus.PARKED);
       store.save(seeded, List.of());
       ParkToken staleToken = ParkToken.generate();
-      store.appendLane(
-          ID, LaneEntry.resolved(staleToken, new ToolResolution.Decided(Decision.allow())));
+      store.appendAgenda(
+          ID, AgendaItem.resolved(staleToken, new ToolResolution.Decided(Decision.allow())));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(
@@ -1141,7 +1141,7 @@ class ConversationLoopTest {
 
       assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
       assertThat(((RunOutcome.Parked) outcome).token()).isEqualTo(activeToken);
-      assertThat(store.load(ID).orElseThrow().lane()).isEmpty();
+      assertThat(store.load(ID).orElseThrow().agenda()).isEmpty();
     }
 
     /**
@@ -1152,7 +1152,7 @@ class ConversationLoopTest {
      * consumed the token and appended {@code Resolved}, but the status-gated pass skipped it
      * (status was {@code EXECUTING_TOOL}, not {@code PARKED}), and the pointer pass re-performed
      * only the pending sibling — wedging the conversation forever with an un-routed resolution
-     * sitting in the lane. Routing by park membership instead of status fixes it: this seeds
+     * sitting on the agenda. Routing by park membership instead of status fixes it: this seeds
      * exactly that crash-shaped state directly at the store (as if a crash landed right after c1's
      * park was applied and right before c2 was ever performed) and pins that a drive still lands —
      * c2 re-performs, c1's resolution routes, and one combined flush carries both results.
@@ -1179,8 +1179,8 @@ class ConversationLoopTest {
               .with(ConversationStatus.EXECUTING_TOOL);
       store.save(seeded, List.of());
       store.consumeToken(token);
-      store.appendLane(
-          ID, LaneEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
+      store.appendAgenda(
+          ID, AgendaItem.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(model, tools),
@@ -1213,15 +1213,15 @@ class ConversationLoopTest {
      * but here for one that is not, and will never again be, {@code PARKED}.
      */
     @Test
-    void a_stale_resolution_in_a_complete_conversations_lane_drains_quietly() {
+    void a_stale_resolution_in_a_complete_conversations_agenda_drains_quietly() {
       List<String> journal = new ArrayList<>();
       ConversationStore store = ConversationStore.inMemory();
       ConversationState seeded =
           ConversationState.newConversation(ID).with(ConversationStatus.COMPLETE);
       store.save(seeded, List.of());
       ParkToken staleToken = ParkToken.generate();
-      store.appendLane(
-          ID, LaneEntry.resolved(staleToken, new ToolResolution.Decided(Decision.allow())));
+      store.appendAgenda(
+          ID, AgendaItem.resolved(staleToken, new ToolResolution.Decided(Decision.allow())));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(
@@ -1235,17 +1235,17 @@ class ConversationLoopTest {
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
-      assertThat(store.load(ID).orElseThrow().lane()).isEmpty();
+      assertThat(store.load(ID).orElseThrow().agenda()).isEmpty();
     }
 
     /**
      * Opus fix round 1, Finding 2 (Important): a throw between accepting a resolution and folding
      * its fact must not destroy the only copy of that resolution. The re-park guard is a real,
      * reachable throw (approval-resume invokes the tool, and the tool parks again) — this pins that
-     * the Resolved entry survives it, in the lane, for a future retry.
+     * the Resolved entry survives it, on the agenda, for a future retry.
      */
     @Test
-    void a_throwing_resume_leaves_the_resolution_in_the_lane_for_retry() {
+    void a_throwing_resume_leaves_the_resolution_on_the_agenda_for_retry() {
       List<String> journal = new ArrayList<>();
       ToolCall c1 = toolCall("c1", "search");
       ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
@@ -1263,13 +1263,13 @@ class ConversationLoopTest {
               ObservationRegistry.NOOP);
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
       store.consumeToken(token);
-      LaneEntry.Resolved resolvedEntry =
-          LaneEntry.resolved(token, new ToolResolution.Decided(Decision.allow()));
-      store.appendLane(ID, resolvedEntry);
+      AgendaItem.Resolved resolvedEntry =
+          AgendaItem.resolved(token, new ToolResolution.Decided(Decision.allow()));
+      store.appendAgenda(ID, resolvedEntry);
 
       assertThatThrownBy(() -> loop.drive(ID, OBSERVER)).isInstanceOf(IllegalStateException.class);
 
-      assertThat(store.load(ID).orElseThrow().lane()).containsExactly(resolvedEntry);
+      assertThat(store.load(ID).orElseThrow().agenda()).containsExactly(resolvedEntry);
     }
   }
 

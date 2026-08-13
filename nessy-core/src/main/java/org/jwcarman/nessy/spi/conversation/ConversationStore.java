@@ -20,19 +20,19 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
-import org.jwcarman.nessy.api.conversation.LaneEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 
 /**
  * Where a session lives between steps.
  *
  * <p>Because {@code ConversationState} is a plain serializable record, durable resume is an
- * implementation of this interface rather than a change to the loop. The control block and the lane
- * are two different durability shapes sharing one store: {@code state} is fenced —
- * compare-and-swap, one writer wins — while the lane is an append-only log any number of tells and
- * resolutions can write to concurrently, drained only by the winning save.
+ * implementation of this interface rather than a change to the loop. The control block and the
+ * agenda are two different durability shapes sharing one store: {@code state} is fenced —
+ * compare-and-swap, one writer wins — while the agenda is an append-only log any number of tells
+ * and resolutions can write to concurrently, drained only by the winning save.
  */
 public interface ConversationStore {
 
@@ -41,13 +41,13 @@ public interface ConversationStore {
     return new InMemoryConversationStore();
   }
 
-  /** A conversation's control block together with whatever the lane still holds for it. */
-  record Loaded(ConversationState state, List<LaneEntry> lane) {
+  /** A conversation's control block together with whatever the agenda still holds for it. */
+  record Loaded(ConversationState state, List<AgendaItem> agenda) {
 
     public Loaded {
       Objects.requireNonNull(state, "state must not be null");
-      Objects.requireNonNull(lane, "lane must not be null");
-      lane = List.copyOf(lane);
+      Objects.requireNonNull(agenda, "agenda must not be null");
+      agenda = List.copyOf(agenda);
     }
   }
 
@@ -55,20 +55,20 @@ public interface ConversationStore {
 
   /**
    * The fenced save: persists {@code state} iff the stored version equals {@code state.version()},
-   * atomically bumping to {@code version()+1}, deleting the drained lane entries, and syncing the
+   * atomically bumping to {@code version()+1}, deleting the drained agenda entries, and syncing the
    * park index from {@code state.parkedCalls()} — one atomic act. Returns the state with the bumped
    * version (the caller's new read-base). Readers observe this act atomically too: {@link #load},
-   * {@link #findPark}, and {@link #findParkConversation} never see the state, the lane, or a park
+   * {@link #findPark}, and {@link #findParkConversation} never see the state, the agenda, or a park
    * from one generation mixed with either of the others from a different one — a concurrent reader
    * sees either every effect of this save or none of them.
    *
    * @throws StaleStateException when the stored version differs — the caller read a base that has
    *     since moved; reload and re-drive.
    */
-  ConversationState save(ConversationState state, Collection<String> drainedLaneIds);
+  ConversationState save(ConversationState state, Collection<String> drainedAgendaIds);
 
   /** Unconditional, atomic, never contended with saves. */
-  void appendLane(ConversationId id, LaneEntry entry);
+  void appendAgenda(ConversationId id, AgendaItem entry);
 
   /** The park index: token → the conversation and call it belongs to. */
   Optional<ParkedCall> findPark(ParkToken token);

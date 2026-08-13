@@ -29,11 +29,11 @@ import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Effect;
-import org.jwcarman.nessy.api.conversation.LaneEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
@@ -53,12 +53,12 @@ import org.jwcarman.nessy.spi.memory.Memory;
  * memory, store, and policy handed to it.
  *
  * <p>The unified drive (design 2026-08-12): every entry — a tell, a resolution — appends to the
- * conversation's durable lane regardless of status; nothing is ever refused. Exactly one verb,
- * {@link #drive}, walks that lane and the conversation's status pointer and does whatever is next —
- * re-entrant from any status, retried on a fenced save's contention, park-aware. The cycle per fact
- * is unchanged: fold it; consult the termination policy after every fold — a law, not a list of
- * check sites; tell {@link Memory} the fold's message births; emit the fact on the system channel;
- * persist; then perform the emitted effects, each yielding the next fact. A halt discards
+ * conversation's durable agenda regardless of status; nothing is ever refused. Exactly one verb,
+ * {@link #drive}, takes up that agenda and the conversation's status pointer and does whatever is
+ * next — re-entrant from any status, retried on a fenced save's contention, park-aware. The cycle
+ * per fact is unchanged: fold it; consult the termination policy after every fold — a law, not a
+ * list of check sites; tell {@link Memory} the fold's message births; emit the fact on the system
+ * channel; persist; then perform the emitted effects, each yielding the next fact. A halt discards
  * unperformed effects — intents, not obligations — and applies the closure transition {@code
  * halted(reason)}; a park applies {@code parked(call, token)} the same fold-free, loop-applied way.
  *
@@ -104,7 +104,7 @@ public final class ConversationLoop {
   public RunOutcome run(
       ConversationId id, ConversationEvent.AgentTold input, TurnObserver observer) {
     Objects.requireNonNull(observer, "observer must not be null");
-    store.appendLane(id, LaneEntry.told(input.content()));
+    store.appendAgenda(id, AgendaItem.told(input.content()));
     return drive(id, observer);
   }
 
@@ -137,10 +137,10 @@ public final class ConversationLoop {
   }
 
   /**
-   * One drive attempt against one load: drains queued notes, routes any resolutions the parked lane
-   * is waiting on, then continues by whatever the status pointer says. Saving is not one act per
-   * attempt: every fold along the way ({@link #fold}) persists as soon as it lands, draining
-   * whatever lane ids have accumulated so far — that per-entry drain is the thing that is exactly
+   * One drive attempt against one load: drains queued notes, routes any resolutions the parked
+   * agenda is waiting on, then continues by whatever the status pointer says. Saving is not one act
+   * per attempt: every fold along the way ({@link #fold}) persists as soon as it lands, draining
+   * whatever agenda ids have accumulated so far — that per-entry drain is the thing that is exactly
    * once (design §4: an entry joins {@code drained} only alongside the save that actually consumes
    * it). What this method's own exit paths add on top is at most one further tail save, for state
    * this attempt reached without a fold of its own to carry it — a pointer pass that found nothing
@@ -159,9 +159,9 @@ public final class ConversationLoop {
     try {
       // 1. Notes: fold every Told entry, in order (facts minted here, one per entry). The entry's
       //    own id joins `drained` BEFORE its fold, transactional with that fold's own save (design
-      //    §4): a note is never left in the lane once the fold that consumed it has landed.
-      for (LaneEntry entry : loaded.lane()) {
-        if (entry instanceof LaneEntry.Told(String entryId, List<ContentBlock> content)) {
+      //    §4): a note is never left on the agenda once the fold that consumed it has landed.
+      for (AgendaItem entry : loaded.agenda()) {
+        if (entry instanceof AgendaItem.Told(String entryId, List<ContentBlock> content)) {
           drained.add(entryId);
           fold(progress, new ConversationEvent.AgentTold(id, content), drained);
         }
@@ -171,20 +171,20 @@ public final class ConversationLoop {
       //    regardless of the conversation's current status. A resolution can legitimately arrive
       //    while a fan-out sibling is still unsettled (crash mid-fan-out: EXECUTING_TOOL with
       //    parkedCalls non-empty, not PARKED), and gating this pass on status == PARKED alone
-      //    stranded that resolution — consumed by resume, appended to the lane, but never routed,
-      //    wedging the conversation. Routing by park membership instead fixes both directions: a
-      //    resolution whose token IS a live park routes here no matter the status; a resolution
-      //    whose token is NOT a live park drains quietly no matter the status too (a stale entry
-      //    left behind by a settled call no longer lingers outside PARKED waiting for a status it
-      //    will never see again). Unlike a note's fold, resuming a call can throw before ever
-      //    reaching a fold (the re-park guard, below) — so the entry's id joins `drained` only once
-      //    resumeParkedCall and its fold have both succeeded; a throw between them must leave the
-      //    entry in the lane for a future retry to find, not destroy the only copy of the
-      //    resolution that arrived.
-      for (LaneEntry entry : loaded.lane()) {
+      //    stranded that resolution — consumed by resume, appended to the agenda, but never
+      //    routed, wedging the conversation. Routing by park membership instead fixes both
+      //    directions: a resolution whose token IS a live park routes here no matter the status; a
+      //    resolution whose token is NOT a live park drains quietly no matter the status too (a
+      //    stale entry left behind by a settled call no longer lingers outside PARKED waiting for
+      //    a status it will never see again). Unlike a note's fold, resuming a call can throw
+      //    before ever reaching a fold (the re-park guard, below) — so the entry's id joins
+      //    `drained` only once resumeParkedCall and its fold have both succeeded; a throw between
+      //    them must leave the entry on the agenda for a future retry to find, not destroy the
+      //    only copy of the resolution that arrived.
+      for (AgendaItem entry : loaded.agenda()) {
         if (entry
             instanceof
-            LaneEntry.Resolved(String entryId, ParkToken token, ToolResolution resolution)) {
+            AgendaItem.Resolved(String entryId, ParkToken token, ToolResolution resolution)) {
           Optional<ParkedCall> park =
               progress.get().parkedCalls().stream()
                   .filter(candidate -> candidate.token().equals(token))
@@ -340,7 +340,7 @@ public final class ConversationLoop {
   }
 
   /**
-   * Routes a resolved lane entry to the parked executor's own {@code resume} and returns its
+   * Routes a resolved agenda entry to the parked executor's own {@code resume} and returns its
    * settled fact. The executor contract allows a resumed call to park again (an approved call whose
    * tool itself then parks); this generation does not support re-parking an already-parked call, so
    * that outcome fails loud rather than silently losing the call.

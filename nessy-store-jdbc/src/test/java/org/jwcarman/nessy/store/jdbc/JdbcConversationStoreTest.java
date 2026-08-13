@@ -77,7 +77,7 @@ class JdbcConversationStoreTest extends ConversationStoreContract {
   private void truncateEveryTable() {
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement()) {
-      statement.execute("TRUNCATE nessy_conversation, nessy_lane, nessy_park, nessy_token");
+      statement.execute("TRUNCATE nessy_conversation, nessy_agenda, nessy_park, nessy_token");
     } catch (SQLException e) {
       throw new IllegalStateException("failed to truncate tables between tests", e);
     }
