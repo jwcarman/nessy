@@ -2,9 +2,11 @@
 
 **Date:** 2026-08-13
 **Status:** DRAFT — pending review
-**Builds on:** the durable kernel (2026-08-12, shipped) and the DX generation
-(2026-08-13, spec'd) — this example is written on the DX generation's API and
-is its second dogfood. Sequenced after that generation ships.
+**Builds on:** the durable kernel (2026-08-12, shipped), the DX generation
+(2026-08-13, spec'd), and the Spring Boot autoconfigure module (spec to
+follow) — this example is written on both and is the second dogfood for each:
+the DX API's machine half, and the starter's console face. Sequenced last:
+DX generation → autoconfigure module → this.
 
 ---
 
@@ -44,22 +46,33 @@ declared `onToolProgressAsync` listener, which logs it.
 ## 3. Module
 
 `nessy-examples/patient-researcher` (artifactId
-`nessy-example-patient-researcher`, deploy-skipped like its siblings). Plain
-`main()`, **no Spring** — the examples matrix gains its no-framework-at-all
-corner (chat-cli: plain + interactive; chat-web: Boot + HITL; this: plain +
-autonomous):
+`nessy-example-patient-researcher`, deploy-skipped like its siblings). A
+**Spring Boot console app** — no web at all: `spring.main.web-application-type:
+none`, `spring.main.banner-mode: off` (cron logs stay clean), one
+`ApplicationRunner` receiving the verb args, `SpringApplication.exit(...)`
+carrying the exit code. A tick is: context boots, runner runs, JVM exits —
+seconds. The examples matrix reads: chat-cli (plain + interactive), chat-web
+(Boot web + HITL), this (Boot console + autonomous) — and this example is the
+**starter's console dogfood**: chat-web proves
+`nessy-spring-boot-autoconfigure` (its own spec, sequenced before this one)
+on the web face; this proves it with no web anywhere.
 
-- `PGSimpleDataSource` — no pool; the JVM lives seconds.
-- `JdbcPersistence.create(dataSource, mapper)` for the durable pair (DX §7).
-- One agent, one tool, `UsagePolicy.allow()` (no human in this loop),
-  `.onToolProgressAsync(…)` logging listener.
-- Wiring target: ~40 readable lines, main included.
+- DataSource, `ConversationStore`/`Memory` (via `JdbcPersistence`),
+  `ModelProvider`, and `Harness` all arrive from the starter's
+  autoconfiguration — the example's own config is ONE bean: the agent (one
+  tool, `UsagePolicy.allow()` — no human in this loop —
+  `.onToolProgressAsync(…)` logging listener). If the starter's spec shifts,
+  the fallback is chat-web-style hand wiring; the example's shape survives
+  either way.
+- `spring-boot-docker-compose` (runtime, optional) starts Postgres on
+  `ask`/`tick`/`show` alike, with `spring.docker.compose.lifecycle-management:
+  start-only` — a cron JVM that lives seconds must not stop the database on
+  every exit; Postgres stays up between ticks.
 
-Dependencies: `nessy-core`, `nessy-model-anthropic`, `nessy-store-jdbc`,
-`org.postgresql:postgresql`, `logback-classic`. Compose supplies Postgres
-(same shape as chat-web's compose, minus the LGTM service; started manually —
-no Spring means no `spring-boot-docker-compose`, and `docker compose up -d`
-is one README line).
+Dependencies: `spring-boot-starter` (the plain one — no web), `spring-boot-starter-jdbc`,
+`spring-boot-docker-compose`, `nessy-spring-boot-autoconfigure`, `nessy-core`,
+`nessy-model-anthropic`, `nessy-store-jdbc`, `org.postgresql:postgresql`.
+Boot BOM confined in-module, exactly the chat-web discipline.
 
 ## 4. Three verbs, one jar
 
@@ -123,9 +136,12 @@ the token *is* the correlation contract, which is the kernel's own claim
 
 ## 7. Testing
 
-One container-tagged test class, scripted provider (no key, no network), real
-Postgres via Testcontainers, calling the verb implementations directly (the
-verbs are methods; `main` is only dispatch):
+One container-tagged `@SpringBootTest` (non-web), scripted-provider bean
+override behind the `test` profile (the chat-web smoke's exact pattern — no
+key, no network), real Postgres via Testcontainers with
+`spring.docker.compose.enabled=false`, calling the verb implementations
+directly (the verbs are methods on a component; the `ApplicationRunner` is
+only dispatch):
 
 - `ask` parks: state `PARKED`, one `archive_jobs` row, token matches the
   parked call.
@@ -141,17 +157,21 @@ Offline reactor `verify` stays green with no Docker and no key.
 ## 8. Deliberately not built
 
 A real external service or webhook (the clock-ripened row IS the external
-world, minimally), Spring anything, retry/backoff policy around the model
-call (chat-cli already shows `RetryingModelProvider`), multi-agent routing
-(still single-agent per harness), a TUI for watching ticks (the log is the
-UI), o11y wiring (chat-web owns that demonstration; this example stays
-minimal on purpose).
+world, minimally), any web surface (console only — that is the point),
+retry/backoff policy around the model call (chat-cli already shows
+`RetryingModelProvider`), multi-agent routing (still single-agent per
+harness), a TUI for watching ticks (the log is the UI), o11y wiring (chat-web
+owns that demonstration; no actuator dependency here), and a no-framework
+durable example (this spec's earlier draft; consciously traded for dogfooding
+the starter's console face — chat-cli remains the framework-free example).
 
 ## 9. Open questions
 
 1. Module/agent naming — `patient-researcher` rhymes with the kernel's
    "durable patience"; rename freely at review.
-2. Whether `tick.sh`/`ask.sh` wrappers use `mvn -q exec:java` (zero build
-   setup, slower per tick) or a `maven-shade` fat jar (instant ticks, one
-   extra build step). Lean: exec-maven-plugin like chat-cli, matching sibling
-   conventions; a cron tick that takes four seconds is fine for a demo.
+2. Whether `tick.sh`/`ask.sh` wrappers run `./mvnw -q -pl … spring-boot:run
+   -Dspring-boot.run.arguments=tick` (zero build step, slower per tick) or
+   `java -jar` the repackaged boot jar (instant ticks after one
+   `./mvnw package`). Lean: the boot jar — spring-boot-maven-plugin is
+   already in the module, and a crontab line pointing at a jar is the honest
+   production shape.
