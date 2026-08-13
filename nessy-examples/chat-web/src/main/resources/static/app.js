@@ -11,6 +11,7 @@ let conversationId = location.hash.slice(1) || localStorage.getItem("conversatio
 persistConversationId(conversationId);
 
 let openBubble = null;
+let openThinkingLine = null;
 const toolLines = new Map();
 
 function persistConversationId(id) {
@@ -41,6 +42,10 @@ function appendToolLine(id, text) {
   const div = appendLine("tool", "🔧 " + text);
   toolLines.set(id, div);
   return div;
+}
+
+function closeThinkingLine() {
+  openThinkingLine = null;
 }
 
 function renderApprovalCard(card) {
@@ -92,6 +97,7 @@ async function stream(response, handlers) {
 function turnHandlers() {
   return {
     delta(payload) {
+      closeThinkingLine();
       if (!openBubble) {
         openBubble = appendLine("assistant", "");
       }
@@ -99,27 +105,37 @@ function turnHandlers() {
       log.scrollTop = log.scrollHeight;
     },
     thinking(payload) {
-      appendLine("thinking", payload.text);
+      if (!openThinkingLine) {
+        openThinkingLine = appendLine("thinking", "");
+      }
+      openThinkingLine.textContent += payload.text;
+      log.scrollTop = log.scrollHeight;
     },
     "tool-requested": (payload) => {
+      closeThinkingLine();
       appendToolLine(payload.id, "requested " + payload.name);
     },
     "tool-progress": (payload) => {
+      closeThinkingLine();
       const div = toolLines.get(payload.id);
       if (div) div.textContent = "🔧 " + payload.message;
     },
     "tool-decided": (payload) => {
+      closeThinkingLine();
       const div = toolLines.get(payload.id);
       if (div) div.textContent += payload.allowed ? " — allowed" : " — denied";
     },
     "tool-completed": (payload) => {
+      closeThinkingLine();
       const div = toolLines.get(payload.id);
       if (div) div.textContent += payload.error ? " — failed" : " — done";
     },
     "approval-needed": (payload) => {
+      closeThinkingLine();
       renderApprovalCard(payload);
     },
     done(payload) {
+      closeThinkingLine();
       openBubble = null;
       toolLines.clear();
       setInputDisabled(false);
@@ -164,6 +180,7 @@ async function load() {
   log.innerHTML = "";
   approvalsSection.innerHTML = "";
   openBubble = null;
+  openThinkingLine = null;
   toolLines.clear();
   const response = await fetch(`/api/conversations/${conversationId}`);
   const state = await response.json();
