@@ -20,6 +20,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
@@ -61,13 +62,13 @@ public final class Harness {
 
   /**
    * Wired by {@link AgentBuilder#build()}, once an agent's own {@link ConversationLoop} exists to
-   * drive with — {@link #resume} has nothing to drive before the first agent is built. {@code
-   * volatile} because {@link #loop(ConversationLoop, ListenerRegistry)} and {@link #resume} may run
-   * on different threads (a build on one, a webhook callback on another) with no other
-   * synchronization between them — unsafe publication of a non-volatile reference is a real hazard
-   * here, not a theoretical one.
+   * drive with — {@link #resume} has nothing to drive before the first agent is built. An {@code
+   * AtomicReference} because {@link #loop(ConversationLoop, ListenerRegistry)} and {@link #resume}
+   * may run on different threads (a build on one, a webhook callback on another) with no other
+   * synchronization between them — unsafe publication of a plainly-written reference is a real
+   * hazard here, not a theoretical one.
    */
-  private volatile ConversationLoop loop;
+  private final AtomicReference<ConversationLoop> loop = new AtomicReference<>();
 
   /**
    * The last-built agent's own {@link ListenerRegistry} — this harness's {@link #registry} extended
@@ -75,10 +76,10 @@ public final class Harness {
    * AgentBuilder#build()} hands to its {@code GatedToolCallExecutor} as the emitter the in-process
    * tee narrates on. {@link #progress} emits here rather than on {@link #registry} so the two
    * progress lanes — the tee up close, the token from afar — reach the same audience: a harness- or
-   * agent-declared {@code ToolProgress} listener hears both, never just one. {@code volatile} for
-   * the same cross-thread-publication reason as {@link #loop}.
+   * agent-declared {@code ToolProgress} listener hears both, never just one. An {@code
+   * AtomicReference} for the same cross-thread-publication reason as {@link #loop}.
    */
-  private volatile ListenerRegistry agentRegistry;
+  private final AtomicReference<ListenerRegistry> agentRegistry = new AtomicReference<>();
 
   /**
    * How many agents this harness has built. A second (or later) registration means {@link #resume}
@@ -153,8 +154,8 @@ public final class Harness {
    * agent's own tee narrates {@link ToolProgress} onto.
    */
   void loop(ConversationLoop loop, ListenerRegistry agentRegistry) {
-    this.loop = Objects.requireNonNull(loop, "loop must not be null");
-    this.agentRegistry = Objects.requireNonNull(agentRegistry, "agentRegistry must not be null");
+    this.loop.set(Objects.requireNonNull(loop, "loop must not be null"));
+    this.agentRegistry.set(Objects.requireNonNull(agentRegistry, "agentRegistry must not be null"));
     loopRegistrations.incrementAndGet();
   }
 
@@ -201,10 +202,11 @@ public final class Harness {
           "no agent built on this harness — resume has no loop to drive with");
     }
     if (!store.consumeToken(token)) {
-      return loop.drive(id, observer); // idempotent re-delivery: read current truth, do not replay
+      // idempotent re-delivery: read current truth, do not replay
+      return loop.get().drive(id, observer);
     }
     store.appendAgenda(id, AgendaItem.resolved(token, resolution));
-    return loop.drive(id, observer);
+    return loop.get().drive(id, observer);
   }
 
   /**
@@ -245,7 +247,9 @@ public final class Harness {
       throw new IllegalStateException(
           "no agent built on this harness — progress has no registry to emit on");
     }
-    agentRegistry.emit(new ToolProgress(conversationId.get(), park.get().call().id(), message));
+    agentRegistry
+        .get()
+        .emit(new ToolProgress(conversationId.get(), park.get().call().id(), message));
     return true;
   }
 }

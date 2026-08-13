@@ -892,7 +892,7 @@ class ConversationLoopTest {
       loop.drive(ID, OBSERVER);
 
       List<AgendaItem> agendaAfterFirstNotesSave = store.agendaAfterEachSave().getFirst();
-      assertThat(agendaAfterFirstNotesSave).doesNotContain(first);
+      assertThat(agendaAfterFirstNotesSave).containsExactly(second);
     }
   }
 
