@@ -1,0 +1,127 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b6b6b;
+  --bubble-user: #d6ebff;
+  --bubble-assistant: #e9e9e9;
+  --border: #cccccc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --fg: #e9e9e9;
+    --muted: #9a9a9a;
+    --bubble-user: #2a4a63;
+    --bubble-assistant: #333333;
+    --border: #444444;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+main#log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.line {
+  max-width: 70%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.line.user {
+  align-self: flex-end;
+  background: var(--bubble-user);
+}
+
+.line.assistant {
+  align-self: flex-start;
+  background: var(--bubble-assistant);
+}
+
+.line.thinking,
+.line.tool,
+.line.system {
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  background: none;
+  max-width: 90%;
+}
+
+section#approvals {
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.approval-card {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.approval-tool {
+  font-weight: bold;
+}
+
+.approval-card pre {
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
+.approval-actions button {
+  margin-right: 0.5rem;
+}
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+
+#send-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#text {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--fg);
+}
