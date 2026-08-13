@@ -3,10 +3,10 @@
 **Date:** 2026-08-13
 **Status:** DRAFT — pending review
 **Builds on:** the durable kernel (2026-08-12, shipped), the DX generation
-(2026-08-13, spec'd), and the Spring Boot autoconfigure module (spec to
-follow) — this example is written on both and is the second dogfood for each:
-the DX API's machine half, and the starter's console face. Sequenced last:
-DX generation → autoconfigure module → this.
+(2026-08-13, spec'd), and the Spring Boot starter
+(2026-08-13-spring-boot-starter-design.md) — this example is written on both
+and is the second dogfood for each: the DX API's machine half, and the
+starter's console face. Sequenced last: DX generation → starter → this.
 
 ---
 
@@ -39,9 +39,9 @@ in the same Postgres with a ripening clock — and parks. The JVM exits,
 normally with the conversation `PARKED`. Cron ticks a fresh JVM every minute;
 a tick that finds a ripe job resumes with the archive's (fake, deterministic)
 result, and the turn runs to completion in whatever process delivered it. A
-tick that finds a still-ripening job past its halfway point narrates
-`harness.progress(token, "archive scan 50%…")` instead — heard by the agent's
-declared `onToolProgressAsync` listener, which logs it.
+tick that finds a still-ripening job narrates
+`harness.progress(token, "archive scan N% complete")` instead — heard by the
+agent's declared `onToolProgressAsync` listener, which logs it.
 
 ## 3. Module
 
@@ -54,7 +54,7 @@ carrying the exit code. A tick is: context boots, runner runs, JVM exits —
 seconds. The examples matrix reads: chat-cli (plain + interactive), chat-web
 (Boot web + HITL), this (Boot console + autonomous) — and this example is the
 **starter's console dogfood**: chat-web proves
-`nessy-spring-boot-autoconfigure` (its own spec, sequenced before this one)
+`nessy-spring-boot-starter` (its own spec, sequenced before this one)
 on the web face; this proves it with no web anywhere.
 
 - DataSource, `ConversationStore`/`Memory` (via `JdbcPersistence`),
@@ -70,7 +70,7 @@ on the web face; this proves it with no web anywhere.
   every exit; Postgres stays up between ticks.
 
 Dependencies: `spring-boot-starter` (the plain one — no web), `spring-boot-starter-jdbc`,
-`spring-boot-docker-compose`, `nessy-spring-boot-autoconfigure`, `nessy-core`,
+`spring-boot-docker-compose`, `nessy-spring-boot-starter`, `nessy-core`,
 `nessy-model-anthropic`, `nessy-store-jdbc`, `org.postgresql:postgresql`.
 Boot BOM confined in-module, exactly the chat-web discipline.
 
