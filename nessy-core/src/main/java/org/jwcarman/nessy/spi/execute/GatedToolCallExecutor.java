@@ -249,7 +249,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
       Observation observation) {
     Awaited<ToolResult> awaited;
     try {
-      awaited = invoker.invoke(tool, call, new ToolContext(state.id(), teed(call, observer)));
+      awaited = invoker.invoke(tool, call, new ToolContext(state.id(), call, teed(call, observer)));
     } catch (RuntimeException e) {
       // Factor 9: the model sees a compact error and gets to recover. It
       // never sees a stack trace, and the loop never dies on a bad tool. The

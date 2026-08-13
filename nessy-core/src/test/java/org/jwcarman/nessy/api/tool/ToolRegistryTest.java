@@ -159,12 +159,11 @@ class ToolRegistryTest {
     @Test
     void invoking_binds_json_arguments_to_the_record() {
       Tool<?> tool = registry.find("greet").orElseThrow();
+      ToolCall call = greetCall("Ada");
 
       Awaited<ToolResult> awaited =
           invoker.invoke(
-              tool,
-              greetCall("Ada"),
-              new ToolContext(new ConversationId("s1"), EventEmitter.noop()));
+              tool, call, new ToolContext(new ConversationId("s1"), call, EventEmitter.noop()));
 
       assertThat(awaited).isEqualTo(Awaited.ready(ToolResult.ok("Hello, Ada")));
     }
