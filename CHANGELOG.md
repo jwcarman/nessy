@@ -279,8 +279,8 @@ sequence of renames and interim shapes that produced it.
   at-least-once tellings, enforced under a `SELECT ... FOR UPDATE` row lock
   instead of an in-process map; `recall` reads back in `seq` order into a
   `Context` — verbatim retention, the durable floor rather than a
-  summarizing memory. One divergence from the `ListMemory` contract it
-  otherwise mirrors: `recall` trims a trailing unanswered tool-use message
+  summarizing memory. Shared `Memory`-contract behavior it mirrors from
+  `ListMemory`: `recall` trims a trailing unanswered tool-use message
   before building `Context` — the loop remembers a tool-use the moment its
   fold settles, before it knows whether the call will park, so a parked
   conversation's raw telling can legitimately end in an open tool-use that

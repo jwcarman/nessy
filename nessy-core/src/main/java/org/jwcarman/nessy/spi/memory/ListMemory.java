@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
@@ -28,15 +29,19 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 /**
  * The floor: remembers everything verbatim, recalls it whole.
  *
- * <p>Safe by construction — legal messages went in, so the returned context cannot be illegal —
- * once {@link #recall} trims the one legitimate exception: the loop remembers the model's tool-use
- * message the moment its fold settles, before it learns whether the call will park, so a parked
- * conversation's raw telling can legitimately end in an unanswered tool-use message. That open tail
- * — the loop's own park-in-progress bookkeeping, not settled dialogue yet — is dropped before the
- * trimmed list reaches {@link Context#of}, the same narrow trim {@code JdbcMemory} applies at
- * recall time (see its {@code withoutOpenTail}). Idempotency is the consecutive-duplicate rule: a
- * message equal to the last one remembered is the at-least-once re-telling of crash recovery, not
- * new speech, and is dropped.
+ * <p>Legal messages went in, so {@link #recall} trims the one legitimate exception before the
+ * returned context can be illegal: the loop remembers the model's tool-use message the moment its
+ * fold settles, before it learns whether the call will park, so a parked conversation's raw telling
+ * can legitimately end in an unanswered tool-use message. That open tail — the loop's own
+ * park-in-progress bookkeeping, not settled dialogue yet — is dropped before the trimmed list
+ * reaches {@link Context#of}, the same narrow trim {@code JdbcMemory} applies at recall time (see
+ * its {@code withoutOpenTail}). This does not make {@link #recall} total: a halt while a sibling
+ * call is still parked answers {@link ConversationState#pendingCalls()} but not {@link
+ * ConversationState#parkedCalls()} (a recorded follow-up), so the flushed results message can
+ * answer only some of a prior tool-use message's ids — a shape this trim does not target and {@link
+ * Context#of} still rejects. Idempotency is the consecutive-duplicate rule: a message equal to the
+ * last one remembered is the at-least-once re-telling of crash recovery, not new speech, and is
+ * dropped.
  *
  * <p>Every value ever stored under a key is an immutable snapshot: {@link #remember} always builds
  * and stores a fresh {@link List#copyOf}, never mutates a list already published to the map. {@link
@@ -79,8 +84,11 @@ public final class ListMemory implements Memory {
    * shape for {@link Context}'s wire-safe invariant. {@link Memory#recall} is nonetheless
    * contracted to "return a legal {@code Context}" (see {@code Memory}'s javadoc); dropping that
    * one open tail — the loop's own park-in-progress bookkeeping, not settled dialogue yet — is what
-   * keeps this implementation honest to that contract without touching the fold/remember timing
-   * itself. Mirrors {@code JdbcMemory}'s own {@code withoutOpenTail}.
+   * keeps this implementation honest to that contract for the single-parked-call case, without
+   * touching the fold/remember timing itself. Mirrors {@code JdbcMemory}'s own {@code
+   * withoutOpenTail}. Does not cover halt-while-parked (see the class javadoc) — that shape's
+   * trailing message is a {@code USER} results message, not an open {@code ASSISTANT} tool-use, so
+   * this check never fires for it.
    */
   private static List<Message> withoutOpenTail(List<Message> messages) {
     if (messages.isEmpty()) {

@@ -55,8 +55,13 @@ import org.jwcarman.nessy.spi.memory.Memory;
  *
  * <p>{@link #recall} trims a trailing unanswered tool-use message — the loop's own park-in-progress
  * bookkeeping, remembered before the loop knows whether the call will park — before constructing
- * its {@link Context}, so a parked conversation's recall stays legal. {@code ListMemory} mirrors
- * the same trim; see {@link #withoutOpenTail}.
+ * its {@link Context}, so a parked conversation's recall stays legal for the single-parked-call
+ * case. {@code ListMemory} mirrors the same trim; see {@link #withoutOpenTail}. Neither
+ * implementation covers halt-while-parked: {@code ConversationState#halted} answers pending calls
+ * but not parked ones, so a halt with a still-parked sibling flushes a results message that answers
+ * only some of a prior tool-use message's ids — a trailing shape that is a {@code USER} message,
+ * not an open {@code ASSISTANT} tool-use, so this trim never fires for it and {@link Context} still
+ * rejects it (a recorded follow-up).
  */
 public final class JdbcMemory implements Memory {
 
