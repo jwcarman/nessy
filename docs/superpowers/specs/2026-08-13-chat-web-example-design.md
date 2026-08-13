@@ -71,7 +71,10 @@ enters the reactor **only** inside `chat-web`: the Boot BOM
 `chat-web` dependencies: `spring-boot-starter-web`,
 `spring-boot-starter-jdbc` (DataSource auto-config + Hikari),
 `spring-boot-docker-compose` (runtime, optional), `nessy-core`,
-`nessy-model-anthropic`, `nessy-store-jdbc`, `org.postgresql:postgresql`.
+`nessy-model-anthropic`, `nessy-store-jdbc`, `org.postgresql:postgresql` —
+plus the observability set (§5a): `spring-boot-starter-actuator`,
+`spring-boot-starter-opentelemetry`, `io.micrometer:micrometer-registry-otlp`,
+and the OTel Logback appender.
 
 ## 4. The app
 
@@ -86,9 +89,10 @@ enters the reactor **only** inside `chat-web`: the Boot BOM
   return JdbcMemory.create(ds, mapper);
 }
 
-@Bean Harness harness(ConversationStore store) {
+@Bean Harness harness(ConversationStore store, ObservationRegistry observations) {
   return Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
       .store(store)
+      .observations(observations)
       .build();
 }
 
@@ -141,8 +145,9 @@ disappears — someone else decided, or it was already applied).
 
 ## 5. Compose and config
 
-`chat-web/docker-compose.yml`: `postgres:17-alpine`, database `nessy`,
-port 5432, healthcheck. `spring-boot-docker-compose` on the classpath makes
+`chat-web/docker-compose.yml`: `postgres:17-alpine` (database `nessy`,
+port 5432, healthcheck) and `grafana/otel-lgtm` (§5a; ports 3000/4318/4317).
+`spring-boot-docker-compose` on the classpath makes
 `mvn spring-boot:run` start (and stop) it automatically. `application.yaml`
 carries the datasource URL/credentials matching compose; `ANTHROPIC_API_KEY`
 comes from the environment (fail fast at startup with a clear message when
@@ -151,6 +156,35 @@ Both schemas bootstrap idempotently via the two `create(...)` factories.
 
 Run instructions (README of `chat-web`): `ANTHROPIC_API_KEY=… ./mvnw -pl
 nessy-examples/chat-web spring-boot:run`, open `http://localhost:8080`.
+
+## 5a. Observability — the LGTM suite
+
+The example ships with full local observability, mirroring the
+mocapi-enterprise-demo recipe (`../mocapi-enterprise-demo`): one
+`grafana/otel-lgtm` compose service (OTel Collector + Tempo + Prometheus +
+Loki + Grafana on `localhost:3000`; OTLP on 4318/4317), all three signals
+exported over OTLP:
+
+- **Traces:** `spring-boot-starter-opentelemetry` activates Micrometer
+  Tracing + the Observation→OTel span bridge; endpoint via the Boot
+  `management.opentelemetry.tracing.export.otlp.*` properties, sampling 1.0
+  for the demo.
+- **Metrics:** `micrometer-registry-otlp`, `management.otlp.metrics.export.url`
+  → `http://localhost:4318/v1/metrics`.
+- **Logs:** the OTel Logback appender (`logback-spring.xml` +
+  `OpenTelemetryAppender.install` initializer bean), trace-correlated. The
+  instrumentation version must stay aligned with Boot's managed
+  `opentelemetry` core version — copy mocapi-enterprise-demo's pin-and-comment
+  discipline.
+
+**The dogfood point:** the harness bean takes Boot's auto-configured
+`ObservationRegistry` (`HarnessBuilder.observations(...)`, already shipped) —
+nessy's own model-call and tool observations appear in Tempo/Grafana in the
+same traces as Boot's HTTP and JDBC spans. A chat turn reads as one trace:
+POST → nessy loop → model call → tool call → JDBC saves.
+
+Tests keep o11y quiet: the smoke test disables OTLP export (no collector in
+CI; exporters must not retry-spam the log).
 
 ## 6. Testing
 
@@ -174,6 +208,9 @@ nessy-examples/chat-web spring-boot:run`, open `http://localhost:8080`.
 4. Click Approve — the resumed segment streams the confirmation; the turn
    completes with nothing on the agenda.
 5. Type another message in the same conversation — it just continues.
+6. Open Grafana (`http://localhost:3000`) — find the turn's trace in Tempo:
+   HTTP POST → nessy model call → tool execution → JDBC saves, one trace;
+   logs in Loki correlated by traceId.
 
 ## 8. Deliberately not built
 
