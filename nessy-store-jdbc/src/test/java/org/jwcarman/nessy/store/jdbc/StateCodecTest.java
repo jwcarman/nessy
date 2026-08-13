@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
@@ -193,6 +194,33 @@ class StateCodecTest {
       AgendaItem decoded = codec.readAgendaItem(codec.writeAgendaItem(entry));
 
       assertThat(decoded).isEqualTo(entry);
+    }
+  }
+
+  @Nested
+  class A_message {
+
+    @Test
+    void a_message_round_trips_through_the_codec() {
+      Message message =
+          Message.assistant(
+              List.of(
+                  new ThinkingBlock("hmm", "sig"),
+                  new TextBlock("hi"),
+                  new ToolUseBlock(toolCall("c1"))));
+
+      Message decoded = codec.readMessage(codec.writeMessage(message));
+
+      assertThat(decoded).isEqualTo(message);
+    }
+
+    @Test
+    void an_unknown_message_payload_fails_loudly() {
+      String payload = "{\"role\":\"USER\",\"content\":[{\"type\":\"bogus\"}]}";
+
+      assertThatThrownBy(() -> codec.readMessage(payload))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasCauseInstanceOf(InvalidTypeIdException.class);
     }
   }
 

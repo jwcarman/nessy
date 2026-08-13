@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
+import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
@@ -35,9 +36,10 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * Jackson (de)serialization for the three shapes {@link JdbcConversationStore} persists as Postgres
- * {@code jsonb}: the {@link ConversationState} control block, one {@link AgendaItem} per agenda
- * row, and the bare {@link ToolCall} a park row remembers.
+ * Jackson (de)serialization for the shapes {@link JdbcConversationStore} and {@link JdbcMemory}
+ * persist as Postgres {@code jsonb}: the {@link ConversationState} control block, one {@link
+ * AgendaItem} per agenda row, the bare {@link ToolCall} a park row remembers, and one {@link
+ * Message} per {@code nessy_memory} row.
  *
  * <p>Every sealed hierarchy this codec crosses — {@link ContentBlock}, {@link ToolResolution},
  * {@link Decision}, {@link AgendaItem} — is not itself annotated; annotating {@code nessy-core}'s
@@ -94,6 +96,14 @@ final class StateCodec {
 
   ToolCall readToolCall(String json) {
     return read(json, ToolCall.class);
+  }
+
+  String writeMessage(Message message) {
+    return write(message);
+  }
+
+  Message readMessage(String json) {
+    return read(json, Message.class);
   }
 
   private String write(Object value) {
