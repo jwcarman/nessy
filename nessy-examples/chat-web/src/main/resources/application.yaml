@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: nessy-chat-web
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/nessy
+    username: nessy
+    password: nessy
+
+management:
+  tracing:
+    export:
+      enabled: true
+    sampling:
+      probability: 1.0
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
+          transport: http
+  otlp:
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics

@@ -39,5 +39,6 @@
 
   <modules>
     <module>chat-cli</module>
+    <module>chat-web</module>
   </modules>
 </project>
