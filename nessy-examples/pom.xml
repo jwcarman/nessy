@@ -28,47 +28,16 @@
   </parent>
 
   <artifactId>nessy-examples</artifactId>
+  <packaging>pom</packaging>
   <name>Nessy Examples</name>
   <description>Runnable examples: one agent definition, two model providers</description>
 
   <properties>
     <!-- Examples are never published: no jar, sources, or javadoc leaves this module. -->
     <maven.deploy.skip>true</maven.deploy.skip>
-    <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
   </properties>
 
-  <dependencies>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-core</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-anthropic</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-openai</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <!-- Compile-scope, unlike every other module's test-only provider: examples are runnable
-         apps, and an app picks its own SLF4J provider rather than inheriting the build's
-         test-classpath default. -->
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
-      <scope>compile</scope>
-    </dependency>
-  </dependencies>
-
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>${exec-maven-plugin.version}</version>
-      </plugin>
-    </plugins>
-  </build>
+  <modules>
+    <module>chat-cli</module>
+  </modules>
 </project>
