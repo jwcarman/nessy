@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: nessy-order-desk
+  main:
+    web-application-type: none
+    banner-mode: off
+  docker:
+    compose:
+      # start-only: the containers outlive app exits, so kill-and-restart keeps both the
+      # broker's unacked messages and the database's conversations.
+      lifecycle-management: start-only
+  # No datasource or rabbitmq coordinates here — Boot's service connections detect both
+  # containers from docker-compose.yml and wire them in (spec §4).
