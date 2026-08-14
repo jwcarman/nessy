@@ -517,6 +517,32 @@ sequence of renames and interim shapes that produced it.
     starter's published wire vocabulary rather than the reverse (dedupe-by-token
     logic unchanged) — an example-app wire rename, not a framework break, since
     `approval-needed` was never nessy's own name.
+- **`nessy-example-night-watchman` — the clock is the caller.** The third
+  example, and the leanest: no web, no database, no Docker.
+  - **The pattern.** `@Scheduled(cron = "${watchman.cadence:0 * * * * *}")`
+    initiates each turn of **one** continuous conversation — the same
+    `Conversation<String>`, held for the app's lifetime, told "do your
+    rounds" on every firing. Trend judgment (a vital that's merely drifting,
+    not yet out of band) is conversation state at work, not a separate
+    tracking mechanism the app writes: the model sees its own recent rounds
+    and compares.
+  - **`WindowedMemory`, the first custom-`Memory` dogfood.** Freedom of
+    retention, rule of law at the border: `remember` delegates whole to
+    `ListMemory`, nothing discarded from the underlying store; `recall` is
+    where `Context#keepRecent(window)` trims to the last `watchman.window`
+    messages (default `40`), pair-safe by construction. That one cut is the
+    recall bound that lets a conversation run forever without growing the
+    model call — the watchman's horizon is its window, not its whole life.
+  - **The leanest example.** `EngineRoom`'s seeded random walk (bilge biased
+    `+3.5`/step) guarantees a run its arc — quiet, trend, alarm — inside
+    roughly five to eight minutes at the default cadence; `check_vitals` and
+    `raise_alarm` are both granted `UsagePolicy.allow()`, so nothing here
+    ever parks. The in-memory substrate is the starter's own defaults with
+    zero extra wiring — no `nessy-store-jdbc`, no compose file — and the
+    whole suite runs offline, same as every other module.
+  - The patient-researcher spec retired UNBUILT (branch archived at
+    `patient-researcher-archive`); the examples matrix now reads `chat-cli` /
+    `chat-web` / `night-watchman`.
 
 ### Breaking (pre-1.0)
 

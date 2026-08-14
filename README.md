@@ -699,8 +699,9 @@ input schema into the system prompt. See
 
 ## Examples
 
-`nessy-examples` is a family of two runnable apps, both real key required, no
-mocking, nothing hand-waved.
+`nessy-examples` is a family of three runnable apps, all real key required, no
+mocking, nothing hand-waved. The matrix: `chat-cli` (plain + interactive),
+`chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled autonomy).
 
 **`chat-cli`** — a terminal chat loop, one agent definition run against
 either provider:
@@ -742,6 +743,17 @@ ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/chat-web spring-boot:run
 ```
 
 then open <http://localhost:8080>.
+
+**`night-watchman`** — the time-triggered agent: `@Scheduled` cron initiates
+each turn of one continuous conversation, and a windowing `Memory` keeps
+endless rounds from growing the model call. The leanest example — no web, no
+database, no Docker. See
+[`nessy-examples/night-watchman/README.md`](nessy-examples/night-watchman/README.md)
+for the full story. To run it:
+
+```bash
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/night-watchman -am spring-boot:run
+```
 
 ## License
 
