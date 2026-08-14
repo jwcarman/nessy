@@ -46,12 +46,6 @@ import org.springframework.util.StringUtils;
 @EnableConfigurationProperties(NessyProperties.class)
 public class AnthropicProviderAutoConfiguration {
 
-  static final String OPENAI_PROVIDER_CLASS_NAME =
-      "org.jwcarman.nessy.model.openai.OpenAiModelProvider";
-  static final String PROVIDER_PROPERTY = "nessy.provider";
-  static final String ANTHROPIC_KEY_PROPERTY = "nessy.anthropic.api-key";
-  static final String OPENAI_KEY_PROPERTY = "nessy.openai.api-key";
-
   @Bean
   @ConditionalOnMissingBean(ModelProvider.class)
   @Conditional(AnthropicIsTheChoiceCondition.class)
@@ -65,7 +59,7 @@ public class AnthropicProviderAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean(ModelProvider.class)
-  @ConditionalOnClass(name = OPENAI_PROVIDER_CLASS_NAME)
+  @ConditionalOnClass(name = ProviderProperties.OPENAI_PROVIDER_CLASS_NAME)
   @Conditional(AmbiguousProviderCondition.class)
   ModelProvider ambiguousModelProvider() {
     throw new IllegalStateException(
@@ -88,7 +82,19 @@ public class AnthropicProviderAutoConfiguration {
     return builder.build();
   }
 
-  /** Matches when Anthropic is the provider this configuration should build. */
+  /**
+   * Matches when Anthropic is the provider this configuration should build.
+   *
+   * <p><strong>Precedence ruling:</strong> an explicit {@code nessy.*} property is a deliberate
+   * nessy-level choice and outranks an ambient SDK environment variable, which is a weaker,
+   * incidental signal. Concretely: if only {@code nessy.anthropic.api-key} is set (and {@code
+   * nessy.openai.api-key} is not), Anthropic wins even when {@code OPENAI_API_KEY} happens to be
+   * present in the environment too — this configuration only inspects the {@code nessy.*} keys, so
+   * an env-var-only OpenAI never counts as "keyed" here. "Ambiguous" (see {@link
+   * #ambiguousModelProvider()}) means neither side is explicitly keyed via a {@code nessy.*}
+   * property, not that neither side could ultimately build — that distinction is deliberate, not an
+   * oversight.
+   */
   static final class AnthropicIsTheChoiceCondition extends SpringBootCondition {
 
     @Override
@@ -96,7 +102,7 @@ public class AnthropicProviderAutoConfiguration {
         ConditionContext context, AnnotatedTypeMetadata metadata) {
       var message = ConditionMessage.forCondition("Nessy Anthropic Provider Selection");
       var environment = context.getEnvironment();
-      var provider = environment.getProperty(PROVIDER_PROPERTY);
+      var provider = environment.getProperty(ProviderProperties.PROVIDER_PROPERTY);
       if ("anthropic".equals(provider)) {
         return ConditionOutcome.match(message.because("nessy.provider=anthropic"));
       }
@@ -104,15 +110,16 @@ public class AnthropicProviderAutoConfiguration {
         return ConditionOutcome.noMatch(message.because("nessy.provider=" + provider));
       }
       var openaiPresent =
-          ClassUtils.isPresent(OPENAI_PROVIDER_CLASS_NAME, context.getClassLoader());
+          ClassUtils.isPresent(
+              ProviderProperties.OPENAI_PROVIDER_CLASS_NAME, context.getClassLoader());
       if (!openaiPresent) {
         return ConditionOutcome.match(message.because("the only model-provider module present"));
       }
-      var anthropicKeyed = environment.containsProperty(ANTHROPIC_KEY_PROPERTY);
-      var openaiKeyed = environment.containsProperty(OPENAI_KEY_PROPERTY);
+      var anthropicKeyed = environment.containsProperty(ProviderProperties.ANTHROPIC_KEY_PROPERTY);
+      var openaiKeyed = environment.containsProperty(ProviderProperties.OPENAI_KEY_PROPERTY);
       if (anthropicKeyed && !openaiKeyed) {
         return ConditionOutcome.match(
-            message.because("only " + ANTHROPIC_KEY_PROPERTY + " is set"));
+            message.because("only " + ProviderProperties.ANTHROPIC_KEY_PROPERTY + " is set"));
       }
       return ConditionOutcome.noMatch(
           message.because("both provider modules are present and unresolved"));
@@ -127,12 +134,12 @@ public class AnthropicProviderAutoConfiguration {
         ConditionContext context, AnnotatedTypeMetadata metadata) {
       var message = ConditionMessage.forCondition("Nessy Ambiguous Provider Selection");
       var environment = context.getEnvironment();
-      var provider = environment.getProperty(PROVIDER_PROPERTY);
+      var provider = environment.getProperty(ProviderProperties.PROVIDER_PROPERTY);
       if (StringUtils.hasText(provider)) {
         return ConditionOutcome.noMatch(message.because("nessy.provider=" + provider));
       }
-      var anthropicKeyed = environment.containsProperty(ANTHROPIC_KEY_PROPERTY);
-      var openaiKeyed = environment.containsProperty(OPENAI_KEY_PROPERTY);
+      var anthropicKeyed = environment.containsProperty(ProviderProperties.ANTHROPIC_KEY_PROPERTY);
+      var openaiKeyed = environment.containsProperty(ProviderProperties.OPENAI_KEY_PROPERTY);
       if (anthropicKeyed != openaiKeyed) {
         return ConditionOutcome.noMatch(
             message.because("exactly one provider is configured with a key"));

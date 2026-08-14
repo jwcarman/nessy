@@ -42,6 +42,19 @@ class ProviderAutoConfigurationTest {
   }
 
   @Test
+  void openai_keyed_alone_yields_an_openai_provider_even_with_both_jars_present() {
+    runner
+        .withPropertyValues("nessy.openai.api-key=test-key")
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(ModelProvider.class);
+              assertThat(context)
+                  .getBean(ModelProvider.class)
+                  .isInstanceOf(OpenAiModelProvider.class);
+            });
+  }
+
+  @Test
   void anthropic_absent_means_no_anthropic_bean() {
     runner
         .withClassLoader(new FilteredClassLoader(AnthropicModelProvider.class))

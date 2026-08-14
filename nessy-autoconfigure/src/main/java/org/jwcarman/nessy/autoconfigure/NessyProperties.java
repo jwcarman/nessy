@@ -28,7 +28,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "nessy")
 public record NessyProperties(
-    String provider, Anthropic anthropic, OpenAi openAi, String defaultModel, Jdbc jdbc) {
+    String provider, Anthropic anthropic, OpenAi openai, String defaultModel, Jdbc jdbc) {
 
   /** Whether JDBC persistence should be wired up. Defaults to {@code true} when unset. */
   public boolean jdbcEnabled() {
