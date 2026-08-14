@@ -145,16 +145,15 @@ context's structure, not semantics — it qualifies.
   naming convention, the two "The fourth example" labels corrected,
   root-README examples intro checked against the final family.
 
-## 6. Token spend becomes a metric
+## 6. Token spend becomes a metric — CUT at execution (2026-08-14)
 
-The starter (not core — classpath-arrival, zero new core dependencies)
-autoconfigures a `ModelResponded` listener onto the harness it builds,
-recording `nessy.tokens` (a Micrometer counter, `direction=input|output`
-tags) into the context's `MeterRegistry` when one exists. Grafana can then
-SUM what Tempo can only show (`sum(increase(nessy_tokens_total[1h])) by
-(direction)` lands in chat-web's README observability section). The
-jurisdiction ruling is unchanged: this reads the same `ModelResponded`
-fact the state's ledger folds — one truth, two projections.
+Cut by owner ruling mid-execution: the Postgres usage ledger
+(`state->'usage'` on `nessy_conversation`) remains the truthful sum, and a
+second projection of the same `ModelResponded` fact was judged not to earn
+its keep as a starter behavior. If a Grafana-summable series is ever
+wanted, this section's design (starter-only `nessy.tokens` Micrometer
+counter, `direction=input|output`, bean-conditional on `MeterRegistry`,
+zero core changes) is the shape to build.
 
 ## 7. Deliberately not in this wave
 
@@ -162,8 +161,8 @@ Lazy provider construction (the key-at-boot posture deserves its own
 design, not a drive-by), the multi-agent wall (the callback-desk
 generation), migrating existing smoke tests onto `nessy-testing` (follows
 once hello proves the shape), the `AgentSaid` boundary event (name
-banked), and any change to the fold, the doors, or the wire's existing
-event names.
+banked), the `nessy.tokens` counter (§6, cut), and any change to the fold,
+the doors, or the wire's existing event names.
 
 ## 8. Breaking (pre-1.0), stated loud
 
