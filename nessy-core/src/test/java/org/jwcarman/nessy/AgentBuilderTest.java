@@ -405,7 +405,7 @@ class AgentBuilderTest {
       assertThat(event.getLevel()).isEqualTo(Level.WARN);
       assertThat(event.getFormattedMessage())
           .contains("memory")
-          .contains("survive")
+          .contains("restarts")
           .contains(".memory(");
     }
 
@@ -434,11 +434,10 @@ class AgentBuilderTest {
     }
 
     @Test
-    void both_memory_and_store_explicitly_declared_stays_silent() {
+    void an_explicitly_declared_memory_stays_silent_even_with_a_defaulted_store() {
       FakeProvider provider = new FakeProvider("hi");
 
       Nessy.harness(provider)
-          .store(ConversationStore.inMemory())
           .build()
           .agent()
           .model("fake-model")

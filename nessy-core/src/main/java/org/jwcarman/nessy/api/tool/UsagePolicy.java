@@ -35,10 +35,9 @@ public interface UsagePolicy {
   PolicyDecision evaluate(ToolCall call, ConversationState state);
 
   /**
-   * Every call proceeds; the approver is never consulted. Always the same instance ({@link
-   * Allow#INSTANCE}) — the identity {@link org.jwcarman.nessy.AgentBuilder#build()} checks a
-   * grant's policy against to tell "no approval path can exist here" from an opaque custom policy
-   * that might.
+   * Every call proceeds; the approver is never consulted. Always the same canonical instance — the
+   * identity {@link org.jwcarman.nessy.AgentBuilder#build()} checks a grant's policy against to
+   * tell "no approval path can exist here" from an opaque custom policy that might.
    */
   static UsagePolicy allow() {
     return Allow.INSTANCE;

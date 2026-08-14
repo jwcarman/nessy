@@ -336,18 +336,17 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   /**
    * The floor: remembers everything verbatim through a transcript, recalls it whole. Warns when the
    * harness's own {@link ConversationStore} was explicitly configured ({@link Harness#storeSet()})
-   * — the conversation itself will survive a restart, but this in-memory transcript will not, the
-   * same set-vs-defaulted mismatch {@link HarnessBuilder#defaultParks()} guards against for parks.
-   * Memory stays agent-scoped even so: this warns rather than auto-wiring a durable transcript from
-   * the store.
+   * — a conversation persisted there will not carry its transcript across restarts unless this
+   * default is overridden, the same set-vs-defaulted mismatch {@link HarnessBuilder#defaultParks()}
+   * guards against for parks. Memory stays agent-scoped even so: this warns rather than auto-wiring
+   * a durable transcript from the store.
    */
   private Memory defaultMemory() {
     if (storeSet) {
       LOGGER.warn(
           "no memory configured for this agent: defaulting to an in-memory TranscriptMemory, even"
-              + " though this harness's store is durable — the conversation will survive a restart"
-              + " but its transcript will not; call .memory(...) with a durable implementation to"
-              + " keep the transcript too");
+              + " though this harness's store was explicitly configured — a conversation persisted"
+              + " there will not carry its transcript across restarts; name .memory(...) to match");
     }
     return new TranscriptMemory(Transcript.inMemory());
   }
