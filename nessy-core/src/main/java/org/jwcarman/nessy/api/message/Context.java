@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.message;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
@@ -311,6 +312,39 @@ public record Context(List<Message> messages) {
       total += estimator.estimate(message);
     }
     return total;
+  }
+
+  /** One line of the transcript this context renders as: who said it, and what they said. */
+  public record Line(String role, String text) {}
+
+  /**
+   * The transcript this context renders as, in message order: one {@link Line} per message that has
+   * any text.
+   *
+   * <p>A message's {@link TextBlock}s join into one string, in order; every other block kind —
+   * thinking, redacted thinking, tool use, tool results — is invisible here, on purpose: this is
+   * the chat log, not the trace. A message with no {@code TextBlock}s (a pure tool-results message,
+   * an empty turn) contributes nothing rather than an empty {@link Line}.
+   */
+  public List<Line> lines() {
+    List<Line> lines = new ArrayList<>();
+    for (Message message : messages) {
+      String text = textOf(message);
+      if (!text.isEmpty()) {
+        lines.add(new Line(message.role().name().toLowerCase(Locale.ROOT), text));
+      }
+    }
+    return lines;
+  }
+
+  private static String textOf(Message message) {
+    StringBuilder text = new StringBuilder();
+    for (ContentBlock block : message.content()) {
+      if (block instanceof TextBlock textBlock) {
+        text.append(textBlock.text());
+      }
+    }
+    return text.toString();
   }
 
   private static Message elideToolResultContent(Message message) {

@@ -22,6 +22,7 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
+import org.jwcarman.nessy.api.message.Context;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
@@ -46,7 +47,7 @@ public final class IncidentController {
     ConversationSnapshot snapshot = agent.snapshot(new ConversationId("incident-" + id));
     List<Map<String, String>> parks =
         snapshot.parkedCalls().stream().map(IncidentController::park).toList();
-    List<TranscriptView.Line> transcript = TranscriptView.of(snapshot.context());
+    List<Context.Line> transcript = snapshot.context().lines();
     // LinkedHashMap, not Map.of: this module's own README shows a fixed field order
     // (status, parks, transcript) in its sample response — Map.of's iteration order is
     // unspecified (and randomized run to run), which would make that sample dishonest.

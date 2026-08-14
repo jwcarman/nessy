@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.autoconfigure.web.TurnEventSse;
 import org.jwcarman.nessy.autoconfigure.web.TurnRunner;
@@ -62,7 +63,7 @@ public final class ChatController {
   @GetMapping("/{id}")
   public Map<String, Object> get(@PathVariable String id) {
     ConversationSnapshot snapshot = agent.snapshot(new ConversationId(id));
-    List<TranscriptView.Line> transcript = TranscriptView.of(snapshot.context());
+    List<Context.Line> transcript = snapshot.context().lines();
     List<Map<String, Object>> approvals =
         snapshot.parkedCalls().stream().map(ChatController::approvalCard).toList();
     return Map.of(
