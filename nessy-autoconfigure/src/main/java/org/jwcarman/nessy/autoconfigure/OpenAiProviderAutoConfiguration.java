@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.autoconfigure;
 
+import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -40,6 +41,15 @@ import org.springframework.util.StringUtils;
  * are present. This configuration only needs to recognize when it is unambiguously OpenAI's turn to
  * build the bean: it is the only provider module present, it is explicitly selected via {@code
  * nessy.provider=openai}, or it is the only one of the two configured with an API key.
+ *
+ * <p>The bean here also backs off when a {@link Harness} bean is already present
+ * ({@code @ConditionalOnMissingBean({ModelProvider.class, Harness.class})} — any listed type
+ * present is enough to suppress the bean method). The autoconfigured provider exists solely to feed
+ * {@link NessyAutoConfiguration}'s autoconfigured {@code Harness}; an application that supplies its
+ * own {@code Harness} has, by construction, already brought its own provider (a {@code Harness}
+ * cannot be built without one), so eagerly building — and keylessly failing to build — a second,
+ * unused provider here is both wasted work and a spurious startup failure for an app that never
+ * asked for this module's provider at all.
  */
 @AutoConfiguration
 @ConditionalOnClass(OpenAiModelProvider.class)
@@ -47,7 +57,7 @@ import org.springframework.util.StringUtils;
 public class OpenAiProviderAutoConfiguration {
 
   @Bean
-  @ConditionalOnMissingBean(ModelProvider.class)
+  @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
   @Conditional(OpenAiIsTheChoiceCondition.class)
   ModelProvider openAiModelProvider(NessyProperties properties) {
     return buildOpenAiProvider(properties);

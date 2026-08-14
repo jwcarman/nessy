@@ -18,7 +18,6 @@ package org.jwcarman.nessy.examples.chatweb;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.RunOutcome;
@@ -83,22 +82,15 @@ public final class ChatController {
    * resumed-segment stream: builds a {@link TurnEventSse#observer} that narrates onto {@link
    * TurnRunner}'s own emitter and hands it to {@code turn}.
    *
-   * <p>{@link TurnRunner#run} only returns the {@link SseEmitter} once it has already started the
-   * virtual thread that will invoke {@code turn}, so the observer built for that thread cannot
-   * close over the emitter directly — it closes over this {@link AtomicReference} instead, set
-   * immediately below once {@code run} hands the emitter back. The turn's own work (a store lookup,
-   * building the model request, the network round trip) is far slower than the handful of
-   * calling-thread instructions between {@code run} returning and the reference being set, so no
-   * narration event is ever sent before the reference is populated.
+   * <p>{@link TurnRunner#run} passes the emitter it created straight into this closure as its
+   * argument — captured before the virtual thread that will invoke {@code turn} ever starts — so
+   * the observer built here closes over that emitter directly, with no bridge and no window in
+   * which it could be unpopulated.
    */
   static SseEmitter runTurn(TurnRunner turnRunner, Function<TurnObserver, RunOutcome> turn) {
-    AtomicReference<SseEmitter> emitterRef = new AtomicReference<>();
-    SseEmitter emitter =
-        turnRunner.run(
-            () -> turn.apply(TurnEventSse.observer(e -> TurnEventSse.send(emitterRef.get(), e))),
-            ChatController::done);
-    emitterRef.set(emitter);
-    return emitter;
+    return turnRunner.run(
+        emitter -> turn.apply(TurnEventSse.observer(e -> TurnEventSse.send(emitter, e))),
+        ChatController::done);
   }
 
   /**

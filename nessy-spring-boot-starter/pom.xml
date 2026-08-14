@@ -28,7 +28,6 @@
   </parent>
 
   <artifactId>nessy-spring-boot-starter</artifactId>
-  <packaging>pom</packaging>
   <name>Nessy Spring Boot Starter</name>
   <description>src-less dependency aggregator: add this to a Spring Boot application to pull in Nessy's autoconfiguration and core API in one line.</description>
 

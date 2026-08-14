@@ -218,27 +218,27 @@ class ChatWebSmokeTest {
   }
 
   /**
-   * Supplies both a {@link ModelProvider} and a {@code Harness} bean built on {@link
-   * ScriptedModelProvider}, over the same JDBC-backed store and real memory the starter's own
-   * persistence autoconfiguration wires. Both beans win over the starter's own by
-   * {@code @ConditionalOnMissingBean}: the {@link ModelProvider} bean here is what keeps {@code
-   * AnthropicProviderAutoConfiguration}'s real {@code AnthropicModelProvider} — which would call
-   * {@code fromEnv().build()} and throw without {@code ANTHROPIC_API_KEY} — from ever being built,
-   * and the {@code Harness} bean here is what keeps {@code NessyAutoConfiguration}'s own from ever
-   * being built (it would otherwise wire the real provider through anyway).
+   * Supplies a single {@code Harness} bean built directly on {@link ScriptedModelProvider}, over
+   * the same JDBC-backed store and real memory the starter's own persistence autoconfiguration
+   * wires. This bean wins over {@code NessyAutoConfiguration}'s own by
+   * {@code @ConditionalOnMissingBean(Harness.class)} — and its presence is also what now keeps
+   * {@code AnthropicProviderAutoConfiguration}'s real {@code AnthropicModelProvider} from ever
+   * being built (it would otherwise call {@code fromEnv().build()} and throw without {@code
+   * ANTHROPIC_API_KEY}): both of that class's bean methods additionally back off via
+   * {@code @ConditionalOnMissingBean({ModelProvider.class, Harness.class})} once a {@code Harness}
+   * bean exists, since an application that brought its own harness has, by construction, already
+   * brought its own provider too. No standalone {@link ModelProvider} bean is declared here at all
+   * — this single-bean shape is D3's acceptance proof.
    */
   @TestConfiguration
   static class ChatWebConfig {
 
     @Bean
-    ModelProvider modelProvider() {
-      return new ScriptedModelProvider();
-    }
-
-    @Bean
-    Harness harness(
-        ModelProvider modelProvider, ConversationStore store, ObservationRegistry observations) {
-      return Nessy.harness(modelProvider).store(store).observations(observations).build();
+    Harness harness(ConversationStore store, ObservationRegistry observations) {
+      return Nessy.harness(new ScriptedModelProvider())
+          .store(store)
+          .observations(observations)
+          .build();
     }
   }
 

@@ -18,6 +18,8 @@ package org.jwcarman.nessy.autoconfigure;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.Harness;
+import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -90,6 +92,19 @@ class ProviderAutoConfigurationTest {
                   .hasRootCauseMessage(
                       "two model-provider modules"
                           + " are on the classpath; set nessy.provider=anthropic|openai");
+            });
+  }
+
+  @Test
+  void a_user_declared_harness_bean_stops_either_provider_from_ever_being_built() {
+    Harness harness =
+        Nessy.harness(ScriptedModelProvider.builder().text("hi").endTurn().build()).build();
+    runner
+        .withBean("mine", Harness.class, () -> harness)
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).doesNotHaveBean(ModelProvider.class);
             });
   }
 

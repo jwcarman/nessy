@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.autoconfigure;
 
+import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -40,6 +41,15 @@ import org.springframework.util.StringUtils;
  * (via {@code nessy.anthropic.api-key} / {@code nessy.openai.api-key}), or {@code nessy.provider}
  * names it explicitly. Otherwise {@link #ambiguousModelProvider()} fails fast, naming the property
  * that resolves the ambiguity.
+ *
+ * <p>Every bean here also backs off when a {@link Harness} bean is already present
+ * ({@code @ConditionalOnMissingBean({ModelProvider.class, Harness.class})} — any listed type
+ * present is enough to suppress the bean method). The autoconfigured provider exists solely to feed
+ * {@link NessyAutoConfiguration}'s autoconfigured {@code Harness}; an application that supplies its
+ * own {@code Harness} has, by construction, already brought its own provider (a {@code Harness}
+ * cannot be built without one), so eagerly building — and for {@link #anthropicModelProvider},
+ * keylessly failing to build — a second, unused provider here is both wasted work and a spurious
+ * startup failure for an app that never asked for this module's provider at all.
  */
 @AutoConfiguration
 @ConditionalOnClass(AnthropicModelProvider.class)
@@ -47,7 +57,7 @@ import org.springframework.util.StringUtils;
 public class AnthropicProviderAutoConfiguration {
 
   @Bean
-  @ConditionalOnMissingBean(ModelProvider.class)
+  @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
   @Conditional(AnthropicIsTheChoiceCondition.class)
   ModelProvider anthropicModelProvider(NessyProperties properties) {
     return buildAnthropicProvider(properties);
@@ -58,7 +68,7 @@ public class AnthropicProviderAutoConfiguration {
    * a single configured API key resolves which one to use.
    */
   @Bean
-  @ConditionalOnMissingBean(ModelProvider.class)
+  @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
   @ConditionalOnClass(name = ProviderProperties.OPENAI_PROVIDER_CLASS_NAME)
   @Conditional(AmbiguousProviderCondition.class)
   ModelProvider ambiguousModelProvider() {

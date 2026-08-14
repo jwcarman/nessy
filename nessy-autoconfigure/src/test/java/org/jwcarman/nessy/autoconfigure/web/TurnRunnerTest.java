@@ -54,6 +54,7 @@ class TurnRunnerTest {
               ConversationState.newConversation(ConversationId.generate())
                   .with(ConversationStatus.COMPLETE));
       CountDownLatch handed = new CountDownLatch(1);
+      AtomicReference<SseEmitter> emitterSeenByTurn = new AtomicReference<>();
       AtomicReference<SseEmitter> receivedEmitter = new AtomicReference<>();
       AtomicReference<RunOutcome> receivedOutcome = new AtomicReference<>();
       AtomicReference<Thread> receivedThread = new AtomicReference<>();
@@ -61,7 +62,10 @@ class TurnRunnerTest {
 
       SseEmitter emitter =
           runner.run(
-              () -> outcome,
+              e -> {
+                emitterSeenByTurn.set(e);
+                return outcome;
+              },
               (e, o) -> {
                 receivedEmitter.set(e);
                 receivedOutcome.set(o);
@@ -70,6 +74,7 @@ class TurnRunnerTest {
               });
 
       assertThat(handed.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(emitterSeenByTurn.get()).isSameAs(emitter);
       assertThat(receivedEmitter.get()).isSameAs(emitter);
       assertThat(receivedOutcome.get()).isEqualTo(outcome);
       assertThat(receivedThread.get()).isNotSameAs(callingThread);
@@ -88,7 +93,7 @@ class TurnRunnerTest {
 
       SseEmitter emitter =
           runner.run(
-              () -> {
+              e -> {
                 throw boom;
               },
               (e, o) -> onOutcomeCalled.countDown());

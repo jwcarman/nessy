@@ -68,7 +68,6 @@
                 <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
-                <type>pom</type>
             </dependency>
         </dependencies>
     </dependencyManagement>
