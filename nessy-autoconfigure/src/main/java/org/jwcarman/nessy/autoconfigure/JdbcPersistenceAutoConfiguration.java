@@ -20,9 +20,10 @@ import java.util.function.BiFunction;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
-import org.jwcarman.nessy.store.jdbc.JdbcMemory;
 import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
+import org.jwcarman.nessy.store.jdbc.JdbcTranscript;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -44,9 +45,9 @@ import org.springframework.context.annotation.Bean;
  * {@link Memory} — see the individual {@code @ConditionalOnMissingBean} bean methods.
  *
  * <p>{@link org.jwcarman.nessy.autoconfigure.NessyProperties#bootstrapSchema()} chooses between
- * {@code JdbcConversationStore}/{@code JdbcMemory}'s bootstrapping {@code create} factories (the
- * default: {@code CREATE TABLE IF NOT EXISTS} run once at startup) and their public constructors,
- * which skip DDL entirely for a datasource another process already bootstrapped.
+ * {@code JdbcConversationStore}/{@code JdbcTranscript}'s bootstrapping {@code create} factories
+ * (the default: {@code CREATE TABLE IF NOT EXISTS} run once at startup) and their public
+ * constructors, which skip DDL entirely for a datasource another process already bootstrapped.
  *
  * <p>An {@link ObjectMapper} bean is an {@link ObjectProvider}, not a hard constructor parameter:
  * unlike {@link NessyAutoConfiguration}, which only ever runs in a webmvc app where Boot's own
@@ -86,16 +87,23 @@ public class JdbcPersistenceAutoConfiguration {
         JdbcConversationStore::new);
   }
 
+  /**
+   * Minimal for this generation (design §5-6 land the {@code Parks} bean and full {@code
+   * Transcript} wiring as Task 7): the durable {@link Memory} bean is {@link TranscriptMemory} over
+   * a {@link JdbcTranscript}, replacing the retired {@code JdbcMemory}.
+   */
   @Bean
   @ConditionalOnMissingBean
   Memory memory(
       DataSource dataSource, ObjectProvider<ObjectMapper> mapper, NessyProperties properties) {
-    return build(
-        properties.bootstrapSchema(),
-        dataSource,
-        resolveMapper(mapper),
-        JdbcMemory::create,
-        JdbcMemory::new);
+    JdbcTranscript transcript =
+        build(
+            properties.bootstrapSchema(),
+            dataSource,
+            resolveMapper(mapper),
+            JdbcTranscript::create,
+            JdbcTranscript::new);
+    return new TranscriptMemory(transcript);
   }
 
   private static ObjectMapper resolveMapper(ObjectProvider<ObjectMapper> mapper) {

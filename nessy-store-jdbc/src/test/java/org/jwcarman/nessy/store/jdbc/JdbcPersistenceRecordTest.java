@@ -26,28 +26,40 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link JdbcPersistence}'s own compact constructor, pinned without a container: both components
- * are validated the same way {@code ConversationSnapshot} and {@code ToolContext} validate theirs
- * in this generation. Neither branch touches a database — the {@link JdbcConversationStore}
- * constructor itself only stores its {@link DataSource} reference, never opening a connection.
+ * {@link JdbcPersistence}'s own compact constructor, pinned without a container: every component is
+ * validated the same way {@code ConversationSnapshot} and {@code ToolContext} validate theirs in
+ * this generation. Neither branch touches a database — the {@link JdbcConversationStore}, {@link
+ * JdbcParks}, and {@link JdbcTranscript} constructors each only store their {@link DataSource}
+ * reference, never opening a connection.
  */
 class JdbcPersistenceRecordTest {
 
   @Test
   void a_null_store_is_rejected() {
-    assertThatThrownBy(() -> new JdbcPersistence(null, null))
+    assertThatThrownBy(() -> new JdbcPersistence(null, null, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("store");
   }
 
   @Test
-  void a_null_memory_is_rejected() {
+  void a_null_parks_is_rejected() {
     JdbcConversationStore store =
         new JdbcConversationStore(new UnusedDataSource(), new ObjectMapper());
 
-    assertThatThrownBy(() -> new JdbcPersistence(store, null))
+    assertThatThrownBy(() -> new JdbcPersistence(store, null, null))
         .isInstanceOf(NullPointerException.class)
-        .hasMessageContaining("memory");
+        .hasMessageContaining("parks");
+  }
+
+  @Test
+  void a_null_transcript_is_rejected() {
+    JdbcConversationStore store =
+        new JdbcConversationStore(new UnusedDataSource(), new ObjectMapper());
+    JdbcParks parks = new JdbcParks(new UnusedDataSource(), new ObjectMapper());
+
+    assertThatThrownBy(() -> new JdbcPersistence(store, parks, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("transcript");
   }
 
   /** A {@link DataSource} that is never actually connected to — construction alone must suffice. */

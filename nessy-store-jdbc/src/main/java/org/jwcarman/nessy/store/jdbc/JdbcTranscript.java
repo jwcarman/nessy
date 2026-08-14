@@ -26,60 +26,50 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.Role;
-import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.Transcript;
 
 /**
- * The durable floor: verbatim retention in Postgres, the {@code TranscriptMemory} contract with a
- * lifespan.
+ * The durable transcript: an append-only, versioned, per-conversation message log in Postgres — the
+ * storage primitive {@code TranscriptMemory} and audit reads are both built on.
  *
- * <p>Every telling lands in {@code nessy_memory}, one row per message, ordered by an append-only
- * {@code seq} column. {@link #remember} holds the consecutive-duplicate rule that makes
- * at-least-once tellings idempotent — see {@code TranscriptMemory}'s javadoc — the same way, but
- * enforced under a row lock instead of an in-process map: {@code SELECT ... FOR UPDATE} on the
- * conversation's last row serializes concurrent {@code remember} calls for that conversation
- * against each other, so two racing tellings of the same message never both insert.
+ * <p>Every telling lands in {@code nessy_transcript}, one row per message, ordered by an
+ * append-only {@code version} column. {@link #append} holds the no-stutter rule — appending unless
+ * {@code message} equals the current last entry — under a row lock instead of an in-process map:
+ * {@code SELECT ... FOR UPDATE} on the conversation's last row serializes concurrent {@code append}
+ * calls for that conversation against each other, so two racing tellings of the same message never
+ * both insert. The same locking discipline this module's retired durable-memory implementation used
+ * to hold, lifted here (design §2).
  *
- * <p>The constructor alone does not create {@code nessy_memory} — a caller pointing at a database
- * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
- * #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its {@code CREATE
- * TABLE IF NOT EXISTS} is safe to run more than once.
- *
- * <p>{@link #recall} trims a trailing unanswered tool-use message — the loop's own park-in-progress
- * bookkeeping, remembered before the loop knows whether the call will park — before constructing
- * its {@link Context}, so a parked conversation's recall stays legal for the single-parked-call
- * case. {@code TranscriptMemory} mirrors the same trim; see {@link #withoutOpenTail}. Neither
- * implementation covers halt-while-parked: {@code ConversationState#halted} answers pending calls
- * but not parked ones, so a halt with a still-parked sibling flushes a results message that answers
- * only some of a prior tool-use message's ids — a trailing shape that is a {@code USER} message,
- * not an open {@code ASSISTANT} tool-use, so this trim never fires for it and {@link Context} still
- * rejects it (a recorded follow-up).
+ * <p>The constructor alone does not create {@code nessy_transcript} — a caller pointing at a
+ * database another process already bootstrapped should not pay a DDL round trip on every startup.
+ * Use {@link #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its {@code
+ * CREATE TABLE IF NOT EXISTS} is safe to run more than once.
  */
-public final class JdbcMemory implements Memory {
+public final class JdbcTranscript implements Transcript {
 
   private final DataSource dataSource;
   private final StateCodec codec;
 
-  public JdbcMemory(DataSource dataSource, ObjectMapper mapper) {
+  public JdbcTranscript(DataSource dataSource, ObjectMapper mapper) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
   }
 
   /**
-   * Bootstraps {@code memory-schema.sql} against {@code dataSource}, then returns a working memory.
+   * Bootstraps {@code transcript-schema.sql} against {@code dataSource}, then returns a working
+   * transcript.
    */
-  public static JdbcMemory create(DataSource dataSource, ObjectMapper mapper) {
-    JdbcMemory memory = new JdbcMemory(dataSource, mapper);
-    memory.bootstrap();
-    return memory;
+  public static JdbcTranscript create(DataSource dataSource, ObjectMapper mapper) {
+    JdbcTranscript transcript = new JdbcTranscript(dataSource, mapper);
+    transcript.bootstrap();
+    return transcript;
   }
 
   private void bootstrap() {
@@ -93,104 +83,129 @@ public final class JdbcMemory implements Memory {
         }
       }
     } catch (SQLException e) {
-      throw new IllegalStateException("failed to bootstrap the nessy-store-jdbc memory schema", e);
+      throw new IllegalStateException(
+          "failed to bootstrap the nessy-store-jdbc transcript schema", e);
     }
   }
 
   private static String readSchemaResource() {
-    try (InputStream in = JdbcMemory.class.getResourceAsStream("memory-schema.sql")) {
+    try (InputStream in = JdbcTranscript.class.getResourceAsStream("transcript-schema.sql")) {
       if (in == null) {
         throw new IllegalStateException(
-            "memory-schema.sql not found on the classpath next to JdbcMemory");
+            "transcript-schema.sql not found on the classpath next to JdbcTranscript");
       }
       return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException e) {
-      throw new UncheckedIOException("failed to read memory-schema.sql", e);
+      throw new UncheckedIOException("failed to read transcript-schema.sql", e);
     }
   }
 
   @Override
-  public void remember(ConversationId id, Message message) {
+  public Entry append(ConversationId id, Message message) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(message, "message must not be null");
-    inTransaction(
+    return inTransaction(
         connection -> {
-          Optional<LastRow> last = readLastForUpdate(connection, id);
+          Optional<Entry> last = readLastForUpdate(connection, id);
           if (last.isPresent() && last.get().message().equals(message)) {
-            return null;
+            return last.get();
           }
-          long nextSeq = last.map(row -> row.seq() + 1).orElse(0L);
-          insert(connection, id, nextSeq, message);
-          return null;
+          long nextVersion = last.map(entry -> entry.version() + 1).orElse(0L);
+          insert(connection, id, nextVersion, message);
+          return new Entry(nextVersion, message);
         });
   }
 
   @Override
-  public Context recall(ConversationId id) {
+  public List<Entry> all(ConversationId id) {
+    Objects.requireNonNull(id, "id must not be null");
+    return withConnection(
+        connection ->
+            queryEntries(
+                connection,
+                "SELECT version, message FROM nessy_transcript"
+                    + " WHERE conversation_id = ? ORDER BY version",
+                ps -> ps.setString(1, id.value())));
+  }
+
+  @Override
+  public List<Entry> tail(ConversationId id, long afterVersion) {
+    Objects.requireNonNull(id, "id must not be null");
+    return withConnection(
+        connection ->
+            queryEntries(
+                connection,
+                "SELECT version, message FROM nessy_transcript"
+                    + " WHERE conversation_id = ? AND version > ? ORDER BY version",
+                ps -> {
+                  ps.setString(1, id.value());
+                  ps.setLong(2, afterVersion);
+                }));
+  }
+
+  @Override
+  public List<Entry> page(ConversationId id, long beforeVersion, int limit) {
     Objects.requireNonNull(id, "id must not be null");
     return withConnection(
         connection -> {
-          try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "SELECT message FROM nessy_memory WHERE conversation_id = ? ORDER BY seq")) {
-            ps.setString(1, id.value());
-            try (ResultSet rs = ps.executeQuery()) {
-              List<Message> messages = new ArrayList<>();
-              while (rs.next()) {
-                messages.add(codec.readMessage(rs.getString("message")));
-              }
-              return Context.of(withoutOpenTail(messages));
-            }
-          }
+          // The newest `limit` rows below the bound, fetched newest-first so LIMIT keeps the
+          // right window, then reversed back into the ascending order the contract promises.
+          List<Entry> newestFirst =
+              queryEntries(
+                  connection,
+                  "SELECT version, message FROM nessy_transcript"
+                      + " WHERE conversation_id = ? AND version < ? ORDER BY version DESC LIMIT ?",
+                  ps -> {
+                    ps.setString(1, id.value());
+                    ps.setLong(2, beforeVersion);
+                    ps.setInt(3, limit);
+                  });
+          List<Entry> ascending = new ArrayList<>(newestFirst);
+          Collections.reverse(ascending);
+          return List.copyOf(ascending);
         });
   }
 
-  /**
-   * {@code ConversationLoop} (nessy-core) remembers the model's tool-use message the moment its
-   * fold settles, before the loop learns whether the call will park — so a parked conversation's
-   * raw telling legitimately ends in an unanswered assistant tool-use message, an illegal trailing
-   * shape for {@link Context}'s wire-safe invariant. {@link Memory#recall} is nonetheless
-   * contracted to "return a legal {@code Context}" (see {@code Memory}'s javadoc); dropping that
-   * one open tail — the loop's own park-in-progress bookkeeping, not settled dialogue yet — is what
-   * keeps this implementation honest to that contract without touching the fold/remember timing
-   * itself.
-   */
-  private static List<Message> withoutOpenTail(List<Message> messages) {
-    if (messages.isEmpty()) {
-      return messages;
+  private List<Entry> queryEntries(
+      Connection connection, String sql, SqlConsumer<PreparedStatement> binder)
+      throws SQLException {
+    try (PreparedStatement ps = connection.prepareStatement(sql)) {
+      binder.accept(ps);
+      try (ResultSet rs = ps.executeQuery()) {
+        List<Entry> entries = new ArrayList<>();
+        while (rs.next()) {
+          entries.add(new Entry(rs.getLong("version"), codec.readMessage(rs.getString("message"))));
+        }
+        return List.copyOf(entries);
+      }
     }
-    Message last = messages.getLast();
-    boolean openTail =
-        last.role() == Role.ASSISTANT
-            && last.content().stream().anyMatch(ToolUseBlock.class::isInstance);
-    return openTail ? messages.subList(0, messages.size() - 1) : messages;
   }
 
-  private Optional<LastRow> readLastForUpdate(Connection connection, ConversationId id)
+  private Optional<Entry> readLastForUpdate(Connection connection, ConversationId id)
       throws SQLException {
     try (PreparedStatement ps =
         connection.prepareStatement(
-            "SELECT seq, message FROM nessy_memory WHERE conversation_id = ?"
-                + " ORDER BY seq DESC LIMIT 1 FOR UPDATE")) {
+            "SELECT version, message FROM nessy_transcript WHERE conversation_id = ?"
+                + " ORDER BY version DESC LIMIT 1 FOR UPDATE")) {
       ps.setString(1, id.value());
       try (ResultSet rs = ps.executeQuery()) {
         if (!rs.next()) {
           return Optional.empty();
         }
-        long seq = rs.getLong("seq");
+        long version = rs.getLong("version");
         Message message = codec.readMessage(rs.getString("message"));
-        return Optional.of(new LastRow(seq, message));
+        return Optional.of(new Entry(version, message));
       }
     }
   }
 
-  private void insert(Connection connection, ConversationId id, long seq, Message message)
+  private void insert(Connection connection, ConversationId id, long version, Message message)
       throws SQLException {
     try (PreparedStatement ps =
         connection.prepareStatement(
-            "INSERT INTO nessy_memory (conversation_id, seq, message) VALUES (?, ?, ?::jsonb)")) {
+            "INSERT INTO nessy_transcript (conversation_id, version, message) VALUES (?, ?, ?::jsonb)")) {
       ps.setString(1, id.value());
-      ps.setLong(2, seq);
+      ps.setLong(2, version);
       ps.setString(3, codec.writeMessage(message));
       ps.executeUpdate();
     }
@@ -207,7 +222,7 @@ public final class JdbcMemory implements Memory {
     try (Connection connection = dataSource.getConnection()) {
       return body.apply(connection);
     } catch (SQLException e) {
-      throw new IllegalStateException("jdbc memory operation failed", e);
+      throw new IllegalStateException("jdbc transcript operation failed", e);
     }
   }
 
@@ -221,7 +236,7 @@ public final class JdbcMemory implements Memory {
     try (Connection connection = dataSource.getConnection()) {
       return runInTransaction(connection, body);
     } catch (SQLException e) {
-      throw new IllegalStateException("jdbc memory operation failed", e);
+      throw new IllegalStateException("jdbc transcript operation failed", e);
     }
   }
 
@@ -234,7 +249,7 @@ public final class JdbcMemory implements Memory {
       return result;
     } catch (SQLException e) {
       rollbackQuietly(connection, e);
-      throw new IllegalStateException("jdbc memory operation failed", e);
+      throw new IllegalStateException("jdbc transcript operation failed", e);
     } catch (RuntimeException e) {
       rollbackQuietly(connection, e);
       throw e;
@@ -267,10 +282,13 @@ public final class JdbcMemory implements Memory {
     }
   }
 
-  private record LastRow(long seq, Message message) {}
-
   @FunctionalInterface
   private interface SqlFunction<A, T> {
     T apply(A input) throws SQLException;
+  }
+
+  @FunctionalInterface
+  private interface SqlConsumer<A> {
+    void accept(A input) throws SQLException;
   }
 }

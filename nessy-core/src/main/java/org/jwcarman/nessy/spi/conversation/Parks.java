@@ -33,10 +33,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * names.
  *
  * <p>Registry entries are never deleted once resolved (design §5): they are the durable record that
- * a token once named a particular wait, the same keep-forever posture the retired {@code
- * nessy_token} table already had. Replay protection — refusing to re-execute a call a redelivered
- * resolution names twice — is the fold's own is-this-call-still-outstanding question, not this
- * registry's to answer.
+ * a token once named a particular wait, the same keep-forever posture the retired single-use token
+ * table already had. Replay protection — refusing to re-execute a call a redelivered resolution
+ * names twice — is the fold's own is-this-call-still-outstanding question, not this registry's to
+ * answer.
  */
 public interface Parks {
 

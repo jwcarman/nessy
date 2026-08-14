@@ -29,13 +29,3 @@ CREATE TABLE IF NOT EXISTS nessy_inbox (
 );
 
 CREATE INDEX IF NOT EXISTS nessy_inbox_conversation ON nessy_inbox (conversation_id, entry_id);
-
-CREATE TABLE IF NOT EXISTS nessy_park (
-  token           text PRIMARY KEY,
-  conversation_id text NOT NULL,
-  call            jsonb NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS nessy_token (
-  token text PRIMARY KEY
-);

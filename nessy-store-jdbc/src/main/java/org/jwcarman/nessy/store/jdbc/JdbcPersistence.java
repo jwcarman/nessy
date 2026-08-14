@@ -18,23 +18,35 @@ package org.jwcarman.nessy.store.jdbc;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 
 /**
- * The pair a durable {@code AgentBuilder} actually needs: a {@link JdbcConversationStore} and a
- * {@link JdbcMemory}, both bootstrapped against the same Postgres database in one call. {@link
- * #create} exists because those two schemas are always stood up together in practice — nothing here
- * couples them beyond that convenience; either component still works fine constructed on its own.
+ * The three doors a durable {@code AgentBuilder} actually needs, all over one Postgres database,
+ * bootstrapped in one call: a {@link JdbcConversationStore}, a {@link JdbcParks} registry, and a
+ * {@link JdbcTranscript}. {@link #create} exists because those three schemas are always stood up
+ * together in practice — nothing here couples them beyond that convenience; each component still
+ * works fine constructed on its own.
  */
-public record JdbcPersistence(JdbcConversationStore store, JdbcMemory memory) {
+public record JdbcPersistence(
+    JdbcConversationStore store, JdbcParks parks, JdbcTranscript transcript) {
 
   public JdbcPersistence {
     Objects.requireNonNull(store, "store must not be null");
-    Objects.requireNonNull(memory, "memory must not be null");
+    Objects.requireNonNull(parks, "parks must not be null");
+    Objects.requireNonNull(transcript, "transcript must not be null");
   }
 
-  /** Bootstraps both schemas against {@code dataSource}, then returns a working pair. */
+  /** Bootstraps all three schemas against {@code dataSource}, then returns a working trio. */
   public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) {
     return new JdbcPersistence(
-        JdbcConversationStore.create(dataSource, mapper), JdbcMemory.create(dataSource, mapper));
+        JdbcConversationStore.create(dataSource, mapper),
+        JdbcParks.create(dataSource, mapper),
+        JdbcTranscript.create(dataSource, mapper));
+  }
+
+  /** The durable {@link Memory}: verbatim retention over this pair's own {@link #transcript()}. */
+  public Memory memory() {
+    return new TranscriptMemory(transcript);
   }
 }

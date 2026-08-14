@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.store.jdbc;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.PrintWriter;
@@ -24,36 +24,33 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
-import java.util.List;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.memory.TranscriptContract;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * {@link JdbcPersistence#create} is the one-call bootstrap a durable {@code AgentBuilder} reaches
- * for; this pins that it actually stands up all three schemas and hands back a working trio, not
- * just objects that happen to compile together. Requires Docker; tagged {@code container} so the
- * offline default build never needs it.
+ * The TCK run against a real Postgres, plus a JDBC-specific pin the in-memory transcript has no
+ * opinion on: bootstrap idempotency. Requires Docker; tagged {@code container} so the offline
+ * default build never needs it.
  */
 @Testcontainers
 @Tag("container")
-class JdbcPersistenceTest {
+class JdbcTranscriptTest extends TranscriptContract {
 
   @Container
   static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
 
   private static DataSource dataSource;
 
-  private ObjectMapper mapper;
+  private Transcript transcript;
 
   @BeforeAll
   static void nessy_store_jdbc_test_points_a_data_source_at_the_container() {
@@ -63,30 +60,33 @@ class JdbcPersistenceTest {
   }
 
   @BeforeEach
-  void a_fresh_mapper_over_empty_tables() {
-    mapper = new ObjectMapper();
-    JdbcPersistence.create(dataSource, mapper);
-    truncateEveryTable();
+  void a_fresh_transcript_over_an_empty_table() {
+    transcript = JdbcTranscript.create(dataSource, new ObjectMapper());
+    truncateTranscriptTable();
   }
 
-  private void truncateEveryTable() {
+  @Override
+  protected Transcript transcript() {
+    return transcript;
+  }
+
+  private void truncateTranscriptTable() {
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement()) {
-      statement.execute("TRUNCATE nessy_conversation, nessy_inbox, nessy_parks, nessy_transcript");
+      statement.execute("TRUNCATE nessy_transcript");
     } catch (SQLException e) {
-      throw new IllegalStateException("failed to truncate tables between tests", e);
+      throw new IllegalStateException("failed to truncate nessy_transcript between tests", e);
     }
   }
 
   @Test
-  void create_bootstraps_both_schemas_and_returns_a_working_pair() {
-    JdbcPersistence persistence = JdbcPersistence.create(dataSource, mapper);
-    ConversationId id = ConversationId.generate();
-
-    persistence.memory().remember(id, Message.user(List.of(new TextBlock("hi"))));
-
-    assertThat(persistence.memory().recall(id).messages()).hasSize(1);
-    assertThat(persistence.store().load(id)).isEmpty();
+  void the_schema_bootstrap_is_idempotent() {
+    assertThatCode(
+            () -> {
+              JdbcTranscript.create(dataSource, new ObjectMapper());
+              JdbcTranscript.create(dataSource, new ObjectMapper());
+            })
+        .doesNotThrowAnyException();
   }
 
   /**
@@ -118,17 +118,17 @@ class JdbcPersistenceTest {
 
     @Override
     public PrintWriter getLogWriter() {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcTranscriptTest");
     }
 
     @Override
     public void setLogWriter(PrintWriter out) {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcTranscriptTest");
     }
 
     @Override
     public void setLoginTimeout(int seconds) {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcTranscriptTest");
     }
 
     @Override
@@ -143,7 +143,7 @@ class JdbcPersistenceTest {
 
     @Override
     public <T> T unwrap(Class<T> iface) {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcTranscriptTest");
     }
 
     @Override

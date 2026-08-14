@@ -104,8 +104,8 @@ public abstract class ParksContract {
 
     // A resolution is answered by the conversation's own inbox and fold, not this registry —
     // resolving the wait leaves nothing here for the registry to react to. The entry stays put,
-    // the same keep-forever posture the retired nessy_token table already had: reading it once
-    // must not remove it, so a second read still finds it.
+    // the same keep-forever posture the retired single-use token table already had: reading it
+    // once must not remove it, so a second read still finds it.
     assertThat(parks().find(token)).contains(park);
     assertThat(parks().find(token)).contains(park);
   }

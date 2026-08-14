@@ -36,9 +36,10 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * Jackson (de)serialization for the shapes {@link JdbcConversationStore} and {@link JdbcMemory}
- * persist as Postgres {@code jsonb}: the {@link ConversationState} control block, one {@link
- * InboxEntry} per inbox row, and one {@link Message} per {@code nessy_memory} row.
+ * Jackson (de)serialization for the shapes {@link JdbcConversationStore}, {@link JdbcTranscript},
+ * and {@link JdbcParks} persist as Postgres {@code jsonb}: the {@link ConversationState} control
+ * block, one {@link InboxEntry} per inbox row, one {@link Message} per {@code nessy_transcript}
+ * row, and one {@link ToolCall} per {@code nessy_parks} row.
  *
  * <p>Every sealed hierarchy this codec crosses — {@link ContentBlock}, {@link ToolResolution},
  * {@link Decision}, {@link InboxEntry} — is not itself annotated; annotating {@code nessy-core}'s
@@ -89,11 +90,7 @@ final class StateCodec {
     return read(json, InboxEntry.class);
   }
 
-  /**
-   * The bare {@link ToolCall} shape a future {@code nessy_parks} row will remember (design §6):
-   * unused by {@link JdbcConversationStore} today — its own park-index writer was retired in Task 4
-   * — and awaiting Task 5's {@code JdbcParks}, which owns that table.
-   */
+  /** The bare {@link ToolCall} shape a {@code nessy_parks} row remembers; see {@link JdbcParks}. */
   String writeToolCall(ToolCall call) {
     return write(call);
   }

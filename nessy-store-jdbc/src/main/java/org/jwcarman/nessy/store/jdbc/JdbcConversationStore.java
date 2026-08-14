@@ -42,9 +42,9 @@ import org.jwcarman.nessy.spi.conversation.StaleStateException;
  * The reference durable {@link ConversationStore}: plain JDBC against Postgres, no Spring, no JPA —
  * the house stance. See {@code schema.sql} on the classpath next to this class for the tables it
  * reads and writes: {@code nessy_conversation} (the fenced control block) and {@code nessy_inbox}
- * (the append-only inbox). {@code nessy_park} and {@code nessy_token} are retired from this class's
- * own responsibility (design §5: the {@code Parks} registry answers the callback door now); their
- * DDL cleanup and a {@code JdbcParks} implementation are a follow-on task, not this one's.
+ * (the append-only inbox). The park-registry tables this class used to own are retired from its
+ * responsibility (design §5: {@link JdbcParks} answers the callback door now, over its own {@code
+ * nessy_parks} table).
  *
  * <p>The constructor alone does not create those tables — a caller pointing at a database another
  * process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
