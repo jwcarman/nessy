@@ -145,27 +145,10 @@ class DispatcherSmokeTest {
         .untilAsserted(() -> assertThat(parkedCard()).containsKey("token"));
     Map<String, Object> parkedCard = parkedCard();
     String token = (String) parkedCard.get("token");
-    assertThat(parkedCard.get("tool")).isEqualTo("request_field_crew");
+    assertThat(parkedCard).containsEntry("tool", "request_field_crew");
     assertThat(incidentSnapshot().get("status").asText()).isEqualTo("PARKED");
 
-    ResponseEntity<String> emptyOutcomeBody =
-        restTemplate.postForEntity(
-            "/callbacks/" + token, new HttpEntity<>(Map.of("outcome", "")), String.class);
-    assertThat(emptyOutcomeBody.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-
-    ResponseEntity<String> emptyProgressBody =
-        restTemplate.postForEntity(
-            "/callbacks/" + token + "/progress",
-            new HttpEntity<>(Map.of("message", "")),
-            String.class);
-    assertThat(emptyProgressBody.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-
-    ResponseEntity<String> unknownProgress =
-        restTemplate.postForEntity(
-            "/callbacks/does-not-exist/progress",
-            new HttpEntity<>(Map.of("message", "crew en route")),
-            String.class);
-    assertThat(readTree(unknownProgress.getBody()).get("heard").asBoolean()).isFalse();
+    assertBadInputRefused(token);
 
     ResponseEntity<String> progressResponse =
         restTemplate.postForEntity(
@@ -174,15 +157,7 @@ class DispatcherSmokeTest {
             String.class);
     assertThat(progressResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(readTree(progressResponse.getBody()).get("heard").asBoolean()).isTrue();
-    assertThat(heard).isNotEmpty();
-    assertThat(heard).anyMatch(event -> "crew en route".equals(event.message()));
-
-    ResponseEntity<String> unknownToken =
-        restTemplate.postForEntity(
-            "/callbacks/does-not-exist",
-            new HttpEntity<>(Map.of("outcome", OUTCOME)),
-            String.class);
-    assertThat(unknownToken.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(heard).isNotEmpty().anyMatch(event -> "crew en route".equals(event.message()));
 
     ResponseEntity<String> completion =
         restTemplate.postForEntity(
@@ -213,6 +188,40 @@ class DispatcherSmokeTest {
         .atMost(Duration.ofSeconds(2))
         .until(() -> provider.callCount() == callsAfterCompletion);
 
+    assertProgressAfterSettlementDropped(token);
+  }
+
+  /** The refusal surface, in one sweep: bad bodies are 400s, unknown tokens 404 or heard:false. */
+  private void assertBadInputRefused(String token) {
+    ResponseEntity<String> emptyOutcomeBody =
+        restTemplate.postForEntity(
+            "/callbacks/" + token, new HttpEntity<>(Map.of("outcome", "")), String.class);
+    assertThat(emptyOutcomeBody.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<String> emptyProgressBody =
+        restTemplate.postForEntity(
+            "/callbacks/" + token + "/progress",
+            new HttpEntity<>(Map.of("message", "")),
+            String.class);
+    assertThat(emptyProgressBody.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<String> unknownProgress =
+        restTemplate.postForEntity(
+            "/callbacks/does-not-exist/progress",
+            new HttpEntity<>(Map.of("message", "crew en route")),
+            String.class);
+    assertThat(readTree(unknownProgress.getBody()).get("heard").asBoolean()).isFalse();
+
+    ResponseEntity<String> unknownToken =
+        restTemplate.postForEntity(
+            "/callbacks/does-not-exist",
+            new HttpEntity<>(Map.of("outcome", OUTCOME)),
+            String.class);
+    assertThat(unknownToken.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+  }
+
+  /** Progress against a settled wait is dropped, legally: 200 with heard:false. */
+  private void assertProgressAfterSettlementDropped(String token) {
     ResponseEntity<String> progressAfterSettlement =
         restTemplate.postForEntity(
             "/callbacks/" + token + "/progress",
