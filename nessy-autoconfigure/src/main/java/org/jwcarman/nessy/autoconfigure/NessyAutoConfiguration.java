@@ -20,6 +20,7 @@ import io.micrometer.observation.ObservationRegistry;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -40,9 +41,9 @@ import org.springframework.util.StringUtils;
  *
  * <p>Runs after {@link AnthropicProviderAutoConfiguration}, {@link OpenAiProviderAutoConfiguration}
  * and {@link JdbcPersistenceAutoConfiguration} so whichever {@link ModelProvider}, {@link
- * ConversationStore} those produce are already in the context by the time {@link #harness} runs.
- * {@link ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means this configuration stays
- * inert until some provider module is present and resolved; {@link
+ * ConversationStore}, or {@link Parks} those produce are already in the context by the time {@link
+ * #harness} runs. {@link ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means this
+ * configuration stays inert until some provider module is present and resolved; {@link
  * ConditionalOnMissingBean @ConditionalOnMissingBean(Harness.class)} means a user-declared {@link
  * Harness} bean always wins outright, this class never runs a second pass over it.
  *
@@ -67,10 +68,12 @@ public class NessyAutoConfiguration {
       ModelProvider provider,
       NessyProperties properties,
       ObjectProvider<ConversationStore> store,
+      ObjectProvider<Parks> parks,
       ObjectProvider<ObservationRegistry> observations,
       ObjectProvider<ObjectMapper> mapper) {
     var builder = Nessy.harness(provider);
     store.ifAvailable(builder::store);
+    parks.ifAvailable(builder::parks);
     observations.ifAvailable(builder::observations);
     mapper.ifAvailable(builder::mapper);
     if (StringUtils.hasText(properties.defaultModel())) {

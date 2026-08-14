@@ -19,9 +19,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.function.BiFunction;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
+import org.jwcarman.nessy.store.jdbc.JdbcParks;
 import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.store.jdbc.JdbcTranscript;
 import org.springframework.beans.factory.ObjectProvider;
@@ -41,20 +44,22 @@ import org.springframework.context.annotation.Bean;
  * activates.
  *
  * <p>{@code nessy.jdbc.enabled=false} is the master switch, overriding both signals above. Absent
- * that override, each bean method still yields to a user-declared {@link ConversationStore} or
- * {@link Memory} — see the individual {@code @ConditionalOnMissingBean} bean methods.
+ * that override, each bean method still yields to a user-declared {@link ConversationStore}, {@link
+ * Parks}, {@link Transcript}, or {@link Memory} — see the individual
+ * {@code @ConditionalOnMissingBean} bean methods.
  *
  * <p>{@link org.jwcarman.nessy.autoconfigure.NessyProperties#bootstrapSchema()} chooses between
- * {@code JdbcConversationStore}/{@code JdbcTranscript}'s bootstrapping {@code create} factories
- * (the default: {@code CREATE TABLE IF NOT EXISTS} run once at startup) and their public
- * constructors, which skip DDL entirely for a datasource another process already bootstrapped.
+ * {@code JdbcConversationStore}/{@code JdbcParks}/{@code JdbcTranscript}'s bootstrapping {@code
+ * create} factories (the default: {@code CREATE TABLE IF NOT EXISTS} run once at startup) and their
+ * public constructors, which skip DDL entirely for a datasource another process already
+ * bootstrapped.
  *
  * <p>An {@link ObjectMapper} bean is an {@link ObjectProvider}, not a hard constructor parameter:
  * unlike {@link NessyAutoConfiguration}, which only ever runs in a webmvc app where Boot's own
  * Jackson autoconfiguration has already put an {@code ObjectMapper} in context, this configuration
  * has no such guarantee — a non-web Boot application with {@code store-jdbc} and a {@link
  * DataSource} but no Jackson autoconfiguration would otherwise fail with {@code
- * NoSuchBeanDefinitionException} the moment either bean method resolved its parameter. The
+ * NoSuchBeanDefinitionException} the moment any door bean method resolved its parameter. The
  * fallback, a bare {@code new ObjectMapper()}, is safe precisely because {@code JdbcPersistence}'s
  * codec (see {@code StateCodec}) never uses the mapper it is handed as-is: it registers its own
  * sealed-type mixins on a private {@link ObjectMapper#copy() copy}, so a plain, unconfigured mapper
@@ -87,22 +92,40 @@ public class JdbcPersistenceAutoConfiguration {
         JdbcConversationStore::new);
   }
 
+  @Bean
+  @ConditionalOnMissingBean
+  Parks parks(
+      DataSource dataSource, ObjectProvider<ObjectMapper> mapper, NessyProperties properties) {
+    return build(
+        properties.bootstrapSchema(),
+        dataSource,
+        resolveMapper(mapper),
+        JdbcParks::create,
+        JdbcParks::new);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  Transcript transcript(
+      DataSource dataSource, ObjectProvider<ObjectMapper> mapper, NessyProperties properties) {
+    return build(
+        properties.bootstrapSchema(),
+        dataSource,
+        resolveMapper(mapper),
+        JdbcTranscript::create,
+        JdbcTranscript::new);
+  }
+
   /**
-   * Minimal for this generation (design §5-6 land the {@code Parks} bean and full {@code
-   * Transcript} wiring as Task 7): the durable {@link Memory} bean is {@link TranscriptMemory} over
-   * a {@link JdbcTranscript}, replacing the retired {@code JdbcMemory}.
+   * The durable {@link Memory} bean is {@link TranscriptMemory} over the {@link Transcript} BEAN
+   * (not a private instance), so a user-declared {@link Transcript} bean flows into memory the same
+   * way a user-declared {@link ConversationStore} flows into {@link
+   * org.jwcarman.nessy.autoconfigure.NessyAutoConfiguration}'s harness — replacing the retired
+   * {@code JdbcMemory}.
    */
   @Bean
   @ConditionalOnMissingBean
-  Memory memory(
-      DataSource dataSource, ObjectProvider<ObjectMapper> mapper, NessyProperties properties) {
-    JdbcTranscript transcript =
-        build(
-            properties.bootstrapSchema(),
-            dataSource,
-            resolveMapper(mapper),
-            JdbcTranscript::create,
-            JdbcTranscript::new);
+  Memory memory(Transcript transcript) {
     return new TranscriptMemory(transcript);
   }
 
@@ -111,9 +134,9 @@ public class JdbcPersistenceAutoConfiguration {
   }
 
   /**
-   * Shared by both bean methods: {@code bootstrapSchema} picks the bootstrapping factory (DDL run
-   * once, safe to repeat) or the bare constructor (no DDL, no connection opened at all) — the one
-   * branch point either bean's construction needs.
+   * Shared by the store, parks, and transcript bean methods: {@code bootstrapSchema} picks the
+   * bootstrapping factory (DDL run once, safe to repeat) or the bare constructor (no DDL, no
+   * connection opened at all) — the one branch point each door's construction needs.
    */
   private static <T> T build(
       boolean bootstrapSchema,

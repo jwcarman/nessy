@@ -18,6 +18,7 @@ package org.jwcarman.nessy.autoconfigure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Collection;
 import java.util.Optional;
@@ -27,10 +28,13 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.AgentConfigurationException;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -81,6 +85,27 @@ class NessyAutoConfigurationTest {
               assertThat(probe.loaded()).isFalse();
               agent.snapshot(ConversationId.generate());
               assertThat(probe.loaded()).isTrue();
+            });
+  }
+
+  @Test
+  void a_parks_bean_is_woven_in() {
+    // Harness#parks is package-private with no public accessor, so the proof goes through
+    // Harness#peek: a token this exact Parks bean instance already knows about must come back
+    // from the woven harness, which it can only do if the harness reached this instance rather
+    // than defaulting to its own private Parks.inMemory().
+    Parks mine = Parks.inMemory();
+    ConversationId conversationId = ConversationId.generate();
+    ParkToken token = new ParkToken("probe-token");
+    ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+    mine.park(new Parks.Park(conversationId, token, call));
+    runner
+        .withBean("mine", Parks.class, () -> mine)
+        .run(
+            context -> {
+              Harness harness = context.getBean(Harness.class);
+              assertThat(harness.peek(token)).isPresent();
+              assertThat(harness.peek(token).orElseThrow().token()).isEqualTo(token);
             });
   }
 
