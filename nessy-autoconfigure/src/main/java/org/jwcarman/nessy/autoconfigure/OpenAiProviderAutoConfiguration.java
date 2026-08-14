@@ -53,14 +53,24 @@ public class OpenAiProviderAutoConfiguration {
     return buildOpenAiProvider(properties);
   }
 
+  /**
+   * {@code nessy.openai.api-key} / {@code nessy.openai.base-url} are overrides layered on top of
+   * the SDK's own environment resolution, not replacements for it: {@link
+   * OpenAiModelProvider.Builder#fromEnv()} is always called first (it only sets a flag — nothing is
+   * read until {@code build()}), so every ambient source the SDK understands ({@code
+   * OPENAI_ORG_ID}, {@code OPENAI_PROJECT_ID}, {@code OPENAI_BASE_URL}, {@code
+   * OPENAI_WEBHOOK_SECRET}, {@code OPENAI_ADMIN_KEY}, {@code OPENAI_CUSTOM_HEADERS}, the {@code
+   * AZURE_OPENAI_KEY} Azure-credential path) is still honored when a property here is absent, and
+   * an explicit property always wins when present. {@link OpenAiModelProvider.Builder#build()} does
+   * not throw in a keyless environment as long as an explicit {@code apiKey} was layered on, per
+   * {@code fromEnv()}'s own javadoc.
+   */
   static ModelProvider buildOpenAiProvider(NessyProperties properties) {
     var openai = properties.openai();
+    var builder = OpenAiModelProvider.builder().fromEnv();
     var apiKey = openai == null ? null : openai.apiKey();
-    var builder = OpenAiModelProvider.builder();
     if (StringUtils.hasText(apiKey)) {
       builder.apiKey(apiKey);
-    } else {
-      builder.fromEnv();
     }
     var baseUrl = openai == null ? null : openai.baseUrl();
     if (StringUtils.hasText(baseUrl)) {

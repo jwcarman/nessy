@@ -66,14 +66,22 @@ public class AnthropicProviderAutoConfiguration {
         "two model-provider modules are on the classpath; set nessy.provider=anthropic|openai");
   }
 
+  /**
+   * {@code nessy.anthropic.api-key} / {@code nessy.anthropic.base-url} are overrides layered on top
+   * of the SDK's own environment resolution, not replacements for it: {@link
+   * AnthropicModelProvider.Builder#fromEnv()} is always called first (it only sets a flag — nothing
+   * is read until {@code build()}), so every ambient source the SDK understands ({@code
+   * ANTHROPIC_AUTH_TOKEN}, {@code ANTHROPIC_BASE_URL}, profile files, workload-identity federation)
+   * is still honored when a property here is absent, and an explicit property always wins when
+   * present. {@link AnthropicModelProvider.Builder#build()} does not throw in a keyless environment
+   * as long as an explicit {@code apiKey} was layered on, per {@code fromEnv()}'s own javadoc.
+   */
   static ModelProvider buildAnthropicProvider(NessyProperties properties) {
     var anthropic = properties.anthropic();
+    var builder = AnthropicModelProvider.builder().fromEnv();
     var apiKey = anthropic == null ? null : anthropic.apiKey();
-    var builder = AnthropicModelProvider.builder();
     if (StringUtils.hasText(apiKey)) {
       builder.apiKey(apiKey);
-    } else {
-      builder.fromEnv();
     }
     var baseUrl = anthropic == null ? null : anthropic.baseUrl();
     if (StringUtils.hasText(baseUrl)) {
