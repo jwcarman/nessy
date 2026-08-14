@@ -16,8 +16,11 @@
 package org.jwcarman.nessy.examples.dispatcher;
 
 import java.util.Map;
+import java.util.Objects;
 import org.jwcarman.nessy.Agent;
+import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +64,8 @@ public final class SignalController {
         .start(
             () -> {
               try {
-                agent.conversation(conversationId).tell(line, observer);
+                RunOutcome outcome = agent.conversation(conversationId).tell(line, observer);
+                logOutcome(incidentId, outcome);
               } catch (RuntimeException e) {
                 // The caller already has its 202 — this thread's only remaining audience is the
                 // log (the same log-and-continue discipline as night-watchman's Watchman.round()).
@@ -70,6 +74,23 @@ public final class SignalController {
               }
             });
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("incident", incidentId));
+  }
+
+  /**
+   * The turn's terminal status has nowhere else to surface for a fire-and-forget entry — the caller
+   * already has its 202, and {@link org.jwcarman.nessy.api.turn.TurnEvent} carries no failure
+   * variant of its own — so a {@code FAILED} triage otherwise vanishes into silence. Mirrors {@code
+   * night-watchman}'s {@code Watchman.round()}: log the terminal status always, and the failure
+   * reason at WARN specifically when it failed.
+   */
+  private static void logOutcome(String incidentId, RunOutcome outcome) {
+    LOGGER.info("[{}] signal drive ends: {}", incidentId, outcome.state().status());
+    if (outcome.state().status() == ConversationStatus.FAILED) {
+      LOGGER.warn(
+          "[{}] signal drive failed: {}",
+          incidentId,
+          Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
+    }
   }
 
   private static void requireComplete(SignalRequest body) {

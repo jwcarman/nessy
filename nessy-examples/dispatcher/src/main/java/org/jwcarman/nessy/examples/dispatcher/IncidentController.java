@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.dispatcher;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.Agent;
@@ -46,13 +47,20 @@ public final class IncidentController {
     List<Map<String, String>> parks =
         snapshot.parkedCalls().stream().map(IncidentController::park).toList();
     List<TranscriptView.Line> transcript = TranscriptView.of(snapshot.context());
-    return Map.of(
-        "status", snapshot.status().name(),
-        "parks", parks,
-        "transcript", transcript);
+    // LinkedHashMap, not Map.of: this module's own README shows a fixed field order
+    // (status, parks, transcript) in its sample response — Map.of's iteration order is
+    // unspecified (and randomized run to run), which would make that sample dishonest.
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("status", snapshot.status().name());
+    body.put("parks", parks);
+    body.put("transcript", transcript);
+    return body;
   }
 
   private static Map<String, String> park(ParkedCall parked) {
-    return Map.of("token", parked.token().value(), "tool", parked.call().name());
+    Map<String, String> card = new LinkedHashMap<>();
+    card.put("token", parked.token().value());
+    card.put("tool", parked.call().name());
+    return card;
   }
 }

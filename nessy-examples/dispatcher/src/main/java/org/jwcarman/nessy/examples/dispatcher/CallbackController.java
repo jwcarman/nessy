@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The world-answers-a-question door (spec §1's {@code Resolved} trigger): the crew's two signals,
@@ -60,6 +61,7 @@ public final class CallbackController {
   @PostMapping("/callbacks/{token}")
   public ResponseEntity<Map<String, Object>> complete(
       @PathVariable String token, @RequestBody OutcomeRequest body) {
+    requireOutcome(body);
     ParkToken parkToken = new ParkToken(token);
     TurnObserver observer = IncidentLog.observer(token, LOGGER);
     RunOutcome outcome =
@@ -77,6 +79,7 @@ public final class CallbackController {
   @PostMapping("/callbacks/{token}/progress")
   public ResponseEntity<Map<String, Object>> progress(
       @PathVariable String token, @RequestBody ProgressRequest body) {
+    requireMessage(body);
     boolean heard = harness.progress(new ParkToken(token), body.message());
     return ResponseEntity.ok(Map.of("heard", heard));
   }
@@ -84,6 +87,22 @@ public final class CallbackController {
   @ExceptionHandler(UnknownParkTokenException.class)
   public ResponseEntity<Map<String, Object>> handleUnknownToken(UnknownParkTokenException e) {
     return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+  }
+
+  private static void requireOutcome(OutcomeRequest body) {
+    if (body == null || isBlank(body.outcome())) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "outcome is required");
+    }
+  }
+
+  private static void requireMessage(ProgressRequest body) {
+    if (body == null || isBlank(body.message())) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required");
+    }
+  }
+
+  private static boolean isBlank(String value) {
+    return value == null || value.isBlank();
   }
 
   public record OutcomeRequest(String outcome) {}

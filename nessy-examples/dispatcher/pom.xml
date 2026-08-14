@@ -63,8 +63,12 @@
          JdbcPersistenceAutoConfiguration, which is @ConditionalOnBean(DataSource.class)) needs
          this starter on the classpath to ever build a DataSource bean at all — chat-web's same
          dependency, for the same reason. Without it there is no ConversationStore, no Parks bean,
-         and this module's whole "JdbcParks is load-bearing" story (spec §3) silently falls back to
-         an in-memory harness instead. -->
+         and no Memory bean either: DispatcherConfig#agent's Memory parameter would then fail to
+         resolve at all, so startup fails loudly, not silently. The Parks half is the one silent
+         risk: HarnessBuilder defaults an unset Parks to Parks.inMemory() rather than refusing to
+         build, so losing this dependency would quietly trade this module's whole "JdbcParks is
+         load-bearing" story (spec §3) for parks that vanish on process exit — the harness would
+         still build and run, just not durably. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-jdbc</artifactId>

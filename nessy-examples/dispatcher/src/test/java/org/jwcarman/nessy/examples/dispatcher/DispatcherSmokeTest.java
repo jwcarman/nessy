@@ -148,6 +148,18 @@ class DispatcherSmokeTest {
     assertThat(parkedCard.get("tool")).isEqualTo("request_field_crew");
     assertThat(incidentSnapshot().get("status").asText()).isEqualTo("PARKED");
 
+    ResponseEntity<String> emptyOutcomeBody =
+        restTemplate.postForEntity(
+            "/callbacks/" + token, new HttpEntity<>(Map.of("outcome", "")), String.class);
+    assertThat(emptyOutcomeBody.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<String> emptyProgressBody =
+        restTemplate.postForEntity(
+            "/callbacks/" + token + "/progress",
+            new HttpEntity<>(Map.of("message", "")),
+            String.class);
+    assertThat(emptyProgressBody.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
     ResponseEntity<String> unknownProgress =
         restTemplate.postForEntity(
             "/callbacks/does-not-exist/progress",
