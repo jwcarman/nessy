@@ -1,0 +1,2 @@
+org.jwcarman.nessy.autoconfigure.AnthropicProviderAutoConfiguration
+org.jwcarman.nessy.autoconfigure.OpenAiProviderAutoConfiguration
