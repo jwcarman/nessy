@@ -49,6 +49,11 @@ function closeThinkingLine() {
 }
 
 function renderApprovalCard(card) {
+  // At-least-once narration (spec §4): a redelivered "approval-needed" for a token already on
+  // screen — from the live stream, from a page rebuild that raced it, or both — draws nothing new.
+  if (approvalsSection.querySelector(`[data-token="${card.token}"]`)) {
+    return;
+  }
   const div = document.createElement("div");
   div.className = "approval-card";
   div.dataset.token = card.token;

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.examples.chatweb;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 
@@ -54,12 +55,11 @@ public final class SseEvents {
       case TurnEvent.ToolCallCompleted e ->
           new Event("tool-completed", Map.of("id", e.call().id(), "error", e.result().isError()));
       case TurnEvent.ToolCallParked e ->
-          // Interim arm (Task 3): named distinctly from the "approval-needed" card
-          // ChatController.finish already emits (token, tool, args) from state.parkedCalls() —
-          // app.js has no handler for "tool-parked", so this renders nothing, and finish()'s loop
-          // stays the single card source until Task 6 swaps authority to this arm with the full
-          // card shape, args included.
-          new Event("tool-parked", Map.of("token", e.token().value(), "tool", e.call().name()));
+          // The live card source (Task 6): the observed park event carries the full
+          // {token, tool, args} shape ChatController.get's snapshot-rebuild path also produces via
+          // #approvalCard, so a losing concurrent driver's zero-emission race still redraws the
+          // identical card on the next page load.
+          new Event("approval-needed", approvalCard(new ParkedCall(e.token(), e.call())));
     };
   }
 
@@ -68,6 +68,19 @@ public final class SseEvents {
    */
   public static TurnObserver observer(Consumer<Event> sink) {
     return event -> sink.accept(of(event));
+  }
+
+  /**
+   * {@code {token, tool, args}} — the same shape {@link #of(TurnEvent)} emits for a live park, used
+   * again by {@code ChatController#get} to redraw pending cards from a {@link ParkedCall} snapshot.
+   * Args are pretty-printed via {@link com.fasterxml.jackson.databind.JsonNode#toPrettyString()},
+   * which needs no application-supplied {@code ObjectMapper}.
+   */
+  static Map<String, Object> approvalCard(ParkedCall parked) {
+    return Map.of(
+        "token", parked.token().value(),
+        "tool", parked.call().name(),
+        "args", parked.call().arguments().toPrettyString());
   }
 
   private static boolean allowed(Decision decision) {

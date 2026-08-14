@@ -21,23 +21,21 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
-import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
-import org.jwcarman.nessy.store.jdbc.JdbcMemory;
+import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 /**
  * The nessy wiring — the simplicity test itself (design §4). Every approval parks; the UI is the
- * approver, one line: {@code request -> Awaited.parked(ParkToken.generate())}.
+ * approver, one line: {@link Approver#parkAll()}.
  *
  * <p>The dogfood point: {@link #harness(ModelProvider, ConversationStore, ObservationRegistry)}
  * takes Boot's own auto-configured {@link ObservationRegistry}, so nessy's model-call and tool
@@ -57,13 +55,18 @@ public class NessyConfig {
       "You are the demo shop's helpful assistant. Use your tool when a coupon is warranted.";
 
   @Bean
-  ConversationStore store(DataSource dataSource, ObjectMapper mapper) {
-    return JdbcConversationStore.create(dataSource, mapper);
+  JdbcPersistence persistence(DataSource dataSource, ObjectMapper mapper) {
+    return JdbcPersistence.create(dataSource, mapper);
   }
 
   @Bean
-  Memory memory(DataSource dataSource, ObjectMapper mapper) {
-    return JdbcMemory.create(dataSource, mapper);
+  ConversationStore store(JdbcPersistence persistence) {
+    return persistence.store();
+  }
+
+  @Bean
+  Memory memory(JdbcPersistence persistence) {
+    return persistence.memory();
   }
 
   @Bean
@@ -87,7 +90,7 @@ public class NessyConfig {
         .systemPrompt(SYSTEM_PROMPT)
         .memory(memory)
         .tools(ToolGrant.grant(new IssueCouponTool(), UsagePolicy.requireApproval()))
-        .approver(request -> Awaited.parked(ParkToken.generate()))
+        .approver(Approver.parkAll())
         .build();
   }
 }

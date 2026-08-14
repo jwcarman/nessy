@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.examples.chatweb;
 
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -46,11 +45,7 @@ public final class IssueCouponTool implements Tool<IssueCouponTool.Input> {
 
   @Override
   public Awaited<ToolResult> execute(Input input, ToolContext context) {
-    // "n/a" is a placeholder: a tool cannot know its own provider-assigned call id from inside
-    // execute() (design's distrust rule — see TurnEvent.ToolCallProgressed's javadoc). The tee
-    // discards this id and attaches the authoritative call before narrating, so nothing here is
-    // trusted for identification; it exists only to satisfy ToolProgress's constructor.
-    context.events().emit(new ToolProgress(context.conversationId(), "n/a", "issuing…"));
+    context.progress("issuing…");
     String code = "DEMO-" + Math.abs(input.customerEmail().hashCode() % 10_000);
     return Awaited.ready(
         ToolResult.ok(

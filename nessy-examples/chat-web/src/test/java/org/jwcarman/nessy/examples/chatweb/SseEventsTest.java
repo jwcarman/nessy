@@ -43,13 +43,25 @@ class SseEventsTest {
         .isEqualTo(new SseEvents.Event("tool-progress", Map.of("id", "c1", "message", "issuing…")));
     assertThat(SseEvents.of(new TurnEvent.ToolCallCompleted(call, ToolResult.ok("done"))))
         .isEqualTo(new SseEvents.Event("tool-completed", Map.of("id", "c1", "error", false)));
-    // Interim name (Task 3): distinct from ChatController.finish's "approval-needed" card so the
-    // browser's lack of a "tool-parked" handler renders nothing — finish() stays the single card
-    // source until Task 6 swaps authority to this arm with the full (token, tool, args) shape.
-    assertThat(SseEvents.of(new TurnEvent.ToolCallParked(call, token)))
-        .isEqualTo(
-            new SseEvents.Event(
-                "tool-parked", Map.of("token", token.value(), "tool", "issue_coupon")));
+  }
+
+  @Test
+  void a_park_maps_to_an_approval_card() {
+    ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
+    ParkToken token = ParkToken.generate();
+    assertThat(SseEvents.of(new TurnEvent.ToolCallParked(call, token)).name())
+        .isEqualTo("approval-needed");
+  }
+
+  @Test
+  void a_park_s_approval_card_carries_the_token_tool_and_args() {
+    ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
+    ParkToken token = ParkToken.generate();
+    Map<String, Object> payload = SseEvents.of(new TurnEvent.ToolCallParked(call, token)).payload();
+    assertThat(payload)
+        .containsEntry("token", token.value())
+        .containsEntry("tool", "issue_coupon")
+        .containsKey("args");
   }
 
   @Test

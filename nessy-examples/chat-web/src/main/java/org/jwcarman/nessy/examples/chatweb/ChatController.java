@@ -15,25 +15,17 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
-import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -65,35 +57,25 @@ public final class ChatController {
       ContextSnapshotFactory.builder().build();
 
   private final Agent<String> agent;
-  private final ConversationStore store;
-  private final ObjectMapper mapper;
 
-  public ChatController(Agent<String> agent, ConversationStore store, ObjectMapper mapper) {
+  public ChatController(Agent<String> agent) {
     this.agent = agent;
-    this.store = store;
-    this.mapper = mapper;
   }
 
-  /** Page-rebuild reading: transcript, pending approval cards, and status — no model call. */
+  /**
+   * Page-rebuild reading: transcript, pending approval cards, and status — no model call. Total
+   * over {@link Agent#snapshot}: a browser-minted fresh id redraws as an empty, idle conversation
+   * rather than erroring. This is also the losing side of the park-narration race — a concurrent
+   * driver whose SSE stream saw zero {@code approval-needed} events still finds its card here.
+   */
   @GetMapping("/{id}")
   public Map<String, Object> get(@PathVariable String id) {
-    ConversationId conversationId = new ConversationId(id);
-    Optional<ConversationStore.Loaded> loaded = store.load(conversationId);
-    if (loaded.isEmpty()) {
-      return Map.of(
-          "status",
-          ConversationStatus.IDLE.name(),
-          "transcript",
-          List.of(),
-          "approvals",
-          List.of());
-    }
-    ConversationState state = loaded.get().state();
-    List<TranscriptView.Line> transcript = TranscriptView.of(agent.contextFor(conversationId));
+    ConversationSnapshot snapshot = agent.snapshot(new ConversationId(id));
+    List<TranscriptView.Line> transcript = TranscriptView.of(snapshot.context());
     List<Map<String, Object>> approvals =
-        state.parkedCalls().stream().map(call -> approvalCard(call, mapper)).toList();
+        snapshot.parkedCalls().stream().map(SseEvents::approvalCard).toList();
     return Map.of(
-        "status", state.status().name(), "transcript", transcript, "approvals", approvals);
+        "status", snapshot.status().name(), "transcript", transcript, "approvals", approvals);
   }
 
   /**
@@ -118,39 +100,22 @@ public final class ChatController {
           agent
               .conversation(conversationId)
               .tell(text, SseEvents.observer(e -> sendEvent(emitter, e)));
-      finish(emitter, outcome, mapper);
+      finish(emitter, outcome);
     } catch (RuntimeException e) {
       fail(emitter, e);
     }
   }
 
-  /** {@code {token, tool, args}} — args pretty-printed via the injected mapper (spec §4). */
-  static Map<String, Object> approvalCard(ParkedCall parked, ObjectMapper mapper) {
-    return Map.of(
-        "token", parked.token().value(),
-        "tool", parked.call().name(),
-        "args", prettyArgs(parked.call().arguments(), mapper));
-  }
-
-  private static String prettyArgs(JsonNode arguments, ObjectMapper mapper) {
-    try {
-      return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(arguments);
-    } catch (JsonProcessingException e) {
-      throw new UncheckedIOException(e);
-    }
-  }
-
   /**
-   * The shared tail of both entry and resume streams: one {@code approval-needed} per newly parked
-   * call, then the terminal {@code done} event carrying final status (and {@code failureReason}
-   * when the turn failed).
+   * The shared tail of both entry and resume streams: the terminal {@code done} event carrying
+   * final status (and {@code failureReason} when the turn failed). Any {@code approval-needed}
+   * cards for a newly parked call were already narrated live by the observer {@link
+   * SseEvents#observer} wraps into {@link #sendEvent} above — this no longer re-derives them from
+   * {@code outcome}, so the live park event is the single card source for the stream (the
+   * page-rebuild snapshot in {@link #get} is the separate, still-needed source for a reader who
+   * missed that live event, e.g. a losing concurrent driver).
    */
-  static void finish(SseEmitter emitter, RunOutcome outcome, ObjectMapper mapper) {
-    if (outcome instanceof RunOutcome.Parked parked) {
-      for (ParkedCall call : parked.state().parkedCalls()) {
-        sendEvent(emitter, new SseEvents.Event("approval-needed", approvalCard(call, mapper)));
-      }
-    }
+  static void finish(SseEmitter emitter, RunOutcome outcome) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("status", outcome.state().status().name());
     String failureReason = outcome.state().failureReason();

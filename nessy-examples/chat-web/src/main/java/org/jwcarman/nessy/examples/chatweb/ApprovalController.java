@@ -15,16 +15,14 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.context.ContextSnapshot;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.Harness;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
-import org.jwcarman.nessy.api.ToolResolution;
-import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.api.UnknownParkTokenException;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -33,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -44,58 +43,53 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public final class ApprovalController {
 
   private final Harness harness;
-  private final ConversationStore store;
-  private final ObjectMapper mapper;
 
-  public ApprovalController(Harness harness, ConversationStore store, ObjectMapper mapper) {
+  public ApprovalController(Harness harness) {
     this.harness = harness;
-    this.store = store;
-    this.mapper = mapper;
   }
 
   @PostMapping("/{token}")
   public SseEmitter approve(@PathVariable String token, @RequestBody DecisionRequest body) {
     ParkToken parkToken = new ParkToken(token);
-    // Peek-only (never consumes, unlike harness.resume): a card the store no longer parks is
-    // rejected synchronously here, before the emitter is ever handed back, so the 409 below
-    // reaches the caller as a normal HTTP response rather than an async stream failure.
-    store
-        .findPark(parkToken)
-        .orElseThrow(() -> new IllegalArgumentException("unknown or settled park token: " + token));
-    Decision decision = toDecision(body);
+    // Peek-only (never consumes, unlike harness.resume/approve/deny): a card the store no longer
+    // parks is rejected synchronously here, before the emitter is ever handed back, so the 409
+    // below reaches the caller as a normal HTTP response rather than an async stream failure.
+    harness.peek(parkToken).orElseThrow(() -> new UnknownParkTokenException(parkToken));
+    // Also validated synchronously, for the same reason: a malformed decision string is a genuine
+    // caller error and should 400 as an ordinary HTTP response, not surface as an async stream
+    // failure once runResume is already running on its own virtual thread.
+    requireKnownDecision(body.decision());
     SseEmitter emitter = new SseEmitter(0L);
     // Same fix as ChatController#postMessage: a fresh virtual thread has an empty
     // current-Observation ThreadLocal, so restore this request thread's tracing context inside it
     // — otherwise the resumed segment's observations root a new trace instead of joining this
     // HTTP POST's.
     ContextSnapshot snapshot = ChatController.CONTEXT_SNAPSHOT_FACTORY.captureAll();
-    Thread.ofVirtual().start(snapshot.wrap(() -> runResume(parkToken, decision, emitter)));
+    Thread.ofVirtual().start(snapshot.wrap(() -> runResume(parkToken, body, emitter)));
     return emitter;
   }
 
-  private void runResume(ParkToken token, Decision decision, SseEmitter emitter) {
+  private void runResume(ParkToken token, DecisionRequest body, SseEmitter emitter) {
     try {
+      TurnObserver observer = SseEvents.observer(e -> ChatController.sendEvent(emitter, e));
       RunOutcome outcome =
-          harness.resume(
-              token,
-              new ToolResolution.Decided(decision),
-              SseEvents.observer(e -> ChatController.sendEvent(emitter, e)));
-      ChatController.finish(emitter, outcome, mapper);
+          "allow".equals(body.decision())
+              ? harness.approve(token, observer)
+              : harness.deny(token, Optional.ofNullable(body.reason()).orElse("denied"), observer);
+      ChatController.finish(emitter, outcome);
     } catch (RuntimeException e) {
       ChatController.fail(emitter, e);
     }
   }
 
-  private static Decision toDecision(DecisionRequest body) {
-    return switch (body.decision()) {
-      case "allow" -> Decision.allow();
-      case "deny" -> new Decision.Deny(Optional.ofNullable(body.reason()).orElse("denied"));
-      default -> throw new IllegalArgumentException("unknown decision: " + body.decision());
-    };
+  private static void requireKnownDecision(String decision) {
+    if (!"allow".equals(decision) && !"deny".equals(decision)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown decision: " + decision);
+    }
   }
 
-  @ExceptionHandler(IllegalArgumentException.class)
-  public ResponseEntity<Map<String, Object>> handleUnknownToken(IllegalArgumentException e) {
+  @ExceptionHandler(UnknownParkTokenException.class)
+  public ResponseEntity<Map<String, Object>> handleUnknownToken(UnknownParkTokenException e) {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
   }
 
