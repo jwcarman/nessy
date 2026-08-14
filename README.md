@@ -721,13 +721,26 @@ input schema into the system prompt. See
 
 ## Examples
 
-`nessy-examples` is a family of five runnable apps, all real key required
-(`hello`, the five-minute example above in its own runnable module, is the
-one exception — no key, no network, no Docker), no mocking, nothing
-hand-waved. The matrix: `chat-cli` (plain + interactive),
-`chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled autonomy),
-`order-desk` (Boot + message-driven autonomy), `dispatcher` (Boot web +
-durable parks over HTTP).
+`nessy-examples` is a family of six runnable apps, all real key required
+except `hello` (the five-minute example above, in its own runnable
+module — no key, no network, no Docker). No mocking, nothing hand-waved.
+The matrix: `hello` (the five-minute example, standalone), `chat-cli`
+(plain + interactive), `chat-web` (Boot web + HITL), `night-watchman`
+(Boot + scheduled autonomy), `order-desk` (Boot + message-driven
+autonomy), `dispatcher` (Boot web + durable parks over HTTP).
+
+Several examples share Docker containers on fixed host ports; run more than
+one stack at once and here's what's listening where:
+
+| Port(s)     | What                          |
+| ----------- | ----------------------------- |
+| 5432        | `chat-web`'s Postgres         |
+| 5433        | `order-desk`'s Postgres       |
+| 5434        | `dispatcher`'s Postgres       |
+| 5672, 15672 | `order-desk`'s RabbitMQ (AMQP, management UI) |
+| 8080        | `chat-web` (HTTP)             |
+| 8081        | `dispatcher` (HTTP)           |
+| 3000, 4318  | `chat-web`'s `otel-lgtm` (Grafana UI, OTLP)   |
 
 **`chat-cli`** — a terminal chat loop, one agent definition run against
 either provider:

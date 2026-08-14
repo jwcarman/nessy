@@ -1,6 +1,6 @@
 # Nessy Example: Dispatcher
 
-The fourth example, and the first to answer HTTP rather than a browser or the
+The fifth example, and the first to answer HTTP rather than a browser or the
 clock: a Spring Boot app exhibiting the inbox's two trigger models over plain
 `curl` (spec §1). The inbox has exactly two kinds of mail — the world
 volunteering news, and the world answering a question — and this app is

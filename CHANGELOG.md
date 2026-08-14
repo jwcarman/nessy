@@ -635,7 +635,7 @@ sequence of renames and interim shapes that produced it.
   by the fold's own is-this-call-still-outstanding replay protection with
   no manual channel plumbing anywhere in the module.
 - **`nessy-example-dispatcher` — the two inbox doors over plain HTTP.** The
-  fourth example: a Spring Boot app exhibiting both webhook trigger models at
+  fifth example: a Spring Boot app exhibiting both webhook trigger models at
   once. `POST /signals` is fire-and-forget — deposit, `202`, drive on a
   virtual thread — routed by external identity (the incident id mints the
   `ConversationId`). `POST /callbacks/{token}` and `.../progress` are the
@@ -646,13 +646,50 @@ sequence of renames and interim shapes that produced it.
   first example to make `JdbcParks` load-bearing rather than incidental.
   `curl` is the only client; `Agent<String>` is deliberately the right
   vocabulary here (the doors are the lesson, not typing).
+- **The narration finishes its sentences.** `TurnEvent` gains
+  `AssistantSaid(Message)` — the settled assistant-role message behind the
+  `TextDelta`/`ThinkingDelta` preview, emitted once per model response the
+  fold absorbs, including tool-use-only responses — and `TurnEnded(status,
+  failureReason)`, the segment's closing line, emitted exactly once per
+  observed segment at every exit: quiescent completion, `FAILED` (with its
+  reason), and `PARKED`. `TurnObserverAdapter`/`TurnObserverAdapter.Builder`
+  grow matching `onAssistantSaid`/`onTurnEnded` hooks, and `TurnObserver`
+  gains a `logging(Logger, String prefix)` factory — a ready-made observer
+  that narrates a turn's whole story (text, thinking, tool calls, the
+  ending) to a `Logger` at one call site, prefixed per caller. `TurnEventSse`
+  takes over emitting the wire's `done` event itself (the hand-synthesized
+  `done` chat-web's controllers used to build by hand is gone) and gains a
+  new `message` wire event carrying `AssistantSaid`'s non-blank text.
+- **Two guards where silence used to cost a demo its lesson.** The
+  autoconfigurer now logs a WARN when `Memory` is left at its in-memory
+  default while a durable store is explicitly configured — a
+  configuration that quietly discards conversation history across restarts
+  was previously silent. `UsagePolicy.allow()` now returns a canonical
+  singleton (`AgentBuilder` uses identity, not equality, to recognize an
+  all-allow grant) so the existing "no approver configured" WARN can be
+  skipped precisely when every granted tool is already all-allow — the
+  warning no longer fires for a harness that was never going to ask
+  anyone anything.
+- **`Context` learns to read itself aloud.** `Context.lines()` returns
+  `List<Context.Line>` (`record Line(String role, String text)`) — the
+  transcript rendered as a flat, role-tagged line list for callers that
+  want to print or log a conversation's shape without walking `Message`
+  content blocks themselves. Both example copies of a hand-rolled
+  `TranscriptView` are deleted in its favor.
+- **`nessy-examples/hello`** — the root README's five-minute example as a
+  runnable module: `nessy-core` plus `nessy-testing`'s
+  `ScriptedModelProvider`, no key, no network, no Docker —
+  `./mvnw -q -pl nessy-examples/hello -am compile exec:java`. The README's
+  snippet is corrected to match the real `nessy-testing` API wherever prose
+  had drifted, and the run command sits directly beneath it — `nessy-testing`
+  gets its first dogfood, and the headline promise becomes something you can
+  actually run.
 
 ### Breaking (pre-1.0)
 
-All four of the following are deliberate, in-development shape changes —
-nothing below breaks a shipped version, because none exists yet — but they
-are loud because all four signatures were public as of the previous entries
-above:
+All of the following are deliberate, in-development shape changes — nothing
+below breaks a shipped version, because none exists yet — but they are loud
+because every signature named was public as of the previous entries above:
 
 - **`RunOutcome.Parked` slims to `Parked(ConversationState state)`.** The
   token it used to carry travels a different way now: on the narrated
@@ -696,3 +733,17 @@ above:
     from the store: a hand-wired durable deployment that only called
     `.store(...)` must now also add `.parks(JdbcParks.create(...))` (or use
     the starter, which wires both), or every parked token dies with the JVM.
+- **`TurnEvent` gains two variants — `AssistantSaid` and `TurnEnded`.** Core
+  switches over the sealed grammar (the SSE bridge among them) update at
+  compile time, per the sealed-grammar etiquette (no `default` arm in
+  `nessy-core`); extender switches that already carry a `default` arm are
+  untouched.
+- **`UsagePolicy.allow()` returns a canonical singleton.** Behavior is
+  identical for every existing caller; identity is newly meaningful only to
+  `AgentBuilder`'s all-allow-grant WARN skip above — no other code should
+  come to depend on it.
+- **The SSE wire vocabulary gains `message`; the framework now emits `done`
+  itself.** Additive and shape-compatible — no existing event is renamed —
+  but chat-web's controllers no longer hand-synthesize `done`, so a consumer
+  that depended on the framework staying silent about the turn's end will
+  now see one more event on the wire.

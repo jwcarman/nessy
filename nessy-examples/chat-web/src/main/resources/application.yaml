@@ -1,6 +1,8 @@
 spring:
   application:
     name: nessy-chat-web
+  main:
+    banner-mode: off
   threads:
     virtual:
       enabled: true
