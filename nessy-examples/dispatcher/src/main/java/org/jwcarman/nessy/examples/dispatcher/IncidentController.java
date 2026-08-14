@@ -1,0 +1,58 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.examples.dispatcher;
+
+import java.util.List;
+import java.util.Map;
+import org.jwcarman.nessy.Agent;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * The page-rebuild read (spec §2, §3): status, every open park's {@code (token, tool)} pair, and
+ * the transcript — the second of the two places the park token surfaces (the app log, via {@link
+ * IncidentLog}, is the first), and the one the demo script's restart scene relies on once the log
+ * line is gone (spec §3's last bullet).
+ */
+@RestController
+public final class IncidentController {
+
+  private final Agent<String> agent;
+
+  public IncidentController(Agent<String> agent) {
+    this.agent = agent;
+  }
+
+  @GetMapping("/incidents/{id}")
+  public Map<String, Object> get(@PathVariable String id) {
+    ConversationSnapshot snapshot = agent.snapshot(new ConversationId("incident-" + id));
+    List<Map<String, String>> parks =
+        snapshot.parkedCalls().stream().map(IncidentController::park).toList();
+    List<TranscriptView.Line> transcript = TranscriptView.of(snapshot.context());
+    return Map.of(
+        "status", snapshot.status().name(),
+        "parks", parks,
+        "transcript", transcript);
+  }
+
+  private static Map<String, String> park(ParkedCall parked) {
+    return Map.of("token", parked.token().value(), "tool", parked.call().name());
+  }
+}

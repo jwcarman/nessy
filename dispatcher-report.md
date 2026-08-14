@@ -108,3 +108,91 @@ called, regardless of whether any grant would actually trigger approval — so
 added `.approver(Approver.allowAll())` explicitly, night-watchman's exact
 precedent and comment, since this tool's `UsagePolicy.allow()` grant means no
 human is ever in this loop.
+
+## Task 3: The controllers
+
+**What:** `TranscriptView` — local copy of chat-web's class verbatim, cited
+in javadoc. `IncidentLog` — a shared package-private observer factory,
+modeled on night-watchman's `Watchman` (raw lambda pattern-matching over
+`TurnEvent`, `default -> {}` for sealed-grammar tolerance), reused by both
+signal- and callback-driven turns; its `label` parameter doubles as incident
+id (signal path) or park token (callback path, which never has the incident
+id in hand). `SignalController` (`POST /signals`): validates all three
+fields (400 via `ResponseStatusException` otherwise), mints
+`ConversationId("incident-" + incidentId)`, renders the one prose line, drives
+on `Thread.ofVirtual().start(...)` with a try/catch that logs-and-continues
+(the caller already has its 202), returns 202 `{"incident": id}`.
+`CallbackController`: `POST /callbacks/{token}` builds
+`new ToolResolution.Completed(ToolResult.ok(outcome))` and calls
+`harness.resume(token, resolution, observer)` synchronously, 200
+`{"status": ...}`; `POST /callbacks/{token}/progress` calls
+`harness.progress(token, message)`, 200 `{"heard": bool}`;
+`@ExceptionHandler(UnknownParkTokenException.class)` → 404 (chat-web's
+`ApprovalController` pattern, mapped to 404 instead of chat-web's 409 per
+spec §3). `IncidentController` (`GET /incidents/{id}`): `agent.snapshot(...)`
+→ `{status, parks:[{token,tool}], transcript:[...]}` via `TranscriptView`.
+
+**Micrometer/TurnRunner decision:** researched `NessyWebAutoConfiguration` —
+its `TurnRunner` bean is gated
+`@ConditionalOnClass({SseEmitter.class, ContextSnapshotFactory.class})`
+specifically so a webmvc app *without* `io.micrometer:context-propagation` on
+its classpath never gets a half-built `TurnRunner` (the class's own javadoc
+explains the `NoClassDefFoundError` this gating avoids). Dispatcher's pom
+doesn't declare `context-propagation` (spec §3's dependency list doesn't list
+it, unlike chat-web's observability stack), so no `TurnRunner` bean exists
+here regardless. `TurnRunner` is also SSE-shaped (`.run()` returns an
+`SseEmitter`) and `/signals` isn't a streaming endpoint — 202 or bust — so it
+is not a fit even if it were available. Plain `Thread.ofVirtual().start(...)`
+is used instead, and `SignalController`'s javadoc says explicitly why
+`TurnRunner` doesn't apply, per the plan's escape hatch. Tracing-context
+propagation onto the virtual thread is therefore not attempted; the log is
+the observability story here, exactly as in night-watchman.
+
+**RED/GREEN:** No new tests in this task (plan defers behavior testing to
+Task 4's smoke test) — the acceptance bar is "controllers compile;
+behavior is Task 4's" per the plan. `./mvnw -q -pl nessy-examples/dispatcher
+test-compile` — first pass failed on spotless-check formatting only (long
+lines), `spotless:apply` fixed it, second pass exit 0. Existing
+`RequestFieldCrewToolTest` (Task 2) still green: `./mvnw -q -pl
+nessy-examples/dispatcher test` exit 0.
+
+**Commands + output tails:**
+```
+./mvnw -q -pl nessy-examples/dispatcher test-compile   # RED (spotless-check):
+                                                         # exit 1, format violations
+./mvnw -q spotless:apply                                # exit 0
+./mvnw -q -pl nessy-examples/dispatcher test-compile   # GREEN: exit 0
+./mvnw -q -pl nessy-examples/dispatcher test            # exit 0 (3 pre-existing
+                                                         # tests still pass)
+./mvnw -q clean verify                                  # full offline reactor: exit 0
+```
+
+**Self-review:** Read the diff class by class before commit. Verified
+`ToolResolution.Completed(ToolResult)` and `Harness.resume(token, resolution,
+observer)` signatures against `nessy-core` source directly (not just the
+earlier research summary) before wiring `CallbackController`. Confirmed
+`ConversationStatus` enum values (`PARKED`, `COMPLETE`, etc.) and
+`RunOutcome.state().status()` return type. Checked that `IncidentController`
+and `SignalController` compute the conversation id the same way
+(`"incident-" + id`) so a signal and a later `GET` agree on which
+conversation they mean — this is the one cross-controller invariant that
+would silently break the demo if it drifted. Deliberately did NOT add an
+`@ExceptionHandler` for malformed-JSON/blank-token cases beyond what the plan
+asks (unknown token → 404, malformed signal → 400) — those two are the only
+error paths spec §4 tests for.
+
+**Deviation noted:** the plan's Task 3 text says the transcript view should
+be "a local `Transcripts` copy — night-watchman's, cite it" — I searched the
+whole repo (including night-watchman) and no class named `Transcripts` exists
+anywhere; the only transcript-rendering class in the codebase is chat-web's
+`TranscriptView`, which spec §3 itself names explicitly ("chat-web's
+TranscriptView pattern, local copy"). I followed the spec (binding over the
+plan where they conflict) and copied chat-web's `TranscriptView` verbatim,
+noting this in the new file's javadoc. Flagging the plan's apparent
+typo/wrong-attribution for the controller.
+
+**Also noted:** the stray license-header diffs on ~15 unrelated pre-existing
+files (see Task 1's deviation note) reappeared once more after this task's
+`license:format -Plicense` run and were reverted again before staging;
+non-deterministic across runs in this worktree, cause not fully diagnosed,
+but confirmed harmless each time (never staged, never committed).
