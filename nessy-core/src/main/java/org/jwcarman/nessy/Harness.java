@@ -26,8 +26,8 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
-import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.event.ToolProgress;
@@ -176,8 +176,8 @@ public final class Harness {
    * store still recognizes but has already consumed is redelivery (every real transport is
    * at-least-once) — the call is not replayed, the drive simply reads whatever the first delivery
    * already produced. Either way, appending always succeeds and driving is the same re-entrant act
-   * {@link #resume} shares with {@code tell}: the agenda absorbs the answer, the status pointer
-   * says what happens next.
+   * {@link #resume} shares with {@code tell}: the inbox absorbs the answer, the status pointer says
+   * what happens next.
    *
    * @throws UnknownParkTokenException if {@code token} names no conversation this store still parks
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
@@ -204,7 +204,7 @@ public final class Harness {
       // idempotent re-delivery: read current truth, do not replay
       return loop.get().drive(id, observer);
     }
-    store.appendAgenda(id, AgendaItem.resolved(token, resolution));
+    store.append(id, InboxEntry.resolved(token, resolution));
     return loop.get().drive(id, observer);
   }
 

@@ -24,9 +24,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 
 /**
@@ -38,17 +38,17 @@ import org.jwcarman.nessy.api.conversation.ParkedCall;
  * per-key happens-before on the reference swap is all the safety a read of an immutable value ever
  * needs, with no risk of observing a torn or concurrently-modified list.
  *
- * <p>The state, the agenda, and the park index are three separate maps, so no single-map operation
- * (a {@link ConcurrentHashMap#compute}, say) can make a save's compare-and-bump, its agenda drain,
- * and its park-index sync move together — folding the agenda/park updates into a {@code compute}
+ * <p>The state, the inbox, and the park index are three separate maps, so no single-map operation
+ * (a {@link ConcurrentHashMap#compute}, say) can make a save's compare-and-bump, its inbox drain,
+ * and its park-index sync move together — folding the inbox/park updates into a {@code compute}
  * remapping function would run side effects there, which is unsafe if the map ever retries it.
  * Instead each conversation gets a dedicated monitor ({@code locks}, one object per id), and {@link
- * #save} holds it for the fenced CAS, the agenda drain, and the park-index sync together — simple,
+ * #save} holds it for the fenced CAS, the inbox drain, and the park-index sync together — simple,
  * correct, and sufficient for a single JVM with no cross-process contender.
  *
  * <p>Readers join the same monitor. {@link #load} holds the conversation's lock for its whole read
- * of {@code sessions} and {@code agendas}, so it never observes a state from one save alongside an
- * agenda that a later (or earlier) save drained — the two always come from the same generation.
+ * of {@code sessions} and {@code inboxes}, so it never observes a state from one save alongside an
+ * inbox that a later (or earlier) save drained — the two always come from the same generation.
  * {@link #findPark} and {@link #findParkConversation} cannot pick a lock before they know which
  * conversation a token belongs to, so each takes an unsynchronized first read of {@code parks} to
  * learn the id, then re-reads {@code parks} under that conversation's lock for the authoritative
@@ -61,14 +61,14 @@ import org.jwcarman.nessy.api.conversation.ParkedCall;
  * finds it absent is not a false negative racing the rebuild, it is either a real removal or a
  * token this store never held, and {@code Optional.empty()} is the correct answer to both.
  *
- * <p>Every conversation it has ever seen — its state, its agenda, its parks, its consumed tokens —
+ * <p>Every conversation it has ever seen — its state, its inbox, its parks, its consumed tokens —
  * grows without eviction for the life of the process; there is no forgetting, no cap, no
  * compaction. That suits a process that owns its sessions, not a long-lived multi-tenant server.
  */
 final class InMemoryConversationStore implements ConversationStore {
 
   private final Map<ConversationId, ConversationState> sessions = new ConcurrentHashMap<>();
-  private final Map<ConversationId, List<AgendaItem>> agendas = new ConcurrentHashMap<>();
+  private final Map<ConversationId, List<InboxEntry>> inboxes = new ConcurrentHashMap<>();
   private final Map<ParkToken, ParkedCallAt> parks = new ConcurrentHashMap<>();
   private final Map<ConversationId, Object> locks = new ConcurrentHashMap<>();
   private final Set<ParkToken> consumed = ConcurrentHashMap.newKeySet();
@@ -80,21 +80,21 @@ final class InMemoryConversationStore implements ConversationStore {
     Object lock = locks.computeIfAbsent(id, key -> new Object());
     synchronized (lock) {
       ConversationState state = sessions.get(id);
-      List<AgendaItem> agenda = agendas.getOrDefault(id, List.of());
-      if (state == null && agenda.isEmpty()) {
+      List<InboxEntry> inbox = inboxes.getOrDefault(id, List.of());
+      if (state == null && inbox.isEmpty()) {
         return Optional.empty();
       }
       // The unified drive appends before it ever saves: a brand-new conversation's first entry
-      // lands on the agenda with no state row behind it yet. A conversation this store has never
+      // lands on the inbox with no state row behind it yet. A conversation this store has never
       // saved but has already taken mail for is not "unknown" — it is a fresh conversation
-      // (version 0) whose agenda load must not discard what appendAgenda already durably holds.
+      // (version 0) whose inbox load must not discard what append already durably holds.
       ConversationState effective = state == null ? ConversationState.newConversation(id) : state;
-      return Optional.of(new Loaded(effective, agenda));
+      return Optional.of(new Loaded(effective, inbox));
     }
   }
 
   @Override
-  public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
+  public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
     ConversationId id = state.id();
     Object lock = locks.computeIfAbsent(id, key -> new Object());
     synchronized (lock) {
@@ -106,8 +106,8 @@ final class InMemoryConversationStore implements ConversationStore {
       ConversationState bumped = state.withVersion(state.version() + 1);
       sessions.put(id, bumped);
 
-      Set<String> drained = Set.copyOf(drainedAgendaIds);
-      agendas.computeIfPresent(
+      Set<String> drained = Set.copyOf(drainedInboxIds);
+      inboxes.computeIfPresent(
           id,
           (key, entries) ->
               entries.stream().filter(entry -> !drained.contains(entry.id())).toList());
@@ -144,11 +144,11 @@ final class InMemoryConversationStore implements ConversationStore {
   }
 
   @Override
-  public void appendAgenda(ConversationId id, AgendaItem entry) {
-    agendas.compute(
+  public void append(ConversationId id, InboxEntry entry) {
+    inboxes.compute(
         id,
         (key, existing) -> {
-          List<AgendaItem> appended = new ArrayList<>(existing == null ? List.of() : existing);
+          List<InboxEntry> appended = new ArrayList<>(existing == null ? List.of() : existing);
           appended.add(entry);
           return List.copyOf(appended);
         });

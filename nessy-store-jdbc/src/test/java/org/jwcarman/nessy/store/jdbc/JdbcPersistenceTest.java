@@ -73,7 +73,7 @@ class JdbcPersistenceTest {
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement()) {
       statement.execute(
-          "TRUNCATE nessy_conversation, nessy_agenda, nessy_park, nessy_token, nessy_memory");
+          "TRUNCATE nessy_conversation, nessy_inbox, nessy_park, nessy_token, nessy_memory");
     } catch (SQLException e) {
       throw new IllegalStateException("failed to truncate tables between tests", e);
     }

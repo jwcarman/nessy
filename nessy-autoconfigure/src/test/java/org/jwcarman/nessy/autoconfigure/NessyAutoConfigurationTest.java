@@ -27,9 +27,9 @@ import org.jwcarman.nessy.AgentConfigurationException;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
@@ -148,13 +148,13 @@ class NessyAutoConfigurationTest {
     }
 
     @Override
-    public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
-      return delegate.save(state, drainedAgendaIds);
+    public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
+      return delegate.save(state, drainedInboxIds);
     }
 
     @Override
-    public void appendAgenda(ConversationId id, AgendaItem entry) {
-      delegate.appendAgenda(id, entry);
+    public void append(ConversationId id, InboxEntry entry) {
+      delegate.append(id, entry);
     }
 
     @Override

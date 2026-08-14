@@ -23,16 +23,16 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * The technology-compatibility kit every {@link ConversationStore} implementation must pass: the
- * fenced save, the agenda, and the park index, pinned as law rather than left to each
+ * fenced save, the inbox, and the park index, pinned as law rather than left to each
  * implementation's own judgment.
  *
  * <p>{@link #store()} returns the same instance for the whole of one test, and a fresh, empty
@@ -96,28 +96,28 @@ public abstract class ConversationStoreContract {
   @Test
   void an_append_before_any_save_still_loads_as_a_fresh_conversation() {
     ConversationId id = ConversationId.generate();
-    AgendaItem told = AgendaItem.told(List.of(new TextBlock("hi")));
+    InboxEntry told = InboxEntry.told(List.of(new TextBlock("hi")));
 
-    store().appendAgenda(id, told);
+    store().append(id, told);
 
     ConversationStore.Loaded loaded = store().load(id).orElseThrow();
     assertThat(loaded.state()).isEqualTo(ConversationState.newConversation(id));
-    assertThat(loaded.agenda()).containsExactly(told);
+    assertThat(loaded.inbox()).containsExactly(told);
   }
 
   @Test
   void appends_are_unconditional_and_ordered() {
     ConversationId id = ConversationId.generate();
     store().save(ConversationState.newConversation(id), List.of());
-    AgendaItem first = AgendaItem.told(List.of(new TextBlock("first")));
-    AgendaItem second = AgendaItem.told(List.of(new TextBlock("second")));
-    AgendaItem third = AgendaItem.told(List.of(new TextBlock("third")));
+    InboxEntry first = InboxEntry.told(List.of(new TextBlock("first")));
+    InboxEntry second = InboxEntry.told(List.of(new TextBlock("second")));
+    InboxEntry third = InboxEntry.told(List.of(new TextBlock("third")));
 
-    store().appendAgenda(id, first);
-    store().appendAgenda(id, second);
-    store().appendAgenda(id, third);
+    store().append(id, first);
+    store().append(id, second);
+    store().append(id, third);
 
-    assertThat(store().load(id).orElseThrow().agenda()).containsExactly(first, second, third);
+    assertThat(store().load(id).orElseThrow().inbox()).containsExactly(first, second, third);
   }
 
   @Test
@@ -126,7 +126,7 @@ public abstract class ConversationStoreContract {
     store().save(ConversationState.newConversation(id), List.of());
     ConversationState loaded = store().load(id).orElseThrow().state();
 
-    store().appendAgenda(id, AgendaItem.told(List.of(new TextBlock("hi"))));
+    store().append(id, InboxEntry.told(List.of(new TextBlock("hi"))));
     ConversationState saved = store().save(loaded, List.of());
 
     assertThat(saved.version()).isEqualTo(loaded.version() + 1);
@@ -136,30 +136,30 @@ public abstract class ConversationStoreContract {
   void draining_removes_exactly_the_named_entries_atomically_with_the_save() {
     ConversationId id = ConversationId.generate();
     ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
-    AgendaItem.Told keep = AgendaItem.told(List.of(new TextBlock("keep")));
-    AgendaItem.Told drain = AgendaItem.told(List.of(new TextBlock("drain")));
-    store().appendAgenda(id, keep);
-    store().appendAgenda(id, drain);
+    InboxEntry.Told keep = InboxEntry.told(List.of(new TextBlock("keep")));
+    InboxEntry.Told drain = InboxEntry.told(List.of(new TextBlock("drain")));
+    store().append(id, keep);
+    store().append(id, drain);
 
     store().save(v1, List.of(drain.id()));
 
-    assertThat(store().load(id).orElseThrow().agenda()).containsExactly(keep);
+    assertThat(store().load(id).orElseThrow().inbox()).containsExactly(keep);
   }
 
   @Test
   void a_load_after_a_draining_save_never_pairs_the_bumped_version_with_the_drained_entry() {
     ConversationId id = ConversationId.generate();
     ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
-    AgendaItem.Told keep = AgendaItem.told(List.of(new TextBlock("keep")));
-    AgendaItem.Told drain = AgendaItem.told(List.of(new TextBlock("drain")));
-    store().appendAgenda(id, keep);
-    store().appendAgenda(id, drain);
+    InboxEntry.Told keep = InboxEntry.told(List.of(new TextBlock("keep")));
+    InboxEntry.Told drain = InboxEntry.told(List.of(new TextBlock("drain")));
+    store().append(id, keep);
+    store().append(id, drain);
 
     ConversationState v2 = store().save(v1, List.of(drain.id()));
 
     ConversationStore.Loaded loaded = store().load(id).orElseThrow();
     assertThat(loaded.state().version()).isEqualTo(v2.version());
-    assertThat(loaded.agenda()).containsExactly(keep);
+    assertThat(loaded.inbox()).containsExactly(keep);
   }
 
   @Test

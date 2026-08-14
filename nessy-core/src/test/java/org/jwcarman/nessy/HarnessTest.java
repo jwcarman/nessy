@@ -43,10 +43,10 @@ import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
@@ -304,8 +304,8 @@ class HarnessTest {
 
   /**
    * {@code Harness.resume} (design 2026-08-12): the facade over {@code findParkConversation} +
-   * {@code consumeToken} + {@code appendAgenda} + {@code drive} — pinned end to end through a real
-   * {@link Agent}, wired the way an application actually would.
+   * {@code consumeToken} + {@code append} + {@code drive} — pinned end to end through a real {@link
+   * Agent}, wired the way an application actually would.
    */
   @Nested
   class Resume {
@@ -674,15 +674,15 @@ class HarnessTest {
       }
 
       @Override
-      public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
-        ConversationState saved = delegate.save(state, drainedAgendaIds);
+      public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
+        ConversationState saved = delegate.save(state, drainedInboxIds);
         saved.parkedCalls().forEach(parked -> everParked.put(parked.token(), state.id()));
         return saved;
       }
 
       @Override
-      public void appendAgenda(ConversationId id, AgendaItem entry) {
-        delegate.appendAgenda(id, entry);
+      public void append(ConversationId id, InboxEntry entry) {
+        delegate.append(id, entry);
       }
 
       @Override
@@ -975,13 +975,13 @@ class HarnessTest {
       }
 
       @Override
-      public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
-        return delegate.save(state, drainedAgendaIds);
+      public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
+        return delegate.save(state, drainedInboxIds);
       }
 
       @Override
-      public void appendAgenda(ConversationId id, AgendaItem entry) {
-        delegate.appendAgenda(id, entry);
+      public void append(ConversationId id, InboxEntry entry) {
+        delegate.append(id, entry);
       }
 
       @Override

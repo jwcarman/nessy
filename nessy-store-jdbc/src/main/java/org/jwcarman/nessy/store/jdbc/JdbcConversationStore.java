@@ -33,9 +33,9 @@ import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
@@ -44,8 +44,8 @@ import org.jwcarman.nessy.spi.conversation.StaleStateException;
 /**
  * The reference durable {@link ConversationStore}: plain JDBC against Postgres, no Spring, no JPA —
  * the house stance. See {@code schema.sql} on the classpath next to this class for the four tables
- * it reads and writes: {@code nessy_conversation} (the fenced control block), {@code nessy_agenda}
- * (the append-only agenda), {@code nessy_park} (the token index), and {@code nessy_token}
+ * it reads and writes: {@code nessy_conversation} (the fenced control block), {@code nessy_inbox}
+ * (the append-only inbox), {@code nessy_park} (the token index), and {@code nessy_token}
  * (single-use resume tokens).
  *
  * <p>The constructor alone does not create those tables — a caller pointing at a database another
@@ -120,12 +120,12 @@ public final class JdbcConversationStore implements ConversationStore {
         Connection.TRANSACTION_REPEATABLE_READ,
         connection -> {
           Optional<ConversationState> row = readState(connection, id);
-          List<AgendaItem> agenda = readAgenda(connection, id);
-          if (row.isEmpty() && agenda.isEmpty()) {
+          List<InboxEntry> inbox = readInbox(connection, id);
+          if (row.isEmpty() && inbox.isEmpty()) {
             return Optional.empty();
           }
           ConversationState state = row.orElseGet(() -> ConversationState.newConversation(id));
-          return Optional.of(new Loaded(state, agenda));
+          return Optional.of(new Loaded(state, inbox));
         });
   }
 
@@ -148,16 +148,15 @@ public final class JdbcConversationStore implements ConversationStore {
     }
   }
 
-  private List<AgendaItem> readAgenda(Connection connection, ConversationId id)
-      throws SQLException {
+  private List<InboxEntry> readInbox(Connection connection, ConversationId id) throws SQLException {
     try (PreparedStatement ps =
         connection.prepareStatement(
-            "SELECT payload FROM nessy_agenda WHERE conversation_id = ? ORDER BY entry_id")) {
+            "SELECT payload FROM nessy_inbox WHERE conversation_id = ? ORDER BY entry_id")) {
       ps.setString(1, id.value());
       try (ResultSet rs = ps.executeQuery()) {
-        List<AgendaItem> entries = new ArrayList<>();
+        List<InboxEntry> entries = new ArrayList<>();
         while (rs.next()) {
-          entries.add(codec.readAgendaItem(rs.getString("payload")));
+          entries.add(codec.readInboxEntry(rs.getString("payload")));
         }
         return List.copyOf(entries);
       }
@@ -165,9 +164,9 @@ public final class JdbcConversationStore implements ConversationStore {
   }
 
   @Override
-  public ConversationState save(ConversationState state, Collection<String> drainedAgendaIds) {
+  public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
     Objects.requireNonNull(state, "state must not be null");
-    Objects.requireNonNull(drainedAgendaIds, "drainedAgendaIds must not be null");
+    Objects.requireNonNull(drainedInboxIds, "drainedInboxIds must not be null");
     ConversationId id = state.id();
     long expected = state.version();
     ConversationState bumped = state.withVersion(expected + 1);
@@ -195,7 +194,7 @@ public final class JdbcConversationStore implements ConversationStore {
             }
           }
 
-          drainAgenda(connection, id, drainedAgendaIds);
+          drainInbox(connection, id, drainedInboxIds);
           syncParks(connection, id, bumped.parkedCalls());
           return bumped;
         });
@@ -227,13 +226,13 @@ public final class JdbcConversationStore implements ConversationStore {
     }
   }
 
-  private void drainAgenda(
-      Connection connection, ConversationId id, Collection<String> drainedAgendaIds)
+  private void drainInbox(
+      Connection connection, ConversationId id, Collection<String> drainedInboxIds)
       throws SQLException {
-    Array ids = connection.createArrayOf("text", drainedAgendaIds.toArray(new String[0]));
+    Array ids = connection.createArrayOf("text", drainedInboxIds.toArray(new String[0]));
     try (PreparedStatement ps =
         connection.prepareStatement(
-            "DELETE FROM nessy_agenda WHERE entry_id = ANY(?) AND conversation_id = ?")) {
+            "DELETE FROM nessy_inbox WHERE entry_id = ANY(?) AND conversation_id = ?")) {
       ps.setArray(1, ids);
       ps.setString(2, id.value());
       ps.executeUpdate();
@@ -279,20 +278,20 @@ public final class JdbcConversationStore implements ConversationStore {
   }
 
   @Override
-  public void appendAgenda(ConversationId id, AgendaItem entry) {
+  public void append(ConversationId id, InboxEntry entry) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(entry, "entry must not be null");
-    String kind = entry instanceof AgendaItem.Told ? "told" : "resolved";
+    String kind = entry instanceof InboxEntry.Told ? "told" : "resolved";
     withConnection(
         connection -> {
           try (PreparedStatement ps =
               connection.prepareStatement(
-                  "INSERT INTO nessy_agenda (entry_id, conversation_id, kind, payload)"
+                  "INSERT INTO nessy_inbox (entry_id, conversation_id, kind, payload)"
                       + " VALUES (?, ?, ?, ?::jsonb)")) {
             ps.setString(1, entry.id());
             ps.setString(2, id.value());
             ps.setString(3, kind);
-            ps.setString(4, codec.writeAgendaItem(entry));
+            ps.setString(4, codec.writeInboxEntry(entry));
             ps.executeUpdate();
           }
           return null;

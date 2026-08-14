@@ -21,14 +21,14 @@ CREATE TABLE IF NOT EXISTS nessy_conversation (
   state    jsonb  NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS nessy_agenda (
+CREATE TABLE IF NOT EXISTS nessy_inbox (
   entry_id        text PRIMARY KEY,
   conversation_id text NOT NULL,
   kind            text NOT NULL,          -- 'told' | 'resolved'
   payload         jsonb NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS nessy_agenda_conversation ON nessy_agenda (conversation_id, entry_id);
+CREATE INDEX IF NOT EXISTS nessy_inbox_conversation ON nessy_inbox (conversation_id, entry_id);
 
 CREATE TABLE IF NOT EXISTS nessy_park (
   token           text PRIMARY KEY,

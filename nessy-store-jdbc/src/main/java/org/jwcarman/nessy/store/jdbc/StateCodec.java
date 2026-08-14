@@ -23,8 +23,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ToolResolution;
-import org.jwcarman.nessy.api.conversation.AgendaItem;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -38,11 +38,11 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 /**
  * Jackson (de)serialization for the shapes {@link JdbcConversationStore} and {@link JdbcMemory}
  * persist as Postgres {@code jsonb}: the {@link ConversationState} control block, one {@link
- * AgendaItem} per agenda row, the bare {@link ToolCall} a park row remembers, and one {@link
+ * InboxEntry} per inbox row, the bare {@link ToolCall} a park row remembers, and one {@link
  * Message} per {@code nessy_memory} row.
  *
  * <p>Every sealed hierarchy this codec crosses — {@link ContentBlock}, {@link ToolResolution},
- * {@link Decision}, {@link AgendaItem} — is not itself annotated; annotating {@code nessy-core}'s
+ * {@link Decision}, {@link InboxEntry} — is not itself annotated; annotating {@code nessy-core}'s
  * API types for one storage backend's wire format would leak a JDBC concern into the core module.
  * Instead each gets a private mixin here, registered with {@link ObjectMapper#addMixIn} on a {@link
  * ObjectMapper#copy() copy} of the mapper the caller hands in — the caller's own mapper, however it
@@ -69,7 +69,7 @@ final class StateCodec {
     copy.addMixIn(ContentBlock.class, ContentBlockMixin.class);
     copy.addMixIn(ToolResolution.class, ToolResolutionMixin.class);
     copy.addMixIn(Decision.class, DecisionMixin.class);
-    copy.addMixIn(AgendaItem.class, AgendaItemMixin.class);
+    copy.addMixIn(InboxEntry.class, InboxEntryMixin.class);
     copy.addMixIn(ConversationState.class, ConversationStateMixin.class);
     return copy;
   }
@@ -82,12 +82,12 @@ final class StateCodec {
     return read(json, ConversationState.class);
   }
 
-  String writeAgendaItem(AgendaItem entry) {
+  String writeInboxEntry(InboxEntry entry) {
     return write(entry);
   }
 
-  AgendaItem readAgendaItem(String json) {
-    return read(json, AgendaItem.class);
+  InboxEntry readInboxEntry(String json) {
+    return read(json, InboxEntry.class);
   }
 
   String writeToolCall(ToolCall call) {
@@ -149,10 +149,10 @@ final class StateCodec {
 
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
   @JsonSubTypes({
-    @JsonSubTypes.Type(value = AgendaItem.Told.class, name = "told"),
-    @JsonSubTypes.Type(value = AgendaItem.Resolved.class, name = "resolved"),
+    @JsonSubTypes.Type(value = InboxEntry.Told.class, name = "told"),
+    @JsonSubTypes.Type(value = InboxEntry.Resolved.class, name = "resolved"),
   })
-  private interface AgendaItemMixin {}
+  private interface InboxEntryMixin {}
 
   /**
    * {@link ConversationState#isQuiescent()} is a derived predicate, not a record component: with no
