@@ -134,7 +134,11 @@ earns its shape by use.
 - **`SummarizingMemory`** (spi.memory): wraps a `Transcript`, a
   `SummaryStore`, a `ModelProvider` + model name + summarization prompt,
   and a tail threshold. `remember` appends to the transcript. `recall`:
-  load the summary (absent → watermark 0, no text); load
+  load the summary (absent → nothing folded yet, an internal
+  before-version-0 sentinel that is never persisted — transcript versions
+  start at 0, so a literal watermark of 0 would silently claim the first
+  message as already summarized; amended 2026-08-14 when implementation
+  proved the original "absent → watermark 0" wording wrong); load
   `tail(id, watermark)`; if the tail exceeds the threshold, one model call
   folds summary + tail into a new summary, saved with the tail's last
   version as the new watermark, and the tail reloads from there; the
@@ -144,8 +148,11 @@ earns its shape by use.
   and the next recall re-summarizes the same tail — idempotent because the
   transcript is the truth.
 - Its model spend never touches `ConversationState.usage` — the existing
-  jurisdiction ruling (design §10.6) already covers it; the call is
-  instrumented on its own observation span.
+  jurisdiction ruling (design §10.6) already covers it. (Amended
+  2026-08-14: the original draft also promised the call "instrumented on
+  its own observation span"; the shipped constructor deliberately takes no
+  `ObservationRegistry`, so that instrumentation is future work, recorded
+  here rather than silently dropped.)
 - Summarization must keep tool exchanges whole in what it leaves behind:
   the boundary it summarizes up to is chosen pair-safely (the same genuine
   user-turn rule `Context.pairSafeCut` embodies), so the remaining tail is
