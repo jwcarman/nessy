@@ -23,6 +23,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
 import org.jwcarman.nessy.store.jdbc.JdbcMemory;
 import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -45,31 +46,54 @@ import org.springframework.context.annotation.Bean;
  * {@code JdbcConversationStore}/{@code JdbcMemory}'s bootstrapping {@code create} factories (the
  * default: {@code CREATE TABLE IF NOT EXISTS} run once at startup) and their public constructors,
  * which skip DDL entirely for a datasource another process already bootstrapped.
+ *
+ * <p>An {@link ObjectMapper} bean is an {@link ObjectProvider}, not a hard constructor parameter:
+ * unlike {@link NessyAutoConfiguration}, which only ever runs in a webmvc app where Boot's own
+ * Jackson autoconfiguration has already put an {@code ObjectMapper} in context, this configuration
+ * has no such guarantee — a non-web Boot application with {@code store-jdbc} and a {@link
+ * DataSource} but no Jackson autoconfiguration would otherwise fail with {@code
+ * NoSuchBeanDefinitionException} the moment either bean method resolved its parameter. The
+ * fallback, a bare {@code new ObjectMapper()}, is safe precisely because {@code JdbcPersistence}'s
+ * codec (see {@code StateCodec}) never uses the mapper it is handed as-is: it registers its own
+ * sealed-type mixins on a private {@link ObjectMapper#copy() copy}, so a plain, unconfigured mapper
+ * here loses nothing the wire format needs.
  */
 @AutoConfiguration
 @ConditionalOnClass(JdbcPersistence.class)
 @ConditionalOnBean(DataSource.class)
-@ConditionalOnProperty(name = "nessy.jdbc.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+    name = JdbcProperties.JDBC_ENABLED_PROPERTY,
+    havingValue = "true",
+    matchIfMissing = true)
 @EnableConfigurationProperties(NessyProperties.class)
 public class JdbcPersistenceAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
   ConversationStore conversationStore(
-      DataSource dataSource, ObjectMapper mapper, NessyProperties properties) {
+      DataSource dataSource, ObjectProvider<ObjectMapper> mapper, NessyProperties properties) {
     return build(
         properties.bootstrapSchema(),
         dataSource,
-        mapper,
+        resolveMapper(mapper),
         JdbcConversationStore::create,
         JdbcConversationStore::new);
   }
 
   @Bean
   @ConditionalOnMissingBean
-  Memory memory(DataSource dataSource, ObjectMapper mapper, NessyProperties properties) {
+  Memory memory(
+      DataSource dataSource, ObjectProvider<ObjectMapper> mapper, NessyProperties properties) {
     return build(
-        properties.bootstrapSchema(), dataSource, mapper, JdbcMemory::create, JdbcMemory::new);
+        properties.bootstrapSchema(),
+        dataSource,
+        resolveMapper(mapper),
+        JdbcMemory::create,
+        JdbcMemory::new);
+  }
+
+  private static ObjectMapper resolveMapper(ObjectProvider<ObjectMapper> mapper) {
+    return mapper.getIfAvailable(ObjectMapper::new);
   }
 
   /**

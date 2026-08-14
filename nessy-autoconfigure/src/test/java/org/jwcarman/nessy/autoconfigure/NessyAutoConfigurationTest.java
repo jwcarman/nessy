@@ -16,12 +16,14 @@
 package org.jwcarman.nessy.autoconfigure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.AgentConfigurationException;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.ParkToken;
@@ -81,7 +83,13 @@ class NessyAutoConfigurationTest {
   }
 
   @Test
-  void boots_observation_registry_is_woven_in() {
+  void a_present_observation_registry_does_not_break_harness_assembly() {
+    // ObservationRegistry#ifAvailable is a package-private wire-through with no public accessor
+    // to reflect into, same limit NessyAutoConfigurationTest hits everywhere else in this class —
+    // the cheap, non-reflective proof available offline is that a present registry bean doesn't
+    // throw building the Harness. The registry's spans actually joining Boot's own HTTP/JDBC
+    // trace is chat-web's Grafana story (its docker-compose observability stack), not something
+    // an offline ApplicationContextRunner can observe.
     runner
         .withBean(ObservationRegistry.class, ObservationRegistry::create)
         .run(context -> assertThat(context).hasNotFailed());
@@ -89,13 +97,25 @@ class NessyAutoConfigurationTest {
 
   @Test
   void nessy_default_model_reaches_the_harness() {
-    // Harness#defaultModel() is package-private and Harness exposes no public accessor for it —
-    // the only cheap, non-reflective proof available here is that the context assembles cleanly
-    // with the property set. The model actually reaching a built agent's turns is chat-web's
-    // integration-level story, not this offline context runner's.
+    // Harness#defaultModel() is package-private and Harness exposes no public accessor for it, so
+    // the proof has to go through behavior instead of a getter: AgentBuilder#build() requires a
+    // model from somewhere (an explicit agent().model(...) call or the harness's own
+    // defaultModel), throwing AgentConfigurationException otherwise. The negative case first —
+    // no nessy.default-model, agent().build() fails — establishes that this really is the
+    // discriminating signal, not something build() would succeed at regardless.
+    runner.run(
+        context -> {
+          Harness bare = context.getBean(Harness.class);
+          assertThatThrownBy(() -> bare.agent().build())
+              .isInstanceOf(AgentConfigurationException.class);
+        });
     runner
         .withPropertyValues("nessy.default-model=claude-haiku")
-        .run(context -> assertThat(context).hasNotFailed());
+        .run(
+            context -> {
+              Harness harness = context.getBean(Harness.class);
+              assertThat(harness.agent().build()).isNotNull();
+            });
   }
 
   @Test

@@ -22,18 +22,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>{@link Jdbc#enabled()} and {@link Jdbc#bootstrapSchema()} are boxed {@link Boolean}s rather
  * than primitives so an absent property is distinguishable from an explicit {@code false}: {@link
- * #jdbc} itself binds to {@code null} when no {@code nessy.jdbc.*} property is set at all, and
- * {@link #jdbcEnabled()} / {@link #bootstrapSchema()} are the defaulting accessors callers should
- * use instead of reading {@link #jdbc} directly — both default to {@code true} when unset.
+ * #jdbc} itself binds to {@code null} when no {@code nessy.jdbc.*} property is set at all. {@link
+ * Jdbc#enabled()} itself is never read in Java — {@link
+ * org.jwcarman.nessy.autoconfigure.JdbcPersistenceAutoConfiguration}'s
+ * {@code @ConditionalOnProperty} binds the {@code nessy.jdbc.enabled} property straight from the
+ * environment (see {@link org.jwcarman.nessy.autoconfigure.JdbcProperties#JDBC_ENABLED_PROPERTY}),
+ * since a condition evaluates before any {@code @ConfigurationProperties} bean, including this one,
+ * exists. {@link #bootstrapSchema()} is the one defaulting accessor callers should use instead of
+ * reading {@link #jdbc} directly — it defaults to {@code true} when unset.
  */
 @ConfigurationProperties(prefix = "nessy")
 public record NessyProperties(
     String provider, Anthropic anthropic, OpenAi openai, String defaultModel, Jdbc jdbc) {
-
-  /** Whether JDBC persistence should be wired up. Defaults to {@code true} when unset. */
-  public boolean jdbcEnabled() {
-    return jdbc == null || jdbc.enabled() == null || jdbc.enabled();
-  }
 
   /**
    * Whether the JDBC store should bootstrap its own schema. Defaults to {@code true} when unset.

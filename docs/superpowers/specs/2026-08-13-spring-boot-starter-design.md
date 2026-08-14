@@ -151,9 +151,14 @@ tests need neither Docker nor a key.
 - **chat-web rewrite, round two** (this module's acceptance test): drops its
   provider/store/memory/harness beans and its `SseEvents`/`sendEvent`/
   snapshot-runner statics; keeps the agent bean, the controllers' app-shaped
-  tails, and the UI. The `@Profile("!test")` split moves to the property
+  tails, and the UI. ~~The `@Profile("!test")` split moves to the property
   level (`nessy.provider` unset + a test-profile `Harness` bean keeps
-  working — the smoke's bean override already wins by `OnMissingBean`).
+  working — the smoke's bean override already wins by `OnMissingBean`).~~
+  **Amendment (2026-08-13, final review):** the split dissolved entirely
+  rather than moving — chat-web round two deleted `@Profile("!test")`
+  outright; no property-level substitute was needed, since the smoke test's
+  `@TestConfiguration` `Harness` bean already wins over the starter's own via
+  the same `@ConditionalOnMissingBean` every autoconfigured bean here honors.
 - **README**: the observability section's "that starter does not exist yet"
   and Status §'s not-yet-built list both flip; the durable section gains the
   two-line Boot recipe.
@@ -166,7 +171,13 @@ tests need neither Docker nor a key.
 Agent autoconfiguration in any form (identity is not configuration), GraalVM
 native/AOT metadata, actuator endpoints or health indicators for
 conversations (an ops surface is a future design, not a starter freebie),
-WebFlux variants of the bridge (servlet + virtual threads is the house
-position), a `-autoconfigure`/`-starter` artifact split (one module until
-proven needed), auto-registration of `TurnObserver`s or listeners (observers
+~~a `-autoconfigure`/`-starter` artifact split (one module until proven
+needed),~~ WebFlux variants of the bridge (servlet + virtual threads is the
+house position), auto-registration of `TurnObserver`s or listeners (observers
 are per-entry by invariant — DX §4).
+
+**Amendment (2026-08-13, final review):** the `-autoconfigure`/`-starter`
+split was struck from this list — §2 ships exactly that split
+(`nessy-autoconfigure` + `nessy-spring-boot-starter`) as the mocapi shape
+this design chose from the start; it was never actually deliberately not
+built, and listing it here contradicted §2 outright.

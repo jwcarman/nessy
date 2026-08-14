@@ -23,6 +23,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionMessage;
 import org.springframework.boot.autoconfigure.condition.ConditionOutcome;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
 import org.springframework.boot.autoconfigure.condition.SpringBootCondition;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -61,6 +62,25 @@ public class OpenAiProviderAutoConfiguration {
   @Conditional(OpenAiIsTheChoiceCondition.class)
   ModelProvider openAiModelProvider(NessyProperties properties) {
     return buildOpenAiProvider(properties);
+  }
+
+  /**
+   * {@code nessy.provider} names something other than {@code anthropic} or {@code openai} — most
+   * likely a typo. {@link AnthropicProviderAutoConfiguration#invalidProviderModelProvider} already
+   * covers every case where {@code nessy-model-anthropic} is on the classpath (single-jar or
+   * both-jars); this bean fills the one gap that leaves — an OpenAI-only classpath — gated on
+   * Anthropic's absence so the two never both match and race a duplicate bean definition.
+   */
+  @Bean
+  @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
+  @ConditionalOnMissingClass(value = ProviderProperties.ANTHROPIC_PROVIDER_CLASS_NAME)
+  @Conditional(InvalidProviderCondition.class)
+  ModelProvider invalidProviderModelProvider(NessyProperties properties) {
+    throw new IllegalStateException(
+        "nessy.provider="
+            + properties.provider()
+            + " is not a recognized value; expected"
+            + " anthropic or openai");
   }
 
   /**

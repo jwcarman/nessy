@@ -42,4 +42,33 @@
       <version>${project.version}</version>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!-- This module is deliberately src-less (a dependency aggregator, no src/main/java at
+           all), so both plugins below would otherwise skip their release-profile executions
+           outright (maven-source-plugin's own default) or produce nothing to archive
+           (maven-javadoc-plugin, once there's no source path to scan) — leaving the module's
+           Maven Central Portal publication without the -sources.jar / -javadoc.jar every
+           non-pom artifact there is required to carry. forceCreation makes the source plugin
+           build an empty sources jar regardless; the empty overview forces the javadoc plugin
+           to do the same instead of silently producing nothing. Boot's own starter poms (e.g.
+           spring-boot-starter-web) are the same src-less shape and force the same pair for the
+           same reason. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <configuration>
+          <forceCreation>true</forceCreation>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <sourcepath>${project.basedir}/src/main/javadoc</sourcepath>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

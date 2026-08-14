@@ -31,8 +31,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * core of {@code ChatController.postMessage}'s pattern, generalized so any endpoint that owns a
  * {@code Function<SseEmitter, RunOutcome>} and an outcome handler gets the same wiring for free.
  *
- * <p>{@link ContextSnapshotFactory#captureAll()} runs on the calling thread (the HTTP request
- * thread) before the virtual thread starts: a fresh virtual thread begins with every {@code
+ * <p>{@link ContextSnapshotFactory#captureAll(Object...)} runs on the calling thread (the HTTP
+ * request thread) before the virtual thread starts: a fresh virtual thread begins with every {@code
  * ThreadLocal} empty, so without this capture-and-restore, Micrometer's current-{@code Observation}
  * scope (and anything else registered with context-propagation) would parent the turn's own spans
  * onto nothing and start a new trace instead of continuing the request's.

@@ -96,6 +96,22 @@ class JdbcPersistenceAutoConfigurationTest {
   }
 
   @Test
+  void a_missing_object_mapper_bean_still_yields_store_and_memory() {
+    // A non-web Boot app pulls in no Jackson autoconfiguration, so no ObjectMapper bean exists
+    // in context at all; JdbcPersistence must fall back to a mapper of its own rather than fail
+    // with NoSuchBeanDefinitionException the moment ConversationStore/Memory try to resolve one.
+    runner
+        .withBean(DataSource.class, UnusedDataSource::new)
+        .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).hasSingleBean(ConversationStore.class);
+              assertThat(context).hasSingleBean(Memory.class);
+            });
+  }
+
+  @Test
   void jdbc_module_absent_means_no_jdbc_beans() {
     runner
         .withClassLoader(new FilteredClassLoader(JdbcPersistence.class))

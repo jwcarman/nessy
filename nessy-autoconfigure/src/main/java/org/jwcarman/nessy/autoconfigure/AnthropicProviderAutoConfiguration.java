@@ -77,6 +77,25 @@ public class AnthropicProviderAutoConfiguration {
   }
 
   /**
+   * {@code nessy.provider} names something other than {@code anthropic} or {@code openai} — most
+   * likely a typo. Declared here (rather than only in the ambiguous-classpath case above) so it
+   * fires whenever this module is on the classpath at all, single-jar or both-jars; {@link
+   * OpenAiProviderAutoConfiguration#invalidProviderModelProvider} covers the remaining case, an
+   * OpenAI-only classpath, without racing a duplicate bean definition against this one when both
+   * jars are present.
+   */
+  @Bean
+  @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
+  @Conditional(InvalidProviderCondition.class)
+  ModelProvider invalidProviderModelProvider(NessyProperties properties) {
+    throw new IllegalStateException(
+        "nessy.provider="
+            + properties.provider()
+            + " is not a recognized value; expected"
+            + " anthropic or openai");
+  }
+
+  /**
    * {@code nessy.anthropic.api-key} / {@code nessy.anthropic.base-url} are overrides layered on top
    * of the SDK's own environment resolution, not replacements for it: {@link
    * AnthropicModelProvider.Builder#fromEnv()} is always called first (it only sets a flag — nothing

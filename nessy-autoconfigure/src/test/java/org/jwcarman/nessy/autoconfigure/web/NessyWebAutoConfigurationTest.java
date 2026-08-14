@@ -17,6 +17,7 @@ package org.jwcarman.nessy.autoconfigure.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.context.ContextSnapshotFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
@@ -38,6 +39,21 @@ class NessyWebAutoConfigurationTest {
   void sse_emitter_absent_means_no_turn_runner_bean() {
     runner
         .withClassLoader(new FilteredClassLoader(SseEmitter.class))
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).doesNotHaveBean(TurnRunner.class);
+            });
+  }
+
+  @Test
+  void context_propagation_absent_means_no_turn_runner_bean() {
+    // TurnRunner's field initializer constructs a ContextSnapshotFactory outright, so a webmvc
+    // app that lacks io.micrometer:context-propagation (an optional dependency micrometer-tracing
+    // normally pulls in, not spring-webmvc itself) would crash with NoClassDefFoundError the
+    // moment Spring tried to instantiate the bean — a webmvc-only gate can't see that missing jar.
+    runner
+        .withClassLoader(new FilteredClassLoader(ContextSnapshotFactory.class))
         .run(
             context -> {
               assertThat(context).hasNotFailed();

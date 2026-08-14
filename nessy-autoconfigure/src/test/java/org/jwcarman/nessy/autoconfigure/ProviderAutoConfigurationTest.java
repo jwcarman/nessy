@@ -118,4 +118,48 @@ class ProviderAutoConfigurationTest {
                 assertThat(context.getBean(ModelProvider.class))
                     .isInstanceOf(OpenAiModelProvider.class));
   }
+
+  @Test
+  void an_unrecognized_provider_value_fails_fast_naming_the_property_with_both_jars_present() {
+    runner
+        .withPropertyValues("nessy.provider=anthorpic")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseMessage(
+                      "nessy.provider=anthorpic is not a recognized value; expected anthropic or"
+                          + " openai");
+            });
+  }
+
+  @Test
+  void an_unrecognized_provider_value_fails_fast_with_only_the_anthropic_jar_present() {
+    runner
+        .withClassLoader(new FilteredClassLoader(OpenAiModelProvider.class))
+        .withPropertyValues("nessy.provider=anthorpic")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseMessage(
+                      "nessy.provider=anthorpic is not a recognized value; expected anthropic or"
+                          + " openai");
+            });
+  }
+
+  @Test
+  void an_unrecognized_provider_value_fails_fast_with_only_the_openai_jar_present() {
+    runner
+        .withClassLoader(new FilteredClassLoader(AnthropicModelProvider.class))
+        .withPropertyValues("nessy.provider=anthorpic")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseMessage(
+                      "nessy.provider=anthorpic is not a recognized value; expected anthropic or"
+                          + " openai");
+            });
+  }
 }

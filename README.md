@@ -452,17 +452,30 @@ then autoconfigured from whatever provider, store, `ObservationRegistry`, and
 **Agents are never autoconfigured** — identity (model, prompt, tools,
 policies) stays the application's own `Harness#agent()` call, always; that
 razor is deliberate, not an oversight. Any autoconfigured bean backs off the
-moment the application declares its own, including a hand-declared `Harness`,
-which suppresses the provider and store autoconfiguration outright, since a
-`Harness` cannot exist without both.
+moment the application declares its own: a hand-declared `Harness` suppresses
+the *provider* autoconfiguration outright (each provider bean backs off the
+moment either a `ModelProvider` or a `Harness` bean is already present, since
+an app that supplied its own `Harness` has, by construction, already brought
+its own provider). Persistence is not part of that suppression — it wires
+independently, from classpath plus `DataSource` plus property alone, with no
+back-off for a hand-declared `Harness` — so a hand-declared `Harness` may
+still consume the autoconfigured store the same way the harness
+autoconfiguration itself does. A `Harness` is also fine with no store at all:
+`ConversationStore`/`Memory` are each `ObjectProvider`-optional, defaulting to
+an in-memory implementation when neither the JDBC autoconfiguration nor the
+application supplies one.
 
 With `spring-webmvc` on the classpath, a `TurnRunner` bean also appears: it
 runs a turn on a virtual thread with the request's Micrometer context
 propagated onto it, handing back the `SseEmitter` an application's own
 controller streams from. `TurnEventSse` maps that turn's `TurnEvent`s onto a
-stable wire vocabulary for a browser to key off of: `delta`, `thinking`,
-`tool-requested`, `tool-progress`, `tool-decided`, `tool-completed`,
-`tool-parked` (`{token, tool, args}`), `done`.
+stable wire vocabulary for a browser to key off of, seven names: `delta`,
+`thinking`, `tool-requested`, `tool-progress`, `tool-decided`,
+`tool-completed`, `tool-parked` (`{token, tool, args}`). `done` is not one of
+them — it is emitted separately, by `TurnRunner` itself on failure
+(`{status: "ERROR", failureReason}`) and by the application's own controller
+on success; `"ERROR"` there is a wire sentinel for the failure case, not a
+`ConversationStatus` value.
 
 The whole property surface is deliberately this small — everything more
 exotic rides `fromEnv()`'s own ambient resolution or a hand-declared bean:
