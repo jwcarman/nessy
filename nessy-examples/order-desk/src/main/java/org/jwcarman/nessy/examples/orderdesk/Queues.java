@@ -37,17 +37,21 @@ public class Queues {
   public static final String FULFILLMENT_REPLIES = "fulfillment-replies";
 
   @Bean
-  Queue orders() {
+  Queue ordersQueue() {
     return new Queue(ORDERS);
   }
 
   @Bean
-  Queue fulfillmentRequests() {
+  Queue fulfillmentRequestsQueue() {
     return new Queue(FULFILLMENT_REQUESTS);
   }
 
+  // Named fulfillmentRepliesQueue, not fulfillmentReplies: the latter collides with the
+  // FulfillmentReplies @Component's own default bean name and fails context startup with
+  // BeanDefinitionOverrideException — Task 5's smoke test is what first loaded the whole
+  // Spring context and surfaced it.
   @Bean
-  Queue fulfillmentReplies() {
+  Queue fulfillmentRepliesQueue() {
     return new Queue(FULFILLMENT_REPLIES);
   }
 }

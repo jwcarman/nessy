@@ -24,6 +24,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.DefaultJacksonJavaTypeMapper;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -68,8 +69,18 @@ public class OrderDeskConfig {
         .build();
   }
 
+  // The __TypeId__ header's class is deserialized by name; Jackson's default mapper refuses
+  // any package it hasn't been told to trust (CVE-driven default, spring-amqp's own
+  // TRUSTED_PACKAGES starts at just java.util/java.lang), so this module's own package has to
+  // be added explicitly or every OrderEvent, FulfillmentRequest, and FulfillmentReply message
+  // fails to convert on receipt — a listener-side failure Task 5's smoke test is what first
+  // exercised, since publish-only tests never trip the trust check.
   @Bean
   MessageConverter messageConverter() {
-    return new JacksonJsonMessageConverter();
+    DefaultJacksonJavaTypeMapper typeMapper = new DefaultJacksonJavaTypeMapper();
+    typeMapper.addTrustedPackages(getClass().getPackageName());
+    JacksonJsonMessageConverter converter = new JacksonJsonMessageConverter();
+    converter.setJavaTypeMapper(typeMapper);
+    return converter;
   }
 }
