@@ -42,5 +42,6 @@
     <module>chat-web</module>
     <module>night-watchman</module>
     <module>order-desk</module>
+    <module>dispatcher</module>
   </modules>
 </project>
