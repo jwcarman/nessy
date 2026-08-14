@@ -19,6 +19,9 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.slf4j.Logger;
@@ -50,18 +53,19 @@ public final class TurnEventSse {
   /** Maps one {@link TurnEvent} to the named payload spec §4's endpoint table promises. */
   public static Event of(TurnEvent event) {
     return switch (event) {
-      case TurnEvent.TextDelta e -> new Event("delta", Map.of("text", e.text()));
-      case TurnEvent.ThinkingDelta e -> new Event("thinking", Map.of("text", e.text()));
-      case TurnEvent.RedactedThinking e -> new Event("thinking", Map.of("text", "[redacted]"));
-      case TurnEvent.ToolCallRequested e ->
-          new Event("tool-requested", Map.of("id", e.call().id(), "name", e.call().name()));
-      case TurnEvent.ToolCallProgressed e ->
-          new Event("tool-progress", Map.of("id", e.call().id(), "message", e.message()));
-      case TurnEvent.ToolCallDecided e ->
-          new Event("tool-decided", Map.of("id", e.call().id(), "allowed", allowed(e.decision())));
-      case TurnEvent.ToolCallCompleted e ->
-          new Event("tool-completed", Map.of("id", e.call().id(), "error", e.result().isError()));
-      case TurnEvent.ToolCallParked e ->
+      case TurnEvent.TextDelta(String text) -> new Event("delta", Map.of("text", text));
+      case TurnEvent.ThinkingDelta(String text) -> new Event("thinking", Map.of("text", text));
+      case TurnEvent.RedactedThinking( _) ->
+          new Event("thinking", Map.of("text", "[redacted]"));
+      case TurnEvent.ToolCallRequested(ToolCall call) ->
+          new Event("tool-requested", Map.of("id", call.id(), "name", call.name()));
+      case TurnEvent.ToolCallProgressed(ToolCall call, String message) ->
+          new Event("tool-progress", Map.of("id", call.id(), "message", message));
+      case TurnEvent.ToolCallDecided(ToolCall call, Decision decision) ->
+          new Event("tool-decided", Map.of("id", call.id(), "allowed", allowed(decision)));
+      case TurnEvent.ToolCallCompleted(ToolCall call, ToolResult result) ->
+          new Event("tool-completed", Map.of("id", call.id(), "error", result.isError()));
+      case TurnEvent.ToolCallParked(ToolCall call, ParkToken token) ->
           // A retried segment can narrate the same park twice, and a losing concurrent driver's
           // stream can see the park not at all (TurnEvent's own javadoc, at-least-once narration).
           // Neither gap is this module's to close: a reader who missed (or duplicated) this event
@@ -70,9 +74,9 @@ public final class TurnEventSse {
           new Event(
               "tool-parked",
               Map.of(
-                  "token", e.token().value(),
-                  "tool", e.call().name(),
-                  "args", e.call().arguments().toPrettyString()));
+                  "token", token.value(),
+                  "tool", call.name(),
+                  "args", call.arguments().toPrettyString()));
     };
   }
 
@@ -98,8 +102,8 @@ public final class TurnEventSse {
 
   private static boolean allowed(Decision decision) {
     return switch (decision) {
-      case Decision.Allow ignored -> true;
-      case Decision.Deny ignored -> false;
+      case Decision.Allow _ -> true;
+      case Decision.Deny _ -> false;
     };
   }
 }
