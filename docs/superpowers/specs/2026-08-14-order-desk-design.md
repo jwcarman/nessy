@@ -19,10 +19,15 @@ initiates a turn. Five lessons, three of them firsts for the family:
   `ConversationId`, so each order is one conversation that remembers its
   own history, and every event about it lands in the same story;
 - **at-least-once, made visible** — kill the app mid-turn and restart:
-  the broker redelivers the unacked message and the fold's own
-  idempotency absorbs the replay. The store rework's "replay protection
-  is the fold's question" ruling, demonstrated by a real broker
-  misbehaving on cue;
+  the broker redelivers the unacked message and nothing is lost. The
+  fold's replay protection is precise about WHICH half it absorbs
+  (amended 2026-08-14, when the final review proved the original "the
+  fold absorbs the replay" wording overclaimed): a redelivered
+  **resolution** drains as stale mail — the is-this-call-outstanding
+  check, absolute; a redelivered **order event** is re-told — a second
+  `Told` entry, honestly, because at-least-once delivery means consumers
+  may see an event twice, and pretending otherwise would be the demo
+  lying about the one thing it exists to teach;
 - **the machine half, over AMQP** — the tool-side park
   (`Awaited.parked` from `execute`), `ToolResolution.Completed`
   delivered by `harness.resume` from a listener that never saw the ask,
