@@ -196,3 +196,103 @@ files (see Task 1's deviation note) reappeared once more after this task's
 `license:format -Plicense` run and were reverted again before staging;
 non-deterministic across runs in this worktree, cause not fully diagnosed,
 but confirmed harmless each time (never staged, never committed).
+
+## Task 4: The smoke test
+
+**What:** `DispatcherSmokeTest` — one `@SpringBootTest(RANDOM_PORT)`,
+`@Tag("container")`, Testcontainers postgres via `@DynamicPropertySource`
+(matching chat-web's pattern rather than `@ServiceConnection` — chat-web's is
+the more explicit, already-proven-in-this-repo choice, and switching would be
+a stylistic detour this task doesn't need). One `@TestConfiguration` supplies
+a scripted-provider `Harness`, wired on the real `ConversationStore` AND
+`Parks` beans (not just the store, unlike chat-web's own test config) —
+deliberate, since spec §3 calls `JdbcParks` "the load-bearing bean" and the
+duplicate-callback/heard-false assertions only mean anything against the real
+durable registry, not an in-memory stand-in.
+
+Covers every spec §4 bullet in one linear scenario (one incident, sequential
+steps, matching the demo script's own shape): malformed signal → 400; valid
+signal → 202, then `await().untilAsserted` on `GET /incidents/INC-7` reaching
+`PARKED` with one `request_field_crew` card; progress on an unknown token →
+`heard:false`; progress on the real token → `heard:true`, and — this task's
+answer to the plan's "declared sync listener" instruction — verified via
+`Conversation.events().subscribe(ToolProgress.class, ...)`, a per-conversation
+synchronous subscription (`ConversationEvents`'s own javadoc: "Delivery is
+synchronous, in subscription order") rather than a build-time
+`AgentBuilder` listener, since `Harness.agent()` can only be called once and
+`DispatcherConfig`'s production `agent()` bean already claims that call —
+subscribing via `agent.conversation(id).events()` needed no change to
+production wiring at all; completion callback on an unknown token → 404;
+completion callback with the real outcome → 200 `COMPLETE`, transcript's
+final assistant line contains the outcome text (the scripted provider's
+second call reads the tool result straight out of `ModelRequest.context()`
+and echoes it, so this assertion proves the harness actually threaded the
+real outcome through, not a canned string); duplicate completion callback →
+200, same `COMPLETE`, and `await().during(300ms).atMost(2s)` confirms the
+scripted provider's call count holds steady (no replay); progress after
+settlement → `heard:false`.
+
+**RED:** First compile pass failed — not on the test's own logic, but because
+`DispatcherTestConfig.harness(...)` couldn't resolve a `ConversationStore`
+bean: `spring-boot-starter-jdbc` was missing from the module's pom (spec §3's
+dependency list doesn't spell it out explicitly, but `nessy-store-jdbc`
+itself brings no `DataSourceAutoConfiguration` trigger — only the
+`postgresql` driver — so without the starter, `DataSourceAutoConfiguration`
+never builds a `DataSource` bean, `JdbcPersistenceAutoConfiguration`'s
+`@ConditionalOnBean(DataSource.class)` never fires, and there is no
+`ConversationStore`/`Parks` bean at all: `Failed to load ApplicationContext`,
+`NoSuchBeanDefinitionException` for `ConversationStore`). This is real RED —
+a genuine gap the container run caught that the offline build structurally
+cannot (no Docker there to ever exercise `DataSourceAutoConfiguration`
+against a real datasource).
+
+**GREEN:** Added `spring-boot-starter-jdbc` to `nessy-examples/dispatcher/pom.xml`
+(chat-web's own dependency, same justification, documented inline). Re-ran
+the container suite: `./mvnw -q verify -pl nessy-examples/dispatcher -am
+-Dnessy.excludedGroups=` → exit 0. Surefire: `DispatcherSmokeTest` 1/1,
+`RequestFieldCrewToolTest` 3/3 (unchanged from Task 2).
+
+**Commands + output tails:**
+```
+./mvnw -q -pl nessy-examples/dispatcher test-compile   # spotless-format-only
+                                                         # RED, then GREEN after apply
+./mvnw -q clean verify                                  # offline reactor: exit 0
+                                                         # (container test correctly
+                                                         # skipped — no @Tag("container"))
+./mvnw -q verify -pl nessy-examples/dispatcher -am \
+  -Dnessy.excludedGroups=                                # RED (missing ConversationStore
+                                                         # bean): exit 1
+# ... spring-boot-starter-jdbc added to pom ...
+./mvnw -q verify -pl nessy-examples/dispatcher -am \
+  -Dnessy.excludedGroups=                                # GREEN: exit 0
+./mvnw -q clean verify                                  # offline reactor again: exit 0
+```
+
+**Self-review:** Confirmed the offline default build truly excludes the
+container test (`nessy.excludedGroups` default configuration; observed the
+container-suite log lines — Testcontainers/Ryuk/Postgres startup — appear
+ONLY in the `-Dnessy.excludedGroups=` run, never in the plain `clean verify`
+run). Read the full container-run log once end to end to confirm the
+narrated story matches spec §2's story beat for beat: tool requested →
+progress logged (both the tool's own `context.progress` and the callback's
+`harness.progress`) → parked with token → callback resumes → completes with
+the outcome quoted. Verified `ScriptedModelProvider`'s echo logic reads the
+LATEST `ToolResultBlock` in context (walking messages backward), not just
+the first one, so it would still be correct if a future scenario added more
+turns.
+
+**Deviations noted:**
+1. `spring-boot-starter-jdbc` added to the module pom — not explicit in spec
+   §3's dependency list; required for `DataSourceAutoConfiguration` /
+   `JdbcPersistenceAutoConfiguration` to activate at all (see RED above).
+   Flagging as a probable spec omission rather than a deliberate exclusion,
+   since spec §3 explicitly calls `JdbcParks` load-bearing.
+2. `@ServiceConnection` vs `@DynamicPropertySource`: chose
+   `@DynamicPropertySource`, matching chat-web exactly, per the plan's "match
+   chat-web unless `@ServiceConnection` is cleaner, say which" — chat-web's
+   pattern is already proven in this repo and needed no new import surface.
+3. The "declared sync listener" instruction is met via
+   `ConversationEvents.subscribe`, not a build-time `AgentBuilder` listener —
+   see the What section above for why the latter isn't available to a test
+   that must share the harness's single `agent()` build with production
+   `DispatcherConfig`.

@@ -58,6 +58,17 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+    <!-- nessy-store-jdbc brings no Spring JDBC autoconfiguration of its own (only the postgresql
+         driver, see its own pom); DataSourceAutoConfiguration (and therefore
+         JdbcPersistenceAutoConfiguration, which is @ConditionalOnBean(DataSource.class)) needs
+         this starter on the classpath to ever build a DataSource bean at all — chat-web's same
+         dependency, for the same reason. Without it there is no ConversationStore, no Parks bean,
+         and this module's whole "JdbcParks is load-bearing" story (spec §3) silently falls back to
+         an in-memory harness instead. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
     <!-- Boot 4's default web stack auto-configures a Jackson 3 (tools.jackson) ObjectMapper;
          nessy-core and every bean in this module are written against classic Jackson 2
          (com.fasterxml.jackson.databind). This module pulls Boot's own backward-compat
