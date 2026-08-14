@@ -628,7 +628,7 @@ sequence of renames and interim shapes that produced it.
   `ParkToken` riding as the AMQP correlation id on the outbound message, and
   an in-app "warehouse" listener plays the request back as a reply carrying
   that same correlation id, which a second listener translates straight
-  into `harness.progress`/`harness.resume` — the kernel's "the token is the
+  into `agent.progress`/`agent.resume` — the kernel's "the token is the
   correlation contract" claim, made wire-visible, with no token field in
   either JSON payload. Acknowledgement is Boot's default AUTO, ruled rather
   than omitted: the container acks on successful listener return and
