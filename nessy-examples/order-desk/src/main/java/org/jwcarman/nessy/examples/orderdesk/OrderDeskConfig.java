@@ -17,7 +17,6 @@ package org.jwcarman.nessy.examples.orderdesk;
 
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
-import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.memory.Memory;
@@ -62,10 +61,6 @@ public class OrderDeskConfig {
         .memory(memory)
         .tools(ToolGrant.grant(new RequestFulfillmentTool(rabbit), UsagePolicy.allow()))
         .onToolProgressAsync(progress -> LOGGER.info("tool progress: {}", progress))
-        // Declared explicitly so the teaching artifact doesn't log the design-§13.1
-        // "no approver configured" WARN at every startup; allow-all is the honest
-        // posture, no human is in this loop.
-        .approver(Approver.allowAll())
         .build();
   }
 

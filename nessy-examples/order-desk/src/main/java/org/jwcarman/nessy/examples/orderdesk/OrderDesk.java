@@ -17,11 +17,8 @@ package org.jwcarman.nessy.examples.orderdesk;
 
 import java.util.Objects;
 import org.jwcarman.nessy.Agent;
-import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -52,34 +49,8 @@ public class OrderDesk {
   public void on(OrderEvent event) {
     String orderId = event.orderId();
     LOGGER.info("order {} begins: {}", orderId, event);
-    StringBuilder said = new StringBuilder();
-    RunOutcome outcome =
-        agent
-            .conversation(new ConversationId("order-" + orderId))
-            .tell(
-                event,
-                turnEvent -> {
-                  switch (turnEvent) {
-                    case TurnEvent.TextDelta(String text) -> said.append(text);
-                    case TurnEvent.ToolCallRequested(ToolCall call) ->
-                        LOGGER.info("order {} tool: {}", orderId, call.name());
-                    case TurnEvent.ToolCallParked(ToolCall call, var token) ->
-                        LOGGER.info(
-                            "order {} parked: {} token={}", orderId, call.name(), token.value());
-                    // deliberate extender-tolerance default (night-watchman's Watchman.round
-                    // precedent): the log ignores variants it has no rendering for.
-                    default -> {}
-                  }
-                });
-    if (!said.isEmpty()) {
-      LOGGER.info("order {} desk says: {}", orderId, said);
-    }
-    LOGGER.info("order {} ends: {}", orderId, outcome.state().status());
-    if (outcome.state().status() == ConversationStatus.FAILED) {
-      LOGGER.warn(
-          "order {} failed: {}",
-          orderId,
-          Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
-    }
+    agent
+        .conversation(new ConversationId("order-" + orderId))
+        .tell(event, TurnObserver.logging(LOGGER, "order " + orderId));
   }
 }

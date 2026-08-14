@@ -23,9 +23,8 @@ import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -95,13 +94,14 @@ public class FulfillmentReplies {
   }
 
   /**
-   * Resumes the parked call and narrates the resumed segment with the same observer voice {@link
-   * OrderDesk#on(OrderEvent)} uses: accumulated {@link TurnEvent.TextDelta} as one "desk says"
-   * line, tool completions logged as they land, and the terminal status logged once the drive
-   * returns — failure reason at WARN. The order id is read back off the returned {@link
-   * RunOutcome}'s conversation id rather than threaded in separately, stripping the {@code
-   * "order-"} prefix {@link OrderDesk} mints it with, so a resumed segment identifies itself by the
-   * same order number the original {@code order N begins}/{@code ends} lines used.
+   * Resumes the parked call and narrates the resumed segment: a {@link TurnObserver#builder()}
+   * composition — accumulated text deltas as one "desk says" line, tool completions logged as they
+   * land — standing in for {@link TurnObserver#logging} because the order id isn't known until the
+   * drive returns, and so can't seed a per-call prefix the way {@link OrderDesk#on(OrderEvent)}'s
+   * does. The order id is read back off the returned {@link RunOutcome}'s conversation id rather
+   * than threaded in separately, stripping the {@code "order-"} prefix {@link OrderDesk} mints it
+   * with, so a resumed segment identifies itself by the same order number the original {@code order
+   * N begins}/{@code ends} lines used, matching {@link TurnObserver#logging}'s ends/failed shape.
    *
    * <p>{@link UnknownParkTokenException} is logged and RETHROWN, not swallowed: the registry
    * survives resolution (a resolved park drains only when {@link Harness#resume} actually drives
@@ -119,15 +119,15 @@ public class FulfillmentReplies {
           harness.resume(
               token,
               new ToolResolution.Completed(ToolResult.ok(text)),
-              turnEvent -> {
-                switch (turnEvent) {
-                  case TurnEvent.TextDelta(String delta) -> said.append(delta);
-                  case TurnEvent.ToolCallCompleted(ToolCall call, ToolResult result) ->
-                      LOGGER.info(
-                          "call {} completed: {}", call.name(), result.isError() ? "error" : "ok");
-                  default -> {}
-                }
-              });
+              TurnObserver.builder()
+                  .onTextDelta(delta -> said.append(delta.text()))
+                  .onToolCallCompleted(
+                      completed ->
+                          LOGGER.info(
+                              "call {} completed: {}",
+                              completed.call().name(),
+                              completed.result().isError() ? "error" : "ok"))
+                  .build());
     } catch (UnknownParkTokenException e) {
       LOGGER.info("early completion reply for token {}: {}", token.value(), e.getMessage());
       throw e;

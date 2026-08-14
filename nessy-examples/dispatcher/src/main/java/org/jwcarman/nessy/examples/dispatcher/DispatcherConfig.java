@@ -17,7 +17,6 @@ package org.jwcarman.nessy.examples.dispatcher;
 
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
-import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
@@ -53,10 +52,6 @@ public class DispatcherConfig {
         .systemPrompt(SYSTEM_PROMPT)
         .memory(memory)
         .tools(ToolGrant.grant(new RequestFieldCrewTool(), UsagePolicy.allow()))
-        // Declared explicitly so the teaching artifact doesn't log the design-§13.1 "no approver
-        // configured" WARN at every startup (night-watchman's precedent); allow-all is the honest
-        // posture — this tool's grant is UsagePolicy.allow(), so no human is ever in this loop.
-        .approver(Approver.allowAll())
         .onToolProgressAsync(DispatcherConfig::logProgress)
         .build();
   }

@@ -18,14 +18,11 @@ package org.jwcarman.nessy.examples.watchman;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.Objects;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -71,29 +68,6 @@ public class Watchman {
   RunOutcome round(LocalTime time) {
     String prompt = "It is " + CLOCK.format(time) + " — do your rounds.";
     LOGGER.info("round begins: {}", prompt);
-    StringBuilder said = new StringBuilder();
-    RunOutcome outcome =
-        conversation.tell(
-            prompt,
-            event -> {
-              switch (event) {
-                case TurnEvent.TextDelta(String text) -> said.append(text);
-                case TurnEvent.ToolCallRequested(ToolCall call) ->
-                    LOGGER.info("tool: {}", call.name());
-                // deliberate extender-tolerance default (chat-cli's discipline): the log ignores
-                // variants it has no rendering for.
-                default -> {}
-              }
-            });
-    if (!said.isEmpty()) {
-      LOGGER.info("watchman says: {}", said);
-    }
-    LOGGER.info("round ends: {}", outcome.state().status());
-    if (outcome.state().status() == ConversationStatus.FAILED) {
-      LOGGER.warn(
-          "round failed: {}",
-          Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
-    }
-    return outcome;
+    return conversation.tell(prompt, TurnObserver.logging(LOGGER, "round"));
   }
 }
