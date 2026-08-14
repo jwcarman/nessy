@@ -40,5 +40,6 @@
   <modules>
     <module>chat-cli</module>
     <module>chat-web</module>
+    <module>night-watchman</module>
   </modules>
 </project>

@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: nessy-night-watchman
+  main:
+    web-application-type: none
+    banner-mode: off
+
+watchman:
+  # When the watchman walks: Spring cron, default the top of each minute.
+  cadence: "0 * * * * *"
+  # The recall window, in messages — the hard bound on what a round's model call can see.
+  window: 40
