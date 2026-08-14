@@ -109,7 +109,7 @@ class OrderDeskSmokeTest {
             () -> {
               ConversationSnapshot snapshot = agent.snapshot(new ConversationId("order-4711"));
               assertThat(snapshot.status()).isEqualTo(ConversationStatus.PARKED);
-              assertThat(snapshot.parkedCalls()).isNotEmpty();
+              assertThat(snapshot.parkedCalls()).hasSize(1);
             });
     ParkedCall parked = agent.snapshot(new ConversationId("order-4711")).parkedCalls().getFirst();
     String token = parked.token().value();
