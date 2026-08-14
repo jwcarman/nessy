@@ -715,9 +715,10 @@ input schema into the system prompt. See
 
 ## Examples
 
-`nessy-examples` is a family of three runnable apps, all real key required, no
+`nessy-examples` is a family of four runnable apps, all real key required, no
 mocking, nothing hand-waved. The matrix: `chat-cli` (plain + interactive),
-`chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled autonomy).
+`chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled autonomy),
+`order-desk` (Boot + message-driven autonomy).
 
 **`chat-cli`** — a terminal chat loop, one agent definition run against
 either provider:
@@ -770,6 +771,21 @@ for the full story. To run it:
 ```bash
 ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/night-watchman spring-boot:run
 ```
+
+**`order-desk`** — the queue as driver: a message on RabbitMQ's `orders`
+queue initiates each turn, no human and no clock involved. The first
+typed-vocabulary agent in the family (`Agent<OrderEvent>` over a sealed
+event grammar, not `Agent<String>`), and the first to demonstrate
+at-least-once redelivery on a real broker misbehaving on cue — kill the app
+mid-turn, restart, and nothing is lost or doubled. See
+[`nessy-examples/order-desk/README.md`](nessy-examples/order-desk/README.md)
+for the full demo script. To run it:
+
+```bash
+ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/order-desk spring-boot:run
+```
+
+then open <http://localhost:15672> (guest/guest) to publish order events.
 
 ## License
 

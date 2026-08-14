@@ -614,6 +614,26 @@ sequence of renames and interim shapes that produced it.
     back `(token, call)` pairs — now sourced from `Parks.forConversation`
     filtered to calls `state.parkedCalls()` still names outstanding, rather
     than a park index the store used to sync on every save.
+- **`nessy-example-order-desk` — the queue is the caller.** The fourth
+  example, and the first whose trigger is a broker rather than a person or a
+  clock: a message landing on RabbitMQ's `orders` queue initiates a turn,
+  `tell`-ed to the conversation the order's own id mints, so external
+  identity — not a session, not a browser tab — is what routes an event to
+  its story. It is also the family's first typed-vocabulary agent —
+  `harness.agent(OrderEvent.class)` over a sealed event grammar, every
+  other example being `Agent<String>` — and the first to put the machine
+  half of a turn on a real wire: `request_fulfillment` parks with its
+  `ParkToken` riding as the AMQP correlation id on the outbound message, and
+  an in-app "warehouse" listener plays the request back as a reply carrying
+  that same correlation id, which a second listener translates straight
+  into `harness.progress`/`harness.resume` — the kernel's "the token is the
+  correlation contract" claim, made wire-visible, with no token field in
+  either JSON payload. Acknowledgement is Boot's default AUTO, ruled rather
+  than omitted: the container acks on successful listener return and
+  requeues on failure or death, so killing the app mid-turn and restarting
+  it demonstrates at-least-once redelivery against a real broker, absorbed
+  by the fold's own is-this-call-still-outstanding replay protection with
+  no manual channel plumbing anywhere in the module.
 
 ### Breaking (pre-1.0)
 

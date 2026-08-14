@@ -55,10 +55,27 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- Declared here, ahead of spring-boot-dependencies below, so the root pom's deliberate
+           1.21 pin (see its testcontainers.version comment) keeps winning: a BOM import declared
+           directly in THIS pom's dependencyManagement takes precedence over the same GA managed
+           by an ancestor pom's import, so without this explicit re-import spring-boot-dependencies
+           (4.1.0, testcontainers 2.0.5) would shadow the parent's pin for the bare
+           org.testcontainers:testcontainers artifact pulled transitively by
+           spring-boot-testcontainers below — a version split from the 1.21-line
+           testcontainers-postgresql/junit-jupiter test dependencies that made
+           {@code @ServiceConnection} fail to find any container's connection details at all
+           (the identical split order-desk's own pom fixed the same way). -->
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <!-- Spring enters the reactor only here: this import, and nowhere else in the build.
-           Declared first so it wins dependency-version conflicts over anything the alpha BOM
-           below or nessy-parent's own inherited imports (e.g. testcontainers-bom) would otherwise
-           prefer for the same artifact. -->
+           Declared second so testcontainers-bom above keeps winning that one GA; Boot's BOM
+           still wins dependency-version conflicts over anything the alpha BOM below prefers
+           for every other artifact. -->
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>

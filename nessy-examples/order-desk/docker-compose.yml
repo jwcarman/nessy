@@ -27,8 +27,13 @@ services:
       POSTGRES_DB: nessy
       POSTGRES_USER: nessy
       POSTGRES_PASSWORD: nessy
+    # Host 5433, not the usual 5432: this module has no hardcoded coordinates
+    # anywhere — Boot's service connections read the actual mapping — so it
+    # can coexist with chat-web's stack (which owns host 5432 by its
+    # explicit datasource url) instead of fighting it. A live port collision
+    # between the two stacks during the build proved the need.
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nessy"]
       interval: 2s
