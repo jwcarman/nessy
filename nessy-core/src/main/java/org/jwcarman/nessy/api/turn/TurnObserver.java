@@ -70,6 +70,7 @@ public interface TurnObserver {
    * target for what every example used to hand-roll (see {@code night-watchman}'s {@code Watchman},
    * {@code order-desk}'s {@code OrderDesk}, {@code dispatcher}'s {@code IncidentLog}).
    *
+   * @param logger the slf4j {@code Logger} every line is written to
    * @param prefix the log-line tag — an incident id, an order id, a conversation label
    */
   static TurnObserver logging(Logger logger, String prefix) {

@@ -310,6 +310,11 @@ class ConversationLoopTest {
     public void append(ConversationId id, InboxEntry entry) {
       delegate.append(id, entry);
     }
+
+    /** Seeds initial state directly at the delegate, bypassing the one-shot sabotage. */
+    void seed(ConversationState state) {
+      delegate.save(state, List.of());
+    }
   }
 
   /**
@@ -1215,6 +1220,88 @@ class ConversationLoopTest {
     }
 
     /**
+     * Opus fix round 1, Finding 1 (Critical): the same fan-out shape as the test above, but this
+     * time watching the narration rather than the flush. {@code applyParked} is not the one that
+     * closes this cycle to {@code PARKED} — c1 parks first while c2 is still pending
+     * (EXECUTING_TOOL, no emission yet), and it is c2's own settling fold, not a park, that empties
+     * {@code pendingCalls} and flips status to PARKED. A {@code TurnEnded} keyed on "did
+     * applyParked just close it" misses this path entirely; the fix keys it on "has anything
+     * narrated this attempt's ending yet" instead.
+     */
+    @Test
+    void a_parking_call_whose_sibling_settles_afterward_still_ends_the_segment_exactly_once() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ToolCall c2 = toolCall("c2", "fetch");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1, c2));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken token = tools.parksWhen("c1");
+      tools.andFor("c2", new ConversationEvent.ToolFinished(ID, c2, ToolResult.ok("b")));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              ConversationStore.inMemory(),
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      RunOutcome outcome =
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "search and fetch"), events::add);
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.PARKED);
+      List<TurnEvent> parkedAndEnded =
+          events.stream()
+              .filter(
+                  e -> e instanceof TurnEvent.ToolCallParked || e instanceof TurnEvent.TurnEnded)
+              .toList();
+      assertThat(parkedAndEnded)
+          .containsExactly(
+              new TurnEvent.ToolCallParked(c1, token),
+              new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+    }
+
+    /**
+     * Opus fix round 1, Finding 1 (Critical), the second reachable miss: a tell against a
+     * conversation that is already PARKED on entry. {@code continueByStatus} no-ops for PARKED (not
+     * quiescent, not AWAITING_MODEL, not EXECUTING_TOOL), so {@code applyParked} is never called at
+     * all this attempt — the settled-return site is the only one that can possibly narrate, and
+     * before the fix it explicitly skipped PARKED.
+     */
+    @Test
+    void a_tell_against_an_already_parked_conversation_still_narrates_its_ending() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ConversationStore store = ConversationStore.inMemory();
+      store.save(
+          ConversationState.newConversation(ID)
+              .withParkedCalls(List.of(c1))
+              .with(ConversationStatus.PARKED),
+          List.of());
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(
+                  new ScriptedModelCallExecutor(journal), new ScriptedToolCallExecutor(journal)),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      RunOutcome outcome =
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "any news?"), events::add);
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.PARKED);
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+    }
+
+    /**
      * Stands in for {@code Harness.resume}'s own steps ({@code parks.find}, {@code append} + {@code
      * drive}) at the store the loop itself uses — {@code HarnessTest} pins the facade that wraps
      * this same sequence end to end.
@@ -1358,12 +1445,19 @@ class ConversationLoopTest {
               Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
 
-      RunOutcome outcome = loop.drive(ID, OBSERVER);
+      RunOutcome outcome = loop.drive(ID, events::add);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
       assertThat(outcome.state().parkedCalls()).extracting(ToolCall::id).containsExactly(c2.id());
       assertThat(store.load(ID).orElseThrow().inbox()).isEmpty();
+      // Opus fix round 1, Finding 1 (Critical): this attempt drains a stale resolution and never
+      // touches applyParked at all (the conversation was already PARKED on entry) — the
+      // settled-return site must still narrate the ending exactly once.
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
     }
 
     /**
@@ -1410,8 +1504,9 @@ class ConversationLoopTest {
               Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
 
-      RunOutcome outcome = loop.drive(ID, OBSERVER);
+      RunOutcome outcome = loop.drive(ID, events::add);
 
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
       assertThat(tools.resumeCalls()).isEqualTo(1);
@@ -1423,6 +1518,12 @@ class ConversationLoopTest {
       assertThat(flush.content())
           .containsExactly(
               new ToolResultBlock("c1", "a", false), new ToolResultBlock("c2", "b", false));
+      // Opus fix round 1, Finding 1 (Critical): the resumed park's own routing (not applyParked,
+      // which never runs here — c1 was already parked on entry) drives this segment all the way to
+      // COMPLETE; the ending must still narrate exactly once.
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
     }
 
     /**
@@ -1452,11 +1553,15 @@ class ConversationLoopTest {
               Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
 
-      RunOutcome outcome = loop.drive(ID, OBSERVER);
+      RunOutcome outcome = loop.drive(ID, events::add);
 
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
       assertThat(store.load(ID).orElseThrow().inbox()).isEmpty();
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
     }
 
     /**
@@ -1522,6 +1627,55 @@ class ConversationLoopTest {
       // The first attempt's own tail save is the one that loses the fence race (it never
       // commits), so it must narrate no ending at all — only the winning retry's landed state
       // gets a TurnEnded, and exactly one of them.
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+      // In this fixture the sabotaged save is the note fold's own (step 1 runs first and has
+      // nothing else ahead of it), so the losing attempt dies before the model is ever called —
+      // model.calls() and AssistantSaid both land exactly once, from the winning retry alone. The
+      // test below (a_model_fold_that_loses_the_fence_race_re_narrates_assistant_said_on_retry)
+      // seeds a fixture where the sabotaged save instead belongs to the ModelResponded fold, which
+      // is what actually exercises AssistantSaid's pre-save, at-least-once re-narration.
+      assertThat(model.calls()).isEqualTo(1);
+      assertThat(events).filteredOn(e -> e instanceof TurnEvent.AssistantSaid).hasSize(1);
+    }
+
+    /**
+     * Opus fix round 1, Finding 4 (should-fix, spec §9): {@link TurnEvent.AssistantSaid} shares the
+     * fact emitter's own placement inside {@code fold()} — narrated before that fold's own save —
+     * so a losing attempt that reaches the {@code ModelResponded} fold before losing the fence race
+     * has already said it once for nothing; the winning retry re-folds the same response and says
+     * it again. The test above does not exercise this: its very first save belongs to the note's
+     * own fold, which dies before the model is ever called. Seeding the conversation already {@code
+     * AWAITING_MODEL} (no {@code Told} entry to drain first) puts the model-call fold's own save
+     * first in line for {@link StaleOnceStore}'s one-shot sabotage instead.
+     */
+    @Test
+    void a_model_fold_that_loses_the_fence_race_re_narrates_assistant_said_on_retry() {
+      List<String> journal = new ArrayList<>();
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, plainAnswer("Four."), plainAnswer("Four."));
+      StaleOnceStore store = new StaleOnceStore(journal);
+      store.seed(ConversationState.newConversation(ID).with(ConversationStatus.AWAITING_MODEL));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      RunOutcome outcome = loop.drive(ID, events::add);
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(model.calls()).isEqualTo(2); // re-performed on retry — at-least-once
+      // The losing attempt's own pre-save narration, plus the winning retry's — documented and
+      // asserted tolerable per spec §9, the same at-least-once rule TurnEvent's type-level javadoc
+      // states for the whole roster.
+      assertThat(events).filteredOn(e -> e instanceof TurnEvent.AssistantSaid).hasSize(2);
       assertThat(events)
           .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
           .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));

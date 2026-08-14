@@ -23,6 +23,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
@@ -168,6 +169,10 @@ public final class ConversationLoop {
                     new ConversationStore.Loaded(ConversationState.newConversation(id), List.of()));
     AtomicReference<ConversationState> progress = new AtomicReference<>(loaded.state());
     List<String> drained = new ArrayList<>();
+    // Attempt-scoped, not call-scoped: exactly one TurnEnded must reach the observer for this
+    // whole driveOnce attempt, however many closure points it passes through (applyParked, or the
+    // attempt's own settled return below) — see the CAS use at each site.
+    AtomicBoolean endingNarrated = new AtomicBoolean(false);
     boolean settled = false;
     try {
       // 1. Notes: fold every Told entry, in order (facts minted here, one per entry). The entry's
@@ -209,12 +214,12 @@ public final class ConversationLoop {
               resumeParkedCall(park.get(), resolution, progress.get(), observer);
           FoldOutcome folded = fold(progress, fact, drained, observer);
           drained.add(entryId);
-          runCycle(progress, new ArrayDeque<>(folded.effects()), drained, observer);
+          runCycle(progress, new ArrayDeque<>(folded.effects()), drained, observer, endingNarrated);
         }
       }
 
       // 3. The continuation pointer: do what status says until quiescent or parked.
-      continueByStatus(progress, drained, observer);
+      continueByStatus(progress, drained, observer, endingNarrated);
 
       if (!drained.isEmpty()) {
         save(progress, drained);
@@ -223,9 +228,15 @@ public final class ConversationLoop {
       ConversationState finalState = progress.get();
       // Post-save discipline, like ToolCallParked: this is reached only once every save this
       // attempt owed has landed, so the ending narrated here is one the store actually confirms.
-      // PARKED is excluded — applyParked already narrated that ending, adjacent to its own save,
-      // the moment the closure transition committed; narrating it again here would double it.
-      if (finalState.status() != ConversationStatus.PARKED) {
+      // Guarded by endingNarrated, not by status: PARKED can already have been narrated by
+      // applyParked (the call that actually closed the cycle to PARKED), but PARKED can *also*
+      // reach here un-narrated — a settling sibling's own fold flips status to PARKED without ever
+      // calling applyParked (fan-out: the parking call isn't the one that closes the cycle), and a
+      // drive that enters and leaves an already-PARKED conversation (a tell-while-parked, a resume
+      // that settles one of several outstanding parks, a stale resolution) never touches
+      // applyParked at all. The CAS makes whichever site gets here first the one that narrates,
+      // for every status alike.
+      if (endingNarrated.compareAndSet(false, true)) {
         observer.on(new TurnEvent.TurnEnded(finalState.status(), finalState.failureReason()));
       }
       return outcomeOf(finalState);
@@ -256,22 +267,30 @@ public final class ConversationLoop {
    * it). Every other status (quiescent with nothing queued, or parked) is left exactly as found.
    */
   private void continueByStatus(
-      AtomicReference<ConversationState> progress, List<String> drained, TurnObserver observer) {
+      AtomicReference<ConversationState> progress,
+      List<String> drained,
+      TurnObserver observer,
+      AtomicBoolean endingNarrated) {
     ConversationState state = progress.get();
     if (state.isQuiescent() && !state.told().isEmpty()) {
       Step opened = state.openTurn();
       progress.set(opened.state());
       remember(opened.state().id(), opened.remember());
       save(progress, drained);
-      runCycle(progress, new ArrayDeque<>(opened.effects()), drained, observer);
+      runCycle(progress, new ArrayDeque<>(opened.effects()), drained, observer, endingNarrated);
     } else if (state.status() == ConversationStatus.AWAITING_MODEL) {
-      runCycle(progress, new ArrayDeque<>(List.of(Effect.callModel())), drained, observer);
+      runCycle(
+          progress,
+          new ArrayDeque<>(List.of(Effect.callModel())),
+          drained,
+          observer,
+          endingNarrated);
     } else if (state.status() == ConversationStatus.EXECUTING_TOOL) {
       Deque<Effect> queue = new ArrayDeque<>();
       for (ToolCall call : state.pendingCalls()) {
         queue.addLast(new Effect.ExecuteTool(call));
       }
-      runCycle(progress, queue, drained, observer);
+      runCycle(progress, queue, drained, observer, endingNarrated);
     }
   }
 
@@ -290,7 +309,8 @@ public final class ConversationLoop {
       AtomicReference<ConversationState> progress,
       Deque<Effect> queue,
       List<String> drained,
-      TurnObserver observer) {
+      TurnObserver observer,
+      AtomicBoolean endingNarrated) {
     while (!queue.isEmpty()) {
       Effect effect = queue.pollFirst();
       PerformOutcome outcome = perform(effect, progress.get(), observer);
@@ -303,7 +323,7 @@ public final class ConversationLoop {
           folded.effects().forEach(queue::addLast);
         }
         case PerformOutcome.Parked(ToolCall call, ParkToken token) ->
-            applyParked(progress, call, token, drained, observer);
+            applyParked(progress, call, token, drained, observer, endingNarrated);
       }
     }
   }
@@ -375,23 +395,29 @@ public final class ConversationLoop {
    * outstanding, and drains as stale — tolerated, not prevented. The narration still fires only
    * after the save lands, not before: a park that never actually commits (a save that throws) must
    * not have told the observer a story state itself never confirms. Both park paths — the
-   * approver's gate and a tool parking itself — funnel through this one choke point, so this is the
-   * event's single emission site.
+   * approver's gate and a tool parking itself — funnel through this one choke point, so this is
+   * {@link TurnEvent.ToolCallParked}'s single emission site — but it is only <em>one of two</em>
+   * possible {@link TurnEvent.TurnEnded} sites, not the sole one: parked() only flips status to
+   * PARKED once every pending call in the cycle has settled or parked, so this call closes the
+   * cycle only when it is the last one to land — a sibling settling afterward (or a call that
+   * settles while this one is still parking) can just as easily be the one that observes PARKED,
+   * and a drive that finds the conversation already PARKED on entry never reaches this method at
+   * all. {@code endingNarrated} is the attempt-wide arbiter: whichever site — this one, or
+   * driveOnce's own settled-return check — gets there first is the one that narrates.
    */
   private void applyParked(
       AtomicReference<ConversationState> progress,
       ToolCall call,
       ParkToken token,
       List<String> drained,
-      TurnObserver observer) {
+      TurnObserver observer,
+      AtomicBoolean endingNarrated) {
     parks.park(new Parks.Park(progress.get().id(), token, call));
     progress.set(progress.get().parked(call));
     save(progress, drained);
     observer.on(new TurnEvent.ToolCallParked(call, token));
-    // Sibling calls can still be running (park physics): parked() only flips status to PARKED
-    // once every pending call has settled or parked, so this narrates the segment's ending exactly
-    // once — on whichever call is the last to land.
-    if (progress.get().status() == ConversationStatus.PARKED) {
+    if (progress.get().status() == ConversationStatus.PARKED
+        && endingNarrated.compareAndSet(false, true)) {
       observer.on(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
     }
   }

@@ -23,6 +23,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -31,6 +34,8 @@ class TurnEventTest {
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
   private static final ParkToken TOKEN = ParkToken.generate();
+  private static final Message ASSISTANT_MESSAGE =
+      Message.assistant(List.of(new TextBlock("hello")));
 
   /**
    * One instance of every {@link TurnEvent} variant, mirroring {@code TurnObserverAdapterTest}'s.
@@ -44,7 +49,9 @@ class TurnEventTest {
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
         new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
         new TurnEvent.ToolCallProgressed(CALL, "halfway"),
-        new TurnEvent.ToolCallParked(CALL, TOKEN));
+        new TurnEvent.ToolCallParked(CALL, TOKEN),
+        new TurnEvent.AssistantSaid(ASSISTANT_MESSAGE),
+        new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
   }
 
   @Test
@@ -69,6 +76,18 @@ class TurnEventTest {
   @Test
   void redacted_thinking_rejects_null_data() {
     assertThatThrownBy(() -> new TurnEvent.RedactedThinking(null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void assistant_said_rejects_a_null_message() {
+    assertThatThrownBy(() -> new TurnEvent.AssistantSaid(null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void turn_ended_rejects_a_null_status() {
+    assertThatThrownBy(() -> new TurnEvent.TurnEnded(null, "boom"))
         .isInstanceOf(NullPointerException.class);
   }
 }

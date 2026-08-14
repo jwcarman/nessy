@@ -38,7 +38,8 @@ import org.slf4j.LoggerFactory;
 /**
  * {@link TurnObserver#logging} against a real slf4j {@code Logger} — the first narration test
  * needing a log-capture technique in this codebase: a {@link ListAppender} wired onto a dedicated
- * logback {@code Logger} whose level is forced to {@code ALL}, independent of {@code
+ * logback {@code Logger} whose level is forced to {@code TRACE} (the lowest non-deprecated level on
+ * the pinned logback-classic 1.6.1 — {@code ALL} is deprecated there), independent of {@code
  * logback-test.xml}'s package-wide {@code WARN} threshold.
  */
 class TurnObserverLoggingTest {
@@ -55,7 +56,7 @@ class TurnObserverLoggingTest {
   void wires_a_capturing_appender_onto_a_fresh_logger() {
     Logger classicLogger =
         (Logger) LoggerFactory.getLogger("TurnObserverLoggingTest." + System.nanoTime());
-    classicLogger.setLevel(Level.ALL);
+    classicLogger.setLevel(Level.TRACE);
     classicLogger.setAdditive(false);
     appender = new ListAppender<>();
     appender.start();
