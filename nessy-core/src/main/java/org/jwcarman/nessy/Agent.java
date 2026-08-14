@@ -129,9 +129,14 @@ public final class Agent<I> {
   }
 
   private List<ParkedCall> cards(ConversationId id, ConversationStore.Loaded loaded) {
+    // A StaleStateException-retried park can legitimately register two tokens for the same call
+    // (orphan tolerance); either resolves the same outstanding call, so the first registered card
+    // wins rather than the collision crashing the page rebuild.
     Map<String, Park> byCallId =
         parks.forConversation(id).stream()
-            .collect(Collectors.toMap(park -> park.call().id(), Function.identity()));
+            .collect(
+                Collectors.toMap(
+                    park -> park.call().id(), Function.identity(), (first, second) -> first));
     return loaded.state().parkedCalls().stream()
         .map(ToolCall::id)
         .map(byCallId::get)

@@ -46,6 +46,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -256,6 +257,41 @@ class AgentTest {
       assertThat(snap.parkedCalls())
           .extracting(card -> card.call().id())
           .containsExactly("c1", "c2");
+    }
+
+    /**
+     * Adjudication fix: a StaleStateException-retried park can legitimately register two tokens for
+     * the same call id (orphan tolerance, Task 4 ledger note) — {@code Parks} has no opinion on
+     * that being a duplicate. {@code Agent.cards}' {@code Collectors.toMap} used to throw {@code
+     * IllegalStateException} on that collision, turning a merely-duplicate approval card into a
+     * crashed page rebuild for that conversation. This pins that two registered tokens for one
+     * outstanding call collapse into exactly one card, no exception.
+     */
+    @Test
+    void two_tokens_registered_for_the_same_call_collapse_into_one_card() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Parks parks = Parks.inMemory();
+      Harness harness = Nessy.harness(provider).parks(parks).build();
+      Agent<String> agent =
+          harness
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+
+      ConversationId id = agent.converse().tell("search for x").state().id();
+      parks.park(new Parks.Park(id, ParkToken.generate(), call));
+
+      ConversationSnapshot snap = agent.snapshot(id);
+
+      assertThat(snap.parkedCalls()).hasSize(1);
     }
   }
 
