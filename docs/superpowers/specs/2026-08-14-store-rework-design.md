@@ -37,7 +37,7 @@ The rework names the concepts and gives each its own small front door:
 One implementation module may serve all three over one database; each
 *contract* tells one story.
 
-## 2. The Transcript (spi.transcript)
+## 2. The Transcript (spi.memory — it is the memory jurisdiction's own storage primitive; ruled at review)
 
 An append-only, versioned, per-conversation message log — the storage
 primitive some memories are based on, and the read surface audit and chat
@@ -348,3 +348,7 @@ routing (unchanged, still a future spec).
    world's hands); orphans tolerated as stale mail.
 6. The no-stutter rule is the Transcript's append contract; the open-tail
    trim stays at Memory's border.
+7. The Transcript lives in `spi.memory`, not its own package — it is the
+   memory jurisdiction's storage primitive, and the package should read as
+   one story: `Memory`, `Transcript`, `TranscriptMemory`, `SummaryStore`,
+   `SummarizingMemory`.

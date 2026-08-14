@@ -26,10 +26,10 @@
 ### Task 1: The Transcript — SPI, in-memory implementation, contract test
 
 **Files:**
-- Create: `nessy-core/src/main/java/org/jwcarman/nessy/spi/transcript/Transcript.java`
-- Create: `nessy-core/src/main/java/org/jwcarman/nessy/spi/transcript/InMemoryTranscript.java`
-- Test: `nessy-core/src/test/java/org/jwcarman/nessy/spi/transcript/TranscriptContract.java` (abstract, the TCK shape `ConversationStoreContract` already uses)
-- Test: `nessy-core/src/test/java/org/jwcarman/nessy/spi/transcript/InMemoryTranscriptTest.java` (extends the contract)
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/spi/memory/Transcript.java` (spec ruling 11.7: the Transcript lives in `spi.memory` — it is the memory jurisdiction's storage primitive)
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/spi/memory/InMemoryTranscript.java`
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/spi/memory/TranscriptContract.java` (abstract, the TCK shape `ConversationStoreContract` already uses)
+- Test: `nessy-core/src/test/java/org/jwcarman/nessy/spi/memory/InMemoryTranscriptTest.java` (extends the contract)
 
 **Interfaces (spec §2 verbatim — these exact shapes):**
 - `Transcript` with nested `record Entry(long version, Message message)`; methods `Entry append(ConversationId, Message)` (no-stutter: appending a message equal to the current last entry returns that existing entry unchanged), `List<Entry> all(ConversationId)`, `List<Entry> tail(ConversationId, long afterVersion)` (strictly greater), `List<Entry> page(ConversationId, long beforeVersion, int limit)` (strictly less, version order, at most limit — the newest `limit` entries below the bound, i.e. the page ends just under `beforeVersion`), `static Transcript inMemory()`.
