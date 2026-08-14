@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.RunOutcome;
@@ -86,8 +87,7 @@ class TurnRunnerTest {
   class A_turn_that_throws {
 
     @Test
-    void completes_the_emitter_with_error_instead_of_calling_on_outcome()
-        throws InterruptedException {
+    void completes_the_emitter_with_error_instead_of_calling_on_outcome() {
       CountDownLatch onOutcomeCalled = new CountDownLatch(1);
       RuntimeException boom = new IllegalStateException("kaboom");
 
@@ -103,29 +103,27 @@ class TurnRunnerTest {
     }
 
     /**
-     * Polls the emitter's public {@link SseEmitter#send} guard until it reports the emitter already
-     * completed, or fails the test after a generous timeout. The virtual thread's work here is pure
-     * CPU (no I/O, no model call), so completion lands within milliseconds in practice.
+     * Awaits the emitter's completion via its public {@link SseEmitter#send} guard — the only
+     * observable a detached emitter offers (completion callbacks fire through the servlet async
+     * machinery, which a unit test never attaches). The virtual thread's work here is pure CPU (no
+     * I/O, no model call), so completion lands within milliseconds in practice; Awaitility does the
+     * condition-based waiting (S2925: no {@code Thread.sleep} in tests).
      */
     private void awaitTerminal(SseEmitter emitter) {
-      long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-      while (System.nanoTime() < deadline) {
-        try {
-          emitter.send("probe");
-        } catch (IllegalStateException expectedOnceComplete) {
-          assertThat(expectedOnceComplete).hasMessageContaining("kaboom");
-          return;
-        } catch (IOException e) {
-          throw new AssertionError("unexpected IOException from an unattached emitter", e);
-        }
-        try {
-          Thread.sleep(5);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          throw new AssertionError("interrupted while awaiting emitter completion", e);
-        }
+      Awaitility.await().atMost(Duration.ofSeconds(5)).until(() -> reportsCompleted(emitter));
+    }
+
+    /** One probe: {@code true} iff the emitter now rejects sends with the turn's own failure. */
+    private boolean reportsCompleted(SseEmitter emitter) {
+      try {
+        emitter.send("probe");
+        return false;
+      } catch (IllegalStateException expectedOnceComplete) {
+        assertThat(expectedOnceComplete).hasMessageContaining("kaboom");
+        return true;
+      } catch (IOException e) {
+        throw new AssertionError("unexpected IOException from an unattached emitter", e);
       }
-      throw new AssertionError("emitter never completed within the timeout");
     }
   }
 }

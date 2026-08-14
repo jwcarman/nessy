@@ -133,8 +133,8 @@ class NessyAutoConfigurationTest {
     runner.run(
         context -> {
           Harness bare = context.getBean(Harness.class);
-          assertThatThrownBy(() -> bare.agent().build())
-              .isInstanceOf(AgentConfigurationException.class);
+          var modelless = bare.agent();
+          assertThatThrownBy(modelless::build).isInstanceOf(AgentConfigurationException.class);
         });
     runner
         .withPropertyValues("nessy.default-model=claude-haiku")

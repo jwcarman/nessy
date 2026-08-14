@@ -26,7 +26,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -53,6 +52,8 @@ import org.jwcarman.nessy.spi.memory.Transcript;
  * CREATE TABLE IF NOT EXISTS} is safe to run more than once.
  */
 public final class JdbcTranscript implements Transcript {
+
+  private static final String ID_MUST_NOT_BE_NULL = "id must not be null";
 
   private final DataSource dataSource;
   private final StateCodec codec;
@@ -102,7 +103,7 @@ public final class JdbcTranscript implements Transcript {
 
   @Override
   public Entry append(ConversationId id, Message message) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     Objects.requireNonNull(message, "message must not be null");
     return inTransaction(
         connection -> {
@@ -118,7 +119,7 @@ public final class JdbcTranscript implements Transcript {
 
   @Override
   public List<Entry> all(ConversationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     return withConnection(
         connection ->
             queryEntries(
@@ -130,7 +131,7 @@ public final class JdbcTranscript implements Transcript {
 
   @Override
   public List<Entry> tail(ConversationId id, long afterVersion) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     return withConnection(
         connection ->
             queryEntries(
@@ -145,7 +146,7 @@ public final class JdbcTranscript implements Transcript {
 
   @Override
   public List<Entry> page(ConversationId id, long beforeVersion, int limit) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     return withConnection(
         connection -> {
           // The newest `limit` rows below the bound, fetched newest-first so LIMIT keeps the
@@ -160,9 +161,7 @@ public final class JdbcTranscript implements Transcript {
                     ps.setLong(2, beforeVersion);
                     ps.setInt(3, limit);
                   });
-          List<Entry> ascending = new ArrayList<>(newestFirst);
-          Collections.reverse(ascending);
-          return List.copyOf(ascending);
+          return List.copyOf(newestFirst.reversed());
         });
   }
 

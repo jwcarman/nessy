@@ -142,6 +142,13 @@
         </exclusion>
       </exclusions>
     </dependency>
+    <!-- Condition-based waiting for async assertions (S2925: no Thread.sleep in tests). Version
+         managed by the Boot BOM import above. Not a mocking library; the house ban is untouched. -->
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

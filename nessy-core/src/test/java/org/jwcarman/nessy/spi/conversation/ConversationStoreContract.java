@@ -78,9 +78,9 @@ public abstract class ConversationStoreContract {
     ConversationState firstReader = store().load(id).orElseThrow().state();
     ConversationState secondReader = store().load(id).orElseThrow().state();
     store().save(firstReader, List.of());
-    ConversationStore store = store();
+    ConversationStore underTest = store();
 
-    assertThatThrownBy(() -> store.save(secondReader, List.of()))
+    assertThatThrownBy(() -> underTest.save(secondReader, List.of()))
         .isInstanceOf(StaleStateException.class)
         .hasMessageContaining("1")
         .hasMessageContaining("2");

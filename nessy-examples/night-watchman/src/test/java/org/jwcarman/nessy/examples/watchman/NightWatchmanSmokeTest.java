@@ -71,20 +71,23 @@ class NightWatchmanSmokeTest {
     // round 1: check_vitals then all-quiet — the round completes
     assertThat(watchman.round(LocalTime.of(2, 0)).state().status())
         .isEqualTo(ConversationStatus.COMPLETE);
-    assertThat(FINISHED).isNotEmpty();
-    assertThat(FINISHED).anyMatch(f -> f.call().name().equals("check_vitals"));
+    assertThat(FINISHED)
+        .isNotEmpty()
+        .extracting(finished -> finished.call().name())
+        .contains("check_vitals");
 
     // round 2: the alarm path executes
     assertThat(watchman.round(LocalTime.of(2, 1)).state().status())
         .isEqualTo(ConversationStatus.COMPLETE);
-    assertThat(FINISHED).anyMatch(f -> f.call().name().equals("raise_alarm"));
+    assertThat(FINISHED).extracting(finished -> finished.call().name()).contains("raise_alarm");
 
     // continuity: both rounds live in the SAME conversation's recalled context
     Context afterTwo = agent.contextFor(watchman.conversationId());
     List<String> texts = afterTwo.messages().stream().map(NightWatchmanSmokeTest::textOf).toList();
-    assertThat(texts).isNotEmpty();
-    assertThat(texts).anyMatch(t -> t.contains("It is 02:00"));
-    assertThat(texts).anyMatch(t -> t.contains("It is 02:01"));
+    assertThat(texts)
+        .isNotEmpty()
+        .anyMatch(t -> t.contains("It is 02:00"))
+        .anyMatch(t -> t.contains("It is 02:01"));
 
     // the bound: run six more all-quiet rounds; recall stays inside the window of 6
     for (int minute = 2; minute < 8; minute++) {

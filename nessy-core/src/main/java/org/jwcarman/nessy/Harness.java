@@ -55,6 +55,8 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  */
 public final class Harness {
 
+  private static final String TOKEN_MUST_NOT_BE_NULL = "token must not be null";
+
   private final ModelProvider provider;
   private final ConversationStore store;
   private final Parks parks;
@@ -203,7 +205,7 @@ public final class Harness {
    *     carries parks left behind by a prior process and this one never called {@link #agent()}
    */
   public RunOutcome resume(ParkToken token, ToolResolution resolution, TurnObserver observer) {
-    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
     Objects.requireNonNull(resolution, "resolution must not be null");
     Objects.requireNonNull(observer, "observer must not be null");
     int agents = loopRegistrations.get();
@@ -264,7 +266,7 @@ public final class Harness {
    * Optional#empty()} says the wait is not there to read, exactly as {@link #progress} treats it.
    */
   public Optional<ParkedCall> peek(ParkToken token) {
-    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
     return parks.find(token).map(park -> new ParkedCall(park.token(), park.call()));
   }
 
@@ -287,7 +289,7 @@ public final class Harness {
    *     carries parks left behind by a prior process and this one never called {@link #agent()}
    */
   public boolean progress(ParkToken token, String message) {
-    Objects.requireNonNull(token, "token must not be null");
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
     Objects.requireNonNull(message, "message must not be null");
     int agents = loopRegistrations.get();
     if (agents > 1) {

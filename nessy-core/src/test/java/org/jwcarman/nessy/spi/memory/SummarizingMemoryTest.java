@@ -132,7 +132,7 @@ class SummarizingMemoryTest {
 
       Optional<Summary> saved = summaries.find(id);
       assertThat(saved).isPresent();
-      assertThat(saved.get().watermark()).isEqualTo(0L);
+      assertThat(saved.get().watermark()).isZero();
       assertThat(recalled.messages())
           .containsExactly(Message.user("folded prefix"), secondTurn, toolUse, toolResults);
     }
