@@ -82,6 +82,13 @@ text.toString(); // "The answer is 4."
 outcome.state().status(); // ConversationStatus.COMPLETE
 ```
 
+This exact example is a runnable module, `nessy-examples/hello` — no key, no
+network, no Docker:
+
+```bash
+./mvnw -q -pl nessy-examples/hello -am compile exec:java
+```
+
 `Nessy.harness(provider)` is the only front door — the provider is the
 harness's one required thing, enforced by signature rather than discovered
 later at `build()`. `Agent<I>` is a configured, reusable handle over its input
@@ -716,8 +723,10 @@ input schema into the system prompt. See
 
 ## Examples
 
-`nessy-examples` is a family of five runnable apps, all real key required, no
-mocking, nothing hand-waved. The matrix: `chat-cli` (plain + interactive),
+`nessy-examples` is a family of five runnable apps, all real key required
+(`hello`, the five-minute example above in its own runnable module, is the
+one exception — no key, no network, no Docker), no mocking, nothing
+hand-waved. The matrix: `chat-cli` (plain + interactive),
 `chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled autonomy),
 `order-desk` (Boot + message-driven autonomy), `dispatcher` (Boot web +
 durable parks over HTTP).

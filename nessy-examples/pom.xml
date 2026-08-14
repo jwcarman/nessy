@@ -38,6 +38,7 @@
   </properties>
 
   <modules>
+    <module>hello</module>
     <module>chat-cli</module>
     <module>chat-web</module>
     <module>night-watchman</module>

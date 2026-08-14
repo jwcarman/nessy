@@ -103,6 +103,21 @@
          ./mvnw test -Dnessy.excludedGroups= -->
     <nessy.excludedGroups>live,container</nessy.excludedGroups>
 
+    <!-- exec-maven-plugin's `java` goal has no lifecycle binding of its own: invoked bare from the
+         command line (`mvn exec:java`), Maven runs it once per project in the resolved reactor, not
+         just the one named by -pl. In an -am build that reactor always includes this root aggregator
+         and every intermediate one, none of which configure `mainClass` — so the bare goal fails here
+         before it ever reaches the example that wanted it. Defaulting exec.skip to true here makes
+         every project a no-op for that goal by default; the one or two example modules that actually
+         run `exec:java` (hello, chat-cli) override it back to false in their own pom.
+
+         mainClass is a required parameter that Maven validates before the mojo's own skip check ever
+         runs, so exec.skip alone is not enough — every project needs *some* resolvable value here too,
+         even though skip=true means it is never actually loaded. This placeholder is that value; the
+         same opting-in modules override it to their own main class. -->
+    <exec.skip>true</exec.skip>
+    <exec.mainClass>none</exec.mainClass>
+
     <!-- Build plugin versions (pinned explicitly since this POM has no parent
          to inherit plugin management from) -->
     <spotless.version>3.9.0</spotless.version>
