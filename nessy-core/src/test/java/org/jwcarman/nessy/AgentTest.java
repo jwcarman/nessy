@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
@@ -182,6 +183,43 @@ class AgentTest {
       assertThat(snap.parkedCalls()).hasSize(1);
       assertThat(snap.context().messages()).isNotEmpty();
     }
+
+    /**
+     * Opus review, Finding 1 (Important): {@code Agent.snapshot}'s filter down to calls {@code
+     * state.parkedCalls()} still lists outstanding is untested on its own — delete the filter and
+     * every other test still passes, since none of them resolve a park before reading the snapshot.
+     * The {@link org.jwcarman.nessy.spi.conversation.Parks} registry remembers a wait forever
+     * (design §5), so without the filter a settled call would still render as a pending approval
+     * card. This pins that resolving the park makes it disappear from the snapshot even though the
+     * registry itself never forgets it.
+     */
+    @Test
+    void a_settled_park_no_longer_appears_in_the_snapshot_though_the_registry_remembers_it() {
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(call),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Harness harness = Nessy.harness(provider).build();
+      Agent<String> agent =
+          harness
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+      ConversationId id = agent.converse().tell("search for x").state().id();
+      assertThat(agent.snapshot(id).parkedCalls()).hasSize(1);
+
+      harness.resume(approver.token(), new ToolResolution.Decided(Decision.allow()));
+
+      assertThat(agent.snapshot(id).parkedCalls()).isEmpty();
+    }
   }
 
   /** A model that replays one scripted turn per call, one script entry per {@code stream} call. */
@@ -251,6 +289,10 @@ class AgentTest {
     public Awaited<Decision> approve(ApprovalRequest request) {
       token = ParkToken.generate();
       return Awaited.parked(token);
+    }
+
+    ParkToken token() {
+      return token;
     }
   }
 }

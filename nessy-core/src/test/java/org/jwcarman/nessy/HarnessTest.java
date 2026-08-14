@@ -568,6 +568,45 @@ class HarnessTest {
           .hasMessageContaining("no agent");
     }
 
+    /**
+     * Opus review, Finding 4 (Minor, closes Task-4's own flagged orphan-tolerance gap): design §5
+     * tolerates a registry entry whose save lost the fence (or never landed) — the wait is still
+     * findable by token, but the reloaded state never lists its call as outstanding. Seeded
+     * directly here rather than induced through a sabotaged save (the shape the original report
+     * judged not cleanly reproducible with in-process test doubles): a standalone {@code Parks}
+     * carries a {@code Park} for a call the saved state simply never parked. Resuming that token
+     * must not throw and must not invoke the tool — the resolution translates fine, appends mail
+     * addressed to a call that isn't outstanding, and the routing loop drains it as stale, the same
+     * mechanism {@code ConversationLoopTest}'s {@code
+     * a_resolution_for_a_settled_call_drains_quietly} pins at the loop level.
+     */
+    @Test
+    void resume_of_an_orphaned_park_neither_throws_nor_invokes_the_tool() {
+      ConversationId id = ConversationId.generate();
+      ParkToken token = ParkToken.generate();
+      ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ConversationState seeded =
+          ConversationState.newConversation(id).with(ConversationStatus.IDLE);
+      ConversationStore store = ConversationStore.inMemory();
+      store.save(seeded, List.of());
+      Parks parks = Parks.inMemory();
+      parks.park(new Parks.Park(id, token, call));
+      CountingSearchTool tool = new CountingSearchTool();
+      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).parks(parks).build();
+      harness
+          .agent()
+          .model("fake-model")
+          .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
+          .approver(Approver.denyAll("never reached"))
+          .build();
+
+      RunOutcome outcome = harness.resume(token, new ToolResolution.Decided(Decision.allow()));
+
+      assertThat(outcome.state().id()).isEqualTo(id);
+      assertThat(outcome.state().status()).isNotEqualTo(ConversationStatus.PARKED);
+      assertThat(tool.invocations()).isZero();
+    }
+
     @Test
     void resume_answers_a_parked_call_and_finishes_the_turn() {
       ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());

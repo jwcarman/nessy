@@ -1262,6 +1262,50 @@ class ConversationLoopTest {
       assertThat(second.state().status()).isEqualTo(ConversationStatus.COMPLETE);
     }
 
+    /**
+     * Opus review, Finding 2 (Important): at-least-once delivery can land two {@code Resolved}
+     * entries for the same call in the inbox before either is ever drained — the store is
+     * append-only and unconditional, so nothing stops two redeliveries from arriving before a
+     * single {@code drive} even starts. The routing loop reads {@code progress.get().parkedCalls()}
+     * fresh on every iteration, so the first entry's own fold already clears {@code c1} from the
+     * outstanding set before the second entry is ever considered — a plausible mis-write that
+     * hoists {@code loaded.state().parkedCalls()} once, outside the loop, would instead route both
+     * entries and re-invoke the executor's {@code resume} twice, silently double-executing the
+     * tool. This test seeds both entries at once, drives exactly once, and pins the executor sees
+     * exactly one resume and the turn still completes.
+     */
+    @Test
+    void two_resolved_entries_for_the_same_call_in_one_inbox_resume_the_tool_exactly_once() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, homework(c1), plainAnswer("Found it."));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.parksWhen("c1");
+      tools.resumesTo("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("found")));
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
+
+      // Both entries land before drive ever runs — the at-least-once-delivery-lands-both shape.
+      store.append(
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("found"))));
+      store.append(
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("found"))));
+      RunOutcome outcome = loop.drive(ID, OBSERVER);
+
+      assertThat(tools.resumeCalls()).isEqualTo(1);
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+    }
+
     @Test
     void a_resolution_for_a_settled_call_drains_quietly() {
       List<String> journal = new ArrayList<>();
