@@ -59,6 +59,7 @@ public final class Harness {
 
   private final ModelProvider provider;
   private final ConversationStore store;
+  private final boolean storeSet;
   private final Parks parks;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
@@ -98,6 +99,7 @@ public final class Harness {
   Harness(
       ModelProvider provider,
       ConversationStore store,
+      boolean storeSet,
       Parks parks,
       ObservationRegistry observations,
       ObjectMapper mapper,
@@ -105,6 +107,7 @@ public final class Harness {
       ListenerRegistry registry) {
     this.provider = provider;
     this.store = store;
+    this.storeSet = storeSet;
     this.parks = parks;
     this.observations = observations;
     this.mapper = mapper;
@@ -137,6 +140,16 @@ public final class Harness {
 
   ConversationStore store() {
     return store;
+  }
+
+  /**
+   * Whether {@link HarnessBuilder#store(ConversationStore)} was ever called on the builder that
+   * produced this harness — the bit {@link AgentBuilder#build()} reads to know a durable store was
+   * explicitly chosen, so it can warn when an agent's memory was left on the in-memory default
+   * anyway (the same set-vs-defaulted mismatch {@link HarnessBuilder#defaultParks()} guards).
+   */
+  boolean storeSet() {
+    return storeSet;
   }
 
   Parks parks() {

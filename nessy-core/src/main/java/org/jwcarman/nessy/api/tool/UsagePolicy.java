@@ -34,9 +34,14 @@ public interface UsagePolicy {
   /** Decides {@code call}'s fate, purely from the call and the session state it arrived in. */
   PolicyDecision evaluate(ToolCall call, ConversationState state);
 
-  /** Every call proceeds; the approver is never consulted. */
+  /**
+   * Every call proceeds; the approver is never consulted. Always the same instance ({@link
+   * Allow#INSTANCE}) — the identity {@link org.jwcarman.nessy.AgentBuilder#build()} checks a
+   * grant's policy against to tell "no approval path can exist here" from an opaque custom policy
+   * that might.
+   */
   static UsagePolicy allow() {
-    return (call, state) -> new PolicyDecision.Allow();
+    return Allow.INSTANCE;
   }
 
   /** Every call is refused, with the same reason each time. */
@@ -48,5 +53,22 @@ public interface UsagePolicy {
   /** Every call defers to the approver — unlike {@link #allow()}, which never asks. */
   static UsagePolicy requireApproval() {
     return (call, state) -> new PolicyDecision.RequireApproval();
+  }
+
+  /**
+   * The canonical singleton {@link #allow()} returns. A dedicated class rather than a field
+   * directly on this interface: interface fields are implicitly {@code public static final}, and
+   * this one is deliberately not public API — only {@link #allow()} is.
+   */
+  final class Allow implements UsagePolicy {
+
+    private static final UsagePolicy INSTANCE = new Allow();
+
+    private Allow() {}
+
+    @Override
+    public PolicyDecision evaluate(ToolCall call, ConversationState state) {
+      return new PolicyDecision.Allow();
+    }
   }
 }

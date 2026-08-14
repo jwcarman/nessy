@@ -42,6 +42,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
 
   private final ModelProvider provider;
   private ConversationStore store;
+  private boolean storeSet;
   private Parks parks;
   private ObservationRegistry observations;
   private ObjectMapper mapper;
@@ -55,6 +56,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   /** Where session state lives. Default: {@link ConversationStore#inMemory()}. */
   public HarnessBuilder store(ConversationStore store) {
     this.store = Objects.requireNonNull(store, "store must not be null");
+    this.storeSet = true;
     return this;
   }
 
@@ -127,6 +129,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
     return new Harness(
         provider,
         Optional.ofNullable(store).orElseGet(this::defaultStore),
+        storeSet,
         Optional.ofNullable(parks).orElseGet(this::defaultParks),
         Optional.ofNullable(observations).orElseGet(this::defaultObservations),
         Optional.ofNullable(mapper).orElseGet(this::defaultMapper),

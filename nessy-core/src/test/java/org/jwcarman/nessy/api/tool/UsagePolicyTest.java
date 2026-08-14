@@ -65,6 +65,11 @@ class UsagePolicyTest {
       assertThat(policy.evaluate(spendCall(1), STATE))
           .isEqualTo(new PolicyDecision.RequireApproval());
     }
+
+    @Test
+    void allow_returns_the_same_instance_every_time() {
+      assertThat(UsagePolicy.allow()).isSameAs(UsagePolicy.allow());
+    }
   }
 
   @Nested

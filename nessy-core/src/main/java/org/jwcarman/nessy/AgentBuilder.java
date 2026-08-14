@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
@@ -73,6 +74,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   private final Harness harness;
   private final ModelProvider provider;
   private final ConversationStore store;
+  private final boolean storeSet;
   private final Parks parks;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
@@ -109,6 +111,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     this.harness = harness;
     this.provider = harness.provider();
     this.store = harness.store();
+    this.storeSet = harness.storeSet();
     this.parks = harness.parks();
     this.observations = harness.observations();
     this.mapper = harness.mapper();
@@ -264,7 +267,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
             new GatedToolCallExecutor(
                 resolvedTools,
                 resolvedGrants,
-                Optional.ofNullable(approver).orElseGet(this::defaultApprover),
+                Optional.ofNullable(approver).orElseGet(() -> defaultApprover(resolvedGrants)),
                 mapper,
                 events,
                 observations));
@@ -307,15 +310,21 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
 
   /**
    * {@link Approver#allowAll()} — every tool call is granted with no human in the loop. Design
-   * §13.1 requires this fallback to announce itself with a prominent warning, so it does, once per
-   * agent {@link #build()}: approval authority is always the application's own explicit
-   * declaration, never a silent default for anything a real tool grant deserves.
+   * §13.1 requires this fallback to announce itself with a prominent warning — unless no approval
+   * path can exist in the first place: {@code grants} empty, or every grant's {@link UsagePolicy}
+   * is the canonical {@link UsagePolicy#allow()} singleton, which never consults the approver at
+   * all. A custom policy stays opaque — it might defer to the approver, so its absence still warns,
+   * fail-noisy for the unknown.
    */
-  private Approver defaultApprover() {
-    LOGGER.warn(
-        "no approver configured for this agent: defaulting to Approver.allowAll(), which grants"
-            + " every tool call with no human in the loop; call .approver(...) to declare real"
-            + " approval authority (design §13.1)");
+  private Approver defaultApprover(Map<String, ToolGrant> grants) {
+    boolean noApprovalPathCanExist =
+        grants.values().stream().allMatch(grant -> grant.policy() == UsagePolicy.allow());
+    if (!noApprovalPathCanExist) {
+      LOGGER.warn(
+          "no approver configured for this agent: defaulting to Approver.allowAll(), which grants"
+              + " every tool call with no human in the loop; call .approver(...) to declare real"
+              + " approval authority (design §13.1)");
+    }
     return Approver.allowAll();
   }
 
@@ -324,8 +333,22 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     return TerminationPolicy.defaults();
   }
 
-  /** The floor: remembers everything verbatim through a transcript, recalls it whole. */
+  /**
+   * The floor: remembers everything verbatim through a transcript, recalls it whole. Warns when the
+   * harness's own {@link ConversationStore} was explicitly configured ({@link Harness#storeSet()})
+   * — the conversation itself will survive a restart, but this in-memory transcript will not, the
+   * same set-vs-defaulted mismatch {@link HarnessBuilder#defaultParks()} guards against for parks.
+   * Memory stays agent-scoped even so: this warns rather than auto-wiring a durable transcript from
+   * the store.
+   */
   private Memory defaultMemory() {
+    if (storeSet) {
+      LOGGER.warn(
+          "no memory configured for this agent: defaulting to an in-memory TranscriptMemory, even"
+              + " though this harness's store is durable — the conversation will survive a restart"
+              + " but its transcript will not; call .memory(...) with a durable implementation to"
+              + " keep the transcript too");
+    }
     return new TranscriptMemory(Transcript.inMemory());
   }
 }

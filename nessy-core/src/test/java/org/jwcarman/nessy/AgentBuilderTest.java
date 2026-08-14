@@ -18,6 +18,10 @@ package org.jwcarman.nessy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -29,6 +33,8 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
@@ -47,11 +53,15 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@code AgentBuilder}'s own validation and configuration wiring: every setter actually reaches the
@@ -353,6 +363,166 @@ class AgentBuilderTest {
       var context = provider.requests().getFirst().context();
       var block = (TextBlock) context.messages().getLast().content().getFirst();
       assertThat(block.text()).isEqualTo("custom-render");
+    }
+  }
+
+  @Nested
+  class Memory_downgrade_warning {
+
+    private ListAppender<ILoggingEvent> appender;
+    private Logger logger;
+    private Level originalLevel;
+
+    @BeforeEach
+    void wires_a_capturing_appender_onto_the_agent_builder_logger() {
+      logger = (Logger) LoggerFactory.getLogger(AgentBuilder.class);
+      originalLevel = logger.getLevel();
+      logger.setLevel(Level.WARN);
+      appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void unwires_the_appender_and_restores_the_loggers_level() {
+      logger.detachAppender(appender);
+      logger.setLevel(originalLevel);
+    }
+
+    @Test
+    void memory_defaulted_with_an_explicitly_configured_store_warns_about_the_downgrade() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider)
+          .store(ConversationStore.inMemory())
+          .build()
+          .agent()
+          .model("fake-model")
+          .build();
+
+      assertThat(appender.list).hasSize(1);
+      ILoggingEvent event = appender.list.getFirst();
+      assertThat(event.getLevel()).isEqualTo(Level.WARN);
+      assertThat(event.getFormattedMessage())
+          .contains("memory")
+          .contains("survive")
+          .contains(".memory(");
+    }
+
+    @Test
+    void an_explicitly_declared_memory_stays_silent_even_with_a_configured_store() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider)
+          .store(ConversationStore.inMemory())
+          .build()
+          .agent()
+          .model("fake-model")
+          .memory(new TranscriptMemory(Transcript.inMemory()))
+          .build();
+
+      assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void a_defaulted_store_alongside_defaulted_memory_stays_silent() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider).build().agent().model("fake-model").build();
+
+      assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void both_memory_and_store_explicitly_declared_stays_silent() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider)
+          .store(ConversationStore.inMemory())
+          .build()
+          .agent()
+          .model("fake-model")
+          .memory(new TranscriptMemory(Transcript.inMemory()))
+          .build();
+
+      assertThat(appender.list).isEmpty();
+    }
+  }
+
+  @Nested
+  class Approver_warning {
+
+    private ListAppender<ILoggingEvent> appender;
+    private Logger logger;
+    private Level originalLevel;
+
+    @BeforeEach
+    void wires_a_capturing_appender_onto_the_agent_builder_logger() {
+      logger = (Logger) LoggerFactory.getLogger(AgentBuilder.class);
+      originalLevel = logger.getLevel();
+      logger.setLevel(Level.WARN);
+      appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void unwires_the_appender_and_restores_the_loggers_level() {
+      logger.detachAppender(appender);
+      logger.setLevel(originalLevel);
+    }
+
+    @Test
+    void every_grant_using_the_canonical_allow_singleton_stays_silent_with_no_approver() {
+      FakeProvider provider = new FakeProvider("hi");
+      ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.allow());
+
+      Nessy.harness(provider).build().agent(Nothing.class).model("fake-model").tools(grant).build();
+
+      assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void no_grants_at_all_stays_silent_with_no_approver() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider).build().agent().model("fake-model").build();
+
+      assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void a_custom_policy_grant_with_no_approver_still_warns() {
+      FakeProvider provider = new FakeProvider("hi");
+      ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.requireApproval());
+
+      Nessy.harness(provider).build().agent(Nothing.class).model("fake-model").tools(grant).build();
+
+      assertThat(appender.list).hasSize(1);
+      assertThat(appender.list.getFirst().getLevel()).isEqualTo(Level.WARN);
+    }
+
+    @Test
+    void a_declared_approver_stays_silent_regardless_of_the_grants() {
+      FakeProvider provider = new FakeProvider("hi");
+      ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.requireApproval());
+      Approver approver =
+          new Approver() {
+            @Override
+            public Awaited<Decision> approve(ApprovalRequest request) {
+              return Awaited.ready(Decision.allow());
+            }
+          };
+
+      Nessy.harness(provider)
+          .build()
+          .agent(Nothing.class)
+          .model("fake-model")
+          .tools(grant)
+          .approver(approver)
+          .build();
+
+      assertThat(appender.list).isEmpty();
     }
   }
 
