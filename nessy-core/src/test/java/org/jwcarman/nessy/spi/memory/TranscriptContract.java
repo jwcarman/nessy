@@ -62,10 +62,11 @@ public abstract class TranscriptContract {
   @Test
   void appending_a_message_equal_to_the_current_last_entry_returns_that_entry_unchanged() {
     ConversationId id = ConversationId.generate();
-    Message repeated = Message.user("hello");
-    Entry firstAppend = transcript().append(id, repeated);
+    Entry firstAppend = transcript().append(id, Message.user("hello"));
 
-    Entry secondAppend = transcript().append(id, repeated);
+    // A separately-constructed but value-equal message — the shape a crash-recovery
+    // replay actually re-delivers, never the same object reference.
+    Entry secondAppend = transcript().append(id, Message.user("hello"));
 
     assertThat(secondAppend).isEqualTo(firstAppend);
     assertThat(transcript().all(id)).hasSize(1);
@@ -74,14 +75,13 @@ public abstract class TranscriptContract {
   @Test
   void appending_a_message_equal_to_an_earlier_but_not_the_last_entry_still_appends() {
     ConversationId id = ConversationId.generate();
-    Message first = Message.user("first");
-    Message second = Message.user("second");
-    transcript().append(id, first);
-    transcript().append(id, second);
+    transcript().append(id, Message.user("first"));
+    transcript().append(id, Message.user("second"));
 
-    Entry third = transcript().append(id, first);
+    // Value-equal to the first append, not to the last — the no-stutter rule must not fire.
+    Entry third = transcript().append(id, Message.user("first"));
 
-    assertThat(third.message()).isEqualTo(first);
+    assertThat(third.message()).isEqualTo(Message.user("first"));
     assertThat(third.version()).isEqualTo(2L);
     assertThat(transcript().all(id)).hasSize(3);
   }
