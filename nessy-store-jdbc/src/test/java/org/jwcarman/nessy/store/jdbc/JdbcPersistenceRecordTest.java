@@ -28,15 +28,15 @@ import org.junit.jupiter.api.Test;
 /**
  * {@link JdbcPersistence}'s own compact constructor, pinned without a container: every component is
  * validated the same way {@code ConversationSnapshot} and {@code ToolContext} validate theirs in
- * this generation. Neither branch touches a database — the {@link JdbcConversationStore}, {@link
- * JdbcParks}, and {@link JdbcTranscript} constructors each only store their {@link DataSource}
- * reference, never opening a connection.
+ * this generation. No branch touches a database — the {@link JdbcConversationStore}, {@link
+ * JdbcParks}, {@link JdbcTranscript}, and {@link JdbcSummaryStore} constructors each only store
+ * their {@link DataSource} reference, never opening a connection.
  */
 class JdbcPersistenceRecordTest {
 
   @Test
   void a_null_store_is_rejected() {
-    assertThatThrownBy(() -> new JdbcPersistence(null, null, null))
+    assertThatThrownBy(() -> new JdbcPersistence(null, null, null, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("store");
   }
@@ -46,7 +46,7 @@ class JdbcPersistenceRecordTest {
     JdbcConversationStore store =
         new JdbcConversationStore(new UnusedDataSource(), new ObjectMapper());
 
-    assertThatThrownBy(() -> new JdbcPersistence(store, null, null))
+    assertThatThrownBy(() -> new JdbcPersistence(store, null, null, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("parks");
   }
@@ -57,9 +57,21 @@ class JdbcPersistenceRecordTest {
         new JdbcConversationStore(new UnusedDataSource(), new ObjectMapper());
     JdbcParks parks = new JdbcParks(new UnusedDataSource(), new ObjectMapper());
 
-    assertThatThrownBy(() -> new JdbcPersistence(store, parks, null))
+    assertThatThrownBy(() -> new JdbcPersistence(store, parks, null, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("transcript");
+  }
+
+  @Test
+  void a_null_summaries_is_rejected() {
+    JdbcConversationStore store =
+        new JdbcConversationStore(new UnusedDataSource(), new ObjectMapper());
+    JdbcParks parks = new JdbcParks(new UnusedDataSource(), new ObjectMapper());
+    JdbcTranscript transcript = new JdbcTranscript(new UnusedDataSource(), new ObjectMapper());
+
+    assertThatThrownBy(() -> new JdbcPersistence(store, parks, transcript, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("summaries");
   }
 
   /** A {@link DataSource} that is never actually connected to — construction alone must suffice. */

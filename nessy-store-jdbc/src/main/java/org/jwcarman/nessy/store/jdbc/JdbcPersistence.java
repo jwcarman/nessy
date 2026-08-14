@@ -22,27 +22,33 @@ import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 
 /**
- * The three doors a durable {@code AgentBuilder} actually needs, all over one Postgres database,
- * bootstrapped in one call: a {@link JdbcConversationStore}, a {@link JdbcParks} registry, and a
- * {@link JdbcTranscript}. {@link #create} exists because those three schemas are always stood up
+ * The three doors a durable {@code AgentBuilder} actually needs, plus the summary shelf {@code
+ * SummarizingMemory} reaches for, all over one Postgres database, bootstrapped in one call: a
+ * {@link JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, and a
+ * {@link JdbcSummaryStore}. {@link #create} exists because those four schemas are always stood up
  * together in practice — nothing here couples them beyond that convenience; each component still
  * works fine constructed on its own.
  */
 public record JdbcPersistence(
-    JdbcConversationStore store, JdbcParks parks, JdbcTranscript transcript) {
+    JdbcConversationStore store,
+    JdbcParks parks,
+    JdbcTranscript transcript,
+    JdbcSummaryStore summaries) {
 
   public JdbcPersistence {
     Objects.requireNonNull(store, "store must not be null");
     Objects.requireNonNull(parks, "parks must not be null");
     Objects.requireNonNull(transcript, "transcript must not be null");
+    Objects.requireNonNull(summaries, "summaries must not be null");
   }
 
-  /** Bootstraps all three schemas against {@code dataSource}, then returns a working trio. */
+  /** Bootstraps all four schemas against {@code dataSource}, then returns a working set. */
   public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) {
     return new JdbcPersistence(
         JdbcConversationStore.create(dataSource, mapper),
         JdbcParks.create(dataSource, mapper),
-        JdbcTranscript.create(dataSource, mapper));
+        JdbcTranscript.create(dataSource, mapper),
+        JdbcSummaryStore.create(dataSource));
   }
 
   /** The durable {@link Memory}: verbatim retention over this pair's own {@link #transcript()}. */
