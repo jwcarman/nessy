@@ -40,12 +40,19 @@ Two variants join the sealed grammar:
   retried segment may re-say it; observers keying UI on it dedupe like
   `ToolCallParked` consumers do).
 - **`TurnEvent.TurnEnded(ConversationStatus status, String
-  failureReason)`** — the segment's closing line, emitted EXACTLY ONCE per
-  observed segment at every exit: quiescent completion, FAILED (with the
+  failureReason)`** — the segment's closing line, emitted exactly once
+  per drive ATTEMPT at every exit: quiescent completion, FAILED (with the
   reason — `failureReason` is null otherwise, mirroring
   `ConversationState`'s one sanctioned nullable), and PARKED.
   **Post-save discipline, like `ToolCallParked`:** an ending that never
-  committed is never narrated.
+  committed is never narrated. *(Amended at final review, 2026-08-14:
+  the guarantee is attempt-scoped, not segment-scoped — a fence-lost
+  retry that already narrated a committed PARKED ending may re-narrate;
+  this is the roster's standing at-least-once rule, the same one
+  `AssistantSaid` and `ToolCallParked` carry, and consumers keying UI on
+  it dedupe. Suppressing the retry's ending was rejected: a retry can
+  legitimately settle in a DIFFERENT terminal state, and that ending
+  must not be lost.)*
 
 **Naming, ruled at review:** `AssistantSaid` over `MessageSettled`
 (actor-less, kernel jargon) and over `AgentSaid` — in `AgentTold` the
