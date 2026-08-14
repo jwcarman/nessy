@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -60,11 +61,16 @@ class WindowedMemoryTest {
     memory.remember(id, Message.toolResults(List.of(new ToolResultBlock("c1", "vitals", false))));
     memory.remember(id, Message.user("round 2"));
     memory.remember(id, Message.assistant(List.of()));
+    memory.remember(id, Message.user("round 3"));
+    memory.remember(id, Message.assistant(List.of()));
 
     Context recalled = memory.recall(id);
 
-    // keepRecent cuts only at a genuine user turn, so the exchange either survives with its
-    // results or is dropped entirely; Context's own constructor makes a split unconstructible.
+    // pairSafeCut(3) walks down from index 4 (an assistant message) to the genuine user turn at
+    // index 3, so the cut genuinely fires: the tail is the last four messages and the tool
+    // exchange (indices 1-2) is dropped WHOLE — Context's own constructor makes dropping half
+    // of it unconstructible.
+    assertThat(recalled.messages()).hasSize(4);
     boolean hasToolUse =
         recalled.messages().stream()
             .flatMap(message -> message.content().stream())
@@ -73,9 +79,10 @@ class WindowedMemoryTest {
         recalled.messages().stream()
             .flatMap(message -> message.content().stream())
             .anyMatch(ToolResultBlock.class::isInstance);
-    assertThat(hasToolUse).isEqualTo(hasToolResult);
-    assertThat(recalled.messages()).isNotEmpty();
-    assertThat(recalled.messages().getLast().content()).isEmpty();
+    assertThat(hasToolUse).isFalse();
+    assertThat(hasToolResult).isFalse();
+    assertThat(((TextBlock) recalled.messages().getFirst().content().getFirst()).text())
+        .isEqualTo("round 2");
   }
 
   @Test
