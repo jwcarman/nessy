@@ -82,6 +82,21 @@
       <version>${project.version}</version>
       <optional>true</optional>
     </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-webmvc</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <!-- Carries ContextSnapshotFactory: TurnRunner's virtual thread restores the calling thread's
+         ThreadLocal-borne context (Micrometer's current-Observation scope among them) so a turn's
+         narration continues the request's own trace rather than starting a new one. Already on
+         chat-web's classpath transitively via micrometer-tracing; declared directly here since
+         nessy-autoconfigure never depends on chat-web. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>context-propagation</artifactId>
+      <optional>true</optional>
+    </dependency>
 
     <!-- Tests: nessy-model-anthropic and nessy-model-openai are already compile-scope above
          (optional only changes what propagates to consumers, not this module's own classpath), so
