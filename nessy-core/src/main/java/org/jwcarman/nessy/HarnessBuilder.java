@@ -139,8 +139,18 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
     return ConversationStore.inMemory();
   }
 
-  /** {@link Parks#inMemory()} — parked waits kept only for the process's lifetime. */
+  /**
+   * {@link Parks#inMemory()} — parked waits kept only for the process's lifetime. A harness backed
+   * by a durable {@link #store} is not automatically a durable harness: parks defaults separately,
+   * so this warns once per {@link #build()} rather than leaving a hand-wired durable deployment to
+   * discover in production that its tokens die with the JVM.
+   */
   private Parks defaultParks() {
+    LOGGER.warn(
+        "no parks registry configured for this harness: defaulting to Parks.inMemory(), so every"
+            + " parked wait's token is lost on process exit; call .parks(...) with a durable"
+            + " implementation (e.g. JdbcParks.create(...)) for any deployment that needs parks to"
+            + " survive a restart");
     return Parks.inMemory();
   }
 

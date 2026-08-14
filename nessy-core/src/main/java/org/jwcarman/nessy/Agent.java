@@ -16,8 +16,9 @@
 package org.jwcarman.nessy;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
@@ -30,6 +31,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.conversation.Parks.Park;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
@@ -110,7 +112,9 @@ public final class Agent<I> {
    * outstanding call ids against {@link Parks#forConversation}: the state no longer carries tokens,
    * so the cards are {@link Parks} registry entries filtered down to whichever calls {@link
    * org.jwcarman.nessy.api.conversation.ConversationState#parkedCalls()} still names outstanding,
-   * rendered as the same {@code (token, call)} pairs this snapshot always handed back.
+   * rendered as the same {@code (token, call)} pairs this snapshot always handed back — in {@link
+   * org.jwcarman.nessy.api.conversation.ConversationState#parkedCalls()}'s own order (the order the
+   * calls were parked in), not whatever order the registry happens to iterate.
    */
   public ConversationSnapshot snapshot(ConversationId id) {
     Objects.requireNonNull(id, "id must not be null");
@@ -125,10 +129,13 @@ public final class Agent<I> {
   }
 
   private List<ParkedCall> cards(ConversationId id, ConversationStore.Loaded loaded) {
-    Set<String> outstanding =
-        loaded.state().parkedCalls().stream().map(ToolCall::id).collect(Collectors.toSet());
-    return parks.forConversation(id).stream()
-        .filter(park -> outstanding.contains(park.call().id()))
+    Map<String, Park> byCallId =
+        parks.forConversation(id).stream()
+            .collect(Collectors.toMap(park -> park.call().id(), Function.identity()));
+    return loaded.state().parkedCalls().stream()
+        .map(ToolCall::id)
+        .map(byCallId::get)
+        .filter(Objects::nonNull)
         .map(park -> new ParkedCall(park.token(), park.call()))
         .toList();
   }

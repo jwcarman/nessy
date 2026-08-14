@@ -35,9 +35,9 @@ ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/night-watchman spring-boot:run
 No Docker, no database, nothing else to stand up — just the log, which is the
 UI. Watch it: quiet rounds at first ("all quiet" reports), then a trend, then
 an alarm. Ctrl-C ends the watch — the conversation honestly dies with the JVM.
-`ListMemory` (which `WindowedMemory` delegates to) is in-memory by design, the
-same way the framework's default is; nothing about this example asks for
-durability.
+`TranscriptMemory` over an in-memory `Transcript` (which `WindowedMemory`
+delegates to) is in-memory by design, the same way the framework's default is;
+nothing about this example asks for durability.
 
 ## The two properties
 
@@ -63,10 +63,15 @@ scheduled firing.
 ```java
 public final class WindowedMemory implements Memory {
 
-  private final Memory delegate = new ListMemory();
+  private final Memory delegate = new TranscriptMemory(Transcript.inMemory());
   private final int window;
 
-  public WindowedMemory(int window) { this.window = window; }
+  public WindowedMemory(int window) {
+    if (window < 1) {
+      throw new IllegalArgumentException("window must be at least 1");
+    }
+    this.window = window;
+  }
 
   @Override
   public void remember(ConversationId id, Message message) {
@@ -80,7 +85,7 @@ public final class WindowedMemory implements Memory {
 }
 ```
 
-Retention is whole — `remember` delegates straight to `ListMemory`, so nothing
+Retention is whole — `remember` delegates straight to `TranscriptMemory`, so nothing
 is ever discarded from the underlying store. `recall` is where the bound
 lives: `Context#keepRecent(window)` keeps AT LEAST the last `window`
 messages, cutting only at a pair-safe boundary (a tool-use/tool-result pair is

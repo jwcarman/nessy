@@ -219,6 +219,43 @@ class AgentTest {
       harness.resume(approver.token(), new ToolResolution.Decided(Decision.allow()));
 
       assertThat(agent.snapshot(id).parkedCalls()).isEmpty();
+      assertThat(harness.peek(approver.token())).isPresent();
+    }
+
+    /**
+     * Should-fix 8 (final review): {@code Agent.cards} used to order the snapshot's cards by
+     * registry iteration order, not the park order {@code state.parkedCalls()} itself records. Two
+     * outstanding calls pin that the cards come back in the order they were parked in, not whatever
+     * order {@link org.jwcarman.nessy.spi.conversation.Parks#forConversation} happens to hand back.
+     */
+    @Test
+    void two_parked_calls_cards_come_back_in_the_order_they_were_parked() {
+      ToolCall first = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+      ToolCall second = new ToolCall("c2", "search", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(
+                  new ModelEvent.ToolUseEmitted(first),
+                  new ModelEvent.ToolUseEmitted(second),
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+      ParkingApprover approver = new ParkingApprover();
+      Agent<String> agent =
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .model("fake-model")
+              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+
+      ConversationId id = agent.converse().tell("search twice").state().id();
+
+      ConversationSnapshot snap = agent.snapshot(id);
+
+      assertThat(snap.parkedCalls()).isNotEmpty();
+      assertThat(snap.parkedCalls())
+          .extracting(card -> card.call().id())
+          .containsExactly("c1", "c2");
     }
   }
 

@@ -69,7 +69,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * emits plain text plus {@code END_TURN}. {@link ChatWebConfig}'s {@code Harness} bean wins over
  * the starter's own {@code NessyAutoConfiguration}-supplied one by
  * {@code @ConditionalOnMissingBean}, built on that scripted provider over the same JDBC-backed
- * {@code ConversationStore} and real {@code JdbcMemory} beans the starter's persistence
+ * {@code ConversationStore} and real {@code TranscriptMemory} beans the starter's persistence
  * autoconfiguration wires from this test's Testcontainers datasource — {@code ANTHROPIC_API_KEY}
  * never enters the picture, since the real {@link
  * org.jwcarman.nessy.model.anthropic.AnthropicModelProvider} bean is never constructed.

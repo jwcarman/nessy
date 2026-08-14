@@ -188,6 +188,14 @@ public final class Harness {
    * succeeds and driving is the same re-entrant act {@link #resume} shares with {@code tell}: the
    * inbox absorbs the answer, the status pointer says what happens next.
    *
+   * <p>That quiet-drain protection is serial, not concurrent: it is the fold picking a winner among
+   * entries already appended, so it only shields a resume that arrives after an earlier one has
+   * finished folding. Two deliveries of the same token driven concurrently can both observe the
+   * call as still outstanding and both invoke the tool before the fence settles on which fold wins
+   * — the same at-least-once exposure {@link org.jwcarman.nessy.api.tool.Tool} already documents: a
+   * tool that cannot be safely re-run makes itself idempotent, or parks and lets its remote side
+   * deduplicate by token.
+   *
    * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
    *     resume} cannot yet tell which agent's loop a token belongs to (see {@link

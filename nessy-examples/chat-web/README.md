@@ -79,11 +79,11 @@ This is the acceptance test, run by hand:
    the chat log.
 3. **Kill the app** (`Ctrl-C`). Restart it (`./mvnw -pl nessy-examples/chat-web
    spring-boot:run` again). Refresh the page: the transcript is intact
-   (`JdbcMemory` survived the JVM), the approval card is still there (the
+   (the transcript survived the JVM), the approval card is still there (the
    park is a durable row in Postgres, not process state), and the
    conversation's status reads `PARKED`.
 4. Click **Approve** — the resumed segment streams the confirmation; the
-   turn completes with nothing left on the agenda.
+   turn completes with nothing left in the inbox.
 5. Type another message in the same conversation — it just continues; same
    conversation id, same transcript.
 6. Open Grafana at <http://localhost:3000> and find the turn's trace in

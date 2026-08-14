@@ -590,7 +590,12 @@ sequence of renames and interim shapes that produced it.
     resolution addressed to an already-settled call) is no longer a store
     method to call; it is the fold-owned is-this-call-still-outstanding
     check, run against `ConversationState.parkedCalls()` as the loop routes
-    each inbox entry.
+    each inbox entry. That check is serial, not concurrent — it picks a
+    winner among entries already appended, so two deliveries of the same
+    token driven concurrently can both see the call as outstanding and both
+    invoke the tool before the fence settles. `Tool` already documents the
+    consequence: a tool that cannot be safely re-run makes itself
+    idempotent, or parks and lets its remote side deduplicate by token.
   - **The `Parks` registry, and register-before-save orphan tolerance.** A
     tool that parks has already handed its token to the outside world before
     the loop can act, so the registry write is forced to precede the save,
@@ -612,9 +617,9 @@ sequence of renames and interim shapes that produced it.
 
 ### Breaking (pre-1.0)
 
-All three of the following are deliberate, in-development shape changes —
+All four of the following are deliberate, in-development shape changes —
 nothing below breaks a shipped version, because none exists yet — but they
-are loud because all three signatures were public as of the previous entries
+are loud because all four signatures were public as of the previous entries
 above:
 
 - **`RunOutcome.Parked` slims to `Parked(ConversationState state)`.** The
@@ -655,3 +660,7 @@ above:
     `nessy_agenda` → `nessy_inbox`; `nessy_park`/`nessy_token` dropped;
     `nessy_parks` and `nessy_summary` added. Fresh bootstrap only; no data
     migration.
+  - `HarnessBuilder.parks(...)` now defaults to `Parks.inMemory()` separately
+    from the store: a hand-wired durable deployment that only called
+    `.store(...)` must now also add `.parks(JdbcParks.create(...))` (or use
+    the starter, which wires both), or every parked token dies with the JVM.

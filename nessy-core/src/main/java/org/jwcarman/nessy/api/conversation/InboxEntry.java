@@ -24,7 +24,8 @@ import org.jwcarman.nessy.internal.Identifiers;
 /**
  * One durable piece of mail in a conversation's inbox: a tell that arrived, or a park that
  * resolved. Both carry a time-ordered {@link #id()} minted the same way {@link
- * ParkToken#generate()} mints its own — the sanctioned api-to-internal precedent.
+ * org.jwcarman.nessy.api.ParkToken#generate()} mints its own — the sanctioned api-to-internal
+ * precedent.
  *
  * <p>Arrival-ordered, never prioritized: the inbox has no reordering, no priority queue — items are
  * taken up in the order they were laid down.

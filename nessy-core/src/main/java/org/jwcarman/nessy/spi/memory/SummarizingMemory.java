@@ -120,6 +120,13 @@ public final class SummarizingMemory implements Memory {
    * call ever having happened this round — when the tail carries no pair-safe boundary at all (an
    * all-open-tool-exchange tail, in practice vanishingly rare): there is nothing safe to fold, so
    * nothing is folded.
+   *
+   * <p>Also returns {@code current} unchanged, with no save and no watermark advance, when the
+   * model does call but its folded text comes back {@link String#isBlank()}: a blank summary is not
+   * a legitimately empty one — the words it should have folded would be silently dropped from every
+   * future recall the moment the watermark moved past them, since the transcript's own tail window
+   * would no longer include the folded messages. Leaving the watermark where it was means the next
+   * recall simply retries the same fold over the same tail.
    */
   private Summary fold(ConversationId id, Summary current, List<Transcript.Entry> tail) {
     List<Message> tailMessages =
@@ -132,6 +139,9 @@ public final class SummarizingMemory implements Memory {
     List<Message> toFold = tailMessages.subList(0, cut);
     long newWatermark = tail.get(cut - 1).version();
     String newText = summarize(current.text(), toFold);
+    if (newText.isBlank()) {
+      return current;
+    }
     Summary folded = new Summary(newWatermark, newText);
     summaries.save(id, folded);
     return folded;

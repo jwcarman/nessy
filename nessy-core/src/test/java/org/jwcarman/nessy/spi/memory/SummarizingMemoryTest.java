@@ -180,6 +180,41 @@ class SummarizingMemoryTest {
   }
 
   @Nested
+  class Blank_fold_response {
+
+    /**
+     * Should-fix 9 (final review): a blank fold response used to still advance the watermark and
+     * save an empty summary, which silently dropped the folded history from every future recall —
+     * the watermark said those messages were folded, but the "summary" holding them was nothing. A
+     * blank response must instead be treated the same as "nothing safe to fold": the watermark
+     * stays put, nothing is saved, and the next recall retries the same fold over the same tail.
+     */
+    @Test
+    void a_blank_model_response_leaves_the_watermark_unmoved_and_recall_still_sees_the_tail() {
+      ConversationId id = ConversationId.generate();
+      Transcript transcript = Transcript.inMemory();
+      SummaryStore summaries = SummaryStore.inMemory();
+      RecordingTextModelProvider provider = new RecordingTextModelProvider("   ");
+      SummarizingMemory memory =
+          new SummarizingMemory(transcript, summaries, provider, "model", "summarize", 3);
+      Message first = Message.user("one");
+      Message second = Message.user("two");
+      Message third = Message.user("three");
+      Message fourth = Message.user("four");
+      memory.remember(id, first);
+      memory.remember(id, second);
+      memory.remember(id, third);
+      memory.remember(id, fourth);
+
+      Context recalled = memory.recall(id);
+
+      assertThat(provider.callCount()).isEqualTo(1);
+      assertThat(summaries.find(id)).isEmpty();
+      assertThat(recalled.messages()).containsExactly(first, second, third, fourth);
+    }
+  }
+
+  @Nested
   class Open_tail_trim {
 
     @Test

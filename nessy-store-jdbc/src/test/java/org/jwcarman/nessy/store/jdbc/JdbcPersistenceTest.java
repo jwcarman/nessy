@@ -18,6 +18,7 @@ package org.jwcarman.nessy.store.jdbc;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -31,16 +32,20 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.spi.conversation.Parks.Park;
+import org.jwcarman.nessy.spi.memory.SummaryStore.Summary;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * {@link JdbcPersistence#create} is the one-call bootstrap a durable {@code AgentBuilder} reaches
- * for; this pins that it actually stands up all three schemas and hands back a working trio, not
+ * for; this pins that it actually stands up all four schemas and hands back a working quartet, not
  * just objects that happen to compile together. Requires Docker; tagged {@code container} so the
  * offline default build never needs it.
  */
@@ -81,7 +86,7 @@ class JdbcPersistenceTest {
   }
 
   @Test
-  void create_bootstraps_both_schemas_and_returns_a_working_pair() {
+  void create_bootstraps_every_schema_and_returns_a_working_quartet() {
     JdbcPersistence persistence = JdbcPersistence.create(dataSource, mapper);
     ConversationId id = ConversationId.generate();
 
@@ -89,6 +94,18 @@ class JdbcPersistenceTest {
 
     assertThat(persistence.memory().recall(id).messages()).hasSize(1);
     assertThat(persistence.store().load(id)).isEmpty();
+
+    ParkToken token = ParkToken.generate();
+    ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+    Park park = new Park(id, token, call);
+    persistence.parks().park(park);
+
+    assertThat(persistence.parks().find(token)).contains(park);
+
+    Summary summary = new Summary(1L, "the conversation so far");
+    persistence.summaries().save(id, summary);
+
+    assertThat(persistence.summaries().find(id)).contains(summary);
   }
 
   /**
