@@ -19,8 +19,10 @@ import java.util.Objects;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -61,38 +63,92 @@ public class FulfillmentReplies {
   }
 
   /** The warehouse's reply payload: which beat this is, and the narration for it (spec §5). */
-  public record FulfillmentReply(String kind, String text) {}
+  public record FulfillmentReply(String kind, String text) {
+
+    /** The progress beat: narration only, drop-legal (spec §5). */
+    public static final String PROGRESS = "progress";
+
+    /** The terminal beat: resumes the parked call (spec §5). */
+    public static final String COMPLETED = "completed";
+
+    public FulfillmentReply {
+      if (kind == null || kind.isBlank()) {
+        throw new IllegalArgumentException("kind must not be blank");
+      }
+      Objects.requireNonNull(text, "text must not be null");
+    }
+  }
 
   @RabbitListener(queues = Queues.FULFILLMENT_REPLIES)
   public void on(FulfillmentReply reply, @Header(AmqpHeaders.CORRELATION_ID) String correlationId) {
     ParkToken token = new ParkToken(correlationId);
     switch (reply.kind()) {
-      case "progress" -> {
+      case FulfillmentReply.PROGRESS -> {
         boolean delivered = harness.progress(token, reply.text());
         if (!delivered) {
           LOGGER.info("stale progress reply for token {}: {}", token.value(), reply.text());
         }
       }
-      case "completed" -> resume(token, reply.text());
+      case FulfillmentReply.COMPLETED -> resume(token, reply.text());
       default -> LOGGER.warn("unknown reply kind {} for token {}", reply.kind(), token.value());
     }
   }
 
+  /**
+   * Resumes the parked call and narrates the resumed segment with the same observer voice {@link
+   * OrderDesk#on(OrderEvent)} uses: accumulated {@link TurnEvent.TextDelta} as one "desk says"
+   * line, tool completions logged as they land, and the terminal status logged once the drive
+   * returns — failure reason at WARN. The order id is read back off the returned {@link
+   * RunOutcome}'s conversation id rather than threaded in separately, stripping the {@code
+   * "order-"} prefix {@link OrderDesk} mints it with, so a resumed segment identifies itself by the
+   * same order number the original {@code order N begins}/{@code ends} lines used.
+   *
+   * <p>{@link UnknownParkTokenException} is logged and RETHROWN, not swallowed: the registry
+   * survives resolution (a resolved park drains only when {@link Harness#resume} actually drives
+   * it, inside this call), so the only way this exception reaches here is a reply that arrived
+   * before the loop had registered the park at all — the early-reply race, not a stale or duplicate
+   * one. Rethrowing lets Boot's default AUTO ack nack and requeue the message, so redelivery finds
+   * the park registered and resumes it; swallowing here would ack the message away and leave the
+   * order parked forever.
+   */
   private void resume(ParkToken token, String text) {
+    StringBuilder said = new StringBuilder();
+    RunOutcome outcome;
     try {
-      harness.resume(
-          token,
-          new ToolResolution.Completed(ToolResult.ok(text)),
-          turnEvent -> {
-            switch (turnEvent) {
-              case TurnEvent.ToolCallCompleted(ToolCall call, ToolResult result) ->
-                  LOGGER.info(
-                      "call {} completed: {}", call.name(), result.isError() ? "error" : "ok");
-              default -> {}
-            }
-          });
+      outcome =
+          harness.resume(
+              token,
+              new ToolResolution.Completed(ToolResult.ok(text)),
+              turnEvent -> {
+                switch (turnEvent) {
+                  case TurnEvent.TextDelta(String delta) -> said.append(delta);
+                  case TurnEvent.ToolCallCompleted(ToolCall call, ToolResult result) ->
+                      LOGGER.info(
+                          "call {} completed: {}", call.name(), result.isError() ? "error" : "ok");
+                  default -> {}
+                }
+              });
     } catch (UnknownParkTokenException e) {
-      LOGGER.info("stale completion reply for token {}: {}", token.value(), e.getMessage());
+      LOGGER.info("early completion reply for token {}: {}", token.value(), e.getMessage());
+      throw e;
     }
+    String orderId = orderIdOf(outcome);
+    if (!said.isEmpty()) {
+      LOGGER.info("order {} desk says: {}", orderId, said);
+    }
+    LOGGER.info("order {} ends: {}", orderId, outcome.state().status());
+    if (outcome.state().status() == ConversationStatus.FAILED) {
+      LOGGER.warn(
+          "order {} failed: {}",
+          orderId,
+          Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
+    }
+  }
+
+  private static String orderIdOf(RunOutcome outcome) {
+    String conversationId = outcome.state().id().value();
+    return conversationId.startsWith("order-")
+        ? conversationId.substring("order-".length())
+        : conversationId;
   }
 }

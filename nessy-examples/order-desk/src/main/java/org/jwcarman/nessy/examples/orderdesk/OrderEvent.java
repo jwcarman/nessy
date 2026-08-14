@@ -47,6 +47,7 @@ public sealed interface OrderEvent {
       if (orderId == null || orderId.isBlank()) {
         throw new IllegalArgumentException("orderId must not be blank");
       }
+      Objects.requireNonNull(items, "items must not be null");
       items = List.copyOf(items);
     }
   }

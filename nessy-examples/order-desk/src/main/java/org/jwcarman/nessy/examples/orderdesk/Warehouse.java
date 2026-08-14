@@ -55,12 +55,13 @@ public class Warehouse {
     reply(
         correlationId,
         new FulfillmentReplies.FulfillmentReply(
-            "progress",
+            FulfillmentReplies.FulfillmentReply.PROGRESS,
             "picking " + request.items().size() + " items for order " + request.orderId() + "…"));
     reply(
         correlationId,
         new FulfillmentReplies.FulfillmentReply(
-            "completed", "shipped: tracking NESSY-" + trackingSuffix(request.orderId())));
+            FulfillmentReplies.FulfillmentReply.COMPLETED,
+            "shipped: tracking NESSY-" + trackingSuffix(request.orderId())));
   }
 
   private void reply(String correlationId, FulfillmentReplies.FulfillmentReply payload) {

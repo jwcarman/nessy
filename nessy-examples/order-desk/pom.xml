@@ -111,6 +111,16 @@
       <version>${project.version}</version>
     </dependency>
 
+    <!-- The production JacksonJsonMessageConverter bean (OrderDeskConfig) runs on this engine at
+         request time, not merely at startup, so it needs a real compile-scope dependency of its
+         own — before this was added it reached the module only transitively through the optional
+         runtime spring-boot-docker-compose dependency below, which is a coincidence of test/dev
+         wiring, not a production guarantee. Version comes from spring-boot-dependencies above. -->
+    <dependency>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+
     <!-- Durable substrate: the JDBC store and its driver arrive here so kill-and-restart keeps
          both queues' unacked messages and the database's conversations (spec §4). -->
     <dependency>

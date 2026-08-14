@@ -9,3 +9,6 @@ target/
 
 # SDD/agent workspace scratch — never committed
 .superpowers/
+
+# Agent worktrees — never committed
+.claude/worktrees/

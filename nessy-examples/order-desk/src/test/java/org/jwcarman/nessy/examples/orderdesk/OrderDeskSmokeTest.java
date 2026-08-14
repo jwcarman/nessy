@@ -118,7 +118,8 @@ class OrderDeskSmokeTest {
     assertThat(requestMessage).isNotNull();
     assertThat(requestMessage.getMessageProperties().getCorrelationId()).isEqualTo(token);
 
-    publishReply(token, "progress", "picking 2 items for order 4711…");
+    publishReply(
+        token, FulfillmentReplies.FulfillmentReply.PROGRESS, "picking 2 items for order 4711…");
 
     await()
         .atMost(ofSeconds(10))
@@ -128,7 +129,10 @@ class OrderDeskSmokeTest {
                     .isNotEmpty()
                     .anyMatch(progress -> progress.message().contains("picking")));
 
-    publishReply(token, "completed", "Order 4711 fulfilled — " + trackingMarker);
+    publishReply(
+        token,
+        FulfillmentReplies.FulfillmentReply.COMPLETED,
+        "Order 4711 fulfilled — " + trackingMarker);
 
     await()
         .atMost(ofSeconds(10))
@@ -144,12 +148,14 @@ class OrderDeskSmokeTest {
                 "request_fulfillment".equals(finished.call().name())
                     && finished.result().content().contains(trackingMarker));
 
-    String order4711Transcript = transcriptOf("order-4711");
-    assertThat(order4711Transcript).contains(trackingMarker);
+    assertThat(transcriptOf("order-4711")).contains(trackingMarker);
 
     // Duplicate-reply idempotency: the fold's replay protection against the wire (spec §7).
     int settledCalls = provider.calls();
-    publishReply(token, "completed", "Order 4711 fulfilled — " + trackingMarker);
+    publishReply(
+        token,
+        FulfillmentReplies.FulfillmentReply.COMPLETED,
+        "Order 4711 fulfilled — " + trackingMarker);
     await().during(ofSeconds(2)).atMost(ofSeconds(6)).until(() -> provider.calls() == settledCalls);
 
     // Second order isolation: a different conversation, ignorant of 4711 (spec §7).
@@ -165,7 +171,9 @@ class OrderDeskSmokeTest {
 
     String order9000Transcript = transcriptOf("order-9000");
     assertThat(order9000Transcript).doesNotContain("lantern").doesNotContain("rope");
-    assertThat(order4711Transcript).doesNotContain("compass");
+    // Re-read AFTER order 9000 completes: a transcript captured before 9000 existed could never
+    // have contained "compass" regardless of isolation, which would make this assertion vacuous.
+    assertThat(transcriptOf("order-4711")).doesNotContain("compass");
   }
 
   private void publishReply(String token, String kind, String text) {

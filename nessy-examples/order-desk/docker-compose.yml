@@ -20,6 +20,15 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    # A cold image pull leaves the container "up" well before the broker inside it accepts
+    # connections; without this, Boot's service connection can dial the mapped port before
+    # RabbitMQ is actually ready and race a connection failure at startup. Mirrors postgres'
+    # healthcheck below with the broker's own readiness probe.
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
 
   postgres:
     image: postgres:17-alpine

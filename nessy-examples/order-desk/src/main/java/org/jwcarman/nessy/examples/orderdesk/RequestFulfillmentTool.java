@@ -40,10 +40,28 @@ public final class RequestFulfillmentTool implements Tool<RequestFulfillmentTool
   }
 
   /** What the model supplies: the order and the items the warehouse must pick and ship. */
-  public record Input(String orderId, List<String> items) {}
+  public record Input(String orderId, List<String> items) {
+
+    public Input {
+      if (orderId == null || orderId.isBlank()) {
+        throw new IllegalArgumentException("orderId must not be blank");
+      }
+      Objects.requireNonNull(items, "items must not be null");
+      items = List.copyOf(items);
+    }
+  }
 
   /** The wire payload the warehouse consumes — no token inside it (spec §1). */
-  record FulfillmentRequest(String orderId, List<String> items) {}
+  record FulfillmentRequest(String orderId, List<String> items) {
+
+    FulfillmentRequest {
+      if (orderId == null || orderId.isBlank()) {
+        throw new IllegalArgumentException("orderId must not be blank");
+      }
+      Objects.requireNonNull(items, "items must not be null");
+      items = List.copyOf(items);
+    }
+  }
 
   @Override
   public String name() {

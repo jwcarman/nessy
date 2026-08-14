@@ -10,8 +10,12 @@ three of them firsts for the family:
   so each order is one conversation that remembers its own history, and
   every event about it lands in the same story;
 - **at-least-once, made visible** — kill the app mid-turn and restart: the
-  broker redelivers the unacked message and the fold's own idempotency
-  absorbs the replay;
+  broker redelivers the unacked message and nothing is lost, but the fold's
+  replay protection is precise about which half it absorbs — a redelivered
+  *resolution* drains as stale mail, absolute; a redelivered *order event*
+  is re-told, because at-least-once delivery means a consumer can see an
+  event twice, and this demo says so plainly instead of pretending
+  otherwise;
 - **the machine half, over AMQP** — the tool-side park rides the AMQP
   correlation id, and a listener that never saw the ask delivers the
   resolution that resumes it;
@@ -123,10 +127,17 @@ console at <http://localhost:15672> (guest/guest):
 5. **The kill scene.** Publish another order, and kill the app (`Ctrl-C`)
    the moment the log shows the turn begin — before the warehouse's reply
    arrives. Restart it (`./mvnw -pl nessy-examples/order-desk
-   spring-boot:run` again). The broker redelivers the unacked event (or the
-   warehouse's own reply, whichever was in flight), the durable store
-   remembers whatever the fold had already committed, and the turn
-   completes — nothing lost, nothing doubled.
+   spring-boot:run` again). The broker redelivers whatever was unacked (the
+   order event or the warehouse's own reply, whichever was in flight) and
+   the turn completes — nothing is lost. But the two kinds of redelivery
+   are not the same lesson: if it was the *reply* that got redelivered, the
+   fold's replay protection recognizes the park is already resolved and
+   drains the duplicate as stale mail, silently — the resume never runs
+   twice. If it was the *order event* itself, there is no such guard —
+   at-least-once delivery means the desk can see that event a second time,
+   and it re-tells it into the order's own conversation rather than
+   pretending the redelivery never happened. Watch which one you triggered
+   in the log.
 
 **This kill/restart scene is deliberately by-hand — there is no automated
 kill test.** Killing a JVM on cue mid-turn and asserting on what a real
