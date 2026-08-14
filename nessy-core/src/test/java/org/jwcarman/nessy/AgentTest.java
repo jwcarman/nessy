@@ -102,7 +102,12 @@ class AgentTest {
     @Test
     void resume_reopens_the_same_conversation_id_a_prior_converse_produced() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("first", "second")).build().agent().model("m").build();
+          Nessy.harness(new FakeProvider("first", "second"))
+              .build()
+              .agent()
+              .name("courier")
+              .model("m")
+              .build();
       ConversationId id = agent.converse().tell("first").state().id();
       TextObserver observer = new TextObserver();
 
@@ -119,7 +124,7 @@ class AgentTest {
     @Test
     void an_unknown_conversation_id_is_rejected() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+          Nessy.harness(new FakeProvider("hi")).build().agent().name("courier").model("m").build();
 
       var unknownId = new ConversationId("never-stored");
 
@@ -131,7 +136,7 @@ class AgentTest {
     @Test
     void a_stored_conversation_yields_the_same_assembly_a_live_call_would_see() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+          Nessy.harness(new FakeProvider("hi")).build().agent().name("courier").model("m").build();
       Conversation<String> conversation = agent.converse();
       conversation.tell("hi");
 
@@ -148,7 +153,7 @@ class AgentTest {
     @Test
     void snapshot_of_an_unknown_conversation_is_idle_and_empty() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+          Nessy.harness(new FakeProvider("hi")).build().agent().name("courier").model("m").build();
 
       ConversationSnapshot snap = agent.snapshot(new ConversationId("never-seen"));
 
@@ -170,6 +175,7 @@ class AgentTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("courier")
               .model("fake-model")
               .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
               .approver(approver)
@@ -210,6 +216,7 @@ class AgentTest {
       Agent<String> agent =
           harness
               .agent()
+              .name("courier")
               .model("fake-model")
               .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
               .approver(approver)
@@ -244,6 +251,7 @@ class AgentTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("courier")
               .model("fake-model")
               .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
               .approver(approver)
@@ -281,13 +289,14 @@ class AgentTest {
       Agent<String> agent =
           harness
               .agent()
+              .name("courier")
               .model("fake-model")
               .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
               .approver(approver)
               .build();
 
       ConversationId id = agent.converse().tell("search for x").state().id();
-      parks.park(new Parks.Park(id, ParkToken.generate(), call));
+      parks.park(new Parks.Park(id, ParkToken.generate(), call, "courier"));
 
       ConversationSnapshot snap = agent.snapshot(id);
 

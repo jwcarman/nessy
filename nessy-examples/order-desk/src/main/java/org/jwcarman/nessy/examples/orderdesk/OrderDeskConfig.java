@@ -60,6 +60,7 @@ public class OrderDeskConfig {
   Agent<OrderEvent> agent(Harness harness, Memory memory, RabbitTemplate rabbit) {
     return harness
         .agent(OrderEvent.class)
+        .name("order-desk")
         .model("claude-sonnet-4-5")
         .systemPrompt(ORDER_DESK_ORDERS)
         .memory(memory)

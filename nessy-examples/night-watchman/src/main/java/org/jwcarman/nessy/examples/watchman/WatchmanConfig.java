@@ -45,6 +45,7 @@ public class WatchmanConfig {
       Harness harness, EngineRoom engineRoom, @Value("${watchman.window:40}") int window) {
     return harness
         .agent()
+        .name("night-watchman")
         .model("claude-sonnet-4-5")
         .systemPrompt(SYSTEM_PROMPT)
         .memory(new WindowedMemory(window))

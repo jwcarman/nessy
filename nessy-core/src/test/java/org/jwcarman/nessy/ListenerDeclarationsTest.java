@@ -114,6 +114,7 @@ class ListenerDeclarationsTest {
         Nessy.harness(new ToolCallingProvider())
             .build()
             .agent()
+            .name("listener")
             .model("fake-model")
             .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
             .onAgentTold(fact -> heard.add("told"))
@@ -154,6 +155,7 @@ class ListenerDeclarationsTest {
         Nessy.harness(overflowing)
             .build()
             .agent()
+            .name("listener")
             .model("fake-model")
             .onModelCallFailed(fact -> heard.add("failed:" + fact.reason()))
             .build();
@@ -170,6 +172,7 @@ class ListenerDeclarationsTest {
         Nessy.harness(new ToolCallingProvider())
             .build()
             .agent()
+            .name("listener")
             .model("fake-model")
             .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
             .onAgentToldAsync(fact -> heard.countDown())
@@ -204,6 +207,7 @@ class ListenerDeclarationsTest {
         Nessy.harness(overflowing)
             .build()
             .agent()
+            .name("listener")
             .model("fake-model")
             .onModelCallFailedAsync(fact -> heard.countDown())
             .build();
@@ -221,6 +225,7 @@ class ListenerDeclarationsTest {
             .onModelResponded(fact -> heard.add("harness:" + fact.reason()))
             .build()
             .agent()
+            .name("listener")
             .model("fake-model")
             .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
             .build();

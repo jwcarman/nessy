@@ -40,12 +40,12 @@ import org.jwcarman.nessy.spi.conversation.Parks;
  * the database rather than the process.
  *
  * <p>Rows live in {@code nessy_parks} (token primary key, conversation id, the parked {@link
- * ToolCall}) with an index on {@code conversation_id} for the approval-card read. {@link #park} is
- * idempotent via {@code ON CONFLICT (token) DO NOTHING} — the JDBC-side twin of {@link
- * org.jwcarman.nessy.spi.conversation.InMemoryParks}'s {@code putIfAbsent}, the same at-least-once
- * re-registration tolerance. Entries are never removed by this registry once written: replay
- * protection and "is this call still outstanding" are the fold's own questions, not this registry's
- * (design §5).
+ * ToolCall}, the minting agent's name) with an index on {@code conversation_id} for the
+ * approval-card read. {@link #park} is idempotent via {@code ON CONFLICT (token) DO NOTHING} — the
+ * JDBC-side twin of {@link org.jwcarman.nessy.spi.conversation.InMemoryParks}'s {@code
+ * putIfAbsent}, the same at-least-once re-registration tolerance. Entries are never removed by this
+ * registry once written: replay protection and "is this call still outstanding" are the fold's own
+ * questions, not this registry's (design §5).
  *
  * <p>The constructor alone does not create {@code nessy_parks} — a caller pointing at a database
  * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
@@ -107,11 +107,12 @@ public final class JdbcParks implements Parks {
         connection -> {
           try (PreparedStatement ps =
               connection.prepareStatement(
-                  "INSERT INTO nessy_parks (token, conversation_id, call) VALUES (?, ?, ?::jsonb)"
-                      + " ON CONFLICT (token) DO NOTHING")) {
+                  "INSERT INTO nessy_parks (token, conversation_id, call, agent_name) VALUES (?,"
+                      + " ?, ?::jsonb, ?) ON CONFLICT (token) DO NOTHING")) {
             ps.setString(1, park.token().value());
             ps.setString(2, park.conversationId().value());
             ps.setString(3, codec.writeToolCall(park.call()));
+            ps.setString(4, park.agentName());
             ps.executeUpdate();
           }
           return null;
@@ -125,7 +126,7 @@ public final class JdbcParks implements Parks {
         connection -> {
           try (PreparedStatement ps =
               connection.prepareStatement(
-                  "SELECT conversation_id, call FROM nessy_parks WHERE token = ?")) {
+                  "SELECT conversation_id, call, agent_name FROM nessy_parks WHERE token = ?")) {
             ps.setString(1, token.value());
             try (ResultSet rs = ps.executeQuery()) {
               if (!rs.next()) {
@@ -133,7 +134,8 @@ public final class JdbcParks implements Parks {
               }
               ConversationId conversationId = new ConversationId(rs.getString("conversation_id"));
               ToolCall call = codec.readToolCall(rs.getString("call"));
-              return Optional.of(new Park(conversationId, token, call));
+              String agentName = rs.getString("agent_name");
+              return Optional.of(new Park(conversationId, token, call, agentName));
             }
           }
         });
@@ -146,14 +148,15 @@ public final class JdbcParks implements Parks {
         connection -> {
           try (PreparedStatement ps =
               connection.prepareStatement(
-                  "SELECT token, call FROM nessy_parks WHERE conversation_id = ?")) {
+                  "SELECT token, call, agent_name FROM nessy_parks WHERE conversation_id = ?")) {
             ps.setString(1, id.value());
             try (ResultSet rs = ps.executeQuery()) {
               List<Park> parks = new ArrayList<>();
               while (rs.next()) {
                 ParkToken token = new ParkToken(rs.getString("token"));
                 ToolCall call = codec.readToolCall(rs.getString("call"));
-                parks.add(new Park(id, token, call));
+                String agentName = rs.getString("agent_name");
+                parks.add(new Park(id, token, call, agentName));
               }
               return List.copyOf(parks);
             }

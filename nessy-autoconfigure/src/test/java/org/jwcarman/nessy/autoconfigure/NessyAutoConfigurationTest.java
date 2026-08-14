@@ -81,7 +81,7 @@ class NessyAutoConfigurationTest {
             context -> {
               assertThat(context).hasSingleBean(Harness.class);
               Harness harness = context.getBean(Harness.class);
-              Agent<String> agent = harness.agent().model("probe-model").build();
+              Agent<String> agent = harness.agent().name("probe").model("probe-model").build();
               assertThat(probe.loaded()).isFalse();
               agent.snapshot(ConversationId.generate());
               assertThat(probe.loaded()).isTrue();
@@ -98,7 +98,7 @@ class NessyAutoConfigurationTest {
     ConversationId conversationId = ConversationId.generate();
     ParkToken token = new ParkToken("probe-token");
     ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
-    mine.park(new Parks.Park(conversationId, token, call));
+    mine.park(new Parks.Park(conversationId, token, call, "probe"));
     runner
         .withBean("mine", Parks.class, () -> mine)
         .run(
@@ -133,7 +133,7 @@ class NessyAutoConfigurationTest {
     runner.run(
         context -> {
           Harness bare = context.getBean(Harness.class);
-          var modelless = bare.agent();
+          var modelless = bare.agent().name("probe");
           assertThatThrownBy(modelless::build).isInstanceOf(AgentConfigurationException.class);
         });
     runner
@@ -141,7 +141,7 @@ class NessyAutoConfigurationTest {
         .run(
             context -> {
               Harness harness = context.getBean(Harness.class);
-              assertThat(harness.agent().build()).isNotNull();
+              assertThat(harness.agent().name("probe").build()).isNotNull();
             });
   }
 

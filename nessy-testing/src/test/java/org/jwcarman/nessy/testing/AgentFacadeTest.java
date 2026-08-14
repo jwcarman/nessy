@@ -95,6 +95,7 @@ class AgentFacadeTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("facade")
             .model("fake-model")
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
@@ -114,7 +115,8 @@ class AgentFacadeTest {
             .text("Still here.")
             .endTurn()
             .build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("facade").model("fake-model").build();
 
     Conversation<String> chat = agent.converse();
     chat.tell("hi");
@@ -143,6 +145,7 @@ class AgentFacadeTest {
     Agent<String> agent =
         harness
             .agent()
+            .name("facade")
             .model("fake-model")
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             // The approver denies everything, but it must never be asked: the reply below
@@ -171,6 +174,7 @@ class AgentFacadeTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("facade")
             .model("fake-model")
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
@@ -191,7 +195,8 @@ class AgentFacadeTest {
   @Test
   void contextFor_rejects_an_unknown_conversation() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("facade").model("fake-model").build();
 
     ConversationId unknownConversationId = ConversationId.generate();
 
@@ -208,6 +213,7 @@ class AgentFacadeTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("facade")
             .model("fake-model")
             .maxTokens(4_000)
             .contextWindow(32_000)
@@ -263,7 +269,13 @@ class AgentFacadeTest {
     SeededMemory memory = new SeededMemory(Context.of(List.of(marker)));
 
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().model("fake-model").memory(memory).build();
+        Nessy.harness(provider)
+            .build()
+            .agent()
+            .name("facade")
+            .model("fake-model")
+            .memory(memory)
+            .build();
 
     agent.converse().tell("hi");
 
@@ -282,6 +294,7 @@ class AgentFacadeTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("facade")
             .model("fake-model")
             .listen(Object.class, recorder)
             .build();
@@ -294,7 +307,7 @@ class AgentFacadeTest {
   @Test
   void a_missing_model_is_rejected_at_build_time() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    var builder = Nessy.harness(provider).build().agent();
+    var builder = Nessy.harness(provider).build().agent().name("facade");
 
     assertThatThrownBy(builder::build)
         .isInstanceOf(AgentConfigurationException.class)
@@ -304,7 +317,7 @@ class AgentFacadeTest {
   @Test
   void a_null_memory_is_rejected() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-    var builder = Nessy.harness(provider).build().agent().model("fake-model");
+    var builder = Nessy.harness(provider).build().agent().name("facade").model("fake-model");
 
     assertThatThrownBy(() -> builder.memory(null))
         .isInstanceOf(NullPointerException.class)
@@ -319,7 +332,8 @@ class AgentFacadeTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("facade").model("fake-model").build();
     TextObserver observer = new TextObserver();
 
     agent.converse().tell("what is 2+2?", observer);
@@ -336,7 +350,8 @@ class AgentFacadeTest {
             .text("Still here.")
             .endTurn()
             .build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("facade").model("fake-model").build();
 
     Conversation<String> first = agent.converse();
     first.tell("hi");
@@ -356,6 +371,7 @@ class AgentFacadeTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("facade")
             .model("fake-model")
             .termination(TerminationPolicy.maxModelCalls(1))
             .build();
@@ -399,6 +415,7 @@ class AgentFacadeTest {
     Agent<String> agent =
         harness
             .agent()
+            .name("facade")
             .model("fake-model")
             .listen(
                 ConversationEvent.class,
@@ -460,7 +477,12 @@ class AgentFacadeTest {
           ScriptedModelProvider.builder().text("On it.").endTurn().build();
       Harness harness = Nessy.harness(provider).build();
       Agent<SupportInput> support =
-          harness.agent(SupportInput.class).model("fake-model").renderer(SUPPORT_RENDERER).build();
+          harness
+              .agent(SupportInput.class)
+              .name("facade")
+              .model("fake-model")
+              .renderer(SUPPORT_RENDERER)
+              .build();
       TextObserver observer = new TextObserver();
 
       support.converse().tell(new Escalation("o-1", "damaged in transit"), observer);
@@ -476,7 +498,8 @@ class AgentFacadeTest {
       // always produced — typing the front door changes nothing about what a String agent puts
       // on the wire.
       ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
-      Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+      Agent<String> agent =
+          Nessy.harness(provider).build().agent().name("facade").model("fake-model").build();
 
       agent.converse().tell("what is 2+2?");
 
@@ -493,7 +516,7 @@ class AgentFacadeTest {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder().text("ack").endTurn().build();
       Harness harness = Nessy.harness(provider).build();
-      Agent<Ping> agent = harness.agent(Ping.class).model("fake-model").build();
+      Agent<Ping> agent = harness.agent(Ping.class).name("facade").model("fake-model").build();
 
       agent.converse().tell(new Ping("hello"));
 
@@ -515,7 +538,7 @@ class AgentFacadeTest {
             throw new IllegalStateException("renderer blew up");
           };
       Agent<String> agent =
-          harness.agent(String.class).model("fake-model").renderer(throwing).build();
+          harness.agent(String.class).name("facade").model("fake-model").renderer(throwing).build();
       Conversation<String> chat = agent.converse();
 
       assertThatThrownBy(() -> chat.tell("hi")).isInstanceOf(IllegalStateException.class);
@@ -531,7 +554,8 @@ class AgentFacadeTest {
       ConversationStore store = ConversationStore.inMemory();
       Harness harness = Nessy.harness(provider).store(store).build();
       InputRenderer<String> empty = input -> List.of();
-      Agent<String> agent = harness.agent(String.class).model("fake-model").renderer(empty).build();
+      Agent<String> agent =
+          harness.agent(String.class).name("facade").model("fake-model").renderer(empty).build();
       Conversation<String> chat = agent.converse();
 
       assertThatThrownBy(() -> chat.tell("hi")).isInstanceOf(IllegalArgumentException.class);

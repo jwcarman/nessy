@@ -40,13 +40,18 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  */
 public interface Parks {
 
-  /** A parked wait, as the registry knows it: whose conversation, which call, which token. */
-  record Park(ConversationId conversationId, ParkToken token, ToolCall call) {
+  /**
+   * A parked wait, as the registry knows it: whose conversation, which call, which token, and the
+   * name of the agent that minted it — the stamp every callback door verifies before acting on a
+   * resolution (design §3).
+   */
+  record Park(ConversationId conversationId, ParkToken token, ToolCall call, String agentName) {
 
     public Park {
       Objects.requireNonNull(conversationId, "conversationId must not be null");
       Objects.requireNonNull(token, "token must not be null");
       Objects.requireNonNull(call, "call must not be null");
+      Objects.requireNonNull(agentName, "agentName must not be null");
     }
   }
 

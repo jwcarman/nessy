@@ -97,7 +97,7 @@ class JdbcPersistenceTest {
 
     ParkToken token = ParkToken.generate();
     ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
-    Park park = new Park(id, token, call);
+    Park park = new Park(id, token, call, "keeper");
     persistence.parks().park(park);
 
     assertThat(persistence.parks().find(token)).contains(park);

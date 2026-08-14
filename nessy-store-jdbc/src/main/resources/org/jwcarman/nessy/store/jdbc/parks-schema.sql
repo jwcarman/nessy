@@ -18,7 +18,8 @@
 CREATE TABLE IF NOT EXISTS nessy_parks (
   token           text  PRIMARY KEY,
   conversation_id text  NOT NULL,
-  call            jsonb NOT NULL
+  call            jsonb NOT NULL,
+  agent_name      text  NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS nessy_parks_conversation ON nessy_parks (conversation_id);

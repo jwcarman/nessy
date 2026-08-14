@@ -154,7 +154,7 @@ class AgentBuilderTest {
     @Test
     void a_null_grants_array_is_rejected() {
       ToolGrant[] grants = null;
-      var agent = Nessy.harness(NEVER_CALLED).build().agent();
+      var agent = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
 
       assertThatThrownBy(() -> agent.tools(grants))
           .isInstanceOf(NullPointerException.class)
@@ -164,7 +164,7 @@ class AgentBuilderTest {
     @Test
     void a_null_element_in_the_grants_array_is_rejected() {
       ToolGrant present = ToolGrant.grant(new NoOpTool(), UsagePolicy.allow());
-      var agent = Nessy.harness(NEVER_CALLED).build().agent();
+      var agent = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
 
       assertThatThrownBy(() -> agent.tools(present, null))
           .isInstanceOf(NullPointerException.class)
@@ -175,7 +175,13 @@ class AgentBuilderTest {
     void an_empty_grants_array_registers_no_tools() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider).build().agent().model("fake-model").tools().build();
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .name("scribe")
+              .model("fake-model")
+              .tools()
+              .build();
       TextObserver observer = new TextObserver();
 
       agent.converse().tell("hi", observer);
@@ -194,6 +200,7 @@ class AgentBuilderTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("scribe")
               .model("fake-model")
               .systemPrompt("be terse")
               .maxTokens(777)
@@ -216,6 +223,7 @@ class AgentBuilderTest {
               .defaultModel("harness-default")
               .build()
               .agent()
+              .name("scribe")
               .model("  ")
               .build();
 
@@ -274,6 +282,7 @@ class AgentBuilderTest {
           Nessy.harness(provider)
               .build()
               .agent(Nothing.class)
+              .name("scribe")
               .model("fake-model")
               .approver(recording)
               .tools(grant)
@@ -297,6 +306,7 @@ class AgentBuilderTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("scribe")
               .model("fake-model")
               .termination(recording)
               .build();
@@ -313,6 +323,7 @@ class AgentBuilderTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("scribe")
               .model("fake-model")
               .contextWindow(9_000)
               .maxTokens(1_000)
@@ -332,6 +343,7 @@ class AgentBuilderTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("scribe")
               .model("fake-model")
               .listenAsync(
                   ConversationEvent.class,
@@ -354,6 +366,7 @@ class AgentBuilderTest {
           Nessy.harness(provider)
               .build()
               .agent(Nothing.class)
+              .name("scribe")
               .model("fake-model")
               .renderer(input -> List.of(new TextBlock("custom-render")))
               .build();
@@ -397,6 +410,7 @@ class AgentBuilderTest {
           .store(ConversationStore.inMemory())
           .build()
           .agent()
+          .name("scribe")
           .model("fake-model")
           .build();
 
@@ -417,6 +431,7 @@ class AgentBuilderTest {
           .store(ConversationStore.inMemory())
           .build()
           .agent()
+          .name("scribe")
           .model("fake-model")
           .memory(new TranscriptMemory(Transcript.inMemory()))
           .build();
@@ -428,7 +443,7 @@ class AgentBuilderTest {
     void a_defaulted_store_alongside_defaulted_memory_stays_silent() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).build().agent().model("fake-model").build();
+      Nessy.harness(provider).build().agent().name("scribe").model("fake-model").build();
 
       assertThat(appender.list).isEmpty();
     }
@@ -440,6 +455,7 @@ class AgentBuilderTest {
       Nessy.harness(provider)
           .build()
           .agent()
+          .name("scribe")
           .model("fake-model")
           .memory(new TranscriptMemory(Transcript.inMemory()))
           .build();
@@ -476,7 +492,13 @@ class AgentBuilderTest {
       FakeProvider provider = new FakeProvider("hi");
       ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.allow());
 
-      Nessy.harness(provider).build().agent(Nothing.class).model("fake-model").tools(grant).build();
+      Nessy.harness(provider)
+          .build()
+          .agent(Nothing.class)
+          .name("scribe")
+          .model("fake-model")
+          .tools(grant)
+          .build();
 
       assertThat(appender.list).isEmpty();
     }
@@ -485,7 +507,7 @@ class AgentBuilderTest {
     void no_grants_at_all_stays_silent_with_no_approver() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).build().agent().model("fake-model").build();
+      Nessy.harness(provider).build().agent().name("scribe").model("fake-model").build();
 
       assertThat(appender.list).isEmpty();
     }
@@ -495,7 +517,13 @@ class AgentBuilderTest {
       FakeProvider provider = new FakeProvider("hi");
       ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.requireApproval());
 
-      Nessy.harness(provider).build().agent(Nothing.class).model("fake-model").tools(grant).build();
+      Nessy.harness(provider)
+          .build()
+          .agent(Nothing.class)
+          .name("scribe")
+          .model("fake-model")
+          .tools(grant)
+          .build();
 
       assertThat(appender.list).hasSize(1);
       assertThat(appender.list.getFirst().getLevel()).isEqualTo(Level.WARN);
@@ -516,6 +544,7 @@ class AgentBuilderTest {
       Nessy.harness(provider)
           .build()
           .agent(Nothing.class)
+          .name("scribe")
           .model("fake-model")
           .tools(grant)
           .approver(approver)
@@ -530,12 +559,36 @@ class AgentBuilderTest {
 
     @Test
     void neither_model_declared_names_both_ways_to_supply_one() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent();
+      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
 
       assertThatThrownBy(builder::build)
           .isInstanceOf(AgentConfigurationException.class)
           .hasMessageContaining("model(")
           .hasMessageContaining("defaultModel(");
+    }
+  }
+
+  @Nested
+  class Name {
+
+    @Test
+    void build_without_a_name_refuses_with_the_covenant() {
+      var builder = Nessy.harness(NEVER_CALLED).build().agent().model("fake-model");
+
+      assertThatThrownBy(builder::build)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("name")
+          .hasMessageContaining("parked work")
+          .hasMessageContaining("restarts");
+    }
+
+    @Test
+    void a_blank_name_is_rejected_at_the_setter() {
+      var builder = Nessy.harness(NEVER_CALLED).build().agent();
+
+      assertThatThrownBy(() -> builder.name("   "))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("name");
     }
   }
 }

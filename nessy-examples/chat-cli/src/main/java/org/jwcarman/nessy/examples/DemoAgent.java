@@ -42,6 +42,7 @@ public final class DemoAgent {
     return Nessy.harness(provider)
         .build()
         .agent()
+        .name("chat-cli")
         .model(model)
         .systemPrompt(SYSTEM_PROMPT)
         .tools(

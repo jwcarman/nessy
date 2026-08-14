@@ -81,6 +81,7 @@ class OpenAiLiveTest {
         Nessy.harness(OpenAiModelProvider.builder().fromEnv().build())
             .build()
             .agent()
+            .name("openai-live")
             .model(MODEL)
             .maxTokens(64)
             .build();
@@ -100,6 +101,7 @@ class OpenAiLiveTest {
         Nessy.harness(OpenAiModelProvider.builder().fromEnv().build())
             .build()
             .agent()
+            .name("openai-live")
             .model(MODEL)
             .maxTokens(256)
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
@@ -134,6 +136,7 @@ class OpenAiLiveTest {
                     .build())
             .build()
             .agent()
+            .name("openai-live")
             .model("openai/gpt-4o-mini")
             .maxTokens(64)
             .build();

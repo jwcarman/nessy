@@ -48,6 +48,7 @@ public class DispatcherConfig {
   Agent<String> agent(Harness harness, Memory memory) {
     return harness
         .agent()
+        .name("dispatcher")
         .model("claude-sonnet-4-5")
         .systemPrompt(SYSTEM_PROMPT)
         .memory(memory)

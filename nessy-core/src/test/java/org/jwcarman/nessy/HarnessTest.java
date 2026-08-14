@@ -123,8 +123,8 @@ class HarnessTest {
     Harness harness =
         Nessy.harness(provider).store(store).listen(ConversationEvent.class, observed::add).build();
 
-    Agent<String> agentA = harness.agent().model("model-a").build();
-    Agent<String> agentB = harness.agent().model("model-b").build();
+    Agent<String> agentA = harness.agent().name("agent-a").model("model-a").build();
+    Agent<String> agentB = harness.agent().name("agent-b").model("model-b").build();
     ConversationId conversationA = agentA.converse().tell("hello").state().id();
     ConversationId conversationB = agentB.converse().tell("hello").state().id();
 
@@ -138,7 +138,8 @@ class HarnessTest {
   void the_implicit_one_liner_still_works() {
     FakeProvider provider = new FakeProvider("The answer is 4.");
 
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("keeper").model("fake-model").build();
     TextObserver observer = new TextObserver();
     RunOutcome reply = agent.converse().tell("what is 2+2?", observer);
 
@@ -158,6 +159,7 @@ class HarnessTest {
               .defaultModel("harness-default")
               .build()
               .agent()
+              .name("keeper")
               .model("agent-model")
               .build();
 
@@ -170,7 +172,12 @@ class HarnessTest {
     void the_harness_default_model_is_used_when_the_agent_declares_none() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider).defaultModel("harness-default").build().agent().build();
+          Nessy.harness(provider)
+              .defaultModel("harness-default")
+              .build()
+              .agent()
+              .name("keeper")
+              .build();
 
       agent.converse().tell("hi");
 
@@ -180,7 +187,7 @@ class HarnessTest {
     @Test
     void neither_model_declared_throws_a_named_AgentConfigurationException() {
       FakeProvider provider = new FakeProvider("hi");
-      AgentBuilder<String> agentBuilder = Nessy.harness(provider).build().agent();
+      AgentBuilder<String> agentBuilder = Nessy.harness(provider).build().agent().name("keeper");
 
       assertThatThrownBy(agentBuilder::build)
           .isInstanceOf(AgentConfigurationException.class)
@@ -202,6 +209,7 @@ class HarnessTest {
               .listen(ConversationEvent.class, e -> order.add("harness-2"))
               .build()
               .agent()
+              .name("keeper")
               .model("fake-model")
               .listen(ConversationEvent.class, e -> order.add("agent-1"))
               .listen(ConversationEvent.class, e -> order.add("agent-2"))
@@ -220,6 +228,7 @@ class HarnessTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("keeper")
               .model("fake-model")
               .listen(
                   ConversationEvent.class,
@@ -244,6 +253,7 @@ class HarnessTest {
           Nessy.harness(provider)
               .build()
               .agent()
+              .name("keeper")
               .model("fake-model")
               .listenAsync(
                   ConversationEvent.class,
@@ -268,7 +278,8 @@ class HarnessTest {
     @Test
     void a_conversation_local_subscription_attaches_and_detaches() {
       FakeProvider provider = new FakeProvider("hi", "there");
-      Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+      Agent<String> agent =
+          Nessy.harness(provider).build().agent().name("keeper").model("fake-model").build();
       Conversation<String> chat = agent.converse();
       List<ConversationEvent> observed = new ArrayList<>();
 
@@ -285,7 +296,8 @@ class HarnessTest {
     @Test
     void a_conversation_local_subscription_never_sees_another_conversations_events() {
       FakeProvider provider = new FakeProvider("hi", "there");
-      Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+      Agent<String> agent =
+          Nessy.harness(provider).build().agent().name("keeper").model("fake-model").build();
       Conversation<String> chatA = agent.converse();
       Conversation<String> chatB = agent.converse();
       List<ConversationEvent> observedByA = new ArrayList<>();
@@ -429,6 +441,7 @@ class HarnessTest {
       Harness harness = Nessy.harness(provider).build();
       harness
           .agent()
+          .name("keeper")
           .model("fake-model")
           .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
           .approver(approver)
@@ -464,6 +477,7 @@ class HarnessTest {
       Harness harness = Nessy.harness(provider).build();
       harness
           .agent()
+          .name("keeper")
           .model("fake-model")
           .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
           .approver(approver)
@@ -506,6 +520,7 @@ class HarnessTest {
       Harness harness = Nessy.harness(provider).build();
       harness
           .agent()
+          .name("keeper")
           .model("fake-model")
           .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
           .approver(approver)
@@ -559,7 +574,7 @@ class HarnessTest {
               .with(ConversationStatus.PARKED);
       store.save(seeded, List.of());
       Parks parks = Parks.inMemory();
-      parks.park(new Parks.Park(id, token, call));
+      parks.park(new Parks.Park(id, token, call, "keeper"));
       Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).parks(parks).build();
       ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
 
@@ -590,11 +605,12 @@ class HarnessTest {
       ConversationStore store = ConversationStore.inMemory();
       store.save(seeded, List.of());
       Parks parks = Parks.inMemory();
-      parks.park(new Parks.Park(id, token, call));
+      parks.park(new Parks.Park(id, token, call, "keeper"));
       CountingSearchTool tool = new CountingSearchTool();
       Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).parks(parks).build();
       harness
           .agent()
+          .name("keeper")
           .model("fake-model")
           .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
           .approver(Approver.denyAll("never reached"))
@@ -623,6 +639,7 @@ class HarnessTest {
       Agent<String> agent =
           harness
               .agent()
+              .name("keeper")
               .model("fake-model")
               .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
               .approver(approver)
@@ -649,8 +666,8 @@ class HarnessTest {
     @Test
     void resume_on_a_multi_agent_harness_refuses_naming_the_agent_count() {
       Harness harness = Nessy.harness(new FakeProvider("hi", "there")).build();
-      harness.agent().model("model-a").build();
-      harness.agent().model("model-b").build();
+      harness.agent().name("agent-a").model("model-a").build();
+      harness.agent().name("agent-b").model("model-b").build();
       ParkToken token = ParkToken.generate();
       ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
 
@@ -718,6 +735,7 @@ class HarnessTest {
       Agent<String> agent =
           harness
               .agent()
+              .name("keeper")
               .model("fake-model")
               .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
               .approver(approver)
@@ -832,6 +850,7 @@ class HarnessTest {
       Agent<String> agent =
           harness
               .agent()
+              .name("keeper")
               .model("fake-model")
               .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
               .approver(approver)
@@ -890,6 +909,7 @@ class HarnessTest {
       Agent<String> agent =
           harness
               .agent()
+              .name("keeper")
               .model("fake-model")
               .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
               .approver(approver)
@@ -915,8 +935,8 @@ class HarnessTest {
     @Test
     void progress_on_a_multi_agent_harness_refuses_naming_the_agent_count() {
       Harness harness = Nessy.harness(new FakeProvider("hi", "there")).build();
-      harness.agent().model("model-a").build();
-      harness.agent().model("model-b").build();
+      harness.agent().name("agent-a").model("model-a").build();
+      harness.agent().name("agent-b").model("model-b").build();
       ParkToken token = ParkToken.generate();
 
       assertThatThrownBy(() -> harness.progress(token, "halfway"))
@@ -943,7 +963,7 @@ class HarnessTest {
               .with(ConversationStatus.PARKED);
       store.save(seeded, List.of());
       Parks parks = Parks.inMemory();
-      parks.park(new Parks.Park(id, token, call));
+      parks.park(new Parks.Park(id, token, call, "keeper"));
       Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).parks(parks).build();
 
       assertThatThrownBy(() -> harness.progress(token, "halfway"))
@@ -975,6 +995,7 @@ class HarnessTest {
       Harness harness = Nessy.harness(provider).listen(ToolProgress.class, heard::add).build();
       harness
           .agent()
+          .name("keeper")
           .model("fake-model")
           .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
           .approver(approver)

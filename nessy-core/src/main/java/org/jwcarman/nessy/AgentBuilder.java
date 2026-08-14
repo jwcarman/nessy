@@ -82,6 +82,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   private final ListenerRegistry seededRegistry;
   private final List<ListenerRegistration> registrations = new ArrayList<>();
 
+  private String name;
   private String model;
   private String systemPrompt;
   private Integer maxTokens;
@@ -117,6 +118,29 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     this.mapper = harness.mapper();
     this.defaultModel = harness.defaultModel();
     this.seededRegistry = harness.registry();
+  }
+
+  /**
+   * The agent's required identity (design §3) — a durable wire contract exactly like a queue name
+   * or a callback URL, not a cosmetic label. It is how parked work finds its way home across
+   * restarts: every {@link org.jwcarman.nessy.spi.conversation.Parks.Park} this agent registers is
+   * stamped with it, and every callback door verifies a resolution's stamp against the agent
+   * handling it before acting.
+   *
+   * <p>Renaming an agent with durable parks in flight orphans them — their eventual {@code
+   * WrongAgentException} names the old name, and recovery means redeploying under it. Two agents
+   * that declare the same name share one identity and can serve each other's parks; a stateless
+   * harness cannot detect that collision, so avoiding it is an application contract, not a
+   * framework-enforced one.
+   *
+   * @throws IllegalArgumentException if {@code name} is null or blank
+   */
+  public AgentBuilder<I> name(String name) {
+    if (name == null || name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    this.name = name;
+    return this;
   }
 
   /**
@@ -238,6 +262,12 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   }
 
   public Agent<I> build() {
+    if (name == null) {
+      throw new IllegalStateException(
+          "an agent name is required: call .name(...) before build() — the name is how parked work"
+              + " finds its way home across restarts, the durable stamp every callback door checks"
+              + " a resolution against");
+    }
     String resolvedModel = (model != null && !model.isBlank()) ? model : defaultModel;
     if (resolvedModel == null || resolvedModel.isBlank()) {
       throw new AgentConfigurationException(
@@ -279,9 +309,10 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
             store,
             parks,
             events,
-            observations);
+            observations,
+            name);
     harness.loop(loop, events);
-    return new Agent<>(loop, events, store, parks, resolvedMemory, renderer);
+    return new Agent<>(name, loop, events, store, parks, resolvedMemory, renderer);
   }
 
   /** {@link #DEFAULT_MAX_TOKENS}. */

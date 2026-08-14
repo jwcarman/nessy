@@ -595,7 +595,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               emitter,
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
@@ -632,7 +633,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"), OBSERVER);
@@ -673,7 +675,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
 
@@ -704,7 +707,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a and b"), OBSERVER);
@@ -744,7 +748,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome = loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), OBSERVER);
 
@@ -784,7 +789,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), OBSERVER);
 
@@ -839,7 +845,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               EventEmitter.noop(),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       ConversationEvent.AgentTold echoA = ConversationEvent.AgentTold.of(ID, "echo a");
 
       assertThatThrownBy(() -> loop.run(ID, echoA, OBSERVER))
@@ -877,7 +884,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
@@ -905,7 +913,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
@@ -939,7 +948,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       loop.drive(ID, OBSERVER);
 
@@ -976,7 +986,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
@@ -1004,7 +1015,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
@@ -1033,7 +1045,8 @@ class ConversationLoopTest {
               store,
               parks,
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome = loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
 
@@ -1044,7 +1057,9 @@ class ConversationLoopTest {
           .isEqualTo(ConversationStatus.PARKED);
       // Design §5: the registry write is the loop's own responsibility, not the tool's — the
       // token the tool minted must actually be findable in the Parks it was handed.
-      assertThat(parks.find(token)).contains(new Parks.Park(ID, token, c1));
+      // Design §3: the registered Park carries the loop's own agent name, the stamp a callback
+      // door later verifies a resolution against.
+      assertThat(parks.find(token)).contains(new Parks.Park(ID, token, c1, "loop-test-agent"));
     }
 
     @Test
@@ -1062,7 +1077,8 @@ class ConversationLoopTest {
               ConversationStore.inMemory(),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
@@ -1087,7 +1103,8 @@ class ConversationLoopTest {
               ConversationStore.inMemory(),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
@@ -1126,7 +1143,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
       ConversationEvent.AgentTold searchX = ConversationEvent.AgentTold.of(ID, "search x");
 
@@ -1160,7 +1178,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
@@ -1197,7 +1216,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome =
@@ -1240,7 +1260,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome parked =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "search and fetch"), OBSERVER);
@@ -1294,7 +1315,8 @@ class ConversationLoopTest {
               ConversationStore.inMemory(),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome =
@@ -1338,7 +1360,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome =
@@ -1373,7 +1396,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
 
       store.append(
@@ -1411,7 +1435,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
       store.append(
           ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("found"))));
@@ -1456,7 +1481,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
 
       // Both entries land before drive ever runs — the at-least-once-delivery-lands-both shape.
@@ -1493,7 +1519,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome = loop.drive(ID, events::add);
@@ -1552,7 +1579,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome = loop.drive(ID, events::add);
@@ -1601,7 +1629,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome = loop.drive(ID, events::add);
@@ -1636,7 +1665,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
       InboxEntry.Resolved resolvedEntry =
           InboxEntry.resolved(c1.id(), new ToolResolution.Decided(Decision.allow()));
@@ -1665,7 +1695,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome =
@@ -1714,7 +1745,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome = loop.drive(ID, events::add);
@@ -1744,7 +1776,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       ConversationEvent.AgentTold whatIs2Plus2 = ConversationEvent.AgentTold.of(ID, "what is 2+2?");
 
       assertThatThrownBy(() -> loop.run(ID, whatIs2Plus2, OBSERVER))
@@ -1801,7 +1834,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome = loop.drive(ID, events::add);
@@ -1843,7 +1877,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
@@ -1877,7 +1912,8 @@ class ConversationLoopTest {
               store,
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
@@ -1902,7 +1938,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
 
       RunOutcome outcome =
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
@@ -1934,7 +1971,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), events::add);
@@ -1965,7 +2003,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), events::add);
@@ -1988,7 +2027,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), events::add);
@@ -2017,7 +2057,8 @@ class ConversationLoopTest {
               new RecordingStore(journal),
               Parks.inMemory(),
               new RecordingEmitter(journal),
-              ObservationRegistry.NOOP);
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
 
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a then b"), events::add);

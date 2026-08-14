@@ -83,6 +83,7 @@ class AnthropicLiveTest {
         Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
             .build()
             .agent()
+            .name("anthropic-live")
             .model(MODEL)
             .maxTokens(64)
             .build();
@@ -102,6 +103,7 @@ class AnthropicLiveTest {
         Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
             .build()
             .agent()
+            .name("anthropic-live")
             .model(MODEL)
             .maxTokens(256)
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
@@ -129,6 +131,7 @@ class AnthropicLiveTest {
         Nessy.harness(AnthropicModelProvider.builder().fromEnv().thinkingBudget(1024).build())
             .build()
             .agent()
+            .name("anthropic-live")
             .model(MODEL)
             .maxTokens(2048)
             .capabilities(Set.of(Capability.THINKING))

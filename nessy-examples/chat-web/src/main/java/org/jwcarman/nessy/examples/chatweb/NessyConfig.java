@@ -45,6 +45,7 @@ public class NessyConfig {
   Agent<String> agent(Harness harness, Memory memory) {
     return harness
         .agent()
+        .name("chat-web")
         .model("claude-sonnet-4-5")
         .systemPrompt(SYSTEM_PROMPT)
         .memory(memory)

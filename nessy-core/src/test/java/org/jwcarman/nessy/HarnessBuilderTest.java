@@ -101,6 +101,7 @@ class HarnessBuilderTest {
             .observations(observations)
             .build()
             .agent()
+            .name("sentinel")
             .model("fake-model")
             .build();
 
@@ -122,6 +123,7 @@ class HarnessBuilderTest {
             .mapper(mapper)
             .build()
             .agent(Greeting.class)
+            .name("sentinel")
             .model("fake-model")
             .build();
 
@@ -158,6 +160,7 @@ class HarnessBuilderTest {
                   })
               .build()
               .agent()
+              .name("sentinel")
               .model("fake-model")
               .build();
 
@@ -179,6 +182,7 @@ class HarnessBuilderTest {
               .listenAsync(ConversationEvent.class, e -> handled.countDown(), errors::add)
               .build()
               .agent()
+              .name("sentinel")
               .model("fake-model")
               .build();
 
@@ -203,6 +207,7 @@ class HarnessBuilderTest {
                   })
               .build()
               .agent()
+              .name("sentinel")
               .model("fake-model")
               .build();
 

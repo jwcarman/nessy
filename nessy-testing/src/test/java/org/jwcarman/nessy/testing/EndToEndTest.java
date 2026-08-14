@@ -101,6 +101,7 @@ class EndToEndTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("end-to-end")
             .model("fake-model")
             .systemPrompt("be helpful")
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
@@ -125,6 +126,7 @@ class EndToEndTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("end-to-end")
             .model("fake-model")
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
@@ -152,6 +154,7 @@ class EndToEndTest {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("end-to-end")
             .model("fake-model")
             .capabilities(Set.of(Capability.PROMPT_CACHING))
             .build();
@@ -166,7 +169,8 @@ class EndToEndTest {
   void usage_accumulates_from_the_model_into_the_final_state() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5, 0)).build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
 
     RunOutcome outcome = agent.converse().tell("hi");
 
@@ -178,7 +182,8 @@ class EndToEndTest {
   void thinking_chunks_settle_into_a_thinking_block_before_the_answer() {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
     Conversation<String> conversation = agent.converse();
 
     conversation.tell("hi");
@@ -196,7 +201,8 @@ class EndToEndTest {
             .text("The answer is 4.")
             .endTurn()
             .build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
     Conversation<String> conversation = agent.converse();
 
     conversation.tell("what is 2+2?");
@@ -214,7 +220,8 @@ class EndToEndTest {
             .text("Answer.")
             .endTurn()
             .build();
-    Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+    Agent<String> agent =
+        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
     Conversation<String> conversation = agent.converse();
 
     conversation.tell("hi");
@@ -246,6 +253,7 @@ class EndToEndTest {
           Nessy.harness(freeProvider)
               .build()
               .agent()
+              .name("end-to-end")
               .model("fake-model")
               .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
               // The approver denies everything, but it must never be asked: the tool-result
@@ -266,6 +274,7 @@ class EndToEndTest {
           Nessy.harness(gatedProvider)
               .build()
               .agent()
+              .name("end-to-end")
               .model("fake-model")
               .tools(ToolGrant.grant(new AddTool(), UsagePolicy.requireApproval()))
               .approver(Approver.denyAll("not on this agent"))
@@ -306,7 +315,8 @@ class EndToEndTest {
     void an_observer_sees_this_conversations_turn_in_order() {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
-      Agent<String> agent = Nessy.harness(provider).build().agent().model("fake-model").build();
+      Agent<String> agent =
+          Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
       List<TurnEvent> observed = new ArrayList<>();
 
       agent.converse().tell("what is 2+2?", observed::add);

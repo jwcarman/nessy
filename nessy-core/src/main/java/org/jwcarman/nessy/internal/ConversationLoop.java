@@ -79,6 +79,7 @@ public final class ConversationLoop {
   private final Parks parks;
   private final EventEmitter emitter;
   private final ObservationRegistry observations;
+  private final String agentName;
 
   /** What one performed effect yielded: a settled fact to fold, or a park to apply. */
   private sealed interface PerformOutcome {
@@ -95,7 +96,8 @@ public final class ConversationLoop {
       ConversationStore store,
       Parks parks,
       EventEmitter emitter,
-      ObservationRegistry observations) {
+      ObservationRegistry observations,
+      String agentName) {
     this.executors = Objects.requireNonNull(executors, "executors must not be null");
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.termination = Objects.requireNonNull(termination, "termination must not be null");
@@ -103,6 +105,7 @@ public final class ConversationLoop {
     this.parks = Objects.requireNonNull(parks, "parks must not be null");
     this.emitter = Objects.requireNonNull(emitter, "emitter must not be null");
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    this.agentName = Objects.requireNonNull(agentName, "agentName must not be null");
   }
 
   /** {@code tell}: appends nothing but a note, then drives. The fact itself is minted at drain. */
@@ -412,7 +415,7 @@ public final class ConversationLoop {
       List<String> drained,
       TurnObserver observer,
       AtomicBoolean endingNarrated) {
-    parks.park(new Parks.Park(progress.get().id(), token, call));
+    parks.park(new Parks.Park(progress.get().id(), token, call, agentName));
     progress.set(progress.get().parked(call));
     save(progress, drained);
     observer.on(new TurnEvent.ToolCallParked(call, token));

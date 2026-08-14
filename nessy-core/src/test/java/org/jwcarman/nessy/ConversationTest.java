@@ -80,7 +80,8 @@ class ConversationTest {
 
   @Test
   void conversationId_reports_the_id_this_conversation_was_opened_or_resumed_with() {
-    Agent<String> agent = Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+    Agent<String> agent =
+        Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
 
     Conversation<String> conversation = agent.converse();
 
@@ -93,7 +94,7 @@ class ConversationTest {
     @Test
     void the_observer_watches_only_this_calls_turn_synchronously() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+          Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
       Conversation<String> conversation = agent.converse();
       List<TurnEvent> observed = new ArrayList<>();
 
@@ -108,7 +109,7 @@ class ConversationTest {
     @Test
     void a_null_observer_is_rejected() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+          Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
       Conversation<String> conversation = agent.converse();
 
       assertThatThrownBy(() -> conversation.tell("hi", null))
@@ -119,7 +120,7 @@ class ConversationTest {
     @Test
     void a_throwing_observer_propagates_and_aborts_the_call() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().model("m").build();
+          Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
       Conversation<String> conversation = agent.converse();
 
       assertThatThrownBy(
@@ -144,6 +145,7 @@ class ConversationTest {
           Nessy.harness(new FakeProvider())
               .build()
               .agent()
+              .name("clerk")
               .model("m")
               .renderer(emptyRenderer)
               .build();
@@ -162,6 +164,7 @@ class ConversationTest {
           Nessy.harness(new FakeProvider())
               .build()
               .agent()
+              .name("clerk")
               .model("m")
               .renderer(nullRenderer)
               .build();

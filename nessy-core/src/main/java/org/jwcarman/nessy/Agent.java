@@ -46,6 +46,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
  */
 public final class Agent<I> {
 
+  private final String name;
   private final ConversationLoop loop;
   private final ListenerRegistry events;
   private final ConversationStore store;
@@ -54,18 +55,25 @@ public final class Agent<I> {
   private final InputRenderer<I> renderer;
 
   Agent(
+      String name,
       ConversationLoop loop,
       ListenerRegistry events,
       ConversationStore store,
       Parks parks,
       Memory memory,
       InputRenderer<I> renderer) {
+    this.name = Objects.requireNonNull(name, "name must not be null");
     this.loop = Objects.requireNonNull(loop, "loop must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.parks = Objects.requireNonNull(parks, "parks must not be null");
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+  }
+
+  /** This agent's required, durable identity (design §3) — the stamp its parks carry. */
+  public String name() {
+    return name;
   }
 
   /** Opens a fresh conversation. */

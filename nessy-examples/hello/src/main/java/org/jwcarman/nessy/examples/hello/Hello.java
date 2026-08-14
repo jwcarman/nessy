@@ -63,6 +63,7 @@ public final class Hello {
         Nessy.harness(provider)
             .build()
             .agent()
+            .name("hello")
             .model("fake-model")
             .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
             .build();
