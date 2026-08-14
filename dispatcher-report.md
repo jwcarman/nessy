@@ -296,3 +296,78 @@ turns.
    see the What section above for why the latter isn't available to a test
    that must share the harness's single `agent()` build with production
    `DispatcherConfig`.
+
+## Task 5: Paperwork
+
+**What:** `nessy-examples/dispatcher/README.md` — spec §5's demo script
+verbatim (real curl lines, the restart scene called out explicitly as steps
+1–4, the duplicate-callback step 8), the spec §6 "deliberately not built"
+list restated in the module's own words, and a short paragraph explaining WHY
+the automated smoke test's duplicate-completion assertion is the honest,
+replayable half of the restart claim (the registry-survives-resolution
+property both scenes lean on) rather than a substitute for the by-hand scene.
+Root `README.md`: two edits, both minimal and mechanical per the plan's
+rebase-friendliness instruction — the "runnable examples" sentence in the
+status section gains "and an HTTP dispatcher over durable parks"; the
+`## Examples` section's opening sentence changes "family of three" → "family
+of four" and its matrix line gains `dispatcher (Boot web + durable parks over
+HTTP)`; one new paragraph + run command added after `night-watchman`'s,
+before `## License`, matching the existing per-example paragraph shape
+exactly (chat-web's and night-watchman's own paragraphs were left untouched
+verbatim — no rewording, only an insertion after the last one). `CHANGELOG.md`:
+one new `### Added` bullet appended at the section's end (after the "three
+front doors" bullet, before `### Breaking (pre-1.0)`), matching the existing
+bullets' voice (bold lead phrase, dense prose, the restart-then-callback
+headline scene, `JdbcParks` finally load-bearing rather than incidental).
+
+**Commands + output tails:**
+```
+./mvnw -q clean verify                                     # full offline reactor: exit 0
+./mvnw -q verify -pl nessy-examples/dispatcher -am \
+  -Dnessy.excludedGroups=                                   # full container suite: exit 0
+./mvnw -q license:format -Plicense && ./mvnw -q spotless:apply   # exit 0, exit 0
+./mvnw -q clean verify                                     # re-verify after formatting: exit 0
+```
+
+**Self-review:** Diffed root `README.md` and `CHANGELOG.md` line by line
+before staging to confirm the edits really are additive-only — no rewording
+of chat-web's or night-watchman's existing prose, no renumbering, no touched
+line outside the two spots each file needed (the "family of three/four"
+count and the per-example paragraph list) — exactly what the plan's
+"coordinate wording... keep your edit minimal and mechanical so the later
+rebase is one hunk" instruction asks for, since the order-desk branch edits
+these same seams concurrently. Re-read the module README's restart scene
+against spec §5 word for word (incident id `INC-7`, `water-main`/`corner of
+5th`, the exact `curl` flags, the outcome string) to keep the example
+runnable as written, not just plausible-looking.
+
+## Final summary
+
+Branch `dispatcher`, 5 commits (scaffold → tool/agent → controllers → smoke
+test → paperwork). Offline `./mvnw -q clean verify`: green after every task.
+Container suite (`./mvnw -q verify -pl nessy-examples/dispatcher -am
+-Dnessy.excludedGroups=`): green from Task 4 on. No mocking library used
+anywhere (`RequestFieldCrewToolTest` hand-builds `ToolContext`;
+`DispatcherSmokeTest` hand-rolls a scripted `ModelProvider`, chat-web's own
+pattern). No suppressions, no star imports. The restart-then-callback scene
+itself (spec §1's headline) is a by-hand demo per the plan — not something
+this branch's automated suite exercises directly, since no test in this repo
+kills a JVM mid-run; `DispatcherSmokeTest`'s duplicate-completion assertion
+is its automated, replayable half, and the module README says so explicitly.
+
+**Open items for the controller's whole-branch review:**
+1. `spring-boot-starter-jdbc` added to the dispatcher pom — not explicit in
+   spec §3's dependency list (Task 4's RED found this the hard way, via a
+   real container-run failure the offline build structurally can't catch).
+2. The stray license-header diffs on ~15 pre-existing, unrelated files
+   (chat-web's `application.yaml`/static assets, several
+   `junit-platform.properties`, `nessy-store-jdbc`'s SQL schema files) that
+   `./mvnw license:format -Plicense` intermittently produces across this
+   worktree — never staged or committed, reverted before every commit, but
+   worth a look at whether the license plugin's file-type coverage has a
+   pre-existing gap on `main` unrelated to this branch's work.
+3. `.approver(Approver.allowAll())` added to `DispatcherConfig` (Task 2
+   self-review) to suppress the design-§13.1 startup WARN, following
+   night-watchman's precedent — not explicitly asked for by the plan's Task 2
+   text but structurally necessary once `AgentBuilder.defaultApprover()`'s
+   unconditional WARN was checked against source.

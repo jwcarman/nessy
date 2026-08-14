@@ -634,6 +634,18 @@ sequence of renames and interim shapes that produced it.
   it demonstrates at-least-once redelivery against a real broker, absorbed
   by the fold's own is-this-call-still-outstanding replay protection with
   no manual channel plumbing anywhere in the module.
+- **`nessy-example-dispatcher` — the two inbox doors over plain HTTP.** The
+  fourth example: a Spring Boot app exhibiting both webhook trigger models at
+  once. `POST /signals` is fire-and-forget — deposit, `202`, drive on a
+  virtual thread — routed by external identity (the incident id mints the
+  `ConversationId`). `POST /callbacks/{token}` and `.../progress` are the
+  crew reporting back into a parked `request_field_crew` call; a duplicate
+  completion callback re-drives idempotently rather than replaying the tool.
+  The headline scene is restart-then-callback: signal, park, kill the app,
+  restart it, `curl` the callback in a JVM that never saw the signal — the
+  first example to make `JdbcParks` load-bearing rather than incidental.
+  `curl` is the only client; `Agent<String>` is deliberately the right
+  vocabulary here (the doors are the lesson, not typing).
 
 ### Breaking (pre-1.0)
 

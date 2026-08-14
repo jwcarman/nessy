@@ -668,8 +668,9 @@ mapping that fails loudly on anything the audit didn't enumerate rather than
 guessing. OpenAI's live suite is fully green against a real key; Anthropic's is
 live-validated too, including the empty-system fix (a real empty-system-block
 bug the live run surfaced is fixed, with regression tests). `nessy-examples`
-ships a runnable two-provider chat CLI, a Spring Boot chat-web app, and a
-scheduled night-watchman agent — see [Examples](#examples) below.
+ships a runnable two-provider chat CLI, a Spring Boot chat-web app, a
+scheduled night-watchman agent, and an HTTP dispatcher over durable parks —
+see [Examples](#examples) below.
 
 The harness landed too: `Harness` reification, per-grant tool authority
 (`ToolGrant`/`UsagePolicy`), and `agent.contextFor(conversationId)` (now
@@ -715,10 +716,11 @@ input schema into the system prompt. See
 
 ## Examples
 
-`nessy-examples` is a family of four runnable apps, all real key required, no
+`nessy-examples` is a family of five runnable apps, all real key required, no
 mocking, nothing hand-waved. The matrix: `chat-cli` (plain + interactive),
 `chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled autonomy),
-`order-desk` (Boot + message-driven autonomy).
+`order-desk` (Boot + message-driven autonomy), `dispatcher` (Boot web +
+durable parks over HTTP).
 
 **`chat-cli`** — a terminal chat loop, one agent definition run against
 either provider:
@@ -777,7 +779,8 @@ queue initiates each turn, no human and no clock involved. The first
 typed-vocabulary agent in the family (`Agent<OrderEvent>` over a sealed
 event grammar, not `Agent<String>`), and the first to demonstrate
 at-least-once redelivery on a real broker misbehaving on cue — kill the app
-mid-turn, restart, and nothing is lost or doubled. See
+mid-turn, restart, and nothing is lost: a redelivered reply is absorbed as
+stale mail, a redelivered order event is honestly re-told. See
 [`nessy-examples/order-desk/README.md`](nessy-examples/order-desk/README.md)
 for the full demo script. To run it:
 
@@ -786,6 +789,18 @@ ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/order-desk spring-boot:run
 ```
 
 then open <http://localhost:15672> (guest/guest) to publish order events.
+
+**`dispatcher`** — the inbox's two trigger models over plain HTTP:
+`POST /signals` is fire-and-forget (202, driven on a virtual thread);
+`POST /callbacks/{token}` and `.../progress` are the crew reporting back into
+a parked turn. The headline scene kills the app mid-park and resumes it in a
+fresh process — `JdbcParks` earning its keep, curl as the only client. See
+[`nessy-examples/dispatcher/README.md`](nessy-examples/dispatcher/README.md)
+for the full script. To run it:
+
+```bash
+ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/dispatcher spring-boot:run
+```
 
 ## License
 
