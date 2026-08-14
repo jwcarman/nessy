@@ -12,12 +12,12 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Every statement is idempotent (IF NOT EXISTS) so JdbcMemory.create can run this file against a
--- database it has bootstrapped before without failing.
+-- Every statement is idempotent (IF NOT EXISTS) so JdbcTranscript.create can run this file
+-- against a database it has bootstrapped before without failing.
 
-CREATE TABLE IF NOT EXISTS nessy_memory (
+CREATE TABLE IF NOT EXISTS nessy_transcript (
   conversation_id text   NOT NULL,
-  seq             bigint NOT NULL,
+  version         bigint NOT NULL,
   message         jsonb  NOT NULL,
-  PRIMARY KEY (conversation_id, seq)
+  PRIMARY KEY (conversation_id, version)
 );
