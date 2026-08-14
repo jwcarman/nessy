@@ -402,14 +402,15 @@ so metrics stay stable even as those still-evolving conventions do not:
 | `nessy.approval.wait` | `nessy.approval.wait` | `gen_ai.tool.name` — ours; semconv has no human-approval concept |
 
 Wiring is `.observations(ObservationRegistry)` on the builder, default `NOOP`; the
-seams themselves reference Micrometer nowhere. The planned Spring Boot starter
-will wire the registry Boot's Actuator already auto-configures, so observability
-lights up with no configuration at all in a Spring Boot app — that starter does
-not exist yet (see Status). The `chat-web` example ([Examples](#examples))
-shows the wiring done by hand today: Boot's auto-configured registry handed to
-`.observations(...)`, OTLP out to a local Grafana/Tempo/Loki stack, and a chat
-turn reading as one trace — the HTTP POST down through `nessy.model.call`,
-`nessy.tool.call`, and the JDBC saves either side of them.
+seams themselves reference Micrometer nowhere. `nessy-spring-boot-starter`
+(see [Spring Boot](#spring-boot) below) wires the registry Boot's Actuator
+already auto-configures straight into the autoconfigured `Harness`, so
+observability lights up with no configuration at all in a Spring Boot app. The
+`chat-web` example ([Examples](#examples)) is the dogfood: it takes that
+autoconfigured `Harness` with zero wiring of its own, OTLP goes out to a local
+Grafana/Tempo/Loki stack, and a chat turn reads as one trace — the HTTP POST
+down through `nessy.model.call`, `nessy.tool.call`, and the JDBC saves either
+side of them.
 
 For narrating a single `tell` live without a standing subscription,
 `Conversation.tell` has a `TurnObserver` overload — a natural fit for pushing
@@ -432,6 +433,52 @@ single concern covers every event, `TurnObserver.builder()` to compose
 per-variant consumers (repeat registrations chain, so a journal and a renderer
 can both listen), or extend `TurnObserverAdapter` and override only the hooks
 you watch.
+
+## Spring Boot
+
+`nessy-spring-boot-starter` (plus `nessy-autoconfigure`, both in the BOM)
+wires the durable stack by classpath. Add a provider module
+(`nessy-model-anthropic` and/or `nessy-model-openai`) and a `ModelProvider`
+bean is autoconfigured from `nessy.provider`/`nessy.{anthropic,openai}.*`
+properties layered over the SDK's own `fromEnv()` resolution — those
+properties are overrides, not replacements, and an explicit one outranks an
+ambient env var; both jars present and neither disambiguated fails fast,
+naming the property. Add `nessy-store-jdbc` next to a `DataSource` bean and a
+Postgres-backed `ConversationStore`/`Memory` pair is autoconfigured too
+(`nessy.jdbc.enabled` is the master switch; `nessy.jdbc.bootstrap-schema`
+picks DDL-on-startup vs. bring-your-own-schema). Either way, a `Harness` is
+then autoconfigured from whatever provider, store, `ObservationRegistry`, and
+`ObjectMapper` beans are in context, seeded from `nessy.default-model`.
+**Agents are never autoconfigured** — identity (model, prompt, tools,
+policies) stays the application's own `Harness#agent()` call, always; that
+razor is deliberate, not an oversight. Any autoconfigured bean backs off the
+moment the application declares its own, including a hand-declared `Harness`,
+which suppresses the provider and store autoconfiguration outright, since a
+`Harness` cannot exist without both.
+
+With `spring-webmvc` on the classpath, a `TurnRunner` bean also appears: it
+runs a turn on a virtual thread with the request's Micrometer context
+propagated onto it, handing back the `SseEmitter` an application's own
+controller streams from. `TurnEventSse` maps that turn's `TurnEvent`s onto a
+stable wire vocabulary for a browser to key off of: `delta`, `thinking`,
+`tool-requested`, `tool-progress`, `tool-decided`, `tool-completed`,
+`tool-parked` (`{token, tool, args}`), `done`.
+
+The whole property surface is deliberately this small — everything more
+exotic rides `fromEnv()`'s own ambient resolution or a hand-declared bean:
+
+| Property | Default | Meaning |
+|---|---|---|
+| `nessy.provider` | (none) | required only when both provider jars are present |
+| `nessy.anthropic.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |
+| `nessy.openai.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |
+| `nessy.default-model` | (none) | harness-level default model, optional |
+| `nessy.jdbc.enabled` | `true` | JDBC wiring master switch |
+| `nessy.jdbc.bootstrap-schema` | `true` | run the idempotent DDL at startup |
+
+See the `chat-web` example ([Examples](#examples)) for the whole stack —
+provider, persistence, harness, and the SSE bridge — in one Spring Boot app
+with a single application-owned bean.
 
 ## Context management
 
@@ -527,6 +574,12 @@ Harness harness = Nessy.harness(anthropic).store(store).build();
 Agent<String> agent = harness.agent().model("claude-sonnet-4-5").memory(memory).build();
 ```
 
+In a Spring Boot app the wiring above is optional: add
+`nessy-spring-boot-starter` and `nessy-store-jdbc` next to a `DataSource`
+bean, and the store, memory, and harness above are all autoconfigured — the
+application declares one bean, the agent. See [Spring Boot](#spring-boot)
+above for the whole story.
+
 Restart survival needs both halves: the store keeps the control block (status,
 agenda, parks, debt), and `JdbcMemory` keeps the transcript the `Memory` seam
 owns — `ListMemory`, the default, dies with the JVM. The `chat-web` example
@@ -612,8 +665,17 @@ re-entrant verb, `PARKED` conversations wait for a `harness.resume`/
 Postgres-backed `ConversationStore` and `Memory` (`JdbcMemory`, the durable
 transcript) — see [Durable, autonomous agents](#durable-autonomous-agents)
 above and the `chat-web` example ([Examples](#examples) below), which
-dogfoods both against a real browser UI and a kill-and-restart. Not yet
-built: the Spring Boot starter, a TUI, the agent-as-a-tool adapter (wrapping
+dogfoods both against a real browser UI and a kill-and-restart.
+
+The Spring Boot starter has landed too: `nessy-autoconfigure` (every
+`@AutoConfiguration` class, every feature dependency optional) and
+`nessy-spring-boot-starter` (the dependency-only aggregator, Boot's own
+convention), both in the BOM — provider, persistence, and harness beans all
+arrive by classpath, agents never do, and `chat-web` is the starter's own
+acceptance test, rewired down to one application-owned bean. See [Spring
+Boot](#spring-boot) above.
+
+Not yet built: a TUI, the agent-as-a-tool adapter (wrapping
 an `Agent<I>` as one tool for a parent agent), and publishing a typed agent's
 input schema into the system prompt. See
 [`docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md`](docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md)
@@ -650,9 +712,10 @@ ModelProvider provider =
 
 **`chat-web`** — the first non-toy dogfood: a Spring Boot chat app against a
 real Postgres, with a browser UI, a tool gated behind human approval, and
-full observability. The whole nessy wiring is a handful of beans a stranger
-can read in one sitting; the demo script survives killing and restarting the
-app mid-approval — the transcript and the pending approval are both durable
+full observability. `nessy-spring-boot-starter` autoconfigures the provider,
+persistence, and harness; the whole nessy wiring an application declares
+itself is one bean, the agent. The demo script survives killing and
+restarting the app mid-approval — the transcript and the pending approval are both durable
 rows, not JVM state. See
 [`nessy-examples/chat-web/README.md`](nessy-examples/chat-web/README.md) for
 the full walkthrough, including the observability tour (Grafana/Tempo/Loki

@@ -1,7 +1,7 @@
 # The Spring Boot Starter — design
 
 **Date:** 2026-08-13
-**Status:** DRAFT — pending review
+**Status:** IMPLEMENTED (see plan 2026-08-13-spring-boot-starter)
 **Builds on:** the DX generation (2026-08-13, spec'd — `JdbcPersistence`,
 `snapshot`, the narration contract all get wired here). Consumed by the
 chat-web rewrite and the patient-researcher (2026-08-13, spec'd). Sequence:

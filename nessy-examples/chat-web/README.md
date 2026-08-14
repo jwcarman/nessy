@@ -2,33 +2,13 @@
 
 A Spring Boot chat app that dogfoods the durable kernel end to end: a real
 browser UI, a real Postgres-backed `ConversationStore` and `Memory`, a tool
-gated behind human approval, and full observability — all wired in one
-`@Configuration` class a stranger can read in a sitting
-(`NessyConfig.java`).
+gated behind human approval, and full observability — with `nessy-spring-boot-starter`
+autoconfiguring every substrate bean, `NessyConfig.java` declares exactly one:
+the agent.
 
-The whole nessy wiring — six beans in `NessyConfig`:
+The whole nessy wiring an application writes itself — one bean in `NessyConfig`:
 
 ```java
-@Bean JdbcPersistence persistence(DataSource ds, ObjectMapper mapper) {
-  return JdbcPersistence.create(ds, mapper);
-}
-
-@Bean ConversationStore store(JdbcPersistence persistence) {
-  return persistence.store();
-}
-
-@Bean Memory memory(JdbcPersistence persistence) {
-  return persistence.memory();
-}
-
-@Bean ModelProvider modelProvider() {
-  return AnthropicModelProvider.builder().fromEnv().build();
-}
-
-@Bean Harness harness(ModelProvider modelProvider, ConversationStore store, ObservationRegistry observations) {
-  return Nessy.harness(modelProvider).store(store).observations(observations).build();
-}
-
 @Bean Agent<String> agent(Harness harness, Memory memory) {
   return harness.agent()
       .model("claude-sonnet-4-5")
@@ -40,15 +20,20 @@ The whole nessy wiring — six beans in `NessyConfig`:
 }
 ```
 
-The approver is the durable-HITL posture in one line: every approval parks —
-the browser is the approver, and the park survives a restart because
-`Memory` and the `ConversationStore` both live in Postgres, not the JVM's
-heap. `JdbcPersistence` is the one bean both `store` and `memory` build from
-— one connection to a Postgres schema, both halves of the durable story.
-(`modelProvider()` and `harness(...)` above are `@Profile("!test")` in
-the real source — the container smoke test swaps in a scripted
-`ModelProvider` instead, so it never needs a real key. Elided from the
-snippet as test wiring, not app wiring.)
+`Harness` and `Memory` arrive as method parameters, autoconfigured by the
+starter from the classpath: `nessy-model-anthropic` (plus `.fromEnv()`
+credential resolution) yields the `ModelProvider`, `nessy-store-jdbc` next
+to the app's `DataSource` bean yields the Postgres-backed `ConversationStore`
+and `Memory`, and both feed the autoconfigured `Harness` — Boot's own
+auto-configured `ObservationRegistry` included, so nessy's spans join Boot's
+in the same trace with no application wiring at all. The approver is the
+durable-HITL posture in one line: every approval parks — the browser is the
+approver, and the park survives a restart because `Memory` and the
+`ConversationStore` both live in Postgres, not the JVM's heap. (`NessyConfig`
+carries no `@Profile` split anymore — the container smoke test's own
+`@TestConfiguration` `Harness` bean wins over the starter's by
+`@ConditionalOnMissingBean`, so the real `Harness` above simply backs off in
+the test context.)
 
 The demo tool is `IssueCouponTool`: `issue_coupon(customerEmail, amountUsd,
 reason)` returns a fake confirmation string. Obviously consequence-bearing
@@ -104,8 +89,11 @@ This is the acceptance test, run by hand:
 
 ## What this example deliberately does not build
 
-Authentication, multi-user identity, conversation listing/search,
-WebSockets, any JS framework, or a Spring Boot starter for nessy — this
-example hand-wires beans precisely to show what a starter would automate.
-See `docs/superpowers/specs/2026-08-13-chat-web-example-design.md` §8 for the
+Authentication, multi-user identity, conversation listing/search, WebSockets,
+or any JS framework. It no longer hand-wires nessy's substrate beans either
+— `nessy-spring-boot-starter` (see the root
+[README](../../README.md#spring-boot)) autoconfigures those now; this
+example's own code is the agent, the controllers, and the UI. See
+`docs/superpowers/specs/2026-08-13-chat-web-example-design.md` §8 and
+`docs/superpowers/specs/2026-08-13-spring-boot-starter-design.md` for the
 complete list and the reasoning.

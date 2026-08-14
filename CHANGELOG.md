@@ -434,6 +434,89 @@ sequence of renames and interim shapes that produced it.
     though only `Ready` carries a value — and no caller has ever needed an
     interface-level accessor; the ruling is applied in the SonarCloud UI with
     that justification, keeping the zero-suppression rule intact in code.
+- **The Spring Boot starter — substrate arrives by classpath, identity stays
+  yours.** Two new published artifacts, both in the BOM: `nessy-autoconfigure`
+  (every `@AutoConfiguration` class and `@ConfigurationProperties` record;
+  every feature dependency — `nessy-model-anthropic`, `nessy-model-openai`,
+  `nessy-store-jdbc`, `spring-webmvc` — optional, each configuration gating
+  itself with `@ConditionalOnClass`) and `nessy-spring-boot-starter` (a
+  jar-packaged, src-less, dependency-only aggregator of `nessy-core` +
+  `nessy-autoconfigure` — Boot's own convention for a starter pom, not a
+  packaging choice of ours). `nessy-parent` still never learns Spring exists;
+  Boot enters the reactor only inside these two modules.
+  - **Providers by classpath.** `AnthropicModelProvider`/`OpenAiModelProvider`
+    present on the classpath autoconfigures a `ModelProvider` bean from
+    `nessy.{anthropic,openai}.{api-key,base-url}` — properties that are
+    *overrides* layered on top of each SDK's own `fromEnv()` resolution, never
+    replacements for it, so every ambient source the SDK already understands
+    (auth tokens, base URLs, workload-identity federation) still works when a
+    property is absent. When both provider jars are present, `nessy.provider`
+    chooses, or — absent that — whichever side is the only one with a
+    `nessy.*` key set; an explicit `nessy.*` property always outranks an
+    ambient env var (a deliberate precedence ruling, not an oversight); truly
+    ambiguous classpaths fail fast at startup, naming the property. Every
+    provider bean backs off entirely the moment the application supplies its
+    own `Harness` — a `Harness` cannot exist without a provider already in
+    hand, so building (and possibly keylessly failing to build) a second,
+    unused one would be pure waste.
+  - **Persistence by classpath.** `nessy-store-jdbc` on the classpath plus a
+    `DataSource` bean autoconfigures `JdbcPersistence`-backed
+    `ConversationStore` and `Memory` beans — the app goes from JVM-lifetime
+    memory to durable the moment the classpath says "I have a database."
+    `nessy.jdbc.enabled` (default `true`) is the master switch;
+    `nessy.jdbc.bootstrap-schema` (default `true`) picks between the
+    bootstrapping `create` factories (idempotent `CREATE TABLE IF NOT EXISTS`
+    at startup) and the bare constructors, for a datasource another process
+    already schema-bootstrapped.
+  - **Harness, autoconfigured; agents, never.** `NessyAutoConfiguration`
+    builds a `Harness` from whatever `ModelProvider` (required),
+    `ConversationStore`, `ObservationRegistry`, and `ObjectMapper` beans are
+    in context, seeded from `nessy.default-model` — Boot's own
+    auto-configured `ObservationRegistry` is what makes nessy's spans join
+    Boot's HTTP/JDBC spans in one trace for free. **Agents are never
+    autoconfigured, stated as the razor's own feature, not a gap**: identity
+    (model, system prompt, tools, policies) is always the application's own
+    `Harness#agent()` call — an `AgentBuilder` is never something this module
+    builds on an app's behalf. Every bean here, like the provider beans above,
+    yields outright to a hand-declared one.
+  - **The web bridge**, active only when `spring-webmvc` resolves
+    (`@ConditionalOnClass(SseEmitter)`): `TurnEventSse` maps `TurnEvent`
+    narration onto a stable, versioned wire vocabulary — `delta`, `thinking`,
+    `tool-requested`, `tool-progress`, `tool-decided`, `tool-completed`,
+    `tool-parked` (`{token, tool, args}`) — via an exhaustive record-pattern
+    switch with no `default` arm (this module compiles in the same reactor as
+    `nessy-core`, so the sealed-grammar etiquette's fail-loud-at-compile-time
+    rule beats an extender's forward-tolerant default here), plus a
+    broken-pipe-tolerant `SseEmitter` send that completes a closed stream
+    instead of failing the turn driving it. `TurnRunner#run(Function
+    <SseEmitter, RunOutcome>, BiConsumer<SseEmitter, RunOutcome>)` drives that
+    turn on a virtual thread, the emitter handed to the closure so the same
+    instance always flows to both the turn and its outcome handler with no
+    unsynchronized-publication window; it captures the request thread's
+    Micrometer `ContextSnapshot` before starting the virtual thread and
+    restores it there, so the turn's spans parent onto the request's trace
+    instead of starting a new one — the trace-propagation bug `chat-web`
+    shipped first-try becomes unmakeable. A `RuntimeException` escaping the
+    turn ends the stream itself: one `done` event naming the failure
+    (`{status: "ERROR", failureReason}`), then `completeWithError`.
+  - **The property surface is deliberately this small, and stated as
+    design:** `nessy.provider`, `nessy.{anthropic,openai}.{api-key,base-url}`,
+    `nessy.default-model`, `nessy.jdbc.{enabled,bootstrap-schema}` — nothing
+    else. Anything more exotic rides each SDK's own `fromEnv()` ambient
+    resolution or the hand-declared-bean escape hatch, never a new `nessy.*`
+    key. `@ConfigurationProperties` metadata is generated
+    (`spring-boot-configuration-processor`), so IDEs complete every key.
+  - **`chat-web`, round two.** The example's own acceptance test for the
+    starter above: `NessyConfig` shrinks from five beans to one — the agent —
+    with the `@Profile("!test")` split retired entirely (the smoke test's
+    `@TestConfiguration` `Harness` bean now wins over the starter's own by the
+    same `@ConditionalOnMissingBean` every autoconfigured bean here honors).
+    The hand-rolled `SseEvents`/`ContextSnapshotFactory` bridge is deleted in
+    favor of `TurnEventSse`/`TurnRunner`. `app.js`'s handler for a parked tool
+    call is renamed `approval-needed` → `tool-parked`, conforming to the
+    starter's published wire vocabulary rather than the reverse (dedupe-by-token
+    logic unchanged) — an example-app wire rename, not a framework break, since
+    `approval-needed` was never nessy's own name.
 
 ### Breaking (pre-1.0)
 
