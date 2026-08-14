@@ -369,3 +369,84 @@ sequence of renames and interim shapes that produced it.
   resume, complete. o11y export is disabled under that same test profile —
   no collector in CI, and an exporter left pointed at nothing would retry-spam
   the log.
+- **The DX generation.** The first real deployment (`chat-web`, above) left
+  three apology comments in its own wiring — an API that makes its own
+  example apologize has told you what to fix. This generation closes each
+  one at the source, then rewrites `chat-web` on top of the result as its own
+  acceptance test:
+  - `ToolContext` now carries the authoritative `ToolCall` and a
+    `progress(String)` method — a tool reports its own progress without ever
+    constructing a `ToolProgress` or touching an id; the framework supplies
+    both ids from the call it already gave the tool.
+  - `Agent.snapshot(id)` is the page-rebuild read: a total
+    `ConversationSnapshot(ConversationStatus status, List<ParkedCall>
+    parkedCalls, Context context)` for any id, stored or not — `IDLE`,
+    empty parks, `Context.empty()` for one never stored. `contextFor`
+    deliberately stays loud (it throws on an unknown id) precisely so
+    `snapshot` can be total; the division is stated in both javadocs so the
+    two never drift back together by accident.
+  - `TurnEvent.ToolCallParked(ToolCall call, ParkToken token)` narrates only
+    after the park's save has committed — `applyParked` is the one choke
+    point that emits it, so an observer never sees a token the store doesn't
+    yet honor. `TurnEvent`'s type-level javadoc now carries two invariants
+    directly: narration is at-least-once (a retried segment can emit
+    `ToolCallParked` twice for one token — the loop's write discipline
+    retries on stale saves, and re-narrating a park it already told you about
+    is cheaper and safer than swallowing one it didn't), and turn observers
+    are entry-scoped, so a future agent-wide standing observer must revisit
+    that invariant loudly rather than silently becoming a capability
+    broadcast.
+  - `ListMemory` gained the recall open-tail trim `JdbcMemory` already had —
+    now genuinely shared `Memory`-contract behavior, not a divergence one
+    store carries alone. Both javadocs name the same remaining open case:
+    halting mid-turn while a call is parked.
+  - `UnknownParkTokenException` replaces a hand-rolled `IllegalArgumentException`
+    for a token the store no longer recognizes at all (as opposed to one it
+    recognizes but has already consumed) — a named rejection, not a wiring
+    desync. `Harness.peek(ParkToken)` reads a park without consuming it, and
+    `Harness.approve(ParkToken[, TurnObserver])` /
+    `Harness.deny(ParkToken, String[, TurnObserver])` are sugar over
+    `resume` for the two decisions every human-in-the-loop gate actually
+    makes.
+  - `Approver.parkAll()` — says park to everything, behind a fresh
+    `ParkToken`, replacing the one-line lambda every durable-HITL app was
+    writing by hand. `nessy-store-jdbc` gained `JdbcPersistence(ConversationStore
+    store, Memory memory)`, with `JdbcPersistence.create(DataSource,
+    ObjectMapper)` building both halves at once — one bean where an app used
+    to wire two.
+  - **`chat-web` rewritten as its own acceptance test.** Every apology
+    comment is gone: `IssueCouponTool` calls `context.progress(...)`
+    directly: the chat GET endpoint rebuilds from `agent.snapshot(id)`
+    instead of hand-stitching state; approval cards are event-borne —
+    `SseEvents` reacts to `ToolCallParked` inline — with the snapshot-backed
+    GET kept only as the race-path card source, not the primary one; the UI
+    (`app.js`) dedupes approval cards by token, so the at-least-once
+    narration contract above can never double-render one; `ApprovalController`
+    catches the typed `UnknownParkTokenException` instead of a bare 409
+    guess; and `NessyConfig` wires `Approver.parkAll()` and one
+    `JdbcPersistence` bean where it used to wire an approver lambda and two
+    stores.
+  - **The `Awaited<T>` ruling.** Sonar S2326 ("T is not used in the
+    interface") is a SonarCloud won't-fix, not a code change or a
+    suppression: the type parameter is load-bearing grammar — it is what
+    makes `Awaited<ToolResult>` and `Awaited<Decision>` distinct types even
+    though only `Ready` carries a value — and no caller has ever needed an
+    interface-level accessor; the ruling is applied in the SonarCloud UI with
+    that justification, keeping the zero-suppression rule intact in code.
+
+### Breaking (pre-1.0)
+
+Both of the following are deliberate, in-development shape changes — nothing
+below breaks a shipped version, because none exists yet — but they are loud
+because both signatures were public as of the previous entries above:
+
+- **`RunOutcome.Parked` slims to `Parked(ConversationState state)`.** The
+  token it used to carry travels a different way now: on the narrated
+  `TurnEvent.ToolCallParked(call, token)` event, and in `state.parkedCalls()`
+  for anyone reading state after the fact rather than watching the turn live.
+- **`Agent.resume(id)` is renamed `Agent.conversation(id)`.** "Resume" now
+  means exactly one thing across the whole API: answering a park
+  (`Harness.resume(ParkToken, ToolResolution, ...)`). Reopening a stored
+  conversation to keep talking to it was never actually resuming anything —
+  it was just naming the conversation you already had — so it gets the name
+  that says that.

@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS nessy_memory (
   leave the returned `Context` in an illegal trailing shape. `ListMemory` does
   not yet share this trimming behavior; that gap is recorded as a framework
   follow-up, not silently papered over.
+
+  *[Amendment, 2026-08-13, DX generation: `ListMemory` now shares this
+  trimming behavior — see plan 2026-08-13-dx-generation and the CHANGELOG's
+  "The DX generation" entry. The gap above is closed; left in place as the
+  historical record of the framework follow-up it names.]*
 - Message (de)serialization via the existing `StateCodec` mixins (extract the
   message codec surface for reuse rather than duplicating mixin registration).
 - Tests: codec round-trips offline; behavior against real Postgres in the

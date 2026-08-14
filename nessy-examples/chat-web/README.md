@@ -6,15 +6,19 @@ gated behind human approval, and full observability — all wired in one
 `@Configuration` class a stranger can read in a sitting
 (`NessyConfig.java`).
 
-The whole nessy wiring — five beans in `NessyConfig`:
+The whole nessy wiring — six beans in `NessyConfig`:
 
 ```java
-@Bean ConversationStore store(DataSource ds, ObjectMapper mapper) {
-  return JdbcConversationStore.create(ds, mapper);
+@Bean JdbcPersistence persistence(DataSource ds, ObjectMapper mapper) {
+  return JdbcPersistence.create(ds, mapper);
 }
 
-@Bean Memory memory(DataSource ds, ObjectMapper mapper) {
-  return JdbcMemory.create(ds, mapper);
+@Bean ConversationStore store(JdbcPersistence persistence) {
+  return persistence.store();
+}
+
+@Bean Memory memory(JdbcPersistence persistence) {
+  return persistence.memory();
 }
 
 @Bean ModelProvider modelProvider() {
@@ -31,7 +35,7 @@ The whole nessy wiring — five beans in `NessyConfig`:
       .systemPrompt("You are the demo shop's helpful assistant. Use your tool when a coupon is warranted.")
       .memory(memory)
       .tools(ToolGrant.grant(new IssueCouponTool(), UsagePolicy.requireApproval()))
-      .approver(request -> Awaited.parked(ParkToken.generate()))
+      .approver(Approver.parkAll())
       .build();
 }
 ```
@@ -39,7 +43,9 @@ The whole nessy wiring — five beans in `NessyConfig`:
 The approver is the durable-HITL posture in one line: every approval parks —
 the browser is the approver, and the park survives a restart because
 `Memory` and the `ConversationStore` both live in Postgres, not the JVM's
-heap. (`modelProvider()` and `harness(...)` above are `@Profile("!test")` in
+heap. `JdbcPersistence` is the one bean both `store` and `memory` build from
+— one connection to a Postgres schema, both halves of the durable story.
+(`modelProvider()` and `harness(...)` above are `@Profile("!test")` in
 the real source — the container smoke test swaps in a scripted
 `ModelProvider` instead, so it never needs a real key. Elided from the
 snippet as test wiring, not app wiring.)

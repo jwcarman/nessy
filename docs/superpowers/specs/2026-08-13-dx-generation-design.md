@@ -1,7 +1,7 @@
 # The DX Generation — design
 
 **Date:** 2026-08-13
-**Status:** DRAFT — pending review
+**Status:** IMPLEMENTED (see plan 2026-08-13-dx-generation)
 **Builds on:** the essence (2026-08-11), the durable kernel (2026-08-12), and the
 chat-web dogfood (2026-08-13, shipped). This generation exists because the
 dogfood worked: the example app carries three comments apologizing for the
