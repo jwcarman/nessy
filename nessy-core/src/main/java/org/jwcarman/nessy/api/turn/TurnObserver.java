@@ -15,6 +15,13 @@
  */
 package org.jwcarman.nessy.api.turn;
 
+import java.util.Objects;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.slf4j.Logger;
+
 /**
  * Whoever is sitting there, watching this turn happen — a REPL painting deltas, a UI narrating
  * homework. Bound per entry: the observer handed to {@code tell} or {@code resume} sees the segment
@@ -52,5 +59,64 @@ public interface TurnObserver {
    */
   static TurnObserverBuilder builder() {
     return new TurnObserverBuilder();
+  }
+
+  /**
+   * The standard narrating observer — one says-line per {@link TurnEvent.AssistantSaid} (its
+   * message's text blocks joined, skipped when blank), a line each for a tool requested, completed,
+   * or parked (the parked line carries the token), and the segment's {@link TurnEvent.TurnEnded}
+   * line at {@code INFO}, with the failure reason repeated at {@code WARN} when the status is
+   * {@code FAILED}. Built on {@link #builder()} — this factory's own dogfood, and the collapse
+   * target for what every example used to hand-roll (see {@code night-watchman}'s {@code Watchman},
+   * {@code order-desk}'s {@code OrderDesk}, {@code dispatcher}'s {@code IncidentLog}).
+   *
+   * @param prefix the log-line tag — an incident id, an order id, a conversation label
+   */
+  static TurnObserver logging(Logger logger, String prefix) {
+    Objects.requireNonNull(logger, "logger must not be null");
+    Objects.requireNonNull(prefix, "prefix must not be null");
+    return builder()
+        .onAssistantSaid(
+            said -> {
+              String text = joinedText(said.message());
+              if (!text.isBlank()) {
+                logger.info("{} says: {}", prefix, text);
+              }
+            })
+        .onToolCallRequested(
+            requested -> logger.info("{} tool: {}", prefix, requested.call().name()))
+        .onToolCallCompleted(
+            completed ->
+                logger.info(
+                    "{} tool completed: {} (error={})",
+                    prefix,
+                    completed.call().name(),
+                    completed.result().isError()))
+        .onToolCallParked(
+            parked ->
+                logger.info(
+                    "{} parked: tool={} token={}",
+                    prefix,
+                    parked.call().name(),
+                    parked.token().value()))
+        .onTurnEnded(
+            ended -> {
+              logger.info("{} ends: {}", prefix, ended.status());
+              if (ended.status() == ConversationStatus.FAILED) {
+                logger.warn("{} failed: {}", prefix, ended.failureReason());
+              }
+            })
+        .build();
+  }
+
+  /** The message's {@link TextBlock} content, concatenated in order — no separator, no filler. */
+  private static String joinedText(Message message) {
+    StringBuilder joined = new StringBuilder();
+    for (ContentBlock block : message.content()) {
+      if (block instanceof TextBlock(String text)) {
+        joined.append(text);
+      }
+    }
+    return joined.toString();
   }
 }

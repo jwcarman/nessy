@@ -52,6 +52,8 @@ public abstract class TurnObserverAdapter implements TurnObserver {
       case TurnEvent.ToolCallCompleted e -> onToolCallCompleted(e);
       case TurnEvent.ToolCallProgressed e -> onToolCallProgressed(e);
       case TurnEvent.ToolCallParked e -> onToolCallParked(e);
+      case TurnEvent.AssistantSaid e -> onAssistantSaid(e);
+      case TurnEvent.TurnEnded e -> onTurnEnded(e);
     }
   }
 
@@ -92,6 +94,16 @@ public abstract class TurnObserverAdapter implements TurnObserver {
 
   /** The call parked — waiting on something that outlives this process. */
   protected void onToolCallParked(TurnEvent.ToolCallParked event) {
+    // no-op until a subclass cares
+  }
+
+  /** A settled assistant-role message — the deltas were the preview, this is the sentence. */
+  protected void onAssistantSaid(TurnEvent.AssistantSaid event) {
+    // no-op until a subclass cares
+  }
+
+  /** The segment's closing line — emitted exactly once at every exit. */
+  protected void onTurnEnded(TurnEvent.TurnEnded event) {
     // no-op until a subclass cares
   }
 }

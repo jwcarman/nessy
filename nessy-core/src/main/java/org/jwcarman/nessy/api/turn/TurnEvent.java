@@ -18,6 +18,8 @@ package org.jwcarman.nessy.api.turn;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -125,6 +127,40 @@ public sealed interface TurnEvent {
     public ToolCallParked {
       Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
       Objects.requireNonNull(token, "token must not be null");
+    }
+  }
+
+  /**
+   * A settled assistant-role message — the deltas ({@link TextDelta}, {@link ThinkingDelta}) were
+   * the preview; this is the sentence. Emitted once per model response the fold absorbs, including
+   * a response that carries only tool-use blocks and no prose (asking for homework is still saying
+   * something; observers wanting prose alone filter for {@link
+   * org.jwcarman.nessy.api.message.TextBlock} content). Emitted at the same beat the {@code
+   * ModelResponded} fact folds — live narration, subject to this type's at-least-once narration
+   * rule (see the type-level javadoc's first bullet, the same rule {@link ToolCallParked}
+   * documents): a retried segment may re-say it, and observers materializing per-event UI should
+   * dedupe the way {@link ToolCallParked} consumers are advised to.
+   */
+  record AssistantSaid(Message message) implements TurnEvent {
+    public AssistantSaid {
+      Objects.requireNonNull(message, "message must not be null");
+    }
+  }
+
+  /**
+   * The segment's closing line — emitted exactly once per observed segment at every exit: quiescent
+   * completion ({@code COMPLETE} or {@code IDLE}), {@code FAILED} (with {@code failureReason}
+   * carried), and {@code PARKED}. {@code failureReason} is meaningful only when {@code status} is
+   * {@code FAILED}; it is {@code null} otherwise — mirroring {@link
+   * org.jwcarman.nessy.api.conversation.ConversationState}'s one sanctioned nullable field, and no
+   * cross-field validation beyond {@code status} itself being non-null is enforced here. Post-save
+   * discipline, like {@link ToolCallParked}: an ending that never committed is never narrated — a
+   * driver whose own save loses a fence, or whose call throws before landing one, tells no ending
+   * at all for that attempt.
+   */
+  record TurnEnded(ConversationStatus status, String failureReason) implements TurnEvent {
+    public TurnEnded {
+      Objects.requireNonNull(status, "status must not be null");
     }
   }
 }

@@ -45,6 +45,8 @@ public final class TurnObserverBuilder {
   private Consumer<TurnEvent.ToolCallCompleted> onToolCallCompleted = event -> {};
   private Consumer<TurnEvent.ToolCallProgressed> onToolCallProgressed = event -> {};
   private Consumer<TurnEvent.ToolCallParked> onToolCallParked = event -> {};
+  private Consumer<TurnEvent.AssistantSaid> onAssistantSaid = event -> {};
+  private Consumer<TurnEvent.TurnEnded> onTurnEnded = event -> {};
 
   TurnObserverBuilder() {}
 
@@ -88,6 +90,16 @@ public final class TurnObserverBuilder {
     return this;
   }
 
+  public TurnObserverBuilder onAssistantSaid(Consumer<TurnEvent.AssistantSaid> consumer) {
+    onAssistantSaid = onAssistantSaid.andThen(require(consumer));
+    return this;
+  }
+
+  public TurnObserverBuilder onTurnEnded(Consumer<TurnEvent.TurnEnded> consumer) {
+    onTurnEnded = onTurnEnded.andThen(require(consumer));
+    return this;
+  }
+
   /** The assembled observer; the builder may keep being used and rebuilt without affecting it. */
   public TurnObserver build() {
     Consumer<TurnEvent.TextDelta> text = onTextDelta;
@@ -98,6 +110,8 @@ public final class TurnObserverBuilder {
     Consumer<TurnEvent.ToolCallCompleted> completed = onToolCallCompleted;
     Consumer<TurnEvent.ToolCallProgressed> progressed = onToolCallProgressed;
     Consumer<TurnEvent.ToolCallParked> parked = onToolCallParked;
+    Consumer<TurnEvent.AssistantSaid> said = onAssistantSaid;
+    Consumer<TurnEvent.TurnEnded> ended = onTurnEnded;
     return new TurnObserverAdapter() {
       @Override
       protected void onTextDelta(TurnEvent.TextDelta event) {
@@ -137,6 +151,16 @@ public final class TurnObserverBuilder {
       @Override
       protected void onToolCallParked(TurnEvent.ToolCallParked event) {
         parked.accept(event);
+      }
+
+      @Override
+      protected void onAssistantSaid(TurnEvent.AssistantSaid event) {
+        said.accept(event);
+      }
+
+      @Override
+      protected void onTurnEnded(TurnEvent.TurnEnded event) {
+        ended.accept(event);
       }
     };
   }

@@ -176,7 +176,7 @@ public final class ConversationLoop {
       for (InboxEntry entry : loaded.inbox()) {
         if (entry instanceof InboxEntry.Told(String entryId, List<ContentBlock> content)) {
           drained.add(entryId);
-          fold(progress, new ConversationEvent.AgentTold(id, content), drained);
+          fold(progress, new ConversationEvent.AgentTold(id, content), drained, observer);
         }
       }
 
@@ -207,7 +207,7 @@ public final class ConversationLoop {
           }
           ConversationEvent fact =
               resumeParkedCall(park.get(), resolution, progress.get(), observer);
-          FoldOutcome folded = fold(progress, fact, drained);
+          FoldOutcome folded = fold(progress, fact, drained, observer);
           drained.add(entryId);
           runCycle(progress, new ArrayDeque<>(folded.effects()), drained, observer);
         }
@@ -220,7 +220,15 @@ public final class ConversationLoop {
         save(progress, drained);
       }
       settled = true;
-      return outcomeOf(progress.get());
+      ConversationState finalState = progress.get();
+      // Post-save discipline, like ToolCallParked: this is reached only once every save this
+      // attempt owed has landed, so the ending narrated here is one the store actually confirms.
+      // PARKED is excluded — applyParked already narrated that ending, adjacent to its own save,
+      // the moment the closure transition committed; narrating it again here would double it.
+      if (finalState.status() != ConversationStatus.PARKED) {
+        observer.on(new TurnEvent.TurnEnded(finalState.status(), finalState.failureReason()));
+      }
+      return outcomeOf(finalState);
     } finally {
       if (!settled) {
         try {
@@ -288,7 +296,7 @@ public final class ConversationLoop {
       PerformOutcome outcome = perform(effect, progress.get(), observer);
       switch (outcome) {
         case PerformOutcome.Settled(ConversationEvent fact) -> {
-          FoldOutcome folded = fold(progress, fact, drained);
+          FoldOutcome folded = fold(progress, fact, drained, observer);
           if (folded.halted()) {
             return;
           }
@@ -307,7 +315,10 @@ public final class ConversationLoop {
    * the fold's own birth and the closure's abandoned-work flush before saving.
    */
   private FoldOutcome fold(
-      AtomicReference<ConversationState> progress, ConversationEvent fact, List<String> drained) {
+      AtomicReference<ConversationState> progress,
+      ConversationEvent fact,
+      List<String> drained,
+      TurnObserver observer) {
     Step step = progress.get().fold(fact);
     ConversationState folded = step.state();
     Optional<String> halt = termination.shouldHalt(folded);
@@ -316,15 +327,28 @@ public final class ConversationLoop {
       progress.set(closed.state());
       remember(closed.state().id(), step.remember());
       remember(closed.state().id(), closed.remember());
+      narrateAssistantSaid(fact, observer);
       emitter.emit(fact);
       save(progress, drained);
       return new FoldOutcome(List.of(), true);
     }
     progress.set(folded);
     remember(folded.id(), step.remember());
+    narrateAssistantSaid(fact, observer);
     emitter.emit(fact);
     save(progress, drained);
     return new FoldOutcome(step.effects(), false);
+  }
+
+  /**
+   * {@link TurnEvent.AssistantSaid} narrates at the same beat {@code ModelResponded} folds — before
+   * this fold's own save, so it shares the emitter's at-least-once exposure to a retried attempt
+   * (design §2, TurnEvent's type-level javadoc).
+   */
+  private static void narrateAssistantSaid(ConversationEvent fact, TurnObserver observer) {
+    if (fact instanceof ConversationEvent.ModelResponded responded) {
+      observer.on(new TurnEvent.AssistantSaid(responded.message()));
+    }
   }
 
   private void remember(ConversationId id, List<Message> births) {
@@ -364,6 +388,12 @@ public final class ConversationLoop {
     progress.set(progress.get().parked(call));
     save(progress, drained);
     observer.on(new TurnEvent.ToolCallParked(call, token));
+    // Sibling calls can still be running (park physics): parked() only flips status to PARKED
+    // once every pending call has settled or parked, so this narrates the segment's ending exactly
+    // once — on whichever call is the last to land.
+    if (progress.get().status() == ConversationStatus.PARKED) {
+      observer.on(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+    }
   }
 
   /**

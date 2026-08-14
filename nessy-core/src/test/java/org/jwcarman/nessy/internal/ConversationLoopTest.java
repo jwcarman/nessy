@@ -1018,6 +1018,34 @@ class ConversationLoopTest {
           .containsExactly(new TurnEvent.ToolCallParked(c1, token));
     }
 
+    @Test
+    void a_park_ends_the_segment_exactly_once_right_after_its_own_narration() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken token = tools.parksWhen("c1");
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              ConversationStore.inMemory(),
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), events::add);
+
+      assertThat(events)
+          .filteredOn(
+              e -> e instanceof TurnEvent.ToolCallParked || e instanceof TurnEvent.TurnEnded)
+          .containsExactly(
+              new TurnEvent.ToolCallParked(c1, token),
+              new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+    }
+
     /**
      * Opus review, Task 3 Finding 3: pins the emit-after-commit placement choice — the narration
      * test above passes identically whether {@code applyParked} emits before or after its own
@@ -1484,12 +1512,19 @@ class ConversationLoopTest {
               Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
 
       RunOutcome outcome =
-          loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
+          loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), events::add);
 
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
       assertThat(journal.stream().filter("load"::equals)).hasSize(2);
+      // The first attempt's own tail save is the one that loses the fence race (it never
+      // commits), so it must narrate no ending at all — only the winning retry's landed state
+      // gets a TurnEnded, and exactly one of them.
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
     }
 
     @Test
@@ -1603,6 +1638,122 @@ class ConversationLoopTest {
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(outcome.state().failureReason()).isEqualTo("boom");
       assertThat(model.calls()).isEqualTo(1);
+    }
+  }
+
+  /** The emission contract for {@link TurnEvent.AssistantSaid} and {@link TurnEvent.TurnEnded}. */
+  @Nested
+  class Assistant_and_turn_narration {
+
+    @Test
+    void assistant_said_is_emitted_once_per_model_response_including_a_tool_use_only_response() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "echo");
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, homework(c1), plainAnswer("Done."));
+      ScriptedToolCallExecutor tools =
+          new ScriptedToolCallExecutor(journal)
+              .andFor("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              new RecordingStore(journal),
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a"), events::add);
+
+      List<TurnEvent.AssistantSaid> said =
+          events.stream()
+              .filter(e -> e instanceof TurnEvent.AssistantSaid)
+              .map(TurnEvent.AssistantSaid.class::cast)
+              .toList();
+      // Two model responses fold in this run — the tool-use-only homework and the plain
+      // answer — and both must be said, not just the one carrying prose.
+      assertThat(said).isNotEmpty().hasSize(2);
+      assertThat(said.get(0).message()).isEqualTo(Message.assistant(List.of(new ToolUseBlock(c1))));
+      assertThat(said.get(1).message())
+          .isEqualTo(Message.assistant(List.of(new TextBlock("Done."))));
+    }
+
+    @Test
+    void turn_ended_is_emitted_exactly_once_for_a_complete_segment() {
+      List<String> journal = new ArrayList<>();
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              new RecordingStore(journal),
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), events::add);
+
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+    }
+
+    @Test
+    void turn_ended_carries_the_failure_reason_for_a_failed_segment() {
+      List<String> journal = new ArrayList<>();
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, new ConversationEvent.ModelCallFailed(ID, "boom"));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              new RecordingStore(journal),
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), events::add);
+
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.FAILED, "boom"));
+    }
+
+    @Test
+    void a_multi_call_tool_loop_segment_says_once_per_call_and_ends_exactly_once() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "echo");
+      ToolCall c2 = toolCall("c2", "echo");
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, homework(c1), homework(c2), plainAnswer("Done."));
+      ScriptedToolCallExecutor tools =
+          new ScriptedToolCallExecutor(journal)
+              .andFor("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")))
+              .andFor("c2", new ConversationEvent.ToolFinished(ID, c2, ToolResult.ok("b")));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              new RecordingStore(journal),
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "echo a then b"), events::add);
+
+      assertThat(events).filteredOn(e -> e instanceof TurnEvent.AssistantSaid).hasSize(3);
+      assertThat(events)
+          .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
     }
   }
 }

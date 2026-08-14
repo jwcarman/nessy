@@ -23,6 +23,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
@@ -31,6 +34,8 @@ class TurnObserverAdapterTest {
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
   private static final ParkToken TOKEN = ParkToken.generate();
+  private static final Message ASSISTANT_MESSAGE =
+      Message.assistant(List.of(new TextBlock("hello")));
 
   private static List<TurnEvent> oneOfEveryVariant() {
     return List.of(
@@ -41,7 +46,9 @@ class TurnObserverAdapterTest {
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
         new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
         new TurnEvent.ToolCallProgressed(CALL, "halfway"),
-        new TurnEvent.ToolCallParked(CALL, TOKEN));
+        new TurnEvent.ToolCallParked(CALL, TOKEN),
+        new TurnEvent.AssistantSaid(ASSISTANT_MESSAGE),
+        new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
   }
 
   @Test
@@ -88,6 +95,16 @@ class TurnObserverAdapterTest {
           protected void onToolCallParked(TurnEvent.ToolCallParked event) {
             routed.add("parked:" + event.token().value());
           }
+
+          @Override
+          protected void onAssistantSaid(TurnEvent.AssistantSaid event) {
+            routed.add("said:" + event.message().content().size());
+          }
+
+          @Override
+          protected void onTurnEnded(TurnEvent.TurnEnded event) {
+            routed.add("ended:" + event.status());
+          }
         };
 
     oneOfEveryVariant().forEach(observer::on);
@@ -101,7 +118,9 @@ class TurnObserverAdapterTest {
             "decided:search",
             "completed:search",
             "progressed:halfway",
-            "parked:" + TOKEN.value());
+            "parked:" + TOKEN.value(),
+            "said:1",
+            "ended:COMPLETE");
   }
 
   @Test
