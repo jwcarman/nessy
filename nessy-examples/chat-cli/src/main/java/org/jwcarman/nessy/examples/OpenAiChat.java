@@ -68,6 +68,8 @@ public final class OpenAiChat {
     switch (event) {
       case TurnEvent.TextDelta(String text) -> IO.print(text);
       case TurnEvent.ToolCallRequested(ToolCall call) -> IO.println("\n⚙ tool: " + call.name());
+      // deliberate extender-tolerance default (unlike SseEvents' exhaustive no-default switch):
+      // the CLI just ignores variants it has no console rendering for.
       default -> {}
     }
   }

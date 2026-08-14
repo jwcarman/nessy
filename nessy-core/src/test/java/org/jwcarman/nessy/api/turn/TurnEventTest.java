@@ -15,20 +15,43 @@
  */
 package org.jwcarman.nessy.api.turn;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
 class TurnEventTest {
+
+  private static final ToolCall CALL =
+      new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
+  private static final ParkToken TOKEN = ParkToken.generate();
+
+  /**
+   * One instance of every {@link TurnEvent} variant, mirroring {@code TurnObserverAdapterTest}'s.
+   */
+  private static List<TurnEvent> oneOfEveryVariant() {
+    return List.of(
+        new TurnEvent.TextDelta("prose"),
+        new TurnEvent.ThinkingDelta("hmm"),
+        new TurnEvent.RedactedThinking("opaque"),
+        new TurnEvent.ToolCallRequested(CALL),
+        new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
+        new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
+        new TurnEvent.ToolCallProgressed(CALL, "halfway"),
+        new TurnEvent.ToolCallParked(CALL, TOKEN));
+  }
 
   @Test
   void a_noop_observer_accepts_every_event_without_complaint() {
     TurnObserver observer = TurnObserver.noop();
-    observer.on(new TurnEvent.TextDelta("hello"));
-    observer.on(new TurnEvent.ThinkingDelta("hmm"));
-    observer.on(new TurnEvent.RedactedThinking("opaque"));
-    assertThat(observer).isNotNull();
+
+    assertThatCode(() -> oneOfEveryVariant().forEach(observer::on)).doesNotThrowAnyException();
   }
 
   @Test

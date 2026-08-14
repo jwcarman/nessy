@@ -79,11 +79,13 @@ public final class Agent<I> {
    * told.
    *
    * <p>{@code contextFor} throws because an unknown id under a debugger is a bug; {@link #snapshot}
-   * is total because a browser-minted fresh id is a normal page rebuild.
+   * is total because a browser-minted fresh id is a normal page rebuild. {@code id} itself is
+   * validated the same way {@link #snapshot}'s is — a matched pair, not a divergence.
    *
    * @throws IllegalArgumentException if no conversation {@code id} is stored
    */
   public Context contextFor(ConversationId id) {
+    Objects.requireNonNull(id, "id must not be null");
     store.load(id).orElseThrow(() -> new IllegalArgumentException("unknown conversation: " + id));
     return memory.recall(id);
   }

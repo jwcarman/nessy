@@ -31,7 +31,6 @@ class SseEventsTest {
   @Test
   void every_turn_event_maps_to_a_named_payload() {
     ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
-    ParkToken token = ParkToken.generate();
     assertThat(SseEvents.of(new TurnEvent.TextDelta("hi")))
         .isEqualTo(new SseEvents.Event("delta", Map.of("text", "hi")));
     assertThat(SseEvents.of(new TurnEvent.ThinkingDelta("hmm")))

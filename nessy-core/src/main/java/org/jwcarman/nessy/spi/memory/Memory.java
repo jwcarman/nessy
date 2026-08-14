@@ -34,6 +34,12 @@ import org.jwcarman.nessy.api.message.Message;
  * {@code recall} must return a legal {@code Context}; the unit of retention is the
  * <em>transaction</em> (an assistant message carrying tool-use blocks and the results message
  * answering it are one atomic unit — keep both or drop both, never split, never reorder across).
+ * That rule carries one shared exception, an open tail: the loop remembers a tool-use message the
+ * moment its fold settles, before it knows whether the call will park, so a parked conversation's
+ * raw telling can legitimately end in an unanswered assistant tool-use message. {@code recall}
+ * trims that trailing open tail so the returned {@code Context} stays legal — the tool-exchange
+ * atomic-unit rule above is otherwise unchanged. Halting mid-turn while a call is parked remains a
+ * recorded open case.
  *
  * <p>Tellings are at-least-once: a crash between telling and persisting re-tells the same message
  * on recovery, so {@link #remember} must be idempotent. The implementation is wired per agent —

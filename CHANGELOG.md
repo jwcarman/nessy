@@ -410,10 +410,11 @@ sequence of renames and interim shapes that produced it.
     makes.
   - `Approver.parkAll()` — says park to everything, behind a fresh
     `ParkToken`, replacing the one-line lambda every durable-HITL app was
-    writing by hand. `nessy-store-jdbc` gained `JdbcPersistence(ConversationStore
-    store, Memory memory)`, with `JdbcPersistence.create(DataSource,
-    ObjectMapper)` building both halves at once — one bean where an app used
-    to wire two.
+    writing by hand. `nessy-store-jdbc` gained
+    `JdbcPersistence(JdbcConversationStore store, JdbcMemory memory)` — the
+    concrete pair, not the `ConversationStore`/`Memory` interfaces — with
+    `JdbcPersistence.create(DataSource, ObjectMapper)` building both halves at
+    once — one bean where an app used to wire two.
   - **`chat-web` rewritten as its own acceptance test.** Every apology
     comment is gone: `IssueCouponTool` calls `context.progress(...)`
     directly: the chat GET endpoint rebuilds from `agent.snapshot(id)`
@@ -436,9 +437,10 @@ sequence of renames and interim shapes that produced it.
 
 ### Breaking (pre-1.0)
 
-Both of the following are deliberate, in-development shape changes — nothing
-below breaks a shipped version, because none exists yet — but they are loud
-because both signatures were public as of the previous entries above:
+All three of the following are deliberate, in-development shape changes —
+nothing below breaks a shipped version, because none exists yet — but they
+are loud because all three signatures were public as of the previous entries
+above:
 
 - **`RunOutcome.Parked` slims to `Parked(ConversationState state)`.** The
   token it used to carry travels a different way now: on the narrated
@@ -450,3 +452,11 @@ because both signatures were public as of the previous entries above:
   conversation to keep talking to it was never actually resuming anything —
   it was just naming the conversation you already had — so it gets the name
   that says that.
+- **`ToolContext(ConversationId, ToolCall, EventEmitter)` gains a component.**
+  The DX generation's `ToolContext.progress(String)` needs the authoritative
+  call and conversation id in hand, so the record grew from whatever it
+  carried before to this three-component shape — a third public break this
+  generation. Any existing tool test that constructs a `ToolContext` directly
+  breaks at compile time; direct construction is the canonical offline way to
+  test a `Tool`, so this is expected to touch every tool's own test suite, not
+  a corner case.

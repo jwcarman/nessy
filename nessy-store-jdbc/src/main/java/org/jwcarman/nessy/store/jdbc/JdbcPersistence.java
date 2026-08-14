@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.store.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Objects;
 import javax.sql.DataSource;
 
 /**
@@ -25,6 +26,11 @@ import javax.sql.DataSource;
  * couples them beyond that convenience; either component still works fine constructed on its own.
  */
 public record JdbcPersistence(JdbcConversationStore store, JdbcMemory memory) {
+
+  public JdbcPersistence {
+    Objects.requireNonNull(store, "store must not be null");
+    Objects.requireNonNull(memory, "memory must not be null");
+  }
 
   /** Bootstraps both schemas against {@code dataSource}, then returns a working pair. */
   public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) {

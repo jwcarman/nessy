@@ -85,8 +85,10 @@ case. One stream, two producers.
 
 **Change, two halves:**
 
-- `TurnEvent` gains an eighth variant, emitted at the moment the fold parks
-  the call:
+- `TurnEvent` gains an eighth variant, emitted after the park's save
+  commits — not at the moment the fold parks the call, but once
+  `applyParked` has actually landed it, so an observer never sees a token the
+  store doesn't yet honor:
 
   ```java
   record ToolCallParked(ToolCall call, ParkToken token) implements TurnEvent {}
@@ -221,8 +223,8 @@ rule (nothing in code) is intact.
   inline; the UI dedupes approval cards by token (§4's at-least-once
   contract), retiring the parked duplicate-cards minor.
 - **Breaking changes (pre-1.0, deliberate):** `RunOutcome.Parked` loses its
-  token component; `Agent.resume(id)` is renamed. CHANGELOG documents both
-  loudly; nothing else breaks.
+  token component; `Agent.resume(id)` is renamed; `ToolContext` gains a
+  component (§2). CHANGELOG documents all three loudly; nothing else breaks.
 - **Docs:** README (observability snippet's `tell` example is unaffected;
   durable section unchanged; seams table unchanged), chat-web README's wiring
   snippet (approver line), spec cross-references. The chat-web spec (2026-08-13)

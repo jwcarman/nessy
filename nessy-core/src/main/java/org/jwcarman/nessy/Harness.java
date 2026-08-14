@@ -231,6 +231,7 @@ public final class Harness {
    * @see #deny(ParkToken, String, TurnObserver)
    */
   public RunOutcome deny(ParkToken token, String reason) {
+    Objects.requireNonNull(reason, "reason must not be null");
     return deny(token, reason, TurnObserver.noop());
   }
 
@@ -240,6 +241,7 @@ public final class Harness {
    * own.
    */
   public RunOutcome deny(ParkToken token, String reason, TurnObserver observer) {
+    Objects.requireNonNull(reason, "reason must not be null");
     return resume(token, new ToolResolution.Decided(new Decision.Deny(reason)), observer);
   }
 

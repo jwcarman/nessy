@@ -52,9 +52,10 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@link Agent}'s own surface: {@code converse()} versus {@code resume(...)}, and {@code
+ * {@link Agent}'s own surface: {@code converse()} versus {@code conversation(id)}, {@code
  * contextFor(...)}'s both branches (an unknown id, and the same assembly a live {@code tell} would
- * see).
+ * see), and {@code snapshot(...)}'s both branches (an unknown, never-stored id, and a stored
+ * conversation's status, parks, and recall).
  */
 class AgentTest {
 
@@ -250,10 +251,6 @@ class AgentTest {
     public Awaited<Decision> approve(ApprovalRequest request) {
       token = ParkToken.generate();
       return Awaited.parked(token);
-    }
-
-    ParkToken token() {
-      return token;
     }
   }
 }

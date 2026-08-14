@@ -42,13 +42,19 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *       true of every {@code TurnEvent}; the parked event just makes duplicates visible (a doubled
  *       approval card, not a doubled token-consumption — resume idempotency is untouched).
  *       Observers that materialize per-event UI dedupe by the event's natural key — for {@link
- *       ToolCallParked}, the token.
+ *       ToolCallParked}, the token. The gap runs the other way too: a driver that loses the save
+ *       race may see <em>no</em> {@link ToolCallParked} at all for a park another driver committed
+ *       — which is why a rebuild read ({@code snapshot}) must remain a card source in UIs, not the
+ *       live segment alone.
  *   <li><b>The entry-scoped-observer invariant.</b> The token may ride {@link ToolCallParked}
  *       <em>because</em> a {@link TurnObserver} is supplied by the caller of {@code tell}/{@code
  *       resume}, who already holds tokens via {@code RunOutcome} — the event grants nothing to
  *       anyone who lacks it. Capability-bearing events like this one are legal only while observers
  *       are entry-scoped; any future agent-wide standing observer must revisit {@link
- *       ToolCallParked} loudly rather than silently becoming a capability broadcast.
+ *       ToolCallParked} loudly rather than silently becoming a capability broadcast. A throwing
+ *       observer costs the caller its {@code RunOutcome}, never the record — the park (or any other
+ *       committed transition) stays durable and recoverable via {@code Agent.snapshot} / {@code
+ *       Harness.peek}.
  * </ul>
  */
 public sealed interface TurnEvent {

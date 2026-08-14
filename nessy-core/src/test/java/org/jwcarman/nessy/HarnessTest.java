@@ -441,7 +441,14 @@ class HarnessTest {
           .tell("search for x");
       ParkToken token = approver.token();
 
-      assertThat(harness.peek(token)).isPresent();
+      assertThat(harness.peek(token))
+          .isPresent()
+          .get()
+          .satisfies(
+              parked -> {
+                assertThat(parked.token()).isEqualTo(token);
+                assertThat(parked.call().id()).isEqualTo(call.id());
+              });
       assertThat(harness.peek(token)).isPresent();
     }
 
@@ -523,6 +530,17 @@ class HarnessTest {
               .toList();
       assertThat(denials).isNotEmpty();
       assertThat(denials.getFirst().content()).isEqualTo("Denied: not today");
+    }
+
+    /** F6: {@code deny} validates {@code reason} up front, like every sibling parameter. */
+    @Test
+    void deny_rejects_a_null_reason() {
+      Harness harness = Nessy.harness(new FakeProvider("hi")).build();
+      ParkToken token = ParkToken.generate();
+
+      assertThatThrownBy(() -> harness.deny(token, null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("reason");
     }
 
     /**

@@ -210,9 +210,10 @@ The `on*`/`on*Async` methods are per-type sugar over `listen`/`listenAsync` —
 one pair for each of the four conversation facts plus `ToolProgress` and
 `ApprovalRequested`, mirroring `TurnObserver.builder()`'s hooks (`onTextDelta`,
 `onThinkingDelta`, `onRedactedThinking`, `onToolCallRequested`,
-`onToolCallDecided`, `onToolCallCompleted`, and — the durable generation's
+`onToolCallDecided`, `onToolCallCompleted`, the durable generation's
 addition — `onToolCallProgressed`, narrating a running tool's `ToolProgress`
-onto the live segment). The class-keyed primitives remain for anything else —
+onto the live segment — and, this generation's own addition, `onToolCallParked`,
+narrating the moment a call's save commits). The class-keyed primitives remain for anything else —
 including the `.listen(ConversationEvent.class, ...)` catch-all above, which
 deliberately has no sugar.
 
