@@ -4,6 +4,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  docker:
+    compose:
+      # start-only: the containers outlive app exits, so only the first-ever run
+      # pays the cold start — and the kill-and-restart demo keeps its database.
+      lifecycle-management: start-only
   datasource:
     url: jdbc:postgresql://localhost:5432/nessy
     username: nessy

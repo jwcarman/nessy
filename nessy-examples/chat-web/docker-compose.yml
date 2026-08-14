@@ -38,3 +38,7 @@ services:
       - "3000:3000"
       - "4318:4318"
       - "4317:4317"
+    labels:
+      # Boot must not gate app startup on the whole Grafana stack coming up —
+      # the OTLP exporters retry until it appears; compose still starts it.
+      org.springframework.boot.ignore: true

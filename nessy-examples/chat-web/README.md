@@ -43,8 +43,11 @@ reason)` returns a fake confirmation string. Obviously consequence-bearing
 
 Requires a real Anthropic key — the app fails fast at startup without one —
 and Docker, to run the compose stack (Postgres plus the observability
-stack, below) that `spring-boot-docker-compose` starts and stops
-automatically around the app's own lifecycle.
+stack, below) that `spring-boot-docker-compose` starts automatically and
+leaves running between app runs (`start-only` lifecycle: the database should
+not die because the app exited). Only the first-ever run pays the container
+cold start; the app itself waits only for Postgres, not for the Grafana
+stack, which warms up in the background.
 
 ```bash
 ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/chat-web spring-boot:run
