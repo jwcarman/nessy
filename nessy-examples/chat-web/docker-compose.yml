@@ -42,3 +42,14 @@ services:
       # Boot must not gate app startup on the whole Grafana stack coming up —
       # the OTLP exporters retry until it appears; compose still starts it.
       org.springframework.boot.ignore: true
+    # The image's own healthcheck polls every 30s, so a cold pull can sit
+    # "starting" for up to 30s before its first probe even fires — and Boot's
+    # compose `up --wait` gates on container health regardless of the
+    # ignore label above (that label only excuses the app from wiring a
+    # service connection to it, not compose from waiting on it). Same probe
+    # script, a much shorter leash.
+    healthcheck:
+      test: ["CMD", "/otel-lgtm/docker/healthcheck.sh"]
+      interval: 3s
+      timeout: 5s
+      retries: 60

@@ -14,6 +14,9 @@
 # limitations under the License.
 #
 
+server:
+  port: 8081
+
 spring:
   application:
     name: nessy-dispatcher
@@ -27,7 +30,5 @@ spring:
       # start-only: the containers outlive app exits, so only the first-ever run pays the cold
       # start — and the kill-and-restart demo (spec §5) keeps its database.
       lifecycle-management: start-only
-  datasource:
-    url: jdbc:postgresql://localhost:5432/nessy
-    username: nessy
-    password: nessy
+  # No datasource coordinates here — Boot's service connections detect the container from
+  # docker-compose.yml and wire them in (spec §4).

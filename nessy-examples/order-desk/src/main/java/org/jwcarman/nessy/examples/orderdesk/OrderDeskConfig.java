@@ -15,8 +15,12 @@
  */
 package org.jwcarman.nessy.examples.orderdesk;
 
+import java.util.List;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.InputRenderer;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.memory.Memory;
@@ -59,10 +63,36 @@ public class OrderDeskConfig {
         .model("claude-sonnet-4-5")
         .systemPrompt(ORDER_DESK_ORDERS)
         .memory(memory)
+        .renderer(ORDER_EVENT_RENDERER)
         .tools(ToolGrant.grant(new RequestFulfillmentTool(rabbit), UsagePolicy.allow()))
         .onToolProgressAsync(progress -> LOGGER.info("tool progress: {}", progress))
         .build();
   }
+
+  // The root README's recommended idiom (spec §5): a sealed switch, one arm per OrderEvent
+  // variant, in place of the typed-vocabulary default, InputRenderer.json(mapper). The default
+  // would hand the model a tag line plus canonical JSON — "[order_placed]\n{"orderId":"4711",
+  // "items":["lantern","rope"]}" — accurate but unread as prose. This renders the same event as
+  // one plain sentence the model reads the way a person would: "New order 4711: lantern, rope."
+  private static final InputRenderer<OrderEvent> ORDER_EVENT_RENDERER =
+      event -> {
+        String line =
+            switch (event) {
+              case OrderEvent.OrderPlaced placed ->
+                  "New order " + placed.orderId() + ": " + String.join(", ", placed.items());
+              case OrderEvent.PaymentCleared cleared ->
+                  "Payment cleared for order " + cleared.orderId() + ".";
+              case OrderEvent.AddressChanged changed ->
+                  "Order "
+                      + changed.orderId()
+                      + "'s shipping address changed to "
+                      + changed.newAddress()
+                      + ".";
+              case OrderEvent.CustomerInquiry inquiry ->
+                  "Order " + inquiry.orderId() + " inquiry: " + inquiry.question();
+            };
+        return List.<ContentBlock>of(new TextBlock(line));
+      };
 
   // The __TypeId__ header's class is deserialized by name; Jackson's default mapper refuses
   // any package it hasn't been told to trust (CVE-driven default, spring-amqp's own

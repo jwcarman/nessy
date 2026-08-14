@@ -48,13 +48,13 @@ ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/dispatcher spring-boot:run
 
 ```bash
 # 2. Signal an incident — 202 immediately; the log streams the triage and the park.
-curl -s -X POST localhost:8080/signals -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8081/signals -H 'Content-Type: application/json' \
   -d '{"incidentId":"INC-7","kind":"water-main","detail":"corner of 5th"}'
 ```
 
 ```bash
 # 3. Read the park token back off the incident snapshot.
-curl -s localhost:8080/incidents/INC-7
+curl -s localhost:8081/incidents/INC-7
 # → {"status":"PARKED","parks":[{"token":"…","tool":"request_field_crew"}], …}
 ```
 
@@ -66,27 +66,27 @@ curl -s localhost:8080/incidents/INC-7
 
 ```bash
 # 5. The crew narrates progress, in the fresh process.
-curl -s -X POST localhost:8080/callbacks/<token>/progress \
+curl -s -X POST localhost:8081/callbacks/<token>/progress \
   -H 'Content-Type: application/json' -d '{"message":"crew en route"}'
 # → {"heard":true}
 ```
 
 ```bash
 # 6. The crew confirms — the turn completes in a JVM that never saw the signal.
-curl -s -X POST localhost:8080/callbacks/<token> \
+curl -s -X POST localhost:8081/callbacks/<token> \
   -H 'Content-Type: application/json' -d '{"outcome":"valve replaced, water restored"}'
 # → {"status":"COMPLETE"}
 ```
 
 ```bash
 # 7. The story, told.
-curl -s localhost:8080/incidents/INC-7
+curl -s localhost:8081/incidents/INC-7
 # → {"status":"COMPLETE","parks":[],"transcript":[…, {"role":"assistant","text":"…valve replaced, water restored…"}]}
 ```
 
 ```bash
 # 8. Repeat step 6 — same 200, same truth, no replay.
-curl -s -X POST localhost:8080/callbacks/<token> \
+curl -s -X POST localhost:8081/callbacks/<token> \
   -H 'Content-Type: application/json' -d '{"outcome":"valve replaced, water restored"}'
 # → {"status":"COMPLETE"}
 ```
