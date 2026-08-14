@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * org.jwcarman.nessy.api.conversation.ConversationState} tracks only that a call is outstanding.
  * {@code ParkedCall} survives as the read-side shape a {@link
  * org.jwcarman.nessy.spi.conversation.Parks} registry entry renders into: {@link
- * org.jwcarman.nessy.Agent#snapshot} and {@link org.jwcarman.nessy.Harness#peek} both hand this
+ * org.jwcarman.nessy.Agent#snapshot} and {@link org.jwcarman.nessy.Agent#peek} both hand this
  * record back, pairing a wait's token with its call for a caller building an approval UI.
  */
 public record ParkedCall(ParkToken token, ToolCall call) {

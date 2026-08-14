@@ -141,8 +141,11 @@ class HarnessTest {
    */
   @Test
   void harness_has_no_non_final_fields() {
+    List<Field> declared = List.of(Harness.class.getDeclaredFields());
+    assertThat(declared).isNotEmpty();
+
     List<Field> nonFinal =
-        List.of(Harness.class.getDeclaredFields()).stream()
+        declared.stream()
             .filter(field -> !field.isSynthetic())
             .filter(field -> !Modifier.isFinal(field.getModifiers()))
             .toList();

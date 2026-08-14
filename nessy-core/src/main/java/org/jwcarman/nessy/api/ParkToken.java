@@ -21,7 +21,7 @@ import org.jwcarman.nessy.internal.Identifiers;
  * Names one parked wait so a later resume can find it.
  *
  * <p>The token is the correlation contract between a parked call and whatever answers it — whatever
- * a resume names, {@link org.jwcarman.nessy.Harness#resume} looks up. Resume delivery is
+ * a resume names, {@link org.jwcarman.nessy.Agent#resume} looks up. Resume delivery is
  * at-least-once in every real transport (webhooks retry, queues redeliver), and the registry entry
  * survives resolution rather than being consumed by it: a redelivered resume translates the token
  * again, and it is the fold's own is-this-call-still-outstanding check — not a single-use claim on

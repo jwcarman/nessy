@@ -706,6 +706,14 @@ class AgentDoorsTest {
       assertThat(resumedB.state().status()).isEqualTo(ConversationStatus.COMPLETE);
       assertThat(observerA.text()).isEqualTo("done-a");
       assertThat(observerB.text()).isEqualTo("done-b");
+      // The FIFO script alone can't tell A's drive from B's — both narrate through their own
+      // TextObserver regardless of which loop actually ran. The request each drive actually sent
+      // the provider can: it carries the resuming agent's own model, proving A's resume drove
+      // A's loop (and grants) and B's resume drove B's, not the other way around.
+      List<ModelRequest> requests = provider.requests();
+      assertThat(requests).hasSize(4);
+      assertThat(requests.get(2).model()).isEqualTo("model-a");
+      assertThat(requests.get(3).model()).isEqualTo("model-b");
     }
   }
 
@@ -756,8 +764,7 @@ class AgentDoorsTest {
 
       assertThatThrownBy(() -> agentB.resume(tokenA, decided))
           .isInstanceOf(WrongAgentException.class)
-          .hasMessageContaining("agent-a")
-          .hasMessageContaining("agent-b");
+          .hasMessage("park was minted by agent 'agent-a'; this agent is 'agent-b'");
       assertThat(store.load(conversationA)).contains(before);
     }
 

@@ -41,14 +41,14 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  * particular agent. The odd-one-out agent (a different provider, a different store) is a second
  * harness, never an override on this one.
  *
- * <p><strong>{@code Harness} is immutable after {@link #build()} — er, after construction: every
- * field here is final, and no method on this class ever writes to one.</strong> It is a front door
- * for <em>building</em> agents only. Callbacks — {@code resume}, {@code approve}, {@code deny},
- * {@code progress}, {@code peek} — do not live here; they live on {@link Agent}, the identity that
- * actually owns the loop, the grants, and the registry a callback needs to act (design of record
- * amendment, 2026-08-14: "the callbacks should not be coming to the harness. They should always go
- * through the agent"). A harness that built ten agents has ten front doors for callbacks, not one,
- * and this class holds none of them.
+ * <p><strong>{@code Harness} is immutable after construction: every field here is final, and no
+ * method on this class ever writes to one.</strong> It is a front door for <em>building</em> agents
+ * only. Callbacks — {@code resume}, {@code approve}, {@code deny}, {@code progress}, {@code peek} —
+ * do not live here; they live on {@link Agent}, the identity that actually owns the loop, the
+ * grants, and the registry a callback needs to act (design of record amendment, 2026-08-14: "the
+ * callbacks should not be coming to the harness. They should always go through the agent"). A
+ * harness that built ten agents has ten front doors for callbacks, not one, and this class holds
+ * none of them.
  */
 public final class Harness {
 

@@ -56,7 +56,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *       ToolCallParked} loudly rather than silently becoming a capability broadcast. A throwing
  *       observer costs the caller its {@code RunOutcome}, never the record — the park (or any other
  *       committed transition) stays durable and recoverable via {@code Agent.snapshot} / {@code
- *       Harness.peek}.
+ *       Agent.peek}.
  * </ul>
  */
 public sealed interface TurnEvent {

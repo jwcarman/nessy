@@ -113,14 +113,15 @@ public final class Agent<I> {
   /**
    * Answers a parked call: {@code token} names a wait some prior turn is durably patient for.
    * Unknown tokens are rejected loud rather than silently dropped, and a token minted by a
-   * different agent is refused before anything is appended or driven (design §3, §5) — see {@link
-   * #verified}. The registry entry survives resolution (design §5) — it is the durable record that
-   * this token once named this wait, not a single-use claim — so a redelivered resume (every real
-   * transport is at-least-once) translates the token again, appends another {@code Resolved} entry,
-   * and the fold's own is-this-call-still-outstanding check drains it quietly rather than replaying
-   * the call: the drive simply reads whatever the first delivery already produced. Either way,
-   * appending always succeeds and driving is the same re-entrant act {@link #resume} shares with
-   * {@code tell}: the inbox absorbs the answer, the status pointer says what happens next.
+   * different agent is refused, after verifying the park's stamp, before anything is appended or
+   * driven (design §3, §5). The registry entry survives resolution (design §5) — it is the durable
+   * record that this token once named this wait, not a single-use claim — so a redelivered resume
+   * (every real transport is at-least-once) translates the token again, appends another {@code
+   * Resolved} entry, and the fold's own is-this-call-still-outstanding check drains it quietly
+   * rather than replaying the call: the drive simply reads whatever the first delivery already
+   * produced. Either way, appending always succeeds and driving is the same re-entrant act {@link
+   * #resume} shares with {@code tell}: the inbox absorbs the answer, the status pointer says what
+   * happens next.
    *
    * <p>That quiet-drain protection is serial, not concurrent: it is the fold picking a winner among
    * entries already appended, so it only shields a resume that arrives after an earlier one has
@@ -208,11 +209,11 @@ public final class Agent<I> {
    * outstanding (design §5: registry entries survive resolution, so a settled wait's token stays
    * findable forever) — either way the signal simply has nowhere left to land, so it is dropped and
    * {@code false} says so. A token minted by a different agent is refused loud rather than treated
-   * as merely unknown (design §3) — see {@link #verified}. A live token emits {@link ToolProgress}
-   * on this agent's own {@link #events} — the same {@link ListenerRegistry} the in-process tee
-   * narrates on — reaching harness-seeded and agent-declared listeners alike, the identical
-   * audience the tee reaches, carrying the park's own conversation and call id, and returns {@code
-   * true}.
+   * as merely unknown (design §3), after the same park-stamp check every door runs. A live token
+   * emits {@link ToolProgress} on this agent's own {@link #events} — the same {@link
+   * ListenerRegistry} the in-process tee narrates on — reaching harness-seeded and agent-declared
+   * listeners alike, the identical audience the tee reaches, carrying the park's own conversation
+   * and call id, and returns {@code true}.
    *
    * @throws WrongAgentException if {@code token} names a wait minted by a different agent
    */
@@ -256,7 +257,7 @@ public final class Agent<I> {
   }
 
   /**
-   * {@link #verified(Park)}, looking the park up by {@code token} first.
+   * Looks the park up by {@code token} first, then verifies its stamp the same way.
    *
    * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
    * @throws WrongAgentException if the found park was minted by an agent other than this one
