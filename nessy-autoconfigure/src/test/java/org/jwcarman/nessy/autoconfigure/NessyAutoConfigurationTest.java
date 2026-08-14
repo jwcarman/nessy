@@ -91,9 +91,9 @@ class NessyAutoConfigurationTest {
   @Test
   void a_parks_bean_is_woven_in() {
     // Harness#parks is package-private with no public accessor, so the proof goes through
-    // Harness#peek: a token this exact Parks bean instance already knows about must come back
-    // from the woven harness, which it can only do if the harness reached this instance rather
-    // than defaulting to its own private Parks.inMemory().
+    // Agent#peek: a token this exact Parks bean instance already knows about must come back
+    // from an agent built off the woven harness, which it can only do if the harness reached
+    // this instance rather than defaulting to its own private Parks.inMemory().
     Parks mine = Parks.inMemory();
     ConversationId conversationId = ConversationId.generate();
     ParkToken token = new ParkToken("probe-token");
@@ -104,8 +104,9 @@ class NessyAutoConfigurationTest {
         .run(
             context -> {
               Harness harness = context.getBean(Harness.class);
-              assertThat(harness.peek(token)).isPresent();
-              assertThat(harness.peek(token).orElseThrow().token()).isEqualTo(token);
+              Agent<String> agent = harness.agent().name("probe").model("probe-model").build();
+              assertThat(agent.peek(token)).isPresent();
+              assertThat(agent.peek(token).orElseThrow().token()).isEqualTo(token);
             });
   }
 

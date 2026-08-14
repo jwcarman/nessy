@@ -17,7 +17,6 @@ package org.jwcarman.nessy.examples.orderdesk;
 
 import java.util.Objects;
 import org.jwcarman.nessy.Agent;
-import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
@@ -42,11 +41,10 @@ import org.springframework.stereotype.Component;
  * ToolResolution.Completed} — and the turn finishes in whatever process the reply reached, on this
  * listener's own thread; there is no detached-turn machinery here on purpose (spec §4).
  *
- * <p>Both {@link Harness} and {@code Agent<OrderEvent>} are injected, though only {@code Harness}
- * is ever called: injecting the agent is what guarantees the harness has a built loop before {@link
- * Harness#resume} or {@link Harness#progress} runs (the same precedent night-watchman's original
- * Verbs class established before it was retired in that example's own rework) — {@code Harness}
- * alone gives no such guarantee, since a harness can exist with no agent ever built on it.
+ * <p>Callbacks go through {@code Agent<OrderEvent>} directly now (design of record amendment,
+ * 2026-08-14) — there is no harness-level {@code resume}/{@code progress} to route through any
+ * more; the agent that parked a call is the only object with the loop and registry a callback
+ * needs.
  *
  * <p>A {@link RuntimeException} escaping {@link #on(FulfillmentReply, String)} is left to
  * propagate: Boot's default AUTO ack nacks and requeues on listener failure, and that at-least-once
@@ -57,11 +55,10 @@ public class FulfillmentReplies {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FulfillmentReplies.class);
 
-  private final Harness harness;
+  private final Agent<OrderEvent> agent;
 
-  public FulfillmentReplies(Harness harness, Agent<OrderEvent> agent) {
-    this.harness = Objects.requireNonNull(harness, "harness must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+  public FulfillmentReplies(Agent<OrderEvent> agent) {
+    this.agent = Objects.requireNonNull(agent, "agent must not be null");
   }
 
   /** The warehouse's reply payload: which beat this is, and the narration for it (spec §5). */
@@ -86,7 +83,7 @@ public class FulfillmentReplies {
     ParkToken token = new ParkToken(correlationId);
     switch (reply.kind()) {
       case FulfillmentReply.PROGRESS -> {
-        boolean delivered = harness.progress(token, reply.text());
+        boolean delivered = agent.progress(token, reply.text());
         if (!delivered) {
           LOGGER.info("stale progress reply for token {}: {}", token.value(), reply.text());
         }
@@ -112,19 +109,19 @@ public class FulfillmentReplies {
    * org.jwcarman.nessy.api.turn.TurnEvent.AssistantSaid} is emitted regardless).
    *
    * <p>{@link UnknownParkTokenException} is logged and RETHROWN, not swallowed: the registry
-   * survives resolution (a resolved park drains only when {@link Harness#resume} actually drives
-   * it, inside this call), so the only way this exception reaches here is a reply that arrived
-   * before the loop had registered the park at all — the early-reply race, not a stale or duplicate
-   * one. Rethrowing lets Boot's default AUTO ack nack and requeue the message, so redelivery finds
-   * the park registered and resumes it; swallowing here would ack the message away and leave the
-   * order parked forever.
+   * survives resolution (a resolved park drains only when {@link Agent#resume} actually drives it,
+   * inside this call), so the only way this exception reaches here is a reply that arrived before
+   * the loop had registered the park at all — the early-reply race, not a stale or duplicate one.
+   * Rethrowing lets Boot's default AUTO ack nack and requeue the message, so redelivery finds the
+   * park registered and resumes it; swallowing here would ack the message away and leave the order
+   * parked forever.
    */
   private void resume(ParkToken token, String text) {
     StringBuilder said = new StringBuilder();
     RunOutcome outcome;
     try {
       outcome =
-          harness.resume(
+          agent.resume(
               token,
               new ToolResolution.Completed(ToolResult.ok(text)),
               TurnObserver.builder()

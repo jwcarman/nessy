@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.examples.dispatcher;
 
 import java.util.Map;
-import org.jwcarman.nessy.Harness;
+import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
@@ -44,18 +44,18 @@ public final class CallbackController {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(CallbackController.class);
 
-  private final Harness harness;
+  private final Agent<String> agent;
 
-  public CallbackController(Harness harness) {
-    this.harness = harness;
+  public CallbackController(Agent<String> agent) {
+    this.agent = agent;
   }
 
   /**
-   * Resolves the park with the crew's outcome. {@code harness.resume} keeps the registry entry
-   * alive after resolution rather than consuming it (design of record) — a redelivered callback
-   * against the same token re-drives the same resolution, but the fold's own still-outstanding
-   * check drains it quietly instead of replaying the tool call, so a duplicate call answers {@code
-   * 200} with the same settled status rather than erroring or re-running anything (spec §3's
+   * Resolves the park with the crew's outcome. {@code agent.resume} keeps the registry entry alive
+   * after resolution rather than consuming it (design of record) — a redelivered callback against
+   * the same token re-drives the same resolution, but the fold's own still-outstanding check drains
+   * it quietly instead of replaying the tool call, so a duplicate call answers {@code 200} with the
+   * same settled status rather than erroring or re-running anything (spec §3's
    * javadoc-the-idempotency instruction).
    */
   @PostMapping("/callbacks/{token}")
@@ -65,7 +65,7 @@ public final class CallbackController {
     ParkToken parkToken = new ParkToken(token);
     TurnObserver observer = IncidentLog.observer(token, LOGGER);
     RunOutcome outcome =
-        harness.resume(
+        agent.resume(
             parkToken, new ToolResolution.Completed(ToolResult.ok(body.outcome())), observer);
     return ResponseEntity.ok(Map.of("status", outcome.state().status().name()));
   }
@@ -73,14 +73,14 @@ public final class CallbackController {
   /**
    * Narrates progress from the crew still out in the world. An unknown token, or one the
    * conversation no longer lists as outstanding (already settled), has nowhere left to land —
-   * {@link Harness#progress} drops it and answers {@code false}; that is legal, not an error, so
-   * this endpoint always answers {@code 200} (spec §3).
+   * {@link Agent#progress} drops it and answers {@code false}; that is legal, not an error, so this
+   * endpoint always answers {@code 200} (spec §3).
    */
   @PostMapping("/callbacks/{token}/progress")
   public ResponseEntity<Map<String, Object>> progress(
       @PathVariable String token, @RequestBody ProgressRequest body) {
     requireMessage(body);
-    boolean heard = harness.progress(new ParkToken(token), body.message());
+    boolean heard = agent.progress(new ParkToken(token), body.message());
     return ResponseEntity.ok(Map.of("heard", heard));
   }
 

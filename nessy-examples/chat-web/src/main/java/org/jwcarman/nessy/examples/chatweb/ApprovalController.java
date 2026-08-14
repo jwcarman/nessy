@@ -17,7 +17,7 @@ package org.jwcarman.nessy.examples.chatweb;
 
 import java.util.Map;
 import java.util.Optional;
-import org.jwcarman.nessy.Harness;
+import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
 import org.jwcarman.nessy.autoconfigure.web.TurnRunner;
@@ -40,21 +40,21 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/approvals")
 public final class ApprovalController {
 
-  private final Harness harness;
+  private final Agent<String> agent;
   private final TurnRunner turnRunner;
 
-  public ApprovalController(Harness harness, TurnRunner turnRunner) {
-    this.harness = harness;
+  public ApprovalController(Agent<String> agent, TurnRunner turnRunner) {
+    this.agent = agent;
     this.turnRunner = turnRunner;
   }
 
   @PostMapping("/{token}")
   public SseEmitter approve(@PathVariable String token, @RequestBody DecisionRequest body) {
     ParkToken parkToken = new ParkToken(token);
-    // Peek-only (never consumes, unlike harness.resume/approve/deny): a card the store no longer
+    // Peek-only (never consumes, unlike agent.resume/approve/deny): a card the store no longer
     // parks is rejected synchronously here, before the emitter is ever handed back, so the 409
     // below reaches the caller as a normal HTTP response rather than an async stream failure.
-    harness.peek(parkToken).orElseThrow(() -> new UnknownParkTokenException(parkToken));
+    agent.peek(parkToken).orElseThrow(() -> new UnknownParkTokenException(parkToken));
     // Also validated synchronously, for the same reason: a malformed decision string is a genuine
     // caller error and should 400 as an ordinary HTTP response, not surface as an async stream
     // failure once the resumed segment is already running on its own virtual thread.
@@ -63,8 +63,8 @@ public final class ApprovalController {
         turnRunner,
         observer ->
             "allow".equals(body.decision())
-                ? harness.approve(parkToken, observer)
-                : harness.deny(
+                ? agent.approve(parkToken, observer)
+                : agent.deny(
                     parkToken, Optional.ofNullable(body.reason()).orElse("denied"), observer));
   }
 

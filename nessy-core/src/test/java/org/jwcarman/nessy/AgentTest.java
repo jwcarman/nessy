@@ -224,10 +224,10 @@ class AgentTest {
       ConversationId id = agent.converse().tell("search for x").state().id();
       assertThat(agent.snapshot(id).parkedCalls()).hasSize(1);
 
-      harness.resume(approver.token(), new ToolResolution.Decided(Decision.allow()));
+      agent.resume(approver.token(), new ToolResolution.Decided(Decision.allow()));
 
       assertThat(agent.snapshot(id).parkedCalls()).isEmpty();
-      assertThat(harness.peek(approver.token())).isPresent();
+      assertThat(agent.peek(approver.token())).isPresent();
     }
 
     /**

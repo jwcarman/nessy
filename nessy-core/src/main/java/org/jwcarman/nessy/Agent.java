@@ -18,16 +18,26 @@ package org.jwcarman.nessy;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.RunOutcome;
+import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.UnknownParkTokenException;
+import org.jwcarman.nessy.api.WrongAgentException;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
+import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
@@ -45,6 +55,8 @@ import org.jwcarman.nessy.spi.memory.Memory;
  * @param <I> the input vocabulary a {@code tell} to one of this agent's conversations may carry
  */
 public final class Agent<I> {
+
+  private static final String TOKEN_MUST_NOT_BE_NULL = "token must not be null";
 
   private final String name;
   private final ConversationLoop loop;
@@ -87,6 +99,170 @@ public final class Agent<I> {
    */
   public Conversation<I> conversation(ConversationId conversationId) {
     return new Conversation<>(loop, conversationId, events, renderer);
+  }
+
+  /**
+   * Answers a parked call, watched by no one ({@link TurnObserver#noop()}).
+   *
+   * @see #resume(ParkToken, ToolResolution, TurnObserver)
+   */
+  public RunOutcome resume(ParkToken token, ToolResolution resolution) {
+    return resume(token, resolution, TurnObserver.noop());
+  }
+
+  /**
+   * Answers a parked call: {@code token} names a wait some prior turn is durably patient for.
+   * Unknown tokens are rejected loud rather than silently dropped, and a token minted by a
+   * different agent is refused before anything is appended or driven (design §3, §5) — see {@link
+   * #verified}. The registry entry survives resolution (design §5) — it is the durable record that
+   * this token once named this wait, not a single-use claim — so a redelivered resume (every real
+   * transport is at-least-once) translates the token again, appends another {@code Resolved} entry,
+   * and the fold's own is-this-call-still-outstanding check drains it quietly rather than replaying
+   * the call: the drive simply reads whatever the first delivery already produced. Either way,
+   * appending always succeeds and driving is the same re-entrant act {@link #resume} shares with
+   * {@code tell}: the inbox absorbs the answer, the status pointer says what happens next.
+   *
+   * <p>That quiet-drain protection is serial, not concurrent: it is the fold picking a winner among
+   * entries already appended, so it only shields a resume that arrives after an earlier one has
+   * finished folding. Two deliveries of the same token driven concurrently can both observe the
+   * call as still outstanding and both invoke the tool before the fence settles on which fold wins
+   * — the same at-least-once exposure {@link org.jwcarman.nessy.api.tool.Tool} already documents: a
+   * tool that cannot be safely re-run makes itself idempotent, or parks and lets its remote side
+   * deduplicate by token.
+   *
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
+   */
+  public RunOutcome resume(ParkToken token, ToolResolution resolution, TurnObserver observer) {
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
+    Objects.requireNonNull(resolution, "resolution must not be null");
+    Objects.requireNonNull(observer, "observer must not be null");
+    Park park = verified(token);
+    store.append(park.conversationId(), InboxEntry.resolved(park.call().id(), resolution));
+    return loop.drive(park.conversationId(), observer);
+  }
+
+  /**
+   * Approves a parked call, watched by no one ({@link TurnObserver#noop()}).
+   *
+   * @see #approve(ParkToken, TurnObserver)
+   */
+  public RunOutcome approve(ParkToken token) {
+    return approve(token, TurnObserver.noop());
+  }
+
+  /**
+   * Sugar over {@link #resume(ParkToken, ToolResolution, TurnObserver)} for the common HITL
+   * verdict: an unconditional {@link Decision#allow()}. No logic of its own.
+   */
+  public RunOutcome approve(ParkToken token, TurnObserver observer) {
+    return resume(token, new ToolResolution.Decided(Decision.allow()), observer);
+  }
+
+  /**
+   * Denies a parked call, watched by no one ({@link TurnObserver#noop()}).
+   *
+   * @see #deny(ParkToken, String, TurnObserver)
+   */
+  public RunOutcome deny(ParkToken token, String reason) {
+    Objects.requireNonNull(reason, "reason must not be null");
+    return deny(token, reason, TurnObserver.noop());
+  }
+
+  /**
+   * Sugar over {@link #resume(ParkToken, ToolResolution, TurnObserver)} for the common HITL
+   * verdict: a {@link Decision.Deny} carrying {@code reason} back to the model. No logic of its
+   * own.
+   */
+  public RunOutcome deny(ParkToken token, String reason, TurnObserver observer) {
+    Objects.requireNonNull(reason, "reason must not be null");
+    return resume(token, new ToolResolution.Decided(new Decision.Deny(reason)), observer);
+  }
+
+  /**
+   * Reads a park without consuming it — the same {@link Parks#find} read {@link #progress} narrates
+   * against, exposed directly so a caller can inspect what a token is waiting on before deciding
+   * how to {@link #resume} it. Unlike {@link #resume}, an unknown token is not an error: {@link
+   * Optional#empty()} says the wait is not there to read, exactly as {@link #progress} treats it. A
+   * token minted by a different agent is still refused loud, the same as every other door (design
+   * §2: one front door, no exceptions) — peeking never leaks another agent's park.
+   *
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
+   */
+  public Optional<ParkedCall> peek(ParkToken token) {
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
+    Optional<Park> found = parks.find(token);
+    if (found.isEmpty()) {
+      return Optional.empty();
+    }
+    Park park = verified(found.get());
+    return Optional.of(new ParkedCall(park.token(), park.call()));
+  }
+
+  /**
+   * The remote signal channel: a tool still running out in the world reports {@code message}
+   * against the wait it parked under. {@code token} is only ever peeked, via {@link Parks#find},
+   * never consumed — this is narration, not a resolution, and the wait itself remains exactly as
+   * resumable afterward as it was before. An unknown token is not an error, nor is a token the
+   * registry still recognizes but whose call the conversation's own state no longer lists as
+   * outstanding (design §5: registry entries survive resolution, so a settled wait's token stays
+   * findable forever) — either way the signal simply has nowhere left to land, so it is dropped and
+   * {@code false} says so. A token minted by a different agent is refused loud rather than treated
+   * as merely unknown (design §3) — see {@link #verified}. A live token emits {@link ToolProgress}
+   * on this agent's own {@link #events} — the same {@link ListenerRegistry} the in-process tee
+   * narrates on — reaching harness-seeded and agent-declared listeners alike, the identical
+   * audience the tee reaches, carrying the park's own conversation and call id, and returns {@code
+   * true}.
+   *
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
+   */
+  public boolean progress(ParkToken token, String message) {
+    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
+    Objects.requireNonNull(message, "message must not be null");
+    Optional<Park> found = parks.find(token);
+    if (found.isEmpty()) {
+      return false;
+    }
+    Park park = verified(found.get());
+    boolean stillOutstanding =
+        store
+            .load(park.conversationId())
+            .map(
+                loaded ->
+                    loaded.state().parkedCalls().stream()
+                        .anyMatch(call -> call.id().equals(park.call().id())))
+            .orElse(false);
+    if (!stillOutstanding) {
+      return false;
+    }
+    events.emit(new ToolProgress(park.conversationId(), park.call().id(), message));
+    return true;
+  }
+
+  /**
+   * The ownership check every callback door runs before appending or driving anything (design §2,
+   * §3, §5): {@code token} translates fine, but a {@link Park#agentName()} that names some other
+   * agent means this delivery is refused whole, loud, and first — nothing about the conversation
+   * changes. {@link UnknownParkTokenException} covers the token-not-found case; this covers the
+   * found-but-not-mine case.
+   *
+   * @throws WrongAgentException if {@code park} was minted by an agent other than this one
+   */
+  private Park verified(Park park) {
+    if (!park.agentName().equals(name)) {
+      throw new WrongAgentException(park.agentName(), name);
+    }
+    return park;
+  }
+
+  /**
+   * {@link #verified(Park)}, looking the park up by {@code token} first.
+   *
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
+   * @throws WrongAgentException if the found park was minted by an agent other than this one
+   */
+  private Park verified(ParkToken token) {
+    return verified(parks.find(token).orElseThrow(() -> new UnknownParkTokenException(token)));
   }
 
   /**

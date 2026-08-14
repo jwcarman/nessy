@@ -16,10 +16,10 @@
 package org.jwcarman.nessy.api;
 
 /**
- * {@code token} names no wait a {@link org.jwcarman.nessy.Harness} can resume — either the store
- * has never heard of it, or it named a park that has already settled (every real transport is
+ * {@code token} names no wait an {@link org.jwcarman.nessy.Agent} can resume — either the store has
+ * never heard of it, or it named a park that has already settled (every real transport is
  * at-least-once, but a token this store no longer recognizes at all is not the same as one it still
- * recognizes but has already consumed — see {@link org.jwcarman.nessy.Harness#resume(ParkToken,
+ * recognizes but has already consumed — see {@link org.jwcarman.nessy.Agent#resume(ParkToken,
  * ToolResolution, org.jwcarman.nessy.api.turn.TurnObserver)}).
  *
  * <p>Distinct from {@link IllegalArgumentException}, which everywhere else in this package still
