@@ -55,7 +55,7 @@ public final class TurnEventSse {
     return switch (event) {
       case TurnEvent.TextDelta(String text) -> new Event("delta", Map.of("text", text));
       case TurnEvent.ThinkingDelta(String text) -> new Event("thinking", Map.of("text", text));
-      case TurnEvent.RedactedThinking( _) ->
+      case TurnEvent.RedactedThinking(String _) ->
           new Event("thinking", Map.of("text", "[redacted]"));
       case TurnEvent.ToolCallRequested(ToolCall call) ->
           new Event("tool-requested", Map.of("id", call.id(), "name", call.name()));
