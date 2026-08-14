@@ -154,8 +154,11 @@ Agent<String> agent =
 ```
 
 Two agents built from the same harness share its conversation store by
-construction — one store holds every agent's conversations. Cross-agent
-observability is a harness-declared listener (see
+construction — one store holds every agent's conversations — but each keeps
+its own callback doors: `resume`/`progress`/`approve`/`deny`/`peek` verify a
+park's stamp against the agent they're called on (`.name(...)`, required at
+`build()`) and refuse a call minted by the other agent rather than silently
+answering it. Cross-agent observability is a harness-declared listener (see
 [Declared listening](#declared-listening) below): declare it once on the
 harness and it is seeded into every agent's own frozen chain, so the same
 listener instance fires for every agent's traffic without a shared, mutable
@@ -313,7 +316,7 @@ returns a `Step`: the next state, the messages born this fold, and a list of
 `ConversationEvent`, so a tool call and a model call are both just "perform an
 effect, get a fact back" — except when an effect **parks** instead: a tool (or
 an approver) that must outlive the process hands back a `ParkToken`, and the
-fact arrives whenever `harness.resume(token, …)` delivers it, from any process,
+fact arrives whenever `agent.resume(token, …)` delivers it, from any process,
 however much later; `TurnEvent`s narrate the texture in between (streamed
 tokens, tool requests, the park itself) to whatever `TurnObserver` is watching,
 independent of the fold. `ConversationState` is a plain serializable record — pausing is "stop
@@ -576,20 +579,34 @@ and a process ago. Nothing about the shape above changes to get this —
 point that does the same thing for the other direction a conversation moves:
 
 ```java
-RunOutcome outcome = harness.resume(token, ToolResolution.completed(result));
+RunOutcome outcome = agent.resume(token, ToolResolution.completed(result));
 ```
 
-`harness.resume(token, resolution[, observer])` answers a parked call by
+`agent.resume(token, resolution[, observer])` answers a parked call by
 token — the `ParkToken` a tool (or an `Approver`) handed back when it parked
 — appends the resolution to the conversation's inbox, and drives, exactly
 the way `tell` does. Appending always succeeds: a tell or a resolution is
 never refused for arriving while the conversation is busy, mid-turn, or even
 parked — it joins the durable inbox and the next drive (this call's own,
-or a re-drive from any other node) picks it up. `harness.progress(token,
+or a re-drive from any other node) picks it up. `agent.progress(token,
 message)` is `resume`'s non-terminal sibling: it never consumes the token,
 only narrates a still-running tool's progress to whoever is listening for
-`ToolProgress` — the token is the whole correlation contract, and transport
-home (a webhook, a queue, a cron poll) is the tool author's business.
+`ToolProgress`. `agent.approve(token[, observer])` and `agent.deny(token,
+reason[, observer])` are sugar over `resume` for the common human-in-the-loop
+case — allow or refuse the gated call by token, without hand-building a
+`ToolResolution`. `agent.peek(token)` reads a park without consuming it —
+an `Optional<ParkedCall>`, empty when the token names no live wait, useful
+for an ops surface that wants to describe a parked conversation before
+anyone acts on it. Every one of these five doors lives on `Agent`, not on
+`Harness`: the token is the whole correlation contract, and transport home
+(a webhook, a queue, a cron poll) is the tool author's business. Each door
+also verifies the token's park was minted by *this* agent before touching
+anything — a mismatch throws `WrongAgentException`, naming both the agent
+that parked the call and the one the callback landed on, before any state
+changes. An agent's `.name(...)` (required at `build()`) is a durable wire
+contract exactly like the `ParkToken` these doors verify against — a rename
+with parks in flight orphans them, so the name deserves the same care as a
+queue name or a callback URL, not a cosmetic label.
 
 Two write disciplines carry this: a version-fenced control block (one writer
 wins; a stale writer reloads and re-drives, never overwrites) and the inbox,
@@ -703,8 +720,8 @@ in the loop today, reserved for a future token-aware `Memory` to read.
 
 The durable kernel has landed too: every entry — a `tell`, a `resume` —
 appends to the conversation's durable inbox and drives with the same
-re-entrant verb, `PARKED` conversations wait for a `harness.resume`/
-`harness.progress` from any node, and `nessy-store-jdbc` gives that three
+re-entrant verb, `PARKED` conversations wait for an `agent.resume`/
+`agent.progress` from any node, and `nessy-store-jdbc` gives that three
 real Postgres-backed doors — `ConversationStore`, `Parks`, and `Memory`
 (`TranscriptMemory` over `JdbcTranscript`, the durable transcript) — see
 [Durable, autonomous agents](#durable-autonomous-agents) above and the

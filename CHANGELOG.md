@@ -239,11 +239,13 @@ sequence of renames and interim shapes that produced it.
   consumes it, and emits `ToolProgress` on the built agent's own registry, the
   same audience the in-process tee reaches. Re-parking an already-resumed call
   is unsupported this generation and fails loud (`IllegalStateException`)
-  rather than silently losing the call. Both `resume` and `progress` are
-  single-agent this generation too: a second agent built from the same
-  harness makes either throw loudly, because a park token does not yet carry
-  which agent's loop and registry it belongs to — a recorded design gap, not
-  a silent one.
+  rather than silently losing the call. Both `resume` and `progress` were
+  single-agent this generation, and a second agent built from the same
+  harness made either throw loudly, because a park token did not yet carry
+  which agent's loop and registry it belonged to — a recorded design gap, not
+  a silent one. **Superseded by the named-agent generation below**: every
+  door moved off `Harness` onto `Agent`, parks now carry the minting agent's
+  name, and a second agent built from the same harness just works.
 - **The tee, and `ToolCallProgressed`.** `TurnEvent.ToolCallProgressed(call,
   message)` narrates a running tool's progress to whoever is watching the live
   segment. `GatedToolCallExecutor` wraps the `ToolContext` emitter so every
@@ -689,6 +691,25 @@ sequence of renames and interim shapes that produced it.
   had drifted, and the run command sits directly beneath it — `nessy-testing`
   gets its first dogfood, and the headline promise becomes something you can
   actually run.
+- **Named agents, and the callback doors move to `Agent`.** `AgentBuilder
+  #name(String)` is now required at `build()` — a durable wire contract
+  exactly like a queue name or a callback URL (design §3), not a cosmetic
+  label: every `Parks.Park` an agent registers is stamped with it, and every
+  callback door verifies a resolution's stamp against the agent handling it
+  before acting. `Parks.Park` gains `agentName`, and `nessy_parks` gains
+  `agent_name NOT NULL` to carry it durably. All five callback doors —
+  `resume`, `progress`, `approve`, `deny`, `peek` — move off `Harness` onto
+  `Agent`, the identity that actually owns the loop, the grants, and the
+  registry a callback needs to act (design of record amendment, 2026-08-14:
+  "the callbacks should not be coming to the harness. They should always go
+  through the agent"). Each door verifies the park's stamp *before* appending
+  or driving anything; a mismatch throws the new `WrongAgentException`,
+  naming both the agent that minted the park and the one the callback landed
+  on, self-diagnosing a rename-without-redeploy on the first callback rather
+  than misrouting a resolution through the wrong agent's grants and
+  listeners. The payoff: two agents built from the same harness can now each
+  receive callbacks correctly — the single-agent restriction the earlier
+  parked-lane entry above recorded as a design gap is closed.
 
 ### Breaking (pre-1.0)
 
@@ -752,3 +773,22 @@ because every signature named was public as of the previous entries above:
   but chat-web's controllers no longer hand-synthesize `done`, so a consumer
   that depended on the framework staying silent about the turn's end will
   now see one more event on the wire.
+- **The callback doors move off `Harness`, stated loud (design §7).**
+  `Harness.resume`/`approve`/`deny`/`progress`/`peek` are **removed**, not
+  deprecated — pre-1.0, and a deprecation shim would keep the stateful
+  fields alive on `Harness`, defeating the point. Every caller now holds
+  the `Agent` it wants a callback answered on and calls the door there
+  instead; `Harness` is no longer a place to receive callbacks, only a
+  front door for *building* agents.
+- **`AgentBuilder.name(String)` is required.** Every existing `build()`
+  call site without a declared name now throws `IllegalArgumentException`
+  at `build()` time — every example, every test that builds an agent, and
+  every application build site needs a name added.
+- **`Parks.Park` and the `nessy_parks` schema gain `agent_name`.** `Park`
+  grows an `agentName` component; `nessy_parks` grows `agent_name NOT
+  NULL`. Pre-1.0: schema recreate, no migration script — a durable
+  deployment upgrading across this change starts its parks table fresh.
+- **`Harness` is no longer a callback receiver.** Its javadoc and this
+  README say what it is instead: substrate, immutable, a front door for
+  *building* agents only — every field on `Harness` is final, and no
+  method on the class ever writes to one.

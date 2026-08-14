@@ -40,8 +40,8 @@ obviously fake, structurally honest, the same coupon-tool ethos as
 message ("picking N items…") and then a completion ("shipped: tracking
 NESSY-…", derived deterministically from the order id) onto the
 `fulfillment-replies` queue, correlation id preserved. The reply listener
-(`FulfillmentReplies`) routes by kind: `progress` → `harness.progress(token,
-…)` (narration, drop-legal), `completed` → `harness.resume(token,
+(`FulfillmentReplies`) routes by kind: `progress` → `agent.progress(token,
+…)` (narration, drop-legal), `completed` → `agent.resume(token,
 Completed(ok(…)))` — and the turn finishes in whatever process the reply
 reached.
 
@@ -52,7 +52,7 @@ The park token never appears in either message's JSON body.
 `fulfillment-requests` message; `Warehouse` reads that same header and
 echoes it, unchanged, onto both `fulfillment-replies` messages;
 `FulfillmentReplies` reads it back off the reply and hands it straight to
-`harness.progress`/`harness.resume`. The wire payloads never carry a token
+`agent.progress`/`agent.resume`. The wire payloads never carry a token
 field at all — the kernel's "the token is the correlation contract" claim,
 made wire-visible.
 
@@ -106,7 +106,7 @@ console at <http://localhost:15672> (guest/guest):
 
    Watch the log: the order's conversation opens, the agent calls
    `request_fulfillment`, the tool parks, the warehouse narrates progress
-   (`harness.progress`, heard by the declared logging listener), then the
+   (`agent.progress`, heard by the declared logging listener), then the
    reply resumes and the turn completes.
 3. Publish to `orders` again:
 

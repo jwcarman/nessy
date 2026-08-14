@@ -16,8 +16,8 @@ nothing more than the two doors that receive them:
   tool, `request_field_crew`, parks the turn the moment it's called — the
   crew is out in the world, not answerable synchronously — and these two
   endpoints are how the crew reports back: progress narrates
-  (`harness.progress`), completion resumes the turn to done
-  (`harness.resume`).
+  (`agent.progress`), completion resumes the turn to done
+  (`agent.resume`).
 
 ## The story
 
