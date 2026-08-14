@@ -653,8 +653,8 @@ mapping that fails loudly on anything the audit didn't enumerate rather than
 guessing. OpenAI's live suite is fully green against a real key; Anthropic's is
 live-validated too, including the empty-system fix (a real empty-system-block
 bug the live run surfaced is fixed, with regression tests). `nessy-examples`
-ships a runnable two-provider chat CLI and a Spring Boot chat-web app — see
-[Examples](#examples) below.
+ships a runnable two-provider chat CLI, a Spring Boot chat-web app, and a
+scheduled night-watchman agent — see [Examples](#examples) below.
 
 The harness landed too: `Harness` reification, per-grant tool authority
 (`ToolGrant`/`UsagePolicy`), and `agent.contextFor(conversationId)` (now
@@ -752,7 +752,7 @@ database, no Docker. See
 for the full story. To run it:
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/night-watchman -am spring-boot:run
+ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/night-watchman spring-boot:run
 ```
 
 ## License

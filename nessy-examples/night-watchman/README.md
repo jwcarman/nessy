@@ -29,7 +29,7 @@ clearly trending there.
 ## Run it
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/night-watchman -am spring-boot:run
+ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/night-watchman spring-boot:run
 ```
 
 No Docker, no database, nothing else to stand up — just the log, which is the
@@ -46,8 +46,7 @@ durability.
   of waiting a real hour:
 
   ```bash
-  ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/night-watchman -am spring-boot:run \
-      -Dspring-boot.run.arguments=--watchman.cadence="*/15 * * * * *"
+  ./mvnw -pl nessy-examples/night-watchman spring-boot:run '-Dspring-boot.run.arguments=--watchman.cadence="*/15 * * * * *"'
   ```
 
 - `watchman.window` — the recall bound, in messages, default `40`.
@@ -83,11 +82,13 @@ public final class WindowedMemory implements Memory {
 
 Retention is whole — `remember` delegates straight to `ListMemory`, so nothing
 is ever discarded from the underlying store. `recall` is where the bound
-lives: `Context#keepRecent(window)` trims to the last `window` messages,
-pair-safe by construction (a tool-use/tool-result pair is never split), so the
-watchman's horizon is its window — it remembers its recent rounds, not its
-whole life, which is what lets an endless conversation run forever without
-growing the model call.
+lives: `Context#keepRecent(window)` keeps AT LEAST the last `window`
+messages, cutting only at a pair-safe boundary (a tool-use/tool-result pair is
+never split) — the tail can run one round longer when the boundary must walk
+past a tool exchange, and when no pair-safe boundary exists the context comes
+back whole. So the watchman's horizon is roughly its window — it remembers
+its recent rounds, not its whole life, which is what lets an endless
+conversation run forever without growing the model call unbounded.
 
 ## What this example deliberately isn't
 

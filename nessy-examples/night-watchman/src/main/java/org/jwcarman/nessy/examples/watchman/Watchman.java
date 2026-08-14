@@ -18,10 +18,12 @@ package org.jwcarman.nessy.examples.watchman;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Objects;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.slf4j.Logger;
@@ -57,7 +59,13 @@ public class Watchman {
   public void round() {
     // Explicit zone (S8688): the watchman reports the machine's own local time, so
     // ZoneId.systemDefault() names the zone the implicit no-arg now() would silently assume.
-    round(LocalTime.now(ZoneId.systemDefault()));
+    try {
+      round(LocalTime.now(ZoneId.systemDefault()));
+    } catch (RuntimeException e) {
+      // Spring's scheduler would keep firing the next tick regardless; this catch only keeps the
+      // log — the UI — readable, one line instead of Spring's default full-stack-per-tick dump.
+      LOGGER.warn("round failed: {} — the watch continues", e.toString());
+    }
   }
 
   RunOutcome round(LocalTime time) {
@@ -81,6 +89,11 @@ public class Watchman {
       LOGGER.info("watchman says: {}", said);
     }
     LOGGER.info("round ends: {}", outcome.state().status());
+    if (outcome.state().status() == ConversationStatus.FAILED) {
+      LOGGER.warn(
+          "round failed: {}",
+          Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
+    }
     return outcome;
   }
 }

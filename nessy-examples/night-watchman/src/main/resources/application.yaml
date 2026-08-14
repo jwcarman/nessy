@@ -4,6 +4,12 @@ spring:
   main:
     web-application-type: none
     banner-mode: off
+  task:
+    scheduling:
+      pool:
+        # Rounds must serialize — one scheduler thread is the concurrency story the
+        # javadocs claim, pinned rather than inherited from a Boot default.
+        size: 1
 
 watchman:
   # When the watchman walks: Spring cron, default the top of each minute.

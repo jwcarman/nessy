@@ -529,10 +529,13 @@ sequence of renames and interim shapes that produced it.
   - **`WindowedMemory`, the first custom-`Memory` dogfood.** Freedom of
     retention, rule of law at the border: `remember` delegates whole to
     `ListMemory`, nothing discarded from the underlying store; `recall` is
-    where `Context#keepRecent(window)` trims to the last `watchman.window`
-    messages (default `40`), pair-safe by construction. That one cut is the
-    recall bound that lets a conversation run forever without growing the
-    model call — the watchman's horizon is its window, not its whole life.
+    where `Context#keepRecent(window)` keeps AT LEAST the last
+    `watchman.window` messages (default `40`), cutting only at a pair-safe
+    boundary — the tail can run one round longer when the boundary must walk
+    past a tool exchange, and when no pair-safe boundary exists the context
+    comes back whole. That one cut is the recall bound that lets a
+    conversation run forever without growing the model call — the watchman's
+    horizon is roughly its window, not its whole life.
   - **The leanest example.** `EngineRoom`'s seeded random walk (bilge biased
     `+3.5`/step) guarantees a run its arc — quiet, trend, alarm — inside
     roughly five to eight minutes at the default cadence; `check_vitals` and

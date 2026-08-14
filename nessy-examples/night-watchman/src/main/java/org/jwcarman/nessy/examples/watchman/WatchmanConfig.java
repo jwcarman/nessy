@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.watchman;
 
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,6 +52,10 @@ public class WatchmanConfig {
         .tools(
             ToolGrant.grant(new CheckVitalsTool(engineRoom), UsagePolicy.allow()),
             ToolGrant.grant(new RaiseAlarmTool(), UsagePolicy.allow()))
+        // Declared explicitly so the teaching artifact doesn't log the design-§13.1
+        // "no approver configured" WARN at every startup; allow-all is the honest
+        // posture, no human is in this loop.
+        .approver(Approver.allowAll())
         .build();
   }
 }
