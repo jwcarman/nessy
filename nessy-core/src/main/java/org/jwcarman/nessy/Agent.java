@@ -63,8 +63,11 @@ public final class Agent<I> {
     return new Conversation<>(loop, ConversationId.generate(), events, renderer);
   }
 
-  /** Reopens a stored session. The loop loads its state on the next send. */
-  public Conversation<I> resume(ConversationId conversationId) {
+  /**
+   * Reopens a stored session. The loop loads its state on the next send — the same lazy load {@link
+   * #converse()} defers, just against an existing id instead of a fresh one.
+   */
+  public Conversation<I> conversation(ConversationId conversationId) {
     return new Conversation<>(loop, conversationId, events, renderer);
   }
 

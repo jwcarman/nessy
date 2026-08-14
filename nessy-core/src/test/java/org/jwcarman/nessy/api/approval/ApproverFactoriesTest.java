@@ -51,4 +51,21 @@ class ApproverFactoriesTest {
           .isEqualTo(Awaited.ready(new Decision.Deny("read-only")));
     }
   }
+
+  @Nested
+  class Park_all {
+
+    @Test
+    void park_all_parks_every_request_with_a_fresh_token() {
+      Approver approver = Approver.parkAll();
+
+      Awaited<Decision> first = approver.approve(request);
+      Awaited<Decision> second = approver.approve(request);
+
+      assertThat(first).isInstanceOf(Awaited.Parked.class);
+      assertThat(second).isInstanceOf(Awaited.Parked.class);
+      assertThat(((Awaited.Parked<Decision>) first).token())
+          .isNotEqualTo(((Awaited.Parked<Decision>) second).token());
+    }
+  }
 }

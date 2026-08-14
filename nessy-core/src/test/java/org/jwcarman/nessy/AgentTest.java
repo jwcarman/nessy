@@ -103,7 +103,7 @@ class AgentTest {
       ConversationId id = agent.converse().tell("first").state().id();
       TextObserver observer = new TextObserver();
 
-      RunOutcome reply = agent.resume(id).tell("second", observer);
+      RunOutcome reply = agent.conversation(id).tell("second", observer);
 
       assertThat(reply.state().id()).isEqualTo(id);
       assertThat(observer.text()).isEqualTo("second");

@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.approval;
 
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 
 /**
  * The safety gate.
@@ -44,6 +45,11 @@ public interface Approver {
   /** Says no to everything, with a reason the model can read and adapt to. */
   static Approver denyAll(String reason) {
     return new DenyAllApprover(reason);
+  }
+
+  /** Parks every request behind a fresh {@link ParkToken}. For durable, human-in-the-loop gates. */
+  static Approver parkAll() {
+    return request -> Awaited.parked(ParkToken.generate());
   }
 
   Awaited<Decision> approve(ApprovalRequest request);

@@ -343,7 +343,7 @@ class AgentFacadeTest {
     ConversationId conversationId = first.conversationId();
 
     TextObserver observer = new TextObserver();
-    agent.resume(conversationId).tell("you there?", observer);
+    agent.conversation(conversationId).tell("you there?", observer);
 
     assertThat(observer.text()).isEqualTo("Still here.");
     assertThat(agent.contextFor(conversationId).messages()).hasSize(4);

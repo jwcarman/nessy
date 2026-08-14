@@ -115,7 +115,9 @@ public final class ChatController {
   private void runTurn(ConversationId conversationId, String text, SseEmitter emitter) {
     try {
       RunOutcome outcome =
-          agent.resume(conversationId).tell(text, SseEvents.observer(e -> sendEvent(emitter, e)));
+          agent
+              .conversation(conversationId)
+              .tell(text, SseEvents.observer(e -> sendEvent(emitter, e)));
       finish(emitter, outcome, mapper);
     } catch (RuntimeException e) {
       fail(emitter, e);
