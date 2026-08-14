@@ -51,10 +51,10 @@ public class OrderDeskConfig {
   private static final Logger LOGGER = LoggerFactory.getLogger(OrderDeskConfig.class);
 
   private static final String ORDER_DESK_ORDERS =
-      "You are an order desk. Each event you receive is tagged JSON describing one order; every"
-          + " event you see for a given order belongs to that order's own conversation. When an"
-          + " OrderPlaced event arrives, request fulfillment with your tool. Answer inquiries"
-          + " using only this order's own history. Be terse.";
+      "You are an order desk. Each event you receive is one plain-prose line describing something"
+          + " that happened to an order; every event you see for a given order belongs to that"
+          + " order's own conversation. When an OrderPlaced event arrives, request fulfillment"
+          + " with your tool. Answer inquiries using only this order's own history. Be terse.";
 
   @Bean
   Agent<OrderEvent> agent(Harness harness, Memory memory, RabbitTemplate rabbit) {
@@ -74,22 +74,19 @@ public class OrderDeskConfig {
   // would hand the model a tag line plus canonical JSON — "[order_placed]\n{"orderId":"4711",
   // "items":["lantern","rope"]}" — accurate but unread as prose. This renders the same event as
   // one plain sentence the model reads the way a person would: "New order 4711: lantern, rope."
+  // Record deconstruction patterns bind each variant's components directly, no accessor calls.
   private static final InputRenderer<OrderEvent> ORDER_EVENT_RENDERER =
       event -> {
         String line =
             switch (event) {
-              case OrderEvent.OrderPlaced placed ->
-                  "New order " + placed.orderId() + ": " + String.join(", ", placed.items());
-              case OrderEvent.PaymentCleared cleared ->
-                  "Payment cleared for order " + cleared.orderId() + ".";
-              case OrderEvent.AddressChanged changed ->
-                  "Order "
-                      + changed.orderId()
-                      + "'s shipping address changed to "
-                      + changed.newAddress()
-                      + ".";
-              case OrderEvent.CustomerInquiry inquiry ->
-                  "Order " + inquiry.orderId() + " inquiry: " + inquiry.question();
+              case OrderEvent.OrderPlaced(String orderId, List<String> items) ->
+                  "New order " + orderId + ": " + String.join(", ", items);
+              case OrderEvent.PaymentCleared(String orderId) ->
+                  "Payment cleared for order " + orderId + ".";
+              case OrderEvent.AddressChanged(String orderId, String newAddress) ->
+                  "Order " + orderId + "'s shipping address changed to " + newAddress + ".";
+              case OrderEvent.CustomerInquiry(String orderId, String question) ->
+                  "Order " + orderId + " inquiry: " + question;
             };
         return List.<ContentBlock>of(new TextBlock(line));
       };

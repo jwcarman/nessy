@@ -284,11 +284,9 @@ record Escalation(String orderId, String reason) implements SupportInput {}
 InputRenderer<SupportInput> renderer =
     input ->
         switch (input) {
-          case Question question -> List.of(new TextBlock(question.text()));
-          case Escalation escalation ->
-              List.of(
-                  new TextBlock(
-                      "Escalate order " + escalation.orderId() + ": " + escalation.reason()));
+          case Question(String text) -> List.of(new TextBlock(text));
+          case Escalation(String orderId, String reason) ->
+              List.of(new TextBlock("Escalate order " + orderId + ": " + reason));
         };
 
 Harness harness = Nessy.harness(anthropic).build();

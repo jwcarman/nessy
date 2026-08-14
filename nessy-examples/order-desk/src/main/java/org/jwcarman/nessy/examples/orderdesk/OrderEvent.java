@@ -21,9 +21,10 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * An order lifecycle event, published as JSON to the {@code orders} queue (spec §2, §3). The same
- * Jackson tagging serves both jurisdictions: the AMQP message converter deserializes it, the
- * renderer shows the model tagged JSON.
+ * An order lifecycle event, published as JSON to the {@code orders} queue (spec §2, §3). The
+ * Jackson tagging now serves only the AMQP wire — the message converter deserializes it — while
+ * {@code OrderDeskConfig}'s renderer turns each event into one plain-prose line for the model
+ * instead.
  *
  * <p>The {@code @JsonSubTypes} names are stated explicitly rather than left to default to the
  * simple class name, because the demo publishes these by hand from RabbitMQ's management console
