@@ -30,6 +30,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -57,8 +58,13 @@ import org.springframework.context.annotation.Bean;
  * codec (see {@code StateCodec}) never uses the mapper it is handed as-is: it registers its own
  * sealed-type mixins on a private {@link ObjectMapper#copy() copy}, so a plain, unconfigured mapper
  * here loses nothing the wire format needs.
+ *
+ * <p>Pinned after {@link DataSourceAutoConfiguration} because
+ * {@code @ConditionalOnBean(DataSource.class)} is only reliable once the datasource's own
+ * auto-configuration has run — without the pin, web-free classpaths evaluate this class first and
+ * persistence never activates.
  */
-@AutoConfiguration
+@AutoConfiguration(after = DataSourceAutoConfiguration.class)
 @ConditionalOnClass(JdbcPersistence.class)
 @ConditionalOnBean(DataSource.class)
 @ConditionalOnProperty(

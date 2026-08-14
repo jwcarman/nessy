@@ -87,6 +87,14 @@
       <artifactId>spring-webmvc</artifactId>
       <optional>true</optional>
     </dependency>
+    <!-- Compile-time only, needed to name DataSourceAutoConfiguration in JdbcPersistenceAutoConfiguration's
+         ordering annotation; consumers still activate JDBC persistence by bringing their own
+         datasource, exactly as before. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-jdbc</artifactId>
+      <optional>true</optional>
+    </dependency>
     <!-- Carries ContextSnapshotFactory: TurnRunner's virtual thread restores the calling thread's
          ThreadLocal-borne context (Micrometer's current-Observation scope among them) so a turn's
          narration continues the request's own trace rather than starting a new one. Already on

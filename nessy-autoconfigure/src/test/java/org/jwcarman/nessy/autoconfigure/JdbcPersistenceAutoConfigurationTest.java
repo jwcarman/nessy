@@ -27,7 +27,9 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -122,6 +124,21 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).doesNotHaveBean(ConversationStore.class);
               assertThat(context).doesNotHaveBean(Memory.class);
             });
+  }
+
+  /**
+   * {@code @ConditionalOnBean(DataSource.class)} is only reliable when this class is explicitly
+   * ordered after the auto-configuration that defines the {@link DataSource} bean. An {@link
+   * ApplicationContextRunner} can't deterministically reproduce the classpath-order tie-break that
+   * silently drops JDBC persistence on a web-free classpath, so the pin IS the annotation — assert
+   * it directly.
+   */
+  @Test
+  void jdbc_persistence_is_pinned_after_boot_s_datasource_autoconfiguration() {
+    AutoConfiguration autoConfiguration =
+        JdbcPersistenceAutoConfiguration.class.getAnnotation(AutoConfiguration.class);
+    assertThat(autoConfiguration).isNotNull();
+    assertThat(autoConfiguration.after()).contains(DataSourceAutoConfiguration.class);
   }
 
   /**
