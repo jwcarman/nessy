@@ -15,14 +15,12 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
-import io.micrometer.context.ContextSnapshot;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
-import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.autoconfigure.web.TurnRunner;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -43,9 +41,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public final class ApprovalController {
 
   private final Harness harness;
+  private final TurnRunner turnRunner;
 
-  public ApprovalController(Harness harness) {
+  public ApprovalController(Harness harness, TurnRunner turnRunner) {
     this.harness = harness;
+    this.turnRunner = turnRunner;
   }
 
   @PostMapping("/{token}")
@@ -57,29 +57,15 @@ public final class ApprovalController {
     harness.peek(parkToken).orElseThrow(() -> new UnknownParkTokenException(parkToken));
     // Also validated synchronously, for the same reason: a malformed decision string is a genuine
     // caller error and should 400 as an ordinary HTTP response, not surface as an async stream
-    // failure once runResume is already running on its own virtual thread.
+    // failure once the resumed segment is already running on its own virtual thread.
     requireKnownDecision(body.decision());
-    SseEmitter emitter = new SseEmitter(0L);
-    // Same fix as ChatController#postMessage: a fresh virtual thread has an empty
-    // current-Observation ThreadLocal, so restore this request thread's tracing context inside it
-    // — otherwise the resumed segment's observations root a new trace instead of joining this
-    // HTTP POST's.
-    ContextSnapshot snapshot = ChatController.CONTEXT_SNAPSHOT_FACTORY.captureAll();
-    Thread.ofVirtual().start(snapshot.wrap(() -> runResume(parkToken, body, emitter)));
-    return emitter;
-  }
-
-  private void runResume(ParkToken token, DecisionRequest body, SseEmitter emitter) {
-    try {
-      TurnObserver observer = SseEvents.observer(e -> ChatController.sendEvent(emitter, e));
-      RunOutcome outcome =
-          "allow".equals(body.decision())
-              ? harness.approve(token, observer)
-              : harness.deny(token, Optional.ofNullable(body.reason()).orElse("denied"), observer);
-      ChatController.finish(emitter, outcome);
-    } catch (RuntimeException e) {
-      ChatController.fail(emitter, e);
-    }
+    return ChatController.runTurn(
+        turnRunner,
+        observer ->
+            "allow".equals(body.decision())
+                ? harness.approve(parkToken, observer)
+                : harness.deny(
+                    parkToken, Optional.ofNullable(body.reason()).orElse("denied"), observer));
   }
 
   private static void requireKnownDecision(String decision) {

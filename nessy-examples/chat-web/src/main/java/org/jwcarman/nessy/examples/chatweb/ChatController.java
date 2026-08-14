@@ -15,19 +15,19 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
-import io.micrometer.context.ContextSnapshot;
-import io.micrometer.context.ContextSnapshotFactory;
-import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
+import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.autoconfigure.web.TurnEventSse;
+import org.jwcarman.nessy.autoconfigure.web.TurnRunner;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,115 +37,100 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * The page-rebuild endpoint and the entry-message endpoint (spec §4's table). The turn-narrating
- * bridge from {@link SseEvents} to a live {@link SseEmitter} lives here as package-private statics
- * so {@link ApprovalController}'s resumed-segment stream can share the exact same wire shapes.
+ * The page-rebuild endpoint and the entry-message endpoint (spec §4's table). The turn itself runs
+ * on the starter's {@link TurnRunner}, narrated through {@link TurnEventSse}; this controller's own
+ * job shrinks to identity (which agent, which conversation) and the terminal {@code done} event,
+ * which {@link ApprovalController}'s resumed-segment stream shares via {@link #done}.
  */
 @RestController
 @RequestMapping("/api/conversations")
 public final class ChatController {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(ChatController.class);
-
-  /**
-   * Captures every registered {@code ThreadLocal} accessor (Micrometer's current-{@code
-   * Observation} scope among them) so a turn's virtual thread can restore the HTTP request thread's
-   * tracing context — see {@link #postMessage}. Package-private: {@link ApprovalController}'s
-   * resumed-segment stream shares the exact same wiring.
-   */
-  static final ContextSnapshotFactory CONTEXT_SNAPSHOT_FACTORY =
-      ContextSnapshotFactory.builder().build();
-
   private final Agent<String> agent;
+  private final TurnRunner turnRunner;
 
-  public ChatController(Agent<String> agent) {
+  public ChatController(Agent<String> agent, TurnRunner turnRunner) {
     this.agent = agent;
+    this.turnRunner = turnRunner;
   }
 
   /**
    * Page-rebuild reading: transcript, pending approval cards, and status — no model call. Total
    * over {@link Agent#snapshot}: a browser-minted fresh id redraws as an empty, idle conversation
    * rather than erroring. This is also the losing side of the park-narration race — a concurrent
-   * driver whose SSE stream saw zero {@code approval-needed} events still finds its card here.
+   * driver whose SSE stream saw zero {@code tool-parked} events still finds its card here.
    */
   @GetMapping("/{id}")
   public Map<String, Object> get(@PathVariable String id) {
     ConversationSnapshot snapshot = agent.snapshot(new ConversationId(id));
     List<TranscriptView.Line> transcript = TranscriptView.of(snapshot.context());
     List<Map<String, Object>> approvals =
-        snapshot.parkedCalls().stream().map(SseEvents::approvalCard).toList();
+        snapshot.parkedCalls().stream().map(ChatController::approvalCard).toList();
     return Map.of(
         "status", snapshot.status().name(), "transcript", transcript, "approvals", approvals);
   }
 
-  /**
-   * Runs this entry's segment on a virtual thread, streaming its {@link SseEvents} as it happens.
-   */
+  /** Runs this entry's segment on a virtual thread, streaming its narration as it happens. */
   @PostMapping("/{id}/messages")
   public SseEmitter postMessage(@PathVariable String id, @RequestBody MessageRequest body) {
     ConversationId conversationId = new ConversationId(id);
-    SseEmitter emitter = new SseEmitter(0L);
-    // A fresh virtual thread starts with an empty current-Observation ThreadLocal, so without
-    // this snapshot EngineObservations would parent nessy.run onto nothing and start a NEW trace
-    // instead of continuing this HTTP POST's. Capture it here, on the request thread, and restore
-    // it inside the virtual thread's runnable.
-    ContextSnapshot snapshot = CONTEXT_SNAPSHOT_FACTORY.captureAll();
-    Thread.ofVirtual().start(snapshot.wrap(() -> runTurn(conversationId, body.text(), emitter)));
-    return emitter;
+    return runTurn(
+        turnRunner, observer -> agent.conversation(conversationId).tell(body.text(), observer));
   }
 
-  private void runTurn(ConversationId conversationId, String text, SseEmitter emitter) {
-    try {
-      RunOutcome outcome =
-          agent
-              .conversation(conversationId)
-              .tell(text, SseEvents.observer(e -> sendEvent(emitter, e)));
-      finish(emitter, outcome);
-    } catch (RuntimeException e) {
-      fail(emitter, e);
-    }
+  /**
+   * Shared turn-driving glue for both the entry stream here and {@link ApprovalController}'s
+   * resumed-segment stream: builds a {@link TurnEventSse#observer} that narrates onto {@link
+   * TurnRunner}'s own emitter and hands it to {@code turn}.
+   *
+   * <p>{@link TurnRunner#run} only returns the {@link SseEmitter} once it has already started the
+   * virtual thread that will invoke {@code turn}, so the observer built for that thread cannot
+   * close over the emitter directly — it closes over this {@link AtomicReference} instead, set
+   * immediately below once {@code run} hands the emitter back. The turn's own work (a store lookup,
+   * building the model request, the network round trip) is far slower than the handful of
+   * calling-thread instructions between {@code run} returning and the reference being set, so no
+   * narration event is ever sent before the reference is populated.
+   */
+  static SseEmitter runTurn(TurnRunner turnRunner, Function<TurnObserver, RunOutcome> turn) {
+    AtomicReference<SseEmitter> emitterRef = new AtomicReference<>();
+    SseEmitter emitter =
+        turnRunner.run(
+            () -> turn.apply(TurnEventSse.observer(e -> TurnEventSse.send(emitterRef.get(), e))),
+            ChatController::done);
+    emitterRef.set(emitter);
+    return emitter;
   }
 
   /**
    * The shared tail of both entry and resume streams: the terminal {@code done} event carrying
-   * final status (and {@code failureReason} when the turn failed). Any {@code approval-needed}
-   * cards for a newly parked call were already narrated live by the observer {@link
-   * SseEvents#observer} wraps into {@link #sendEvent} above — this no longer re-derives them from
-   * {@code outcome}, so the live park event is the single card source for the stream (the
-   * page-rebuild snapshot in {@link #get} is the separate, still-needed source for a reader who
-   * missed that live event, e.g. a losing concurrent driver).
+   * final status (and {@code failureReason} when the turn failed). Any {@code tool-parked} cards
+   * for a newly parked call were already narrated live by the observer the turn itself streamed
+   * through — this no longer re-derives them from {@code outcome}, so the live park event is the
+   * single card source for the stream (the page-rebuild snapshot in {@link #get} is the separate,
+   * still-needed source for a reader who missed that live event, e.g. a losing concurrent driver).
    */
-  static void finish(SseEmitter emitter, RunOutcome outcome) {
+  static void done(SseEmitter emitter, RunOutcome outcome) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("status", outcome.state().status().name());
     String failureReason = outcome.state().failureReason();
     if (failureReason != null) {
       payload.put("failureReason", failureReason);
     }
-    sendEvent(emitter, new SseEvents.Event("done", payload));
+    TurnEventSse.send(emitter, new TurnEventSse.Event("done", payload));
     emitter.complete();
   }
 
-  /** The exceptional tail: a {@code done} naming the error, then the emitter fails loud. */
-  static void fail(SseEmitter emitter, RuntimeException e) {
-    LOGGER.warn("turn failed", e);
-    String reason = Objects.requireNonNullElse(e.getMessage(), e.getClass().getSimpleName());
-    sendEvent(
-        emitter, new SseEvents.Event("done", Map.of("status", "ERROR", "failureReason", reason)));
-    emitter.completeWithError(e);
-  }
-
   /**
-   * Wraps {@code emitter.send} with the checked-IO try/catch: a closed tab is a broken pipe, not a
-   * reason to fail the turn already driving in the background — narration never alters the record.
+   * {@code {token, tool, args}} — the same shape {@link TurnEventSse#of} emits for a live park,
+   * used here to redraw pending cards from a {@link ParkedCall} snapshot. Args are pretty-printed
+   * via {@link com.fasterxml.jackson.databind.JsonNode#toPrettyString()}, which needs no
+   * application-supplied {@code ObjectMapper}.
    */
-  static void sendEvent(SseEmitter emitter, SseEvents.Event event) {
-    try {
-      emitter.send(SseEmitter.event().name(event.name()).data(event.payload()));
-    } catch (IOException e) {
-      LOGGER.info("SSE send failed, likely a closed client; completing the stream", e);
-      emitter.complete();
-    }
+  static Map<String, Object> approvalCard(ParkedCall parked) {
+    return Map.of(
+        "token", parked.token().value(),
+        "tool", parked.call().name(),
+        "args", parked.call().arguments().toPrettyString());
   }
 
   public record MessageRequest(String text) {}

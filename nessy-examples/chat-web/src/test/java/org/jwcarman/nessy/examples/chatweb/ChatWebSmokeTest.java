@@ -66,11 +66,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  *
  * <p>The scripted {@link ModelProvider} below copies {@code ListenerDeclarationsTest}'s two-turn
  * pattern from {@code nessy-core}: first call emits a tool use plus {@code TOOL_USE}, second call
- * emits plain text plus {@code END_TURN}. {@link ChatWebConfig} overrides the {@code Harness} bean
- * wholesale with one built on that provider, over the same JDBC-backed {@code ConversationStore}
- * and real {@code JdbcMemory} beans the application itself wires — the container supplies Postgres,
- * and {@code @Profile("!test")} on {@link NessyConfig}'s real provider and harness beans keeps
- * {@code ANTHROPIC_API_KEY} out of the picture entirely.
+ * emits plain text plus {@code END_TURN}. {@link ChatWebConfig}'s {@code Harness} bean wins over
+ * the starter's own {@code NessyAutoConfiguration}-supplied one by
+ * {@code @ConditionalOnMissingBean}, built on that scripted provider over the same JDBC-backed
+ * {@code ConversationStore} and real {@code JdbcMemory} beans the starter's persistence
+ * autoconfiguration wires from this test's Testcontainers datasource — {@code ANTHROPIC_API_KEY}
+ * never enters the picture, since the real {@link
+ * org.jwcarman.nessy.model.anthropic.AnthropicModelProvider} bean is never constructed.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureTestRestTemplate
@@ -106,18 +108,14 @@ class ChatWebSmokeTest {
 
     assertThat(firstTurn).isNotEmpty();
     List<String> firstNames = firstTurn.stream().map(SseEvent::name).toList();
-    assertThat(firstNames).contains("tool-requested", "approval-needed", "done");
-    assertThat(firstNames.indexOf("tool-requested"))
-        .isLessThan(firstNames.indexOf("approval-needed"));
+    assertThat(firstNames).contains("tool-requested", "tool-parked", "done");
+    assertThat(firstNames.indexOf("tool-requested")).isLessThan(firstNames.indexOf("tool-parked"));
     assertThat(firstNames.getLast()).isEqualTo("done");
     SseEvent doneFirst = firstTurn.getLast();
     assertThat(doneFirst.payload().get("status").asText()).isEqualTo("PARKED");
 
     SseEvent approvalNeeded =
-        firstTurn.stream()
-            .filter(e -> e.name().equals("approval-needed"))
-            .findFirst()
-            .orElseThrow();
+        firstTurn.stream().filter(e -> e.name().equals("tool-parked")).findFirst().orElseThrow();
     String token = approvalNeeded.payload().get("token").asText();
     assertThat(token).isNotBlank();
 
@@ -220,20 +218,27 @@ class ChatWebSmokeTest {
   }
 
   /**
-   * Overrides the {@code Harness} bean wholesale with one built on {@link ScriptedModelProvider},
-   * over the same JDBC-backed store and real memory the application itself wires. {@link
-   * NessyConfig}'s real provider and harness beans are {@code @Profile("!test")}, so they never
-   * enter this context.
+   * Supplies both a {@link ModelProvider} and a {@code Harness} bean built on {@link
+   * ScriptedModelProvider}, over the same JDBC-backed store and real memory the starter's own
+   * persistence autoconfiguration wires. Both beans win over the starter's own by
+   * {@code @ConditionalOnMissingBean}: the {@link ModelProvider} bean here is what keeps {@code
+   * AnthropicProviderAutoConfiguration}'s real {@code AnthropicModelProvider} — which would call
+   * {@code fromEnv().build()} and throw without {@code ANTHROPIC_API_KEY} — from ever being built,
+   * and the {@code Harness} bean here is what keeps {@code NessyAutoConfiguration}'s own from ever
+   * being built (it would otherwise wire the real provider through anyway).
    */
   @TestConfiguration
   static class ChatWebConfig {
 
     @Bean
-    Harness harness(ConversationStore store, ObservationRegistry observations) {
-      return Nessy.harness(new ScriptedModelProvider())
-          .store(store)
-          .observations(observations)
-          .build();
+    ModelProvider modelProvider() {
+      return new ScriptedModelProvider();
+    }
+
+    @Bean
+    Harness harness(
+        ModelProvider modelProvider, ConversationStore store, ObservationRegistry observations) {
+      return Nessy.harness(modelProvider).store(store).observations(observations).build();
     }
   }
 

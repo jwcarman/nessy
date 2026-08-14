@@ -49,7 +49,7 @@ function closeThinkingLine() {
 }
 
 function renderApprovalCard(card) {
-  // At-least-once narration (spec §4): a redelivered "approval-needed" for a token already on
+  // At-least-once narration (spec §4): a redelivered "tool-parked" for a token already on
   // screen — from the live stream, from a page rebuild that raced it, or both — draws nothing new.
   if (approvalsSection.querySelector(`[data-token="${card.token}"]`)) {
     return;
@@ -142,7 +142,7 @@ function turnHandlers() {
       const div = toolLines.get(payload.id);
       if (div) div.textContent += payload.error ? " — failed" : " — done";
     },
-    "approval-needed": (payload) => {
+    "tool-parked": (payload) => {
       closeThinkingLine();
       renderApprovalCard(payload);
     },
