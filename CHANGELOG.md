@@ -546,6 +546,69 @@ sequence of renames and interim shapes that produced it.
   - The patient-researcher spec retired UNBUILT (branch archived at
     `patient-researcher-archive`); the examples matrix now reads `chat-cli` /
     `chat-web` / `night-watchman`.
+- **The three front doors — one database, three small contracts.**
+  `ConversationStore` slims to a conversation's control block and its inbox
+  alone: `load`, the fenced `save(state, drainedInboxIds)` (CAS the control
+  block, drain the inbox, one atomic act, and nothing else), and the
+  unconditional, never-contended `append`. `Parks` (`spi.conversation`) is
+  the callback door's own registry — `park(Park)`, `find(ParkToken)`,
+  `forConversation(ConversationId)` over a durable, keep-forever record of
+  every wait this process has ever registered. `Transcript` (`spi.memory`)
+  is the memory jurisdiction's own storage primitive — an append-only,
+  versioned, per-conversation message log (`append`, `all`, `tail`, `page`),
+  the read surface audit and chat history need and the primitive
+  `TranscriptMemory`/`SummarizingMemory` build on. `HarnessBuilder#parks
+  (Parks)` gives the harness the same substrate seam the store already had,
+  defaulting to `Parks.inMemory()`.
+  - **The inbox rename.** `AgendaItem` → `InboxEntry` (`Told`/`Resolved`
+    variants keep their names, `Resolved` re-keyed `(callId, resolution)`),
+    `ConversationStore#appendAgenda` → `#append`, `Loaded.agenda` →
+    `Loaded.inbox` — the loop's internal vocabulary (`drained`, comments)
+    follows throughout.
+  - **`TranscriptMemory` — two memories become one.** `TranscriptMemory
+    (Transcript)` replaces both `ListMemory` and `JdbcMemory`: `remember`
+    appends to the transcript (idempotency is the transcript's own
+    no-stutter rule), `recall` reads the whole log back and trims the loop's
+    own open-tail bookkeeping before handing back a `Context`. Two
+    `TranscriptMemory` instances over the same `Transcript` are two windows
+    on one log, not two logs — the seam is the storage, the memory is the
+    policy.
+  - **`SummarizingMemory` — the tail API's dogfood, and the watermark
+    story.** Keeps a bounded tail of the transcript verbatim, folding
+    everything older into a running `SummaryStore` summary once that tail
+    grows past a threshold — the fold boundary chosen the same pair-safe way
+    `Context#pairSafeCut` chooses one, so a tool exchange straddling the
+    threshold is always kept whole. The watermark *is* the bookkeeping:
+    `SummaryStore#save` is deliberately unfenced, last-write-wins (design
+    §10) — a crash between summarizing and saving just means the next
+    `recall` re-summarizes the same tail and lands on the same watermark,
+    cheap re-work, never a lost word, since the transcript is the truth a
+    summary is only ever a cheaper way to re-read.
+  - **Tokens evicted from `ConversationState`; `consumeToken` dissolves into
+    the fold.** State no longer carries `ParkToken`s at all — the fold only
+    ever matched a parked call by id. Replay protection (a redelivered
+    resolution addressed to an already-settled call) is no longer a store
+    method to call; it is the fold-owned is-this-call-still-outstanding
+    check, run against `ConversationState.parkedCalls()` as the loop routes
+    each inbox entry.
+  - **The `Parks` registry, and register-before-save orphan tolerance.** A
+    tool that parks has already handed its token to the outside world before
+    the loop can act, so the registry write is forced to precede the save,
+    not chosen (design §5): a lost registry entry would strand a token the
+    world holds — a wedged conversation with no way back in. The inverse
+    failure — a registry entry whose save then loses the fence or never
+    lands — is merely tolerated as an orphan: its eventual resolution
+    translates fine, addresses a call the reloaded state no longer finds
+    outstanding, and drains as stale.
+  - **Wiring.** `nessy-autoconfigure` grows `Parks` and `Transcript` beans
+    (`JdbcParks`, `JdbcTranscript`) under the same classpath-and-datasource
+    rules as the store; the `Memory` bean becomes `TranscriptMemory` over the
+    `Transcript` bean, retiring `JdbcMemory`; `NessyAutoConfiguration` passes
+    the `Parks` bean into the harness. `ParkedCall` survives as the
+    approval-card read shape — `Agent.snapshot`/`Harness.peek` still hand
+    back `(token, call)` pairs — now sourced from `Parks.forConversation`
+    filtered to calls `state.parkedCalls()` still names outstanding, rather
+    than a park index the store used to sync on every save.
 
 ### Breaking (pre-1.0)
 
@@ -572,3 +635,23 @@ above:
   breaks at compile time; direct construction is the canonical offline way to
   test a `Tool`, so this is expected to touch every tool's own test suite, not
   a corner case.
+- **The store rework, stated loud (design §9): all deliberate,
+  in-development shape changes; nothing below breaks a shipped version,
+  because none exists.**
+  - `ConversationStore` loses `findPark`, `findParkConversation`,
+    `consumeToken`; `appendAgenda` → `append`; `Loaded.agenda` →
+    `Loaded.inbox`.
+  - `AgendaItem` → `InboxEntry`; `Resolved` re-keyed `(callId, resolution)`.
+  - `ConversationState.parkedCalls` becomes `List<ToolCall>`; `parked(call,
+    token)` → `parked(call)`. **Durable states serialized under the old
+    shape do not deserialize under the new one; no migration code ships
+    (pre-1.0).**
+  - `ParkedCall` is replaced by `Parks.Park` (registry) and the snapshot's
+    `(token, call)` card shape (which keeps the `ParkedCall` name and record
+    definition, now sourced from the registry).
+  - `ListMemory` and `JdbcMemory` are deleted in favor of `TranscriptMemory`
+    over a `Transcript`.
+  - `nessy_memory` renames to `nessy_transcript` (`seq` → `version`);
+    `nessy_agenda` → `nessy_inbox`; `nessy_park`/`nessy_token` dropped;
+    `nessy_parks` and `nessy_summary` added. Fresh bootstrap only; no data
+    migration.

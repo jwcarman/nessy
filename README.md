@@ -348,7 +348,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | Seam | In-core default | Upgrades Nessy provides | Extenders build |
 |---|---|---|---|
 | `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai` | any vendor |
-| `Memory` | `ListMemory` (verbatim, in-memory) | `JdbcMemory` (`nessy-store-jdbc`); summarizing/checkpointing implementations | RAG, redaction, external stores |
+| `Memory` | `TranscriptMemory` (verbatim, over `Transcript.inMemory()`) | `nessy-store-jdbc`'s durable `Transcript`; `SummarizingMemory` | RAG, redaction, external stores |
 | `ConversationStore` | `ConversationStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll(String)` / `parkAll()` (the durable-HITL posture: every approval parks, the UI is the approver) | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-model-calls | cost budget (post-usage) | custom |
@@ -505,10 +505,20 @@ list of exactly three tellings — and `Memory#recall(conversationId)` answers
 with the `Context` (`api.message`) the next model call gets: a validated,
 pairing-legal message sequence. What happens between being told and being
 asked is entirely the implementation's business — verbatim retention
-(`ListMemory`, the default), summarization, checkpointing, embedding — as
-long as `recall` returns something legal and a tool-use/tool-result pair is
-never split or reordered. `AgentBuilder#memory(Memory)` replaces the default
-outright.
+(`TranscriptMemory`, the default), summarization (`SummarizingMemory`),
+checkpointing, embedding — as long as `recall` returns something legal and a
+tool-use/tool-result pair is never split or reordered.
+`AgentBuilder#memory(Memory)` replaces the default outright.
+
+`Memory` is built on **`Transcript`** (`spi.memory`) — an append-only,
+versioned, per-conversation message log, the storage primitive some memories
+are based on and the read surface audit and chat history need.
+`TranscriptMemory` remembers everything verbatim through a `Transcript` and
+recalls it whole; `SummarizingMemory` keeps only a bounded tail of the
+transcript verbatim, folding everything older into a running summary (its
+`SummaryStore` watermark) once the tail grows past a threshold — a crash
+between summarizing and saving just means the next recall re-summarizes the
+same tail, never loses words, since the transcript itself is the truth.
 
 `Context` (`api.message`) owns the pairing invariant's safe edits so raw list
 surgery never happens in application code: the trusted kernel is
@@ -547,7 +557,7 @@ in-core implementation will.
 
 ## Durable, autonomous agents
 
-A conversation is a plain serializable record and a durable agenda, so an
+A conversation is a plain serializable record and a durable inbox, so an
 agent's conversation can run on **any node**, be driven by
 whatever process gets to it next, and pick up a wait that started days ago
 and a process ago. Nothing about the shape above changes to get this —
@@ -560,10 +570,10 @@ RunOutcome outcome = harness.resume(token, ToolResolution.completed(result));
 
 `harness.resume(token, resolution[, observer])` answers a parked call by
 token — the `ParkToken` a tool (or an `Approver`) handed back when it parked
-— appends the resolution to the conversation's agenda, and drives, exactly
+— appends the resolution to the conversation's inbox, and drives, exactly
 the way `tell` does. Appending always succeeds: a tell or a resolution is
 never refused for arriving while the conversation is busy, mid-turn, or even
-parked — it joins the durable agenda and the next drive (this call's own,
+parked — it joins the durable inbox and the next drive (this call's own,
 or a re-drive from any other node) picks it up. `harness.progress(token,
 message)` is `resume`'s non-terminal sibling: it never consumes the token,
 only narrates a still-running tool's progress to whoever is listening for
@@ -571,7 +581,7 @@ only narrates a still-running tool's progress to whoever is listening for
 home (a webhook, a queue, a cron poll) is the tool author's business.
 
 Two write disciplines carry this: a version-fenced control block (one writer
-wins; a stale writer reloads and re-drives, never overwrites) and the agenda,
+wins; a stale writer reloads and re-drives, never overwrites) and the inbox,
 which the fence doesn't gate, so a chatty world can never fence-fail a
 working driver. `ConversationStatus.PARKED` joins the other
 statuses — a parked conversation self-describes to any ops surface: no
@@ -584,22 +594,27 @@ required:
 ```java
 ConversationStore store =
     JdbcConversationStore.create(dataSource, objectMapper); // idempotent schema bootstrap
-Memory memory = JdbcMemory.create(dataSource, objectMapper); // same discipline, same lifespan
+Parks parks = JdbcParks.create(dataSource, objectMapper); // same discipline, same lifespan
+Transcript transcript = JdbcTranscript.create(dataSource, objectMapper); // same discipline, same lifespan
+Memory memory = new TranscriptMemory(transcript);
 
-Harness harness = Nessy.harness(anthropic).store(store).build();
+Harness harness = Nessy.harness(anthropic).store(store).parks(parks).build();
 Agent<String> agent = harness.agent().model("claude-sonnet-4-5").memory(memory).build();
 ```
 
 In a Spring Boot app the wiring above is optional: add
 `nessy-spring-boot-starter` and `nessy-store-jdbc` next to a `DataSource`
-bean, and the store, memory, and harness above are all autoconfigured — the
-application declares one bean, the agent. See [Spring Boot](#spring-boot)
-above for the whole story.
+bean, and the store, parks, transcript, memory, and harness above are all
+autoconfigured — the application declares one bean, the agent. See [Spring
+Boot](#spring-boot) above for the whole story.
 
-Restart survival needs both halves: the store keeps the control block (status,
-agenda, parks, debt), and `JdbcMemory` keeps the transcript the `Memory` seam
-owns — `ListMemory`, the default, dies with the JVM. The `chat-web` example
-([Examples](#examples)) demonstrates the pair surviving a kill mid-approval.
+Restart survival needs three doors now: the `ConversationStore` keeps the
+control block (status) and inbox; `Parks` keeps the registry of outstanding
+waits a callback's token must translate back into a conversation and call;
+and `TranscriptMemory` over a durable `Transcript` keeps the message log the
+`Memory` seam owns — `TranscriptMemory` over `Transcript.inMemory()`, the
+in-core default, dies with the JVM. The `chat-web` example
+([Examples](#examples)) demonstrates the trio surviving a kill mid-approval.
 
 `nessy-store-jdbc`'s own test suite includes container-backed tests against a
 real `postgres:17-alpine` (via Testcontainers), tagged `container` and
@@ -675,13 +690,14 @@ declared `contextWindow` dial survives, deliberately unconsumed by anything
 in the loop today, reserved for a future token-aware `Memory` to read.
 
 The durable kernel has landed too: every entry — a `tell`, a `resume` —
-appends to the conversation's durable agenda and drives with the same
+appends to the conversation's durable inbox and drives with the same
 re-entrant verb, `PARKED` conversations wait for a `harness.resume`/
-`harness.progress` from any node, and `nessy-store-jdbc` gives that a real
-Postgres-backed `ConversationStore` and `Memory` (`JdbcMemory`, the durable
-transcript) — see [Durable, autonomous agents](#durable-autonomous-agents)
-above and the `chat-web` example ([Examples](#examples) below), which
-dogfoods both against a real browser UI and a kill-and-restart.
+`harness.progress` from any node, and `nessy-store-jdbc` gives that three
+real Postgres-backed doors — `ConversationStore`, `Parks`, and `Memory`
+(`TranscriptMemory` over `JdbcTranscript`, the durable transcript) — see
+[Durable, autonomous agents](#durable-autonomous-agents) above and the
+`chat-web` example ([Examples](#examples) below), which dogfoods all three
+against a real browser UI and a kill-and-restart.
 
 The Spring Boot starter has landed too: `nessy-autoconfigure` (every
 `@AutoConfiguration` class, every feature dependency optional) and
