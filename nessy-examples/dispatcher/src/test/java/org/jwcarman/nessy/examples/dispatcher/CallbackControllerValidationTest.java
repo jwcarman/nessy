@@ -25,8 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * {@code requireOutcome}/{@code requireMessage}'s null/blank arms, pinned without Spring or Docker:
- * both guards run before {@link CallbackController} ever touches its {@code Harness}, so a {@code
- * null} harness is a safe collaborator here — every case throws before that field is read (the
+ * both guards run before {@link CallbackController} ever touches its {@code Agent}, so a {@code
+ * null} agent is a safe collaborator here — every case throws before that field is read (the
  * review's own finding: an empty body previously reached {@code Harness}/{@code ToolResult}
  * unguarded and NPE'd into a 500 instead of a clean 400).
  */
