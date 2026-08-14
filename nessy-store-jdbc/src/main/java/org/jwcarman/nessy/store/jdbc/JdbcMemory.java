@@ -38,13 +38,13 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
- * The durable floor: verbatim retention in Postgres, the {@code ListMemory} contract with a
+ * The durable floor: verbatim retention in Postgres, the {@code TranscriptMemory} contract with a
  * lifespan.
  *
  * <p>Every telling lands in {@code nessy_memory}, one row per message, ordered by an append-only
  * {@code seq} column. {@link #remember} holds the consecutive-duplicate rule that makes
- * at-least-once tellings idempotent — see {@code ListMemory}'s javadoc — the same way, but enforced
- * under a row lock instead of an in-process map: {@code SELECT ... FOR UPDATE} on the
+ * at-least-once tellings idempotent — see {@code TranscriptMemory}'s javadoc — the same way, but
+ * enforced under a row lock instead of an in-process map: {@code SELECT ... FOR UPDATE} on the
  * conversation's last row serializes concurrent {@code remember} calls for that conversation
  * against each other, so two racing tellings of the same message never both insert.
  *
@@ -56,7 +56,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
  * <p>{@link #recall} trims a trailing unanswered tool-use message — the loop's own park-in-progress
  * bookkeeping, remembered before the loop knows whether the call will park — before constructing
  * its {@link Context}, so a parked conversation's recall stays legal for the single-parked-call
- * case. {@code ListMemory} mirrors the same trim; see {@link #withoutOpenTail}. Neither
+ * case. {@code TranscriptMemory} mirrors the same trim; see {@link #withoutOpenTail}. Neither
  * implementation covers halt-while-parked: {@code ConversationState#halted} answers pending calls
  * but not parked ones, so a halt with a still-parked sibling flushes a results message that answers
  * only some of a prior tool-use message's ids — a trailing shape that is a {@code USER} message,

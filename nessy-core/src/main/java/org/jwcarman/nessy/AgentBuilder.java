@@ -38,8 +38,9 @@ import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.GatedToolCallExecutor;
 import org.jwcarman.nessy.spi.execute.ProviderModelCallExecutor;
-import org.jwcarman.nessy.spi.memory.ListMemory;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
@@ -167,11 +168,11 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   }
 
   /**
-   * Replaces the default {@link ListMemory} floor entirely: the content jurisdiction — told every
-   * message-grade happening, asked for the finished {@link org.jwcarman.nessy.api.message.Context}
-   * the loop's own {@code ModelCallExecutor} calls the model with. Freedom of retention, rule of
-   * law at the border (see {@link Memory}'s own javadoc): summarizing, checkpointing, or embedding
-   * memory all implement this one seam.
+   * Replaces the default {@link TranscriptMemory} floor entirely: the content jurisdiction — told
+   * every message-grade happening, asked for the finished {@link
+   * org.jwcarman.nessy.api.message.Context} the loop's own {@code ModelCallExecutor} calls the
+   * model with. Freedom of retention, rule of law at the border (see {@link Memory}'s own javadoc):
+   * summarizing, checkpointing, or embedding memory all implement this one seam.
    */
   public AgentBuilder<I> memory(Memory memory) {
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
@@ -319,8 +320,8 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     return TerminationPolicy.defaults();
   }
 
-  /** The floor: remembers everything verbatim, recalls it whole. */
+  /** The floor: remembers everything verbatim through a transcript, recalls it whole. */
   private Memory defaultMemory() {
-    return new ListMemory();
+    return new TranscriptMemory(Transcript.inMemory());
   }
 }

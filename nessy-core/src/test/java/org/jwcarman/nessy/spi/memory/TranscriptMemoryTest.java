@@ -29,9 +29,10 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
-class ListMemoryTest {
+class TranscriptMemoryTest {
 
-  private final ListMemory memory = new ListMemory();
+  private final Transcript transcript = Transcript.inMemory();
+  private final TranscriptMemory memory = new TranscriptMemory(transcript);
 
   @Test
   void recalls_exactly_what_it_was_told_in_order() {
@@ -66,7 +67,8 @@ class ListMemoryTest {
   @Test
   void tolerates_the_same_message_told_twice_in_a_row() {
     // At-least-once tellings (design 2026-08-11, ruling 6): a crash between telling
-    // Memory and persisting state re-tells the same message. remember is idempotent.
+    // Memory and persisting state re-tells the same message. remember is idempotent —
+    // the transcript's own no-stutter rule, not reimplemented here.
     ConversationId id = ConversationId.generate();
     Message toldFirst = Message.user("once only, please");
     Message toldAgain = Message.user("once only, please");
@@ -77,20 +79,13 @@ class ListMemoryTest {
   }
 
   @Test
-  void recall_returns_an_immutable_snapshot_unaffected_by_later_remembering() {
-    // recall's list must be a point-in-time snapshot, not a live view: if remember ever
-    // mutated a list already handed out by recall, a reader holding an earlier recall
-    // result would see later tellings appear underneath it. Fixed by always storing a
-    // fresh List.copyOf in ListMemory#remember rather than mutating in place — this also
-    // removes the unsynchronized-read race between remember and recall on the same id.
+  void recall_returns_an_immutable_snapshot() {
     ConversationId id = ConversationId.generate();
     Message first = Message.user("first");
     memory.remember(id, first);
 
-    Context earlySnapshot = memory.recall(id);
-    memory.remember(id, Message.user("second"));
-
-    List<Message> messages = earlySnapshot.messages();
+    Context recalled = memory.recall(id);
+    List<Message> messages = recalled.messages();
 
     assertThat(messages).containsExactly(first);
     Message mutation = Message.user("mutation");
@@ -142,5 +137,21 @@ class ListMemoryTest {
     Context recalled = memory.recall(id);
 
     assertThat(recalled.messages()).containsExactly(userTurn, answeredToolUse, toolResults);
+  }
+
+  @Test
+  void two_transcript_memories_over_the_same_transcript_see_each_others_tellings() {
+    // The seam is the storage, the memory is the policy: two TranscriptMemory instances
+    // wrapping the same Transcript are two windows on one log, not two logs.
+    ConversationId id = ConversationId.generate();
+    TranscriptMemory other = new TranscriptMemory(transcript);
+    Message first = Message.user("told through the first instance");
+    Message second = Message.user("told through the second instance");
+
+    memory.remember(id, first);
+    other.remember(id, second);
+
+    assertThat(memory.recall(id).messages()).containsExactly(first, second);
+    assertThat(other.recall(id).messages()).containsExactly(first, second);
   }
 }

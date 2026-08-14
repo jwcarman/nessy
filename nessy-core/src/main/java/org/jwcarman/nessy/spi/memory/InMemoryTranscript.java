@@ -25,14 +25,13 @@ import org.jwcarman.nessy.api.message.Message;
 /**
  * The in-process transcript: every entry ever appended, kept in a map for the life of the process.
  *
- * <p>Copies {@link ListMemory}'s concurrency discipline exactly, for the same reason. {@link
- * #append} runs the whole read-decide-write step inside one {@link Map#compute}, so two concurrent
- * appenders for the same conversation never race to assign the same version or step on each other's
- * no-stutter check. Every value ever stored under a key is an immutable snapshot: a fresh {@link
- * List#copyOf} is built and stored, never a list already published to the map mutated in place. The
- * three read methods' unsynchronized {@link Map#get} are therefore safe by construction — {@link
- * ConcurrentHashMap}'s per-key happens-before on the reference swap is all the safety a read of an
- * immutable value ever needs.
+ * <p>{@link #append} runs the whole read-decide-write step inside one {@link Map#compute}, so two
+ * concurrent appenders for the same conversation never race to assign the same version or step on
+ * each other's no-stutter check. Every value ever stored under a key is an immutable snapshot: a
+ * fresh {@link List#copyOf} is built and stored, never a list already published to the map mutated
+ * in place. The three read methods' unsynchronized {@link Map#get} are therefore safe by
+ * construction — {@link ConcurrentHashMap}'s per-key happens-before on the reference swap is all
+ * the safety a read of an immutable value ever needs.
  *
  * <p>Every conversation it has ever been told about grows without eviction for the life of the
  * process — there is no forgetting, no cap, no compaction. That suits a process that owns its

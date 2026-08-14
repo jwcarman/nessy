@@ -62,8 +62,9 @@ import org.jwcarman.nessy.spi.conversation.StaleStateException;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.ModelCallExecutor;
 import org.jwcarman.nessy.spi.execute.ToolCallExecutor;
-import org.jwcarman.nessy.spi.memory.ListMemory;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 
 /**
  * The fold→perform cycle, pinned end to end with fakes cheap enough to make every ordering law
@@ -446,11 +447,13 @@ class ConversationLoopTest {
     }
   }
 
-  /** Records every message it is told, in birth order, on top of a {@link ListMemory} floor. */
+  /**
+   * Records every message it is told, in birth order, on top of a {@link TranscriptMemory} floor.
+   */
   private static final class RecordingMemory implements Memory {
 
     private final List<String> journal;
-    private final Memory delegate = new ListMemory();
+    private final Memory delegate = new TranscriptMemory(Transcript.inMemory());
     private final List<Message> remembered = new ArrayList<>();
 
     RecordingMemory(List<String> journal) {
@@ -482,7 +485,7 @@ class ConversationLoopTest {
    */
   private static final class ThrowOnNthRememberMemory implements Memory {
 
-    private final Memory delegate = new ListMemory();
+    private final Memory delegate = new TranscriptMemory(Transcript.inMemory());
     private final List<Message> remembered = new ArrayList<>();
     private final int throwOnCall;
     private final RuntimeException exception;

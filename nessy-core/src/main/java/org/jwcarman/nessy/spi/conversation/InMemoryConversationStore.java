@@ -34,9 +34,9 @@ import org.jwcarman.nessy.api.conversation.ParkedCall;
  *
  * <p>Every list ever handed to a caller or held in a map value is an immutable snapshot: an append
  * always builds and stores a fresh {@link List#copyOf}, never mutates a list already published —
- * the same {@code ListMemory} discipline, for the same reason. {@link ConcurrentHashMap}'s per-key
- * happens-before on the reference swap is all the safety a read of an immutable value ever needs,
- * with no risk of observing a torn or concurrently-modified list.
+ * the same {@code TranscriptMemory} discipline, for the same reason. {@link ConcurrentHashMap}'s
+ * per-key happens-before on the reference swap is all the safety a read of an immutable value ever
+ * needs, with no risk of observing a torn or concurrently-modified list.
  *
  * <p>The state, the agenda, and the park index are three separate maps, so no single-map operation
  * (a {@link ConcurrentHashMap#compute}, say) can make a save's compare-and-bump, its agenda drain,

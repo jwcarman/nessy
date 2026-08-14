@@ -15,10 +15,7 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Context;
@@ -27,54 +24,40 @@ import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 
 /**
- * The floor: remembers everything verbatim, recalls it whole.
+ * The floor: remembers everything verbatim through a transcript, recalls it whole.
  *
  * <p>Legal messages went in, so {@link #recall} trims the one legitimate exception before the
  * returned context can be illegal: the loop remembers the model's tool-use message the moment its
  * fold settles, before it learns whether the call will park, so a parked conversation's raw telling
  * can legitimately end in an unanswered tool-use message. That open tail — the loop's own
  * park-in-progress bookkeeping, not settled dialogue yet — is dropped before the trimmed list
- * reaches {@link Context#of}, the same narrow trim {@code JdbcMemory} applies at recall time (see
- * its {@code withoutOpenTail}). This does not make {@link #recall} total: a halt while a sibling
- * call is still parked answers {@link ConversationState#pendingCalls()} but not {@link
+ * reaches {@link Context#of}. This does not make {@link #recall} total: a halt while a sibling call
+ * is still parked answers {@link ConversationState#pendingCalls()} but not {@link
  * ConversationState#parkedCalls()} (a recorded follow-up), so the flushed results message can
  * answer only some of a prior tool-use message's ids — a shape this trim does not target and {@link
- * Context#of} still rejects. Idempotency is the consecutive-duplicate rule: a message equal to the
- * last one remembered is the at-least-once re-telling of crash recovery, not new speech, and is
- * dropped.
+ * Context#of} still rejects. Idempotency is the transcript's own no-stutter rule, not reimplemented
+ * here.
  *
- * <p>Every value ever stored under a key is an immutable snapshot: {@link #remember} always builds
- * and stores a fresh {@link List#copyOf}, never mutates a list already published to the map. {@link
- * #recall}'s unsynchronized {@link Map#get} is therefore safe by construction — {@link
- * ConcurrentHashMap}'s per-key happens-before on the reference swap is all the safety a read of an
- * immutable value ever needs, with no risk of observing a torn or concurrently-modified list.
- *
- * <p>Every conversation it has ever been told about grows without eviction for the life of the
- * process — there is no forgetting, no cap, no compaction. That suits a process that owns its
- * sessions, not a long-lived multi-tenant server.
+ * <p>Two {@code TranscriptMemory} instances built over the same {@link Transcript} are two windows
+ * on one log, not two logs: the seam is the storage, the memory is the policy.
  */
-public final class ListMemory implements Memory {
+public final class TranscriptMemory implements Memory {
 
-  private final Map<ConversationId, List<Message>> conversations = new ConcurrentHashMap<>();
+  private final Transcript transcript;
+
+  public TranscriptMemory(Transcript transcript) {
+    this.transcript = transcript;
+  }
 
   @Override
   public void remember(ConversationId id, Message message) {
-    conversations.compute(
-        id,
-        (key, existing) -> {
-          if (existing != null && !existing.isEmpty() && existing.getLast().equals(message)) {
-            return existing;
-          }
-          List<Message> appended = new ArrayList<>(existing == null ? List.of() : existing);
-          appended.add(message);
-          return List.copyOf(appended);
-        });
+    transcript.append(id, message); // idempotency is the transcript's no-stutter rule
   }
 
   @Override
   public Context recall(ConversationId id) {
-    List<Message> messages = conversations.get(id);
-    return Context.of(withoutOpenTail(messages == null ? List.of() : messages));
+    List<Message> messages = transcript.all(id).stream().map(Transcript.Entry::message).toList();
+    return Context.of(withoutOpenTail(messages));
   }
 
   /**
@@ -85,10 +68,9 @@ public final class ListMemory implements Memory {
    * contracted to "return a legal {@code Context}" (see {@code Memory}'s javadoc); dropping that
    * one open tail — the loop's own park-in-progress bookkeeping, not settled dialogue yet — is what
    * keeps this implementation honest to that contract for the single-parked-call case, without
-   * touching the fold/remember timing itself. Mirrors {@code JdbcMemory}'s own {@code
-   * withoutOpenTail}. Does not cover halt-while-parked (see the class javadoc) — that shape's
-   * trailing message is a {@code USER} results message, not an open {@code ASSISTANT} tool-use, so
-   * this check never fires for it.
+   * touching the fold/remember timing itself. Does not cover halt-while-parked (see the class
+   * javadoc) — that shape's trailing message is a {@code USER} results message, not an open {@code
+   * ASSISTANT} tool-use, so this check never fires for it.
    */
   private static List<Message> withoutOpenTail(List<Message> messages) {
     if (messages.isEmpty()) {

@@ -18,20 +18,21 @@ package org.jwcarman.nessy.examples.watchman;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.spi.memory.ListMemory;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 
 /**
  * The bound (spec §4): freedom of retention, rule of law at the border. Retention delegates whole
- * to {@link ListMemory}; {@code recall} hands the loop only the last {@code window} messages via
- * {@link Context#keepRecent}, whose cut is pair-safe by construction — the trimmed context is
+ * to {@link TranscriptMemory}; {@code recall} hands the loop only the last {@code window} messages
+ * via {@link Context#keepRecent}, whose cut is pair-safe by construction — the trimmed context is
  * always wire-legal, no tool exchange ever split. The watchman's horizon is its window: it
  * remembers recent rounds, not its whole life, which is why an endless conversation cannot grow the
  * model call.
  */
 public final class WindowedMemory implements Memory {
 
-  private final Memory delegate = new ListMemory();
+  private final Memory delegate = new TranscriptMemory(Transcript.inMemory());
   private final int window;
 
   public WindowedMemory(int window) {
