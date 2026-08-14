@@ -472,6 +472,15 @@ class HarnessTest {
       RunOutcome outcome = harness.approve(token);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
+      List<ToolResultBlock> results =
+          provider.requests().getLast().context().messages().stream()
+              .flatMap(message -> message.content().stream())
+              .filter(ToolResultBlock.class::isInstance)
+              .map(ToolResultBlock.class::cast)
+              .toList();
+      assertThat(results).isNotEmpty();
+      assertThat(results.getFirst().isError()).isFalse();
+      assertThat(results.getFirst().content()).startsWith("found:");
     }
 
     /**
