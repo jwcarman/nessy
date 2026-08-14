@@ -306,9 +306,12 @@ returns a `Step`: the next state, the messages born this fold, and a list of
 `Effect`s describing what should happen next, never performing I/O itself.
 `EffectExecutors` performs those effects and feeds every result back in as a
 `ConversationEvent`, so a tool call and a model call are both just "perform an
-effect, get a fact back"; `TurnEvent`s narrate the texture in between (streamed
-tokens, tool requests) to whatever `TurnObserver` is watching, independent of
-the fold. `ConversationState` is a plain serializable record — pausing is "stop
+effect, get a fact back" — except when an effect **parks** instead: a tool (or
+an approver) that must outlive the process hands back a `ParkToken`, and the
+fact arrives whenever `harness.resume(token, …)` delivers it, from any process,
+however much later; `TurnEvent`s narrate the texture in between (streamed
+tokens, tool requests, the park itself) to whatever `TurnObserver` is watching,
+independent of the fold. `ConversationState` is a plain serializable record — pausing is "stop
 feeding facts," resuming is "load the state and keep feeding," whether the gap
 is 200 milliseconds or two days — while `Memory` (not `ConversationState`)
 holds the settled transcript a model call actually sees. See
@@ -347,11 +350,11 @@ Nessy itself will provide, and room for anyone else to extend it.
 | `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai` | any vendor |
 | `Memory` | `ListMemory` (verbatim, in-memory) | `JdbcMemory` (`nessy-store-jdbc`); summarizing/checkpointing implementations | RAG, redaction, external stores |
 | `ConversationStore` | `ConversationStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
-| `Approver` | `allowAll()` / `denyAll()` | console; Slack/webhook | anything human-shaped |
+| `Approver` | `allowAll()` / `denyAll(String)` / `parkAll()` (the durable-HITL posture: every approval parks, the UI is the approver) | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-model-calls | cost budget (post-usage) | custom |
 | `UsagePolicy` | `allow()` / `requireApproval()` stated per `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
 | Declared listening | `listen(type, listener)` sync | `listenAsync(type, listener)` per listener | bridges (SSE, message bus) via `Conversation#events()` |
-| Observations | `ObservationRegistry.NOOP` | conventions + starter wiring | any Micrometer handler |
+| Observations | `ObservationRegistry.NOOP` | `nessy-spring-boot-starter` wires Boot's registry automatically | any Micrometer handler |
 
 Retries are a decorator, not a provider feature: wrap any `ModelProvider` with
 `RetryingModelProvider.wrap(provider, RetryPolicy.defaults(),
