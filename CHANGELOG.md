@@ -650,21 +650,26 @@ sequence of renames and interim shapes that produced it.
   `AssistantSaid(Message)` — the settled assistant-role message behind the
   `TextDelta`/`ThinkingDelta` preview, emitted once per model response the
   fold absorbs, including tool-use-only responses — and `TurnEnded(status,
-  failureReason)`, the segment's closing line, emitted exactly once per
-  observed segment at every exit: quiescent completion, `FAILED` (with its
-  reason), and `PARKED`. `TurnObserverAdapter`/`TurnObserverAdapter.Builder`
-  grow matching `onAssistantSaid`/`onTurnEnded` hooks, and `TurnObserver`
-  gains a `logging(Logger, String prefix)` factory — a ready-made observer
-  that narrates a turn's whole story (text, thinking, tool calls, the
-  ending) to a `Logger` at one call site, prefixed per caller. `TurnEventSse`
+  failureReason)`, the segment's closing line, emitted at every exit:
+  quiescent completion, `FAILED` (with its reason), and `PARKED`. Like
+  `AssistantSaid` and `ToolCallParked`, narration is at-least-once per drive
+  attempt, not exactly-once: a fence-lost retry may re-narrate the ending;
+  consumers dedupe. `TurnObserverAdapter` and `TurnObserverBuilder`
+  (built via `TurnObserver.builder()`) grow matching
+  `onAssistantSaid`/`onTurnEnded` hooks, and `TurnObserver` gains a
+  `logging(Logger, String prefix)` factory — a ready-made observer that
+  narrates settled assistant messages (`AssistantSaid`, not the streaming
+  deltas), tool requested/completed/parked, and the segment's ending (with
+  the failure reason repeated at `WARN`) to a `Logger` at one call site,
+  prefixed per caller. `TurnEventSse`
   takes over emitting the wire's `done` event itself (the hand-synthesized
   `done` chat-web's controllers used to build by hand is gone) and gains a
   new `message` wire event carrying `AssistantSaid`'s non-blank text.
-- **Two guards where silence used to cost a demo its lesson.** The
-  autoconfigurer now logs a WARN when `Memory` is left at its in-memory
-  default while a durable store is explicitly configured — a
-  configuration that quietly discards conversation history across restarts
-  was previously silent. `UsagePolicy.allow()` now returns a canonical
+- **Two guards where silence used to cost a demo its lesson.**
+  `AgentBuilder` (in `nessy-core`) now logs a WARN when `Memory` is left at
+  its in-memory default while the harness's `ConversationStore` was
+  explicitly configured — a configuration that quietly discards
+  conversation history across restarts was previously silent. `UsagePolicy.allow()` now returns a canonical
   singleton (`AgentBuilder` uses identity, not equality, to recognize an
   all-allow grant) so the existing "no approver configured" WARN can be
   skipped precisely when every granted tool is already all-allow — the

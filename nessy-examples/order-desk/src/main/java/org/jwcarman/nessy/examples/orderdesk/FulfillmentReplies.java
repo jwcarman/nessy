@@ -23,6 +23,9 @@ import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.slf4j.Logger;
@@ -95,13 +98,18 @@ public class FulfillmentReplies {
 
   /**
    * Resumes the parked call and narrates the resumed segment: a {@link TurnObserver#builder()}
-   * composition — accumulated text deltas as one "desk says" line, tool completions logged as they
-   * land — standing in for {@link TurnObserver#logging} because the order id isn't known until the
-   * drive returns, and so can't seed a per-call prefix the way {@link OrderDesk#on(OrderEvent)}'s
-   * does. The order id is read back off the returned {@link RunOutcome}'s conversation id rather
-   * than threaded in separately, stripping the {@code "order-"} prefix {@link OrderDesk} mints it
-   * with, so a resumed segment identifies itself by the same order number the original {@code order
-   * N begins}/{@code ends} lines used, matching {@link TurnObserver#logging}'s ends/failed shape.
+   * composition — settled assistant messages joined into one "says" line the way {@link
+   * TurnObserver#logging}'s own says-line does (text blocks joined in order, a blank message
+   * contributing nothing), tool completions logged as they land — standing in for {@link
+   * TurnObserver#logging} because the order id isn't known until the drive returns, and so can't
+   * seed a per-call prefix the way {@link OrderDesk#on(OrderEvent)}'s does. The order id is read
+   * back off the returned {@link RunOutcome}'s conversation id rather than threaded in separately,
+   * stripping the {@code "order-"} prefix {@link OrderDesk} mints it with, so a resumed segment
+   * identifies itself by the same order number the original {@code order N begins}/{@code ends}
+   * lines used, matching {@link TurnObserver#logging}'s says/ends/failed shape exactly — unlike the
+   * delta-accumulation this replaced, which never produced a says-line at all against a
+   * non-streaming provider (deltas are a streaming-provider artifact; {@link
+   * org.jwcarman.nessy.api.turn.TurnEvent.AssistantSaid} is emitted regardless).
    *
    * <p>{@link UnknownParkTokenException} is logged and RETHROWN, not swallowed: the registry
    * survives resolution (a resolved park drains only when {@link Harness#resume} actually drives
@@ -120,7 +128,7 @@ public class FulfillmentReplies {
               token,
               new ToolResolution.Completed(ToolResult.ok(text)),
               TurnObserver.builder()
-                  .onTextDelta(delta -> said.append(delta.text()))
+                  .onAssistantSaid(saidEvent -> append(said, joinedText(saidEvent.message())))
                   .onToolCallCompleted(
                       completed ->
                           LOGGER.info(
@@ -134,7 +142,7 @@ public class FulfillmentReplies {
     }
     String orderId = orderIdOf(outcome);
     if (!said.isEmpty()) {
-      LOGGER.info("order {} desk says: {}", orderId, said);
+      LOGGER.info("order {} says: {}", orderId, said);
     }
     LOGGER.info("order {} ends: {}", orderId, outcome.state().status());
     if (outcome.state().status() == ConversationStatus.FAILED) {
@@ -143,6 +151,24 @@ public class FulfillmentReplies {
           orderId,
           Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
     }
+  }
+
+  /** Skips a blank {@code text} the way {@link TurnObserver#logging} skips a blank message. */
+  private static void append(StringBuilder said, String text) {
+    if (!text.isBlank()) {
+      said.append(text);
+    }
+  }
+
+  /** The message's {@link TextBlock} content, concatenated in order — mirrors {@code logging}. */
+  private static String joinedText(Message message) {
+    StringBuilder joined = new StringBuilder();
+    for (ContentBlock block : message.content()) {
+      if (block instanceof TextBlock(String text)) {
+        joined.append(text);
+      }
+    }
+    return joined.toString();
   }
 
   private static String orderIdOf(RunOutcome outcome) {

@@ -59,9 +59,14 @@ public final class TurnRunner {
    * emitter it receives as it runs; the {@code done} event now arrives that way too, via {@code
    * TurnEnded}, so {@code onOutcome} is left only whatever non-wire cleanup a caller still wants
    * (e.g. completing the emitter) — the two-arg signature stays for that. A {@link
-   * RuntimeException} escaping {@code turn} instead bypasses {@code onOutcome} entirely — no {@code
-   * TurnEnded} was narrated for that attempt — and ends the stream itself: one {@code done} event
-   * naming the failure, then {@link SseEmitter#completeWithError}.
+   * RuntimeException} escaping {@code turn} instead bypasses {@code onOutcome} entirely and ends
+   * the stream itself: one synthesized {@code done} event naming the failure, then {@link
+   * SseEmitter#completeWithError}. This synthesized {@code done} covers the common case, where the
+   * throw preceded any narrated ending for the attempt — but {@code TurnEnded} narration is
+   * at-least-once, not exactly-once (see its own javadoc), so a park that was already narrated
+   * before a later inbox entry throws can leave the stream carrying both the narrated {@code done}
+   * and this synthesized one. Consumers already treat {@code done} idempotently, which is what
+   * covers this case too.
    */
   public SseEmitter run(
       Function<SseEmitter, RunOutcome> turn, BiConsumer<SseEmitter, RunOutcome> onOutcome) {

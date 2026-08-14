@@ -477,13 +477,19 @@ With `spring-webmvc` on the classpath, a `TurnRunner` bean also appears: it
 runs a turn on a virtual thread with the request's Micrometer context
 propagated onto it, handing back the `SseEmitter` an application's own
 controller streams from. `TurnEventSse` maps that turn's `TurnEvent`s onto a
-stable wire vocabulary for a browser to key off of, seven names: `delta`,
-`thinking`, `tool-requested`, `tool-progress`, `tool-decided`,
-`tool-completed`, `tool-parked` (`{token, tool, args}`). `done` is not one of
-them — it is emitted separately, by `TurnRunner` itself on failure
-(`{status: "ERROR", failureReason}`) and by the application's own controller
-on success; `"ERROR"` there is a wire sentinel for the failure case, not a
-`ConversationStatus` value.
+stable wire vocabulary for a browser to key off of: `delta`, `thinking`,
+`tool-requested`, `tool-progress`, `tool-decided`, `tool-completed`,
+`tool-parked` (`{token, tool, args}`), `message` (`{text}`, the settled
+assistant message's joined prose — skipped when blank), and `done`
+(`{status[, failureReason]}`). `TurnEventSse` emits `done` itself, from
+`TurnEvent.TurnEnded` — an application's own controller no longer builds it
+by hand; `TurnRunner` synthesizes one more `done` only when an exception
+escapes the turn before any ending was ever narrated (`{status: "ERROR",
+failureReason}`, a wire sentinel, not a `ConversationStatus` value). Note for
+browser clients: `message` is also the `EventSource` API's DEFAULT event
+name, so an `onmessage` catch-all receives those frames with no listener
+registration at all — named listeners remain the intended pattern for every
+event on this wire, `message` included.
 
 The whole property surface is deliberately this small — everything more
 exotic rides `fromEnv()`'s own ambient resolution or a hand-declared bean:

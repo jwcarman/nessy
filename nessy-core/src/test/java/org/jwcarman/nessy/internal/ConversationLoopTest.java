@@ -362,6 +362,55 @@ class ConversationLoopTest {
   }
 
   /**
+   * Sabotages exactly the {@code save}-th call to {@code save} (1-indexed, counted across the whole
+   * fixture, retries included) — the same steal-the-version trick {@link StaleOnceStore} uses, but
+   * keyed on call order rather than "the first ever", so a fixture can target a save that lands
+   * <em>after</em> some earlier save in the same {@code driveOnce} attempt already committed (S1: a
+   * {@link TurnEvent.TurnEnded} narrated by an earlier {@code applyParked} in the same attempt,
+   * then a later, unrelated save in that same attempt loses the fence).
+   */
+  private static final class SabotagesTheNthSaveOnceStore implements ConversationStore {
+
+    private final List<String> journal;
+    private final int sabotageAt;
+    private final ConversationStore delegate = ConversationStore.inMemory();
+    private int saveCount;
+    private boolean sabotaged;
+
+    SabotagesTheNthSaveOnceStore(List<String> journal, int sabotageAt) {
+      this.journal = journal;
+      this.sabotageAt = sabotageAt;
+    }
+
+    @Override
+    public Optional<Loaded> load(ConversationId id) {
+      journal.add("load");
+      return delegate.load(id);
+    }
+
+    @Override
+    public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
+      saveCount++;
+      if (saveCount == sabotageAt && !sabotaged) {
+        sabotaged = true;
+        ConversationState stolen = delegate.load(state.id()).orElseThrow().state();
+        delegate.save(stolen, List.of());
+      }
+      return delegate.save(state, drainedInboxIds);
+    }
+
+    @Override
+    public void append(ConversationId id, InboxEntry entry) {
+      delegate.append(id, entry);
+    }
+
+    /** Seeds initial state directly at the delegate, bypassing the counted sabotage. */
+    void seed(ConversationState state) {
+      delegate.save(state, List.of());
+    }
+  }
+
+  /**
    * Every {@code save} fails, forever — the permanently-outrun driver {@code drive()} must give up
    * on.
    */
@@ -1702,6 +1751,75 @@ class ConversationLoopTest {
           .isInstanceOf(StaleStateException.class);
 
       assertThat(journal.stream().filter("load"::equals)).hasSize(5);
+    }
+
+    /**
+     * Opus final review, S1: {@code endingNarrated} is attempt-scoped (a fresh flag per {@code
+     * driveOnce} call), so a segment that narrates {@link TurnEvent.TurnEnded} mid-attempt via
+     * {@code applyParked} and then loses a <em>later</em> save in that same attempt is retried with
+     * a fresh flag — and the winning retry, finding nothing left to fold but a drained-inbox tail
+     * save to make, narrates its own {@code TurnEnded} too. Built the way this bug actually
+     * reaches: {@code c1} is already parked (seeded); resolving it flushes straight into a new
+     * model call that asks for {@code d1}, which itself parks and — being the sole outstanding call
+     * — closes the cycle, narrating {@code TurnEnded(PARKED)} from inside {@code applyParked}. A
+     * second, stale {@code Resolved} entry for the now-settled {@code c1} (a redelivered duplicate)
+     * drains quietly afterward, but its drain still owes the attempt's tail save — save #4 by this
+     * fixture's count, the one {@link SabotagesTheNthSaveOnceStore} is aimed at. That save losing
+     * the fence is the at-least-once rule {@link TurnEvent}'s type-level javadoc already states for
+     * {@link TurnEvent.ToolCallParked} and {@link TurnEvent.AssistantSaid}, extended to {@code
+     * TurnEnded}: this pins two narrations, one per attempt, never more than one from either
+     * attempt alone, and a drive that still lands on the correct final state.
+     */
+    @Test
+    void a_tail_save_that_loses_the_fence_after_turn_ended_was_narrated_re_narrates_it_on_retry() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ToolCall d1 = toolCall("d1", "fetch");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(d1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.resumesTo("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
+      tools.parksWhen("d1");
+      // Save order this attempt owes: #1 c1's resume-fold (AWAITING_MODEL), #2 the model's homework
+      // fold (EXECUTING_TOOL), #3 applyParked's own parked-closure save (PARKED, narrates
+      // TurnEnded), #4 the tail save draining the second, stale Resolved entry — sabotage #4, the
+      // one that lands strictly after the narration in #3.
+      SabotagesTheNthSaveOnceStore store = new SabotagesTheNthSaveOnceStore(journal, 4);
+      store.seed(
+          ConversationState.newConversation(ID)
+              .withParkedCalls(List.of(c1))
+              .with(ConversationStatus.PARKED));
+      store.append(
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("a"))));
+      store.append(
+          ID,
+          InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("duplicate"))));
+      ConversationLoop loop =
+          new ConversationLoop(
+              new EffectExecutors(model, tools),
+              new RecordingMemory(journal),
+              TerminationPolicy.never(),
+              store,
+              Parks.inMemory(),
+              new RecordingEmitter(journal),
+              ObservationRegistry.NOOP);
+      List<TurnEvent> events = new ArrayList<>();
+
+      RunOutcome outcome = loop.drive(ID, events::add);
+
+      assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
+      assertThat(outcome.state().parkedCalls()).extracting(ToolCall::id).containsExactly(d1.id());
+      List<TurnEvent> endings =
+          events.stream().filter(e -> e instanceof TurnEvent.TurnEnded).toList();
+      assertThat(endings).isNotEmpty();
+      assertThat(endings).containsOnly(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+      long attempts = journal.stream().filter("load"::equals).count();
+      // No more than one TurnEnded per attempt: the CAS inside one driveOnce call structurally
+      // forbids it, so the total narrated can never exceed the number of attempts this drive took.
+      assertThat(endings.size()).isLessThanOrEqualTo((int) attempts);
+      // The bug this test exists to pin: the fenced-out attempt's narration was not suppressed, so
+      // this drive really did narrate the ending twice — once per attempt.
+      assertThat(endings).hasSize(2);
+      assertThat(attempts).isEqualTo(2);
     }
   }
 

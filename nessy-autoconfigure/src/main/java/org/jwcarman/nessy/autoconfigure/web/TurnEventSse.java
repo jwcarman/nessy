@@ -104,6 +104,12 @@ public final class TurnEventSse {
    * TurnEvent.AssistantSaid}, but the wire already tells that story through the {@code
    * tool-requested}/{@code tool-parked} events; a second, empty {@code message} event would be
    * noise a reference client has to learn to ignore rather than a fact it needs.
+   *
+   * <p>Naming note: {@code message} is also the browser {@code EventSource} API's DEFAULT event
+   * name, so a client that wires only {@code onmessage} as a catch-all receives these frames there
+   * with no listener registration at all. Named listeners ({@code addEventListener("message", …)},
+   * {@code addEventListener("delta", …)}, etc.) remain the intended pattern for every event on this
+   * wire, {@code message} included.
    */
   private static Optional<Event> assistantSaid(Message message) {
     String text = textOf(message);

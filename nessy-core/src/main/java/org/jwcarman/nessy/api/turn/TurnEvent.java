@@ -148,15 +148,20 @@ public sealed interface TurnEvent {
   }
 
   /**
-   * The segment's closing line — emitted exactly once per observed segment at every exit: quiescent
-   * completion ({@code COMPLETE} or {@code IDLE}), {@code FAILED} (with {@code failureReason}
-   * carried), and {@code PARKED}. {@code failureReason} is meaningful only when {@code status} is
-   * {@code FAILED}; it is {@code null} otherwise — mirroring {@link
+   * The segment's closing line — emitted at every exit a segment observes: quiescent completion
+   * ({@code COMPLETE} or {@code IDLE}), {@code FAILED} (with {@code failureReason} carried), and
+   * {@code PARKED}. {@code failureReason} is meaningful only when {@code status} is {@code FAILED};
+   * it is {@code null} otherwise — mirroring {@link
    * org.jwcarman.nessy.api.conversation.ConversationState}'s one sanctioned nullable field, and no
-   * cross-field validation beyond {@code status} itself being non-null is enforced here. Post-save
-   * discipline, like {@link ToolCallParked}: an ending that never committed is never narrated — a
-   * driver whose own save loses a fence, or whose call throws before landing one, tells no ending
-   * at all for that attempt.
+   * cross-field validation beyond {@code status} itself being non-null is enforced here.
+   *
+   * <p>Exactly once <em>per drive attempt</em>, not per observed segment: subject to this type's
+   * at-least-once narration rule (see the type-level javadoc's first bullet, the same rule {@link
+   * ToolCallParked} and {@link AssistantSaid} document). A driver whose own save loses a fence
+   * after this was already narrated for that attempt is retried, and the winning retry — even when
+   * it has nothing left to fold but a drained-inbox tail save — narrates its own ending too;
+   * consumers keying UI on this event dedupe the way {@link ToolCallParked} consumers are already
+   * advised to.
    */
   record TurnEnded(ConversationStatus status, String failureReason) implements TurnEvent {
     public TurnEnded {

@@ -56,8 +56,10 @@ public interface UsagePolicy {
 
   /**
    * The canonical singleton {@link #allow()} returns. A dedicated class rather than a field
-   * directly on this interface: interface fields are implicitly {@code public static final}, and
-   * this one is deliberately not public API — only {@link #allow()} is.
+   * directly on this interface: interface fields are implicitly {@code public static final}, and a
+   * field here would publish this type's shape directly. The type itself is necessarily public —
+   * interfaces cannot hide a member type — but its constructor and {@link #INSTANCE} are private,
+   * so the canonical instance is reachable only through {@link #allow()}.
    */
   final class Allow implements UsagePolicy {
 
