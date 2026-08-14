@@ -23,14 +23,13 @@ import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.AgentConfigurationException;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -62,13 +61,15 @@ class NessyAutoConfigurationTest {
 
   @Test
   void a_store_bean_is_woven_in() {
-    // A real Task-2 JDBC store needs a real Postgres connection to query without throwing
-    // (nessy_park's schema uses a jsonb column H2 cannot parse, and the module's own JDBC-backed
-    // tests are Testcontainers-based and tagged "container" for exactly that reason — out of
-    // scope for this offline context runner). So the observable seam here is a hand-instrumented
-    // ConversationStore, standing in for "the Task 2 store bean," that records whether the woven
-    // harness actually reaches it: a broken wiring would leave the probe untouched (or throw),
-    // not merely return empty from an unrelated in-memory default.
+    // A real Task-2 JDBC store needs a real Postgres connection to query without throwing, and
+    // the module's own JDBC-backed tests are Testcontainers-based and tagged "container" for
+    // exactly that reason — out of scope for this offline context runner). So the observable seam
+    // here is a hand-instrumented ConversationStore, standing in for "the Task 2 store bean," that
+    // records whether the woven harness actually reaches it: a broken wiring would leave the
+    // probe untouched (or throw), not merely return empty from an unrelated in-memory default.
+    // Task-4: {@code peek} no longer touches the store at all (it reads the harness's own {@code
+    // Parks} registry instead), so the probe is read through {@link Agent#snapshot}'s own {@code
+    // store.load} instead — the same store-wiring question, a different call that still asks it.
     var probe = new ProbeConversationStore();
     runner
         .withBean("mine", ConversationStore.class, () -> probe)
@@ -76,9 +77,10 @@ class NessyAutoConfigurationTest {
             context -> {
               assertThat(context).hasSingleBean(Harness.class);
               Harness harness = context.getBean(Harness.class);
-              assertThat(probe.peeked()).isFalse();
-              assertThat(harness.peek(ParkToken.generate())).isEmpty();
-              assertThat(probe.peeked()).isTrue();
+              Agent<String> agent = harness.agent().model("probe-model").build();
+              assertThat(probe.loaded()).isFalse();
+              agent.snapshot(ConversationId.generate());
+              assertThat(probe.loaded()).isTrue();
             });
   }
 
@@ -128,22 +130,23 @@ class NessyAutoConfigurationTest {
   }
 
   /**
-   * Delegates every operation to a fresh {@link ConversationStore#inMemory()}, except {@link
-   * #findPark} — the one call {@link Harness#peek} makes — which is also recorded in {@link
-   * #peeked}, the observable proof {@link #a_store_bean_is_woven_in} reads instead of reflecting
-   * into {@link Harness}'s private field.
+   * Delegates every operation to a fresh {@link ConversationStore#inMemory()}, except {@link #load}
+   * — the call {@link Agent#snapshot} makes — which is also recorded in {@link #loaded}, the
+   * observable proof {@link #a_store_bean_is_woven_in} reads instead of reflecting into {@link
+   * Harness}'s private field.
    */
   private static final class ProbeConversationStore implements ConversationStore {
 
     private final ConversationStore delegate = ConversationStore.inMemory();
-    private final AtomicBoolean peeked = new AtomicBoolean();
+    private final AtomicBoolean loaded = new AtomicBoolean();
 
-    boolean peeked() {
-      return peeked.get();
+    boolean loaded() {
+      return loaded.get();
     }
 
     @Override
     public Optional<Loaded> load(ConversationId id) {
+      loaded.set(true);
       return delegate.load(id);
     }
 
@@ -155,22 +158,6 @@ class NessyAutoConfigurationTest {
     @Override
     public void append(ConversationId id, InboxEntry entry) {
       delegate.append(id, entry);
-    }
-
-    @Override
-    public Optional<ParkedCall> findPark(ParkToken token) {
-      peeked.set(true);
-      return delegate.findPark(token);
-    }
-
-    @Override
-    public Optional<ConversationId> findParkConversation(ParkToken token) {
-      return delegate.findParkConversation(token);
-    }
-
-    @Override
-    public boolean consumeToken(ParkToken token) {
-      return delegate.consumeToken(token);
     }
   }
 }

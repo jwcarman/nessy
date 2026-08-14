@@ -18,22 +18,19 @@ package org.jwcarman.nessy.spi.conversation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * The technology-compatibility kit every {@link ConversationStore} implementation must pass: the
- * fenced save, the inbox, and the park index, pinned as law rather than left to each
- * implementation's own judgment.
+ * fenced save and the inbox, pinned as law rather than left to each implementation's own judgment.
+ * The registry's own contract ({@code Parks.park}/{@code find}/{@code forConversation}) lives at
+ * {@code ParksContract}, a separate door with a separate story (design §5).
  *
  * <p>{@link #store()} returns the same instance for the whole of one test, and a fresh, empty
  * instance for the next: {@link #newStore()} is the factory each concrete subclass supplies, and
@@ -56,10 +53,6 @@ public abstract class ConversationStoreContract {
   /** The store under test, pinned for the duration of the current test. */
   protected ConversationStore store() {
     return store;
-  }
-
-  private static ToolCall toolCall(String id) {
-    return new ToolCall(id, "echo", JsonNodeFactory.instance.objectNode());
   }
 
   @Test
@@ -160,49 +153,5 @@ public abstract class ConversationStoreContract {
     ConversationStore.Loaded loaded = store().load(id).orElseThrow();
     assertThat(loaded.state().version()).isEqualTo(v2.version());
     assertThat(loaded.inbox()).containsExactly(keep);
-  }
-
-  @Test
-  void the_park_index_follows_the_saved_state() {
-    ConversationId id = ConversationId.generate();
-    ParkToken token = ParkToken.generate();
-    ParkedCall parked = new ParkedCall(token, toolCall("c1"));
-    ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
-
-    ConversationState v2 = store().save(v1.withParkedCalls(List.of(parked)), List.of());
-
-    assertThat(store().findPark(token)).contains(parked);
-    assertThat(store().findParkConversation(token)).contains(id);
-
-    store().save(v2.withParkedCalls(List.of()), List.of());
-
-    assertThat(store().findPark(token)).isEmpty();
-    assertThat(store().findParkConversation(token)).isEmpty();
-  }
-
-  @Test
-  void a_save_that_leaves_a_park_untouched_never_disturbs_its_index() {
-    ConversationId id = ConversationId.generate();
-    ParkToken token = ParkToken.generate();
-    ParkedCall parked = new ParkedCall(token, toolCall("c1"));
-    ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
-    ConversationState v2 = store().save(v1.withParkedCalls(List.of(parked)), List.of());
-
-    assertThat(store().findPark(token)).contains(parked);
-
-    // Same parkedCalls as v2 — only the version moves. A churn-and-rebuild sync would remove and
-    // re-put this token on every such save; the surgical sync leaves it alone.
-    store().save(v2, List.of());
-
-    assertThat(store().findPark(token)).contains(parked);
-    assertThat(store().findParkConversation(token)).contains(id);
-  }
-
-  @Test
-  void a_token_consumes_exactly_once() {
-    ParkToken token = ParkToken.generate();
-
-    assertThat(store().consumeToken(token)).isTrue();
-    assertThat(store().consumeToken(token)).isFalse();
   }
 }

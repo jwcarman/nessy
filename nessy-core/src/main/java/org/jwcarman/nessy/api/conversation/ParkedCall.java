@@ -20,7 +20,15 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * Homework waiting on the world: the tool call that yielded, named by the token it parked under.
+ * Homework waiting on the world, as an approval card: the tool call that yielded, named by the
+ * token it parked under.
+ *
+ * <p>This is no longer the state's own vocabulary (design §5) — the {@link
+ * org.jwcarman.nessy.api.conversation.ConversationState} tracks only that a call is outstanding.
+ * {@code ParkedCall} survives as the read-side shape a {@link
+ * org.jwcarman.nessy.spi.conversation.Parks} registry entry renders into: {@link
+ * org.jwcarman.nessy.Agent#snapshot} and {@link org.jwcarman.nessy.Harness#peek} both hand this
+ * record back, pairing a wait's token with its call for a caller building an approval UI.
  */
 public record ParkedCall(ParkToken token, ToolCall call) {
 

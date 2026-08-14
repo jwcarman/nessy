@@ -17,7 +17,6 @@ package org.jwcarman.nessy.api.conversation;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.internal.Identifiers;
@@ -47,11 +46,16 @@ public sealed interface InboxEntry {
     }
   }
 
-  /** Homework that came back: the token it was waiting on, and what arrived. */
-  record Resolved(String id, ParkToken token, ToolResolution resolution) implements InboxEntry {
+  /**
+   * Homework that came back: the call it answers, and what arrived. Re-keyed by call id, not token
+   * (design §5) — the loop's resolution routing matches {@link
+   * org.jwcarman.nessy.api.conversation.ConversationState#parkedCalls()} by call id, the same
+   * pairing the fold has always used.
+   */
+  record Resolved(String id, String callId, ToolResolution resolution) implements InboxEntry {
     public Resolved {
       Objects.requireNonNull(id, "id must not be null");
-      Objects.requireNonNull(token, "token must not be null");
+      Objects.requireNonNull(callId, "callId must not be null");
       Objects.requireNonNull(resolution, "resolution must not be null");
     }
   }
@@ -61,9 +65,9 @@ public sealed interface InboxEntry {
     return new Told(Identifiers.next(), content);
   }
 
-  static Resolved resolved(ParkToken token, ToolResolution resolution) {
-    Objects.requireNonNull(token, "token must not be null");
+  static Resolved resolved(String callId, ToolResolution resolution) {
+    Objects.requireNonNull(callId, "callId must not be null");
     Objects.requireNonNull(resolution, "resolution must not be null");
-    return new Resolved(Identifiers.next(), token, resolution);
+    return new Resolved(Identifiers.next(), callId, resolution);
   }
 }

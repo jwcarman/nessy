@@ -29,13 +29,11 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.ImageBlock;
@@ -129,7 +127,7 @@ class StateCodecTest {
     @Test
     void round_trips() {
       ConversationId id = ConversationId.generate();
-      ParkedCall parked = new ParkedCall(ParkToken.generate(), toolCall("c2"));
+      ToolCall parked = toolCall("c2");
       ConversationState state =
           new ConversationState(
               id,
@@ -167,7 +165,7 @@ class StateCodecTest {
     @Test
     void a_resolved_entry_carrying_an_allow_decision_round_trips() {
       InboxEntry.Resolved entry =
-          InboxEntry.resolved(ParkToken.generate(), new ToolResolution.Decided(Decision.allow()));
+          InboxEntry.resolved("c1", new ToolResolution.Decided(Decision.allow()));
 
       InboxEntry decoded = codec.readInboxEntry(codec.writeInboxEntry(entry));
 
@@ -177,8 +175,7 @@ class StateCodecTest {
     @Test
     void a_resolved_entry_carrying_a_deny_decision_round_trips() {
       InboxEntry.Resolved entry =
-          InboxEntry.resolved(
-              ParkToken.generate(), new ToolResolution.Decided(new Decision.Deny("not today")));
+          InboxEntry.resolved("c1", new ToolResolution.Decided(new Decision.Deny("not today")));
 
       InboxEntry decoded = codec.readInboxEntry(codec.writeInboxEntry(entry));
 
@@ -188,8 +185,7 @@ class StateCodecTest {
     @Test
     void a_resolved_entry_carrying_a_completed_tool_result_round_trips() {
       InboxEntry.Resolved entry =
-          InboxEntry.resolved(
-              ParkToken.generate(), new ToolResolution.Completed(ToolResult.ok("42")));
+          InboxEntry.resolved("c1", new ToolResolution.Completed(ToolResult.ok("42")));
 
       InboxEntry decoded = codec.readInboxEntry(codec.writeInboxEntry(entry));
 

@@ -21,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -42,14 +41,13 @@ class InboxEntryTest {
   }
 
   @Test
-  void resolved_entries_carry_their_token_and_resolution() {
-    ParkToken token = ParkToken.generate();
+  void resolved_entries_carry_their_call_id_and_resolution() {
     ToolResolution resolution = new ToolResolution.Decided(Decision.allow());
 
-    InboxEntry.Resolved resolved = InboxEntry.resolved(token, resolution);
+    InboxEntry.Resolved resolved = InboxEntry.resolved("c1", resolution);
 
     assertThat(resolved.id()).isNotNull();
-    assertThat(resolved.token()).isEqualTo(token);
+    assertThat(resolved.callId()).isEqualTo("c1");
     assertThat(resolved.resolution()).isEqualTo(resolution);
   }
 
@@ -59,7 +57,7 @@ class InboxEntryTest {
   }
 
   @Test
-  void resolved_rejects_null_token() {
+  void resolved_rejects_null_call_id() {
     ToolResolution resolution = new ToolResolution.Decided(Decision.allow());
 
     assertThatThrownBy(() -> InboxEntry.resolved(null, resolution))

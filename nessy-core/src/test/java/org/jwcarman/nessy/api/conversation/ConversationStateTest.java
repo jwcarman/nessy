@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -85,7 +84,7 @@ class ConversationStateTest {
   @Test
   void with_told_replaces_only_the_told_lane() {
     List<ContentBlock> spoken = List.of(new TextBlock("hi"));
-    ParkedCall parked = parkedCall();
+    ToolCall parked = parkedCall();
     ConversationState seeded = seededState(parked).withVersion(3L);
 
     ConversationState toldChanged = seeded.withTold(List.of(spoken));
@@ -99,7 +98,7 @@ class ConversationStateTest {
   @Test
   void with_parked_calls_replaces_only_the_parked_lane() {
     List<ContentBlock> spoken = List.of(new TextBlock("hi"));
-    ParkedCall replacement = parkedCall();
+    ToolCall replacement = parkedCall();
     ConversationState seeded = seededState(spoken).withVersion(3L);
 
     ConversationState parkedChanged = seeded.withParkedCalls(List.of(replacement));
@@ -113,7 +112,7 @@ class ConversationStateTest {
   @Test
   void with_version_replaces_only_the_version() {
     List<ContentBlock> spoken = List.of(new TextBlock("hi"));
-    ParkedCall parked = parkedCall();
+    ToolCall parked = parkedCall();
     ConversationState seeded = seededState(spoken, parked).withVersion(3L);
 
     ConversationState versionChanged = seeded.withVersion(4L);
@@ -132,20 +131,19 @@ class ConversationStateTest {
     assertThat(state.parkedCalls()).isUnmodifiable();
   }
 
-  private static ParkedCall parkedCall() {
-    return new ParkedCall(
-        ParkToken.generate(), new ToolCall("call-1", "tool", NullNode.getInstance()));
+  private static ToolCall parkedCall() {
+    return new ToolCall("call-1", "tool", NullNode.getInstance());
   }
 
   private static ConversationState seededState(List<ContentBlock> spoken) {
     return ConversationState.newConversation(ID).withTold(List.of(spoken));
   }
 
-  private static ConversationState seededState(ParkedCall parked) {
+  private static ConversationState seededState(ToolCall parked) {
     return ConversationState.newConversation(ID).withParkedCalls(List.of(parked));
   }
 
-  private static ConversationState seededState(List<ContentBlock> spoken, ParkedCall parked) {
+  private static ConversationState seededState(List<ContentBlock> spoken, ToolCall parked) {
     return ConversationState.newConversation(ID)
         .withTold(List.of(spoken))
         .withParkedCalls(List.of(parked));

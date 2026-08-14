@@ -32,21 +32,19 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
-import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
 
 /**
  * The reference durable {@link ConversationStore}: plain JDBC against Postgres, no Spring, no JPA —
- * the house stance. See {@code schema.sql} on the classpath next to this class for the four tables
- * it reads and writes: {@code nessy_conversation} (the fenced control block), {@code nessy_inbox}
- * (the append-only inbox), {@code nessy_park} (the token index), and {@code nessy_token}
- * (single-use resume tokens).
+ * the house stance. See {@code schema.sql} on the classpath next to this class for the tables it
+ * reads and writes: {@code nessy_conversation} (the fenced control block) and {@code nessy_inbox}
+ * (the append-only inbox). {@code nessy_park} and {@code nessy_token} are retired from this class's
+ * own responsibility (design §5: the {@code Parks} registry answers the callback door now); their
+ * DDL cleanup and a {@code JdbcParks} implementation are a follow-on task, not this one's.
  *
  * <p>The constructor alone does not create those tables — a caller pointing at a database another
  * process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
@@ -61,15 +59,8 @@ import org.jwcarman.nessy.spi.conversation.StaleStateException;
  * tries {@code INSERT ... ON CONFLICT DO NOTHING} for the case there is no row yet to match
  * against. Either way, a losing save re-reads the column and fails loudly with {@link
  * StaleStateException} rather than silently doing nothing.
- *
- * <p>The park index is synced by delta, not by clearing and rebuilding: a token this save's {@code
- * parkedCalls()} still names is never deleted and never re-inserted ({@code ON CONFLICT (token) DO
- * NOTHING} — a park's call is immutable for the life of its token, so there is nothing to update
- * even if it were re-inserted), so a save that leaves a park untouched never disturbs its row.
  */
 public final class JdbcConversationStore implements ConversationStore {
-
-  private static final String TOKEN_MUST_NOT_BE_NULL = "token must not be null";
 
   private final DataSource dataSource;
   private final StateCodec codec;
@@ -195,7 +186,6 @@ public final class JdbcConversationStore implements ConversationStore {
           }
 
           drainInbox(connection, id, drainedInboxIds);
-          syncParks(connection, id, bumped.parkedCalls());
           return bumped;
         });
   }
@@ -239,44 +229,6 @@ public final class JdbcConversationStore implements ConversationStore {
     }
   }
 
-  /**
-   * Moves {@code nessy_park} to exactly {@code parkedCalls} by delta. The delete's {@code token <>
-   * ALL(?)} against the array of currently-parked tokens removes every row this conversation owns
-   * that {@code parkedCalls} no longer names — including every row, if {@code parkedCalls} is
-   * empty, since {@code <> ALL} over an empty array is vacuously true for every row. The insert's
-   * {@code ON CONFLICT (token) DO NOTHING} then leaves every still-parked token's row exactly as it
-   * was: a call's payload never changes for the life of its single-use token, so there is nothing
-   * an UPDATE would ever need to change.
-   */
-  private void syncParks(Connection connection, ConversationId id, List<ParkedCall> parkedCalls)
-      throws SQLException {
-    String[] tokens =
-        parkedCalls.stream().map(parked -> parked.token().value()).toArray(String[]::new);
-    Array tokenArray = connection.createArrayOf("text", tokens);
-    try (PreparedStatement ps =
-        connection.prepareStatement(
-            "DELETE FROM nessy_park WHERE conversation_id = ? AND token <> ALL(?)")) {
-      ps.setString(1, id.value());
-      ps.setArray(2, tokenArray);
-      ps.executeUpdate();
-    }
-    if (parkedCalls.isEmpty()) {
-      return;
-    }
-    try (PreparedStatement ps =
-        connection.prepareStatement(
-            "INSERT INTO nessy_park (token, conversation_id, call) VALUES (?, ?, ?::jsonb)"
-                + " ON CONFLICT (token) DO NOTHING")) {
-      for (ParkedCall parked : parkedCalls) {
-        ps.setString(1, parked.token().value());
-        ps.setString(2, id.value());
-        ps.setString(3, codec.writeToolCall(parked.call()));
-        ps.addBatch();
-      }
-      ps.executeBatch();
-    }
-  }
-
   @Override
   public void append(ConversationId id, InboxEntry entry) {
     Objects.requireNonNull(id, "id must not be null");
@@ -295,58 +247,6 @@ public final class JdbcConversationStore implements ConversationStore {
             ps.executeUpdate();
           }
           return null;
-        });
-  }
-
-  @Override
-  public Optional<ParkedCall> findPark(ParkToken token) {
-    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
-    return withConnection(
-        connection -> {
-          try (PreparedStatement ps =
-              connection.prepareStatement("SELECT call FROM nessy_park WHERE token = ?")) {
-            ps.setString(1, token.value());
-            try (ResultSet rs = ps.executeQuery()) {
-              if (!rs.next()) {
-                return Optional.empty();
-              }
-              ToolCall call = codec.readToolCall(rs.getString("call"));
-              return Optional.of(new ParkedCall(token, call));
-            }
-          }
-        });
-  }
-
-  @Override
-  public Optional<ConversationId> findParkConversation(ParkToken token) {
-    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
-    return withConnection(
-        connection -> {
-          try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "SELECT conversation_id FROM nessy_park WHERE token = ?")) {
-            ps.setString(1, token.value());
-            try (ResultSet rs = ps.executeQuery()) {
-              if (!rs.next()) {
-                return Optional.empty();
-              }
-              return Optional.of(new ConversationId(rs.getString("conversation_id")));
-            }
-          }
-        });
-  }
-
-  @Override
-  public boolean consumeToken(ParkToken token) {
-    Objects.requireNonNull(token, TOKEN_MUST_NOT_BE_NULL);
-    return withConnection(
-        connection -> {
-          try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "INSERT INTO nessy_token (token) VALUES (?) ON CONFLICT DO NOTHING")) {
-            ps.setString(1, token.value());
-            return ps.executeUpdate() == 1;
-          }
         });
   }
 

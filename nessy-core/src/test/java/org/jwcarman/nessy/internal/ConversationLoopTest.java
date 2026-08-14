@@ -43,7 +43,6 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.EventEmitter;
@@ -58,6 +57,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.ModelCallExecutor;
@@ -270,21 +270,6 @@ class ConversationLoopTest {
     public void append(ConversationId conversationId, InboxEntry entry) {
       delegate.append(conversationId, entry);
     }
-
-    @Override
-    public Optional<ParkedCall> findPark(ParkToken token) {
-      return delegate.findPark(token);
-    }
-
-    @Override
-    public Optional<ConversationId> findParkConversation(ParkToken token) {
-      return delegate.findParkConversation(token);
-    }
-
-    @Override
-    public boolean consumeToken(ParkToken token) {
-      return delegate.consumeToken(token);
-    }
   }
 
   /**
@@ -324,21 +309,6 @@ class ConversationLoopTest {
     @Override
     public void append(ConversationId id, InboxEntry entry) {
       delegate.append(id, entry);
-    }
-
-    @Override
-    public Optional<ParkedCall> findPark(ParkToken token) {
-      return delegate.findPark(token);
-    }
-
-    @Override
-    public Optional<ConversationId> findParkConversation(ParkToken token) {
-      return delegate.findParkConversation(token);
-    }
-
-    @Override
-    public boolean consumeToken(ParkToken token) {
-      return delegate.consumeToken(token);
     }
   }
 
@@ -384,21 +354,6 @@ class ConversationLoopTest {
     public void append(ConversationId id, InboxEntry entry) {
       delegate.append(id, entry);
     }
-
-    @Override
-    public Optional<ParkedCall> findPark(ParkToken token) {
-      return delegate.findPark(token);
-    }
-
-    @Override
-    public Optional<ConversationId> findParkConversation(ParkToken token) {
-      return delegate.findParkConversation(token);
-    }
-
-    @Override
-    public boolean consumeToken(ParkToken token) {
-      return delegate.consumeToken(token);
-    }
   }
 
   /**
@@ -429,21 +384,6 @@ class ConversationLoopTest {
     @Override
     public void append(ConversationId id, InboxEntry entry) {
       delegate.append(id, entry);
-    }
-
-    @Override
-    public Optional<ParkedCall> findPark(ParkToken token) {
-      return delegate.findPark(token);
-    }
-
-    @Override
-    public Optional<ConversationId> findParkConversation(ParkToken token) {
-      return delegate.findParkConversation(token);
-    }
-
-    @Override
-    public boolean consumeToken(ParkToken token) {
-      return delegate.consumeToken(token);
     }
   }
 
@@ -581,21 +521,6 @@ class ConversationLoopTest {
       journal.add("append");
       delegate.append(id, entry);
     }
-
-    @Override
-    public Optional<ParkedCall> findPark(ParkToken token) {
-      return delegate.findPark(token);
-    }
-
-    @Override
-    public Optional<ConversationId> findParkConversation(ParkToken token) {
-      return delegate.findParkConversation(token);
-    }
-
-    @Override
-    public boolean consumeToken(ParkToken token) {
-      return delegate.consumeToken(token);
-    }
   }
 
   @Nested
@@ -614,6 +539,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.never(),
               new RecordingStore(journal),
+              Parks.inMemory(),
               emitter,
               ObservationRegistry.NOOP);
 
@@ -650,6 +576,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.never(),
               new RecordingStore(journal),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -690,6 +617,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               termination,
               new RecordingStore(journal),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -720,6 +648,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.maxConsecutiveErrors(1),
               new RecordingStore(journal),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -759,6 +688,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.maxModelCalls(1),
               new RecordingStore(journal),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -798,6 +728,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               new RecordingStore(journal),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -852,6 +783,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               EventEmitter.noop(),
               ObservationRegistry.NOOP);
       ConversationEvent.AgentTold echoA = ConversationEvent.AgentTold.of(ID, "echo a");
@@ -889,6 +821,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               new RecordingStore(journal),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -916,6 +849,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -949,6 +883,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -985,6 +920,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1012,6 +948,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1026,19 +963,21 @@ class ConversationLoopTest {
   class Park_and_resume {
 
     @Test
-    void a_parking_tool_parks_the_conversation_and_returns_the_token() {
+    void a_parking_tool_parks_the_conversation_and_registers_the_token() {
       List<String> journal = new ArrayList<>();
       ToolCall c1 = toolCall("c1", "search");
       ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
       ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
       ParkToken token = tools.parksWhen("c1");
       RecordingStore store = new RecordingStore(journal);
+      Parks parks = Parks.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(model, tools),
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              parks,
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1046,9 +985,12 @@ class ConversationLoopTest {
 
       assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.PARKED);
-      assertThat(outcome.state().parkedCalls()).containsExactly(new ParkedCall(token, c1));
+      assertThat(outcome.state().parkedCalls()).containsExactly(c1);
       assertThat(store.load(ID).orElseThrow().state().status())
           .isEqualTo(ConversationStatus.PARKED);
+      // Design §5: the registry write is the loop's own responsibility, not the tool's — the
+      // token the tool minted must actually be findable in the Parks it was handed.
+      assertThat(parks.find(token)).contains(new Parks.Park(ID, token, c1));
     }
 
     @Test
@@ -1064,6 +1006,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               ConversationStore.inMemory(),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       List<TurnEvent> events = new ArrayList<>();
@@ -1099,6 +1042,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       List<TurnEvent> events = new ArrayList<>();
@@ -1132,6 +1076,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       List<TurnEvent> events = new ArrayList<>();
@@ -1168,6 +1113,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       List<TurnEvent> events = new ArrayList<>();
@@ -1199,7 +1145,7 @@ class ConversationLoopTest {
       ScriptedModelCallExecutor model =
           new ScriptedModelCallExecutor(journal, homework(c1, c2), plainAnswer("Both in."));
       ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
-      ParkToken token = tools.parksWhen("c1");
+      tools.parksWhen("c1");
       tools.andFor("c2", new ConversationEvent.ToolFinished(ID, c2, ToolResult.ok("b")));
       tools.resumesTo("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
       RecordingMemory memory = new RecordingMemory(journal);
@@ -1210,6 +1156,7 @@ class ConversationLoopTest {
               memory,
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1217,13 +1164,14 @@ class ConversationLoopTest {
           loop.run(ID, ConversationEvent.AgentTold.of(ID, "search and fetch"), OBSERVER);
 
       assertThat(parked.state().status()).isEqualTo(ConversationStatus.PARKED);
-      assertThat(parked.state().parkedCalls()).extracting(ParkedCall::token).containsExactly(token);
+      assertThat(parked.state().parkedCalls()).extracting(ToolCall::id).containsExactly(c1.id());
       assertThat(parked.state().pendingResults()).hasSize(1); // c2's result, held — not flushed
       assertThat(model.calls()).isEqualTo(1); // no second model call: the turn never continued
 
-      store.consumeToken(token);
+      // Resolution is keyed by call id now (design §5), not token — resume routes by matching
+      // parkedCalls, so appending against c1's own id is what the loop's fold actually consults.
       store.append(
-          ID, InboxEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("a"))));
       RunOutcome finished = loop.drive(ID, OBSERVER);
 
       assertThat(finished.state().status()).isEqualTo(ConversationStatus.COMPLETE);
@@ -1239,18 +1187,18 @@ class ConversationLoopTest {
     }
 
     /**
-     * Stands in for {@code Harness.resume}'s own three steps ({@code findParkConversation}, {@code
-     * consumeToken}, {@code append} + {@code drive}) at the store the loop itself uses — {@code
-     * HarnessTest} pins the facade that wraps this same sequence end to end.
+     * Stands in for {@code Harness.resume}'s own steps ({@code parks.find}, {@code append} + {@code
+     * drive}) at the store the loop itself uses — {@code HarnessTest} pins the facade that wraps
+     * this same sequence end to end.
      */
     @Test
-    void resume_consumes_the_token_routes_the_executor_and_finishes_the_turn() {
+    void resume_routes_the_executor_and_finishes_the_turn() {
       List<String> journal = new ArrayList<>();
       ToolCall c1 = toolCall("c1", "search");
       ScriptedModelCallExecutor model =
           new ScriptedModelCallExecutor(journal, homework(c1), plainAnswer("Found it."));
       ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
-      ParkToken token = tools.parksWhen("c1");
+      tools.parksWhen("c1");
       tools.resumesTo("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("found")));
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
@@ -1259,13 +1207,13 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
 
-      assertThat(store.consumeToken(token)).isTrue();
       store.append(
-          ID, InboxEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("found"))));
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("found"))));
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Completed.class);
@@ -1274,14 +1222,21 @@ class ConversationLoopTest {
       assertThat(tools.resumeCalls()).isEqualTo(1);
     }
 
+    /**
+     * Task-4 (design §5): the store's old single-use-token-claim method dissolved — replay
+     * protection is now the fold's own is-this-call-still-outstanding check. A redelivered
+     * resolution (the same call id arriving a second time, as every real transport is
+     * at-least-once) must not re-invoke the executor's {@code resume} a second time; the second
+     * drive simply finds nothing left outstanding for that call and reads current truth.
+     */
     @Test
-    void a_second_resume_with_the_same_token_is_a_read_not_a_replay() {
+    void a_redelivered_resolution_re_drives_and_reads_current_truth_without_reinvoking_resume() {
       List<String> journal = new ArrayList<>();
       ToolCall c1 = toolCall("c1", "search");
       ScriptedModelCallExecutor model =
           new ScriptedModelCallExecutor(journal, homework(c1), plainAnswer("Found it."));
       ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
-      ParkToken token = tools.parksWhen("c1");
+      tools.parksWhen("c1");
       tools.resumesTo("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("found")));
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
@@ -1290,20 +1245,19 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
-      store.consumeToken(token);
       store.append(
-          ID, InboxEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("found"))));
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("found"))));
       loop.drive(ID, OBSERVER);
 
-      // Redelivery: the same token arrives again. consumeToken now reports it already claimed, so
-      // the second delivery must not append another Resolved entry — it only reads current truth.
-      boolean consumedAgain = store.consumeToken(token);
+      // Redelivery: another Resolved entry for the same, now-settled call id arrives again.
+      store.append(
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("found"))));
       RunOutcome second = loop.drive(ID, OBSERVER);
 
-      assertThat(consumedAgain).isFalse();
       assertThat(tools.resumeCalls()).isEqualTo(1);
       assertThat(second.state().status()).isEqualTo(ConversationStatus.COMPLETE);
     }
@@ -1313,15 +1267,15 @@ class ConversationLoopTest {
       List<String> journal = new ArrayList<>();
       ConversationStore store = ConversationStore.inMemory();
       ToolCall c2 = toolCall("c2", "echo");
-      ParkToken activeToken = ParkToken.generate();
       ConversationState seeded =
           ConversationState.newConversation(ID)
-              .withParkedCalls(List.of(new ParkedCall(activeToken, c2)))
+              .withParkedCalls(List.of(c2))
               .with(ConversationStatus.PARKED);
       store.save(seeded, List.of());
-      ParkToken staleToken = ParkToken.generate();
+      // "settled-call" names no call this conversation still lists as outstanding — the retired
+      // single-use-token-claim's replay case, re-keyed by call id (design §5).
       store.append(
-          ID, InboxEntry.resolved(staleToken, new ToolResolution.Decided(Decision.allow())));
+          ID, InboxEntry.resolved("settled-call", new ToolResolution.Decided(Decision.allow())));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(
@@ -1329,15 +1283,14 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
       RunOutcome outcome = loop.drive(ID, OBSERVER);
 
       assertThat(outcome).isInstanceOf(RunOutcome.Parked.class);
-      assertThat(outcome.state().parkedCalls())
-          .extracting(ParkedCall::token)
-          .containsExactly(activeToken);
+      assertThat(outcome.state().parkedCalls()).extracting(ToolCall::id).containsExactly(c2.id());
       assertThat(store.load(ID).orElseThrow().inbox()).isEmpty();
     }
 
@@ -1359,7 +1312,6 @@ class ConversationLoopTest {
       List<String> journal = new ArrayList<>();
       ToolCall c1 = toolCall("c1", "search");
       ToolCall c2 = toolCall("c2", "fetch");
-      ParkToken token = ParkToken.generate();
       ScriptedModelCallExecutor model =
           new ScriptedModelCallExecutor(journal, plainAnswer("Both in."));
       ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
@@ -1372,18 +1324,18 @@ class ConversationLoopTest {
       ConversationState seeded =
           ConversationState.newConversation(ID)
               .withPendingCalls(List.of(c2))
-              .withParkedCalls(List.of(new ParkedCall(token, c1)))
+              .withParkedCalls(List.of(c1))
               .with(ConversationStatus.EXECUTING_TOOL);
       store.save(seeded, List.of());
-      store.consumeToken(token);
       store.append(
-          ID, InboxEntry.resolved(token, new ToolResolution.Completed(ToolResult.ok("a"))));
+          ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("a"))));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(model, tools),
               memory,
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1416,9 +1368,8 @@ class ConversationLoopTest {
       ConversationState seeded =
           ConversationState.newConversation(ID).with(ConversationStatus.COMPLETE);
       store.save(seeded, List.of());
-      ParkToken staleToken = ParkToken.generate();
       store.append(
-          ID, InboxEntry.resolved(staleToken, new ToolResolution.Decided(Decision.allow())));
+          ID, InboxEntry.resolved("settled-call", new ToolResolution.Decided(Decision.allow())));
       ConversationLoop loop =
           new ConversationLoop(
               new EffectExecutors(
@@ -1426,6 +1377,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1447,7 +1399,7 @@ class ConversationLoopTest {
       ToolCall c1 = toolCall("c1", "search");
       ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
       ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
-      ParkToken token = tools.parksWhen("c1");
+      tools.parksWhen("c1");
       tools.reparksOnResume("c1");
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
@@ -1456,12 +1408,12 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
-      store.consumeToken(token);
       InboxEntry.Resolved resolvedEntry =
-          InboxEntry.resolved(token, new ToolResolution.Decided(Decision.allow()));
+          InboxEntry.resolved(c1.id(), new ToolResolution.Decided(Decision.allow()));
       store.append(ID, resolvedEntry);
 
       assertThatThrownBy(() -> loop.drive(ID, OBSERVER)).isInstanceOf(IllegalStateException.class);
@@ -1485,6 +1437,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1507,6 +1460,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
       ConversationEvent.AgentTold whatIs2Plus2 = ConversationEvent.AgentTold.of(ID, "what is 2+2?");
@@ -1536,6 +1490,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1569,6 +1524,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               store,
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 
@@ -1593,6 +1549,7 @@ class ConversationLoopTest {
               new RecordingMemory(journal),
               TerminationPolicy.never(),
               new RecordingStore(journal),
+              Parks.inMemory(),
               new RecordingEmitter(journal),
               ObservationRegistry.NOOP);
 

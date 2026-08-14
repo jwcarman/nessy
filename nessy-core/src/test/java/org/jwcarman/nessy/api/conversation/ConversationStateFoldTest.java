@@ -24,7 +24,6 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ConversationEvent;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -314,8 +313,7 @@ class ConversationStateFoldTest {
   @Test
   void a_resumed_call_finishing_clears_its_park() {
     ToolCall resumed = call("call-1", "search");
-    ParkedCall parked = new ParkedCall(ParkToken.generate(), resumed);
-    ConversationState owing = awaitingModel().withParkedCalls(List.of(parked));
+    ConversationState owing = awaitingModel().withParkedCalls(List.of(resumed));
 
     Step step = owing.fold(new ConversationEvent.ToolFinished(id, resumed, ToolResult.ok("found")));
 
@@ -333,8 +331,7 @@ class ConversationStateFoldTest {
   void toolFinished_with_a_parked_sibling_holds_the_flush() {
     ToolCall c1 = call("call-1", "search");
     ToolCall c2 = call("call-2", "fetch");
-    ParkToken token = ParkToken.generate();
-    ConversationState c1Parked = midHomework(c1, c2).parked(c1, token);
+    ConversationState c1Parked = midHomework(c1, c2).parked(c1);
     assertThat(c1Parked.status()).isEqualTo(ConversationStatus.EXECUTING_TOOL);
 
     Step step = c1Parked.fold(new ConversationEvent.ToolFinished(id, c2, ToolResult.ok("b")));
@@ -343,7 +340,7 @@ class ConversationStateFoldTest {
     assertThat(step.effects()).isEmpty();
     assertThat(step.state().status()).isEqualTo(ConversationStatus.PARKED);
     assertThat(step.state().pendingCalls()).isEmpty();
-    assertThat(step.state().parkedCalls()).containsExactly(new ParkedCall(token, c1));
+    assertThat(step.state().parkedCalls()).containsExactly(c1);
     assertThat(step.state().pendingResults())
         .containsExactly(new ToolResultBlock("call-2", "b", false));
   }
@@ -357,10 +354,9 @@ class ConversationStateFoldTest {
   void the_parked_siblings_own_finish_flushes_everything_held_for_it() {
     ToolCall c1 = call("call-1", "search");
     ToolCall c2 = call("call-2", "fetch");
-    ParkToken token = ParkToken.generate();
     ConversationState waiting =
         midHomework(c1, c2)
-            .parked(c1, token)
+            .parked(c1)
             .fold(new ConversationEvent.ToolFinished(id, c2, ToolResult.ok("b")))
             .state()
             .fold(ConversationEvent.AgentTold.of(id, "psst"))

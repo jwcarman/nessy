@@ -34,7 +34,6 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Effect;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Step;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.EventEmitter;
@@ -44,6 +43,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.memory.Memory;
@@ -61,7 +61,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
  * list of check sites; tell {@link Memory} the fold's message births; emit the fact on the system
  * channel; persist; then perform the emitted effects, each yielding the next fact. A halt discards
  * unperformed effects — intents, not obligations — and applies the closure transition {@code
- * halted(reason)}; a park applies {@code parked(call, token)} the same fold-free, loop-applied way.
+ * halted(reason)}; a park applies {@code parked(call)} the same fold-free, loop-applied way.
  *
  * <p>Durability: the most recent state is saved on every exit path, including exceptions — the
  * progress-holder contract, now shared by every closure transition this loop applies, not just the
@@ -75,6 +75,7 @@ public final class ConversationLoop {
   private final Memory memory;
   private final TerminationPolicy termination;
   private final ConversationStore store;
+  private final Parks parks;
   private final EventEmitter emitter;
   private final ObservationRegistry observations;
 
@@ -91,12 +92,14 @@ public final class ConversationLoop {
       Memory memory,
       TerminationPolicy termination,
       ConversationStore store,
+      Parks parks,
       EventEmitter emitter,
       ObservationRegistry observations) {
     this.executors = Objects.requireNonNull(executors, "executors must not be null");
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.termination = Objects.requireNonNull(termination, "termination must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
+    this.parks = Objects.requireNonNull(parks, "parks must not be null");
     this.emitter = Objects.requireNonNull(emitter, "emitter must not be null");
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
@@ -177,30 +180,29 @@ public final class ConversationLoop {
         }
       }
 
-      // 2. Resolutions: route every Resolved entry whose token still names a live park —
+      // 2. Resolutions: route every Resolved entry whose call id still names a live park —
       //    regardless of the conversation's current status. A resolution can legitimately arrive
       //    while a fan-out sibling is still unsettled (crash mid-fan-out: EXECUTING_TOOL with
       //    parkedCalls non-empty, not PARKED), and gating this pass on status == PARKED alone
       //    stranded that resolution — consumed by resume, appended to the inbox, but never
       //    routed, wedging the conversation. Routing by park membership instead fixes both
-      //    directions: a resolution whose token IS a live park routes here no matter the status; a
-      //    resolution whose token is NOT a live park drains quietly no matter the status too (a
+      //    directions: a resolution whose call id IS a live park routes here no matter the status;
+      //    a resolution whose call id is NOT a live park drains quietly no matter the status too (a
       //    stale entry left behind by a settled call no longer lingers outside PARKED waiting for
-      //    a status it will never see again). Unlike a note's fold, resuming a call can throw
-      //    before ever reaching a fold (the re-park guard, below) — so the entry's id joins
-      //    `drained` only once resumeParkedCall and its fold have both succeeded; a throw between
-      //    them must leave the entry on the inbox for a future retry to find, not destroy the
-      //    only copy of the resolution that arrived.
+      //    a status it will never see again — the retired single-use-token-claim's replay guard,
+      //    now this same fold-owned is-this-call-still-outstanding check, design §5). Unlike a
+      //    note's fold, resuming a call can throw before ever reaching a fold (the re-park guard,
+      //    below) — so the entry's id joins `drained` only once resumeParkedCall and its fold have
+      //    both succeeded; a throw between them must leave the entry on the inbox for a future
+      //    retry to find, not destroy the only copy of the resolution that arrived.
       for (InboxEntry entry : loaded.inbox()) {
-        if (entry
-            instanceof
-            InboxEntry.Resolved(String entryId, ParkToken token, ToolResolution resolution)) {
-          Optional<ParkedCall> park =
+        if (entry instanceof InboxEntry.Resolved(String entryId, String callId, var resolution)) {
+          Optional<ToolCall> park =
               progress.get().parkedCalls().stream()
-                  .filter(candidate -> candidate.token().equals(token))
+                  .filter(candidate -> candidate.id().equals(callId))
                   .findFirst();
           if (park.isEmpty()) {
-            drained.add(entryId); // stale resolution: token's call already settled
+            drained.add(entryId); // stale resolution: call already settled
             continue;
           }
           ConversationEvent fact =
@@ -338,9 +340,17 @@ public final class ConversationLoop {
 
   /**
    * Applies the fold-free, loop-applied {@code parked} closure transition and saves it — no message
-   * is born, so unlike {@code halted} there is nothing to remember, only to persist. The narration
-   * fires after the save lands, not before: a park that never actually commits (a save that throws)
-   * must not have told the observer a story state itself never confirms. Both park paths — the
+   * is born, so unlike {@code halted} there is nothing to remember, only to persist.
+   *
+   * <p>The registry write is forced to precede the save, not chosen (design §5): the tool has
+   * already handed {@code token} to the outside world (it returned {@code Awaited.parked(token)}
+   * after submitting its job) before this method is ever called, so a lost registry entry would
+   * strand a token the world holds — a wedged conversation with no way back in. A registry entry
+   * whose save then loses the fence (or never lands) is merely an orphan: its eventual resolution
+   * translates fine, appends mail addressed to a call the reloaded state no longer finds
+   * outstanding, and drains as stale — tolerated, not prevented. The narration still fires only
+   * after the save lands, not before: a park that never actually commits (a save that throws) must
+   * not have told the observer a story state itself never confirms. Both park paths — the
    * approver's gate and a tool parking itself — funnel through this one choke point, so this is the
    * event's single emission site.
    */
@@ -350,7 +360,8 @@ public final class ConversationLoop {
       ParkToken token,
       List<String> drained,
       TurnObserver observer) {
-    progress.set(progress.get().parked(call, token));
+    parks.park(new Parks.Park(progress.get().id(), token, call));
+    progress.set(progress.get().parked(call));
     save(progress, drained);
     observer.on(new TurnEvent.ToolCallParked(call, token));
   }
@@ -362,18 +373,18 @@ public final class ConversationLoop {
    * that outcome fails loud rather than silently losing the call.
    */
   private ConversationEvent resumeParkedCall(
-      ParkedCall parked,
+      ToolCall parkedCall,
       ToolResolution resolution,
       ConversationState state,
       TurnObserver observer) {
     Awaited<ConversationEvent> outcome =
-        executors.toolCall().resume(parked.call(), resolution, state, observer);
+        executors.toolCall().resume(parkedCall, resolution, state, observer);
     return switch (outcome) {
       case Awaited.Ready<ConversationEvent>(ConversationEvent value) -> value;
       case Awaited.Parked<ConversationEvent> _ ->
           throw new IllegalStateException(
               "resumed call "
-                  + parked.call().id()
+                  + parkedCall.id()
                   + " parked again; this generation does not support re-parking an already-parked"
                   + " call");
     };

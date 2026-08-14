@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.ConversationEvent;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -58,8 +57,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  *     the few failure sites already need.
  * @param told words interjected — the drained-tell accumulator: each entry is one tell's content,
  *     kept in arrival order for a durable resume to replay against the transcript.
- * @param parkedCalls homework waiting on the world — tool calls that yielded rather than settled,
- *     each named by the {@link org.jwcarman.nessy.api.ParkToken} a later resume must present.
+ * @param parkedCalls homework waiting on the world — tool calls that yielded rather than settled.
+ *     The state no longer names them by token (design §5): a park's token lives in the {@link
+ *     org.jwcarman.nessy.spi.conversation.Parks} registry, a different caller's own door; the fold
+ *     pairs everything here by call id, as it always did.
  * @param version the fence's token — bumped on every durable write so a store can reject a stale
  *     save out from under a concurrent resume.
  * @param status lifecycle position
@@ -73,7 +74,7 @@ public record ConversationState(
     Usage usage,
     String failureReason,
     List<List<ContentBlock>> told,
-    List<ParkedCall> parkedCalls,
+    List<ToolCall> parkedCalls,
     long version,
     ConversationStatus status) {
 
@@ -225,7 +226,7 @@ public record ConversationState(
         status);
   }
 
-  public ConversationState withParkedCalls(List<ParkedCall> newParkedCalls) {
+  public ConversationState withParkedCalls(List<ToolCall> newParkedCalls) {
     return new ConversationState(
         id,
         pendingCalls,
@@ -381,8 +382,8 @@ public record ConversationState(
         new ToolResultBlock(event.call().id(), event.result().content(), event.result().isError()));
     List<ToolCall> remaining = new ArrayList<>(pendingCalls);
     removeFirstMatch(remaining, event.call().id());
-    List<ParkedCall> remainingParked = new ArrayList<>(parkedCalls);
-    removeFirstMatchParked(remainingParked, event.call().id());
+    List<ToolCall> remainingParked = new ArrayList<>(parkedCalls);
+    removeFirstMatch(remainingParked, event.call().id());
     int errors = event.result().isError() ? consecutiveErrors + 1 : 0;
     ConversationState next =
         withPendingResults(results)
@@ -434,20 +435,20 @@ public record ConversationState(
 
   /**
    * The closure transition a park applies: {@code call} moves from {@link #pendingCalls} to {@link
-   * #parkedCalls}, named by {@code token} for the resume that must later present it. Status becomes
-   * {@link ConversationStatus#PARKED} iff no {@link #pendingCalls} remain un-parked once {@code
-   * call} is moved — a sibling call still running keeps the conversation {@code EXECUTING_TOOL}
-   * until it too settles or parks. Fold-free and loop-applied, like {@link #halted(String)}: no
-   * message is born, so unlike {@code halted} there is nothing for the loop to remember, only to
-   * save.
+   * #parkedCalls}. The state itself no longer names the wait by token (design §5) — that pairing
+   * lives in the {@link org.jwcarman.nessy.spi.conversation.Parks} registry, a different caller's
+   * own door; this method only tracks that the call is still outstanding. Status becomes {@link
+   * ConversationStatus#PARKED} iff no {@link #pendingCalls} remain un-parked once {@code call} is
+   * moved — a sibling call still running keeps the conversation {@code EXECUTING_TOOL} until it too
+   * settles or parks. Fold-free and loop-applied, like {@link #halted(String)}: no message is born,
+   * so unlike {@code halted} there is nothing for the loop to remember, only to save.
    */
-  public ConversationState parked(ToolCall call, ParkToken token) {
+  public ConversationState parked(ToolCall call) {
     Objects.requireNonNull(call, "call must not be null");
-    Objects.requireNonNull(token, "token must not be null");
     List<ToolCall> remaining = new ArrayList<>(pendingCalls);
     removeFirstMatch(remaining, call.id());
-    List<ParkedCall> newParkedCalls = new ArrayList<>(parkedCalls);
-    newParkedCalls.add(new ParkedCall(token, call));
+    List<ToolCall> newParkedCalls = new ArrayList<>(parkedCalls);
+    newParkedCalls.add(call);
     ConversationStatus newStatus =
         remaining.isEmpty() ? ConversationStatus.PARKED : ConversationStatus.EXECUTING_TOOL;
     return withPendingCalls(remaining).withParkedCalls(newParkedCalls).with(newStatus);
@@ -477,15 +478,6 @@ public record ConversationState(
   private static void removeFirstMatch(List<ToolCall> calls, String callId) {
     for (int i = 0; i < calls.size(); i++) {
       if (calls.get(i).id().equals(callId)) {
-        calls.remove(i);
-        return;
-      }
-    }
-  }
-
-  private static void removeFirstMatchParked(List<ParkedCall> calls, String callId) {
-    for (int i = 0; i < calls.size(); i++) {
-      if (calls.get(i).call().id().equals(callId)) {
         calls.remove(i);
         return;
       }

@@ -17,14 +17,19 @@ package org.jwcarman.nessy;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
@@ -42,6 +47,7 @@ public final class Agent<I> {
   private final ConversationLoop loop;
   private final ListenerRegistry events;
   private final ConversationStore store;
+  private final Parks parks;
   private final Memory memory;
   private final InputRenderer<I> renderer;
 
@@ -49,11 +55,13 @@ public final class Agent<I> {
       ConversationLoop loop,
       ListenerRegistry events,
       ConversationStore store,
+      Parks parks,
       Memory memory,
       InputRenderer<I> renderer) {
     this.loop = Objects.requireNonNull(loop, "loop must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
+    this.parks = Objects.requireNonNull(parks, "parks must not be null");
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
   }
@@ -98,7 +106,11 @@ public final class Agent<I> {
    *
    * <p>One {@link ConversationStore#load} plus, when a stored conversation is found, one {@link
    * Memory#recall} — the same recall {@link #contextFor} and the loop's own {@code
-   * ModelCallExecutor} consult.
+   * ModelCallExecutor} consult. The approval-card view (design §7) composes the state's own
+   * outstanding call ids against {@link Parks#forConversation}: the state no longer carries tokens,
+   * so the cards are {@link Parks} registry entries filtered down to whichever calls {@link
+   * org.jwcarman.nessy.api.conversation.ConversationState#parkedCalls()} still names outstanding,
+   * rendered as the same {@code (token, call)} pairs this snapshot always handed back.
    */
   public ConversationSnapshot snapshot(ConversationId id) {
     Objects.requireNonNull(id, "id must not be null");
@@ -107,8 +119,17 @@ public final class Agent<I> {
         .map(
             loaded ->
                 new ConversationSnapshot(
-                    loaded.state().status(), loaded.state().parkedCalls(), memory.recall(id)))
+                    loaded.state().status(), cards(id, loaded), memory.recall(id)))
         .orElseGet(
             () -> new ConversationSnapshot(ConversationStatus.IDLE, List.of(), Context.empty()));
+  }
+
+  private List<ParkedCall> cards(ConversationId id, ConversationStore.Loaded loaded) {
+    Set<String> outstanding =
+        loaded.state().parkedCalls().stream().map(ToolCall::id).collect(Collectors.toSet());
+    return parks.forConversation(id).stream()
+        .filter(park -> outstanding.contains(park.call().id()))
+        .map(park -> new ParkedCall(park.token(), park.call()))
+        .toList();
   }
 }

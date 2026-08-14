@@ -21,14 +21,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Nested;
@@ -46,8 +42,6 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.conversation.InboxEntry;
-import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
 import org.jwcarman.nessy.api.event.ToolProgress;
@@ -59,6 +53,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -303,9 +298,9 @@ class HarnessTest {
   }
 
   /**
-   * {@code Harness.resume} (design 2026-08-12): the facade over {@code findParkConversation} +
-   * {@code consumeToken} + {@code append} + {@code drive} — pinned end to end through a real {@link
-   * Agent}, wired the way an application actually would.
+   * {@code Harness.resume} (design §5): the facade over {@code Parks.find} + {@code append} +
+   * {@code drive} — pinned end to end through a real {@link Agent}, wired the way an application
+   * actually would.
    */
   @Nested
   class Resume {
@@ -418,8 +413,9 @@ class HarnessTest {
     }
 
     /**
-     * Task-4: {@code peek} reads the same {@code findPark} row {@code progress} narrates against,
-     * without consuming it — a second peek still finds the park exactly where the first left it.
+     * Task-4: {@code peek} reads the same {@code Parks.find} entry {@code progress} narrates
+     * against, without consuming it — a second peek still finds the park exactly where the first
+     * left it.
      */
     @Test
     void peek_reads_a_park_without_consuming_it() {
@@ -559,10 +555,12 @@ class HarnessTest {
       ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
       ConversationState seeded =
           ConversationState.newConversation(id)
-              .withParkedCalls(List.of(new ParkedCall(token, call)))
+              .withParkedCalls(List.of(call))
               .with(ConversationStatus.PARKED);
       store.save(seeded, List.of());
-      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).build();
+      Parks parks = Parks.inMemory();
+      parks.park(new Parks.Park(id, token, call));
+      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).parks(parks).build();
       ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
 
       assertThatThrownBy(() -> harness.resume(token, decided))
@@ -595,7 +593,7 @@ class HarnessTest {
 
       assertThat(parked).isInstanceOf(RunOutcome.Parked.class);
       ParkToken token = approver.token();
-      assertThat(parked.state().parkedCalls()).extracting(ParkedCall::token).containsExactly(token);
+      assertThat(parked.state().parkedCalls()).extracting(ToolCall::id).containsExactly(call.id());
 
       RunOutcome resumed = harness.resume(token, new ToolResolution.Decided(Decision.allow()));
 
@@ -655,60 +653,14 @@ class HarnessTest {
     }
 
     /**
-     * A store whose {@link #findParkConversation} keeps answering for a token even after the
-     * conversation that once parked it has settled and the live park index no longer names it — the
-     * same way a durable store's own park bookkeeping might reasonably outlive the park itself.
-     * Lets a sequential two-call test reach {@code Harness.resume}'s already-claimed branch (the
-     * token is still recognized, but {@code consumeToken} reports it already spent) without a real
-     * store's own park-index cleanup making the second call see an unknown token instead — a timing
-     * detail of the store, orthogonal to what this test pins about the facade.
-     */
-    static final class StickyParkConversationStore implements ConversationStore {
-
-      private final ConversationStore delegate = ConversationStore.inMemory();
-      private final Map<ParkToken, ConversationId> everParked = new ConcurrentHashMap<>();
-
-      @Override
-      public Optional<Loaded> load(ConversationId id) {
-        return delegate.load(id);
-      }
-
-      @Override
-      public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
-        ConversationState saved = delegate.save(state, drainedInboxIds);
-        saved.parkedCalls().forEach(parked -> everParked.put(parked.token(), state.id()));
-        return saved;
-      }
-
-      @Override
-      public void append(ConversationId id, InboxEntry entry) {
-        delegate.append(id, entry);
-      }
-
-      @Override
-      public Optional<ParkedCall> findPark(ParkToken token) {
-        return delegate.findPark(token);
-      }
-
-      @Override
-      public Optional<ConversationId> findParkConversation(ParkToken token) {
-        Optional<ConversationId> live = delegate.findParkConversation(token);
-        return live.isPresent() ? live : Optional.ofNullable(everParked.get(token));
-      }
-
-      @Override
-      public boolean consumeToken(ParkToken token) {
-        return delegate.consumeToken(token);
-      }
-    }
-
-    /**
      * F16-adjacent (rides with F1's fix): the facade-level pin of the loop-level redelivery
      * contract already pinned at {@code ConversationLoopTest}'s {@code
      * a_second_resume_with_the_same_token_is_a_read_not_a_replay} — here through the real {@code
      * Harness.resume} entry point end to end. A redelivered resume (the same token presented twice
      * — every real transport is at-least-once) must not re-invoke the tool a second time; it reads
-     * whatever the first delivery already produced.
+     * whatever the first delivery already produced. Task-4: the registry entry survives resolution
+     * on its own (design §5 — {@code Parks} never deletes), so the default in-memory {@code Parks}
+     * is enough; no bespoke sticky store is needed to keep the token findable for the second call.
      */
     @Test
     void resume_with_an_already_consumed_token_drives_current_truth_without_reinvoking_the_tool() {
@@ -723,8 +675,7 @@ class HarnessTest {
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       CountingSearchTool tool = new CountingSearchTool();
-      StickyParkConversationStore store = new StickyParkConversationStore();
-      Harness harness = Nessy.harness(provider).store(store).build();
+      Harness harness = Nessy.harness(provider).build();
       Agent<String> agent =
           harness
               .agent()
@@ -745,8 +696,8 @@ class HarnessTest {
   }
 
   /**
-   * {@code Harness.progress} (design 2026-08-12): the remote signal channel — a peek at {@code
-   * findPark}, never a consume, so the token stays fully resumable afterward.
+   * {@code Harness.progress} (design §5): the remote signal channel — a peek at {@code Parks.find},
+   * never a consume, so the token stays fully resumable afterward.
    */
   @Nested
   class Progress {
@@ -949,10 +900,12 @@ class HarnessTest {
       ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
       ConversationState seeded =
           ConversationState.newConversation(id)
-              .withParkedCalls(List.of(new ParkedCall(token, call)))
+              .withParkedCalls(List.of(call))
               .with(ConversationStatus.PARKED);
       store.save(seeded, List.of());
-      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).build();
+      Parks parks = Parks.inMemory();
+      parks.park(new Parks.Park(id, token, call));
+      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).parks(parks).build();
 
       assertThatThrownBy(() -> harness.progress(token, "halfway"))
           .isInstanceOf(IllegalStateException.class)
@@ -960,63 +913,27 @@ class HarnessTest {
     }
 
     /**
-     * A store whose {@link #findParkConversation} always reports the token unfound, standing in for
-     * a concurrent {@code resume} that settles the token between {@link #progress}'s peek and its
-     * conversation-id lookup — everything else delegates to a real in-memory store so the park
-     * itself is genuinely there for the first read.
-     */
-    static final class SettlesBetweenReadsStore implements ConversationStore {
-
-      private final ConversationStore delegate = ConversationStore.inMemory();
-
-      @Override
-      public Optional<Loaded> load(ConversationId id) {
-        return delegate.load(id);
-      }
-
-      @Override
-      public ConversationState save(ConversationState state, Collection<String> drainedInboxIds) {
-        return delegate.save(state, drainedInboxIds);
-      }
-
-      @Override
-      public void append(ConversationId id, InboxEntry entry) {
-        delegate.append(id, entry);
-      }
-
-      @Override
-      public Optional<ParkedCall> findPark(ParkToken token) {
-        return delegate.findPark(token);
-      }
-
-      @Override
-      public Optional<ConversationId> findParkConversation(ParkToken token) {
-        return Optional.empty();
-      }
-
-      @Override
-      public boolean consumeToken(ParkToken token) {
-        return delegate.consumeToken(token);
-      }
-    }
-
-    /**
-     * Task-5 review, Finding 2 (Minor but contract-violating under race): the two-phase {@code
-     * findPark} → {@code findParkConversation} read can straddle a concurrent settle. The contract
-     * says an unresolvable token reports {@code false}, never throws — the same "dropped, not an
-     * error" treatment as an unknown token from the start.
+     * Spec §5: {@code progress} checks not just that the registry still recognizes the token, but
+     * that the conversation's own state still lists the call as outstanding. Registry entries
+     * survive resolution forever (design §5 — nothing ever deletes a {@code Parks} entry), so
+     * without this second check a stale progress signal arriving after the call already settled
+     * would emit narration nobody is still waiting to hear — exactly today's contract, re-targeted
+     * at the new seam.
      */
     @Test
-    void progress_racing_a_concurrent_settle_between_its_two_reads_reports_false_not_a_throw() {
+    void progress_on_a_settled_wait_returns_false() {
       ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
       ScriptedProvider provider =
           new ScriptedProvider()
               .turn(
                   new ModelEvent.ToolUseEmitted(call),
-                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+                  new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()))
+              .turn(
+                  new ModelEvent.TextChunk("done"),
+                  new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
-      SettlesBetweenReadsStore store = new SettlesBetweenReadsStore();
-      Harness harness = Nessy.harness(provider).store(store).build();
+      List<ToolProgress> heard = new ArrayList<>();
+      Harness harness = Nessy.harness(provider).listen(ToolProgress.class, heard::add).build();
       harness
           .agent()
           .model("fake-model")
@@ -1026,10 +943,12 @@ class HarnessTest {
           .converse()
           .tell("search for x");
       ParkToken token = approver.token();
+      harness.resume(token, new ToolResolution.Decided(Decision.allow()));
 
-      boolean emitted = harness.progress(token, "halfway");
+      boolean emitted = harness.progress(token, "too late");
 
       assertThat(emitted).isFalse();
+      assertThat(heard).isEmpty();
     }
   }
 }

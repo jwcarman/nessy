@@ -26,7 +26,6 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
-import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
@@ -35,6 +34,7 @@ import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
 /**
@@ -57,6 +57,7 @@ public final class Harness {
 
   private final ModelProvider provider;
   private final ConversationStore store;
+  private final Parks parks;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
   private final String defaultModel;
@@ -95,12 +96,14 @@ public final class Harness {
   Harness(
       ModelProvider provider,
       ConversationStore store,
+      Parks parks,
       ObservationRegistry observations,
       ObjectMapper mapper,
       String defaultModel,
       ListenerRegistry registry) {
     this.provider = provider;
     this.store = store;
+    this.parks = parks;
     this.observations = observations;
     this.mapper = mapper;
     this.defaultModel = defaultModel;
@@ -132,6 +135,10 @@ public final class Harness {
 
   ConversationStore store() {
     return store;
+  }
+
+  Parks parks() {
+    return parks;
   }
 
   ObservationRegistry observations() {
@@ -172,14 +179,16 @@ public final class Harness {
 
   /**
    * Answers a parked call: {@code token} names a wait some prior turn is durably patient for.
-   * Unknown or already-settled tokens are rejected loud rather than silently dropped; a token this
-   * store still recognizes but has already consumed is redelivery (every real transport is
-   * at-least-once) — the call is not replayed, the drive simply reads whatever the first delivery
-   * already produced. Either way, appending always succeeds and driving is the same re-entrant act
-   * {@link #resume} shares with {@code tell}: the inbox absorbs the answer, the status pointer says
-   * what happens next.
+   * Unknown tokens are rejected loud rather than silently dropped. The registry entry survives
+   * resolution (design §5) — it is the durable record that this token once named this wait, not a
+   * single-use claim — so a redelivered resume (every real transport is at-least-once) translates
+   * the token again, appends another {@code Resolved} entry, and the fold's own
+   * is-this-call-still-outstanding check drains it quietly rather than replaying the call: the
+   * drive simply reads whatever the first delivery already produced. Either way, appending always
+   * succeeds and driving is the same re-entrant act {@link #resume} shares with {@code tell}: the
+   * inbox absorbs the answer, the status pointer says what happens next.
    *
-   * @throws UnknownParkTokenException if {@code token} names no conversation this store still parks
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
    *     resume} cannot yet tell which agent's loop a token belongs to (see {@link
    *     #loopRegistrations}) — or if no agent has been built at all, reachable when a durable store
@@ -194,18 +203,13 @@ public final class Harness {
       throw new IllegalStateException(
           "resume is single-agent this generation: " + agents + " agents built");
     }
-    ConversationId id =
-        store.findParkConversation(token).orElseThrow(() -> new UnknownParkTokenException(token));
+    Parks.Park park = parks.find(token).orElseThrow(() -> new UnknownParkTokenException(token));
     if (agents == 0) {
       throw new IllegalStateException(
           "no agent built on this harness — resume has no loop to drive with");
     }
-    if (!store.consumeToken(token)) {
-      // idempotent re-delivery: read current truth, do not replay
-      return loop.get().drive(id, observer);
-    }
-    store.append(id, InboxEntry.resolved(token, resolution));
-    return loop.get().drive(id, observer);
+    store.append(park.conversationId(), InboxEntry.resolved(park.call().id(), resolution));
+    return loop.get().drive(park.conversationId(), observer);
   }
 
   /**
@@ -246,29 +250,28 @@ public final class Harness {
   }
 
   /**
-   * Reads a park without consuming it — the same {@link ConversationStore#findPark} peek {@link
-   * #progress} narrates against, exposed directly so a caller can inspect what a token is waiting
-   * on before deciding how to {@link #resume} it. Unlike {@link #resume}, an unknown or
-   * already-settled token is not an error: {@link Optional#empty()} says the wait is not there to
-   * read, exactly as {@link #progress} treats it.
+   * Reads a park without consuming it — the same {@link Parks#find} read {@link #progress} narrates
+   * against, exposed directly so a caller can inspect what a token is waiting on before deciding
+   * how to {@link #resume} it. Unlike {@link #resume}, an unknown token is not an error: {@link
+   * Optional#empty()} says the wait is not there to read, exactly as {@link #progress} treats it.
    */
   public Optional<ParkedCall> peek(ParkToken token) {
     Objects.requireNonNull(token, "token must not be null");
-    return store.findPark(token);
+    return parks.find(token).map(park -> new ParkedCall(park.token(), park.call()));
   }
 
   /**
    * The remote signal channel: a tool still running out in the world reports {@code message}
-   * against the wait it parked under. {@code token} is only ever peeked, via {@link
-   * ConversationStore#findPark}, never consumed — this is narration, not a resolution, and the wait
-   * itself remains exactly as resumable afterward as it was before. An unknown or already-settled
-   * token is not an error — nor is a token that settles between the peek and the conversation-id
-   * lookup below, a race against a concurrent {@link #resume}; either way the signal simply has
-   * nowhere left to land, so it is dropped and {@code false} says so. A live token emits {@link
-   * ToolProgress} on the (single) built agent's own system channel — the same {@link
-   * ListenerRegistry} the in-process tee narrates on — reaching harness-seeded and agent-declared
-   * listeners alike, the identical audience the tee reaches, carrying the park's own conversation
-   * and call id, and returns {@code true}.
+   * against the wait it parked under. {@code token} is only ever peeked, via {@link Parks#find},
+   * never consumed — this is narration, not a resolution, and the wait itself remains exactly as
+   * resumable afterward as it was before. An unknown token is not an error, nor is a token the
+   * registry still recognizes but whose call the conversation's own state no longer lists as
+   * outstanding (design §5: registry entries survive resolution, so a settled wait's token stays
+   * findable forever) — either way the signal simply has nowhere left to land, so it is dropped and
+   * {@code false} says so. A live token emits {@link ToolProgress} on the (single) built agent's
+   * own system channel — the same {@link ListenerRegistry} the in-process tee narrates on —
+   * reaching harness-seeded and agent-declared listeners alike, the identical audience the tee
+   * reaches, carrying the park's own conversation and call id, and returns {@code true}.
    *
    * @throws IllegalStateException if more than one agent has been built from this harness — {@code
    *     progress} cannot yet tell which agent's registry a token belongs to (see {@link
@@ -283,13 +286,20 @@ public final class Harness {
       throw new IllegalStateException(
           "progress is single-agent this generation: " + agents + " agents built");
     }
-    Optional<ParkedCall> park = peek(token);
+    Optional<Parks.Park> park = parks.find(token);
     if (park.isEmpty()) {
       return false;
     }
-    Optional<ConversationId> conversationId = store.findParkConversation(token);
-    if (conversationId.isEmpty()) {
-      return false; // settled concurrently between the two reads — dropped, not an error
+    boolean stillOutstanding =
+        store
+            .load(park.get().conversationId())
+            .map(
+                loaded ->
+                    loaded.state().parkedCalls().stream()
+                        .anyMatch(call -> call.id().equals(park.get().call().id())))
+            .orElse(false);
+    if (!stillOutstanding) {
+      return false;
     }
     if (agents == 0) {
       throw new IllegalStateException(
@@ -297,7 +307,7 @@ public final class Harness {
     }
     agentRegistry
         .get()
-        .emit(new ToolProgress(conversationId.get(), park.get().call().id(), message));
+        .emit(new ToolProgress(park.get().conversationId(), park.get().call().id(), message));
     return true;
   }
 }

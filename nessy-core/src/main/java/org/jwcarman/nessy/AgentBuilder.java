@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.GatedToolCallExecutor;
 import org.jwcarman.nessy.spi.execute.ProviderModelCallExecutor;
@@ -72,6 +73,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   private final Harness harness;
   private final ModelProvider provider;
   private final ConversationStore store;
+  private final Parks parks;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
   private final String defaultModel;
@@ -107,6 +109,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     this.harness = harness;
     this.provider = harness.provider();
     this.store = harness.store();
+    this.parks = harness.parks();
     this.observations = harness.observations();
     this.mapper = harness.mapper();
     this.defaultModel = harness.defaultModel();
@@ -271,10 +274,11 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
             resolvedMemory,
             Optional.ofNullable(termination).orElseGet(this::defaultTermination),
             store,
+            parks,
             events,
             observations);
     harness.loop(loop, events);
-    return new Agent<>(loop, events, store, resolvedMemory, renderer);
+    return new Agent<>(loop, events, store, parks, resolvedMemory, renderer);
   }
 
   /** {@link #DEFAULT_MAX_TOKENS}. */

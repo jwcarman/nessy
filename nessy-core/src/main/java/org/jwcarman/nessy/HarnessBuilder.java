@@ -25,6 +25,7 @@ import java.util.function.Consumer;
 import org.jwcarman.nessy.api.event.ListenerRegistration;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
 
   private final ModelProvider provider;
   private ConversationStore store;
+  private Parks parks;
   private ObservationRegistry observations;
   private ObjectMapper mapper;
   private String defaultModel;
@@ -53,6 +55,12 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   /** Where session state lives. Default: {@link ConversationStore#inMemory()}. */
   public HarnessBuilder store(ConversationStore store) {
     this.store = Objects.requireNonNull(store, "store must not be null");
+    return this;
+  }
+
+  /** The callback door's own registry. Default: {@link Parks#inMemory()}. */
+  public HarnessBuilder parks(Parks parks) {
+    this.parks = Objects.requireNonNull(parks, "parks must not be null");
     return this;
   }
 
@@ -119,6 +127,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
     return new Harness(
         provider,
         Optional.ofNullable(store).orElseGet(this::defaultStore),
+        Optional.ofNullable(parks).orElseGet(this::defaultParks),
         Optional.ofNullable(observations).orElseGet(this::defaultObservations),
         Optional.ofNullable(mapper).orElseGet(this::defaultMapper),
         defaultModel,
@@ -128,6 +137,11 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   /** {@link ConversationStore#inMemory()} — session state kept only for the process's lifetime. */
   private ConversationStore defaultStore() {
     return ConversationStore.inMemory();
+  }
+
+  /** {@link Parks#inMemory()} — parked waits kept only for the process's lifetime. */
+  private Parks defaultParks() {
+    return Parks.inMemory();
   }
 
   /** {@link ObservationRegistry#NOOP} — no metrics or traces emitted. */
