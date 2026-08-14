@@ -1,7 +1,14 @@
 # The Patient Researcher — design
 
 **Date:** 2026-08-13
-**Status:** DRAFT — pending review
+**Status:** RETIRED, UNBUILT — 2026-08-14. Superseded by the night-watchman
+example (2026-08-14-night-watchman-design.md) at user review: the examples
+family exhibits the time-triggered pattern instead. A full implementation of
+this spec exists on the archived branch `patient-researcher-archive`; its one
+framework fix (the JdbcPersistenceAutoConfiguration ordering pin) was
+cherry-picked to main independently. The machine-half verbs
+(`harness.resume`/`progress`, tool-side parks) remain undemoed — recorded,
+not forgotten.
 **Builds on:** the durable kernel (2026-08-12, shipped), the DX generation
 (2026-08-13, spec'd), and the Spring Boot starter
 (2026-08-13-spring-boot-starter-design.md) — this example is written on both
