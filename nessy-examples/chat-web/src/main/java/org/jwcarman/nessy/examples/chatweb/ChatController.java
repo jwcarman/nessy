@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -37,9 +36,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * The page-rebuild endpoint and the entry-message endpoint (spec §4's table). The turn itself runs
- * on the starter's {@link TurnRunner}, narrated through {@link TurnEventSse}; this controller's own
- * job shrinks to identity (which agent, which conversation) and the terminal {@code done} event,
- * which {@link ApprovalController}'s resumed-segment stream shares via {@link #done}.
+ * on the starter's {@link TurnRunner}, narrated through {@link TurnEventSse} — including the
+ * terminal {@code done} event, which the framework now emits itself — so this controller's own job
+ * shrinks to identity (which agent, which conversation) and closing the emitter once the turn
+ * returns, shared with {@link ApprovalController}'s resumed-segment stream via {@link #done}.
  */
 @RestController
 @RequestMapping("/api/conversations")
@@ -94,21 +94,14 @@ public final class ChatController {
   }
 
   /**
-   * The shared tail of both entry and resume streams: the terminal {@code done} event carrying
-   * final status (and {@code failureReason} when the turn failed). Any {@code tool-parked} cards
-   * for a newly parked call were already narrated live by the observer the turn itself streamed
-   * through — this no longer re-derives them from {@code outcome}, so the live park event is the
-   * single card source for the stream (the page-rebuild snapshot in {@link #get} is the separate,
-   * still-needed source for a reader who missed that live event, e.g. a losing concurrent driver).
+   * The shared tail of both entry and resume streams. The terminal {@code done} event no longer
+   * lives here — the observer the turn streamed through already narrated it live, from {@code
+   * TurnEvent.TurnEnded}, the same beat the framework saved the ending — so this is now only the
+   * cleanup a normally-returning turn still needs: closing the emitter. {@code outcome} stays a
+   * parameter (the shared {@link TurnRunner#run} shape both this and {@link ApprovalController}
+   * call into) even though this method no longer reads it.
    */
   static void done(SseEmitter emitter, RunOutcome outcome) {
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("status", outcome.state().status().name());
-    String failureReason = outcome.state().failureReason();
-    if (failureReason != null) {
-      payload.put("failureReason", failureReason);
-    }
-    TurnEventSse.send(emitter, new TurnEventSse.Event("done", payload));
     emitter.complete();
   }
 

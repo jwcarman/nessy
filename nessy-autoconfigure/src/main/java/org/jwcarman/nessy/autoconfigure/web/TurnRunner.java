@@ -56,9 +56,12 @@ public final class TurnRunner {
    * into bridging with something like an {@code AtomicReference} set after the fact — a real, if
    * narrow, unsynchronized race). {@code turn} is expected to stream its own narration via a {@link
    * TurnEventSse#observer(java.util.function.Consumer) TurnEventSse}-built observer over the
-   * emitter it receives as it runs; a {@link RuntimeException} escaping {@code turn} instead ends
-   * the stream itself — one {@code done} event naming the failure, then {@link
-   * SseEmitter#completeWithError}.
+   * emitter it receives as it runs; the {@code done} event now arrives that way too, via {@code
+   * TurnEnded}, so {@code onOutcome} is left only whatever non-wire cleanup a caller still wants
+   * (e.g. completing the emitter) — the two-arg signature stays for that. A {@link
+   * RuntimeException} escaping {@code turn} instead bypasses {@code onOutcome} entirely — no {@code
+   * TurnEnded} was narrated for that attempt — and ends the stream itself: one {@code done} event
+   * naming the failure, then {@link SseEmitter#completeWithError}.
    */
   public SseEmitter run(
       Function<SseEmitter, RunOutcome> turn, BiConsumer<SseEmitter, RunOutcome> onOutcome) {

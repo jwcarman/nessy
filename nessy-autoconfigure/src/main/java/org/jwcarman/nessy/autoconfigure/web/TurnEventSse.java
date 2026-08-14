@@ -16,10 +16,16 @@
 package org.jwcarman.nessy.autoconfigure.web;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.conversation.ConversationStatus;
+import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -50,40 +56,91 @@ public final class TurnEventSse {
   /** One named SSE payload: {@code event.name()} on the wire, {@code payload} as its JSON data. */
   public record Event(String name, Map<String, Object> payload) {}
 
-  /** Maps one {@link TurnEvent} to the named payload spec §4's endpoint table promises. */
-  public static Event of(TurnEvent event) {
+  /**
+   * Maps one {@link TurnEvent} to the named payload spec §4's endpoint table promises — {@link
+   * Optional#empty()} for the one variant that can legitimately have nothing to say on the wire
+   * ({@link TurnEvent.AssistantSaid} with no prose; see {@link #assistantSaid}).
+   */
+  public static Optional<Event> of(TurnEvent event) {
     return switch (event) {
-      case TurnEvent.TextDelta(String text) -> new Event("delta", Map.of("text", text));
-      case TurnEvent.ThinkingDelta(String text) -> new Event("thinking", Map.of("text", text));
-      case TurnEvent.RedactedThinking(_) -> new Event("thinking", Map.of("text", "[redacted]"));
+      case TurnEvent.TextDelta(String text) ->
+          Optional.of(new Event("delta", Map.of("text", text)));
+      case TurnEvent.ThinkingDelta(String text) ->
+          Optional.of(new Event("thinking", Map.of("text", text)));
+      case TurnEvent.RedactedThinking(_) ->
+          Optional.of(new Event("thinking", Map.of("text", "[redacted]")));
       case TurnEvent.ToolCallRequested(ToolCall call) ->
-          new Event("tool-requested", Map.of("id", call.id(), "name", call.name()));
+          Optional.of(new Event("tool-requested", Map.of("id", call.id(), "name", call.name())));
       case TurnEvent.ToolCallProgressed(ToolCall call, String message) ->
-          new Event("tool-progress", Map.of("id", call.id(), "message", message));
+          Optional.of(new Event("tool-progress", Map.of("id", call.id(), "message", message)));
       case TurnEvent.ToolCallDecided(ToolCall call, Decision decision) ->
-          new Event("tool-decided", Map.of("id", call.id(), "allowed", allowed(decision)));
+          Optional.of(
+              new Event("tool-decided", Map.of("id", call.id(), "allowed", allowed(decision))));
       case TurnEvent.ToolCallCompleted(ToolCall call, ToolResult result) ->
-          new Event("tool-completed", Map.of("id", call.id(), "error", result.isError()));
+          Optional.of(
+              new Event("tool-completed", Map.of("id", call.id(), "error", result.isError())));
       case TurnEvent.ToolCallParked(ToolCall call, ParkToken token) ->
           // A retried segment can narrate the same park twice, and a losing concurrent driver's
           // stream can see the park not at all (TurnEvent's own javadoc, at-least-once narration).
           // Neither gap is this module's to close: a reader who missed (or duplicated) this event
           // rebuilds the identical card from Agent.snapshot's parked-calls, the durable source of
           // record this live event is only a preview of.
-          new Event(
-              "tool-parked",
-              Map.of(
-                  "token", token.value(),
-                  "tool", call.name(),
-                  "args", call.arguments().toPrettyString()));
+          Optional.of(
+              new Event(
+                  "tool-parked",
+                  Map.of(
+                      "token", token.value(),
+                      "tool", call.name(),
+                      "args", call.arguments().toPrettyString())));
+      case TurnEvent.AssistantSaid(Message message) -> assistantSaid(message);
+      case TurnEvent.TurnEnded(ConversationStatus status, String failureReason) ->
+          Optional.of(turnEnded(status, failureReason));
     };
   }
 
   /**
-   * A {@link TurnObserver} that maps every event through {@link #of(TurnEvent)} into {@code sink}.
+   * {@code message} {@code {text}} — only when the settled message's joined prose is non-blank. A
+   * tool-use-only response (asking for homework, no prose) is still a real {@link
+   * TurnEvent.AssistantSaid}, but the wire already tells that story through the {@code
+   * tool-requested}/{@code tool-parked} events; a second, empty {@code message} event would be
+   * noise a reference client has to learn to ignore rather than a fact it needs.
+   */
+  private static Optional<Event> assistantSaid(Message message) {
+    String text = textOf(message);
+    return text.isBlank()
+        ? Optional.empty()
+        : Optional.of(new Event("message", Map.of("text", text)));
+  }
+
+  /** A message's {@link TextBlock}s joined in order; every other block kind is invisible here. */
+  private static String textOf(Message message) {
+    StringBuilder text = new StringBuilder();
+    for (ContentBlock block : message.content()) {
+      if (block instanceof TextBlock textBlock) {
+        text.append(textBlock.text());
+      }
+    }
+    return text.toString();
+  }
+
+  /**
+   * {@code done} {@code {status[, failureReason]}} — the wire shape the starter has always used.
+   */
+  private static Event turnEnded(ConversationStatus status, String failureReason) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("status", status.name());
+    if (failureReason != null) {
+      payload.put("failureReason", failureReason);
+    }
+    return new Event("done", payload);
+  }
+
+  /**
+   * A {@link TurnObserver} that maps every event through {@link #of(TurnEvent)} into {@code sink},
+   * skipping the ones with nothing to say on the wire.
    */
   public static TurnObserver observer(Consumer<Event> sink) {
-    return event -> sink.accept(of(event));
+    return event -> of(event).ifPresent(sink);
   }
 
   /**
