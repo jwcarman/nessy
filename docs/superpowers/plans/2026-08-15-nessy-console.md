@@ -25,9 +25,9 @@
 
 - [ ] RED first; GREEN. Offline reactor green. Commit: `feat: nessy-console — the terminal front door becomes a library`
 
-### Task 2: The collapse
+### Task 2: The collapse — and the env helper (amended: spec §4a/§5)
 
-**Files:** `chat-cli`: `AnthropicChat` + `OpenAiChat` onto `ConsoleRepl` (their provider/`events()` lessons and class javadoc contrasts SURVIVE; hand-rolled render loops and module-private `ConsoleApprover` DELETE); `scout`: `Scout` onto `ConsoleRepl` (toolbox block + grants + construction seam verbatim; its `ConsoleApprover` copy DELETES — the library's is now the one wired); poms gain the `nessy-console` dependency.
+**Files:** NEW micro-module `nessy-model-env` first (aggregator + BOM; pom depends on BOTH provider modules non-optionally; one `fromEnv()` method per spec §4a with the env-map seam; offline tests: each-key-alone, both-keys+tiebreak+default-notice, neither-fails-noisy-naming-variables). Then the collapse: `chat-cli` consolidates to ONE main `Chat` (provider via `fromEnv()`, `events()` subscription survives, `AnthropicChat`+`OpenAiChat`+module-private `ConsoleApprover` DELETE, pom swaps provider deps for `nessy-model-env` + `nessy-console`); `scout`: `Scout` onto `ConsoleRepl` + `fromEnv()` (toolbox block + grants + construction seam verbatim; its `ConsoleApprover` copy DELETES).
 
 - [ ] `ScoutTest` UNTOUCHED and green; chat-cli compiles + its (no-smoke) family posture unchanged; offline reactor green. Behavior-parity check in the report: every information channel the old hand-rolls printed (deltas, tool lines, endings, approval prompt) demonstrably present in the new default (unit-test evidence from Task 1 suffices — enumerate the mapping).
 - [ ] Commit: `refactor: three mains, one library — the family learns its look`

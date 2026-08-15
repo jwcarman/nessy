@@ -77,16 +77,39 @@ security beat should pop — bold/yellow), showing the tool's
 `describe(...)` line; y/n via the same injected-stream seam. chat-cli's
 and scout's copies DELETE.
 
-## 5. The three mains collapse
+## 4a. `nessy-model-env` — the provider follows the key (amended in
+session, owner: "switching to openai would be simply including that
+env var")
 
-- `AnthropicChat` and `OpenAiChat`: provider construction + their
-  distinct lessons (the two providers; the `events()` contrast, which
-  stays) + `ConsoleRepl.of(agent)...run()`. Hand-rolled render loops and
-  the module-private `ConsoleApprover` go.
+A micro-module depending on BOTH provider modules non-optionally (its
+whole point: both on the classpath so either key just works). One
+method — `EnvModelProviders.fromEnv()` (naming at implementer taste in
+the family voice): `ANTHROPIC_API_KEY` present → Anthropic;
+`OPENAI_API_KEY` present → OpenAI; both → `NESSY_PROVIDER`
+(`anthropic`/`openai`) breaks the tie, defaulting Anthropic with a
+one-line notice; neither → fail-noisy naming exactly the variables it
+checked. No reflection, no Spring, ~twenty lines plus javadoc. Offline
+tests via an env-reading seam (a `Map<String,String>` parameter with
+the public method reading the real environment — the storeSet-style
+honest minimum).
+
+## 5. The three mains collapse — and become two
+
+- `chat-cli` **consolidates to ONE main** (`Chat`): the env helper is
+  the provider lesson now ("switch providers by switching the key"),
+  strictly better teaching than two parallel mains. The `events()`
+  subscription SURVIVES in the one main; the old two-main contrast
+  moves into README prose. `OpenAiChat`'s exhibit duty passes to the
+  helper (the OpenAI module rides chat-cli's classpath via
+  `nessy-model-env`). Hand-rolled render loops and the module-private
+  `ConsoleApprover` go.
 - `Scout`: the toolbox block + grants (its lesson, untouched — the
   construction seam and grant table survive verbatim) +
-  `ConsoleRepl...run()`. **`ScoutTest` must pass UNTOUCHED** — it
-  exercises the grant table through the seam, not the REPL loop.
+  `ConsoleRepl...run()`, provider via `fromEnv()`. **`ScoutTest` must
+  pass UNTOUCHED** — it exercises the grant table through the seam,
+  not the REPL loop or the provider choice.
+- Boot examples are already property-driven via the starter — a README
+  parity sentence, no code.
 - Behavior parity, not byte parity: the styled default may render
   *nicer* than the old hand-rolls; what must survive is the information
   (deltas, tool lines, endings, approval prompts).
