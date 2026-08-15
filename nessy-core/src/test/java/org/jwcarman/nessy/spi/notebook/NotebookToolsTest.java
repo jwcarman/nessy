@@ -243,6 +243,19 @@ class NotebookToolsTest {
     }
 
     @Test
+    void a_null_name_recall_returns_a_tool_error_not_a_throw() {
+      Notebook notebook = Notebook.inMemory();
+      SubjectId subject = new SubjectId("subject-1");
+      Tool<NotebookTools.RecallNote> tool = NotebookTools.recall(notebook, id -> subject);
+      ToolContext context = toolContext(ConversationId.generate());
+
+      Awaited<ToolResult> awaited = tool.execute(new NotebookTools.RecallNote(null), context);
+
+      ToolResult result = readyResultOf(awaited).value();
+      assertThat(result.isError()).isTrue();
+    }
+
+    @Test
     void the_resolver_less_overload_keys_recall_by_conversation() {
       Notebook notebook = Notebook.inMemory();
       ConversationId conversationId = ConversationId.generate();
@@ -290,6 +303,23 @@ class NotebookToolsTest {
       ToolResult result = readyResultOf(awaited).value();
       assertThat(result.isError()).isFalse();
       assertThat(result.content()).isEqualTo("Forgotten 'user-taste'.");
+    }
+
+    @Test
+    void a_null_name_forget_returns_a_tool_error_not_a_throw() {
+      Notebook notebook = Notebook.inMemory();
+      SubjectId subject = new SubjectId("subject-1");
+      notebook.save(
+          subject, new Notebook.Entry("user-taste", "Prefers terse answers", "Full body"));
+      Tool<NotebookTools.ForgetNote> tool = NotebookTools.forget(notebook, id -> subject);
+      ToolContext context = toolContext(ConversationId.generate());
+
+      Awaited<ToolResult> awaited = tool.execute(new NotebookTools.ForgetNote(null), context);
+
+      ToolResult result = readyResultOf(awaited).value();
+      assertThat(result.isError()).isTrue();
+      assertThat(notebook.find(subject, "user-taste"))
+          .contains(new Notebook.Entry("user-taste", "Prefers terse answers", "Full body"));
     }
 
     @Test

@@ -236,6 +236,9 @@ public final class NotebookTools {
 
     @Override
     public Awaited<ToolResult> execute(RecallNote input, ToolContext context) {
+      if (input.name() == null || input.name().isBlank()) {
+        return Awaited.ready(ToolResult.error("name must be provided"));
+      }
       SubjectId subject = resolver.apply(context.conversationId());
       Optional<Notebook.Entry> found = notebook.find(subject, input.name());
       if (found.isEmpty()) {
@@ -278,6 +281,9 @@ public final class NotebookTools {
 
     @Override
     public Awaited<ToolResult> execute(ForgetNote input, ToolContext context) {
+      if (input.name() == null || input.name().isBlank()) {
+        return Awaited.ready(ToolResult.error("name must be provided"));
+      }
       SubjectId subject = resolver.apply(context.conversationId());
       notebook.forget(subject, input.name());
       return Awaited.ready(ToolResult.ok("Forgotten '" + input.name() + "'."));
