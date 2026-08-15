@@ -12,8 +12,8 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- MySQL, verified against the mysql:8.0 image (see Task 2's report for the verification notes --
--- Task 3's container matrix pins the same tag). Every table statement is idempotent (CREATE TABLE
+-- MySQL, verified against the mysql:8.0 image (the vendor TCK matrix in the test tree
+-- pins the same image tag). Every table statement is idempotent (CREATE TABLE
 -- IF NOT EXISTS). MySQL has no CREATE INDEX IF NOT EXISTS at all (confirmed live -- it is a syntax
 -- error, not a no-op), so the index below guards itself with a small prepared-statement dance
 -- instead. Postgres's unbounded `text` primary/foreign key columns become bounded `varchar(255)` —

@@ -12,8 +12,8 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- SQL Server, verified against the mcr.microsoft.com/mssql/server:2022-latest image (see Task 2's
--- report -- Task 3's container matrix pins the same tag). SQL Server has no CREATE TABLE/INDEX IF
+-- SQL Server, verified against the mcr.microsoft.com/mssql/server:2022-latest image (the vendor TCK
+-- matrix in the test tree pins the same image tag). SQL Server has no CREATE TABLE/INDEX IF
 -- NOT EXISTS at all, so every statement guards itself against sys.tables/sys.indexes instead —
 -- confirmed live, idempotent on a second run, and confirmed to run as one JDBC Statement.execute()
 -- call with no GO batch separator needed (GO is a sqlcmd/SSMS client convention, not real T-SQL,

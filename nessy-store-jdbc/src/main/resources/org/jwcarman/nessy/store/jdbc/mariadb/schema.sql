@@ -12,8 +12,8 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- MariaDB, verified against the mariadb:11.4 image (see Task 2's report -- Task 3's container
--- matrix pins the same tag). Unlike MySQL, MariaDB accepts CREATE INDEX IF NOT EXISTS directly —
+-- MariaDB, verified against the mariadb:11.4 image (the vendor TCK matrix in the test tree
+-- pins the same image tag). Unlike MySQL, MariaDB accepts CREATE INDEX IF NOT EXISTS directly —
 -- confirmed live, idempotent on a second run — so this file needs none of mysql/schema.sql's
 -- prepared-statement guard. `jsonb` becomes `json`, which MariaDB's own manual documents as a
 -- plain alias for `longtext` carrying an automatic `CHECK (json_valid(...))` constraint (confirmed

@@ -13,8 +13,8 @@
 -- limitations under the License.
 
 -- Oracle, verified against the gvenzl/oracle-free:23-slim-faststart image (reported version at
--- verification time: "Oracle AI Database 26ai Free Release 23.26.2.0.0" — see Task 2's report --
--- Task 3's container matrix pins the same tag). CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT
+-- verification time: "Oracle AI Database 26ai Free Release 23.26.2.0.0" — the vendor TCK
+-- matrix in the test tree pins the same image tag). CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT
 -- EXISTS are both Oracle Database 23c+ features and both confirmed live here, idempotent on a
 -- second run. The classic pre-23c idiom (an anonymous PL/SQL block catching ORA-00955) is not
 -- needed against this image and was not implemented -- an older Oracle image would need it instead.
@@ -22,7 +22,7 @@
 -- bytes, so 255 is comfortable headroom for a UUID-shaped string). `jsonb`/`text` both become
 -- `clob` — payload/state/message/summary are unbounded blobs of JSON or free text, and `clob` reads
 -- back through `ResultSet.getString` exactly like every other dialect's text column, so no read-side
--- branch is needed (see JdbcStatements' javadoc and the Task 2 report for the getString check).
+-- branch is needed (see JdbcStatements' javadoc; getString reads CLOB columns portably).
 
 CREATE TABLE IF NOT EXISTS nessy_conversation (
   id       varchar2(255) PRIMARY KEY,
