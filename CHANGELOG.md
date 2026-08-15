@@ -895,12 +895,17 @@ sequence of renames and interim shapes that produced it.
   `mcr.microsoft.com/mssql/server:2022-latest`,
   `gvenzl/oracle-free:23-slim-faststart`); the four vendor JDBC drivers are
   test-scope, version-pinned as properties (none are Boot-BOM-managed inside
-  this Spring-free module). `container`-tagged, excluded from the default
-  build and from CI the same way `live` tests are — `./mvnw verify` needs no
-  Docker daemon; `./mvnw test -Dnessy.excludedGroups=` runs the whole
-  five-vendor matrix locally, Oracle's image being the heavyweight of the
-  five to pull and start. See the root README's "Supported databases"
-  section for the full table and the honest notes on scope.
+  this Spring-free module). `container`-tagged like Postgres's own suite
+  (excluded from the default build — `./mvnw verify` needs no Docker
+  daemon — but *not* from CI, which already runs `container` on its
+  Docker-equipped runner). The four vendor classes carry an additional
+  `vendor` tag so CI's `-Dnessy.excludedGroups=live,vendor` keeps running
+  its existing container coverage while staying off the four extra images
+  (Oracle among them) this matrix pulls; `./mvnw verify
+  -Dnessy.excludedGroups=live` runs the whole five-vendor matrix locally,
+  Oracle's image being the heavyweight of the five to pull and start. See
+  the root README's "Supported databases" section for the full table and
+  the honest notes on scope.
 
 ### Removed
 

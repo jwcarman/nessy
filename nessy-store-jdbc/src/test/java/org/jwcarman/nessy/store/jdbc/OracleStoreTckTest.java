@@ -67,6 +67,7 @@ import org.testcontainers.oracle.OracleContainer;
  */
 @Testcontainers
 @Tag("container")
+@Tag("vendor")
 class OracleStoreTckTest {
 
   @Container

@@ -56,6 +56,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @Testcontainers
 @Tag("container")
+@Tag("vendor")
 class MySqlStoreTckTest {
 
   @Container static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0");

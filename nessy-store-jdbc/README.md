@@ -94,5 +94,11 @@ Postgres's own test classes plus one class per vendor
 (`MySqlStoreTckTest`, `MariaDbStoreTckTest`, `SqlServerStoreTckTest`,
 `OracleStoreTckTest`), each running all four `nessy-store-tck` contracts
 against a real Testcontainers instance for that vendor plus a
-dialect-resolution pin. See the root README's supported-databases section
-for the pinned image versions and the Oracle patience note.
+dialect-resolution pin. The four vendor classes carry an additional
+`@Tag("vendor")` alongside `@Tag("container")`: CI (Docker-equipped, and
+already running the `container` suites — Postgres included — with
+`-Dnessy.excludedGroups=live`) excludes `vendor` too
+(`-Dnessy.excludedGroups=live,vendor`), so the five-vendor matrix stays a
+local-only run; plain `-Dnessy.excludedGroups=live` still runs it. See the
+root README's supported-databases section for the pinned image versions and
+the Oracle patience note.

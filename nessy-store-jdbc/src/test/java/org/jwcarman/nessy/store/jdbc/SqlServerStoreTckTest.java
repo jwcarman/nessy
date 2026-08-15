@@ -58,6 +58,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @Testcontainers
 @Tag("container")
+@Tag("vendor")
 class SqlServerStoreTckTest {
 
   @Container

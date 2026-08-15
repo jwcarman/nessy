@@ -56,6 +56,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @Testcontainers
 @Tag("container")
+@Tag("vendor")
 class MariaDbStoreTckTest {
 
   @Container static final MariaDBContainer<?> MARIADB = new MariaDBContainer<>("mariadb:11.4");

@@ -799,16 +799,21 @@ and row-lock notes.
 
 Three honest notes on the shape of this coverage:
 
-- **The five-vendor matrix is local and container-tagged, not part of CI.**
-  The full TCK (all four `nessy-store-tck` contracts) runs a second time
-  against real MySQL, MariaDB, SQL Server, and Oracle containers — Postgres's
-  own container suite already existed — each plus a dialect-resolution pin
-  proving `JdbcDialect.resolve` picks the right enum from that vendor's own
-  live `DatabaseMetaData`, MariaDB's being the interesting one since its
-  driver reports the MySQL product name for wire compatibility and the
-  resolver has to read past that into the version string. The GitHub Actions
-  workflow builds offline only (no Docker daemon there); running the matrix
-  locally needs `-Dnessy.excludedGroups=` and a Docker daemon.
+- **The five-vendor matrix is tagged out of CI; the rest of the container
+  suite is not.** CI runs on `ubuntu-latest`, which carries a Docker daemon,
+  and has always exercised the `container`-tagged suites — Postgres,
+  RabbitMQ, the in-process MCP fixtures — with `-Dnessy.excludedGroups=live`.
+  The full TCK-run-five-times matrix (all four `nessy-store-tck` contracts
+  against real MySQL, MariaDB, SQL Server, and Oracle containers, each plus a
+  dialect-resolution pin proving `JdbcDialect.resolve` picks the right enum
+  from that vendor's own live `DatabaseMetaData` — MariaDB's being the
+  interesting one, since its driver reports the MySQL product name for wire
+  compatibility and the resolver has to read past that into the version
+  string) carries an additional `vendor` tag and is excluded from CI
+  specifically (`-Dnessy.excludedGroups=live,vendor`) so a push doesn't pull
+  four more images, Oracle's among them, on every run. `./mvnw verify
+  -Dnessy.excludedGroups=live` runs the full five-vendor matrix locally,
+  needing a Docker daemon.
 - **Oracle is the heavyweight of the five.** Its image is materially slower
   to both pull the first time and start than the other four — budget
   patience specifically for it when running the matrix locally, especially

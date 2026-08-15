@@ -30,7 +30,7 @@ jobs:
         cache: maven
 
     - name: Build with Maven
-      run: mvn -B verify -Dnessy.excludedGroups=live
+      run: mvn -B verify -Dnessy.excludedGroups=live,vendor
 
     - name: Verify hello's five-minute promise runs for real
       run: |
@@ -59,4 +59,4 @@ jobs:
     - name: Build and analyze with SonarCloud
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      run: mvn -Pci -B verify sonar:sonar -Dnessy.excludedGroups=live
+      run: mvn -Pci -B verify sonar:sonar -Dnessy.excludedGroups=live,vendor
