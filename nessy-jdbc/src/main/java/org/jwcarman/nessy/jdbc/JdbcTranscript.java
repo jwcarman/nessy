@@ -27,7 +27,7 @@ import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
  * The durable transcript over any of the five databases {@link JdbcDialect} knows (design §2): an

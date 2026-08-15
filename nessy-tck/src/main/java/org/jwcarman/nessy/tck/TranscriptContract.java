@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.spi.memory.Transcript;
-import org.jwcarman.nessy.spi.memory.Transcript.Entry;
+import org.jwcarman.nessy.spi.transcript.Transcript;
+import org.jwcarman.nessy.spi.transcript.Transcript.Entry;
 
 /**
  * The technology-compatibility kit every {@link Transcript} implementation must pass: monotonic

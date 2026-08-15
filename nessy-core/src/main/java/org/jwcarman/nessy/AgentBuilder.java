@@ -41,11 +41,11 @@ import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.GatedToolCallExecutor;
 import org.jwcarman.nessy.spi.execute.ProviderModelCallExecutor;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

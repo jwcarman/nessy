@@ -54,13 +54,13 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.slf4j.LoggerFactory;
 
 /**

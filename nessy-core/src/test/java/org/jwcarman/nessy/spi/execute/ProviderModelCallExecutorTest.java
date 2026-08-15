@@ -40,7 +40,6 @@ import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnEvent;
-import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ContextOverflowException;
@@ -49,6 +48,7 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 
 class ProviderModelCallExecutorTest {
 

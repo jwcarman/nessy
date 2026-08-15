@@ -27,6 +27,8 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.transcript.Transcript;
+import org.jwcarman.nessy.spi.transcript.TranscriptTrim;
 
 /**
  * The tail API's dogfood (design §4): a {@link Memory} that keeps only a bounded tail of the

@@ -30,7 +30,7 @@ import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;

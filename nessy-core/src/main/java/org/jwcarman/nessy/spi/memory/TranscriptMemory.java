@@ -20,6 +20,8 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.spi.transcript.Transcript;
+import org.jwcarman.nessy.spi.transcript.TranscriptTrim;
 
 /**
  * The floor: remembers everything verbatim through a transcript, recalls it whole.

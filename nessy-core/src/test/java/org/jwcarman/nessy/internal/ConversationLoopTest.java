@@ -63,8 +63,8 @@ import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.ModelCallExecutor;
 import org.jwcarman.nessy.spi.execute.ToolCallExecutor;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
  * The fold→perform cycle, pinned end to end with fakes cheap enough to make every ordering law

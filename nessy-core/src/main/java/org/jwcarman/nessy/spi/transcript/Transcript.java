@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.memory;
+package org.jwcarman.nessy.spi.transcript;
 
 import java.util.List;
 import org.jwcarman.nessy.api.conversation.ConversationId;
