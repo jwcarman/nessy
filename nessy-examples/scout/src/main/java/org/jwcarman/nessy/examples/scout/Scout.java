@@ -17,19 +17,17 @@ package org.jwcarman.nessy.examples.scout;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
-import java.util.Objects;
 import org.jwcarman.nessy.Agent;
-import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
-import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.approval.Approver;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.console.ConsoleApprover;
+import org.jwcarman.nessy.console.ConsoleRepl;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
+import org.jwcarman.nessy.model.env.EnvModelProviders;
+import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.tool.mcp.McpToolbox;
 
 /**
@@ -46,8 +44,8 @@ import org.jwcarman.nessy.tool.mcp.McpToolbox;
  */
 public final class Scout {
 
-  private static final String API_KEY_ENV_VAR = "ANTHROPIC_API_KEY";
-  private static final String MODEL = "claude-haiku-4-5-20251001";
+  private static final String ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+  private static final String OPENAI_MODEL = "gpt-4o-mini";
   private static final String DEEPWIKI_URL = "https://mcp.deepwiki.com/mcp";
 
   static final String SYSTEM_PROMPT =
@@ -59,39 +57,26 @@ public final class Scout {
   private Scout() {}
 
   public static void main(String[] args) {
-    if (System.getenv(API_KEY_ENV_VAR) == null) {
-      IO.println("Set " + API_KEY_ENV_VAR + " to run this example.");
-      System.exit(1);
-      return;
-    }
-
-    AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
+    ModelProvider provider = EnvModelProviders.fromEnv();
+    boolean anthropic = provider instanceof AnthropicModelProvider;
+    String model = anthropic ? ANTHROPIC_MODEL : OPENAI_MODEL;
     Harness harness = Nessy.harness(provider).build();
     ObjectMapper mapper = new ObjectMapper();
 
     try (McpToolbox toolbox =
         McpToolbox.connect(
             HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper)) {
-      Agent<String> agent = scout(harness, toolbox, MODEL, new ConsoleApprover());
-      Conversation<String> conversation = agent.converse();
+      Agent<String> agent = scout(harness, toolbox, model, new ConsoleApprover());
 
-      IO.println(
-          "Scout (Anthropic, " + MODEL + "), reading via DeepWiki. Empty line or /quit to exit.");
-      while (true) {
-        String input = IO.readln("you> ");
-        // IO.readln returns null at EOF (e.g. Ctrl-D on the console); treat that the same as
-        // /quit rather than NPE-ing on the isBlank() check below.
-        if (input == null || input.isBlank() || input.equals("/quit")) {
-          return;
-        }
-        RunOutcome outcome = conversation.tell(input, Scout::render);
-        IO.println();
-        if (outcome.state().status() == ConversationStatus.FAILED) {
-          IO.println(
-              "! "
-                  + Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
-        }
-      }
+      ConsoleRepl.of(agent)
+          .banner(
+              "Scout ("
+                  + (anthropic ? "Anthropic" : "OpenAI")
+                  + ", "
+                  + model
+                  + "), reading via DeepWiki. Empty line or /quit to exit.")
+          .prompt("you> ")
+          .run();
     }
   }
 
@@ -115,15 +100,5 @@ public final class Scout {
             ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
         .approver(approver)
         .build();
-  }
-
-  private static void render(TurnEvent event) {
-    switch (event) {
-      case TurnEvent.TextDelta(String text) -> IO.print(text);
-      case TurnEvent.ToolCallRequested(ToolCall call) -> IO.println("\n⚙ tool: " + call.name());
-      // deliberate extender-tolerance default (unlike SseEvents' exhaustive no-default switch):
-      // the CLI just ignores variants it has no console rendering for.
-      default -> {}
-    }
   }
 }

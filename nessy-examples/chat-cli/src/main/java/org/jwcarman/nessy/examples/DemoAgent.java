@@ -20,16 +20,36 @@ import java.time.ZonedDateTime;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 
 /**
- * The one agent definition both example mains share, so the only thing that differs between {@link
- * AnthropicChat} and {@link OpenAiChat} is which provider wires it up.
+ * The one agent definition {@code Chat}'s single main drives, whichever provider {@link
+ * org.jwcarman.nessy.model.env.EnvModelProviders#fromEnv()} hands it.
+ *
+ * <p>Pattern demonstrated: two watching surfaces, not one narrating the same fact twice. {@link
+ * ConsoleRepl}'s default renderer narrates one turn <em>live</em> — deltas as they stream, a dim
+ * {@code ⚙ tool:} line the instant a call is requested or completed — via the {@code TurnObserver}
+ * {@link org.jwcarman.nessy.Conversation#tell(Object, org.jwcarman.nessy.api.turn.TurnObserver)}
+ * hands it. {@link ConversationEvent}, by contrast, is the <em>settled</em> fact-log side of the
+ * story (this was {@code AnthropicChat}'s lesson, formerly attached per-conversation via {@code
+ * Conversation#events()}). {@code ConsoleRepl} now owns conversation construction end to end — one
+ * conversation is built inside its own {@code run()}, with no instance handed back to the caller —
+ * so there is no live {@code Conversation} left at this call site to attach a per-conversation
+ * {@code events()} subscription to. The equivalent channel survives here as a build-time {@link
+ * org.jwcarman.nessy.AgentBuilder#listen(Class, java.util.function.Consumer) listen} declaration
+ * instead: the same {@link org.jwcarman.nessy.api.event.ListenerRegistry} delivery, just declared
+ * once on the agent rather than attached once per conversation. It announces {@link
+ * ConversationEvent.ModelResponded}'s token usage — a fact the turn narration never shows — rather
+ * than {@link ConversationEvent.ToolFinished}, which {@code AnthropicChat} used to announce: {@code
+ * ConsoleRenderer}'s default already prints a dim {@code ⚙ tool: <name> completed} line for that
+ * same fact, so re-announcing it here would narrate the same completion twice.
  */
 public final class DemoAgent {
 
@@ -49,7 +69,21 @@ public final class DemoAgent {
             ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
             ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()))
         .approver(new ConsoleApprover())
+        .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage)
         .build();
+  }
+
+  /** The fact-log side of the story: printed independently of whatever the renderer narrates. */
+  private static void announceUsage(ConversationEvent.ModelResponded responded) {
+    var usage = responded.usage();
+    IO.println(
+        "\ntokens: "
+            + usage.inputTokens()
+            + " in / "
+            + usage.outputTokens()
+            + " out ("
+            + usage.cachedInputTokens()
+            + " cached)");
   }
 
   /** Arithmetic, ungated: a tool the model can use freely. */

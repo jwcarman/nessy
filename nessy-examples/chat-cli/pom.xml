@@ -30,7 +30,7 @@
 
   <artifactId>nessy-example-chat-cli</artifactId>
   <name>Nessy Example: Chat CLI</name>
-  <description>Runnable examples: one agent definition, two model providers</description>
+  <description>Runnable example: one agent definition, either model provider by which API key is set</description>
 
   <properties>
     <!-- Examples are never published: no jar, sources, or javadoc leaves this module. -->
@@ -48,12 +48,15 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-anthropic</artifactId>
+      <artifactId>nessy-console</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- Both providers ride the classpath non-optionally (nessy-model-env's whole point): either
+         ANTHROPIC_API_KEY or OPENAI_API_KEY just works, with no per-provider dependency choice
+         left to this module. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-openai</artifactId>
+      <artifactId>nessy-model-env</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- Compile-scope, unlike every other module's test-only provider: examples are runnable
@@ -72,6 +75,13 @@
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>${exec-maven-plugin.version}</version>
+        <configuration>
+          <!-- The one main this module has now that the collapse is done: no more
+               -Dexec.mainClass juggling between AnthropicChat/OpenAiChat on the command line —
+               the provider choice moved to which API key is set (nessy-model-env), not which
+               main you run. -->
+          <mainClass>org.jwcarman.nessy.examples.Chat</mainClass>
+        </configuration>
       </plugin>
     </plugins>
   </build>

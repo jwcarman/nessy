@@ -48,7 +48,15 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-anthropic</artifactId>
+      <artifactId>nessy-console</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Both providers ride the classpath non-optionally (nessy-model-env's whole point): either
+         ANTHROPIC_API_KEY or OPENAI_API_KEY just works, with no per-provider dependency choice
+         left to this module. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-env</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- DeepWiki's tools, opened as nessy Tools over the official MCP Java SDK. The SDK's HTTP

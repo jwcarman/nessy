@@ -59,6 +59,7 @@
     <module>nessy-testing</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
+    <module>nessy-model-env</module>
     <module>nessy-store-jdbc</module>
     <module>nessy-transcript-cassandra</module>
     <module>nessy-tool-mcp</module>
