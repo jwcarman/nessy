@@ -82,6 +82,7 @@ nav:
       - Memory and the Pipeline: concepts/memory-and-the-pipeline.md
       - Planning: concepts/planning.md
       - Storage: concepts/storage.md
+      - Nessy and the 12-Factor Agents: concepts/twelve-factor-agents.md
   - Guides:
       - Getting Started: guides/getting-started.md
       - Providers: guides/providers.md
