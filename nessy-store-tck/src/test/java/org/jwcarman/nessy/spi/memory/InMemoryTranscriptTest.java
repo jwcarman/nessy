@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
+import org.jwcarman.nessy.store.tck.TranscriptContract;
+
 class InMemoryTranscriptTest extends TranscriptContract {
 
   private final Transcript transcript = Transcript.inMemory();

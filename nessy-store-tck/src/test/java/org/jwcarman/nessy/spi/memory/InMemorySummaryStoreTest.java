@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
+import org.jwcarman.nessy.store.tck.SummaryStoreContract;
+
 class InMemorySummaryStoreTest extends SummaryStoreContract {
 
   private final SummaryStore summaries = SummaryStore.inMemory();

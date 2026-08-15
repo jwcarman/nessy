@@ -21,6 +21,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.store.tck.ConversationStoreContract;
 
 class InMemoryConversationStoreTest extends ConversationStoreContract {
 

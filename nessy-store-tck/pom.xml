@@ -27,37 +27,26 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>nessy-store-jdbc</artifactId>
-  <name>Nessy Store JDBC</name>
-  <description>The reference durable ConversationStore, against Postgres over plain JDBC.</description>
+  <artifactId>nessy-store-tck</artifactId>
+  <name>Nessy Store TCK</name>
+  <description>The technology-compatibility kit every ConversationStore/Parks/Transcript/SummaryStore implementation must pass, published as a main-scope artifact so third-party store implementers can certify against it.</description>
 
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-core</artifactId>
     </dependency>
-    <!-- Runtime, not compile: the store speaks only java.sql against a caller-supplied
-         DataSource. The driver is what makes that DataSource a Postgres one, needed at
-         runtime and in this module's own tests, never at compile time. -->
+    <!-- Main scope, not test: the contracts are abstract JUnit/AssertJ-based test classes
+         shipped as production code so a store implementer can depend on this artifact and
+         extend them directly. Only the API surface the contracts import, never the engine
+         (each consumer supplies its own junit-jupiter-engine at test scope). -->
     <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>runtime</scope>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-store-tck</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
     </dependency>
   </dependencies>
 
@@ -69,7 +58,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>org.jwcarman.nessy.store.jdbc</Automatic-Module-Name>
+              <Automatic-Module-Name>org.jwcarman.nessy.store.tck</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

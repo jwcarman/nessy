@@ -77,7 +77,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  *
  * <p>The plain roundtrip (a park written by a named agent comes back from {@code find}/{@code
  * forConversation} carrying that name) is already pinned by {@link
- * org.jwcarman.nessy.spi.conversation.ParksContract} run against {@link JdbcParks} in {@link
+ * org.jwcarman.nessy.store.tck.ParksContract} run against {@link JdbcParks} in {@link
  * JdbcParksTest}: {@code Park} is a record, so {@code
  * assertThat(parks().find(token)).contains(park)} cannot pass unless {@code agent_name} round-trips
  * exactly — a null or mangled column fails that assertion today. Nothing here duplicates that

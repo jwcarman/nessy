@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spi.conversation;
 
+import org.jwcarman.nessy.store.tck.ParksContract;
+
 class InMemoryParksTest extends ParksContract {
 
   private final Parks parks = Parks.inMemory();
