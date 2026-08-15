@@ -68,8 +68,9 @@ public interface TurnObserver {
    * or parked (the parked line carries the token), and the segment's {@link TurnEvent.TurnEnded}
    * line at {@code INFO}, with the failure reason repeated at {@code WARN} when the status is
    * {@code FAILED}. Built on {@link #builder()} — this factory's own dogfood, and the collapse
-   * target for what every example used to hand-roll (see {@code night-watchman}'s {@code Watchman},
-   * {@code order-desk}'s {@code OrderDesk}, {@code dispatcher}'s {@code IncidentLog}).
+   * target for what every example used to hand-roll (see {@code night-watchman}'s {@code Watchman}
+   * and {@code order-desk}'s {@code OrderDesk}; {@code dispatcher} now calls this factory directly
+   * at its own call sites, with no wrapper class of its own).
    *
    * @param logger the slf4j {@code Logger} every line is written to
    * @param prefix the log-line tag — an incident id, an order id, a conversation label

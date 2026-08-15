@@ -61,11 +61,19 @@ public interface Memory {
    * want in production: unlimited retention underneath, a bounded window at the border.
    *
    * @param delegate the {@code Memory} whose full history is retained and clipped on the way out
-   * @param n how many of the most recent messages {@code recall} keeps intact; forwarded verbatim
-   *     to {@link Context#keepRecent(int)}, so the same {@code n} constraints apply
+   * @param n how many of the most recent messages {@code recall} keeps intact; must be at least 1
+   *     (the deleted {@code WindowedMemory} this factory replaces enforced the same floor at
+   *     construction, so a misconfigured window fails loud at startup — e.g. night-watchman's
+   *     {@code watchman.window} property — rather than quietly booting with a near-empty context);
+   *     forwarded verbatim to {@link Context#keepRecent(int)}, so the same {@code n} constraints
+   *     apply beyond that floor
+   * @throws IllegalArgumentException if {@code n} is less than 1
    */
   static Memory windowed(Memory delegate, int n) {
     Objects.requireNonNull(delegate, "delegate must not be null");
+    if (n < 1) {
+      throw new IllegalArgumentException("window must be at least 1");
+    }
     return new Memory() {
       @Override
       public void remember(ConversationId id, Message message) {

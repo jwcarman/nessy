@@ -231,8 +231,9 @@ class AgentDoorsTest {
 
     /**
      * Task-4: {@code UnknownParkTokenException} is a named rejection over the raw {@code
-     * IllegalArgumentException} an unknown or already-settled token used to throw, and its message
-     * names the offending token.
+     * IllegalArgumentException} an unknown token used to throw, and its message names the offending
+     * token by value — no "settled" claim (registry entries survive resolution; a settled token
+     * drains quietly instead of throwing this) and no record {@code toString}.
      */
     @Test
     void an_unknown_token_is_a_typed_rejection() {
@@ -243,7 +244,7 @@ class AgentDoorsTest {
 
       assertThatThrownBy(() -> agent.resume(unknown, resolution))
           .isInstanceOf(UnknownParkTokenException.class)
-          .hasMessageContaining(unknown.value());
+          .hasMessage("unknown park token: " + unknown.value());
     }
 
     /**

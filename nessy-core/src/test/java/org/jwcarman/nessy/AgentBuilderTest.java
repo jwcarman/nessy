@@ -592,6 +592,17 @@ class AgentBuilderTest {
           .hasMessageContaining("parked work")
           .hasMessageContaining("restarts");
     }
+
+    @Test
+    void a_null_name_is_rejected_at_the_setter_with_the_covenant_the_same_way_as_blank() {
+      var builder = Nessy.harness(NEVER_CALLED).build().agent();
+
+      assertThatThrownBy(() -> builder.name(null))
+          .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("name")
+          .hasMessageContaining("parked work")
+          .hasMessageContaining("restarts");
+    }
   }
 
   @Nested

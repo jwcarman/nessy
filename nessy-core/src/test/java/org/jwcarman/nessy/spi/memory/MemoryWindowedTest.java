@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -92,5 +93,18 @@ class MemoryWindowedTest {
     Context recalled = windowed.recall(id);
 
     assertThat(recalled.messages()).containsExactly(first, second);
+  }
+
+  @Test
+  void a_window_below_one_is_rejected() {
+    RecordingMemory zeroDelegate = new RecordingMemory();
+    RecordingMemory negativeDelegate = new RecordingMemory();
+
+    assertThatThrownBy(() -> Memory.windowed(zeroDelegate, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("window must be at least 1");
+    assertThatThrownBy(() -> Memory.windowed(negativeDelegate, -1))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("window must be at least 1");
   }
 }
