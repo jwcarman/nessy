@@ -104,7 +104,11 @@ version as a property, `nessy-bom` manages the module like its siblings,
 and the module depends on the SDK's core artifact only (no Spring, no
 transport extras beyond what `tools/list`+`tools/call` need). Task 1
 reads the SDK's current artifact layout rather than trusting this
-paragraph.
+paragraph. *(Amended post-Task 1, ratified at review: the SDK's 2.0 line
+split its JSON backends, so the module depends on `mcp-core` PLUS
+`mcp-json-jackson2` — the `mcp` facade would drag Jackson 3 onto a
+Jackson 2 classpath. "Core artifact only" reads as "no facade, no
+transport extras", not as literally one artifact.)*
 
 ## 5. Testing — the SDK is its own dogfood
 
