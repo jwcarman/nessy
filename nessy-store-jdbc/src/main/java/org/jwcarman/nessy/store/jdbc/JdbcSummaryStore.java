@@ -15,15 +15,10 @@
  */
 package org.jwcarman.nessy.store.jdbc;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
@@ -31,62 +26,63 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
 
 /**
- * The durable {@link SummaryStore}: one row per conversation in {@code nessy_summary}, last write
- * wins.
+ * The durable {@link SummaryStore} over any of the five databases {@link JdbcDialect} knows (design
+ * §2): one row per conversation in {@code nessy_summary}, last write wins.
  *
- * <p>{@link #save} is an upsert (Postgres {@code ON CONFLICT (conversation_id) DO UPDATE}) — there
- * is no fencing (design §10), so a save simply replaces whatever watermark and text the row held
- * before. A lost or clobbered write is never lost words: the transcript is the truth a summary is
- * only ever a cheaper way to re-read, so the worst a lost write costs is one re-summarized tail on
- * the next recall.
+ * <p>{@link #save} is an upsert, but not a vendor-specific one: it tries an {@code UPDATE} first,
+ * and falls back to an {@code INSERT} only if that {@code UPDATE} touched no row — the same
+ * duplicate-tolerant insert every write-once table in this module now shares (see {@link
+ * WriteOnceInsert}), reused here even though this table is not write-once, because it happens to be
+ * exactly the portable, no-vendor-syntax shape an upsert needs too. Postgres's original {@code ON
+ * CONFLICT (conversation_id) DO UPDATE} does not survive this rewrite as a per-dialect variant;
+ * design §4 never enumerated this upsert (the audit that produced design §1 missed it — {@code
+ * nessy_summary} carries no {@code jsonb} column, so it never showed up in the {@code jsonb}/cast
+ * inventory), but it is exactly as Postgres-specific as the write-once inserts design §4 does
+ * enumerate, and needed the same fix for the same reason: MySQL/MariaDB/SQL Server/Oracle have no
+ * portable equivalent to {@code ON CONFLICT ... DO UPDATE}. See the Task 2 report for this
+ * deviation, called out there rather than folded in silently. There is no fencing here (design §10)
+ * — a save that loses its own race (its fallback {@code INSERT} arriving after a concurrent saver's
+ * {@code INSERT} already landed) simply drops that write rather than retry, the same "worst case,
+ * one re-summarized tail" posture the class already had.
  *
  * <p>The constructor alone does not create {@code nessy_summary} — a caller pointing at a database
  * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
- * #create(DataSource)} to bootstrap and construct in one call; its {@code CREATE TABLE IF NOT
- * EXISTS} is safe to run more than once.
+ * #create(DataSource)} to bootstrap and construct in one call; its per-dialect schema resource's
+ * guarded-create statement is safe to run more than once. As with {@link JdbcConversationStore},
+ * the dialect is resolved once — at bootstrap for {@code create}, lazily and cached thereafter for
+ * the plain constructor — and every {@code create}/constructor pair has an explicit-dialect
+ * overload that skips resolution entirely.
  */
 public final class JdbcSummaryStore implements SummaryStore {
 
   private final DataSource dataSource;
 
+  /** See {@link JdbcConversationStore#dialect} for the resolve-once-then-cache discipline. */
+  private volatile JdbcDialect dialect;
+
   public JdbcSummaryStore(DataSource dataSource) {
+    this(dataSource, null);
+  }
+
+  /** Bypasses dialect resolution entirely — see the class javadoc. */
+  public JdbcSummaryStore(DataSource dataSource, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
+    this.dialect = dialect;
   }
 
   /**
    * Bootstraps {@code summary-schema.sql} against {@code dataSource}, then returns a working store.
    */
   public static JdbcSummaryStore create(DataSource dataSource) {
-    JdbcSummaryStore store = new JdbcSummaryStore(dataSource);
-    store.bootstrap();
-    return store;
+    return create(dataSource, null);
   }
 
-  private void bootstrap() {
-    String schema = readSchemaResource();
-    try (Connection connection = dataSource.getConnection();
-        Statement statement = connection.createStatement()) {
-      for (String sql : schema.split(";")) {
-        String trimmed = sql.strip();
-        if (!trimmed.isEmpty()) {
-          statement.execute(trimmed);
-        }
-      }
-    } catch (SQLException e) {
-      throw new IllegalStateException("failed to bootstrap the nessy-store-jdbc summary schema", e);
-    }
-  }
-
-  private static String readSchemaResource() {
-    try (InputStream in = JdbcSummaryStore.class.getResourceAsStream("summary-schema.sql")) {
-      if (in == null) {
-        throw new IllegalStateException(
-            "summary-schema.sql not found on the classpath next to JdbcSummaryStore");
-      }
-      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      throw new UncheckedIOException("failed to read summary-schema.sql", e);
-    }
+  /** Bootstraps against an explicitly known {@code dialect} — see the class javadoc. */
+  public static JdbcSummaryStore create(DataSource dataSource, JdbcDialect dialect) {
+    JdbcDialect resolved =
+        JdbcSchemaBootstrap.bootstrap(
+            dataSource, JdbcSummaryStore.class, "summary-schema.sql", dialect, "summary");
+    return new JdbcSummaryStore(dataSource, resolved);
   }
 
   @Override
@@ -114,25 +110,42 @@ public final class JdbcSummaryStore implements SummaryStore {
     Objects.requireNonNull(summary, "summary must not be null");
     withConnection(
         connection -> {
-          try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "INSERT INTO nessy_summary (conversation_id, watermark, summary) VALUES (?, ?, ?)"
-                      + " ON CONFLICT (conversation_id)"
-                      + " DO UPDATE SET watermark = EXCLUDED.watermark, summary = EXCLUDED.summary")) {
-            ps.setString(1, id.value());
-            ps.setLong(2, summary.watermark());
-            ps.setString(3, summary.text());
-            ps.executeUpdate();
+          int updated =
+              update(
+                  connection,
+                  "UPDATE nessy_summary SET watermark = ?, summary = ? WHERE conversation_id = ?",
+                  ps -> {
+                    ps.setLong(1, summary.watermark());
+                    ps.setString(2, summary.text());
+                    ps.setString(3, id.value());
+                  });
+          if (updated == 0) {
+            WriteOnceInsert.attempt(
+                connection,
+                "INSERT INTO nessy_summary (conversation_id, watermark, summary) VALUES (?, ?, ?)",
+                ps -> {
+                  ps.setString(1, id.value());
+                  ps.setLong(2, summary.watermark());
+                  ps.setString(3, summary.text());
+                });
           }
           return null;
         });
   }
 
+  private int update(Connection connection, String sql, SqlConsumer<PreparedStatement> binder)
+      throws SQLException {
+    try (PreparedStatement ps = connection.prepareStatement(sql)) {
+      binder.accept(ps);
+      return ps.executeUpdate();
+    }
+  }
+
   /**
    * Runs {@code body} on a connection borrowed fresh from the pool; no transaction of its own, one
-   * statement, autocommit exactly as the pool hands it back — the same discipline the other two
-   * doors' own {@code withConnection} follows, and for the same reason: a pool that does not reset
-   * a connection between borrowers must never be handed back one still in a prior caller's
+   * statement, autocommit exactly as the pool hands it back — the same discipline the other doors'
+   * own {@code withConnection} follows, and for the same reason: a pool that does not reset a
+   * connection between borrowers must never be handed back one still in a prior caller's
    * transaction state.
    */
   private <T> T withConnection(SqlFunction<Connection, T> body) {
@@ -146,5 +159,10 @@ public final class JdbcSummaryStore implements SummaryStore {
   @FunctionalInterface
   private interface SqlFunction<A, T> {
     T apply(A input) throws SQLException;
+  }
+
+  @FunctionalInterface
+  private interface SqlConsumer<A> {
+    void accept(A input) throws SQLException;
   }
 }

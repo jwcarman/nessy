@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.PrintWriter;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -116,6 +117,21 @@ class JdbcFailureWrappingTest {
   void a_failure_inside_the_transcripts_transaction_rolls_back_before_reporting() {
     AtomicBoolean rolledBack = new AtomicBoolean();
     AtomicBoolean autoCommitRestored = new AtomicBoolean();
+    // getMetaData is answered rather than left unsupported: JdbcTranscript's plain constructor
+    // resolves its dialect lazily, from the first connection any real operation borrows, before
+    // that operation's own prepareStatement call is what this test means to fail — see
+    // JdbcConversationStore#dialect's javadoc for the resolve-once-then-cache discipline every
+    // store class shares.
+    DatabaseMetaData postgresMetaData =
+        (DatabaseMetaData)
+            Proxy.newProxyInstance(
+                DatabaseMetaData.class.getClassLoader(),
+                new Class<?>[] {DatabaseMetaData.class},
+                (proxy, method, args) ->
+                    switch (method.getName()) {
+                      case "getDatabaseProductName" -> "PostgreSQL";
+                      default -> throw new UnsupportedOperationException(method.getName());
+                    });
     Connection failingInside =
         (Connection)
             Proxy.newProxyInstance(
@@ -123,6 +139,7 @@ class JdbcFailureWrappingTest {
                 new Class<?>[] {Connection.class},
                 (proxy, method, args) ->
                     switch (method.getName()) {
+                      case "getMetaData" -> postgresMetaData;
                       case "prepareStatement" -> throw REFUSED;
                       case "rollback" -> {
                         rolledBack.set(true);

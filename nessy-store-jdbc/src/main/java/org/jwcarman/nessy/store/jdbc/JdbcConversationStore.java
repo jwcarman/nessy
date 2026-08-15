@@ -16,16 +16,10 @@
 package org.jwcarman.nessy.store.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -39,69 +33,76 @@ import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
 
 /**
- * The reference durable {@link ConversationStore}: plain JDBC against Postgres, no Spring, no JPA —
- * the house stance. See {@code schema.sql} on the classpath next to this class for the tables it
- * reads and writes: {@code nessy_conversation} (the fenced control block) and {@code nessy_inbox}
- * (the append-only inbox). The park-registry tables this class used to own are retired from its
- * responsibility (design §5: {@link JdbcParks} answers the callback door now, over its own {@code
- * nessy_parks} table).
+ * The reference durable {@link ConversationStore}: plain JDBC, no Spring, no JPA — the house stance
+ * — over any of the five databases {@link JdbcDialect} knows (design §2). See the {@code
+ * schema.sql} resource next to this class, under each dialect's own subdirectory on the classpath,
+ * for the tables it reads and writes: {@code nessy_conversation} (the fenced control block) and
+ * {@code nessy_inbox} (the append-only inbox). The park-registry tables this class used to own are
+ * retired from its responsibility (design §5: {@link JdbcParks} answers the callback door now, over
+ * its own {@code nessy_parks} table).
  *
  * <p>The constructor alone does not create those tables — a caller pointing at a database another
  * process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
  * #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its {@code CREATE
- * TABLE IF NOT EXISTS} / {@code CREATE INDEX IF NOT EXISTS} statements are safe to run more than
- * once.
+ * TABLE IF NOT EXISTS} / {@code CREATE INDEX IF NOT EXISTS} statements (or each dialect's own
+ * idiomatic guarded-create, where the database has no such syntax — see the per-dialect schema
+ * resource) are safe to run more than once.
  *
- * <p>{@link #save} is Postgres's own fence: an {@code UPDATE ... WHERE id = ? AND version = ?} that
- * either updates exactly the row the caller read, or updates nothing because someone else's save
- * already moved it — the database's row lock, not an in-process monitor, is what makes two
- * concurrent savers on the same conversation see exactly one winner. A version-0 save additionally
- * tries {@code INSERT ... ON CONFLICT DO NOTHING} for the case there is no row yet to match
- * against. Either way, a losing save re-reads the column and fails loudly with {@link
- * StaleStateException} rather than silently doing nothing.
+ * <p>The dialect itself is resolved once, not per statement: {@link #create(DataSource,
+ * ObjectMapper)} resolves it at the same connection its bootstrap DDL runs over; the plain
+ * constructor defers resolution to the first connection any real operation borrows, then caches it
+ * for the life of this instance. Every {@code create}/constructor pair also has an explicit-dialect
+ * overload that skips resolution entirely — for a driver whose metadata lies, or a caller that
+ * already knows.
+ *
+ * <p>{@link #save} is the fence: an {@code UPDATE ... WHERE id = ? AND version = ?} that either
+ * updates exactly the row the caller read, or updates nothing because someone else's save already
+ * moved it — the database's row lock, not an in-process monitor, is what makes two concurrent
+ * savers on the same conversation see exactly one winner. A version-0 save additionally tries an
+ * insert for the case there is no row yet to match against; that insert is allowed to lose a race
+ * to another insert (see {@link WriteOnceInsert}) rather than fail outright. Either way, a losing
+ * save re-reads the column and fails loudly with {@link StaleStateException} rather than silently
+ * doing nothing.
  */
 public final class JdbcConversationStore implements ConversationStore {
 
   private final DataSource dataSource;
   private final StateCodec codec;
 
+  /**
+   * {@code null} until resolved: the plain constructor defers dialect resolution to the first
+   * connection a real operation borrows (see {@link #statementsFor(Connection)}), caching the
+   * result here afterward. An explicit-dialect construction populates this at construction time
+   * instead, and {@link #statementsFor(Connection)} then never touches a connection's metadata at
+   * all. A benign race is possible if two threads both find this {@code null} at once — both would
+   * resolve independently, redundantly, and agree, since resolution is a pure function of the
+   * connection's own metadata; nothing here needs a lock over that.
+   */
+  private volatile JdbcDialect dialect;
+
   public JdbcConversationStore(DataSource dataSource, ObjectMapper mapper) {
+    this(dataSource, mapper, null);
+  }
+
+  /** Bypasses dialect resolution entirely — see the class javadoc. */
+  public JdbcConversationStore(DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
+    this.dialect = dialect;
   }
 
   /** Bootstraps {@code schema.sql} against {@code dataSource}, then returns a working store. */
   public static JdbcConversationStore create(DataSource dataSource, ObjectMapper mapper) {
-    JdbcConversationStore store = new JdbcConversationStore(dataSource, mapper);
-    store.bootstrap();
-    return store;
+    return create(dataSource, mapper, null);
   }
 
-  private void bootstrap() {
-    String schema = readSchemaResource();
-    try (Connection connection = dataSource.getConnection();
-        Statement statement = connection.createStatement()) {
-      for (String sql : schema.split(";")) {
-        String trimmed = sql.strip();
-        if (!trimmed.isEmpty()) {
-          statement.execute(trimmed);
-        }
-      }
-    } catch (SQLException e) {
-      throw new IllegalStateException("failed to bootstrap the nessy-store-jdbc schema", e);
-    }
-  }
-
-  private static String readSchemaResource() {
-    try (InputStream in = JdbcConversationStore.class.getResourceAsStream("schema.sql")) {
-      if (in == null) {
-        throw new IllegalStateException(
-            "schema.sql not found on the classpath next to JdbcConversationStore");
-      }
-      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      throw new UncheckedIOException("failed to read schema.sql", e);
-    }
+  /** Bootstraps against an explicitly known {@code dialect} — see the class javadoc. */
+  public static JdbcConversationStore create(
+      DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
+    JdbcDialect resolved =
+        JdbcSchemaBootstrap.bootstrap(
+            dataSource, JdbcConversationStore.class, "schema.sql", dialect, "conversation store");
+    return new JdbcConversationStore(dataSource, mapper, resolved);
   }
 
   @Override
@@ -166,10 +167,12 @@ public final class JdbcConversationStore implements ConversationStore {
     return inTransaction(
         Connection.TRANSACTION_READ_COMMITTED,
         connection -> {
+          JdbcStatements statements = statementsFor(connection);
           int updated =
               update(
                   connection,
-                  "UPDATE nessy_conversation SET version = ?, state = ?::jsonb"
+                  "UPDATE nessy_conversation SET version = ?, state = "
+                      + statements.jsonPlaceholder()
                       + " WHERE id = ? AND version = ?",
                   ps -> {
                     ps.setLong(1, bumped.version());
@@ -179,31 +182,35 @@ public final class JdbcConversationStore implements ConversationStore {
                   });
 
           if (updated == 0) {
-            boolean inserted = expected == 0 && insertNewConversation(connection, id, bumped, json);
+            boolean inserted =
+                expected == 0 && insertNewConversation(connection, statements, id, bumped, json);
             if (!inserted) {
               throw new StaleStateException(id, expected, currentVersion(connection, id));
             }
           }
 
-          drainInbox(connection, id, drainedInboxIds);
+          drainInbox(connection, statements, id, drainedInboxIds);
           return bumped;
         });
   }
 
   private boolean insertNewConversation(
-      Connection connection, ConversationId id, ConversationState bumped, String json)
+      Connection connection,
+      JdbcStatements statements,
+      ConversationId id,
+      ConversationState bumped,
+      String json)
       throws SQLException {
-    int inserted =
-        update(
-            connection,
-            "INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, ?::jsonb)"
-                + " ON CONFLICT (id) DO NOTHING",
-            ps -> {
-              ps.setString(1, id.value());
-              ps.setLong(2, bumped.version());
-              ps.setString(3, json);
-            });
-    return inserted == 1;
+    return WriteOnceInsert.attempt(
+        connection,
+        "INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, "
+            + statements.jsonPlaceholder()
+            + ")",
+        ps -> {
+          ps.setString(1, id.value());
+          ps.setLong(2, bumped.version());
+          ps.setString(3, json);
+        });
   }
 
   private long currentVersion(Connection connection, ConversationId id) throws SQLException {
@@ -216,15 +223,28 @@ public final class JdbcConversationStore implements ConversationStore {
     }
   }
 
+  /**
+   * Deletes exactly the drained entries — a no-op if there is nothing to drain, since the dynamic
+   * {@code IN (?, …)} {@link JdbcStatements#inboxDrainDeleteSql(int)} builds has no valid shape for
+   * zero ids (unlike Postgres's retired {@code = ANY(?)}, which tolerated an empty array without
+   * complaint).
+   */
   private void drainInbox(
-      Connection connection, ConversationId id, Collection<String> drainedInboxIds)
+      Connection connection,
+      JdbcStatements statements,
+      ConversationId id,
+      Collection<String> drainedInboxIds)
       throws SQLException {
-    Array ids = connection.createArrayOf("text", drainedInboxIds.toArray(new String[0]));
+    if (drainedInboxIds.isEmpty()) {
+      return;
+    }
     try (PreparedStatement ps =
-        connection.prepareStatement(
-            "DELETE FROM nessy_inbox WHERE entry_id = ANY(?) AND conversation_id = ?")) {
-      ps.setArray(1, ids);
-      ps.setString(2, id.value());
+        connection.prepareStatement(statements.inboxDrainDeleteSql(drainedInboxIds.size()))) {
+      int index = 1;
+      for (String entryId : drainedInboxIds) {
+        ps.setString(index++, entryId);
+      }
+      ps.setString(index, id.value());
       ps.executeUpdate();
     }
   }
@@ -236,10 +256,13 @@ public final class JdbcConversationStore implements ConversationStore {
     String kind = entry instanceof InboxEntry.Told ? "told" : "resolved";
     withConnection(
         connection -> {
+          JdbcStatements statements = statementsFor(connection);
           try (PreparedStatement ps =
               connection.prepareStatement(
                   "INSERT INTO nessy_inbox (entry_id, conversation_id, kind, payload)"
-                      + " VALUES (?, ?, ?, ?::jsonb)")) {
+                      + " VALUES (?, ?, ?, "
+                      + statements.jsonPlaceholder()
+                      + ")")) {
             ps.setString(1, entry.id());
             ps.setString(2, id.value());
             ps.setString(3, kind);
@@ -256,6 +279,19 @@ public final class JdbcConversationStore implements ConversationStore {
       binder.accept(ps);
       return ps.executeUpdate();
     }
+  }
+
+  /**
+   * The dialect this store speaks, resolved once and cached — see {@link #dialect}'s javadoc for
+   * the resolve-once-then-cache discipline this method implements.
+   */
+  private JdbcStatements statementsFor(Connection connection) throws SQLException {
+    JdbcDialect resolved = dialect;
+    if (resolved == null) {
+      resolved = JdbcDialect.resolve(connection.getMetaData());
+      dialect = resolved;
+    }
+    return JdbcStatements.forDialect(resolved);
   }
 
   /**

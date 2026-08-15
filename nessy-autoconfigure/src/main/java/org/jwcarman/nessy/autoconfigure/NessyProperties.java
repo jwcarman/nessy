@@ -48,6 +48,18 @@ public record NessyProperties(
   /** {@code nessy.openai.*} — credentials for {@code OpenAiModelProvider}. */
   public record OpenAi(String apiKey, String baseUrl) {}
 
-  /** {@code nessy.jdbc.*} — persistence toggles consumed by the persistence autoconfiguration. */
-  public record Jdbc(Boolean enabled, Boolean bootstrapSchema) {}
+  /**
+   * {@code nessy.jdbc.*} — persistence toggles consumed by the persistence autoconfiguration.
+   *
+   * <p>{@code dialect} mirrors {@code enabled}/{@code bootstrapSchema}'s stance: a plain {@link
+   * String} here, not {@code org.jwcarman.nessy.store.jdbc.JdbcDialect} — this record loads
+   * unconditionally (every {@code nessy.*} property binds through it, JDBC or not), while that enum
+   * lives in the optional {@code nessy-store-jdbc} dependency {@link
+   * JdbcPersistenceAutoConfiguration} alone is gated on via {@code @ConditionalOnClass}. A
+   * classpath without that module must still be able to load this class; {@code
+   * JdbcPersistenceAutoConfiguration} (which only exists on such a classpath in the first place) is
+   * where the string turns into the enum — see its {@code nessy.jdbc.dialect} override (design §2:
+   * {@code postgres|mysql|mariadb|sqlserver|oracle}, unset means resolve).
+   */
+  public record Jdbc(Boolean enabled, Boolean bootstrapSchema, String dialect) {}
 }

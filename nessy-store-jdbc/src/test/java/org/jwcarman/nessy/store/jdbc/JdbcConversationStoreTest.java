@@ -121,6 +121,55 @@ class JdbcConversationStoreTest extends ConversationStoreContract {
     assertThat(losers).isEqualTo(1);
   }
 
+  /**
+   * The write-once unification's other half (design §4): {@code save}'s version-0 insert used to
+   * lean on Postgres's {@code ON CONFLICT DO NOTHING}, now on the dialect-shared {@link
+   * WriteOnceInsert} instead — a duplicate key loses its insert race rather than erroring. Two
+   * connections racing a *brand-new* conversation (never saved before, unlike {@link
+   * #two_connections_racing_a_save_see_exactly_one_winner}'s already-persisted one) exercises
+   * exactly that path: whichever insert lands first wins, the other's insert reports zero rows
+   * changed to {@code insertNewConversation}, which then fails loudly with {@link
+   * StaleStateException} rather than the caller silently believing its write landed.
+   */
+  @Test
+  void two_connections_racing_a_version_zero_insert_see_exactly_one_winner()
+      throws InterruptedException {
+    ConversationId id = ConversationId.generate();
+    ConversationState fresh = ConversationState.newConversation(id);
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch go = new CountDownLatch(1);
+    List<Future<ConversationState>> racers = new ArrayList<>();
+    for (int i = 0; i < 2; i++) {
+      racers.add(
+          executor.submit(
+              () -> {
+                ready.countDown();
+                go.await();
+                return store().save(fresh, List.of());
+              }));
+    }
+    ready.await();
+    go.countDown();
+
+    int winners = 0;
+    int losers = 0;
+    for (Future<ConversationState> racer : racers) {
+      try {
+        racer.get();
+        winners++;
+      } catch (ExecutionException e) {
+        assertThat(e.getCause()).isInstanceOf(StaleStateException.class);
+        losers++;
+      }
+    }
+    executor.shutdown();
+
+    assertThat(winners).isEqualTo(1);
+    assertThat(losers).isEqualTo(1);
+  }
+
   @Test
   void the_schema_bootstrap_is_idempotent() {
     assertThatCode(
@@ -129,6 +178,19 @@ class JdbcConversationStoreTest extends ConversationStoreContract {
               JdbcConversationStore.create(dataSource, new ObjectMapper());
             })
         .doesNotThrowAnyException();
+  }
+
+  /**
+   * The dialect-selection pin design's test plan calls for: this whole suite runs against a real
+   * Postgres container, so the resolver reading that same container's own {@link
+   * java.sql.DatabaseMetaData} had better land on {@link JdbcDialect#POSTGRES} — not a hand-rolled
+   * double's opinion of what Postgres reports, but the genuine article's.
+   */
+  @Test
+  void the_resolver_picks_postgres_against_the_real_container() throws SQLException {
+    try (Connection connection = dataSource.getConnection()) {
+      assertThat(JdbcDialect.resolve(connection.getMetaData())).isEqualTo(JdbcDialect.POSTGRES);
+    }
   }
 
   /**

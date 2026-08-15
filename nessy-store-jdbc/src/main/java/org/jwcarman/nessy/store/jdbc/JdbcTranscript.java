@@ -16,15 +16,10 @@
 package org.jwcarman.nessy.store.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -35,21 +30,26 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.memory.Transcript;
 
 /**
- * The durable transcript: an append-only, versioned, per-conversation message log in Postgres — the
- * storage primitive {@code TranscriptMemory} and audit reads are both built on.
+ * The durable transcript over any of the five databases {@link JdbcDialect} knows (design §2): an
+ * append-only, versioned, per-conversation message log — the storage primitive {@code
+ * TranscriptMemory} and audit reads are both built on.
  *
  * <p>Every telling lands in {@code nessy_transcript}, one row per message, ordered by an
  * append-only {@code version} column. {@link #append} holds the no-stutter rule — appending unless
  * {@code message} equals the current last entry — under a row lock instead of an in-process map:
- * {@code SELECT ... FOR UPDATE} on the conversation's last row serializes concurrent {@code append}
- * calls for that conversation against each other, so two racing tellings of the same message never
- * both insert. The same locking discipline this module's retired durable-memory implementation used
- * to hold, lifted here (design §2).
+ * each dialect's own limit-one-row-locked idiom (see {@link
+ * JdbcStatements#transcriptLastRowForUpdateSql()}) on the conversation's last row serializes
+ * concurrent {@code append} calls for that conversation against each other, so two racing tellings
+ * of the same message never both insert. The same locking discipline this module's retired
+ * durable-memory implementation used to hold, lifted here (design §2).
  *
  * <p>The constructor alone does not create {@code nessy_transcript} — a caller pointing at a
  * database another process already bootstrapped should not pay a DDL round trip on every startup.
- * Use {@link #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its {@code
- * CREATE TABLE IF NOT EXISTS} is safe to run more than once.
+ * Use {@link #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its
+ * per-dialect schema resource's guarded-create statement is safe to run more than once. As with
+ * {@link JdbcConversationStore}, the dialect is resolved once — at bootstrap for {@code create},
+ * lazily and cached thereafter for the plain constructor — and every {@code create}/constructor
+ * pair has an explicit-dialect overload that skips resolution entirely.
  */
 public final class JdbcTranscript implements Transcript {
 
@@ -58,9 +58,18 @@ public final class JdbcTranscript implements Transcript {
   private final DataSource dataSource;
   private final StateCodec codec;
 
+  /** See {@link JdbcConversationStore#dialect} for the resolve-once-then-cache discipline. */
+  private volatile JdbcDialect dialect;
+
   public JdbcTranscript(DataSource dataSource, ObjectMapper mapper) {
+    this(dataSource, mapper, null);
+  }
+
+  /** Bypasses dialect resolution entirely — see the class javadoc. */
+  public JdbcTranscript(DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
+    this.dialect = dialect;
   }
 
   /**
@@ -68,37 +77,16 @@ public final class JdbcTranscript implements Transcript {
    * transcript.
    */
   public static JdbcTranscript create(DataSource dataSource, ObjectMapper mapper) {
-    JdbcTranscript transcript = new JdbcTranscript(dataSource, mapper);
-    transcript.bootstrap();
-    return transcript;
+    return create(dataSource, mapper, null);
   }
 
-  private void bootstrap() {
-    String schema = readSchemaResource();
-    try (Connection connection = dataSource.getConnection();
-        Statement statement = connection.createStatement()) {
-      for (String sql : schema.split(";")) {
-        String trimmed = sql.strip();
-        if (!trimmed.isEmpty()) {
-          statement.execute(trimmed);
-        }
-      }
-    } catch (SQLException e) {
-      throw new IllegalStateException(
-          "failed to bootstrap the nessy-store-jdbc transcript schema", e);
-    }
-  }
-
-  private static String readSchemaResource() {
-    try (InputStream in = JdbcTranscript.class.getResourceAsStream("transcript-schema.sql")) {
-      if (in == null) {
-        throw new IllegalStateException(
-            "transcript-schema.sql not found on the classpath next to JdbcTranscript");
-      }
-      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      throw new UncheckedIOException("failed to read transcript-schema.sql", e);
-    }
+  /** Bootstraps against an explicitly known {@code dialect} — see the class javadoc. */
+  public static JdbcTranscript create(
+      DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
+    JdbcDialect resolved =
+        JdbcSchemaBootstrap.bootstrap(
+            dataSource, JdbcTranscript.class, "transcript-schema.sql", dialect, "transcript");
+    return new JdbcTranscript(dataSource, mapper, resolved);
   }
 
   @Override
@@ -107,12 +95,13 @@ public final class JdbcTranscript implements Transcript {
     Objects.requireNonNull(message, "message must not be null");
     return inTransaction(
         connection -> {
-          Optional<Entry> last = readLastForUpdate(connection, id);
+          JdbcStatements statements = statementsFor(connection);
+          Optional<Entry> last = readLastForUpdate(connection, statements, id);
           if (last.isPresent() && last.get().message().equals(message)) {
             return last.get();
           }
           long nextVersion = last.map(entry -> entry.version() + 1).orElse(0L);
-          insert(connection, id, nextVersion, message);
+          insert(connection, statements, id, nextVersion, message);
           return new Entry(nextVersion, message);
         });
   }
@@ -180,12 +169,10 @@ public final class JdbcTranscript implements Transcript {
     }
   }
 
-  private Optional<Entry> readLastForUpdate(Connection connection, ConversationId id)
-      throws SQLException {
+  private Optional<Entry> readLastForUpdate(
+      Connection connection, JdbcStatements statements, ConversationId id) throws SQLException {
     try (PreparedStatement ps =
-        connection.prepareStatement(
-            "SELECT version, message FROM nessy_transcript WHERE conversation_id = ?"
-                + " ORDER BY version DESC LIMIT 1 FOR UPDATE")) {
+        connection.prepareStatement(statements.transcriptLastRowForUpdateSql())) {
       ps.setString(1, id.value());
       try (ResultSet rs = ps.executeQuery()) {
         if (!rs.next()) {
@@ -198,16 +185,33 @@ public final class JdbcTranscript implements Transcript {
     }
   }
 
-  private void insert(Connection connection, ConversationId id, long version, Message message)
+  private void insert(
+      Connection connection,
+      JdbcStatements statements,
+      ConversationId id,
+      long version,
+      Message message)
       throws SQLException {
     try (PreparedStatement ps =
         connection.prepareStatement(
-            "INSERT INTO nessy_transcript (conversation_id, version, message) VALUES (?, ?, ?::jsonb)")) {
+            "INSERT INTO nessy_transcript (conversation_id, version, message) VALUES (?, ?, "
+                + statements.jsonPlaceholder()
+                + ")")) {
       ps.setString(1, id.value());
       ps.setLong(2, version);
       ps.setString(3, codec.writeMessage(message));
       ps.executeUpdate();
     }
+  }
+
+  /** See {@link JdbcConversationStore#statementsFor(Connection)}. */
+  private JdbcStatements statementsFor(Connection connection) throws SQLException {
+    JdbcDialect resolved = dialect;
+    if (resolved == null) {
+      resolved = JdbcDialect.resolve(connection.getMetaData());
+      dialect = resolved;
+    }
+    return JdbcStatements.forDialect(resolved);
   }
 
   /**

@@ -160,6 +160,43 @@ class JdbcPersistenceAutoConfigurationTest {
   }
 
   @Test
+  void nessy_jdbc_dialect_overrides_resolution_and_still_wires_the_doors() {
+    // "postgres" (or any recognized value) is the explicit-dialect seam every door's own
+    // create/constructor overload accepts (design §2) -- with bootstrap off, this also proves the
+    // override never needs a real connection: UnusedDataSource would throw the moment anything
+    // tried to resolve instead.
+    runner
+        .withBean(DataSource.class, UnusedDataSource::new)
+        .withBean(ObjectMapper.class, ObjectMapper::new)
+        .withPropertyValues("nessy.jdbc.bootstrap-schema=false", "nessy.jdbc.dialect=postgres")
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).hasSingleBean(ConversationStore.class);
+              assertThat(context).hasSingleBean(Parks.class);
+              assertThat(context).hasSingleBean(Transcript.class);
+              assertThat(context).hasSingleBean(Memory.class);
+            });
+  }
+
+  @Test
+  void an_unrecognized_nessy_jdbc_dialect_value_fails_the_context_loudly() {
+    runner
+        .withBean(DataSource.class, UnusedDataSource::new)
+        .withBean(ObjectMapper.class, ObjectMapper::new)
+        .withPropertyValues("nessy.jdbc.bootstrap-schema=false", "nessy.jdbc.dialect=db2")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .rootCause()
+                  .isInstanceOf(IllegalStateException.class)
+                  .hasMessageContaining("db2")
+                  .hasMessageContaining("postgres");
+            });
+  }
+
+  @Test
   void jdbc_module_absent_means_no_jdbc_beans() {
     runner
         .withClassLoader(new FilteredClassLoader(JdbcPersistence.class))

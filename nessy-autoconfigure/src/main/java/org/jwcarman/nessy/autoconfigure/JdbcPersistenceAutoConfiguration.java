@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.autoconfigure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.function.BiFunction;
+import java.util.Locale;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
@@ -24,6 +24,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
+import org.jwcarman.nessy.store.jdbc.JdbcDialect;
 import org.jwcarman.nessy.store.jdbc.JdbcParks;
 import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.store.jdbc.JdbcTranscript;
@@ -69,6 +70,15 @@ import org.springframework.context.annotation.Bean;
  * {@code @ConditionalOnBean(DataSource.class)} is only reliable once the datasource's own
  * auto-configuration has run — without the pin, web-free classpaths evaluate this class first and
  * persistence never activates.
+ *
+ * <p>{@code nessy.jdbc.dialect} (one of {@code postgres}, {@code mysql}, {@code mariadb}, {@code
+ * sqlserver}, {@code oracle}) is the {@link JdbcDialect} override every door's own explicit-dialect
+ * {@code create}/constructor overload accepts (design §2) — for a driver/proxy whose {@link
+ * java.sql.DatabaseMetaData} lies about what it is. Unset (the default) means resolve, exactly as
+ * constructing any of these doors directly without a dialect argument already does. {@link
+ * #resolveDialect(NessyProperties)} does the one string-to-enum translation this whole
+ * configuration needs, failing loudly on an unrecognized value rather than silently falling back to
+ * resolution.
  */
 @AutoConfiguration(after = DataSourceAutoConfiguration.class)
 @ConditionalOnClass(JdbcPersistence.class)
@@ -88,6 +98,7 @@ public class JdbcPersistenceAutoConfiguration {
         properties.bootstrapSchema(),
         dataSource,
         resolveMapper(mapper),
+        resolveDialect(properties),
         JdbcConversationStore::create,
         JdbcConversationStore::new);
   }
@@ -100,6 +111,7 @@ public class JdbcPersistenceAutoConfiguration {
         properties.bootstrapSchema(),
         dataSource,
         resolveMapper(mapper),
+        resolveDialect(properties),
         JdbcParks::create,
         JdbcParks::new);
   }
@@ -112,6 +124,7 @@ public class JdbcPersistenceAutoConfiguration {
         properties.bootstrapSchema(),
         dataSource,
         resolveMapper(mapper),
+        resolveDialect(properties),
         JdbcTranscript::create,
         JdbcTranscript::new);
   }
@@ -134,18 +147,58 @@ public class JdbcPersistenceAutoConfiguration {
   }
 
   /**
+   * Translates {@code nessy.jdbc.dialect} (a plain string on {@link NessyProperties} — see its
+   * {@code Jdbc} record javadoc for why) into a {@link JdbcDialect}, or {@code null} if the
+   * property is unset, meaning every door's own resolution takes over instead. Unrecognized values
+   * fail loudly rather than silently falling back to resolution, the same fail-noisy stance {@link
+   * JdbcDialect#resolve} itself takes for a product name it does not know.
+   */
+  private static JdbcDialect resolveDialect(NessyProperties properties) {
+    String dialect = properties.jdbc() == null ? null : properties.jdbc().dialect();
+    if (dialect == null) {
+      return null;
+    }
+    return switch (dialect.toLowerCase(Locale.ROOT)) {
+      case "postgres" -> JdbcDialect.POSTGRES;
+      case "mysql" -> JdbcDialect.MYSQL;
+      case "mariadb" -> JdbcDialect.MARIADB;
+      case "sqlserver" -> JdbcDialect.SQLSERVER;
+      case "oracle" -> JdbcDialect.ORACLE;
+      default ->
+          throw new IllegalStateException(
+              "unrecognized nessy.jdbc.dialect value \""
+                  + dialect
+                  + "\" — expected one of postgres, mysql, mariadb, sqlserver, oracle");
+    };
+  }
+
+  /**
    * Shared by the store, parks, and transcript bean methods: {@code bootstrapSchema} picks the
    * bootstrapping factory (DDL run once, safe to repeat) or the bare constructor (no DDL, no
-   * connection opened at all) — the one branch point each door's construction needs.
+   * connection opened at all) — the one branch point each door's construction needs. {@code
+   * dialect} rides along either way — {@code null} for every door's own resolution, non-null to
+   * bypass it (see {@link #resolveDialect(NessyProperties)}).
    */
   private static <T> T build(
       boolean bootstrapSchema,
       DataSource dataSource,
       ObjectMapper mapper,
-      BiFunction<DataSource, ObjectMapper, T> factory,
-      BiFunction<DataSource, ObjectMapper, T> constructor) {
+      JdbcDialect dialect,
+      DoorFactory<T> factory,
+      DoorFactory<T> constructor) {
     return bootstrapSchema
-        ? factory.apply(dataSource, mapper)
-        : constructor.apply(dataSource, mapper);
+        ? factory.create(dataSource, mapper, dialect)
+        : constructor.create(dataSource, mapper, dialect);
+  }
+
+  /**
+   * A store's {@code create}/constructor overload that accepts an explicit (possibly {@code null})
+   * {@link JdbcDialect} — the shape {@link JdbcConversationStore#create(DataSource, ObjectMapper,
+   * JdbcDialect)} and its constructor sibling, and {@code JdbcParks}/{@code JdbcTranscript}'s
+   * matching pairs, all already have.
+   */
+  @FunctionalInterface
+  private interface DoorFactory<T> {
+    T create(DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect);
   }
 }

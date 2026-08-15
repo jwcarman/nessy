@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.store.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Objects;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.spi.memory.Memory;
@@ -23,11 +25,17 @@ import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 
 /**
  * The three doors a durable {@code AgentBuilder} actually needs, plus the summary shelf {@code
- * SummarizingMemory} reaches for, all over one Postgres database, bootstrapped in one call: a
- * {@link JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, and a
- * {@link JdbcSummaryStore}. {@link #create} exists because those four schemas are always stood up
- * together in practice — nothing here couples them beyond that convenience; each component still
- * works fine constructed on its own.
+ * SummarizingMemory} reaches for, all over one database — any of the five {@link JdbcDialect} knows
+ * (design §2) — bootstrapped in one call: a {@link JdbcConversationStore}, a {@link JdbcParks}
+ * registry, a {@link JdbcTranscript}, and a {@link JdbcSummaryStore}. {@link #create} exists
+ * because those four schemas are always stood up together in practice — nothing here couples them
+ * beyond that convenience; each component still works fine constructed on its own.
+ *
+ * <p>{@link #create(DataSource, ObjectMapper)} is this module's one shared dialect-resolution seam
+ * (design §2): it resolves the dialect exactly once, from one borrowed connection, before any of
+ * the four components bootstraps its own schema, then hands that single resolved value down to each
+ * component's own explicit-dialect {@code create} overload — four schemas, one resolution, not four
+ * independent ones that could in principle disagree.
  */
 public record JdbcPersistence(
     JdbcConversationStore store,
@@ -44,11 +52,27 @@ public record JdbcPersistence(
 
   /** Bootstraps all four schemas against {@code dataSource}, then returns a working set. */
   public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) {
+    return create(dataSource, mapper, resolve(dataSource));
+  }
+
+  /** Bootstraps against an explicitly known {@code dialect}, skipping resolution entirely. */
+  public static JdbcPersistence create(
+      DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
+    Objects.requireNonNull(dialect, "dialect must not be null");
     return new JdbcPersistence(
-        JdbcConversationStore.create(dataSource, mapper),
-        JdbcParks.create(dataSource, mapper),
-        JdbcTranscript.create(dataSource, mapper),
-        JdbcSummaryStore.create(dataSource));
+        JdbcConversationStore.create(dataSource, mapper, dialect),
+        JdbcParks.create(dataSource, mapper, dialect),
+        JdbcTranscript.create(dataSource, mapper, dialect),
+        JdbcSummaryStore.create(dataSource, dialect));
+  }
+
+  /** The one connection this whole bootstrap borrows purely to resolve the dialect once. */
+  private static JdbcDialect resolve(DataSource dataSource) {
+    try (Connection connection = dataSource.getConnection()) {
+      return JdbcDialect.resolve(connection.getMetaData());
+    } catch (SQLException e) {
+      throw new IllegalStateException("failed to resolve the JDBC dialect for bootstrap", e);
+    }
   }
 
   /** The durable {@link Memory}: verbatim retention over this pair's own {@link #transcript()}. */

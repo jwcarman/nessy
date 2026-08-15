@@ -16,15 +16,10 @@
 package org.jwcarman.nessy.store.jdbc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -36,31 +31,44 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.conversation.Parks;
 
 /**
- * The durable {@link Parks} registry: every wait ever registered, kept in Postgres for the life of
- * the database rather than the process.
+ * The durable {@link Parks} registry over any of the five databases {@link JdbcDialect} knows
+ * (design §2): every wait ever registered, kept for the life of the database rather than the
+ * process.
  *
  * <p>Rows live in {@code nessy_parks} (token primary key, conversation id, the parked {@link
  * ToolCall}, the minting agent's name) with an index on {@code conversation_id} for the
- * approval-card read. {@link #park} is idempotent via {@code ON CONFLICT (token) DO NOTHING} — the
- * JDBC-side twin of {@link org.jwcarman.nessy.spi.conversation.InMemoryParks}'s {@code
- * putIfAbsent}, the same at-least-once re-registration tolerance. Entries are never removed by this
- * registry once written: replay protection and "is this call still outstanding" are the fold's own
- * questions, not this registry's (design §5).
+ * approval-card read. {@link #park} is idempotent — a duplicate token is allowed to lose its insert
+ * race rather than fail (see {@link WriteOnceInsert}), the JDBC-side twin of {@link
+ * org.jwcarman.nessy.spi.conversation.InMemoryParks}'s {@code putIfAbsent}, the same at-least-once
+ * re-registration tolerance. Entries are never removed by this registry once written: replay
+ * protection and "is this call still outstanding" are the fold's own questions, not this registry's
+ * (design §5).
  *
  * <p>The constructor alone does not create {@code nessy_parks} — a caller pointing at a database
  * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
- * #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its {@code CREATE
- * TABLE IF NOT EXISTS} / {@code CREATE INDEX IF NOT EXISTS} statements are safe to run more than
- * once.
+ * #create(DataSource, ObjectMapper)} to bootstrap and construct in one call; its per-dialect schema
+ * resource's guarded-create statements are safe to run more than once. As with {@link
+ * JdbcConversationStore}, the dialect is resolved once — at bootstrap for {@code create}, lazily
+ * and cached thereafter for the plain constructor — and every {@code create}/constructor pair has
+ * an explicit-dialect overload that skips resolution entirely.
  */
 public final class JdbcParks implements Parks {
 
   private final DataSource dataSource;
   private final StateCodec codec;
 
+  /** See {@link JdbcConversationStore#dialect} for the resolve-once-then-cache discipline. */
+  private volatile JdbcDialect dialect;
+
   public JdbcParks(DataSource dataSource, ObjectMapper mapper) {
+    this(dataSource, mapper, null);
+  }
+
+  /** Bypasses dialect resolution entirely — see the class javadoc. */
+  public JdbcParks(DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
+    this.dialect = dialect;
   }
 
   /**
@@ -68,36 +76,15 @@ public final class JdbcParks implements Parks {
    * registry.
    */
   public static JdbcParks create(DataSource dataSource, ObjectMapper mapper) {
-    JdbcParks parks = new JdbcParks(dataSource, mapper);
-    parks.bootstrap();
-    return parks;
+    return create(dataSource, mapper, null);
   }
 
-  private void bootstrap() {
-    String schema = readSchemaResource();
-    try (Connection connection = dataSource.getConnection();
-        Statement statement = connection.createStatement()) {
-      for (String sql : schema.split(";")) {
-        String trimmed = sql.strip();
-        if (!trimmed.isEmpty()) {
-          statement.execute(trimmed);
-        }
-      }
-    } catch (SQLException e) {
-      throw new IllegalStateException("failed to bootstrap the nessy-store-jdbc parks schema", e);
-    }
-  }
-
-  private static String readSchemaResource() {
-    try (InputStream in = JdbcParks.class.getResourceAsStream("parks-schema.sql")) {
-      if (in == null) {
-        throw new IllegalStateException(
-            "parks-schema.sql not found on the classpath next to JdbcParks");
-      }
-      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    } catch (IOException e) {
-      throw new UncheckedIOException("failed to read parks-schema.sql", e);
-    }
+  /** Bootstraps against an explicitly known {@code dialect} — see the class javadoc. */
+  public static JdbcParks create(DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
+    JdbcDialect resolved =
+        JdbcSchemaBootstrap.bootstrap(
+            dataSource, JdbcParks.class, "parks-schema.sql", dialect, "parks");
+    return new JdbcParks(dataSource, mapper, resolved);
   }
 
   @Override
@@ -105,16 +92,20 @@ public final class JdbcParks implements Parks {
     Objects.requireNonNull(park, "park must not be null");
     withConnection(
         connection -> {
-          try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "INSERT INTO nessy_parks (token, conversation_id, call, agent_name) VALUES (?,"
-                      + " ?, ?::jsonb, ?) ON CONFLICT (token) DO NOTHING")) {
-            ps.setString(1, park.token().value());
-            ps.setString(2, park.conversationId().value());
-            ps.setString(3, codec.writeToolCall(park.call()));
-            ps.setString(4, park.agentName());
-            ps.executeUpdate();
-          }
+          JdbcStatements statements = statementsFor(connection);
+          WriteOnceInsert.attempt(
+              connection,
+              "INSERT INTO nessy_parks (token, conversation_id, "
+                  + statements.parkedCallColumn()
+                  + ", agent_name) VALUES (?, ?, "
+                  + statements.jsonPlaceholder()
+                  + ", ?)",
+              ps -> {
+                ps.setString(1, park.token().value());
+                ps.setString(2, park.conversationId().value());
+                ps.setString(3, codec.writeToolCall(park.call()));
+                ps.setString(4, park.agentName());
+              });
           return null;
         });
   }
@@ -124,9 +115,12 @@ public final class JdbcParks implements Parks {
     Objects.requireNonNull(token, "token must not be null");
     return withConnection(
         connection -> {
+          JdbcStatements statements = statementsFor(connection);
           try (PreparedStatement ps =
               connection.prepareStatement(
-                  "SELECT conversation_id, call, agent_name FROM nessy_parks WHERE token = ?")) {
+                  "SELECT conversation_id, "
+                      + statements.parkedCallColumn()
+                      + ", agent_name FROM nessy_parks WHERE token = ?")) {
             ps.setString(1, token.value());
             try (ResultSet rs = ps.executeQuery()) {
               if (!rs.next()) {
@@ -146,9 +140,12 @@ public final class JdbcParks implements Parks {
     Objects.requireNonNull(id, "id must not be null");
     return withConnection(
         connection -> {
+          JdbcStatements statements = statementsFor(connection);
           try (PreparedStatement ps =
               connection.prepareStatement(
-                  "SELECT token, call, agent_name FROM nessy_parks WHERE conversation_id = ?")) {
+                  "SELECT token, "
+                      + statements.parkedCallColumn()
+                      + ", agent_name FROM nessy_parks WHERE conversation_id = ?")) {
             ps.setString(1, id.value());
             try (ResultSet rs = ps.executeQuery()) {
               List<Park> parks = new ArrayList<>();
@@ -162,6 +159,16 @@ public final class JdbcParks implements Parks {
             }
           }
         });
+  }
+
+  /** See {@link JdbcConversationStore#statementsFor(Connection)}. */
+  private JdbcStatements statementsFor(Connection connection) throws SQLException {
+    JdbcDialect resolved = dialect;
+    if (resolved == null) {
+      resolved = JdbcDialect.resolve(connection.getMetaData());
+      dialect = resolved;
+    }
+    return JdbcStatements.forDialect(resolved);
   }
 
   /**
