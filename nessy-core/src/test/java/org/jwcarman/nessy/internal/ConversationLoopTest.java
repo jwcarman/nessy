@@ -1885,10 +1885,10 @@ class ConversationLoopTest {
       long attempts = journal.stream().filter("load"::equals).count();
       // No more than one TurnEnded per attempt: the CAS inside one driveOnce call structurally
       // forbids it, so the total narrated can never exceed the number of attempts this drive took.
-      assertThat(endings).hasSizeLessThanOrEqualTo((int) attempts);
       // The bug this test exists to pin: the fenced-out attempt's narration was not suppressed, so
-      // this drive really did narrate the ending twice — once per attempt.
-      assertThat(endings).hasSize(2);
+      // this drive really did narrate the ending twice — once per attempt, never more (the CAS
+      // inside one driveOnce call structurally forbids exceeding the attempt count).
+      assertThat(endings).hasSizeLessThanOrEqualTo((int) attempts).hasSize(2);
       assertThat(attempts).isEqualTo(2);
     }
   }

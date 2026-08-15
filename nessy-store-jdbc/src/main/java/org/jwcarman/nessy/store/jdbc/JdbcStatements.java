@@ -215,7 +215,6 @@ final class JdbcStatements {
    * so the statement text itself is a constant, identical across every dialect and every drain
    * size.
    */
-  String inboxDrainDeleteSql() {
-    return "DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?";
-  }
+  static final String INBOX_DRAIN_DELETE_SQL =
+      "DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?";
 }

@@ -59,8 +59,9 @@ class JdbcConversationStoreDrainBatchTest {
         new JdbcConversationStore(
             new OneConnectionDataSource(connection), MAPPER, JdbcDialect.POSTGRES);
     ConversationState state = ConversationState.newConversation(id).withVersion(1);
+    List<String> drained = List.of("e1", "e2", "e3");
 
-    assertThatThrownBy(() -> store.save(state, List.of("e1", "e2", "e3")))
+    assertThatThrownBy(() -> store.save(state, drained))
         .isInstanceOf(IllegalStateException.class)
         .cause()
         .isInstanceOf(SQLException.class)

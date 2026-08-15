@@ -230,7 +230,7 @@ public final class JdbcConversationStore implements ConversationStore {
    * id's {@code DELETE} as its own statement execution rather than growing a single statement's
    * parameter list, so unlike the retired dynamic {@code IN (?, …, ?)} this constant is not a
    * vendor parameter ceiling — no single execution ever carries more than {@link
-   * JdbcStatements#inboxDrainDeleteSql()}'s fixed two parameters. It exists purely to cap how much
+   * JdbcStatements#INBOX_DRAIN_DELETE_SQL}'s fixed two parameters. It exists purely to cap how much
    * unflushed batch state (and driver-side buffering) one drain accumulates before a round trip,
    * same rationale as any batch-insert loop.
    */
@@ -254,7 +254,8 @@ public final class JdbcConversationStore implements ConversationStore {
     if (drainedInboxIds.isEmpty()) {
       return;
     }
-    try (PreparedStatement ps = connection.prepareStatement(statements.inboxDrainDeleteSql())) {
+    try (PreparedStatement ps =
+        connection.prepareStatement(JdbcStatements.INBOX_DRAIN_DELETE_SQL)) {
       int pending = 0;
       for (String entryId : drainedInboxIds) {
         ps.setString(1, id.value());
