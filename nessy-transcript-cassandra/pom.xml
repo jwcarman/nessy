@@ -28,7 +28,7 @@
   </parent>
 
   <artifactId>nessy-transcript-cassandra</artifactId>
-  <name>Nessy Store Cassandra</name>
+  <name>Nessy Transcript Cassandra</name>
   <description>A durable Transcript against Apache Cassandra, over the CqlSession driver.</description>
 
   <properties>

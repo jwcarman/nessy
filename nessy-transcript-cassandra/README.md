@@ -106,6 +106,15 @@ unchanged: `ConversationStore` and `Parks` stay on Postgres if
 `nessy-store-jdbc` and a `DataSource` are present, and the `Memory` bean
 composes over whichever `Transcript` won.
 
+One honest gap: the `Memory` bean itself is `nessy-store-jdbc`'s to publish
+(`TranscriptMemory` over whichever `Transcript` won), so a Cassandra-only
+app — a `CqlSession` bean and no `DataSource`, `nessy-store-jdbc` absent —
+gets a durable `Transcript` bean from this module but no autoconfigured
+`Memory` over it; that application wires its own (`new
+TranscriptMemory(transcript)`, handed to `AgentBuilder#memory`), or runs
+this module beside `nessy-store-jdbc` — the polyglot shape it exists for —
+and gets both for free.
+
 ## Testing
 
 `CassandraTranscript` runs `nessy-core`'s `TranscriptContract` test-jar suite

@@ -56,7 +56,7 @@ class CassandraTranscriptTest extends TranscriptContract {
   private Transcript transcript;
 
   @BeforeAll
-  static void nessy_store_cassandra_test_points_a_session_at_the_container() {
+  static void nessy_transcript_cassandra_test_points_a_session_at_the_container() {
     InetSocketAddress contactPoint = CASSANDRA.getContactPoint();
     String localDatacenter = CASSANDRA.getLocalDatacenter();
     try (CqlSession bootstrapSession =

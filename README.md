@@ -593,6 +593,7 @@ exotic rides `fromEnv()`'s own ambient resolution or a hand-declared bean:
 | `nessy.default-model` | (none) | harness-level default model, optional |
 | `nessy.jdbc.enabled` | `true` | JDBC wiring master switch |
 | `nessy.jdbc.bootstrap-schema` | `true` | run the idempotent DDL at startup |
+| `nessy.cassandra.enabled` | `true` | Cassandra transcript wiring master switch |
 
 See the `chat-web` example ([Examples](#examples)) for the whole stack —
 provider, persistence, harness, and the SSE bridge — in one Spring Boot app
