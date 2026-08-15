@@ -157,7 +157,10 @@ Memory memory = Memory.pipeline(transcript)                              // full
     .build();
 ```
 
-- `Memory.pipeline(Transcript)` returns a `MemoryPipeline` builder. The transcript is the one
+- The type behind it is **`PipelineMemory`** — a public final `Memory` implementation in
+  `spi.memory`, sibling to `TranscriptMemory` and `SummarizingMemory`, whose `recall` runs
+  hydration then the stage list. Its builder is nested (`PipelineMemory.Builder`);
+  `Memory.pipeline(Transcript)` is the shortcut that returns it. The transcript is the one
   required ingredient: `remember` always appends to it (idempotency stays the transcript's own
   no-stutter rule), whatever hydration chooses to re-read.
 - `.summarizing(SummaryStore, ModelProvider, String model, String prompt, int tailThreshold)`
@@ -172,7 +175,7 @@ Memory memory = Memory.pipeline(transcript)                              // full
 - All stages — clamps, transforms, contributors — occupy **one ordered list** and run in
   registration order. Every stage is required (§2.3); optional behavior arrives pre-wrapped
   via `ContextTransformer.optional` / `ContextContributor.optional`.
-- `.build()` returns a `Memory`. Internally it delegates to `TranscriptMemory` or
+- `.build()` returns the `PipelineMemory`. Internally it delegates to `TranscriptMemory` or
   `SummarizingMemory` for hydration, then folds the stage list. No behavior is reimplemented;
   the builder is composition sugar with names.
 
