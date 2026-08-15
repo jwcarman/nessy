@@ -35,25 +35,49 @@ Two placement rulings, made in conversation and binding here:
 
 ## 2. The context pipeline — hydrate, then stages
 
-Recall-side context production becomes a named pipeline: a **hydration strategy** (closed,
-core-authored) produces the initial context, and then an ordered list of **stages** (open,
-user-pluggable) reshapes it — clamping, redacting, eliding, amending — before it goes out the
-door. The hydrators already exist in the code as separate classes; this section names them and
-gives the whole assembly one composition surface.
+Recall-side context production becomes a named pipeline with exactly two seams: a
+**`ContextHydrator`** produces the initial context from durable history, and an ordered list
+of **`ContextTransformer` stages** reshapes it — clamping, redacting, eliding, amending —
+before it goes out the door. Both seams are open; both shipped implementations are
+extractions of code that already exists. This section names the parts and gives the assembly
+one composition surface.
 
 ### 2.1 Hydrate — the strategy owns how much history it reads
 
 A hydration strategy produces the *initial* context. It references the `Transcript` (and any
-companion stores it owns) — it does not necessarily read all of it:
+companion stores it owns) — it does not necessarily read all of it. The seam, new in
+`spi.memory`:
 
-- **Full** (`TranscriptMemory` today): `transcript.all(id)`, open-tail-trimmed.
-- **Summarizing** (`SummarizingMemory` today): the folded prefix from `SummaryStore` rendered as
-  one opening `Message.user(text)`, plus only `transcript.tail(id, watermark)` — the whole
+```java
+/**
+ * Bootstraps the context from durable history. The transcript arrives as a parameter — the
+ * pipeline passes the same transcript it remembers into, so told-history and re-read-history
+ * can never disagree — and a hydrator reads as much or as little of it as its strategy
+ * requires, consulting whatever companion stores it holds. Duty at the border: apply the
+ * open-tail trim ({@link TranscriptTrim#withoutOpenTail}) before {@code Context.of} — a
+ * parked conversation's raw telling can legitimately end in an unanswered tool-use message,
+ * and {@code Context}'s validating constructor rejects that shape.
+ */
+public interface ContextHydrator {
+  Context hydrate(ConversationId id, Transcript transcript);
+}
+```
+
+Two implementations ship, both extracted from code that already exists (the existing `Memory`
+classes keep their public faces and delegate to the extracted hydrators, so the logic lives
+exactly once):
+
+- **`ContextHydrator.full()`** (the guts of `TranscriptMemory`): `transcript.all(id)`,
+  open-tail-trimmed.
+- **`ContextHydrator.summarizing(summaries, provider, model, prompt, tailThreshold)`** (the
+  guts of `SummarizingMemory`): the folded prefix from `SummaryStore` rendered as one opening
+  `Message.user(text)`, plus only `transcript.tail(id, watermark)` — the whole
   fold-on-threshold, watermark-bookkeeping mechanism is unchanged by this design.
 
-Hydration is a **closed phase**: strategies ship in core because they need transcript versions,
-watermarks, and legality guarantees a rendered `Context` no longer carries. The existing classes
-stay public; the builder composes them.
+The seam is **open**: a custom hydrator (bootstrap from a vector store, a checkpoint, an
+external system of record) is a legitimate implementation, which is why `TranscriptTrim`
+becomes public in `spi.memory` — the border duty must be dischargeable from outside the
+package.
 
 ### 2.2 Stages — open, ordered, full mutation
 
@@ -158,19 +182,20 @@ Memory memory = Memory.pipeline(transcript)                              // full
   `Memory.pipeline(Transcript)` is the shortcut that returns it. The transcript is the one
   required ingredient: `remember` always appends to it (idempotency stays the transcript's own
   no-stutter rule), whatever hydration chooses to re-read.
-- `.summarizing(SummaryStore, ModelProvider, String model, String prompt, int tailThreshold)`
-  switches hydration from full to summarizing; parameters mirror `SummarizingMemory`'s
-  constructor exactly. Calling it twice is an `IllegalStateException` — one hydration strategy
-  per pipeline.
+- `.hydrator(ContextHydrator)` sets the hydration strategy; the default is
+  `ContextHydrator.full()`. `.summarizing(SummaryStore, ModelProvider, String model, String
+  prompt, int tailThreshold)` is sugar for `.hydrator(ContextHydrator.summarizing(...))`;
+  parameters mirror `SummarizingMemory`'s constructor exactly. Setting a hydrator twice (by
+  either verb) is an `IllegalStateException` — one hydration strategy per pipeline.
 - `.keepRecent(int n)` — registers the pair-safe trim as a required stage at its call
   position; same `n >= 1` floor as `Memory.windowed`.
 - `.transform(ContextTransformer)` — zero or more; the one and only stage verb.
 - All stages — clamps included — occupy **one ordered list** and run in registration order.
   Every stage is required (§2.3); optional behavior arrives pre-wrapped via
   `ContextTransformer.optional`.
-- `.build()` returns the `PipelineMemory`. Internally it delegates to `TranscriptMemory` or
-  `SummarizingMemory` for hydration, then folds the stage list. No behavior is reimplemented;
-  the builder is composition sugar with names.
+- `.build()` returns the `PipelineMemory`: `remember` appends to the transcript, `recall`
+  runs `hydrator.hydrate(id, transcript)` then folds the stage list. No hydration behavior is
+  reimplemented — the shipped hydrators are extractions of the existing classes' logic.
 
 `Memory.windowed(delegate, n)` stays for the simple wrap-anything case. `TranscriptMemory` and
 `SummarizingMemory` stay public. The pipeline becomes the documented front door for composing
@@ -378,6 +403,10 @@ the token-usage listener's turn boundaries.
 House rules apply throughout: prose snake_case names, no mocking libraries, hand-rolled
 doubles, S5778/S5841 discipline, Awaitility over sleep.
 
+- **Hydrators:** the extraction refactor is proven by the existing `TranscriptMemory` and
+  `SummarizingMemory` suites staying green untouched; a hand-rolled custom hydrator wired via
+  `.hydrator(...)` shows the open seam works (and that the pipeline hands it the pipeline's
+  own transcript).
 - **Pipeline:** builder validation (double hydration, `n < 1`, null stage); pass-through of
   `remember`; stage ordering (two appending stages, the second seeing the first's message in
   its input; a mutating stage registered between them observed in sequence); a
@@ -405,8 +434,8 @@ doubles, S5778/S5841 discipline, Awaitility over sleep.
 - **Relevance-gated fact memory** ("remember this for me"): the designed second consumer of
   `ContextTransformer`. It arrives with a real dependency decision (embeddings) and earns its
   own generation — likely as a satellite module, per the core-vs-satellite rule (§1).
-- **Opening the hydration phase** to user strategies: closed until a second real hydrator
-  exists outside core.
+- **A third shipped hydrator** (vector-store bootstrap, checkpointing): the seam is open for
+  applications today; core ships more strategies only when a real consumer demands one.
 - **Plan history/versioning:** the plan is current-state-only; the transcript already records
   every `update_plan` call and result, so history is reconstructible where it matters.
 - **Cross-conversation (agent-scoped) plans:** ruled per-conversation; a standing backlog is a
