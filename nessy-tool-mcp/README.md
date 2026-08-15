@@ -77,6 +77,12 @@ look a tool up.
   durable HITL flow, but that pairing touches approval UX and is its own
   generation of work — banked, not forgotten. Sampling (a server asking
   the caller's *model* to complete something) is banked alongside it.
+- **The SDK's 20-second request/init timeout applies as-is.** `McpToolbox.connect` builds the
+  client with `McpClient.sync(transport).build()`'s own defaults; neither `connect` nor
+  `McpToolbox` exposes a way to raise them yet. Real MCP tools (web search, code execution)
+  routinely run longer than 20 seconds, so a slow server or a slow tool call can time out
+  before it answers. Configurability arrives with the starter wiring, a later generation —
+  not this one.
 - **Progress notifications are not forwarded to `ToolContext.progress`.**
   The SDK's sync client (`McpSyncClient`) exposes only a session-global
   progress consumer, registered once at client build time and applied to

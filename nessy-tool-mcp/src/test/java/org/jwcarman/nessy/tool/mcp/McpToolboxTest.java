@@ -136,6 +136,37 @@ class McpToolboxTest {
   }
 
   @Nested
+  class A_failed_handshake {
+
+    @Test
+    void connect_closes_the_session_it_opened_before_the_failure_propagates() {
+      FailingClientTransport transport = new FailingClientTransport();
+
+      assertThatThrownBy(() -> McpToolbox.connect(transport, MAPPER))
+          .isInstanceOf(RuntimeException.class);
+
+      assertThat(transport.wasClosed()).isTrue();
+    }
+  }
+
+  @Nested
+  class Describe {
+
+    @Test
+    void describe_renders_the_tool_name_plus_compact_single_line_json_of_the_arguments() {
+      try (McpTestServer fixture =
+          McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"))) {
+        Tool<JsonNode> tool = fixture.tool("echo");
+        JsonNode arguments = echoArguments("hi there");
+
+        String described = tool.describe(arguments);
+
+        assertThat(described).isEqualTo("echo {\"message\":\"hi there\"}");
+      }
+    }
+  }
+
+  @Nested
   class Execution {
 
     @Test
