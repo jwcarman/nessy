@@ -121,11 +121,11 @@ need a real database are tagged `container` and need a Docker daemon. Clear
 either exclusion to opt in:
 
 ```bash
-# add live-tagged tests (spends real tokens)
-./mvnw test -Dnessy.excludedGroups=
-
-# add container-tagged tests too (needs Docker)
+# add the container-tagged tests (needs Docker, spends no tokens)
 ./mvnw test -Dnessy.excludedGroups=live
+
+# clear every exclusion: container AND live together (Docker + real tokens)
+./mvnw test -Dnessy.excludedGroups=
 ```
 
 `nessy-jdbc`'s own five-vendor matrix carries a further `vendor` tag on top
