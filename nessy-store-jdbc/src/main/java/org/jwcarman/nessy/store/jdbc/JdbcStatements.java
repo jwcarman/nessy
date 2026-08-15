@@ -21,12 +21,12 @@ import java.util.stream.Stream;
 
 /**
  * The small set of SQL fragments that actually vary by {@link JdbcDialect} (design §4): a JSON
- * parameter placeholder, the transcript's last-row read-and-lock, and the inbox drain's
- * dynamically-sized delete — plus one fragment the design's audit did not anticipate, {@link
- * #parkedCallColumn()}, a reserved-word quoting wrinkle live verification against MySQL turned up.
- * Everything else — the fenced CAS {@code UPDATE}, every plain read, and the write-once inserts
- * (unified onto one SQLState-driven code path in {@link WriteOnceInsert} rather than varied per
- * dialect) — is ANSI SQL already and needs no variant here.
+ * parameter placeholder, the transcript's last-row read-and-lock, the transcript's page read, and
+ * the inbox drain's dynamically-sized delete — plus one fragment the design's audit did not
+ * anticipate, {@link #parkedCallColumn()}, a reserved-word quoting wrinkle live verification
+ * against MySQL turned up. Everything else — the fenced CAS {@code UPDATE}, every other plain read,
+ * and the write-once inserts (unified onto one SQLState-and-vendor-code-driven code path in {@link
+ * WriteOnceInsert} rather than varied per dialect) — is ANSI SQL already and needs no variant here.
  */
 final class JdbcStatements {
 
@@ -38,6 +38,11 @@ final class JdbcStatements {
 
   static JdbcStatements forDialect(JdbcDialect dialect) {
     return new JdbcStatements(Objects.requireNonNull(dialect, "dialect must not be null"));
+  }
+
+  /** The dialect this instance was built for — {@link WriteOnceInsert} needs it too. */
+  JdbcDialect dialect() {
+    return dialect;
   }
 
   /**
@@ -86,6 +91,42 @@ final class JdbcStatements {
           "SELECT version, message FROM nessy_transcript WHERE conversation_id = ?"
               + " ORDER BY version DESC FETCH FIRST 1 ROWS ONLY FOR UPDATE";
     };
+  }
+
+  /**
+   * {@code nessy_transcript}'s page read (design §4, added in Task 2's fix round — the original
+   * commit left this one raw and it is a syntax error on SQL Server and Oracle): the newest {@code
+   * limit} rows below {@code beforeVersion}, fetched newest-first so the limiting clause keeps the
+   * right window (the caller reverses back to ascending order). Postgres/MySQL/MariaDB share {@code
+   * ORDER BY version DESC LIMIT ?}; SQL Server has no {@code LIMIT} and expresses it as {@code
+   * SELECT TOP (?) ...} — notably {@code TOP}'s parameter binds <b>first</b>, before the {@code
+   * WHERE} clause's own two parameters, which is exactly what {@link
+   * #transcriptPageLimitBindsFirst()} exists to tell the caller; Oracle has no {@code LIMIT} or
+   * {@code TOP} and expresses it as trailing {@code OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY}, with the
+   * limit parameter binding last, in the same position Postgres/MySQL/MariaDB already use.
+   */
+  String transcriptPageSql() {
+    return switch (dialect) {
+      case POSTGRES, MYSQL, MARIADB ->
+          "SELECT version, message FROM nessy_transcript WHERE conversation_id = ?"
+              + " AND version < ? ORDER BY version DESC LIMIT ?";
+      case SQLSERVER ->
+          "SELECT TOP (?) version, message FROM nessy_transcript WHERE conversation_id = ?"
+              + " AND version < ? ORDER BY version DESC";
+      case ORACLE ->
+          "SELECT version, message FROM nessy_transcript WHERE conversation_id = ?"
+              + " AND version < ? ORDER BY version DESC OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY";
+    };
+  }
+
+  /**
+   * Whether {@link #transcriptPageSql()}'s limit parameter is the <b>first</b> {@code ?} to bind
+   * (true only for SQL Server's {@code TOP (?)}, which sits before the {@code WHERE} clause in the
+   * statement text) rather than the last (every other dialect, {@code LIMIT ?} / {@code FETCH NEXT
+   * ? ROWS ONLY} trailing after the two {@code WHERE} parameters).
+   */
+  boolean transcriptPageLimitBindsFirst() {
+    return dialect == JdbcDialect.SQLSERVER;
   }
 
   /**

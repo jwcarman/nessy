@@ -95,6 +95,7 @@ public final class JdbcParks implements Parks {
           JdbcStatements statements = statementsFor(connection);
           WriteOnceInsert.attempt(
               connection,
+              statements.dialect(),
               "INSERT INTO nessy_parks (token, conversation_id, "
                   + statements.parkedCallColumn()
                   + ", agent_name) VALUES (?, ?, "

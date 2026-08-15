@@ -138,17 +138,27 @@ public final class JdbcTranscript implements Transcript {
     Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     return withConnection(
         connection -> {
-          // The newest `limit` rows below the bound, fetched newest-first so LIMIT keeps the
-          // right window, then reversed back into the ascending order the contract promises.
+          JdbcStatements statements = statementsFor(connection);
+          // The newest `limit` rows below the bound, fetched newest-first so the per-dialect
+          // limiting clause keeps the right window, then reversed back into the ascending order
+          // the contract promises. Parameter bind order itself varies (see
+          // JdbcStatements#transcriptPageLimitBindsFirst): SQL Server's `TOP (?)` sits before the
+          // WHERE clause in the statement text, so its limit parameter binds first instead of
+          // last.
           List<Entry> newestFirst =
               queryEntries(
                   connection,
-                  "SELECT version, message FROM nessy_transcript"
-                      + " WHERE conversation_id = ? AND version < ? ORDER BY version DESC LIMIT ?",
+                  statements.transcriptPageSql(),
                   ps -> {
-                    ps.setString(1, id.value());
-                    ps.setLong(2, beforeVersion);
-                    ps.setInt(3, limit);
+                    if (statements.transcriptPageLimitBindsFirst()) {
+                      ps.setInt(1, limit);
+                      ps.setString(2, id.value());
+                      ps.setLong(3, beforeVersion);
+                    } else {
+                      ps.setString(1, id.value());
+                      ps.setLong(2, beforeVersion);
+                      ps.setInt(3, limit);
+                    }
                   });
           return List.copyOf(newestFirst.reversed());
         });

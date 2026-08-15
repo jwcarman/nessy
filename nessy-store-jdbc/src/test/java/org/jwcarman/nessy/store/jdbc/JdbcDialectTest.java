@@ -174,11 +174,13 @@ class JdbcDialectTest {
       JdbcConversationStore store =
           new JdbcConversationStore(
               new OneConnectionDataSource(refusesMetadata), new ObjectMapper(), JdbcDialect.ORACLE);
+      ConversationId id = ConversationId.generate();
+      InboxEntry told = aTold();
 
       // append() reaches statementsFor(connection) before prepareStatement; had the override not
       // won, statementsFor would call getMetaData() and this test would fail with the
       // AssertionError above instead of the expected wrapped SQLException.
-      assertThatThrownBy(() -> store.append(ConversationId.generate(), aTold()))
+      assertThatThrownBy(() -> store.append(id, told))
           .isInstanceOf(IllegalStateException.class)
           .cause()
           .isSameAs(REFUSED_AFTER_DIALECT_RESOLVED);

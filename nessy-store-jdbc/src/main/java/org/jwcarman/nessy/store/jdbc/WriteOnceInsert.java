@@ -31,14 +31,26 @@ import java.sql.Savepoint;
  * semantics live here in Java, next to the javadoc that already explains them, instead of five
  * different pieces of vendor SQL.
  *
- * <p>A duplicate key is recognized by SQLState alone, not by vendor error code: every driver this
- * module targets maps its native duplicate/unique-constraint error into the ANSI {@code 23xxx}
- * integrity-constraint-violation class — Postgres's {@code 23505} ({@code unique_violation}),
- * MySQL/MariaDB's {@code 23000} (native error 1062, {@code ER_DUP_ENTRY}), Oracle's {@code 23000}
- * (ORA-00001), and SQL Server's {@code 23000} (native errors 2601/2627, both unique-constraint-
- * or-index violations — the mssql-jdbc driver folds both into the same ANSI class rather than
- * exposing a vendor-specific SQLState). See the Task 2 report for the source of each of those
- * mappings; nothing here special-cases a vendor, which is the point.
+ * <p>A duplicate key is recognized by SQLState <b>and</b> vendor error code together, not by
+ * SQLState alone — a Task 2 fix-round finding, not the original design: the {@code 23xxx} ANSI
+ * integrity-constraint-violation class is not exclusively a duplicate-key signal. Oracle in
+ * particular treats an empty string {@code ''} as {@code NULL}, so a {@code NOT NULL} column bound
+ * to {@code ""} (an empty {@code agent_name}, an empty summary) raises {@code ORA-01400} — SQLState
+ * {@code 23000}, the very same class a duplicate key raises there. Swallowing every {@code 23xxx}
+ * as "duplicate, no-op" would have silently dropped that write instead of surfacing the real
+ * NOT-NULL violation — a lost park is a conversation nothing can ever resume, never an acceptable
+ * no-op. So {@link #isDuplicateKey} requires the SQLState family <b>and</b> the exact vendor error
+ * code each dialect's genuine duplicate-key path is verified (Task 2's report) to raise:
+ *
+ * <ul>
+ *   <li>Postgres: SQLState {@code 23505} exactly ({@code unique_violation} — Postgres's own
+ *       SQLState already disambiguates duplicate keys from every other {@code 23xxx} cause, so no
+ *       vendor code check is needed there).
+ *   <li>MySQL/MariaDB: vendor error {@code 1062} ({@code ER_DUP_ENTRY}).
+ *   <li>SQL Server: vendor error {@code 2601} or {@code 2627} (unique index / unique constraint).
+ *   <li>Oracle: vendor error {@code 1} (ORA-00001) — distinct from the {@code 1400} (ORA-01400, NOT
+ *       NULL) an empty-string bind raises, both under SQLState {@code 23000}.
+ * </ul>
  *
  * <p>Found live rather than anticipated: on Postgres, a statement that raises a real SQL error —
  * which a duplicate-key INSERT now does, unlike the retired {@code ON CONFLICT DO NOTHING}, which
@@ -59,11 +71,13 @@ final class WriteOnceInsert {
 
   /**
    * Executes {@code sql} (bound by {@code binder}) as an insert allowed to lose a race: returns
-   * {@code true} if the row landed, {@code false} if a duplicate key rejected it as the documented
-   * no-op. Any other {@link SQLException} propagates unchanged — only a {@code 23xxx} SQLState is
-   * ever swallowed.
+   * {@code true} if the row landed, {@code false} if {@code dialect}'s own genuine duplicate-key
+   * signal rejected it as the documented no-op. Any other {@link SQLException} — including a {@code
+   * 23xxx} SQLState that is not actually a duplicate key, e.g. Oracle's NOT-NULL-via-empty- string
+   * {@code ORA-01400} — propagates unchanged.
    */
-  static boolean attempt(Connection connection, String sql, SqlConsumer<PreparedStatement> binder)
+  static boolean attempt(
+      Connection connection, JdbcDialect dialect, String sql, SqlConsumer<PreparedStatement> binder)
       throws SQLException {
     boolean inExplicitTransaction = !connection.getAutoCommit();
     Savepoint savepoint = inExplicitTransaction ? connection.setSavepoint() : null;
@@ -72,7 +86,7 @@ final class WriteOnceInsert {
       ps.executeUpdate();
       return true;
     } catch (SQLException e) {
-      if (isDuplicateKey(e)) {
+      if (isDuplicateKey(dialect, e)) {
         if (savepoint != null) {
           connection.rollback(savepoint);
         }
@@ -82,9 +96,23 @@ final class WriteOnceInsert {
     }
   }
 
-  private static boolean isDuplicateKey(SQLException e) {
+  /**
+   * The narrow, per-dialect duplicate-key test: the {@code 23xxx} SQLState family is the outer
+   * gate, but never the whole test by itself — see the class javadoc for why (Oracle's
+   * empty-string-is-NULL trap is the concrete case that forced this).
+   */
+  static boolean isDuplicateKey(JdbcDialect dialect, SQLException e) {
     String sqlState = e.getSQLState();
-    return sqlState != null && sqlState.startsWith("23");
+    if (sqlState == null || !sqlState.startsWith("23")) {
+      return false;
+    }
+    int vendorCode = e.getErrorCode();
+    return switch (dialect) {
+      case POSTGRES -> "23505".equals(sqlState);
+      case MYSQL, MARIADB -> vendorCode == 1062;
+      case SQLSERVER -> vendorCode == 2601 || vendorCode == 2627;
+      case ORACLE -> vendorCode == 1;
+    };
   }
 
   @FunctionalInterface

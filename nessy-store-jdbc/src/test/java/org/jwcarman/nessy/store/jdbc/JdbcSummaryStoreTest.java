@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.store.jdbc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.io.PrintWriter;
@@ -23,13 +24,20 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
+import org.jwcarman.nessy.spi.memory.SummaryStore.Summary;
 import org.jwcarman.nessy.store.tck.SummaryStoreContract;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -76,6 +84,48 @@ class JdbcSummaryStoreTest extends SummaryStoreContract {
     } catch (SQLException e) {
       throw new IllegalStateException("failed to truncate nessy_summary between tests", e);
     }
+  }
+
+  /**
+   * The I-3 fix (Task 2 fix round): two connections racing the very first {@code save} of a
+   * brand-new conversation both hit zero rows on their {@code UPDATE} and race an {@code INSERT}
+   * for the same key. The loser used to discard {@link WriteOnceInsert#attempt}'s {@code false} and
+   * drop its own write silently; it now re-runs its {@code UPDATE}, which finds the winner's row
+   * and applies. Neither racer may throw (there is no fencing here, design §10), and the row that
+   * lands must be one of the two writes — never neither, which is what the discarded-boolean bug
+   * produced whenever the loser's save happened to be the one carrying the value a caller cared
+   * about.
+   */
+  @Test
+  void two_connections_racing_the_first_save_of_a_conversation_both_land()
+      throws InterruptedException {
+    ConversationId id = ConversationId.generate();
+    Summary first = new Summary(1L, "from the first racer");
+    Summary second = new Summary(2L, "from the second racer");
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch go = new CountDownLatch(1);
+    List<Future<Void>> racers =
+        List.of(
+            executor.submit(() -> raceSave(ready, go, id, first)),
+            executor.submit(() -> raceSave(ready, go, id, second)));
+    ready.await();
+    go.countDown();
+    for (Future<Void> racer : racers) {
+      assertThatCode(racer::get).doesNotThrowAnyException();
+    }
+    executor.shutdown();
+
+    assertThat(summaries().find(id)).isPresent().get().isIn(first, second);
+  }
+
+  private Void raceSave(CountDownLatch ready, CountDownLatch go, ConversationId id, Summary value)
+      throws InterruptedException {
+    ready.countDown();
+    go.await();
+    summaries().save(id, value);
+    return null;
   }
 
   @Test

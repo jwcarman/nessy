@@ -41,9 +41,17 @@ import org.jwcarman.nessy.spi.memory.SummaryStore;
  * enumerate, and needed the same fix for the same reason: MySQL/MariaDB/SQL Server/Oracle have no
  * portable equivalent to {@code ON CONFLICT ... DO UPDATE}. See the Task 2 report for this
  * deviation, called out there rather than folded in silently. There is no fencing here (design §10)
- * — a save that loses its own race (its fallback {@code INSERT} arriving after a concurrent saver's
- * {@code INSERT} already landed) simply drops that write rather than retry, the same "worst case,
- * one re-summarized tail" posture the class already had.
+ * — two concurrent first-saves of the same conversation can still both apply, in whichever order
+ * their two {@code UPDATE}s (the loser's fallback included — see below) happen to run, rather than
+ * one winning atomically the way Postgres's original {@code ON CONFLICT DO UPDATE} guaranteed.
+ *
+ * <p><b>I-3 (Task 2 fix round):</b> the first version of this rewrite discarded {@link
+ * WriteOnceInsert#attempt}'s return value on the fallback {@code INSERT}, so a save that lost its
+ * insert race (a concurrent saver's {@code INSERT} for the same brand-new conversation landing
+ * first) silently dropped its own write instead of applying it — a regression the retired atomic
+ * upsert never had, not a continuation of any existing posture. Fixed: a lost insert race now
+ * re-runs the same {@code UPDATE} this method started with, which finds the concurrent saver's row
+ * this time and applies cleanly.
  *
  * <p>The constructor alone does not create {@code nessy_summary} — a caller pointing at a database
  * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
@@ -54,6 +62,9 @@ import org.jwcarman.nessy.spi.memory.SummaryStore;
  * overload that skips resolution entirely.
  */
 public final class JdbcSummaryStore implements SummaryStore {
+
+  private static final String UPDATE_SQL =
+      "UPDATE nessy_summary SET watermark = ?, summary = ? WHERE conversation_id = ?";
 
   private final DataSource dataSource;
 
@@ -110,24 +121,33 @@ public final class JdbcSummaryStore implements SummaryStore {
     Objects.requireNonNull(summary, "summary must not be null");
     withConnection(
         connection -> {
-          int updated =
-              update(
-                  connection,
-                  "UPDATE nessy_summary SET watermark = ?, summary = ? WHERE conversation_id = ?",
-                  ps -> {
-                    ps.setLong(1, summary.watermark());
-                    ps.setString(2, summary.text());
-                    ps.setString(3, id.value());
-                  });
+          JdbcStatements statements = statementsFor(connection);
+          SqlConsumer<PreparedStatement> updateBinder =
+              ps -> {
+                ps.setLong(1, summary.watermark());
+                ps.setString(2, summary.text());
+                ps.setString(3, id.value());
+              };
+          int updated = update(connection, UPDATE_SQL, updateBinder);
           if (updated == 0) {
-            WriteOnceInsert.attempt(
-                connection,
-                "INSERT INTO nessy_summary (conversation_id, watermark, summary) VALUES (?, ?, ?)",
-                ps -> {
-                  ps.setString(1, id.value());
-                  ps.setLong(2, summary.watermark());
-                  ps.setString(3, summary.text());
-                });
+            boolean inserted =
+                WriteOnceInsert.attempt(
+                    connection,
+                    statements.dialect(),
+                    "INSERT INTO nessy_summary (conversation_id, watermark, summary) VALUES (?, ?,"
+                        + " ?)",
+                    ps -> {
+                      ps.setString(1, id.value());
+                      ps.setLong(2, summary.watermark());
+                      ps.setString(3, summary.text());
+                    });
+            if (!inserted) {
+              // Lost the insert race to a concurrent first-save of the same conversation: that
+              // row exists now, so the update this save started with — which found nothing a
+              // moment ago — applies cleanly the second time. Skipping this would silently drop
+              // this save's write (see the class javadoc's "I-3" note).
+              update(connection, UPDATE_SQL, updateBinder);
+            }
           }
           return null;
         });
@@ -139,6 +159,16 @@ public final class JdbcSummaryStore implements SummaryStore {
       binder.accept(ps);
       return ps.executeUpdate();
     }
+  }
+
+  /** See {@link JdbcConversationStore#statementsFor(Connection)}. */
+  private JdbcStatements statementsFor(Connection connection) throws SQLException {
+    JdbcDialect resolved = dialect;
+    if (resolved == null) {
+      resolved = JdbcDialect.resolve(connection.getMetaData());
+      dialect = resolved;
+    }
+    return JdbcStatements.forDialect(resolved);
   }
 
   /**

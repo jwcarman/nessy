@@ -203,6 +203,7 @@ public final class JdbcConversationStore implements ConversationStore {
       throws SQLException {
     return WriteOnceInsert.attempt(
         connection,
+        statements.dialect(),
         "INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, "
             + statements.jsonPlaceholder()
             + ")",
