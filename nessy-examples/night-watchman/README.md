@@ -7,9 +7,9 @@ webhook, it's `@Scheduled` firing. Each firing wakes the watchman, who
 observes, judges, and either stays quiet or acts — and because every firing
 tells the *same* conversation, trend judgment across rounds is conversation
 state at work, not something the app tracks separately. Bounding what an
-endless conversation lets the model see is a custom `Memory` implementation,
-`WindowedMemory` — the module's second thing to dogfood, after the pattern
-itself.
+endless conversation lets the model see is `Memory.windowed(...)`, wrapped
+around an in-memory `TranscriptMemory` — the module's second thing to
+dogfood, after the pattern itself.
 
 ## The story
 
@@ -35,7 +35,7 @@ ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/night-watchman spring-boot:run
 No Docker, no database, nothing else to stand up — just the log, which is the
 UI. Watch it: quiet rounds at first ("all quiet" reports), then a trend, then
 an alarm. Ctrl-C ends the watch — the conversation honestly dies with the JVM.
-`TranscriptMemory` over an in-memory `Transcript` (which `WindowedMemory`
+`TranscriptMemory` over an in-memory `Transcript` (which `Memory.windowed`
 delegates to) is in-memory by design, the same way the framework's default is;
 nothing about this example asks for durability.
 
@@ -58,42 +58,24 @@ scheduled firing.
 
 ## How the bound works
 
-`WindowedMemory` is about ten lines:
+Bounding recall used to mean a bespoke `Memory` implementation; now it's one
+line, wired straight into the agent bean:
 
 ```java
-public final class WindowedMemory implements Memory {
-
-  private final Memory delegate = new TranscriptMemory(Transcript.inMemory());
-  private final int window;
-
-  public WindowedMemory(int window) {
-    if (window < 1) {
-      throw new IllegalArgumentException("window must be at least 1");
-    }
-    this.window = window;
-  }
-
-  @Override
-  public void remember(ConversationId id, Message message) {
-    delegate.remember(id, message);
-  }
-
-  @Override
-  public Context recall(ConversationId id) {
-    return delegate.recall(id).keepRecent(window);
-  }
-}
+.memory(Memory.windowed(new TranscriptMemory(Transcript.inMemory()), window))
 ```
 
-Retention is whole — `remember` delegates straight to `TranscriptMemory`, so nothing
-is ever discarded from the underlying store. `recall` is where the bound
-lives: `Context#keepRecent(window)` keeps AT LEAST the last `window`
-messages, cutting only at a pair-safe boundary (a tool-use/tool-result pair is
-never split) — the tail can run one round longer when the boundary must walk
-past a tool exchange, and when no pair-safe boundary exists the context comes
-back whole. So the watchman's horizon is roughly its window — it remembers
-its recent rounds, not its whole life, which is what lets an endless
-conversation run forever without growing the model call unbounded.
+`Memory.windowed(delegate, n)` is a static factory in `spi.memory`: retention
+is whole — `remember` delegates straight through to `TranscriptMemory`, so
+nothing is ever discarded from the underlying store. `recall` is where the
+bound lives: it clips the delegate's recall via `Context#keepRecent(n)`, which
+keeps AT LEAST the last `n` messages, cutting only at a pair-safe boundary (a
+tool-use/tool-result pair is never split) — the tail can run one round longer
+when the boundary must walk past a tool exchange, and when no pair-safe
+boundary exists the context comes back whole. So the watchman's horizon is
+roughly its window — it remembers its recent rounds, not its whole life,
+which is what lets an endless conversation run forever without growing the
+model call unbounded.
 
 ## What this example deliberately isn't
 

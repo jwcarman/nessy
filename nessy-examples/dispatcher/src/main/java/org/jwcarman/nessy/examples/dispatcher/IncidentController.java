@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,8 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The page-rebuild read (spec §2, §3): status, every open park's {@code (token, tool)} pair, and
  * the transcript — the second of the two places the park token surfaces (the app log, via {@link
- * IncidentLog}, is the first), and the one the demo script's restart scene relies on once the log
- * line is gone (spec §3's last bullet).
+ * TurnObserver#logging}, is the first), and the one the demo script's restart scene relies on once
+ * the log line is gone (spec §3's last bullet).
  */
 @RestController
 public final class IncidentController {

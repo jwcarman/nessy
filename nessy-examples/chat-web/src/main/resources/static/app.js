@@ -98,7 +98,7 @@ async function stream(response, handlers) {
         handlers[event]?.(data ? JSON.parse(data) : {});
       }
     }
-  } catch (err) {
+  } catch {
     // A broken stream (dropped connection, server crash mid-turn) must not leave the app
     // permanently disabled: re-enable input and surface a retry hint (spec §4).
     setInputDisabled(false);

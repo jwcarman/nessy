@@ -36,8 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
  * when {@code io.micrometer:context-propagation} is on the classpath) and this endpoint answers
  * {@code 202} immediately with no stream to write to — nothing here is a fit for it. This module
  * does not add {@code context-propagation} either, so tracing context is not propagated onto the
- * driving thread; the log (thread-per-incident lines, {@link IncidentLog}) is the observability
- * story here, exactly as it is in {@code night-watchman}.
+ * driving thread; the log (thread-per-incident lines, {@link TurnObserver#logging}) is the
+ * observability story here, exactly as it is in {@code night-watchman}.
  */
 @RestController
 public final class SignalController {
@@ -56,7 +56,7 @@ public final class SignalController {
     String incidentId = body.incidentId();
     ConversationId conversationId = new ConversationId("incident-" + incidentId);
     String line = "Signal for %s: %s — %s.".formatted(incidentId, body.kind(), body.detail());
-    TurnObserver observer = IncidentLog.observer(incidentId, LOGGER);
+    TurnObserver observer = TurnObserver.logging(LOGGER, "[" + incidentId + "]");
     Thread.ofVirtual()
         .start(
             () -> {

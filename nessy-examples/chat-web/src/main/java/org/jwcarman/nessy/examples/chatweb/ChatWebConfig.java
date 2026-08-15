@@ -36,7 +36,7 @@ import org.springframework.context.annotation.Configuration;
  * smoke test's Testcontainers datasource feeds the starter's own persistence autoconfiguration.
  */
 @Configuration
-public class NessyConfig {
+public class ChatWebConfig {
 
   private static final String SYSTEM_PROMPT =
       "You are the demo shop's helpful assistant. Use your tool when a coupon is warranted.";

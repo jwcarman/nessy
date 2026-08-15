@@ -31,10 +31,10 @@ import org.springframework.stereotype.Component;
 /**
  * The rounds (spec §5): the clock is the caller. Every cron firing tells the SAME conversation "do
  * your rounds" — one continuous conversation is what lets the agent see trends across firings, and
- * {@link WindowedMemory} is what keeps that conversation from growing the model call. Spring's
- * default single-threaded scheduler serializes rounds: a slow round delays the next rather than
- * overlapping it. The package-private overload is the test's entry point — the scheduler is only a
- * trigger.
+ * the windowed {@code Memory} bound in {@link WatchmanConfig} is what keeps that conversation from
+ * growing the model call. Spring's default single-threaded scheduler serializes rounds: a slow
+ * round delays the next rather than overlapping it. The package-private overload is the test's
+ * entry point — the scheduler is only a trigger.
  */
 @Component
 public class Watchman {

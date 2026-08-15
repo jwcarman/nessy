@@ -3,10 +3,10 @@
 A Spring Boot chat app that dogfoods the durable kernel end to end: a real
 browser UI, a real Postgres-backed `ConversationStore` and `Memory`, a tool
 gated behind human approval, and full observability — with `nessy-spring-boot-starter`
-autoconfiguring every substrate bean, `NessyConfig.java` declares exactly one:
+autoconfiguring every substrate bean, `ChatWebConfig.java` declares exactly one:
 the agent.
 
-The whole nessy wiring an application writes itself — one bean in `NessyConfig`:
+The whole nessy wiring an application writes itself — one bean in `ChatWebConfig`:
 
 ```java
 @Bean Agent<String> agent(Harness harness, Memory memory) {
@@ -30,7 +30,7 @@ auto-configured `ObservationRegistry` included, so nessy's spans join Boot's
 in the same trace with no application wiring at all. The approver is the
 durable-HITL posture in one line: every approval parks — the browser is the
 approver, and the park survives a restart because `Memory` and the
-`ConversationStore` both live in Postgres, not the JVM's heap. (`NessyConfig`
+`ConversationStore` both live in Postgres, not the JVM's heap. (`ChatWebConfig`
 carries no `@Profile` split anymore — the container smoke test's own
 `@TestConfiguration` `Harness` bean wins over the starter's by
 `@ConditionalOnMissingBean`, so the real `Harness` above simply backs off in

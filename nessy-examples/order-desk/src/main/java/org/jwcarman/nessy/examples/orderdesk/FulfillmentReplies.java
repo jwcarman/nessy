@@ -15,16 +15,14 @@
  */
 package org.jwcarman.nessy.examples.orderdesk;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.UnknownParkTokenException;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.slf4j.Logger;
@@ -94,19 +92,21 @@ public class FulfillmentReplies {
   }
 
   /**
-   * Resumes the parked call and narrates the resumed segment: a {@link TurnObserver#builder()}
-   * composition — settled assistant messages joined into one "says" line the way {@link
-   * TurnObserver#logging}'s own says-line does (text blocks joined in order, a blank message
-   * contributing nothing), tool completions logged as they land — standing in for {@link
-   * TurnObserver#logging} because the order id isn't known until the drive returns, and so can't
-   * seed a per-call prefix the way {@link OrderDesk#on(OrderEvent)}'s does. The order id is read
-   * back off the returned {@link RunOutcome}'s conversation id rather than threaded in separately,
-   * stripping the {@code "order-"} prefix {@link OrderDesk} mints it with, so a resumed segment
-   * identifies itself by the same order number the original {@code order N begins}/{@code ends}
-   * lines used, matching {@link TurnObserver#logging}'s says/ends/failed shape exactly — unlike the
-   * delta-accumulation this replaced, which never produced a says-line at all against a
-   * non-streaming provider (deltas are a streaming-provider artifact; {@link
-   * org.jwcarman.nessy.api.turn.TurnEvent.AssistantSaid} is emitted regardless).
+   * Resumes the parked call and narrates the resumed segment through {@link
+   * TurnObserver#logging(Logger, Supplier)} — the same says/tool/ends/failed shape {@link
+   * OrderDesk#on(OrderEvent)}'s call already uses, now shared instead of hand-rolled.
+   *
+   * <p>The prefix supplier is what makes this work: {@link Agent#resume} narrates every event on
+   * this same thread before it returns, so a prefix that only became known from its own return
+   * value would be too late for every line the drive emits — that value doesn't exist yet while
+   * those lines are being written. The order id is resolved BEFORE the call, instead, via {@link
+   * Agent#peek}: a non-consuming read of the still-parked call's {@code request_fulfillment}
+   * arguments (the same {@code orderId} the model was handed when it made the call {@link
+   * OrderDesk#on(OrderEvent)} started this conversation with), so the prefix is settled before the
+   * drive ever narrates a line. A peek that finds nothing means the same early-reply race the
+   * {@code catch} below handles — {@link Agent#resume} is about to throw for the identical reason,
+   * before any line narrates, so the token's own value stands in as a prefix that is built but
+   * never used.
    *
    * <p>{@link UnknownParkTokenException} is logged and RETHROWN, not swallowed: the registry
    * survives resolution (a resolved park drains only when {@link Agent#resume} actually drives it,
@@ -117,61 +117,29 @@ public class FulfillmentReplies {
    * parked forever.
    */
   private void resume(ParkToken token, String text) {
-    StringBuilder said = new StringBuilder();
-    RunOutcome outcome;
+    String orderId = orderIdOf(token);
     try {
-      outcome =
-          agent.resume(
-              token,
-              new ToolResolution.Completed(ToolResult.ok(text)),
-              TurnObserver.builder()
-                  .onAssistantSaid(saidEvent -> append(said, joinedText(saidEvent.message())))
-                  .onToolCallCompleted(
-                      completed ->
-                          LOGGER.info(
-                              "call {} completed: {}",
-                              completed.call().name(),
-                              completed.result().isError() ? "error" : "ok"))
-                  .build());
+      agent.resume(
+          token,
+          new ToolResolution.Completed(ToolResult.ok(text)),
+          TurnObserver.logging(LOGGER, () -> "order " + orderId));
     } catch (UnknownParkTokenException e) {
       LOGGER.info("early completion reply for token {}: {}", token.value(), e.getMessage());
       throw e;
     }
-    String orderId = orderIdOf(outcome);
-    if (!said.isEmpty()) {
-      LOGGER.info("order {} says: {}", orderId, said);
-    }
-    LOGGER.info("order {} ends: {}", orderId, outcome.state().status());
-    if (outcome.state().status() == ConversationStatus.FAILED) {
-      LOGGER.warn(
-          "order {} failed: {}",
-          orderId,
-          Objects.requireNonNullElse(outcome.state().failureReason(), "unknown failure"));
-    }
   }
 
-  /** Skips a blank {@code text} the way {@link TurnObserver#logging} skips a blank message. */
-  private static void append(StringBuilder said, String text) {
-    if (!text.isBlank()) {
-      said.append(text);
-    }
+  /**
+   * The order id off the still-parked {@code request_fulfillment} call's own arguments, read
+   * without consuming the park; falls back to the token's value on a peek miss, which only happens
+   * in the early-reply race {@link #resume(ParkToken, String)}'s {@code catch} already handles.
+   */
+  private String orderIdOf(ParkToken token) {
+    return agent.peek(token).map(FulfillmentReplies::orderIdArgument).orElseGet(token::value);
   }
 
-  /** The message's {@link TextBlock} content, concatenated in order — mirrors {@code logging}. */
-  private static String joinedText(Message message) {
-    StringBuilder joined = new StringBuilder();
-    for (ContentBlock block : message.content()) {
-      if (block instanceof TextBlock(String text)) {
-        joined.append(text);
-      }
-    }
-    return joined.toString();
-  }
-
-  private static String orderIdOf(RunOutcome outcome) {
-    String conversationId = outcome.state().id().value();
-    return conversationId.startsWith("order-")
-        ? conversationId.substring("order-".length())
-        : conversationId;
+  private static String orderIdArgument(ParkedCall parked) {
+    JsonNode orderId = parked.call().arguments().get("orderId");
+    return orderId == null ? parked.token().value() : orderId.asText();
   }
 }

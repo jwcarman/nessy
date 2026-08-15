@@ -19,6 +19,9 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.Transcript;
+import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,7 +30,7 @@ import org.springframework.context.annotation.Configuration;
  * The nessy wiring — one bean, the agent (spec §5). {@code Harness} and {@code ModelProvider}
  * arrive from the starter's autoconfiguration over the in-memory defaults; identity is declared
  * here: the standing orders, the two always-allowed tools (no human in this loop, nothing parks),
- * and the {@link WindowedMemory} bound.
+ * and the {@link Memory#windowed(Memory, int)} bound over an in-memory {@link TranscriptMemory}.
  */
 @Configuration
 public class WatchmanConfig {
@@ -48,7 +51,7 @@ public class WatchmanConfig {
         .name("night-watchman")
         .model("claude-sonnet-4-5")
         .systemPrompt(SYSTEM_PROMPT)
-        .memory(new WindowedMemory(window))
+        .memory(Memory.windowed(new TranscriptMemory(Transcript.inMemory()), window))
         .tools(
             ToolGrant.grant(new CheckVitalsTool(engineRoom), UsagePolicy.allow()),
             ToolGrant.grant(new RaiseAlarmTool(), UsagePolicy.allow()))

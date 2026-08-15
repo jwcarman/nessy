@@ -103,7 +103,7 @@
       <artifactId>spring-boot-starter-jdbc</artifactId>
     </dependency>
     <!-- Boot 4's default web stack auto-configures a Jackson 3 (tools.jackson) ObjectMapper;
-         nessy-core and every bean in this module (NessyConfig, ChatController, ApprovalController)
+         nessy-core and every bean in this module (ChatWebConfig, ChatController, ApprovalController)
          are written against classic Jackson 2 (com.fasterxml.jackson.databind). This module pulls
          Boot's own backward-compat auto-configuration for that generation back in. -->
     <dependency>

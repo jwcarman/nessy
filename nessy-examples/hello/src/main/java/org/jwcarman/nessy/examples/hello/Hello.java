@@ -51,6 +51,9 @@ public final class Hello {
     args.put("left", 2);
     args.put("right", 2);
 
+    // A testing-package provider inside a main() looks backwards, but it is deliberate: it is what
+    // makes the no-key, no-network promise true. A real ModelProvider would need credentials and a
+    // live call; this one plays back a script, so the example runs the same way on every machine.
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder()
             .toolUse("c1", "add", args)

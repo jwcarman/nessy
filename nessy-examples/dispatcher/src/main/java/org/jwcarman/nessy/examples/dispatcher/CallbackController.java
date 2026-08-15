@@ -63,7 +63,7 @@ public final class CallbackController {
       @PathVariable String token, @RequestBody OutcomeRequest body) {
     requireOutcome(body);
     ParkToken parkToken = new ParkToken(token);
-    TurnObserver observer = IncidentLog.observer(token, LOGGER);
+    TurnObserver observer = TurnObserver.logging(LOGGER, "[" + token + "]");
     RunOutcome outcome =
         agent.resume(
             parkToken, new ToolResolution.Completed(ToolResult.ok(body.outcome())), observer);
