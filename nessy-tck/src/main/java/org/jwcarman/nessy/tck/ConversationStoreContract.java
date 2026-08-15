@@ -48,7 +48,7 @@ public abstract class ConversationStoreContract {
   private ConversationStore store;
 
   @BeforeEach
-  void nessy_store_contract_prepares_a_fresh_store() {
+  public void nessy_store_contract_prepares_a_fresh_store() {
     store = newStore();
   }
 
@@ -58,12 +58,12 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
-  void load_of_an_unknown_conversation_is_empty() {
+  public void load_of_an_unknown_conversation_is_empty() {
     assertThat(store().load(ConversationId.generate())).isEmpty();
   }
 
   @Test
-  void save_persists_and_bumps_the_version() {
+  public void save_persists_and_bumps_the_version() {
     ConversationId id = ConversationId.generate();
 
     ConversationState saved = store().save(ConversationState.newConversation(id), List.of());
@@ -74,7 +74,7 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
-  void a_stale_save_fails_loudly_naming_both_versions() {
+  public void a_stale_save_fails_loudly_naming_both_versions() {
     ConversationId id = ConversationId.generate();
     store().save(ConversationState.newConversation(id), List.of());
     ConversationState firstReader = store().load(id).orElseThrow().state();
@@ -89,7 +89,7 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
-  void an_append_before_any_save_still_loads_as_a_fresh_conversation() {
+  public void an_append_before_any_save_still_loads_as_a_fresh_conversation() {
     ConversationId id = ConversationId.generate();
     InboxEntry told = InboxEntry.told(List.of(new TextBlock("hi")));
 
@@ -101,7 +101,7 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
-  void appends_are_unconditional_and_ordered() {
+  public void appends_are_unconditional_and_ordered() {
     ConversationId id = ConversationId.generate();
     store().save(ConversationState.newConversation(id), List.of());
     InboxEntry first = InboxEntry.told(List.of(new TextBlock("first")));
@@ -116,7 +116,7 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
-  void an_append_never_disturbs_a_pending_save() {
+  public void an_append_never_disturbs_a_pending_save() {
     ConversationId id = ConversationId.generate();
     store().save(ConversationState.newConversation(id), List.of());
     ConversationState loaded = store().load(id).orElseThrow().state();
@@ -128,7 +128,7 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
-  void draining_removes_exactly_the_named_entries_atomically_with_the_save() {
+  public void draining_removes_exactly_the_named_entries_atomically_with_the_save() {
     ConversationId id = ConversationId.generate();
     ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
     InboxEntry.Told keep = InboxEntry.told(List.of(new TextBlock("keep")));
@@ -142,7 +142,7 @@ public abstract class ConversationStoreContract {
   }
 
   @Test
-  void a_load_after_a_draining_save_never_pairs_the_bumped_version_with_the_drained_entry() {
+  public void a_load_after_a_draining_save_never_pairs_the_bumped_version_with_the_drained_entry() {
     ConversationId id = ConversationId.generate();
     ConversationState v1 = store().save(ConversationState.newConversation(id), List.of());
     InboxEntry.Told keep = InboxEntry.told(List.of(new TextBlock("keep")));

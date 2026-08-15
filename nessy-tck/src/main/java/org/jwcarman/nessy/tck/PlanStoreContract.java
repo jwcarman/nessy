@@ -36,7 +36,7 @@ public abstract class PlanStoreContract {
   protected abstract PlanStore plans();
 
   @Test
-  void a_saved_plan_is_found_by_its_conversation_id() {
+  public void a_saved_plan_is_found_by_its_conversation_id() {
     ConversationId id = ConversationId.generate();
     Plan plan =
         new Plan(
@@ -50,7 +50,7 @@ public abstract class PlanStoreContract {
   }
 
   @Test
-  void a_wholesale_replacement_removes_departed_tasks() {
+  public void a_wholesale_replacement_removes_departed_tasks() {
     ConversationId id = ConversationId.generate();
     plans()
         .save(
@@ -67,7 +67,7 @@ public abstract class PlanStoreContract {
   }
 
   @Test
-  void ordering_is_preserved_across_save_and_find() {
+  public void ordering_is_preserved_across_save_and_find() {
     ConversationId id = ConversationId.generate();
     Plan plan =
         new Plan(
@@ -84,7 +84,7 @@ public abstract class PlanStoreContract {
   }
 
   @Test
-  void saving_the_empty_plan_clears_it() {
+  public void saving_the_empty_plan_clears_it() {
     ConversationId id = ConversationId.generate();
     plans().save(id, new Plan(List.of(new Task("fetch the order history", Status.DONE))));
 
@@ -94,12 +94,12 @@ public abstract class PlanStoreContract {
   }
 
   @Test
-  void a_conversation_that_never_saved_a_plan_finds_nothing() {
+  public void a_conversation_that_never_saved_a_plan_finds_nothing() {
     assertThat(plans().find(ConversationId.generate())).isEmpty();
   }
 
   @Test
-  void saving_again_replaces_the_prior_plan_last_write_wins() {
+  public void saving_again_replaces_the_prior_plan_last_write_wins() {
     ConversationId id = ConversationId.generate();
     plans().save(id, new Plan(List.of(new Task("fetch the order history", Status.DONE))));
 

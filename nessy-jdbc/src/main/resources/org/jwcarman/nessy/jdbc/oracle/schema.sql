@@ -22,7 +22,7 @@
 -- bytes, so 255 is comfortable headroom for a UUID-shaped string). `jsonb`/`text` both become
 -- `clob` — payload/state/message/summary are unbounded blobs of JSON or free text, and `clob` reads
 -- back through `ResultSet.getString` exactly like every other dialect's text column, so no read-side
--- branch is needed (see JdbcStatements' javadoc; getString reads CLOB columns portably).
+-- branch is needed (see JdbcStatements' javadoc — getString reads CLOB columns portably).
 
 CREATE TABLE IF NOT EXISTS nessy_conversation (
   id       varchar2(255) PRIMARY KEY,

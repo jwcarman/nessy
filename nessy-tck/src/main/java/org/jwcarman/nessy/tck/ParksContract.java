@@ -40,12 +40,12 @@ public abstract class ParksContract {
   }
 
   @Test
-  void an_unregistered_token_finds_nothing() {
+  public void an_unregistered_token_finds_nothing() {
     assertThat(parks().find(ParkToken.generate())).isEmpty();
   }
 
   @Test
-  void a_registered_park_is_found_by_its_token() {
+  public void a_registered_park_is_found_by_its_token() {
     ConversationId id = ConversationId.generate();
     ParkToken token = ParkToken.generate();
     Park park = new Park(id, token, toolCall("c1"), "keeper");
@@ -56,7 +56,7 @@ public abstract class ParksContract {
   }
 
   @Test
-  void re_registering_the_same_token_is_idempotent() {
+  public void re_registering_the_same_token_is_idempotent() {
     ConversationId id = ConversationId.generate();
     ParkToken token = ParkToken.generate();
     Park park = new Park(id, token, toolCall("c1"), "keeper");
@@ -68,7 +68,7 @@ public abstract class ParksContract {
   }
 
   @Test
-  void for_conversation_returns_every_wait_ever_registered_for_that_id() {
+  public void for_conversation_returns_every_wait_ever_registered_for_that_id() {
     ConversationId id = ConversationId.generate();
     Park first = new Park(id, ParkToken.generate(), toolCall("c1"), "keeper");
     Park second = new Park(id, ParkToken.generate(), toolCall("c2"), "keeper");
@@ -80,7 +80,7 @@ public abstract class ParksContract {
   }
 
   @Test
-  void for_conversation_never_returns_another_conversations_waits() {
+  public void for_conversation_never_returns_another_conversations_waits() {
     ConversationId mine = ConversationId.generate();
     ConversationId theirs = ConversationId.generate();
     Park park = new Park(mine, ParkToken.generate(), toolCall("c1"), "keeper");
@@ -92,12 +92,12 @@ public abstract class ParksContract {
   }
 
   @Test
-  void an_unknown_conversation_has_no_registered_waits() {
+  public void an_unknown_conversation_has_no_registered_waits() {
     assertThat(parks().forConversation(ConversationId.generate())).isEmpty();
   }
 
   @Test
-  void a_find_does_not_consume_the_entry() {
+  public void a_find_does_not_consume_the_entry() {
     ConversationId id = ConversationId.generate();
     ParkToken token = ParkToken.generate();
     Park park = new Park(id, token, toolCall("c1"), "keeper");

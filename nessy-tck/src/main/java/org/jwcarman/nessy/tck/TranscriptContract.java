@@ -34,7 +34,7 @@ public abstract class TranscriptContract {
   protected abstract Transcript transcript();
 
   @Test
-  void append_assigns_versions_starting_at_zero_and_climbing_by_one() {
+  public void append_assigns_versions_starting_at_zero_and_climbing_by_one() {
     ConversationId id = ConversationId.generate();
 
     Entry first = transcript().append(id, Message.user("one"));
@@ -47,7 +47,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void all_returns_every_entry_in_version_order() {
+  public void all_returns_every_entry_in_version_order() {
     ConversationId id = ConversationId.generate();
     Message one = Message.user("one");
     Message two = Message.user("two");
@@ -61,7 +61,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void appending_a_message_equal_to_the_current_last_entry_returns_that_entry_unchanged() {
+  public void appending_a_message_equal_to_the_current_last_entry_returns_that_entry_unchanged() {
     ConversationId id = ConversationId.generate();
     Entry firstAppend = transcript().append(id, Message.user("hello"));
 
@@ -74,7 +74,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void appending_a_message_equal_to_an_earlier_but_not_the_last_entry_still_appends() {
+  public void appending_a_message_equal_to_an_earlier_but_not_the_last_entry_still_appends() {
     ConversationId id = ConversationId.generate();
     transcript().append(id, Message.user("first"));
     transcript().append(id, Message.user("second"));
@@ -88,7 +88,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void tail_after_the_head_version_is_empty() {
+  public void tail_after_the_head_version_is_empty() {
     ConversationId id = ConversationId.generate();
     transcript().append(id, Message.user("only"));
 
@@ -96,7 +96,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void tail_returns_only_entries_with_version_strictly_greater_than_the_bound() {
+  public void tail_returns_only_entries_with_version_strictly_greater_than_the_bound() {
     ConversationId id = ConversationId.generate();
     Message one = Message.user("one");
     Message two = Message.user("two");
@@ -109,7 +109,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void page_returns_the_newest_limit_entries_strictly_below_the_bound_in_version_order() {
+  public void page_returns_the_newest_limit_entries_strictly_below_the_bound_in_version_order() {
     ConversationId id = ConversationId.generate();
     Message one = Message.user("one");
     Message two = Message.user("two");
@@ -124,7 +124,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void page_returns_the_full_remainder_when_fewer_entries_exist_than_the_limit() {
+  public void page_returns_the_full_remainder_when_fewer_entries_exist_than_the_limit() {
     ConversationId id = ConversationId.generate();
     Message one = Message.user("one");
     Message two = Message.user("two");
@@ -135,7 +135,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void an_unknown_conversation_returns_empty_lists_from_every_read() {
+  public void an_unknown_conversation_returns_empty_lists_from_every_read() {
     ConversationId id = ConversationId.generate();
 
     assertThat(transcript().all(id)).isEmpty();
@@ -144,7 +144,7 @@ public abstract class TranscriptContract {
   }
 
   @Test
-  void two_conversations_never_see_each_others_entries() {
+  public void two_conversations_never_see_each_others_entries() {
     ConversationId first = ConversationId.generate();
     ConversationId second = ConversationId.generate();
     Message toFirst = Message.user("for the first conversation");

@@ -33,12 +33,12 @@ public abstract class SummaryStoreContract {
   protected abstract SummaryStore summaries();
 
   @Test
-  void a_conversation_never_summarized_has_no_summary() {
+  public void a_conversation_never_summarized_has_no_summary() {
     assertThat(summaries().find(ConversationId.generate())).isEmpty();
   }
 
   @Test
-  void a_saved_summary_is_found_by_its_conversation_id() {
+  public void a_saved_summary_is_found_by_its_conversation_id() {
     ConversationId id = ConversationId.generate();
     Summary summary = new Summary(3L, "the story so far");
 
@@ -48,7 +48,7 @@ public abstract class SummaryStoreContract {
   }
 
   @Test
-  void saving_again_replaces_the_prior_summary_last_write_wins() {
+  public void saving_again_replaces_the_prior_summary_last_write_wins() {
     ConversationId id = ConversationId.generate();
     summaries().save(id, new Summary(3L, "the story so far"));
 
@@ -59,7 +59,7 @@ public abstract class SummaryStoreContract {
   }
 
   @Test
-  void two_conversations_never_see_each_others_summary() {
+  public void two_conversations_never_see_each_others_summary() {
     ConversationId mine = ConversationId.generate();
     ConversationId theirs = ConversationId.generate();
     Summary mySummary = new Summary(1L, "mine");
