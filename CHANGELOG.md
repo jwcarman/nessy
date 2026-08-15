@@ -781,9 +781,10 @@ because every signature named was public as of the previous entries above:
   instead; `Harness` is no longer a place to receive callbacks, only a
   front door for *building* agents.
 - **`AgentBuilder.name(String)` is required.** Every existing `build()`
-  call site without a declared name now throws `IllegalArgumentException`
-  at `build()` time — every example, every test that builds an agent, and
-  every application build site needs a name added.
+  call site without a declared name now throws `IllegalStateException`
+  at `build()` time (`.name(...)` itself throws `IllegalArgumentException`
+  if called with a null or blank name) — every example, every test that
+  builds an agent, and every application build site needs a name added.
 - **`Parks.Park` and the `nessy_parks` schema gain `agent_name`.** `Park`
   grows an `agentName` component; `nessy_parks` grows `agent_name NOT
   NULL`. Pre-1.0: schema recreate, no migration script — a durable

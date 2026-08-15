@@ -11,6 +11,7 @@ The whole nessy wiring an application writes itself — one bean in `NessyConfig
 ```java
 @Bean Agent<String> agent(Harness harness, Memory memory) {
   return harness.agent()
+      .name("chat-web")
       .model("claude-sonnet-4-5")
       .systemPrompt("You are the demo shop's helpful assistant. Use your tool when a coupon is warranted.")
       .memory(memory)

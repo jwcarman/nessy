@@ -104,6 +104,8 @@ public final class Agent<I> {
   /**
    * Answers a parked call, watched by no one ({@link TurnObserver#noop()}).
    *
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
    * @see #resume(ParkToken, ToolResolution, TurnObserver)
    */
   public RunOutcome resume(ParkToken token, ToolResolution resolution) {
@@ -146,6 +148,8 @@ public final class Agent<I> {
   /**
    * Approves a parked call, watched by no one ({@link TurnObserver#noop()}).
    *
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
    * @see #approve(ParkToken, TurnObserver)
    */
   public RunOutcome approve(ParkToken token) {
@@ -155,6 +159,9 @@ public final class Agent<I> {
   /**
    * Sugar over {@link #resume(ParkToken, ToolResolution, TurnObserver)} for the common HITL
    * verdict: an unconditional {@link Decision#allow()}. No logic of its own.
+   *
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
    */
   public RunOutcome approve(ParkToken token, TurnObserver observer) {
     return resume(token, new ToolResolution.Decided(Decision.allow()), observer);
@@ -163,6 +170,8 @@ public final class Agent<I> {
   /**
    * Denies a parked call, watched by no one ({@link TurnObserver#noop()}).
    *
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
    * @see #deny(ParkToken, String, TurnObserver)
    */
   public RunOutcome deny(ParkToken token, String reason) {
@@ -174,6 +183,9 @@ public final class Agent<I> {
    * Sugar over {@link #resume(ParkToken, ToolResolution, TurnObserver)} for the common HITL
    * verdict: a {@link Decision.Deny} carrying {@code reason} back to the model. No logic of its
    * own.
+   *
+   * @throws UnknownParkTokenException if {@code token} names no wait this registry has ever seen
+   * @throws WrongAgentException if {@code token} names a wait minted by a different agent
    */
   public RunOutcome deny(ParkToken token, String reason, TurnObserver observer) {
     Objects.requireNonNull(reason, "reason must not be null");

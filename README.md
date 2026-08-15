@@ -66,6 +66,7 @@ Agent<String> agent =
     Nessy.harness(provider)
         .build()
         .agent()
+        .name("adder")
         .model("fake-model")
         .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
         .build();
@@ -113,7 +114,12 @@ most for a prompt this size on a small model):
 AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
 
 Agent<String> agent =
-    Nessy.harness(provider).build().agent().model("claude-haiku-4-5-20251001").build();
+    Nessy.harness(provider)
+        .build()
+        .agent()
+        .name("adder")
+        .model("claude-haiku-4-5-20251001")
+        .build();
 RunOutcome outcome =
     agent
         .converse()
@@ -147,6 +153,7 @@ Harness harness = Nessy.harness(anthropic).build(); // once per app — provider
 Agent<String> agent =
     harness
         .agent()
+        .name("guardian")
         .model("claude-sonnet-4-5")
         .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
         .approver(Approver.denyAll("would fail if ever asked"))
@@ -210,6 +217,7 @@ Harness harness =
 Agent<String> agent =
     harness
         .agent()
+        .name("auditor")
         .model("claude-sonnet-4-5")
         .onToolFinished(journal::append)          // sync: veto-by-throw
         .onApprovalRequestedAsync(ui::renderPending) // async: never vetoes
@@ -295,7 +303,12 @@ InputRenderer<SupportInput> renderer =
 Harness harness = Nessy.harness(anthropic).build();
 
 Agent<SupportInput> support =
-    harness.agent(SupportInput.class).model("claude-sonnet-4-5").renderer(renderer).build();
+    harness
+        .agent(SupportInput.class)
+        .name("support")
+        .model("claude-sonnet-4-5")
+        .renderer(renderer)
+        .build();
 
 RunOutcome outcome = support.converse().tell(new Escalation("o-1", "damaged in transit"));
 ```
@@ -557,6 +570,7 @@ Agent<String> agent =
     Nessy.harness(provider)
         .build()
         .agent()
+        .name("budgeted")
         .model("fake-model")
         .maxTokens(4_000)
         .contextWindow(32_000)
@@ -595,9 +609,11 @@ only narrates a still-running tool's progress to whoever is listening for
 reason[, observer])` are sugar over `resume` for the common human-in-the-loop
 case — allow or refuse the gated call by token, without hand-building a
 `ToolResolution`. `agent.peek(token)` reads a park without consuming it —
-an `Optional<ParkedCall>`, empty when the token names no live wait, useful
-for an ops surface that wants to describe a parked conversation before
-anyone acts on it. Every one of these five doors lives on `Agent`, not on
+an `Optional<ParkedCall>`, empty only for a token this registry never
+minted; the registry entry survives resolution by design, so a token
+naming a wait that has already settled still reads back present, useful
+for an ops surface that wants to describe a parked (or once-parked)
+conversation before or after anyone acts on it. Every one of these five doors lives on `Agent`, not on
 `Harness`: the token is the whole correlation contract, and transport home
 (a webhook, a queue, a cron poll) is the tool author's business. Each door
 also verifies the token's park was minted by *this* agent before touching
@@ -627,7 +643,8 @@ Transcript transcript = JdbcTranscript.create(dataSource, objectMapper); // same
 Memory memory = new TranscriptMemory(transcript);
 
 Harness harness = Nessy.harness(anthropic).store(store).parks(parks).build();
-Agent<String> agent = harness.agent().model("claude-sonnet-4-5").memory(memory).build();
+Agent<String> agent =
+    harness.agent().name("durable").model("claude-sonnet-4-5").memory(memory).build();
 ```
 
 In a Spring Boot app the wiring above is optional: add
