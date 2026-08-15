@@ -64,6 +64,7 @@
     <module>nessy-tool-mcp</module>
     <module>nessy-autoconfigure</module>
     <module>nessy-spring-boot-starter</module>
+    <module>nessy-console</module>
     <module>nessy-examples</module>
   </modules>
 
@@ -99,6 +100,10 @@
          test relies on as a deprecated shim, so this isn't a compatibility blocker — migrating is
          a small deferred follow-up, not a reason to skip 2.0 forever. -->
     <testcontainers.version>1.21.4</testcontainers.version>
+    <!-- Condition-based waiting for concurrency tests (S2925: no Thread.sleep in tests). Managed
+         here directly, unlike nessy-transcript-cassandra/nessy-autoconfigure, which inherit the
+         version from their own Boot BOM import — nessy-console pulls no Spring BOM at all. -->
+    <awaitility.version>4.3.0</awaitility.version>
     <postgresql.version>42.7.13</postgresql.version>
     <!-- The MCP Java SDK's 2.0.0 line splits its JSON backend into a separate artifact
          (mcp-json-jackson2 vs. mcp-json-jackson3); nessy-tool-mcp pulls the core artifact
@@ -262,6 +267,11 @@
         <groupId>io.modelcontextprotocol.sdk</groupId>
         <artifactId>mcp-json-jackson2</artifactId>
         <version>${mcp-sdk.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.awaitility</groupId>
+        <artifactId>awaitility</artifactId>
+        <version>${awaitility.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

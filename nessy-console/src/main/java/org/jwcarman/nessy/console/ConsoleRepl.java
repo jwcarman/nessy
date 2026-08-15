@@ -1,0 +1,196 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.console;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.UncheckedIOException;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.jwcarman.nessy.Agent;
+import org.jwcarman.nessy.Conversation;
+import org.jwcarman.nessy.api.turn.TurnObserver;
+
+/**
+ * The loop every REPL example hand-rolled three times over: read a line, tell the agent, render
+ * deltas, prompt again (design §3). One conversation per {@link #run()} — the exact shape {@code
+ * AnthropicChat}, {@code OpenAiChat}, and {@code Scout} shared before this module existed.
+ *
+ * <pre>{@code
+ * ConsoleRepl.of(agent)
+ *     .banner("scout — ask about any public GitHub repo")
+ *     .prompt("you> ")
+ *     .exitOn("exit", "quit")
+ *     .run();
+ * }</pre>
+ *
+ * <p>Every decision the loop makes — banner, prompt, exit words, blank-line reprompt, the spinner's
+ * erase-on-first-event handoff to the renderer — lives here, against a plain {@link
+ * BufferedReader}/{@link Writer} pair, so it is exercised headless in this module's own tests with
+ * no real console anywhere in the picture. {@link Builder#run()} is the only place a real console
+ * enters: a thin wrap of {@link System#in} and {@link System#out}.
+ */
+public final class ConsoleRepl {
+
+  private final Conversation<String> conversation;
+  private final String banner;
+  private final String prompt;
+  private final Set<String> exitWords;
+  private final TurnObserver renderer;
+  private final BufferedReader reader;
+  private final Writer writer;
+
+  ConsoleRepl(
+      Agent<String> agent,
+      String banner,
+      String prompt,
+      Set<String> exitWords,
+      TurnObserver renderer,
+      BufferedReader reader,
+      Writer writer) {
+    Objects.requireNonNull(agent, "agent must not be null");
+    this.writer = Objects.requireNonNull(writer, "writer must not be null");
+    this.conversation = agent.converse();
+    this.banner = Objects.requireNonNull(banner, "banner must not be null");
+    this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
+    this.exitWords = Set.copyOf(Objects.requireNonNull(exitWords, "exitWords must not be null"));
+    this.renderer = renderer != null ? renderer : ConsoleRenderer.observer(this.writer);
+    this.reader = Objects.requireNonNull(reader, "reader must not be null");
+  }
+
+  /** Prints the banner (if any), then loops: prompt, read, exit or tell, until end of input. */
+  public void run() {
+    printBanner();
+    while (true) {
+      write(prompt);
+      String line = readLine();
+      if (line == null || exitWords.contains(line.trim())) {
+        return;
+      }
+      if (line.isBlank()) {
+        continue;
+      }
+      tell(line);
+    }
+  }
+
+  private void printBanner() {
+    if (!banner.isBlank()) {
+      write(Ansi.bold(banner) + "\n");
+    }
+  }
+
+  private void tell(String line) {
+    Spinner spinner = new Spinner(writer);
+    spinner.start();
+    conversation.tell(line, spinnerErasing(spinner));
+    spinner.stop();
+    write("\n");
+  }
+
+  /**
+   * Wraps {@link #renderer} so the spinner is erased the instant the first {@code TurnEvent}
+   * arrives — the design's "stops on first event" rule — rather than waiting for the whole turn to
+   * finish; every event, including the first, still reaches the renderer.
+   */
+  private TurnObserver spinnerErasing(Spinner spinner) {
+    AtomicBoolean erased = new AtomicBoolean();
+    return event -> {
+      if (erased.compareAndSet(false, true)) {
+        spinner.stop();
+      }
+      renderer.on(event);
+    };
+  }
+
+  private void write(String text) {
+    try {
+      writer.write(text);
+      writer.flush();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private String readLine() {
+    try {
+      return reader.readLine();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /** Starts a {@link Builder} for {@code agent}. */
+  public static Builder of(Agent<String> agent) {
+    return new Builder(agent);
+  }
+
+  /** Collects the loop's configuration; {@link #run()} is the public, real-console entry point. */
+  public static final class Builder {
+
+    private static final List<String> DEFAULT_EXIT_WORDS = List.of("exit", "quit");
+
+    private final Agent<String> agent;
+    private String banner = "";
+    private String prompt = "> ";
+    private Set<String> exitWords = new LinkedHashSet<>(DEFAULT_EXIT_WORDS);
+    private TurnObserver renderer;
+
+    private Builder(Agent<String> agent) {
+      this.agent = Objects.requireNonNull(agent, "agent must not be null");
+    }
+
+    /** The line printed once, before the first prompt. Empty (the default) prints nothing. */
+    public Builder banner(String banner) {
+      this.banner = Objects.requireNonNull(banner, "banner must not be null");
+      return this;
+    }
+
+    /** The line printed before every read. Defaults to {@code "> "}. */
+    public Builder prompt(String prompt) {
+      this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
+      return this;
+    }
+
+    /** The words (after trimming) that end the loop. Defaults to {@code "exit"}, {@code "quit"}. */
+    public Builder exitOn(String... words) {
+      Objects.requireNonNull(words, "words must not be null");
+      this.exitWords = Set.of(words);
+      return this;
+    }
+
+    /** Overrides the default {@link ConsoleRenderer} wholesale. */
+    public Builder renderer(TurnObserver renderer) {
+      this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+      return this;
+    }
+
+    /** The real-console entry point: a thin adapter over {@link System#in}/{@link System#out}. */
+    public void run() {
+      BufferedReader systemReader =
+          new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+      Writer systemWriter = new OutputStreamWriter(System.out, StandardCharsets.UTF_8);
+      new ConsoleRepl(agent, banner, prompt, exitWords, renderer, systemReader, systemWriter).run();
+    }
+  }
+}
