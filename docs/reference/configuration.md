@@ -35,24 +35,12 @@ autoconfigured — wire it yourself if you use summarizing memory.
 
 ## Autoconfiguration order
 
-Three autoconfiguration classes produce the beans above, always evaluated in
-this order:
-
-1. `AnthropicProviderAutoConfiguration` / `OpenAiProviderAutoConfiguration` —
-   build a `ModelProvider` when the matching provider module is on the
-   classpath.
-2. `JdbcPersistenceAutoConfiguration` — builds `ConversationStore`, `Parks`,
-   `Transcript`, `Memory`, and `PlanStore` when `nessy-jdbc` is on the
-   classpath, a `DataSource` bean exists, and `nessy.jdbc.enabled` is not
-   `false`. Every bean method backs off behind `@ConditionalOnMissingBean`,
-   so a hand-declared bean of the same type always wins.
-3. `NessyAutoConfiguration` — builds the `Harness` itself from whichever
-   `ModelProvider`, `ConversationStore`, and `Parks` beans are already in
-   context, once a `ModelProvider` bean exists at all.
-
-An application that declares its own `Harness` bean suppresses all three:
-building one yourself means you already brought your own provider, so
-nothing here activates a second, unused one behind it.
+`NessyAutoConfiguration` — the class that builds the `Harness` bean itself —
+is annotated `@AutoConfiguration(after = {AnthropicProviderAutoConfiguration.class,
+OpenAiProviderAutoConfiguration.class, JdbcPersistenceAutoConfiguration.class})`,
+so it always composes last: whichever `ModelProvider`, `ConversationStore`,
+and `Parks` beans the provider and JDBC autoconfigurations produced are
+already in context by the time it runs.
 
 ## Where next
 
