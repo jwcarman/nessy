@@ -17,6 +17,9 @@
 
 An AI agent harness framework for Java.
 
+**[Documentation site](https://jwcarman.github.io/nessy/)** — concepts, guides,
+examples, and reference, in one place.
+
 > **What's in a name?** Look at the middle of the word *har****ness***: the name
 > was hiding inside the thing the whole time. And once your agent framework is
 > named Nessy, the mascot picks itself — a certain famously elusive resident of
@@ -708,7 +711,7 @@ and a process ago. Nothing about the shape above changes to get this —
 point that does the same thing for the other direction a conversation moves:
 
 ```java
-RunOutcome outcome = agent.resume(token, ToolResolution.completed(result));
+RunOutcome outcome = agent.resume(token, new ToolResolution.Completed(result));
 ```
 
 `agent.resume(token, resolution[, observer])` answers a parked call by

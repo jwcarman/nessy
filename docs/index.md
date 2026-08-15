@@ -16,7 +16,7 @@ replay safety — shapes every API in the framework: the loop is at-least-once
 by design, and correctness comes from the fold, not from careful
 once-only delivery.
 
-## A twenty-line agent
+## An agent in about twenty lines
 
 This runs with no API key, no network, and no real model:
 `ScriptedModelProvider` plays back a scripted conversation, so the example
@@ -69,6 +69,10 @@ RunOutcome outcome =
 System.out.println(text + " (" + outcome.state().status() + ")");
 // The answer is 4. (COMPLETE)
 ```
+
+The wiring itself — provider, harness, agent, `tell` — is about twenty lines;
+`AddTool` is another dozen, and it's the part that changes from agent to
+agent.
 
 `.name("hello")` isn't decoration — every agent identifies itself, and that
 identity is what a [parked callback](concepts/parks-and-callbacks.md) checks
