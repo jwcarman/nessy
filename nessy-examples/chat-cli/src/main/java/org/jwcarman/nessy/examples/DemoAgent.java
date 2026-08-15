@@ -34,15 +34,16 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  * org.jwcarman.nessy.model.env.EnvModelProviders#fromEnv()} hands it.
  *
  * <p>Pattern demonstrated: two watching surfaces, not one narrating the same fact twice. {@link
- * ConsoleRepl}'s default renderer narrates one turn <em>live</em> — deltas as they stream, a dim
- * {@code ⚙ tool:} line the instant a call is requested or completed — via the {@code TurnObserver}
- * {@link org.jwcarman.nessy.Conversation#tell(Object, org.jwcarman.nessy.api.turn.TurnObserver)}
- * hands it. {@link ConversationEvent}, by contrast, is the <em>settled</em> fact-log side of the
- * story (this was {@code AnthropicChat}'s lesson, formerly attached per-conversation via {@code
- * Conversation#events()}). {@code ConsoleRepl} now owns conversation construction end to end — one
- * conversation is built inside its own {@code run()}, with no instance handed back to the caller —
- * so there is no live {@code Conversation} left at this call site to attach a per-conversation
- * {@code events()} subscription to. The equivalent channel survives here as a build-time {@link
+ * org.jwcarman.nessy.console.ConsoleRepl}'s default renderer narrates one turn <em>live</em> —
+ * deltas as they stream, a dim {@code ⚙ tool:} line the instant a call is requested or completed —
+ * via the {@code TurnObserver} {@link org.jwcarman.nessy.Conversation#tell(Object,
+ * org.jwcarman.nessy.api.turn.TurnObserver)} hands it. {@link ConversationEvent}, by contrast, is
+ * the <em>settled</em> fact-log side of the story (this was {@code AnthropicChat}'s lesson,
+ * formerly attached per-conversation via {@code Conversation#events()}). {@code ConsoleRepl} now
+ * owns conversation construction end to end — one conversation is built inside its own {@code
+ * run()}, with no instance handed back to the caller — so there is no live {@code Conversation}
+ * left at this call site to attach a per-conversation {@code events()} subscription to. The
+ * equivalent channel survives here as a build-time {@link
  * org.jwcarman.nessy.AgentBuilder#listen(Class, java.util.function.Consumer) listen} declaration
  * instead: the same {@link org.jwcarman.nessy.api.event.ListenerRegistry} delivery, just declared
  * once on the agent rather than attached once per conversation. It announces {@link
@@ -58,6 +59,7 @@ public final class DemoAgent {
 
   private DemoAgent() {}
 
+  /** Builds the demo agent — the same identity whichever provider the environment handed us. */
   public static Agent<String> agentFor(ModelProvider provider, String model) {
     return Nessy.harness(provider)
         .build()

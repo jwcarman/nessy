@@ -36,6 +36,7 @@ public final class Chat {
 
   private Chat() {}
 
+  /** Picks the provider from the environment, then hands the console to {@code ConsoleRepl}. */
   public static void main(String[] args) {
     ModelProvider provider;
     try {
