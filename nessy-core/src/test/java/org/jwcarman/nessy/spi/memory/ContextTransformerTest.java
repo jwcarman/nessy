@@ -33,6 +33,20 @@ import org.slf4j.LoggerFactory;
 
 class ContextTransformerTest {
 
+  /** A stage that always throws, with a fixed, distinctive {@code toString} to assert on. */
+  private static final class BoomStage implements ContextTransformer {
+
+    @Override
+    public Context transform(ConversationId id, Context context) {
+      throw new IllegalStateException("boom");
+    }
+
+    @Override
+    public String toString() {
+      return "boom-stage";
+    }
+  }
+
   private ListAppender<ILoggingEvent> appender;
   private Logger logger;
   private Level originalLevel;
@@ -76,10 +90,7 @@ class ContextTransformerTest {
   void optional_logs_exactly_one_warning() {
     ConversationId id = ConversationId.generate();
     Context input = Context.of(List.of(Message.user("hello")));
-    ContextTransformer throwing =
-        (conversationId, context) -> {
-          throw new IllegalStateException("boom");
-        };
+    ContextTransformer throwing = new BoomStage();
     ContextTransformer optional = ContextTransformer.optional(throwing);
 
     optional.transform(id, input);
@@ -89,6 +100,9 @@ class ContextTransformerTest {
     assertThat(event.getLevel()).isEqualTo(Level.WARN);
     assertThat(event.getThrowableProxy().getClassName())
         .isEqualTo(IllegalStateException.class.getName());
+    // Spec §2.3: the WARN line must carry both the delegate's toString and the conversation id,
+    // so a skipped stage still leaves a traceable line, not a generic "something failed" notice.
+    assertThat(event.getFormattedMessage()).contains("boom-stage").contains(id.toString());
   }
 
   @Test
