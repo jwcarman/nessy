@@ -833,6 +833,56 @@ sequence of renames and interim shapes that produced it.
   toolbox authorizes nothing by itself, and every tool it yields still
   needs its own `ToolGrant`/`UsagePolicy`, one at a time — see
   `nessy-tool-mcp`'s README for the connect/grant idiom.
+- **`nessy-console` — the terminal front door becomes a library, and the
+  family learns its look.** Three examples hand-rolled the same REPL loop —
+  chat-cli's `AnthropicChat` and `OpenAiChat`, and scout's `Scout` — read a
+  line, told the agent, rendered deltas, prompted again, with a
+  byte-identical `ConsoleApprover` copied into each. This module is that
+  lesson extracted, over `nessy-core` alone, no other dependency: `Ansi`
+  (SGR-only styling — `bold`/`dim`/`italic`/`cyan`/`yellow`/`red`/`green`,
+  auto-disabled when `System.console()` is null, `NO_COLOR` is set to any
+  value, or `TERM=dumb`, one check, cached), `ConsoleRenderer` (the default
+  look, built on `TurnObserver.builder()` — plain streamed prose, dim-italic
+  thinking, a dim `⚙ tool:` line per requested/completed/parked event
+  carrying the park token, one red line on a `FAILED` ending), a `\r`-based
+  spinner on its own virtual thread between send and the first token
+  (stopped on first event; a complete no-op, zero bytes written, while
+  styling is disabled), `ConsoleRepl` (`ConsoleRepl.of(agent).banner(…)
+  .prompt(…).exitOn(…).run()` — one conversation per run, render-and-continue
+  on a throwing `tell`: stop the spinner, print one red line, reprompt,
+  never crash the loop), and `ConsoleApprover` (moved in as public, tested
+  library code — the approval prompt renders bold-yellow, reprompting on
+  garbage input rather than reading it as a denial). The v1 hard line is
+  deliberate: styling yes, terminal takeover no — SGR codes and the spinner's
+  overwrite, never cursor addressing, raw mode, or an alternate screen;
+  JLine is the named v2 trigger, taken only if history/completion is ever
+  pulled in on purpose. See `nessy-console/README.md` for the look and the
+  covenant in full.
+- **`nessy-model-env` — the provider follows the key.** A micro-module
+  depending on both `nessy-model-anthropic` and `nessy-model-openai`
+  non-optionally (its whole point: both ride the classpath so either key
+  just works). `EnvModelProviders.fromEnv()` picks Anthropic or OpenAI by
+  which API key is present; both present is broken by `NESSY_PROVIDER`
+  (`anthropic`/`openai`), defaulting to Anthropic with a one-line
+  `System.err` notice when unset or unrecognized; neither present fails
+  fast, naming all three variables it checked. See
+  `nessy-model-env/README.md`.
+- **The three hand-rolled REPLs collapse to `nessy-console`, and chat-cli's
+  two mains become one.** `chat-cli` consolidates `AnthropicChat` and
+  `OpenAiChat` into a single main, `Chat`: the provider is
+  `EnvModelProviders.fromEnv()` now — "switch providers by switching the
+  key" — strictly better teaching than two mains differing only in which
+  provider module they imported. The `events()` fact-log lesson survives,
+  relocated: since `ConsoleRepl` now owns conversation construction end to
+  end, there is no live `Conversation` left at the call site to attach a
+  per-conversation subscription to, so `DemoAgent` declares the equivalent
+  channel at build time instead (`AgentBuilder#listen(ConversationEvent
+  .ModelResponded.class, …)`, announcing token usage — a fact the turn
+  narration never shows, chosen over `ToolFinished` so the same completion
+  isn't narrated twice). `Scout` moves onto `ConsoleRepl` and `fromEnv()`
+  the same way; its toolbox, grants, and construction seam are untouched,
+  and `ScoutTest` passes unmodified through the collapse — it exercises the
+  grant table through the seam, not the REPL loop or the provider choice.
 - **`nessy-example-scout` — the agent that reads other people's code.** The
   sixth example, and `nessy-tool-mcp`'s security story made runnable: a
   terminal REPL, chat-cli's exact posture, granted a toolbox imported from
@@ -858,6 +908,17 @@ All of the following are deliberate, in-development shape changes — nothing
 below breaks a shipped version, because none exists yet — but they are loud
 because every signature named was public as of the previous entries above:
 
+- **`chat-cli`'s `AnthropicChat` and `OpenAiChat` mains are gone; `Chat` is
+  the one main now.** They were example mains, not published API, but say it
+  plainly for anyone with a script or a muscle-memory command line pointed
+  at either class: `-Dexec.mainClass=org.jwcarman.nessy.examples
+  .AnthropicChat` (or `.OpenAiChat`) no longer resolves. Run
+  `./mvnw -pl nessy-examples/chat-cli exec:java` instead — no
+  `-Dexec.mainClass` needed, the pom pins it — with `ANTHROPIC_API_KEY` or
+  `OPENAI_API_KEY` choosing the provider the way the two mains used to.
+  chat-cli's and scout's own package-private `ConsoleApprover` copies are
+  gone too, replaced by `nessy-console`'s public one; nothing outside those
+  two modules could have referenced either copy.
 - **`RunOutcome.Parked` slims to `Parked(ConversationState state)`.** The
   token it used to carry travels a different way now: on the narrated
   `TurnEvent.ToolCallParked(call, token)` event, and in `state.parkedCalls()`

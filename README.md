@@ -175,6 +175,18 @@ actually needs:
     <artifactId>nessy-model-openai</artifactId>
   </dependency>
 
+  <!-- Optional: both providers non-optionally, switched by which API key is set. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-model-env</artifactId>
+  </dependency>
+
+  <!-- Optional: an SGR-styled terminal REPL for any Agent<String>, one line to run. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-console</artifactId>
+  </dependency>
+
   <!-- Scripted, no-key, no-network tests — see the five-minute example above. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
@@ -860,7 +872,12 @@ The matrix: `hello` (the five-minute example, standalone), `chat-cli`
 (plain + interactive), `scout` (plain + interactive, an imported MCP
 toolbox), `chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled
 autonomy), `order-desk` (Boot + message-driven autonomy), `dispatcher` (Boot
-web + durable parks over HTTP).
+web + durable parks over HTTP). `chat-cli` and `scout` share their terminal
+front door now — `nessy-console`, a zero-extra-dependency library for
+console-chat with any `Agent<String>` in one line (`ConsoleRepl.of(agent)…
+.run()`) — rather than each hand-rolling its own loop; see
+[`nessy-console/README.md`](nessy-console/README.md) for the look, the
+SGR-only covenant, and `ConsoleApprover`.
 
 Several examples share Docker containers on fixed host ports; run more than
 one stack at once and here's what's listening where:
@@ -875,15 +892,17 @@ one stack at once and here's what's listening where:
 | 8081        | `dispatcher` (HTTP)           |
 | 3000, 4317, 4318 | `chat-web`'s `otel-lgtm` (Grafana UI, OTLP gRPC, OTLP HTTP) |
 
-**`chat-cli`** — a terminal chat loop, one agent definition run against
-either provider:
+**`chat-cli`** — a terminal chat loop, one agent definition and one main
+(`Chat`), run against either provider by switching which API key is set —
+see [`nessy-examples/chat-cli/README.md`](nessy-examples/chat-cli/README.md)
+for the two-mains-to-one collapse and the live-narration lesson it preserves:
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.AnthropicChat
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
 ```
 
 ```bash
-OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.OpenAiChat
+OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
 ```
 
 Both providers' `.fromEnv()` delegates to the underlying SDK's own environment

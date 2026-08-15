@@ -2,14 +2,20 @@
 
 The tool-import showcase: one idea, per the family convention — an imported
 toolbox, granted tool-by-tool, over `nessy-tool-mcp`'s security story made
-runnable. Scout is a terminal REPL agent, chat-cli's exact posture (plain
-`main`, `java.lang.IO`, no Docker, no database, no Spring), that researches
-public GitHub repositories through [DeepWiki](https://deepwiki.com)'s no-auth
-public MCP server. The deliberate beat: one of the three imported tools routes
-through the console approval gate, so a human approves a *remote* server's
-tool call, reading `describe()`'s name-plus-JSON prompt before it runs. The
-example matrix does not grow beyond this — Scout is the tool-import showcase
-on the existing terminal front door, not a second interactive example.
+runnable. Scout is a terminal REPL agent, chat-cli's exact posture (no
+Docker, no database, no Spring), that researches public GitHub repositories
+through [DeepWiki](https://deepwiki.com)'s no-auth public MCP server. The
+deliberate beat: one of the three imported tools routes through the console
+approval gate, so a human approves a *remote* server's tool call, reading
+`describe()`'s name-plus-JSON prompt before it runs. The example matrix does
+not grow beyond this — Scout is the tool-import showcase on the existing
+terminal front door, not a second interactive example.
+
+The REPL loop, the streaming renderer, the spinner, and `ConsoleApprover`
+all come from [`nessy-console`](../../nessy-console/README.md) now — Scout's
+own `main` supplies only the toolbox, the grants, and the banner; the
+provider is `EnvModelProviders.fromEnv()` (`nessy-model-env`), the same
+switch-by-key posture `chat-cli` uses.
 
 ## The grants
 
@@ -33,12 +39,18 @@ goes out.
 ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/scout -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.scout.Scout
 ```
 
-The `-am` flag also builds this module's reactor dependencies (`nessy-core`,
-`nessy-model-anthropic`, `nessy-tool-mcp`) — the first run compiles that whole
-upstream chain and takes noticeably longer; every run after is fast, since
-Maven only recompiles what changed.
+Unlike `chat-cli`'s one main, Scout's pom does not pin `exec.mainClass` (this
+module has only ever had the one), so `-Dexec.mainClass` still names it on
+the command line. Either provider key works the same way `chat-cli`'s does —
+`OPENAI_API_KEY=…` in place of `ANTHROPIC_API_KEY=…` runs Scout against
+OpenAI instead, no other change.
 
-Needs `ANTHROPIC_API_KEY` **and** network: unlike every other example in this
+The `-am` flag also builds this module's reactor dependencies (`nessy-core`,
+`nessy-console`, `nessy-model-env`, `nessy-tool-mcp`) — the first run
+compiles that whole upstream chain and takes noticeably longer; every run
+after is fast, since Maven only recompiles what changed.
+
+Needs a provider key **and** network: unlike every other example in this
 family, Scout's tools live on someone else's server. There is no offline mode
 for the demo itself — `mcp.deepwiki.com` is a live dependency of the running
 app, by design (see "The DeepWiki covenant" below).
@@ -50,7 +62,9 @@ Ask something that needs `ask_question` and the turn parks on
 
 ```
 you> why does the reducer live in one method?
-⚙ tool: ask_question
+
+⚙ tool: ask_question requested
+
 approve: ask_question {"repoName":"jwcarman/nessy","question":"why does the reducer live in one method?"}
 y/n>
 ```
