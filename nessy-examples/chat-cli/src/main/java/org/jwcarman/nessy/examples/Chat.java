@@ -56,7 +56,8 @@ public final class Chat {
                 + (anthropic ? "Anthropic" : "OpenAI")
                 + ", "
                 + model
-                + "). Type exit or quit to leave.")
+                + "). Type exit or quit to leave. Ask for something multi-step to watch it"
+                + " plan.")
         .prompt("you> ")
         .run();
   }

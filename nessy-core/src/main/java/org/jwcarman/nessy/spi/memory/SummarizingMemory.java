@@ -15,18 +15,12 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.spi.memory.SummaryStore.Summary;
-import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
-import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
  * The tail API's dogfood (design §4): a {@link Memory} that keeps only a bounded tail of the
@@ -61,25 +55,15 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * <p>The rendered context is the summary, when non-empty, as one opening user message, followed by
  * the tail's messages, open-tail-trimmed exactly as {@link TranscriptMemory} trims it — the same
  * border law applies to every transcript-backed memory.
+ *
+ * <p>A thin face now: the fold/summarize/render mechanism above lives in package-private {@link
+ * SummarizingHydrator}, this class only holds the transcript and a hydrator built from its
+ * constructor arguments, and {@code recall} delegates.
  */
 public final class SummarizingMemory implements Memory {
 
-  private static final int SUMMARY_MAX_TOKENS = 4096;
-
-  /**
-   * The watermark of "nothing has ever been folded" — one below the first real transcript version
-   * (versions start at {@code 0}, design §2), so {@code transcript.tail(id, NOTHING_FOLDED)} yields
-   * the whole transcript. Never itself persisted: a saved {@link Summary}'s watermark is always a
-   * real transcript version.
-   */
-  private static final long NOTHING_FOLDED = -1L;
-
   private final Transcript transcript;
-  private final SummaryStore summaries;
-  private final ModelProvider provider;
-  private final String model;
-  private final String prompt;
-  private final int tailThreshold;
+  private final ContextHydrator hydrator;
 
   public SummarizingMemory(
       Transcript transcript,
@@ -89,14 +73,7 @@ public final class SummarizingMemory implements Memory {
       String prompt,
       int tailThreshold) {
     this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
-    this.summaries = Objects.requireNonNull(summaries, "summaries must not be null");
-    this.provider = Objects.requireNonNull(provider, "provider must not be null");
-    this.model = Objects.requireNonNull(model, "model must not be null");
-    this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
-    if (tailThreshold < 0) {
-      throw new IllegalArgumentException("tailThreshold must be at least 0");
-    }
-    this.tailThreshold = tailThreshold;
+    this.hydrator = ContextHydrator.summarizing(summaries, provider, model, prompt, tailThreshold);
   }
 
   @Override
@@ -106,76 +83,6 @@ public final class SummarizingMemory implements Memory {
 
   @Override
   public Context recall(ConversationId id) {
-    Summary current = summaries.find(id).orElse(new Summary(NOTHING_FOLDED, ""));
-    List<Transcript.Entry> tail = transcript.tail(id, current.watermark());
-    Summary folded = tail.size() > tailThreshold ? fold(id, current, tail) : current;
-    List<Transcript.Entry> finalTail =
-        folded.watermark() == current.watermark() ? tail : transcript.tail(id, folded.watermark());
-    return render(folded, finalTail);
-  }
-
-  /**
-   * One model call, folding {@code current}'s text and as much of {@code tail} as a pair-safe
-   * boundary allows into a new, saved {@link Summary}. Returns {@code current} unchanged — no model
-   * call ever having happened this round — when the tail carries no pair-safe boundary at all (an
-   * all-open-tool-exchange tail, in practice vanishingly rare): there is nothing safe to fold, so
-   * nothing is folded.
-   *
-   * <p>Also returns {@code current} unchanged, with no save and no watermark advance, when the
-   * model does call but its folded text comes back {@link String#isBlank()}: a blank summary is not
-   * a legitimately empty one — the words it should have folded would be silently dropped from every
-   * future recall the moment the watermark moved past them, since the transcript's own tail window
-   * would no longer include the folded messages. Leaving the watermark where it was means the next
-   * recall simply retries the same fold over the same tail.
-   */
-  private Summary fold(ConversationId id, Summary current, List<Transcript.Entry> tail) {
-    List<Message> tailMessages =
-        TranscriptTrim.withoutOpenTail(tail.stream().map(Transcript.Entry::message).toList());
-    Context tailContext = Context.of(tailMessages);
-    int cut = tailContext.pairSafeCut(0);
-    if (cut == 0) {
-      return current;
-    }
-    List<Message> toFold = tailMessages.subList(0, cut);
-    long newWatermark = tail.get(cut - 1).version();
-    String newText = summarize(current.text(), toFold);
-    if (newText.isBlank()) {
-      return current;
-    }
-    Summary folded = new Summary(newWatermark, newText);
-    summaries.save(id, folded);
-    return folded;
-  }
-
-  /** One model call: prior summary text (if any) plus the messages it folds, in, plain text out. */
-  private String summarize(String priorText, List<Message> toFold) {
-    List<Message> foldMessages = new ArrayList<>(toFold.size() + 1);
-    if (!priorText.isBlank()) {
-      foldMessages.add(Message.user(priorText));
-    }
-    foldMessages.addAll(toFold);
-    ModelRequest request =
-        new ModelRequest(
-            Context.of(foldMessages), prompt, model, SUMMARY_MAX_TOKENS, List.of(), Set.of(), null);
-    StringBuilder text = new StringBuilder();
-    try (ModelStream stream = provider.stream(request)) {
-      for (ModelEvent event : stream) {
-        if (event instanceof ModelEvent.TextChunk(String chunk)) {
-          text.append(chunk);
-        }
-      }
-    }
-    return text.toString();
-  }
-
-  private static Context render(Summary summary, List<Transcript.Entry> tail) {
-    List<Message> tailMessages =
-        TranscriptTrim.withoutOpenTail(tail.stream().map(Transcript.Entry::message).toList());
-    List<Message> rendered = new ArrayList<>(tailMessages.size() + 1);
-    if (!summary.text().isBlank()) {
-      rendered.add(Message.user(summary.text()));
-    }
-    rendered.addAll(tailMessages);
-    return Context.of(rendered);
+    return hydrator.hydrate(id, transcript);
   }
 }

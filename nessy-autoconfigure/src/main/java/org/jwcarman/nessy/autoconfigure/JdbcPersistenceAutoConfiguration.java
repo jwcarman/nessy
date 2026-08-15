@@ -18,16 +18,18 @@ package org.jwcarman.nessy.autoconfigure;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Locale;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.jdbc.JdbcConversationStore;
+import org.jwcarman.nessy.jdbc.JdbcDialect;
+import org.jwcarman.nessy.jdbc.JdbcParks;
+import org.jwcarman.nessy.jdbc.JdbcPersistence;
+import org.jwcarman.nessy.jdbc.JdbcPlanStore;
+import org.jwcarman.nessy.jdbc.JdbcTranscript;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
-import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
-import org.jwcarman.nessy.store.jdbc.JdbcDialect;
-import org.jwcarman.nessy.store.jdbc.JdbcParks;
-import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
-import org.jwcarman.nessy.store.jdbc.JdbcTranscript;
+import org.jwcarman.nessy.spi.plan.PlanStore;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -39,14 +41,13 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 
 /**
- * A {@link DataSource} bean plus {@code nessy-store-jdbc} on the classpath is the whole opt-in: the
- * app becomes durable the moment both are true, no other wiring required (design §3). Add the jar
- * next to a datasource and sessions survive a restart; leave either one out and nothing here
- * activates.
+ * A {@link DataSource} bean plus {@code nessy-jdbc} on the classpath is the whole opt-in: the app
+ * becomes durable the moment both are true, no other wiring required (design §3). Add the jar next
+ * to a datasource and sessions survive a restart; leave either one out and nothing here activates.
  *
  * <p>{@code nessy.jdbc.enabled=false} is the master switch, overriding both signals above. Absent
  * that override, each bean method still yields to a user-declared {@link ConversationStore}, {@link
- * Parks}, {@link Transcript}, or {@link Memory} — see the individual
+ * Parks}, {@link Transcript}, {@link Memory}, or {@link PlanStore} — see the individual
  * {@code @ConditionalOnMissingBean} bean methods.
  *
  * <p>{@link org.jwcarman.nessy.autoconfigure.NessyProperties#bootstrapSchema()} chooses between
@@ -58,7 +59,7 @@ import org.springframework.context.annotation.Bean;
  * <p>An {@link ObjectMapper} bean is an {@link ObjectProvider}, not a hard constructor parameter:
  * unlike {@link NessyAutoConfiguration}, which only ever runs in a webmvc app where Boot's own
  * Jackson autoconfiguration has already put an {@code ObjectMapper} in context, this configuration
- * has no such guarantee — a non-web Boot application with {@code store-jdbc} and a {@link
+ * has no such guarantee — a non-web Boot application with {@code nessy-jdbc} and a {@link
  * DataSource} but no Jackson autoconfiguration would otherwise fail with {@code
  * NoSuchBeanDefinitionException} the moment any door bean method resolved its parameter. The
  * fallback, a bare {@code new ObjectMapper()}, is safe precisely because {@code JdbcPersistence}'s
@@ -127,6 +128,22 @@ public class JdbcPersistenceAutoConfiguration {
         resolveDialect(properties),
         JdbcTranscript::create,
         JdbcTranscript::new);
+  }
+
+  /**
+   * Mirrors {@link #conversationStore}/{@link #parks}/{@link #transcript} in every conditional
+   * annotation and in {@code bootstrapSchema}-vs-constructor branching, but not in its parameter
+   * list: {@link JdbcPlanStore}, unlike those three doors, has no {@link ObjectMapper}-accepting
+   * {@code create}/constructor overload (design §4 — {@code nessy_plan} is one row per task, no
+   * JSON column, nothing for a mapper to serialize), so this method does not go through the shared
+   * {@link #build} helper, whose {@link DoorFactory} shape requires one.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  PlanStore planStore(DataSource dataSource, NessyProperties properties) {
+    return properties.bootstrapSchema()
+        ? JdbcPlanStore.create(dataSource, resolveDialect(properties))
+        : new JdbcPlanStore(dataSource);
   }
 
   /**

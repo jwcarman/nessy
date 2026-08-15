@@ -26,11 +26,12 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.Transcript;
-import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
+import org.jwcarman.nessy.spi.plan.PlanStore;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
@@ -41,8 +42,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
  * {@link JdbcPersistenceAutoConfiguration} against an offline {@link DataSource} stub — every test
  * here runs with {@code bootstrap-schema=false} (or never registers a {@link DataSource} bean at
  * all) so construction never opens a connection, the same offline pattern {@code
- * JdbcPersistenceRecordTest} (nessy-store-jdbc) uses. Real-DDL bootstrap proof is chat-web's smoke
- * test's job, not this context runner's.
+ * JdbcPersistenceRecordTest} (nessy-jdbc) uses. Real-DDL bootstrap proof is chat-web's smoke test's
+ * job, not this context runner's.
  */
 class JdbcPersistenceAutoConfigurationTest {
 
@@ -51,7 +52,8 @@ class JdbcPersistenceAutoConfigurationTest {
           .withConfiguration(AutoConfigurations.of(JdbcPersistenceAutoConfiguration.class));
 
   @Test
-  void jdbc_on_the_classpath_with_a_datasource_yields_store_parks_transcript_and_memory() {
+  void
+      jdbc_on_the_classpath_with_a_datasource_yields_store_parks_transcript_plan_store_and_memory() {
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withBean(ObjectMapper.class, ObjectMapper::new)
@@ -61,6 +63,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(ConversationStore.class);
               assertThat(context).hasSingleBean(Parks.class);
               assertThat(context).hasSingleBean(Transcript.class);
+              assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -73,6 +76,7 @@ class JdbcPersistenceAutoConfigurationTest {
           assertThat(context).doesNotHaveBean(ConversationStore.class);
           assertThat(context).doesNotHaveBean(Parks.class);
           assertThat(context).doesNotHaveBean(Transcript.class);
+          assertThat(context).doesNotHaveBean(PlanStore.class);
           assertThat(context).doesNotHaveBean(Memory.class);
         });
   }
@@ -88,6 +92,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).doesNotHaveBean(ConversationStore.class);
               assertThat(context).doesNotHaveBean(Parks.class);
               assertThat(context).doesNotHaveBean(Transcript.class);
+              assertThat(context).doesNotHaveBean(PlanStore.class);
               assertThat(context).doesNotHaveBean(Memory.class);
             });
   }
@@ -119,6 +124,17 @@ class JdbcPersistenceAutoConfigurationTest {
   }
 
   @Test
+  void a_user_declared_plan_store_bean_wins() {
+    PlanStore mine = PlanStore.inMemory();
+    runner
+        .withBean(DataSource.class, UnusedDataSource::new)
+        .withBean(ObjectMapper.class, ObjectMapper::new)
+        .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
+        .withBean("mine", PlanStore.class, () -> mine)
+        .run(context -> assertThat(context.getBean(PlanStore.class)).isSameAs(mine));
+  }
+
+  @Test
   void a_user_declared_transcript_bean_wins_and_memory_wraps_it() {
     Transcript mine = Transcript.inMemory();
     runner
@@ -141,11 +157,12 @@ class JdbcPersistenceAutoConfigurationTest {
   }
 
   @Test
-  void a_missing_object_mapper_bean_still_yields_store_parks_transcript_and_memory() {
+  void a_missing_object_mapper_bean_still_yields_store_parks_transcript_plan_store_and_memory() {
     // A non-web Boot app pulls in no Jackson autoconfiguration, so no ObjectMapper bean exists
     // in context at all; JdbcPersistence must fall back to a mapper of its own rather than fail
     // with NoSuchBeanDefinitionException the moment ConversationStore/Parks/Transcript/Memory try
-    // to resolve one.
+    // to resolve one. PlanStore needs no ObjectMapper at all (see JdbcPlanStore's javadoc), so it
+    // is unaffected either way, but it still belongs in this assertion for completeness.
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
@@ -155,6 +172,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(ConversationStore.class);
               assertThat(context).hasSingleBean(Parks.class);
               assertThat(context).hasSingleBean(Transcript.class);
+              assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -168,7 +186,7 @@ class JdbcPersistenceAutoConfigurationTest {
     // of whether the property's value is honored or silently dropped, so nothing here could catch
     // that regression. The override actually bypassing resolution is proven where it can be
     // proven offline without opening a real connection: JdbcDialectTest's "An_explicit_override"
-    // nest, in nessy-store-jdbc, one layer down from this property-parsing seam.
+    // nest, in nessy-jdbc, one layer down from this property-parsing seam.
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withBean(ObjectMapper.class, ObjectMapper::new)
@@ -179,6 +197,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(ConversationStore.class);
               assertThat(context).hasSingleBean(Parks.class);
               assertThat(context).hasSingleBean(Transcript.class);
+              assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -211,6 +230,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).doesNotHaveBean(ConversationStore.class);
               assertThat(context).doesNotHaveBean(Parks.class);
               assertThat(context).doesNotHaveBean(Transcript.class);
+              assertThat(context).doesNotHaveBean(PlanStore.class);
               assertThat(context).doesNotHaveBean(Memory.class);
             });
   }
@@ -233,7 +253,7 @@ class JdbcPersistenceAutoConfigurationTest {
   /**
    * A {@link DataSource} that is never actually connected to — every test here keeps bootstrap off
    * or the beans unresolved, so construction alone must suffice. Mirrors {@code
-   * JdbcPersistenceRecordTest}'s {@code UnusedDataSource} (nessy-store-jdbc).
+   * JdbcPersistenceRecordTest}'s {@code UnusedDataSource} (nessy-jdbc).
    */
   private static final class UnusedDataSource implements DataSource {
 
