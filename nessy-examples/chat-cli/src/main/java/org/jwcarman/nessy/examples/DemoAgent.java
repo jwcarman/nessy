@@ -102,7 +102,7 @@ public final class DemoAgent {
   /**
    * The agent {@link #agentFor} builds, paired with the {@link PlanStore} it writes its plan into.
    */
-  public record Built(Agent<String> agent, PlanStore planStore) {}
+  record Built(Agent<String> agent, PlanStore planStore) {}
 
   /** The fact-log side of the story: printed independently of whatever the renderer narrates. */
   private static void announceUsage(ConversationEvent.ModelResponded responded) {

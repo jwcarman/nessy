@@ -64,29 +64,24 @@ targeted question) — the exact long-horizon shape the plan facility fixes
 grants, wires `memory` as
 `Memory.pipeline(transcript).transform(PlanTools.transformer(store)).build()`,
 and `Scout#main` hands that same `PlanStore` to
-`ConsoleRepl.Builder#plan(PlanStore)`. A sample session, watching the
-checklist tick off between DeepWiki calls (markers shown here are the ASCII
-fallback — `[x]`/`[>]`/`[ ]` — since this README renders unstyled):
+`ConsoleRepl.Builder#plan(PlanStore)`. `ConsoleRepl` renders the checklist
+at most once per turn — after the turn's own output, once
+`conversation.tell` has returned, right before the next prompt — not
+interleaved between individual tool calls. A sample session, one turn of
+multi-step research ending with the checklist all ticked off (markers shown
+here are the ASCII fallback — `[x]`/`[>]`/`[ ]` — since this README renders
+unstyled):
 
 ```
 you> what does jwcarman/nessy's reducer do, and why does it live in one method?
 
-  [>] Read the wiki structure for jwcarman/nessy
-
 ⚙ tool: read_wiki_structure requested
 
-⚙ tool: read_wiki_contents completed
-
-  [x] Read the wiki structure for jwcarman/nessy
-  [>] Read the reducer's wiki section
+⚙ tool: read_wiki_structure completed
 
 ⚙ tool: read_wiki_contents requested
 
 ⚙ tool: read_wiki_contents completed
-
-  [x] Read the wiki structure for jwcarman/nessy
-  [x] Read the reducer's wiki section
-  [>] Ask DeepWiki why the reducer lives in one method
 
 ⚙ tool: ask_question requested
 
@@ -95,11 +90,13 @@ y/n> y
 
 ⚙ tool: ask_question completed
 
+The reducer lives in one method for locality — [...]
+
   [x] Read the wiki structure for jwcarman/nessy
   [x] Read the reducer's wiki section
   [x] Ask DeepWiki why the reducer lives in one method
 
-The reducer lives in one method for locality — [...]
+you>
 ```
 
 ## The approval prompt
