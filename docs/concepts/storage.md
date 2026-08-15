@@ -142,10 +142,20 @@ declares one bean, the agent.
 
 Anything the resolver doesn't recognize fails loudly at resolution time, naming the
 reported product and the five supported dialects — never a silent fallback to Postgres
-syntax. See the root README's supported-databases table for exactly which container image
-each dialect is verified against, and for the honest note that CockroachDB and Yugabyte
-ride `POSTGRES` (they report `PostgreSQL` as their product name deliberately) untested by
-the vendor matrix itself.
+syntax.
+
+| Dialect | Detected from | Verified against |
+|---|---|---|
+| `POSTGRES` | `PostgreSQL` product name (CockroachDB and Yugabyte report this deliberately and ride the same dialect) | `postgres:17-alpine` |
+| `MYSQL` | `MySQL` product name, version string *without* `MariaDB` in it | `mysql:8.0` |
+| `MARIADB` | `MySQL` product name *with* `MariaDB` in the version string (the driver-lies-for-compatibility sniff), or `MariaDB` directly | `mariadb:11.4` |
+| `SQLSERVER` | `Microsoft SQL Server` product name | `mcr.microsoft.com/mssql/server:2022-latest` |
+| `ORACLE` | `Oracle` product name | `gvenzl/oracle-free:23-slim-faststart` |
+
+CockroachDB and Yugabyte ride `POSTGRES`, not a dialect of their own — both report
+`PostgreSQL` as their JDBC product name deliberately, for exactly this kind of
+wire-compatible detection — untested by this module's own matrix, which pins real
+Postgres, not either of them.
 
 ## The TCK: certifying a backend
 
