@@ -32,15 +32,15 @@ import java.sql.Savepoint;
  * different pieces of vendor SQL.
  *
  * <p>A duplicate key is recognized by SQLState <b>and</b> vendor error code together, not by
- * SQLState alone — a Task 2 fix-round finding, not the original design: the {@code 23xxx} ANSI
- * integrity-constraint-violation class is not exclusively a duplicate-key signal. Oracle in
- * particular treats an empty string {@code ''} as {@code NULL}, so a {@code NOT NULL} column bound
- * to {@code ""} (an empty {@code agent_name}, an empty summary) raises {@code ORA-01400} — SQLState
- * {@code 23000}, the very same class a duplicate key raises there. Swallowing every {@code 23xxx}
- * as "duplicate, no-op" would have silently dropped that write instead of surfacing the real
- * NOT-NULL violation — a lost park is a conversation nothing can ever resume, never an acceptable
- * no-op. So {@link #isDuplicateKey} requires the SQLState family <b>and</b> the exact vendor error
- * code each dialect's genuine duplicate-key path is verified (Task 2's report) to raise:
+ * SQLState alone: the {@code 23xxx} ANSI integrity-constraint-violation class is not exclusively a
+ * duplicate-key signal. Oracle in particular treats an empty string {@code ''} as {@code NULL}, so
+ * a {@code NOT NULL} column bound to {@code ""} (an empty {@code agent_name}, an empty summary)
+ * raises {@code ORA-01400} — SQLState {@code 23000}, the very same class a duplicate key raises
+ * there. Swallowing every {@code 23xxx} as "duplicate, no-op" would have silently dropped that
+ * write instead of surfacing the real NOT-NULL violation — a lost park is a conversation nothing
+ * can ever resume, never an acceptable no-op. So {@link #isDuplicateKey} requires the SQLState
+ * family <b>and</b> the exact vendor error code each dialect's genuine duplicate-key path is
+ * verified live to raise:
  *
  * <ul>
  *   <li>Postgres: SQLState {@code 23505} exactly ({@code unique_violation} — Postgres's own

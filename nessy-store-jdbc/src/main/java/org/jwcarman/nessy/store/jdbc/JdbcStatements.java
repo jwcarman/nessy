@@ -77,9 +77,8 @@ final class JdbcStatements {
    * same {@code WHERE conversation_id = ?} — only the limit-one-row-locked idiom itself differs:
    * Postgres/MySQL/MariaDB share {@code ORDER BY ... LIMIT 1 FOR UPDATE}; SQL Server has no {@code
    * FOR UPDATE} and locks via {@code WITH (UPDLOCK, ROWLOCK)} on a {@code TOP 1} instead; Oracle
-   * cannot combine {@code FOR UPDATE} with its own row-limiting clause at all — confirmed live
-   * against a real Oracle container in Task 3's matrix (not caught by Task 2's fix round, which
-   * pinned the syntax offline but never ran it against a real database): {@code ... FETCH FIRST 1
+   * cannot combine {@code FOR UPDATE} with its own row-limiting clause at all — confirmed only by
+   * running the syntax against a real Oracle container, not by inspection: {@code ... FETCH FIRST 1
    * ROWS ONLY FOR UPDATE} raises {@code ORA-02014 ("cannot select FOR UPDATE from view with
    * DISTINCT, GROUP BY, etc.")}, because Oracle implements the row-limiting clause as an implicit
    * inline view internally, and {@code FOR UPDATE} refuses to lock through one. Oracle's fragment
@@ -103,16 +102,17 @@ final class JdbcStatements {
   }
 
   /**
-   * {@code nessy_transcript}'s page read (design §4, added in Task 2's fix round — the original
-   * commit left this one raw and it is a syntax error on SQL Server and Oracle): the newest {@code
-   * limit} rows below {@code beforeVersion}, fetched newest-first so the limiting clause keeps the
-   * right window (the caller reverses back to ascending order). Postgres/MySQL/MariaDB share {@code
-   * ORDER BY version DESC LIMIT ?}; SQL Server has no {@code LIMIT} and expresses it as {@code
-   * SELECT TOP (?) ...} — notably {@code TOP}'s parameter binds <b>first</b>, before the {@code
-   * WHERE} clause's own two parameters, which is exactly what {@link
-   * #transcriptPageLimitBindsFirst()} exists to tell the caller; Oracle has no {@code LIMIT} or
-   * {@code TOP} and expresses it as trailing {@code OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY}, with the
-   * limit parameter binding last, in the same position Postgres/MySQL/MariaDB already use.
+   * {@code nessy_transcript}'s page read (design §4 — an un-dialected {@code LIMIT} clause here is
+   * a syntax error on SQL Server and Oracle, so this needs the same per-dialect treatment as the
+   * row-lock above): the newest {@code limit} rows below {@code beforeVersion}, fetched
+   * newest-first so the limiting clause keeps the right window (the caller reverses back to
+   * ascending order). Postgres/MySQL/MariaDB share {@code ORDER BY version DESC LIMIT ?}; SQL
+   * Server has no {@code LIMIT} and expresses it as {@code SELECT TOP (?) ...} — notably {@code
+   * TOP}'s parameter binds <b>first</b>, before the {@code WHERE} clause's own two parameters,
+   * which is exactly what {@link #transcriptPageLimitBindsFirst()} exists to tell the caller;
+   * Oracle has no {@code LIMIT} or {@code TOP} and expresses it as trailing {@code OFFSET 0 ROWS
+   * FETCH NEXT ? ROWS ONLY}, with the limit parameter binding last, in the same position
+   * Postgres/MySQL/MariaDB already use.
    */
   String transcriptPageSql() {
     return switch (dialect) {

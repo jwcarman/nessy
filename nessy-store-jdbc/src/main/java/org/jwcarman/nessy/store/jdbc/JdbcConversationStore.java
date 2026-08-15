@@ -84,7 +84,10 @@ public final class JdbcConversationStore implements ConversationStore {
     this(dataSource, mapper, null);
   }
 
-  /** Bypasses dialect resolution entirely — see the class javadoc. */
+  /**
+   * {@code null} means resolve lazily on first use, same as the two-arg constructor — a non-null
+   * value bypasses resolution entirely. See the class javadoc.
+   */
   public JdbcConversationStore(DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
@@ -228,7 +231,11 @@ public final class JdbcConversationStore implements ConversationStore {
    * Deletes exactly the drained entries — a no-op if there is nothing to drain, since the dynamic
    * {@code IN (?, …)} {@link JdbcStatements#inboxDrainDeleteSql(int)} builds has no valid shape for
    * zero ids (unlike Postgres's retired {@code = ANY(?)}, which tolerated an empty array without
-   * complaint).
+   * complaint). A drain larger than {@link InboxDrainChunks#BATCH_SIZE} runs as several {@code
+   * DELETE}s instead of one — see that class's javadoc for the vendor ceilings that cap how large a
+   * single {@code IN} list may safely get — each batch on this same {@code connection}, inside the
+   * one explicit transaction {@link #save} already opened, so the whole drain stays atomic with the
+   * save it accompanies regardless of how many batches it took.
    */
   private void drainInbox(
       Connection connection,
@@ -239,10 +246,22 @@ public final class JdbcConversationStore implements ConversationStore {
     if (drainedInboxIds.isEmpty()) {
       return;
     }
+    List<String> ids =
+        drainedInboxIds instanceof List<String> alreadyAList
+            ? alreadyAList
+            : new ArrayList<>(drainedInboxIds);
+    for (List<String> batch : InboxDrainChunks.chunk(ids)) {
+      drainBatch(connection, statements, id, batch);
+    }
+  }
+
+  private void drainBatch(
+      Connection connection, JdbcStatements statements, ConversationId id, List<String> batch)
+      throws SQLException {
     try (PreparedStatement ps =
-        connection.prepareStatement(statements.inboxDrainDeleteSql(drainedInboxIds.size()))) {
+        connection.prepareStatement(statements.inboxDrainDeleteSql(batch.size()))) {
       int index = 1;
-      for (String entryId : drainedInboxIds) {
+      for (String entryId : batch) {
         ps.setString(index++, entryId);
       }
       ps.setString(index, id.value());
@@ -362,8 +381,8 @@ public final class JdbcConversationStore implements ConversationStore {
 
   /**
    * {@link #load}'s isolation level: {@link Connection#TRANSACTION_REPEATABLE_READ} everywhere
-   * except Oracle, which does not support it at all — confirmed live against a real Oracle
-   * container in Task 3's matrix: {@code connection.setTransactionIsolation
+   * except Oracle, which does not support it at all — confirmed only by running against a real
+   * Oracle container, not by inspection: {@code connection.setTransactionIsolation
    * (TRANSACTION_REPEATABLE_READ)} raises {@code ORA-17030} ("READ_COMMITTED and SERIALIZABLE are
    * the only valid transaction levels"), Oracle's JDBC driver rejecting the level outright rather
    * than silently downgrading it. {@link Connection#TRANSACTION_SERIALIZABLE} is the closest level

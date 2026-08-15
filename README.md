@@ -617,6 +617,7 @@ exotic rides `fromEnv()`'s own ambient resolution or a hand-declared bean:
 | `nessy.default-model` | (none) | harness-level default model, optional |
 | `nessy.jdbc.enabled` | `true` | JDBC wiring master switch |
 | `nessy.jdbc.bootstrap-schema` | `true` | run the idempotent DDL at startup |
+| `nessy.jdbc.dialect` | (none, resolved) | `postgres`\|`mysql`\|`mariadb`\|`sqlserver`\|`oracle` override for a driver whose metadata lies |
 
 See the `chat-web` example ([Examples](#examples)) for the whole stack —
 provider, persistence, harness, and the SSE bridge — in one Spring Boot app
@@ -802,8 +803,9 @@ Three honest notes on the shape of this coverage:
 - **The five-vendor matrix is tagged out of CI; the rest of the container
   suite is not.** CI runs on `ubuntu-latest`, which carries a Docker daemon,
   and has always exercised the `container`-tagged suites — Postgres,
-  RabbitMQ, the in-process MCP fixtures — with `-Dnessy.excludedGroups=live`.
-  The full TCK-run-five-times matrix (all four `nessy-store-tck` contracts
+  RabbitMQ — with `-Dnessy.excludedGroups=live`. `nessy-tool-mcp`'s own MCP
+  fixtures carry no `container` tag at all and run in every build, container
+  or not. The full TCK-run-five-times matrix (all four `nessy-store-tck` contracts
   against real MySQL, MariaDB, SQL Server, and Oracle containers, each plus a
   dialect-resolution pin proving `JdbcDialect.resolve` picks the right enum
   from that vendor's own live `DatabaseMetaData` — MariaDB's being the

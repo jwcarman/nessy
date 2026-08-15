@@ -160,11 +160,15 @@ class JdbcPersistenceAutoConfigurationTest {
   }
 
   @Test
-  void nessy_jdbc_dialect_overrides_resolution_and_still_wires_the_doors() {
-    // "postgres" (or any recognized value) is the explicit-dialect seam every door's own
-    // create/constructor overload accepts (design §2) -- with bootstrap off, this also proves the
-    // override never needs a real connection: UnusedDataSource would throw the moment anything
-    // tried to resolve instead.
+  void a_recognized_nessy_jdbc_dialect_value_does_not_disturb_the_door_wiring() {
+    // What this actually proves: a recognized nessy.jdbc.dialect value parses without failing
+    // context startup and the four door beans still resolve. It does NOT prove the value reaches
+    // JdbcSchemaBootstrap and bypasses resolution there -- bootstrap-schema=false (this whole
+    // class's offline pattern) means UnusedDataSource is never touched by construction regardless
+    // of whether the property's value is honored or silently dropped, so nothing here could catch
+    // that regression. The override actually bypassing resolution is proven where it can be
+    // proven offline without opening a real connection: JdbcDialectTest's "An_explicit_override"
+    // nest, in nessy-store-jdbc, one layer down from this property-parsing seam.
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withBean(ObjectMapper.class, ObjectMapper::new)

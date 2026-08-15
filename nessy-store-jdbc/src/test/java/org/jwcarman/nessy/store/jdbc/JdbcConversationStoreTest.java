@@ -39,6 +39,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.conversation.InboxEntry;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.StaleStateException;
 import org.jwcarman.nessy.store.tck.ConversationStoreContract;
@@ -89,36 +91,39 @@ class JdbcConversationStoreTest extends ConversationStoreContract {
     ConversationState base = store().save(ConversationState.newConversation(id), List.of());
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
-    CountDownLatch ready = new CountDownLatch(2);
-    CountDownLatch go = new CountDownLatch(1);
-    List<Future<ConversationState>> racers = new ArrayList<>();
-    for (int i = 0; i < 2; i++) {
-      racers.add(
-          executor.submit(
-              () -> {
-                ready.countDown();
-                go.await();
-                return store().save(base, List.of());
-              }));
-    }
-    ready.await();
-    go.countDown();
-
-    int winners = 0;
-    int losers = 0;
-    for (Future<ConversationState> racer : racers) {
-      try {
-        racer.get();
-        winners++;
-      } catch (ExecutionException e) {
-        assertThat(e.getCause()).isInstanceOf(StaleStateException.class);
-        losers++;
+    try {
+      CountDownLatch ready = new CountDownLatch(2);
+      CountDownLatch go = new CountDownLatch(1);
+      List<Future<ConversationState>> racers = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        racers.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  go.await();
+                  return store().save(base, List.of());
+                }));
       }
-    }
-    executor.shutdown();
+      ready.await();
+      go.countDown();
 
-    assertThat(winners).isEqualTo(1);
-    assertThat(losers).isEqualTo(1);
+      int winners = 0;
+      int losers = 0;
+      for (Future<ConversationState> racer : racers) {
+        try {
+          racer.get();
+          winners++;
+        } catch (ExecutionException e) {
+          assertThat(e.getCause()).isInstanceOf(StaleStateException.class);
+          losers++;
+        }
+      }
+
+      assertThat(winners).isEqualTo(1);
+      assertThat(losers).isEqualTo(1);
+    } finally {
+      executor.shutdown();
+    }
   }
 
   /**
@@ -138,36 +143,66 @@ class JdbcConversationStoreTest extends ConversationStoreContract {
     ConversationState fresh = ConversationState.newConversation(id);
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
-    CountDownLatch ready = new CountDownLatch(2);
-    CountDownLatch go = new CountDownLatch(1);
-    List<Future<ConversationState>> racers = new ArrayList<>();
-    for (int i = 0; i < 2; i++) {
-      racers.add(
-          executor.submit(
-              () -> {
-                ready.countDown();
-                go.await();
-                return store().save(fresh, List.of());
-              }));
-    }
-    ready.await();
-    go.countDown();
-
-    int winners = 0;
-    int losers = 0;
-    for (Future<ConversationState> racer : racers) {
-      try {
-        racer.get();
-        winners++;
-      } catch (ExecutionException e) {
-        assertThat(e.getCause()).isInstanceOf(StaleStateException.class);
-        losers++;
+    try {
+      CountDownLatch ready = new CountDownLatch(2);
+      CountDownLatch go = new CountDownLatch(1);
+      List<Future<ConversationState>> racers = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        racers.add(
+            executor.submit(
+                () -> {
+                  ready.countDown();
+                  go.await();
+                  return store().save(fresh, List.of());
+                }));
       }
-    }
-    executor.shutdown();
+      ready.await();
+      go.countDown();
 
-    assertThat(winners).isEqualTo(1);
-    assertThat(losers).isEqualTo(1);
+      int winners = 0;
+      int losers = 0;
+      for (Future<ConversationState> racer : racers) {
+        try {
+          racer.get();
+          winners++;
+        } catch (ExecutionException e) {
+          assertThat(e.getCause()).isInstanceOf(StaleStateException.class);
+          losers++;
+        }
+      }
+
+      assertThat(winners).isEqualTo(1);
+      assertThat(losers).isEqualTo(1);
+    } finally {
+      executor.shutdown();
+    }
+  }
+
+  /**
+   * S-4 (final review): {@link JdbcStatements#inboxDrainDeleteSql(int)}'s dynamic {@code IN (?, …)}
+   * has no ceiling of its own, so a long-parked conversation's inbox is a real way to reach one —
+   * Oracle rejects more than 1000 expressions in an {@code IN} list outright. This drains 1001
+   * entries — one past {@link InboxDrainChunks#BATCH_SIZE} twice over plus one — end to end against
+   * the real container, proving {@code drainInbox}'s batching actually deletes every entry, not
+   * just that the batching math checks out offline (see {@code InboxDrainChunksTest} for that).
+   * Postgres only: cheap here, and the vendor matrix (Task 3) is not this wave's job.
+   */
+  @Test
+  void draining_more_entries_than_one_batch_holds_removes_every_one_of_them() {
+    ConversationId id = ConversationId.generate();
+    ConversationState base = store().save(ConversationState.newConversation(id), List.of());
+    int entryCount = InboxDrainChunks.BATCH_SIZE * 2 + 1;
+    List<String> entryIds = new ArrayList<>(entryCount);
+    for (int i = 0; i < entryCount; i++) {
+      InboxEntry.Told entry = InboxEntry.told(List.of(new TextBlock("entry " + i)));
+      store().append(id, entry);
+      entryIds.add(entry.id());
+    }
+
+    store().save(base, entryIds);
+
+    assertThat(store().load(id)).isPresent();
+    assertThat(store().load(id).orElseThrow().inbox()).isEmpty();
   }
 
   @Test

@@ -39,19 +39,19 @@ import org.jwcarman.nessy.spi.memory.SummaryStore;
  * nessy_summary} carries no {@code jsonb} column, so it never showed up in the {@code jsonb}/cast
  * inventory), but it is exactly as Postgres-specific as the write-once inserts design §4 does
  * enumerate, and needed the same fix for the same reason: MySQL/MariaDB/SQL Server/Oracle have no
- * portable equivalent to {@code ON CONFLICT ... DO UPDATE}. See the Task 2 report for this
- * deviation, called out there rather than folded in silently. There is no fencing here (design §10)
- * — two concurrent first-saves of the same conversation can still both apply, in whichever order
- * their two {@code UPDATE}s (the loser's fallback included — see below) happen to run, rather than
- * one winning atomically the way Postgres's original {@code ON CONFLICT DO UPDATE} guaranteed.
+ * portable equivalent to {@code ON CONFLICT ... DO UPDATE}. See the root CHANGELOG's {@code
+ * Breaking (pre-1.0)} section for this deviation, stated there for honesty rather than folded in
+ * silently. There is no fencing here (design §10) — two concurrent first-saves of the same
+ * conversation can still both apply, in whichever order their two {@code UPDATE}s (the loser's
+ * fallback included — see below) happen to run, rather than one winning atomically the way
+ * Postgres's original {@code ON CONFLICT DO UPDATE} guaranteed.
  *
- * <p><b>I-3 (Task 2 fix round):</b> the first version of this rewrite discarded {@link
- * WriteOnceInsert#attempt}'s return value on the fallback {@code INSERT}, so a save that lost its
- * insert race (a concurrent saver's {@code INSERT} for the same brand-new conversation landing
- * first) silently dropped its own write instead of applying it — a regression the retired atomic
- * upsert never had, not a continuation of any existing posture. Fixed: a lost insert race now
- * re-runs the same {@code UPDATE} this method started with, which finds the concurrent saver's row
- * this time and applies cleanly.
+ * <p>A save that loses its own insert race — a concurrent saver's {@code INSERT} for the same
+ * brand-new conversation landing first — does not simply drop its write: {@link
+ * WriteOnceInsert#attempt}'s {@code false} return re-runs the same {@code UPDATE} this method
+ * started with, which now finds the concurrent saver's row and applies cleanly. Dropping the write
+ * instead (discarding that return value) would be a real regression from the retired atomic
+ * upsert's guarantee, not a continuation of any posture that upsert ever had.
  *
  * <p>The constructor alone does not create {@code nessy_summary} — a caller pointing at a database
  * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
@@ -75,7 +75,10 @@ public final class JdbcSummaryStore implements SummaryStore {
     this(dataSource, null);
   }
 
-  /** Bypasses dialect resolution entirely — see the class javadoc. */
+  /**
+   * {@code null} means resolve lazily on first use, same as the two-arg constructor — a non-null
+   * value bypasses resolution entirely. See the class javadoc.
+   */
   public JdbcSummaryStore(DataSource dataSource, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.dialect = dialect;
@@ -145,7 +148,7 @@ public final class JdbcSummaryStore implements SummaryStore {
               // Lost the insert race to a concurrent first-save of the same conversation: that
               // row exists now, so the update this save started with — which found nothing a
               // moment ago — applies cleanly the second time. Skipping this would silently drop
-              // this save's write (see the class javadoc's "I-3" note).
+              // this save's write (see the class javadoc).
               update(connection, UPDATE_SQL, updateBinder);
             }
           }

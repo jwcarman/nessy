@@ -113,20 +113,23 @@ class JdbcSummaryStoreTest extends SummaryStoreContract {
     Summary second = new Summary(2L, "from the second racer");
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
-    CountDownLatch ready = new CountDownLatch(2);
-    CountDownLatch go = new CountDownLatch(1);
-    List<Future<Void>> racers =
-        List.of(
-            executor.submit(() -> raceSave(ready, go, id, first)),
-            executor.submit(() -> raceSave(ready, go, id, second)));
-    ready.await();
-    go.countDown();
-    for (Future<Void> racer : racers) {
-      assertThatCode(racer::get).doesNotThrowAnyException();
-    }
-    executor.shutdown();
+    try {
+      CountDownLatch ready = new CountDownLatch(2);
+      CountDownLatch go = new CountDownLatch(1);
+      List<Future<Void>> racers =
+          List.of(
+              executor.submit(() -> raceSave(ready, go, id, first)),
+              executor.submit(() -> raceSave(ready, go, id, second)));
+      ready.await();
+      go.countDown();
+      for (Future<Void> racer : racers) {
+        assertThatCode(racer::get).doesNotThrowAnyException();
+      }
 
-    assertThat(summaries().find(id)).isPresent().get().isIn(first, second);
+      assertThat(summaries().find(id)).isPresent().get().isIn(first, second);
+    } finally {
+      executor.shutdown();
+    }
   }
 
   private Void raceSave(CountDownLatch ready, CountDownLatch go, ConversationId id, Summary value)

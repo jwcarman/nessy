@@ -22,18 +22,21 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Savepoint;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
  * {@link WriteOnceInsert#isDuplicateKey} and {@link WriteOnceInsert#attempt}, pinned without a
- * database: the Task 2 fix round (I-2/C-2) narrowed the duplicate-key test from "any {@code 23xxx}
- * SQLState" to "the SQLState family <b>and</b> the exact vendor error code each dialect's genuine
- * duplicate-key path is verified to raise" — Oracle's empty-string-is-{@code NULL} trap (ORA-01400,
- * also SQLState {@code 23000}) is the concrete failure the wider check would have silently
- * swallowed as a duplicate. Every case here is a hand-rolled {@link SQLException} built with the
- * exact (SQLState, vendor code) pair a real driver reports — no mocking library, the same house
- * stance the rest of this module's tests take.
+ * database: the duplicate-key test is narrower than "any {@code 23xxx} SQLState" — it requires the
+ * SQLState family <b>and</b> the exact vendor error code each dialect's genuine duplicate-key path
+ * is verified to raise. Oracle's empty-string-is-{@code NULL} trap (ORA-01400, also SQLState {@code
+ * 23000}) is the concrete failure the wider check would have silently swallowed as a duplicate.
+ * Every case here is a hand-rolled {@link SQLException} built with the exact (SQLState, vendor
+ * code) pair a real driver reports — no mocking library, the same house stance the rest of this
+ * module's tests take.
  */
 class WriteOnceInsertTest {
 
@@ -171,6 +174,123 @@ class WriteOnceInsertTest {
                   switch (method.getName()) {
                     case "getAutoCommit" -> true;
                     case "prepareStatement" -> failingStatement;
+                    default -> throw new UnsupportedOperationException(method.getName());
+                  });
+    }
+  }
+
+  @Nested
+  class Attempt_under_an_explicit_transaction {
+
+    /**
+     * The savepoint branch is {@link WriteOnceInsert}'s highest-risk mechanism (it exists at all
+     * because a caught duplicate-key error poisons the rest of a Postgres transaction otherwise —
+     * see the class javadoc) and deserves a test that names it directly: a genuine duplicate, hit
+     * while {@code getAutoCommit()} is {@code false}, must take a savepoint before attempting the
+     * insert and roll back to that <em>same</em> savepoint — not just "a" savepoint, the one it
+     * itself took — on the duplicate-key branch.
+     */
+    @Test
+    void a_genuine_duplicate_takes_a_savepoint_and_rolls_back_to_it() throws SQLException {
+      AtomicBoolean savepointTaken = new AtomicBoolean();
+      AtomicReference<Savepoint> rolledBackTo = new AtomicReference<>();
+      Savepoint theSavepoint = savepointDouble();
+      Connection connection =
+          explicitTransactionConnection(
+              savepointTaken, rolledBackTo, theSavepoint, duplicate("23505", 0));
+
+      boolean inserted =
+          WriteOnceInsert.attempt(
+              connection, JdbcDialect.POSTGRES, "INSERT INTO t VALUES (?)", ps -> {});
+
+      assertThat(inserted).isFalse();
+      assertThat(savepointTaken).isTrue();
+      assertThat(rolledBackTo.get()).isSameAs(theSavepoint);
+    }
+
+    /**
+     * "Rolled back to the savepoint" and "the transaction is usable after" are two different claims
+     * — a savepoint rollback that somehow left the connection unusable would still pass the test
+     * above. This one keeps going: a second {@code attempt} on the very same connection, right
+     * after the first one swallowed its duplicate, must succeed rather than inherit whatever broke.
+     */
+    @Test
+    void the_connection_stays_usable_for_a_second_attempt_right_after_the_first_swallows()
+        throws SQLException {
+      AtomicBoolean savepointTaken = new AtomicBoolean();
+      AtomicReference<Savepoint> rolledBackTo = new AtomicReference<>();
+      Savepoint theSavepoint = savepointDouble();
+      Connection connection =
+          explicitTransactionConnection(
+              savepointTaken, rolledBackTo, theSavepoint, duplicate("23505", 0));
+
+      boolean firstAttempt =
+          WriteOnceInsert.attempt(
+              connection, JdbcDialect.POSTGRES, "INSERT INTO t VALUES (?)", ps -> {});
+      boolean secondAttempt =
+          WriteOnceInsert.attempt(
+              connection, JdbcDialect.POSTGRES, "INSERT INTO t VALUES (?)", ps -> {});
+
+      assertThat(firstAttempt).isFalse();
+      assertThat(secondAttempt).isFalse();
+    }
+
+    private Savepoint savepointDouble() {
+      return (Savepoint)
+          Proxy.newProxyInstance(
+              Savepoint.class.getClassLoader(),
+              new Class<?>[] {Savepoint.class},
+              (proxy, method, args) ->
+                  switch (method.getName()) {
+                    case "getSavepointId" -> 1;
+                    case "getSavepointName" -> "write-once-insert";
+                    default -> throw new UnsupportedOperationException(method.getName());
+                  });
+    }
+
+    /**
+     * Hand-rolled: autocommit {@code false} (so {@link WriteOnceInsert#attempt} must take a
+     * savepoint), {@code setSavepoint()} always hands back the same {@code theSavepoint} instance
+     * (so identity comparison is meaningful), every {@code prepareStatement} call returns a fresh
+     * {@link PreparedStatement} double whose {@code executeUpdate} throws {@code failure} — every
+     * attempt on this connection loses its race the same way, on purpose, so a test can call {@code
+     * attempt} more than once against it.
+     */
+    private Connection explicitTransactionConnection(
+        AtomicBoolean savepointTaken,
+        AtomicReference<Savepoint> rolledBackTo,
+        Savepoint theSavepoint,
+        SQLException failure) {
+      return (Connection)
+          Proxy.newProxyInstance(
+              Connection.class.getClassLoader(),
+              new Class<?>[] {Connection.class},
+              (proxy, method, args) ->
+                  switch (method.getName()) {
+                    case "getAutoCommit" -> false;
+                    case "setSavepoint" -> {
+                      savepointTaken.set(true);
+                      yield theSavepoint;
+                    }
+                    case "rollback" -> {
+                      rolledBackTo.set((Savepoint) args[0]);
+                      yield null;
+                    }
+                    case "prepareStatement" -> failingPreparedStatement(failure);
+                    case "close" -> null;
+                    default -> throw new UnsupportedOperationException(method.getName());
+                  });
+    }
+
+    private PreparedStatement failingPreparedStatement(SQLException failure) {
+      return (PreparedStatement)
+          Proxy.newProxyInstance(
+              PreparedStatement.class.getClassLoader(),
+              new Class<?>[] {PreparedStatement.class},
+              (proxy, method, args) ->
+                  switch (method.getName()) {
+                    case "executeUpdate" -> throw failure;
+                    case "close" -> null;
                     default -> throw new UnsupportedOperationException(method.getName());
                   });
     }

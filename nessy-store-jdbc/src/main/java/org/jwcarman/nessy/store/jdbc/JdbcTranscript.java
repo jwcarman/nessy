@@ -65,7 +65,10 @@ public final class JdbcTranscript implements Transcript {
     this(dataSource, mapper, null);
   }
 
-  /** Bypasses dialect resolution entirely — see the class javadoc. */
+  /**
+   * {@code null} means resolve lazily on first use, same as the two-arg constructor — a non-null
+   * value bypasses resolution entirely. See the class javadoc.
+   */
   public JdbcTranscript(DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));

@@ -35,7 +35,11 @@ import org.jwcarman.nessy.spi.memory.TranscriptMemory;
  * (design §2): it resolves the dialect exactly once, from one borrowed connection, before any of
  * the four components bootstraps its own schema, then hands that single resolved value down to each
  * component's own explicit-dialect {@code create} overload — four schemas, one resolution, not four
- * independent ones that could in principle disagree.
+ * independent ones that could in principle disagree. {@link #create(DataSource, ObjectMapper,
+ * JdbcDialect)} carries the same null-means-resolve contract every one of those four components'
+ * own explicit-dialect overload already has: passing {@code null} does not skip resolution, it asks
+ * for exactly the one-resolution behavior {@link #create(DataSource, ObjectMapper)} provides;
+ * passing a non-null value bypasses resolution entirely, for every component at once.
  */
 public record JdbcPersistence(
     JdbcConversationStore store,
@@ -50,20 +54,25 @@ public record JdbcPersistence(
     Objects.requireNonNull(summaries, "summaries must not be null");
   }
 
-  /** Bootstraps all four schemas against {@code dataSource}, then returns a working set. */
+  /** Bootstraps all four schemas against {@code dataSource}, resolving the dialect once. */
   public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) {
-    return create(dataSource, mapper, resolve(dataSource));
+    return create(dataSource, mapper, null);
   }
 
-  /** Bootstraps against an explicitly known {@code dialect}, skipping resolution entirely. */
+  /**
+   * Bootstraps all four schemas against {@code dataSource}. {@code dialect} of {@code null} means
+   * resolve — exactly once, here, before any component bootstraps — the same contract every
+   * component's own explicit-dialect overload already has; a non-null {@code dialect} bypasses
+   * resolution entirely and is handed to all four components unchanged.
+   */
   public static JdbcPersistence create(
       DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
-    Objects.requireNonNull(dialect, "dialect must not be null");
+    JdbcDialect resolved = dialect != null ? dialect : resolve(dataSource);
     return new JdbcPersistence(
-        JdbcConversationStore.create(dataSource, mapper, dialect),
-        JdbcParks.create(dataSource, mapper, dialect),
-        JdbcTranscript.create(dataSource, mapper, dialect),
-        JdbcSummaryStore.create(dataSource, dialect));
+        JdbcConversationStore.create(dataSource, mapper, resolved),
+        JdbcParks.create(dataSource, mapper, resolved),
+        JdbcTranscript.create(dataSource, mapper, resolved),
+        JdbcSummaryStore.create(dataSource, resolved));
   }
 
   /** The one connection this whole bootstrap borrows purely to resolve the dialect once. */

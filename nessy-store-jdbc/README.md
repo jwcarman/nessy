@@ -66,6 +66,17 @@ attempt runs inside a `Savepoint` so a caught duplicate-key error — which,
 unlike the retired `ON CONFLICT`, is a genuine SQL error — doesn't poison the
 rest of the surrounding transaction on Postgres.
 
+`nessy_summary`'s upsert gets the same treatment for the same reason, one
+fix round later (it carries no `jsonb` column, so it never showed up in the
+original `jsonb`/cast audit that found the other Postgres-specific spots):
+`JdbcSummaryStore#save` used to lean on Postgres's `ON CONFLICT (
+conversation_id) DO UPDATE`, also with no portable equivalent. It now tries
+an `UPDATE` first, falling back to the same `WriteOnceInsert`-mediated
+`INSERT` on zero rows updated — and, if that insert loses its own race to a
+concurrent saver's, retrying the `UPDATE` once more rather than dropping the
+write. Last-write-wins semantics and the no-fencing posture are unchanged;
+see the CHANGELOG's `Breaking (pre-1.0)` section for the mechanism note.
+
 ## Isolation level and the Oracle row-lock
 
 `JdbcConversationStore#load`'s combined state-and-inbox read asks for

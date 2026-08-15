@@ -34,12 +34,11 @@ import javax.sql.DataSource;
  * <p>Each fragment {@code schema.split(";")} produces is skipped rather than executed if it is
  * nothing but comment lines: Postgres, MySQL, MariaDB, and SQL Server all tolerate a comment-only
  * {@link Statement#execute} as a harmless no-op, but Oracle's driver does not — it fails loudly
- * with {@code ORA-00900} ("invalid SQL statement"), confirmed live while verifying oracle/*.sql
- * against a real container (see the Task 2 report). Every schema resource in this module opens with
- * the house license header, whose own trailing {@code ;} is exactly the kind of split point that
- * used to leave a comment-only fragment dangling — this is the fix, not a rule that every schema
- * file must avoid semicolons in its comments (SQL Server's schema resources still must: see their
- * own header for why).
+ * with {@code ORA-00900} ("invalid SQL statement"), confirmed live running oracle/*.sql against a
+ * real Oracle container. Every schema resource in this module opens with the house license header,
+ * whose own trailing {@code ;} is exactly the kind of split point that used to leave a comment-only
+ * fragment dangling — this is the fix, not a rule that every schema file must avoid semicolons in
+ * its comments (SQL Server's schema resources still must: see their own header for why).
  */
 final class JdbcSchemaBootstrap {
 

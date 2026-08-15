@@ -1033,3 +1033,15 @@ because every signature named was public as of the previous entries above:
   transaction, so the caught error can't poison the rest of that
   transaction. Stated for honesty, not because any caller-visible contract
   changed.
+- **Postgres's `nessy_summary` upsert no longer uses `ON CONFLICT (
+  conversation_id) DO UPDATE`.** `JdbcSummaryStore#save` now tries an
+  `UPDATE` first and falls back to the same write-once `INSERT` every other
+  duplicate-tolerant write in this module already shares, retrying the
+  `UPDATE` once more if that insert loses its own race to a concurrent
+  saver's — the same mechanism-not-behavior shape as the write-once bullet
+  above, for a table `ON CONFLICT ... DO UPDATE` was never mentioned in as
+  one of this module's `jsonb`/cast sites (it carries no `jsonb` column),
+  which is exactly why the original audit missed it and this rewrite came
+  a fix round later than the others. Last-write-wins semantics and the
+  no-fencing posture (design §10) are unchanged; what changes is mechanism,
+  visible only in Postgres's own logs.
