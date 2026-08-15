@@ -402,6 +402,16 @@ class AgentBuilderTest {
       logger.setLevel(originalLevel);
     }
 
+    /**
+     * Only the WARN events — the guard's own voice. The appender hears the whole logger category,
+     * and another test's async listener can blow up on its executor thread AFTER its test ends,
+     * landing an unrelated ERROR here mid-capture (the flake CI caught on 2026-08-15). Filtering to
+     * WARN keeps every assertion about exactly the guard, immune to cross-test log bleed.
+     */
+    private java.util.List<ILoggingEvent> warnings() {
+      return appender.list.stream().filter(e -> e.getLevel() == Level.WARN).toList();
+    }
+
     @Test
     void memory_defaulted_with_an_explicitly_configured_store_warns_about_the_downgrade() {
       FakeProvider provider = new FakeProvider("hi");
@@ -414,8 +424,8 @@ class AgentBuilderTest {
           .model("fake-model")
           .build();
 
-      assertThat(appender.list).hasSize(1);
-      ILoggingEvent event = appender.list.getFirst();
+      assertThat(warnings()).hasSize(1);
+      ILoggingEvent event = warnings().getFirst();
       assertThat(event.getLevel()).isEqualTo(Level.WARN);
       assertThat(event.getFormattedMessage())
           .contains("memory")
@@ -436,7 +446,7 @@ class AgentBuilderTest {
           .memory(new TranscriptMemory(Transcript.inMemory()))
           .build();
 
-      assertThat(appender.list).isEmpty();
+      assertThat(warnings()).isEmpty();
     }
 
     @Test
@@ -445,7 +455,7 @@ class AgentBuilderTest {
 
       Nessy.harness(provider).build().agent().name("scribe").model("fake-model").build();
 
-      assertThat(appender.list).isEmpty();
+      assertThat(warnings()).isEmpty();
     }
 
     @Test
@@ -460,7 +470,7 @@ class AgentBuilderTest {
           .memory(new TranscriptMemory(Transcript.inMemory()))
           .build();
 
-      assertThat(appender.list).isEmpty();
+      assertThat(warnings()).isEmpty();
     }
   }
 
@@ -487,6 +497,16 @@ class AgentBuilderTest {
       logger.setLevel(originalLevel);
     }
 
+    /**
+     * Only the WARN events — the guard's own voice. The appender hears the whole logger category,
+     * and another test's async listener can blow up on its executor thread AFTER its test ends,
+     * landing an unrelated ERROR here mid-capture (the flake CI caught on 2026-08-15). Filtering to
+     * WARN keeps every assertion about exactly the guard, immune to cross-test log bleed.
+     */
+    private java.util.List<ILoggingEvent> warnings() {
+      return appender.list.stream().filter(e -> e.getLevel() == Level.WARN).toList();
+    }
+
     @Test
     void every_grant_using_the_canonical_allow_singleton_stays_silent_with_no_approver() {
       FakeProvider provider = new FakeProvider("hi");
@@ -500,7 +520,7 @@ class AgentBuilderTest {
           .tools(grant)
           .build();
 
-      assertThat(appender.list).isEmpty();
+      assertThat(warnings()).isEmpty();
     }
 
     @Test
@@ -509,7 +529,7 @@ class AgentBuilderTest {
 
       Nessy.harness(provider).build().agent().name("scribe").model("fake-model").build();
 
-      assertThat(appender.list).isEmpty();
+      assertThat(warnings()).isEmpty();
     }
 
     @Test
@@ -525,8 +545,8 @@ class AgentBuilderTest {
           .tools(grant)
           .build();
 
-      assertThat(appender.list).hasSize(1);
-      assertThat(appender.list.getFirst().getLevel()).isEqualTo(Level.WARN);
+      assertThat(warnings()).hasSize(1);
+      assertThat(warnings().getFirst().getLevel()).isEqualTo(Level.WARN);
     }
 
     @Test
@@ -550,7 +570,7 @@ class AgentBuilderTest {
           .approver(approver)
           .build();
 
-      assertThat(appender.list).isEmpty();
+      assertThat(warnings()).isEmpty();
     }
   }
 
