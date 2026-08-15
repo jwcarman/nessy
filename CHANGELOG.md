@@ -749,6 +749,57 @@ sequence of renames and interim shapes that produced it.
   entries survive resolution, and a settled token drains quietly rather
   than throwing — and its message prints `token.value()` rather than the
   record's own `toString()`.
+- **`nessy-transcript-cassandra` — a second durable `Transcript`, and the
+  polyglot proof.** `CassandraTranscript` (`CqlSession` in place of
+  `DataSource`, `nessy-store-jdbc`'s sibling): one row per message in
+  `nessy_transcript`, partitioned by conversation and clustered by an
+  append-only `version`, bootstrapped idempotently by
+  `CassandraTranscript.create(CqlSession, ObjectMapper)`. Cassandra has no
+  row lock and no sequence, so `append` compare-and-inserts in a loop
+  instead of `JdbcTranscript`'s `SELECT ... FOR UPDATE`: read the
+  partition's last row at `SERIAL`, absorb an at-least-once re-telling that
+  repeats the same message (the no-stutter rule, held exactly as every
+  other `Transcript`), else `INSERT ... IF NOT EXISTS` at the next
+  zero-based version; a lost race re-reads at `SERIAL` and re-evaluates the
+  stutter rule against the winner, the same serialization the row lock
+  gives the JDBC sibling for free. A writer that keeps losing gives up
+  after a bounded number of attempts with an `IllegalStateException`
+  naming the contention. `StateCodec`'s message-codec surface is
+  duplicated from `nessy-store-jdbc` rather than depended on — two stores
+  agreeing on a wire format by specification, not by shared runtime
+  dependency. Proven by `nessy-core`'s `TranscriptContract` test-jar suite
+  and a concurrency test (parallel appenders, Awaitility, no sleeps —
+  strictly monotonic versions, no duplicates, no lost messages, the
+  no-stutter rule held under contention) against real Cassandra via
+  Testcontainers, tagged `container` like the JDBC module's own.
+- **`CassandraTranscriptAutoConfiguration` — arbitration by the rule
+  already in place.** New in `nessy-autoconfigure`, gated on
+  `CassandraTranscript`/`CqlSession` on the classpath, a `CqlSession` bean
+  present, and `nessy.cassandra.enabled` (default `true`); ordered `after
+  = CassandraAutoConfiguration.class` (so its `@ConditionalOnBean
+  (CqlSession.class)` check runs only once Boot's own Cassandra
+  auto-configuration has had a chance to publish one) and `before =
+  JdbcPersistenceAutoConfiguration.class`, so its `Transcript` bean always
+  lands first and the JDBC auto-configuration's own
+  `@ConditionalOnMissingBean` `Transcript` bean method backs off by the
+  rule it already lives by — no edit to the JDBC auto-configuration was
+  needed. The JDBC `Memory` bean composes over whichever `Transcript` won,
+  so `ConversationStore` and `Parks` stay on Postgres unchanged; only the
+  transcript itself moves. `CqlSession` arrives entirely from Boot's own
+  Cassandra auto-configuration — compose-detected `cassandra` image,
+  Testcontainers `@ServiceConnection`, or plain `spring.cassandra.*`
+  properties — this configuration adds no session configuration of its
+  own, mirroring `JdbcPersistenceAutoConfiguration`'s relationship to
+  `DataSource`.
+- **The polyglot claim, proven.** The store rework's three front doors
+  (`ConversationStore`, `Parks`, `Transcript`) are genuinely separable
+  stores, not a package deal — an autoconfigure context test now proves it
+  directly: a `DataSource` and a `CqlSession` both present yields the JDBC
+  `ConversationStore` and `Parks`, a `CassandraTranscript`, and one `Memory`
+  composed over it, all in a single Spring context. No new example module
+  — the proof lives in the module's own container tests and this
+  autoconfigure test; see `nessy-transcript-cassandra`'s README for the
+  wiring an application adds.
 
 ### Breaking (pre-1.0)
 

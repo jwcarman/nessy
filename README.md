@@ -187,6 +187,12 @@ actually needs:
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-store-jdbc</artifactId>
   </dependency>
+
+  <!-- Optional: a Cassandra-backed Transcript instead of the JDBC one above (polyglot). -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-transcript-cassandra</artifactId>
+  </dependency>
 </dependencies>
 ```
 
@@ -736,6 +742,12 @@ excluded from the default build the same way `live` tests are — `./mvnw
 verify` needs no Docker daemon. `./mvnw test -Dnessy.excludedGroups=live`
 runs them (needs a Docker daemon); clearing the exclusion entirely
 (`-Dnessy.excludedGroups=`) runs both `container` and `live`.
+
+The three doors are separable stores, not a package deal: an application can
+keep its conversation control block and parks on Postgres while its
+transcript — the naturally append-only, potentially enormous message log —
+lives on Cassandra instead, via `nessy-transcript-cassandra` (see that
+module's README).
 
 ## Testing
 
