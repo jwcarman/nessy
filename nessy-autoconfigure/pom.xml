@@ -82,15 +82,6 @@
       <version>${project.version}</version>
       <optional>true</optional>
     </dependency>
-    <!-- Optional, mirroring nessy-store-jdbc above: CqlSession itself comes along transitively
-         (nessy-transcript-cassandra's own compile-scope java-driver-core dependency), no separate
-         driver coordinate declared here. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-transcript-cassandra</artifactId>
-      <version>${project.version}</version>
-      <optional>true</optional>
-    </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-webmvc</artifactId>
@@ -102,16 +93,6 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-jdbc</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <!-- Compile-time only, needed to name CassandraAutoConfiguration in
-         CassandraTranscriptAutoConfiguration's ordering annotation; consumers still activate
-         Cassandra persistence by bringing their own CqlSession (Boot's own Cassandra
-         auto-configuration, service connections included, or a hand-built session), exactly as
-         before. -->
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-cassandra</artifactId>
       <optional>true</optional>
     </dependency>
     <!-- Carries ContextSnapshotFactory: TurnRunner's virtual thread restores the calling thread's
@@ -166,19 +147,6 @@
     <dependency>
       <groupId>org.awaitility</groupId>
       <artifactId>awaitility</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <!-- The polyglot-pin context test is the one test in this module that genuinely needs a live
-         CqlSession (CassandraTranscript.create bootstraps real schema DDL); version managed by the
-         testcontainers-bom import above, mirroring nessy-transcript-cassandra's own pom. -->
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>cassandra</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

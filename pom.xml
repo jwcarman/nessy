@@ -61,7 +61,6 @@
     <module>nessy-model-openai</module>
     <module>nessy-model-env</module>
     <module>nessy-store-jdbc</module>
-    <module>nessy-transcript-cassandra</module>
     <module>nessy-tool-mcp</module>
     <module>nessy-autoconfigure</module>
     <module>nessy-spring-boot-starter</module>
@@ -102,8 +101,8 @@
          a small deferred follow-up, not a reason to skip 2.0 forever. -->
     <testcontainers.version>1.21.4</testcontainers.version>
     <!-- Condition-based waiting for concurrency tests (S2925: no Thread.sleep in tests). Managed
-         here directly, unlike nessy-transcript-cassandra/nessy-autoconfigure, which inherit the
-         version from their own Boot BOM import — nessy-console pulls no Spring BOM at all. -->
+         here directly, unlike nessy-autoconfigure, which inherits the version from its own Boot
+         BOM import — nessy-console pulls no Spring BOM at all. -->
     <awaitility.version>4.3.0</awaitility.version>
     <postgresql.version>42.7.13</postgresql.version>
     <!-- The MCP Java SDK's 2.0.0 line splits its JSON backend into a separate artifact

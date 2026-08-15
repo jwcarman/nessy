@@ -1157,7 +1157,9 @@ below for the reasoning history that led here.
 > implementation, not a listener; the journal-as-listener posture this
 > section argued was retired when `Transcript` became first-class. The
 > `nessy-store-cassandra` mentions in this document are that retired
-> hypothesis, kept as reasoning history.
+> hypothesis, kept as reasoning history. The `nessy-transcript-cassandra`
+> module was subsequently withdrawn pre-release as premature; its code is
+> archived on branch `cassandra-transcript-archive`.
 
 **`TranscriptStore` (spi.conversation) — the append-only journal (historical; deleted by §17).**
 

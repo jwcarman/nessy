@@ -1,8 +1,10 @@
 # The Cassandra Transcript — the log meets the log-structured store
 
 **Date:** 2026-08-15
-**Status:** APPROVED — 2026-08-15 (owner: "spec and plan and build the
-cassandra transcript impl"; rulings surfaced in session, not gated)
+**Status:** WITHDRAWN — 2026-08-15 (built @ cb19c8b, withdrawn pre-release as
+premature by owner ruling; code archived on branch
+cassandra-transcript-archive; the design remains the reference if a
+transcript-scale store is ever demanded)
 
 ---
 

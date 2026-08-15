@@ -200,12 +200,6 @@ actually needs:
     <artifactId>nessy-store-jdbc</artifactId>
   </dependency>
 
-  <!-- Optional: a Cassandra-backed Transcript instead of the JDBC one above (polyglot). -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-transcript-cassandra</artifactId>
-  </dependency>
-
   <!-- Optional: wrap an MCP server's tools as nessy Tools. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
@@ -615,7 +609,6 @@ exotic rides `fromEnv()`'s own ambient resolution or a hand-declared bean:
 | `nessy.default-model` | (none) | harness-level default model, optional |
 | `nessy.jdbc.enabled` | `true` | JDBC wiring master switch |
 | `nessy.jdbc.bootstrap-schema` | `true` | run the idempotent DDL at startup |
-| `nessy.cassandra.enabled` | `true` | Cassandra transcript wiring master switch |
 
 See the `chat-web` example ([Examples](#examples)) for the whole stack —
 provider, persistence, harness, and the SSE bridge — in one Spring Boot app
@@ -765,12 +758,6 @@ excluded from the default build the same way `live` tests are — `./mvnw
 verify` needs no Docker daemon. `./mvnw test -Dnessy.excludedGroups=live`
 runs them (needs a Docker daemon); clearing the exclusion entirely
 (`-Dnessy.excludedGroups=`) runs both `container` and `live`.
-
-The three doors are separable stores, not a package deal: an application can
-keep its conversation control block and parks on Postgres while its
-transcript — the naturally append-only, potentially enormous message log —
-lives on Cassandra instead, via `nessy-transcript-cassandra` (see that
-module's README).
 
 ## Testing
 
