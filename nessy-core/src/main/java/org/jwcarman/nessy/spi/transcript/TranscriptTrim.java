@@ -22,9 +22,9 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 
 /**
  * The one open-tail trim every transcript-backed {@link org.jwcarman.nessy.spi.memory.Memory}
- * border needs, shared so {@link org.jwcarman.nessy.spi.memory.TranscriptMemory} and {@link
- * org.jwcarman.nessy.spi.memory.SummarizingMemory} apply exactly the same rule rather than two
- * copies drifting apart. Public because custom {@code ContextHydrator}s must discharge the
+ * border needs, shared so {@link org.jwcarman.nessy.spi.memory.ContextHydrator#full()} and {@link
+ * org.jwcarman.nessy.spi.memory.ContextHydrator#summarizing} apply exactly the same rule rather
+ * than two copies drifting apart. Public because custom {@code ContextHydrator}s must discharge the
  * open-tail border duty from outside this package (spec §2.1).
  */
 public final class TranscriptTrim {

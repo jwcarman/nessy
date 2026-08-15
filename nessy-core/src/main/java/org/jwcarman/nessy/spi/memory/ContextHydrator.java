@@ -39,9 +39,7 @@ public interface ContextHydrator {
   /** Produces the initial context for {@code id} from {@code transcript}. */
   Context hydrate(ConversationId id, Transcript transcript);
 
-  /**
-   * The floor: the whole telling, open-tail-trimmed — {@link TranscriptMemory}'s recall, extracted.
-   */
+  /** The floor: the whole telling, open-tail-trimmed. */
   static ContextHydrator full() {
     return (id, transcript) ->
         Context.of(
@@ -49,7 +47,7 @@ public interface ContextHydrator {
                 transcript.all(id).stream().map(Transcript.Entry::message).toList()));
   }
 
-  /** {@link SummarizingMemory}'s recall, extracted: summary head plus tail-since-watermark. */
+  /** {@link SummarizingHydrator}: summary head plus tail-since-watermark. */
   static ContextHydrator summarizing(
       SummaryStore summaries,
       ModelProvider provider,

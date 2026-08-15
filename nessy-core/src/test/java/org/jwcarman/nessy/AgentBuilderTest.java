@@ -54,7 +54,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
-import org.jwcarman.nessy.spi.memory.TranscriptMemory;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -443,7 +443,7 @@ class AgentBuilderTest {
           .agent()
           .name("scribe")
           .model("fake-model")
-          .memory(new TranscriptMemory(Transcript.inMemory()))
+          .memory(Memory.pipeline(Transcript.inMemory()).build())
           .build();
 
       assertThat(warnings()).isEmpty();
@@ -467,7 +467,7 @@ class AgentBuilderTest {
           .agent()
           .name("scribe")
           .model("fake-model")
-          .memory(new TranscriptMemory(Transcript.inMemory()))
+          .memory(Memory.pipeline(Transcript.inMemory()).build())
           .build();
 
       assertThat(warnings()).isEmpty();

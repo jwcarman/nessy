@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.conversation.InboxEntry;
  *
  * <p>Every list ever handed to a caller or held in a map value is an immutable snapshot: an append
  * always builds and stores a fresh {@link List#copyOf}, never mutates a list already published —
- * the same {@code TranscriptMemory} discipline, for the same reason. {@link ConcurrentHashMap}'s
+ * the same in-memory transcript discipline, for the same reason. {@link ConcurrentHashMap}'s
  * per-key happens-before on the reference swap is all the safety a read of an immutable value ever
  * needs, with no risk of observing a torn or concurrently-modified list.
  *

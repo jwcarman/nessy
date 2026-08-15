@@ -27,7 +27,6 @@ import org.jwcarman.nessy.jdbc.JdbcTranscript;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.beans.factory.ObjectProvider;
@@ -147,16 +146,16 @@ public class JdbcPersistenceAutoConfiguration {
   }
 
   /**
-   * The durable {@link Memory} bean is {@link TranscriptMemory} over the {@link Transcript} BEAN
-   * (not a private instance), so a user-declared {@link Transcript} bean flows into memory the same
-   * way a user-declared {@link ConversationStore} flows into {@link
+   * The durable {@link Memory} bean is {@link Memory#pipeline(Transcript)} over the {@link
+   * Transcript} BEAN (not a private instance), so a user-declared {@link Transcript} bean flows
+   * into memory the same way a user-declared {@link ConversationStore} flows into {@link
    * org.jwcarman.nessy.autoconfigure.NessyAutoConfiguration}'s harness — replacing the retired
    * {@code JdbcMemory}.
    */
   @Bean
   @ConditionalOnMissingBean
   Memory memory(Transcript transcript) {
-    return new TranscriptMemory(transcript);
+    return Memory.pipeline(transcript).build();
   }
 
   private static ObjectMapper resolveMapper(ObjectProvider<ObjectMapper> mapper) {

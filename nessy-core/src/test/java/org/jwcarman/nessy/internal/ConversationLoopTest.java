@@ -63,7 +63,6 @@ import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.ModelCallExecutor;
 import org.jwcarman.nessy.spi.execute.ToolCallExecutor;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
@@ -442,12 +441,12 @@ class ConversationLoopTest {
   }
 
   /**
-   * Records every message it is told, in birth order, on top of a {@link TranscriptMemory} floor.
+   * Records every message it is told, in birth order, on top of a pipeline {@link Memory} floor.
    */
   private static final class RecordingMemory implements Memory {
 
     private final List<String> journal;
-    private final Memory delegate = new TranscriptMemory(Transcript.inMemory());
+    private final Memory delegate = Memory.pipeline(Transcript.inMemory()).build();
     private final List<Message> remembered = new ArrayList<>();
 
     RecordingMemory(List<String> journal) {
@@ -479,7 +478,7 @@ class ConversationLoopTest {
    */
   private static final class ThrowOnNthRememberMemory implements Memory {
 
-    private final Memory delegate = new TranscriptMemory(Transcript.inMemory());
+    private final Memory delegate = Memory.pipeline(Transcript.inMemory()).build();
     private final List<Message> remembered = new ArrayList<>();
     private final int throwOnCall;
     private final RuntimeException exception;

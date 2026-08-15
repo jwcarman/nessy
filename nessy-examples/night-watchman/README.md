@@ -7,9 +7,9 @@ webhook, it's `@Scheduled` firing. Each firing wakes the watchman, who
 observes, judges, and either stays quiet or acts — and because every firing
 tells the *same* conversation, trend judgment across rounds is conversation
 state at work, not something the app tracks separately. Bounding what an
-endless conversation lets the model see is `Memory.windowed(...)`, wrapped
-around an in-memory `TranscriptMemory` — the module's second thing to
-dogfood, after the pattern itself.
+endless conversation lets the model see is a `Memory.pipeline(...)`
+`keepRecent` stage, over an in-memory `Transcript` — the module's second
+thing to dogfood, after the pattern itself.
 
 ## The story
 
@@ -35,9 +35,9 @@ ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/night-watchman spring-boot:run
 No Docker, no database, nothing else to stand up — just the log, which is the
 UI. Watch it: quiet rounds at first ("all quiet" reports), then a trend, then
 an alarm. Ctrl-C ends the watch — the conversation honestly dies with the JVM.
-`TranscriptMemory` over an in-memory `Transcript` (which `Memory.windowed`
-delegates to) is in-memory by design, the same way the framework's default is;
-nothing about this example asks for durability.
+The pipeline `Memory` over an in-memory `Transcript` is in-memory by design,
+the same way the framework's default is; nothing about this example asks for
+durability.
 
 ## The two properties
 
@@ -59,17 +59,17 @@ scheduled firing.
 ## How the bound works
 
 Bounding recall used to mean a bespoke `Memory` implementation; now it's one
-line, wired straight into the agent bean:
+stage, wired straight into the agent bean:
 
 ```java
-.memory(Memory.windowed(new TranscriptMemory(Transcript.inMemory()), window))
+.memory(Memory.pipeline(Transcript.inMemory()).keepRecent(window).build())
 ```
 
-`Memory.windowed(delegate, n)` is a static factory in `spi.memory`: retention
-is whole — `remember` delegates straight through to `TranscriptMemory`, so
-nothing is ever discarded from the underlying store. `recall` is where the
-bound lives: it clips the delegate's recall via `Context#keepRecent(n)`, which
-keeps AT LEAST the last `n` messages, cutting only at a pair-safe boundary (a
+`Memory.pipeline(transcript)` builds a `PipelineMemory`: retention is whole —
+`remember` always appends to `transcript`, so nothing is ever discarded from
+the underlying store. `recall` is where the bound lives: the `keepRecent(n)`
+stage clips the hydrated context via `Context#keepRecent(n)`, which keeps AT
+LEAST the last `n` messages, cutting only at a pair-safe boundary (a
 tool-use/tool-result pair is never split) — the tail can run one round longer
 when the boundary must walk past a tool exchange, and when no pair-safe
 boundary exists the context comes back whole. So the watchman's horizon is
