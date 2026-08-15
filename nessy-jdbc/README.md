@@ -1,7 +1,8 @@
-# Nessy Store JDBC
+# Nessy JDBC
 
-A durable `ConversationStore`/`Parks`/`Transcript`/`SummaryStore` quartet over
-a plain `javax.sql.DataSource` — five dialects, one code path per concern.
+A durable `ConversationStore`/`Parks`/`Transcript`/`SummaryStore`/`PlanStore`
+quintet over a plain `javax.sql.DataSource` — five dialects, one code path
+per concern.
 See the root README's [Durable, autonomous agents](../README.md#durable-autonomous-agents)
 section for the wiring story (`JdbcConversationStore.create`, the Spring Boot
 autoconfiguration) and [Supported databases](../README.md#supported-databases)
@@ -34,6 +35,14 @@ column types this module actually needs (`jsonb` for structured payloads,
 | structured payload (`jsonb`) | `jsonb` | `json` | `json` (a `longtext` column with an automatic `json_valid()` CHECK — not a distinct binary type) | `nvarchar(max)` (no native JSON type in this release) | `clob` |
 | short identifier/text | `text` | `varchar(255)` | `varchar(255)` | `nvarchar(255)` | `varchar2(255)` |
 | version counter | `bigint` | `bigint` | `bigint` | `bigint` | `number(19)` |
+| plan task title (`nessy_plan.title`) | `varchar(1024)` | `varchar(1024)` | `varchar(1024)` | `nvarchar(1024)` | `varchar2(1024)` |
+
+`nessy_plan` (`JdbcPlanStore`, one row per task: `conversation_id`, `ordinal`,
+`title`, `status`) needed no Postgres-specific type of its own — no `jsonb`,
+no cast — so its three runtime statements (`DELETE`/`INSERT`/`SELECT`) are
+dialect-identical constants living in `JdbcPlanStore` itself rather than in
+`JdbcStatements`; only its bootstrap schema resource varies per dialect, the
+same as every other store here.
 
 `IF NOT EXISTS` reality differs by vendor and is guarded accordingly: MySQL
 lacks `CREATE INDEX IF NOT EXISTS` entirely and gets an
@@ -103,7 +112,7 @@ detail, including the SQL text, lives in `JdbcStatements`' own javadoc.
 entirely, `-Dnessy.excludedGroups=`) adds the `container`-tagged suites:
 Postgres's own test classes plus one class per vendor
 (`MySqlStoreTckTest`, `MariaDbStoreTckTest`, `SqlServerStoreTckTest`,
-`OracleStoreTckTest`), each running all four `nessy-tck` contracts
+`OracleStoreTckTest`), each running all five `nessy-tck` contracts
 against a real Testcontainers instance for that vendor plus a
 dialect-resolution pin. The four vendor classes carry an additional
 `@Tag("vendor")` alongside `@Tag("container")`: CI (Docker-equipped, and

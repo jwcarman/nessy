@@ -33,14 +33,11 @@ import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
 import org.jwcarman.nessy.spi.memory.SummaryStore.Summary;
-import org.jwcarman.nessy.spi.plan.PlanStore;
-import org.jwcarman.nessy.tck.PlanStoreContract;
 import org.jwcarman.nessy.tck.SummaryStoreContract;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -86,32 +83,6 @@ class JdbcSummaryStoreTest extends SummaryStoreContract {
       statement.execute("TRUNCATE nessy_summary");
     } catch (SQLException e) {
       throw new IllegalStateException("failed to truncate nessy_summary between tests", e);
-    }
-  }
-
-  @Nested
-  class Plan_store_contract extends PlanStoreContract {
-
-    private PlanStore plans;
-
-    @BeforeEach
-    void a_fresh_store_over_an_empty_table() {
-      plans = JdbcPlanStore.create(dataSource);
-      truncatePlanTable();
-    }
-
-    @Override
-    protected PlanStore plans() {
-      return plans;
-    }
-
-    private void truncatePlanTable() {
-      try (Connection connection = dataSource.getConnection();
-          Statement statement = connection.createStatement()) {
-        statement.execute("TRUNCATE nessy_plan");
-      } catch (SQLException e) {
-        throw new IllegalStateException("failed to truncate nessy_plan between tests", e);
-      }
     }
   }
 

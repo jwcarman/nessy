@@ -154,6 +154,31 @@ class PlanToolsTest {
     }
 
     @Test
+    void describe_renders_the_full_checklist_with_wrapper_and_framing_sentence() {
+      PlanStore store = PlanStore.inMemory();
+      Tool<PlanTools.UpdatePlan> tool = PlanTools.updatePlan(store);
+      PlanTools.UpdatePlan input =
+          new PlanTools.UpdatePlan(
+              List.of(
+                  new PlanTools.PlannedTask("Fetch the order history", Plan.Status.PENDING),
+                  new PlanTools.PlannedTask("Summarize the disputes", Plan.Status.IN_PROGRESS),
+                  new PlanTools.PlannedTask("Draft the refund email", Plan.Status.DONE)));
+
+      String described = tool.describe(input);
+
+      assertThat(described)
+          .isEqualTo(
+              """
+              <current-plan>
+              - [ ] Fetch the order history
+              - [>] Summarize the disputes
+              - [x] Draft the refund email
+              </current-plan>
+              This is your task list, maintained by you through the update_plan tool. It is \
+              ambient state, not a message from the user.""");
+    }
+
+    @Test
     void the_confirmation_counts_the_statuses() {
       PlanStore store = PlanStore.inMemory();
       Tool<PlanTools.UpdatePlan> tool = PlanTools.updatePlan(store);

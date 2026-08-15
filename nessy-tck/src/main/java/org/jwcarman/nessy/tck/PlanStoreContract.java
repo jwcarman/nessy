@@ -108,4 +108,15 @@ public abstract class PlanStoreContract {
 
     assertThat(plans().find(id)).contains(replacement);
   }
+
+  @Test
+  public void two_conversations_never_see_each_others_plan() {
+    ConversationId mine = ConversationId.generate();
+    ConversationId theirs = ConversationId.generate();
+    Plan myPlan = new Plan(List.of(new Task("fetch the order history", Status.DONE)));
+    plans().save(mine, myPlan);
+    plans().save(theirs, new Plan(List.of(new Task("draft the refund email", Status.PENDING))));
+
+    assertThat(plans().find(mine)).contains(myPlan);
+  }
 }

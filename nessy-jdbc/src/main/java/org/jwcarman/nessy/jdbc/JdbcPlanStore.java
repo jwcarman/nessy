@@ -130,10 +130,7 @@ public final class JdbcPlanStore implements PlanStore {
             insertAll(connection, id, plan);
             connection.commit();
             return null;
-          } catch (SQLException e) {
-            rollbackQuietly(connection, e);
-            throw e;
-          } catch (RuntimeException e) {
+          } catch (SQLException | RuntimeException e) {
             rollbackQuietly(connection, e);
             throw e;
           } finally {

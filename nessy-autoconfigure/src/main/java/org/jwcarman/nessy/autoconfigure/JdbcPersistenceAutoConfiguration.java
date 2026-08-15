@@ -59,7 +59,7 @@ import org.springframework.context.annotation.Bean;
  * <p>An {@link ObjectMapper} bean is an {@link ObjectProvider}, not a hard constructor parameter:
  * unlike {@link NessyAutoConfiguration}, which only ever runs in a webmvc app where Boot's own
  * Jackson autoconfiguration has already put an {@code ObjectMapper} in context, this configuration
- * has no such guarantee — a non-web Boot application with {@code store-jdbc} and a {@link
+ * has no such guarantee — a non-web Boot application with {@code nessy-jdbc} and a {@link
  * DataSource} but no Jackson autoconfiguration would otherwise fail with {@code
  * NoSuchBeanDefinitionException} the moment any door bean method resolved its parameter. The
  * fallback, a bare {@code new ObjectMapper()}, is safe precisely because {@code JdbcPersistence}'s

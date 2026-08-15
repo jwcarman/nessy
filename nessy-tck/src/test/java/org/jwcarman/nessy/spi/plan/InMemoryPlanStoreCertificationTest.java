@@ -17,7 +17,7 @@ package org.jwcarman.nessy.spi.plan;
 
 import org.jwcarman.nessy.tck.PlanStoreContract;
 
-class InMemoryPlanStoreTest extends PlanStoreContract {
+class InMemoryPlanStoreCertificationTest extends PlanStoreContract {
 
   private final PlanStore plans = PlanStore.inMemory();
 

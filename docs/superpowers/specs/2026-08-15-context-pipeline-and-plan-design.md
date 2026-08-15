@@ -367,8 +367,9 @@ byte-for-byte in spirit.)
   landing on the same rows. Batch results are checked for `EXECUTE_FAILED` (the
   `checkBatchResults` lesson).
 - `find` = `SELECT ... ORDER BY ordinal`; zero rows means `Optional.empty()`.
-- All SQL is complete per-dialect constants in `JdbcStatements` — no fragment splicing, no
-  dynamic IN-lists (the S2077/S2695 lesson).
+- The store's three statements are dialect-identical constants living in `JdbcPlanStore` itself
+  — a dialect-invariant statement set has no business in the per-dialect `JdbcStatements`
+  registry. The no-splicing, no-dynamic-IN-lists rule (the S2077/S2695 lesson) is unchanged.
 - `status` round-trips through `Plan.Status.name()`/`valueOf`.
 
 **TCK:** `PlanStoreContract` joins the kit: save/find round-trip, wholesale replacement
@@ -411,9 +412,9 @@ README's changelog section if one exists.
 
 ## 6. Autoconfiguration
 
-Minimal, additive: where the autoconfigure module wires `JdbcSummaryStore` today, it gains the
-parallel `JdbcPlanStore` bean (DataSource present → bean present), and `PlanStore.inMemory()`
-as the fallback default. Granting `update_plan` and adding the transformer remain app-code
+Minimal, additive: the autoconfigure module gains the parallel `JdbcPlanStore` bean (DataSource
+present → bean present); no fallback bean, matching every other door. Granting `update_plan`
+and adding the transformer remain app-code
 decisions — the grant principle is not softened by autoconfiguration. The queued starter-tidy
 generation (subpackages, MCP client properties) stays a separate generation; this design only
 adds the one bean pair and follows whatever package layout exists when it lands.

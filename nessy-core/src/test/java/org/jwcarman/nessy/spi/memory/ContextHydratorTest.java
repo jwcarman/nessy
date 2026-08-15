@@ -100,6 +100,8 @@ class ContextHydratorTest {
       Context viaHydrator = hydrator.hydrate(id, sameShapeTranscript);
 
       assertThat(viaHydrator.messages()).isEqualTo(viaMemory.messages());
+      assertThat(viaHydrator.messages())
+          .containsExactly(Message.user("folded so far"), Message.user("four"));
     }
 
     @Test

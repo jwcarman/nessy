@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.jdbc;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.io.PrintWriter;
@@ -24,31 +23,26 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
-import java.util.List;
-import java.util.Optional;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.spi.plan.Plan;
-import org.jwcarman.nessy.spi.plan.Plan.Status;
-import org.jwcarman.nessy.spi.plan.Plan.Task;
 import org.jwcarman.nessy.spi.plan.PlanStore;
+import org.jwcarman.nessy.tck.PlanStoreContract;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * {@link JdbcPlanStore} against a real Postgres: round-trip, wholesale replacement, ordering, and
- * bootstrap idempotency. Requires Docker; tagged {@code container} so the offline default build
+ * The TCK run against a real Postgres, plus a JDBC-specific pin the in-memory store has no opinion
+ * on: bootstrap idempotency. Requires Docker; tagged {@code container} so the offline default build
  * never needs it — the same posture {@link JdbcSummaryStoreTest} takes.
  */
 @Testcontainers
 @Tag("container")
-class JdbcPlanStoreTest {
+class JdbcPlanStoreTest extends PlanStoreContract {
 
   @Container
   static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
@@ -70,6 +64,11 @@ class JdbcPlanStoreTest {
     truncatePlanTable();
   }
 
+  @Override
+  protected PlanStore plans() {
+    return plans;
+  }
+
   private void truncatePlanTable() {
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement()) {
@@ -77,70 +76,6 @@ class JdbcPlanStoreTest {
     } catch (SQLException e) {
       throw new IllegalStateException("failed to truncate nessy_plan between tests", e);
     }
-  }
-
-  @Test
-  void a_saved_plan_round_trips() {
-    ConversationId id = ConversationId.generate();
-    Plan plan =
-        new Plan(
-            List.of(
-                new Task("fetch the order history", Status.DONE),
-                new Task("summarize the disputes", Status.IN_PROGRESS)));
-
-    plans.save(id, plan);
-
-    assertThat(plans.find(id)).contains(plan);
-  }
-
-  @Test
-  void a_wholesale_replacement_removes_departed_tasks() {
-    ConversationId id = ConversationId.generate();
-    plans.save(
-        id,
-        new Plan(
-            List.of(
-                new Task("fetch the order history", Status.DONE),
-                new Task("summarize the disputes", Status.IN_PROGRESS))));
-
-    Plan replacement = new Plan(List.of(new Task("draft the refund email", Status.PENDING)));
-    plans.save(id, replacement);
-
-    assertThat(plans.find(id)).contains(replacement);
-  }
-
-  @Test
-  void ordering_is_preserved_across_save_and_find() {
-    ConversationId id = ConversationId.generate();
-    Plan plan =
-        new Plan(
-            List.of(
-                new Task("first", Status.DONE),
-                new Task("second", Status.IN_PROGRESS),
-                new Task("third", Status.PENDING)));
-
-    plans.save(id, plan);
-
-    assertThat(plans.find(id)).isPresent().get().extracting(Plan::tasks).isEqualTo(plan.tasks());
-  }
-
-  @Test
-  void saving_an_empty_plan_clears_a_previously_saved_one() {
-    ConversationId id = ConversationId.generate();
-    plans.save(id, new Plan(List.of(new Task("fetch the order history", Status.DONE))));
-
-    plans.save(id, Plan.empty());
-
-    assertThat(plans.find(id)).isEmpty();
-  }
-
-  @Test
-  void a_conversation_that_never_saved_a_plan_finds_nothing() {
-    ConversationId id = ConversationId.generate();
-
-    Optional<Plan> found = plans.find(id);
-
-    assertThat(found).isEmpty();
   }
 
   @Test

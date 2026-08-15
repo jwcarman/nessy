@@ -89,6 +89,63 @@ sequence of renames and interim shapes that produced it.
   deliberately still just a declared, unconsumed setting on `ModelSettings`/
   `AgentBuilder` — the reservation for a future token-aware `Memory`
   implementation to read, not a promise this generation redeems.
+- **The context pipeline — `PipelineMemory`, named hydration, ordered
+  transform stages.** `Memory.pipeline(Transcript)` (`spi.memory`) opens a
+  `PipelineMemory.Builder`: `remember` always appends to the pipeline's own
+  `Transcript` (the transcript's own no-stutter rule stays the idempotency
+  story), and `recall` runs exactly two seams in order — one named
+  `ContextHydrator` producing the initial context from durable history,
+  then an ordered list of `ContextTransformer` stages reshaping it before
+  it goes out the door. The degenerate floor (`Memory.pipeline(transcript).build()`,
+  no hydrator named, no stages) hydrates with `ContextHydrator#full()` and
+  transforms nothing — the whole history every time, behaviorally identical
+  to the existing `TranscriptMemory`; every addition to the chain from there
+  is strictly opt-in. `ContextHydrator#summarizing(...)` and the builder's
+  `summarizing(...)` sugar extract `SummarizingMemory`'s own recall
+  unchanged, so the tail-threshold/watermark/pair-safe-cut fold story
+  (fixed threshold, blank-summary no-advance) is shared code, not a second
+  implementation. `Builder#keepRecent(int)` registers the pair-safe trim
+  (`Context#keepRecent`) as a required stage at its call position; `Builder
+  #transform(ContextTransformer)` appends any other required stage. Every
+  stage is required by construction — a stage that throws propagates out of
+  `recall` rather than being papered over, so the turn fails and the durable
+  machinery retries it later rather than handing the model a context no
+  stage blessed. `ContextTransformer.optional(ContextTransformer)` is the
+  one way to opt a stage back out of that fail-closed default: it catches
+  any `RuntimeException` the delegate throws, logs one `WARN` line naming
+  the delegate and the conversation id, and returns the input context
+  unchanged, as if the stage were absent — a partial output from a failed
+  stage is never used, the delegate either finishes cleanly or its output is
+  discarded whole. Stage output is synthesized at recall and never
+  remembered: not told to the transcript, not folded into any summary — one
+  fresh pass per model call, no accumulation, no drift.
+- **The plan facility — `spi.plan`, the `update_plan` tool, checklist
+  injection.** `PlanStore` (`spi.plan`, `find`/`save`, plus `PlanStore
+  .inMemory()`) durably keeps one `Plan` per conversation — an ordered list
+  of `Plan.Task(String title, Plan.Status status)`, `Status` one of
+  `PENDING`/`IN_PROGRESS`/`DONE`. `PlanTools.updatePlan(PlanStore)` is the
+  tool the model calls to maintain its own task list: wholesale replacement
+  is the chosen shape, not CRUD, because a durable at-least-once redrive of
+  the same tool call then stores the identical list — idempotent by
+  construction, no task-id bookkeeping, no merge logic. A blank or null task
+  title never throws; it surfaces as a failed `ToolResult` so the model can
+  correct itself in-band. `PlanTools.transformer(PlanStore)` is the
+  context-pipeline `ContextTransformer` counterpart: it recalls the current
+  plan and renders it as a `<current-plan>`-wrapped checklist (`- [ ]`
+  pending, `- [>]` in progress, `- [x]` done) appended as ambient state at
+  the tail of context, framed with a sentence telling the model the list is
+  its own, maintained through `update_plan` — an absent or empty plan leaves
+  the context untouched, the "if applicable" rule, so this stage never
+  injects an empty block. The tool's own `describe(input)` renders the same
+  checklist body a preview needs, straight from the wire shape, with no
+  `Plan` construction (and its validation) required just to preview one.
+- **`Transcript` moves to its own package.** `Transcript` and
+  `TranscriptTrim` now live in `spi.transcript`, not `spi.memory` — the
+  context pipeline gave the transcript enough independent callers
+  (`ContextHydrator`, `PlanStore`'s neighbors, `nessy-tck`'s
+  `TranscriptContract`) that keeping it filed under `Memory`'s package
+  no longer described its own shape. `InMemoryTranscriptTest` moves with
+  it, to `org.jwcarman.nessy.spi.transcript` in `nessy-tck`.
 - **`TurnEvent` + `TurnObserver` — live narration, not record.** `TurnEvent`
   (`api.turn`, sealed) is the roster a sitting consumer needs to tell one
   turn's story as it happens, without any of it ever folding into
@@ -876,19 +933,42 @@ sequence of renames and interim shapes that produced it.
   `nessy-jdbc/README.md` for the full type-mapping table and the
   Oracle-specific isolation-level (`ORA-17030`) and row-lock (`ORA-02014`)
   fixes the live container matrix caught.
-- **`nessy-tck` — the four store contracts become a published kit.**
-  `ConversationStoreContract`, `ParksContract`, `TranscriptContract`, and
-  `SummaryStoreContract` (`org.jwcarman.nessy.tck`) move to a new
-  main-scope module any implementer can depend on and extend directly,
-  supplying only the one factory method each contract asks for — the
-  certification story a test-jar classifier never quite delivered. The
+- **`JdbcPlanStore` — the plan facility's durable door, all five
+  dialects.** `nessy_plan` (one row per task: `conversation_id`, `ordinal`,
+  `title`, `status`) and `JdbcPlanStore` round out the store roster across
+  Postgres/MySQL/MariaDB/SQL Server/Oracle, bootstrapped the same
+  `create(DataSource)`/`create(DataSource, JdbcDialect)` way every other
+  store here is. `save` replaces a conversation's whole plan in one
+  transaction — delete every existing row, batched-insert the new rows in
+  ordinal order, commit together — needing neither fencing nor retry: the
+  sole writer is the `update_plan` tool executing inside the agent loop,
+  one turn at a time per conversation, so an at-least-once replay of that
+  same tool call redoes the identical delete-then-insert and lands on the
+  identical rows. Unlike every other JDBC store here, `nessy_plan` needed no
+  Postgres-specific column type of its own — no `jsonb`, no cast — so its
+  three runtime statements are dialect-identical constants living in
+  `JdbcPlanStore` itself rather than in the per-dialect `JdbcStatements`
+  registry; only its bootstrap schema resource varies per dialect.
+  `nessy-autoconfigure` gains the matching `PlanStore` bean, wired the same
+  DataSource-present-means-bean-present way as every other door, no
+  in-memory fallback.
+- **`nessy-tck` — the store contracts become a published kit.**
+  `ConversationStoreContract`, `ParksContract`, `TranscriptContract`,
+  `SummaryStoreContract`, and `PlanStoreContract` (`org.jwcarman.nessy.tck`,
+  five in all — `PlanStoreContract` joined the original four once the plan
+  facility landed, see below) move to a new main-scope module any
+  implementer can depend on and extend directly, supplying only the one
+  factory method each contract asks for — the certification story a
+  test-jar classifier never quite delivered. Every contract's `@Test`
+  methods are `public`, not package-private, so a subclass that nests one
+  inside a different package still discovers the inherited tests. The
   module's own in-memory implementations (`InMemoryConversationStoreTest`
-  and three siblings) serve as the worked example. See
-  `nessy-tck/README.md`.
+  and four siblings, `InMemoryPlanStoreCertificationTest` among them) serve
+  as the worked example. See `nessy-tck/README.md`.
 - **The vendor matrix: the TCK run five times.** `nessy-jdbc` gains
   one container-tagged test class per new vendor (`MySqlStoreTckTest`,
   `MariaDbStoreTckTest`, `SqlServerStoreTckTest`, `OracleStoreTckTest`),
-  each nesting all four `nessy-tck` contracts over one shared
+  each nesting all five `nessy-tck` contracts over one shared
   Testcontainers instance for that vendor plus a dialect-resolution pin,
   alongside Postgres's own pre-existing container suite. Image versions are
   pinned and documented (`mysql:8.0`, `mariadb:11.4`,
@@ -1011,10 +1091,20 @@ because every signature named was public as of the previous entries above:
   README say what it is instead: substrate, immutable, a front door for
   *building* agents only — every field on `Harness` is final, and no
   method on the class ever writes to one.
-- **The four store contracts move from `nessy-core`'s test-jar to
+- **`nessy-store-jdbc`/`nessy-store-tck` shed the `store` they outgrew.**
+  Renamed `nessy-jdbc`/`nessy-tck`, packages moved from
+  `org.jwcarman.nessy.store.jdbc` to `org.jwcarman.nessy.jdbc`
+  correspondingly — both modules now cover more than stores alone (the
+  plan facility's `JdbcPlanStore`/`PlanStoreContract` among the reasons),
+  so the old name undersold what each module actually holds. Any existing
+  dependency coordinate and import needs the same rename; semantics are
+  unchanged.
+- **The store contracts (then four) move from `nessy-core`'s test-jar to
   `nessy-tck`, stated loud (design §8).** `ConversationStoreContract`,
   `ParksContract`, `TranscriptContract`, and `SummaryStoreContract` no longer
-  resolve from `nessy-core`'s `test-jar` classifier; any existing test
+  resolve from `nessy-core`'s `test-jar` classifier — a fifth,
+  `PlanStoreContract`, joined the kit later, once the plan facility landed
+  (see Added, above); any existing test
   extending one of them now imports from `org.jwcarman.nessy.tck` in
   the new `nessy-tck` module instead, and needs that dependency added
   (test scope is enough — see the root README's Install section). Semantics
