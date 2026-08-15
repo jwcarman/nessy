@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/nessy-mascot-512.png" alt="Nessy" width="300">
+</p>
+
 # Nessy
 
 Nessy is a durable agent harness framework for Java. It turns a model API into

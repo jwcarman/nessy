@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/nessy-hero.png" width="360" alt="Nessy — a friendly sea monster wearing a harness"/>
+  <img src="brand/mascot/nessy-mascot-512.png" alt="Nessy mascot" width="320">
 </p>
 
 # Nessy
@@ -19,12 +19,6 @@ An AI agent harness framework for Java.
 
 **[Documentation site](https://jwcarman.github.io/nessy/)** — concepts, guides,
 examples, and reference, in one place.
-
-> **What's in a name?** Look at the middle of the word *har****ness***: the name
-> was hiding inside the thing the whole time. And once your agent framework is
-> named Nessy, the mascot picks itself — a certain famously elusive resident of
-> Loch Ness, here wearing (what else?) a harness. Like her namesake, she's
-> mostly calm water on the surface with a great deal going on underneath.
 
 Nessy supplies the machinery that turns a model API into an agent — the effectful
 loop, the tool plumbing, an approval gate the model cannot route around, conversations
@@ -1066,6 +1060,14 @@ for the full script. To run it:
 ```bash
 ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/dispatcher spring-boot:run
 ```
+
+## The name
+
+> **What's in a name?** Look at the middle of the word *har****ness***: the name
+> was hiding inside the thing the whole time. And once your agent framework is
+> named Nessy, the mascot picks itself — a certain famously elusive resident of
+> Loch Ness, here wearing (what else?) a harness. Like her namesake, she's
+> mostly calm water on the surface with a great deal going on underneath.
 
 ## License
 

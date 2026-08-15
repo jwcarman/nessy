@@ -1,0 +1,90 @@
+/**
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/* Nessy brand palette & typography (brand guide v1, 2026).
+   Colors: Deep Teal #0A3644 · Nessy Teal #46A1A4 · Nessy Aqua #8CD0CD ·
+   Loch Mint #B9D5C4 · Loch Cream #EBE0C1 · Harness Leather #814F2F ·
+   Harness Brass #C99B5A */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=swap');
+
+:root {
+  --nessy-deep-teal: #0A3644;
+  --nessy-nessy-teal: #46A1A4;
+  --nessy-nessy-aqua: #8CD0CD;
+  --nessy-loch-mint: #B9D5C4;
+  --nessy-loch-cream: #EBE0C1;
+  --nessy-harness-leather: #814F2F;
+  --nessy-harness-brass: #C99B5A;
+}
+
+/* Light scheme: Deep Teal header, Nessy Teal links/accent, a warm Loch Cream
+   page tint (Deep Teal on Loch Cream clears AA at body sizes), cream-tinted
+   code surfaces. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--nessy-deep-teal);
+  --md-primary-fg-color--light: #1B4D5E;
+  --md-primary-fg-color--dark: #06242E;
+  --md-accent-fg-color: var(--nessy-nessy-teal);
+  --md-typeset-a-color: var(--nessy-nessy-teal);
+  --md-default-bg-color: #FAF6EA;
+  --md-code-bg-color: #F1E9D2;
+}
+
+/* Dark ("slate") scheme: Deep Teal surfaces throughout, Nessy Aqua
+   links/accents, Loch Cream for the reversed type sitting on the primary
+   (header) surface. */
+[data-md-color-scheme="slate"] {
+  --md-hue: 195;
+  --md-primary-fg-color: var(--nessy-deep-teal);
+  --md-primary-fg-color--light: #1B4D5E;
+  --md-primary-fg-color--dark: #06242E;
+  --md-primary-bg-color: var(--nessy-loch-cream);
+  --md-accent-fg-color: var(--nessy-nessy-aqua);
+  --md-typeset-a-color: var(--nessy-nessy-aqua);
+  --md-default-bg-color: var(--nessy-deep-teal);
+}
+
+/* Headline/wordmark face: Source Serif 4, per the brand guide's typography
+   rules (§6) — never substituted. */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-header__title {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 700;
+}
+
+/* Warning admonitions carry the Harness Leather accent. */
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+  border-color: var(--nessy-harness-leather);
+}
+
+.md-typeset .warning > .admonition-title,
+.md-typeset .warning > summary {
+  background-color: rgba(129, 79, 47, 0.1);
+}
+
+.md-typeset .warning > .admonition-title::before,
+.md-typeset .warning > summary::before {
+  background-color: var(--nessy-harness-leather);
+}
+
+/* Harness Brass: one rare, display-only emphasis — the blockquote rule,
+   never small body copy. */
+.md-typeset blockquote {
+  border-left: 0.2rem solid var(--nessy-harness-brass);
+}

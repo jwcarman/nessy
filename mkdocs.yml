@@ -15,9 +15,7 @@
 #
 
 site_name: Nessy
-site_description: >-
-  A durable agent harness framework for Java — crash-safe conversations,
-  parked waits, and replayable turns.
+site_description: An agent harness framework for Java.
 site_url: https://jwcarman.github.io/nessy/
 repo_url: https://github.com/jwcarman/nessy
 repo_name: jwcarman/nessy
@@ -32,18 +30,24 @@ exclude_docs: |
 
 theme:
   name: material
+  logo: assets/brand/nessy-mark.png
+  favicon: assets/brand/favicon.ico
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  # Nessy brand palette — defined in docs/assets/stylesheets/nessy.css
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -54,6 +58,9 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+
+extra_css:
+  - assets/stylesheets/nessy.css
 
 markdown_extensions:
   - admonition
