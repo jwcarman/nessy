@@ -191,7 +191,7 @@ public final class JdbcConversationStore implements ConversationStore {
             }
           }
 
-          drainInbox(connection, statements, id, drainedInboxIds);
+          drainInbox(connection, id, drainedInboxIds);
           return bumped;
         });
   }
@@ -246,10 +246,7 @@ public final class JdbcConversationStore implements ConversationStore {
    * took.
    */
   private void drainInbox(
-      Connection connection,
-      JdbcStatements statements,
-      ConversationId id,
-      Collection<String> drainedInboxIds)
+      Connection connection, ConversationId id, Collection<String> drainedInboxIds)
       throws SQLException {
     if (drainedInboxIds.isEmpty()) {
       return;

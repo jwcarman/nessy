@@ -280,11 +280,9 @@ class JdbcStatementsTest {
   class Inbox_drain_delete {
 
     @Test
-    void is_one_constant_statement_for_every_dialect() {
-      String expected = "DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?";
-      for (JdbcDialect dialect : JdbcDialect.values()) {
-        assertThat(JdbcStatements.INBOX_DRAIN_DELETE_SQL).isEqualTo(expected);
-      }
+    void is_one_constant_statement_shared_by_every_dialect() {
+      assertThat(JdbcStatements.INBOX_DRAIN_DELETE_SQL)
+          .isEqualTo("DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?");
     }
   }
 
