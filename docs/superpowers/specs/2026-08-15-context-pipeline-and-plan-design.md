@@ -381,7 +381,18 @@ expensive with every release:
 | `nessy-store-tck` | `nessy-tck` | Same defect, same fix: it certifies all the storage contracts, not "the store". |
 
 Packages follow the modules: `org.jwcarman.nessy.store.jdbc` → `org.jwcarman.nessy.jdbc`,
-`org.jwcarman.nessy.store.tck` → `org.jwcarman.nessy.tck`. Ripples to chase: parent POM module
+`org.jwcarman.nessy.store.tck` → `org.jwcarman.nessy.tck`.
+
+One package move rides the same breaking wave: **`Transcript` leaves `spi.memory` for its own
+`spi.transcript`** (with `Transcript.Entry`, the package-private `InMemoryTranscript`, and the
+newly-public `TranscriptTrim` — the transcript's border law, whose name already agrees). The
+transcript is a subsystem of its own that some Memory implementations reference — the design
+of record counts it among the front doors, the JDBC backend implements it as a peer of
+`ConversationStore` and `Parks`, and §2.4's ruling says Memory merely references it; living in
+`spi.memory` was an accident of who its first consumer was. `SummaryStore` stays in
+`spi.memory`: summaries exist only for the summarizing memory.
+
+Ripples to chase: parent POM module
 list, inter-module dependencies, `nessy-autoconfigure` (imports and any Sonar/source
 properties), the starter, CI workflow references, README and docs. This supersedes the old
 deferred idea of splitting per-SPI JDBC modules (`nessy-store-jdbc`/`nessy-parks-jdbc`): the
