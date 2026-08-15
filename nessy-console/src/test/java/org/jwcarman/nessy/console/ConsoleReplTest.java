@@ -16,10 +16,12 @@
 package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import java.io.BufferedReader;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -88,15 +90,18 @@ class ConsoleReplTest {
   class The_prompt {
 
     @Test
-    void is_echoed_before_every_read() {
+    void is_echoed_before_every_single_read_not_just_the_first() {
       Ansi.overrideEnabled(false);
-      Agent<String> agent = agent_saying();
-      BufferedReader reader = new BufferedReader(new StringReader("exit\n"));
+      // Three reads happen here ("hi", "hi again", "exit"), so the prompt — distinguishable from
+      // every reply and from the exit word — must appear exactly three times, not merely once.
+      Agent<String> agent = agent_saying("first reply", "second reply");
+      BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
 
-      assertThat(writer.toString()).isEqualTo("you> ");
+      int promptCount = writer.toString().split("you> ", -1).length - 1;
+      assertThat(promptCount).isEqualTo(3);
     }
   }
 
@@ -145,6 +150,56 @@ class ConsoleReplTest {
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
 
       assertThat(writer.toString()).isEqualTo("you> hello once\nyou> hello twice\nyou> ");
+    }
+  }
+
+  @Nested
+  class A_throwing_tell {
+
+    @Test
+    void stops_the_spinner_renders_a_red_line_and_the_loop_continues() {
+      // Styling enabled on purpose, unlike every other test here: the spinner is a complete no-op
+      // while disabled, and this test exists to prove tell()'s finally block actually joins a
+      // *real* spinner thread rather than a spinner that never started in the first place.
+      Ansi.overrideEnabled(true);
+      // A renderer that throws before a single TurnEvent narrates — the real-world shape of a
+      // provider/network failure or a broken output stream — is the one scenario where the
+      // spinner's own erase-on-first-event handoff never fires; only tell()'s own finally block
+      // can save it from spinning forever.
+      Harness harness =
+          Nessy.harness(ScriptedModelProvider.builder().text("unreached").endTurn().build())
+              .build();
+      Agent<String> agent =
+          harness
+              .agent()
+              .name("repl-test")
+              .model("fake-model")
+              .systemPrompt("test")
+              .renderer(
+                  input -> {
+                    throw new IllegalStateException("boom");
+                  })
+              .build();
+      BufferedReader reader = new BufferedReader(new StringReader("hi\nexit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+
+      String output = writer.toString();
+      assertThat(output).contains(Ansi.red("! boom"));
+      int promptCount = output.split("you> ", -1).length - 1;
+      assertThat(promptCount).isEqualTo(2);
+
+      // Spinner#stop() joins its virtual thread before tell() returns, so by now it is already
+      // provably dead — but the leak this guards against is exactly a thread that keeps writing a
+      // fresh "\r" frame roughly every 80ms forever. Wait comfortably past several frame intervals
+      // and confirm the writer received nothing more: the observable proof, not just the internal
+      // guarantee, that nothing is still spinning.
+      int settledLength = output.length();
+      await()
+          .pollDelay(Duration.ofMillis(300))
+          .atMost(Duration.ofSeconds(2))
+          .untilAsserted(() -> assertThat(writer.toString()).hasSize(settledLength));
     }
   }
 

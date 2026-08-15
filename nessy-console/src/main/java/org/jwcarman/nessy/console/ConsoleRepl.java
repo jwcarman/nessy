@@ -100,11 +100,29 @@ public final class ConsoleRepl {
     }
   }
 
+  /**
+   * Tells {@code line} to the conversation, guaranteeing the spinner stops no matter what happens —
+   * a raw {@link RuntimeException} out of {@link Conversation#tell} (a provider/network failure, or
+   * the renderer itself throwing — see {@link Conversation#tell}'s own contract) happens before
+   * {@link #spinnerErasing} ever sees an event, so nothing but a {@code finally} block can be
+   * trusted to stop it.
+   *
+   * <p>The honest behavior once the spinner is safely stopped: render one red error line, the same
+   * shape {@link ConsoleRenderer} already gives a {@code TurnEnded} {@code FAILED} ending, and let
+   * the loop reprompt — render-and-continue, not crash-the-REPL. A single bad turn (a flaky network
+   * call, say) should not cost the rest of the session.
+   */
   private void tell(String line) {
     Spinner spinner = new Spinner(writer);
     spinner.start();
-    conversation.tell(line, spinnerErasing(spinner));
-    spinner.stop();
+    try {
+      conversation.tell(line, spinnerErasing(spinner));
+    } catch (RuntimeException e) {
+      String reason = Objects.requireNonNullElse(e.getMessage(), e.getClass().getName());
+      write("\n" + Ansi.red("! " + reason) + "\n");
+    } finally {
+      spinner.stop();
+    }
     write("\n");
   }
 
