@@ -196,6 +196,10 @@ Memory memory = Memory.pipeline(transcript)                              // full
 - `.build()` returns the `PipelineMemory`: `remember` appends to the transcript, `recall`
   runs `hydrator.hydrate(id, transcript)` then folds the stage list. No hydration behavior is
   reimplemented — the shipped hydrators are extractions of the existing classes' logic.
+- **The degenerate pipeline is the floor:** `Memory.pipeline(transcript).build()` — no
+  hydrator named, no stages — hydrates with `ContextHydrator.full()` and transforms nothing:
+  the whole history, every time, behaviorally identical to `TranscriptMemory`. Every addition
+  to the chain is strictly opt-in from there.
 
 `Memory.windowed(delegate, n)` stays for the simple wrap-anything case. `TranscriptMemory` and
 `SummarizingMemory` stay public. The pipeline becomes the documented front door for composing
