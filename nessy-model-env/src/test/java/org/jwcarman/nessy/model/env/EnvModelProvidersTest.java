@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
@@ -34,6 +35,25 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
  * ConsoleRepl} through its reader/writer seam.
  */
 class EnvModelProvidersTest {
+
+  /** The provider {@link #capturingStderr} returned, paired with whatever it wrote to stderr. */
+  private record Captured(ModelProvider provider, String stderr) {}
+
+  /**
+   * Runs {@code call} with {@link System#err} redirected, so both halves of "the explicit choice is
+   * silent, only the default notices" can be asserted the same deliberate way: emptiness proven by
+   * inspecting the channel, not merely by an assertion that never happened to check it.
+   */
+  private static Captured capturingStderr(Supplier<ModelProvider> call) {
+    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    PrintStream originalErr = System.err;
+    System.setErr(new PrintStream(buffer, true, StandardCharsets.UTF_8));
+    try {
+      return new Captured(call.get(), buffer.toString(StandardCharsets.UTF_8));
+    } finally {
+      System.setErr(originalErr);
+    }
+  }
 
   @Nested
   class Only_the_anthropic_key_set {
@@ -63,40 +83,47 @@ class EnvModelProvidersTest {
   class Both_keys_set {
 
     @Test
-    void breaks_the_tie_toward_openai_when_nessy_provider_says_so() {
-      ModelProvider provider =
-          EnvModelProviders.fromEnv(
-              Map.of(
-                  "ANTHROPIC_API_KEY", "fake-anthropic-key",
-                  "OPENAI_API_KEY", "fake-openai-key",
-                  "NESSY_PROVIDER", "openai"));
+    void an_explicit_openai_choice_is_silent_even_with_mixed_case() {
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "OPENAI_API_KEY", "fake-openai-key",
+              // Mixed case, on purpose: the tiebreak reads NESSY_PROVIDER case-insensitively.
+              "NESSY_PROVIDER", "OpenAI");
 
-      assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
+      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+
+      assertThat(captured.provider()).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(captured.stderr()).isEmpty();
+    }
+
+    @Test
+    void an_explicit_anthropic_choice_is_silent() {
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "OPENAI_API_KEY", "fake-openai-key",
+              "NESSY_PROVIDER", "anthropic");
+
+      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+
+      assertThat(captured.provider()).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(captured.stderr()).isEmpty();
     }
 
     @Test
     void defaults_to_anthropic_and_prints_a_one_line_notice_when_nessy_provider_is_unset() {
-      ByteArrayOutputStream captured = new ByteArrayOutputStream();
-      PrintStream originalErr = System.err;
-      System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
-      ModelProvider provider;
-      try {
-        provider =
-            EnvModelProviders.fromEnv(
-                Map.of(
-                    "ANTHROPIC_API_KEY",
-                    "fake-anthropic-key",
-                    "OPENAI_API_KEY",
-                    "fake-openai-key"));
-      } finally {
-        System.setErr(originalErr);
-      }
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "OPENAI_API_KEY", "fake-openai-key");
 
-      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
-      String notice = captured.toString(StandardCharsets.UTF_8);
-      assertThat(notice).isNotEmpty();
-      assertThat(notice.lines().count()).isEqualTo(1);
-      assertThat(notice).containsIgnoringCase("anthropic");
+      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+
+      assertThat(captured.provider()).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(captured.stderr()).isNotEmpty();
+      assertThat(captured.stderr().lines().count()).isEqualTo(1);
+      assertThat(captured.stderr()).containsIgnoringCase("anthropic");
     }
   }
 
