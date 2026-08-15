@@ -57,7 +57,14 @@ public final class Scout {
   private Scout() {}
 
   public static void main(String[] args) {
-    ModelProvider provider = EnvModelProviders.fromEnv();
+    ModelProvider provider;
+    try {
+      provider = EnvModelProviders.fromEnv();
+    } catch (IllegalStateException e) {
+      IO.println(e.getMessage());
+      System.exit(1);
+      return;
+    }
     boolean anthropic = provider instanceof AnthropicModelProvider;
     String model = anthropic ? ANTHROPIC_MODEL : OPENAI_MODEL;
     Harness harness = Nessy.harness(provider).build();
@@ -74,7 +81,7 @@ public final class Scout {
                   + (anthropic ? "Anthropic" : "OpenAI")
                   + ", "
                   + model
-                  + "), reading via DeepWiki. Empty line or /quit to exit.")
+                  + "), reading via DeepWiki. Type exit or quit to leave.")
           .prompt("you> ")
           .run();
     }

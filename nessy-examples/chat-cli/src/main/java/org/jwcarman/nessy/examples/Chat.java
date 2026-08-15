@@ -37,7 +37,14 @@ public final class Chat {
   private Chat() {}
 
   public static void main(String[] args) {
-    ModelProvider provider = EnvModelProviders.fromEnv();
+    ModelProvider provider;
+    try {
+      provider = EnvModelProviders.fromEnv();
+    } catch (IllegalStateException e) {
+      IO.println(e.getMessage());
+      System.exit(1);
+      return;
+    }
     boolean anthropic = provider instanceof AnthropicModelProvider;
     String model = anthropic ? ANTHROPIC_MODEL : OPENAI_MODEL;
     Agent<String> agent = DemoAgent.agentFor(provider, model);
@@ -48,7 +55,7 @@ public final class Chat {
                 + (anthropic ? "Anthropic" : "OpenAI")
                 + ", "
                 + model
-                + "). Empty line or /quit to exit.")
+                + "). Type exit or quit to leave.")
         .prompt("you> ")
         .run();
   }

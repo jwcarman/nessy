@@ -16,8 +16,11 @@
 package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.BufferedReader;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -31,6 +34,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
@@ -113,6 +122,24 @@ class ConsoleReplTest {
       Ansi.overrideEnabled(false);
       Agent<String> agent = agent_saying();
       BufferedReader reader = new BufferedReader(new StringReader("quit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+
+      assertThat(writer.toString()).isEqualTo("you> ");
+    }
+  }
+
+  @Nested
+  class End_of_input {
+
+    @Test
+    void ends_the_loop_gracefully_without_telling_the_agent() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying();
+      // An empty source: BufferedReader#readLine() returns null on the very first read, exactly
+      // what a closed pipe or a Ctrl-D at a real terminal looks like.
+      BufferedReader reader = new BufferedReader(new StringReader(""));
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
@@ -221,6 +248,103 @@ class ConsoleReplTest {
       // the custom observer writes nothing of its own; only the loop's prompts and the blank
       // line the loop itself prints after every told turn land in the writer.
       assertThat(writer.toString()).isEqualTo("you> \nyou> ");
+    }
+  }
+
+  @Nested
+  class The_exitOn_builder {
+
+    @Test
+    void rejects_zero_words_as_a_loop_with_no_way_out() {
+      Agent<String> agent = agent_saying();
+      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+
+      assertThatThrownBy(builder::exitOn)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("at least one exit word");
+    }
+
+    @Test
+    void deduplicates_repeated_words_instead_of_throwing() {
+      Agent<String> agent = agent_saying();
+      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+
+      // Set.copyOf semantics, not Set.of's throw-on-duplicate: naming the same exit word twice
+      // is a caller typo, not a reason to blow up the whole configuration.
+      assertThatCode(() -> builder.exitOn("exit", "exit")).doesNotThrowAnyException();
+    }
+  }
+
+  @Nested
+  class The_shared_stdin_seam {
+
+    @Test
+    void the_approver_reads_the_same_stream_the_repl_itself_reads() {
+      Ansi.overrideEnabled(false);
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder()
+              .toolUse("c1", "ping", JsonNodeFactory.instance.objectNode())
+              .endWithToolUse()
+              .text("pong received")
+              .endTurn()
+              .build();
+      Harness harness = Nessy.harness(provider).build();
+      StringWriter writer = new StringWriter();
+      // One BufferedReader, one combined script: "hi" is the REPL's own read, "y" is the
+      // approver's read mid-turn, "exit" is the REPL's next read afterward — proving a single
+      // shared reader serves both consumers in strict order. Two separate BufferedReaders each
+      // wrapping the same stdin is exactly the bug this seam fixes: whichever primes its buffer
+      // first can swallow bytes (here, "y" or "exit") meant for the other.
+      BufferedReader sharedReader = new BufferedReader(new StringReader("hi\ny\nexit\n"));
+      ConsoleApprover approver = new ConsoleApprover(sharedReader, writer);
+      Agent<String> agent =
+          harness
+              .agent()
+              .name("repl-test")
+              .model("fake-model")
+              .systemPrompt("test")
+              .tools(ToolGrant.grant(new PingTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, sharedReader, writer).run();
+
+      String output = writer.toString();
+      // The approval went through — proof the approver's "y" read landed, not end-of-stream.
+      assertThat(output).contains("pong received");
+      // "exit" was still there for the REPL's next read — proof nothing was swallowed — so the
+      // loop actually ended rather than blocking on a fourth read that was never scripted.
+      assertThat(output).endsWith("you> ");
+    }
+
+    private record PingInput() {}
+
+    private static final class PingTool implements Tool<PingInput> {
+
+      @Override
+      public String name() {
+        return "ping";
+      }
+
+      @Override
+      public String description() {
+        return "Pings, once approved.";
+      }
+
+      @Override
+      public Class<PingInput> inputType() {
+        return PingInput.class;
+      }
+
+      @Override
+      public String describe(PingInput input) {
+        return "ping";
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(PingInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok("pong"));
+      }
     }
   }
 }

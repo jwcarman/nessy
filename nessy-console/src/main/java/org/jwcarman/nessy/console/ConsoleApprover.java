@@ -17,7 +17,6 @@ package org.jwcarman.nessy.console;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
@@ -47,11 +46,14 @@ public final class ConsoleApprover implements Approver {
   private final BufferedReader reader;
   private final Writer writer;
 
-  /** The real-console constructor: a thin wrap of {@link System#in}/{@link System#out}. */
+  /**
+   * The real-console constructor: a thin wrap of {@link System#out}, and {@link ConsoleIo#stdin()}
+   * rather than a fresh wrap of {@link System#in} — shared with {@link ConsoleRepl.Builder#run()},
+   * so a mid-turn approval prompt reads from the same buffer the REPL loop does, rather than each
+   * stealing from the other's read of stdin.
+   */
   public ConsoleApprover() {
-    this(
-        new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)),
-        new OutputStreamWriter(System.out, StandardCharsets.UTF_8));
+    this(ConsoleIo.stdin(), new OutputStreamWriter(System.out, StandardCharsets.UTF_8));
   }
 
   /** The testability seam: every decision above is exercised headless against these streams. */

@@ -36,14 +36,14 @@ goes out.
 ## Run it
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/scout -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.scout.Scout
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/scout -am compile exec:java
 ```
 
-Unlike `chat-cli`'s one main, Scout's pom does not pin `exec.mainClass` (this
-module has only ever had the one), so `-Dexec.mainClass` still names it on
-the command line. Either provider key works the same way `chat-cli`'s does —
-`OPENAI_API_KEY=…` in place of `ANTHROPIC_API_KEY=…` runs Scout against
-OpenAI instead, no other change.
+Scout's pom pins `exec.mainClass` to `org.jwcarman.nessy.examples.scout.Scout`,
+the same way `hello`'s and `chat-cli`'s do — the bare command above works with
+no `-Dexec.mainClass` on the command line. Either provider key works the same
+way `chat-cli`'s does — `OPENAI_API_KEY=…` in place of `ANTHROPIC_API_KEY=…`
+runs Scout against OpenAI instead, no other change.
 
 The `-am` flag also builds this module's reactor dependencies (`nessy-core`,
 `nessy-console`, `nessy-model-env`, `nessy-tool-mcp`) — the first run
@@ -69,10 +69,11 @@ approve: ask_question {"repoName":"jwcarman/nessy","question":"why does the redu
 y/n>
 ```
 
-Answer `y` and the call goes out to DeepWiki; anything else denies it, and the
-model gets `Denied: declined at the console` back as an ordinary tool result —
-it can apologize, rephrase, or route around the question, same as any other
-declined tool call in this framework.
+Answer `y` and the call goes out to DeepWiki; `n` or end of input (EOF) denies
+it, and the model gets `Denied: declined at the console` back as an ordinary
+tool result — it can apologize, rephrase, or route around the question, same
+as any other declined tool call in this framework. Anything else reprompts
+with `please answer y or n` rather than being read as a denial.
 
 ## The DeepWiki covenant
 

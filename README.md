@@ -905,13 +905,21 @@ ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:jav
 OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
 ```
 
-Both providers' `.fromEnv()` delegates to the underlying SDK's own environment
-support, not a hand-rolled subset — `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`,
-auth tokens, and friends all work with no extra wiring.
+`chat-cli` and `scout` both pick a provider through `nessy-model-env`'s
+`EnvModelProviders.fromEnv()`, which reads only the API key
+(`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`) and builds each provider with
+`Provider.builder().apiKey(key).build()`. In v1 that env helper does not
+forward `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, auth tokens, or any other
+SDK-level environment variable — those are silently ignored by
+`EnvModelProviders`, not an oversight in this README.
 
-That same delegation makes OpenAI-compatible endpoints a one-liner: point
+For a custom base URL or any other advanced setting, construct the provider
+directly instead: each provider module's own `Provider.builder().fromEnv()`
+*does* delegate to the underlying SDK's full environment support. That is
+what makes OpenAI-compatible endpoints a one-liner — point
 `nessy-model-openai` at OpenRouter, Ollama, or anything else that speaks the
-OpenAI wire format with `baseUrl(...)`:
+OpenAI wire format with `baseUrl(...)`, bypassing `nessy-model-env`'s
+key-only switch and picking the provider directly:
 
 ```java
 ModelProvider provider =
@@ -927,7 +935,7 @@ the grants, the approval-prompt transcript, and the DeepWiki covenant. To run
 it:
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/scout -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.scout.Scout
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/scout -am compile exec:java
 ```
 
 **`chat-web`** — the first non-toy dogfood: a Spring Boot chat app against a

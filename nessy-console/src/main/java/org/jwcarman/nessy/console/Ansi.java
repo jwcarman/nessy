@@ -68,30 +68,45 @@ public final class Ansi {
     return !"dumb".equals(System.getenv("TERM"));
   }
 
+  /** {@code text}, wrapped bold — the approval prompt's own emphasis. */
   public static String bold(String text) {
     return style(BOLD, text);
   }
 
+  /** {@code text}, wrapped dim — tool-activity lines, the muted half of the default look. */
   public static String dim(String text) {
     return style(DIM, text);
   }
 
+  /**
+   * {@code text}, wrapped italic — combined with {@link #dim} for the default renderer's thinking.
+   */
   public static String italic(String text) {
     return style(ITALIC, text);
   }
 
+  /**
+   * {@code text}, wrapped cyan. Part of the small palette (design §2), not yet claimed by a line.
+   */
   public static String cyan(String text) {
     return style(CYAN, text);
   }
 
+  /**
+   * {@code text}, wrapped yellow — paired with {@link #bold} for the approval prompt's highlight.
+   */
   public static String yellow(String text) {
     return style(YELLOW, text);
   }
 
+  /** {@code text}, wrapped red — a failed turn's ending line. */
   public static String red(String text) {
     return style(RED, text);
   }
 
+  /**
+   * {@code text}, wrapped green. Part of the small palette (design §2), not yet claimed by a line.
+   */
   public static String green(String text) {
     return style(GREEN, text);
   }

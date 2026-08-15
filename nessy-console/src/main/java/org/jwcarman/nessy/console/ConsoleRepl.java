@@ -17,11 +17,11 @@ package org.jwcarman.nessy.console;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -190,10 +190,20 @@ public final class ConsoleRepl {
       return this;
     }
 
-    /** The words (after trimming) that end the loop. Defaults to {@code "exit"}, {@code "quit"}. */
+    /**
+     * The words (after trimming) that end the loop. Defaults to {@code "exit"}, {@code "quit"}.
+     * Duplicate words are silently deduplicated ({@link Set#copyOf}, not {@link Set#of}'s
+     * throw-on-duplicate) — the caller is naming a set, not proving one is already distinct.
+     *
+     * @throws IllegalArgumentException if {@code words} is empty — a loop with no way out is a
+     *     trap, not a valid configuration
+     */
     public Builder exitOn(String... words) {
       Objects.requireNonNull(words, "words must not be null");
-      this.exitWords = Set.of(words);
+      if (words.length == 0) {
+        throw new IllegalArgumentException("at least one exit word is required");
+      }
+      this.exitWords = Set.copyOf(Arrays.asList(words));
       return this;
     }
 
@@ -203,12 +213,16 @@ public final class ConsoleRepl {
       return this;
     }
 
-    /** The real-console entry point: a thin adapter over {@link System#in}/{@link System#out}. */
+    /**
+     * The real-console entry point: a thin adapter over {@link System#in}/{@link System#out}. The
+     * reader is {@link ConsoleIo#stdin()}, not a fresh wrap of {@link System#in} — shared with
+     * {@link ConsoleApprover}'s own default constructor, so a mid-turn approval prompt reads from
+     * the same buffer this loop does, rather than each stealing from the other's read of stdin.
+     */
     public void run() {
-      BufferedReader systemReader =
-          new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
       Writer systemWriter = new OutputStreamWriter(System.out, StandardCharsets.UTF_8);
-      new ConsoleRepl(agent, banner, prompt, exitWords, renderer, systemReader, systemWriter).run();
+      new ConsoleRepl(agent, banner, prompt, exitWords, renderer, ConsoleIo.stdin(), systemWriter)
+          .run();
     }
   }
 }

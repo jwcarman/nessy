@@ -131,6 +131,43 @@ class ScoutTest {
         assertThat(result.content()).isEqualTo("Denied: declined by policy");
       }
     }
+
+    @Test
+    void ask_question_reaches_the_server_and_the_answer_lands_when_approved() {
+      AtomicInteger askQuestionCalls = new AtomicInteger();
+      try (DeepWikiTestServer fixture =
+          DeepWikiTestServer.open(
+              (exchange, request) -> {
+                askQuestionCalls.incrementAndGet();
+                return DeepWikiTestServer.okResult("the reducer lives in one method for locality");
+              })) {
+        ScriptedModelProvider provider =
+            ScriptedModelProvider.builder()
+                .toolUse(
+                    "c1",
+                    DeepWikiTestServer.ASK_QUESTION,
+                    questionArgs("jwcarman/nessy", "how does the reducer work?"))
+                .endWithToolUse()
+                .text("Here's what DeepWiki said.")
+                .endTurn()
+                .build();
+        Harness harness = Nessy.harness(provider).build();
+        // The demo's headline beat: approving the gate actually lets the call through to the
+        // remote server, and its answer flows back into context — the mirror image of the
+        // declining-approver case above, which only proves the gate can say no.
+        Agent<String> agent =
+            Scout.scout(harness, fixture.toolbox(), "fake-model", Approver.allowAll());
+        Conversation<String> conversation = agent.converse();
+
+        RunOutcome outcome = conversation.tell("how does the reducer work in jwcarman/nessy?");
+
+        assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+        assertThat(askQuestionCalls).hasValue(1);
+        ToolResultBlock result = toolResultAt(agent, conversation);
+        assertThat(result.isError()).isFalse();
+        assertThat(result.content()).isEqualTo("the reducer lives in one method for locality");
+      }
+    }
   }
 
   /** The one tool-result block a single tool-use turn produces, at its fixed message index. */

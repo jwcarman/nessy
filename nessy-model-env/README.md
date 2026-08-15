@@ -29,6 +29,13 @@ explicit key (`Provider.builder().apiKey(key).build()`), not that provider's
 own `fromEnv()` — the choice this class makes from the environment is the
 choice that gets built, not a second, independent read underneath it.
 
+One consequence of that: only the API key is read. Base-URL overrides, auth
+tokens, and any other SDK-level environment variable (`ANTHROPIC_BASE_URL`,
+`OPENAI_BASE_URL`, and friends) are not read by this helper in v1 — they are
+silently ignored, not an oversight. Construct the provider directly
+(`Provider.builder().fromEnv()`, which *does* delegate to the underlying
+SDK's full environment support) when one of those is needed.
+
 ## Testing
 
 Offline, entirely: the public `fromEnv()` reads the real process environment,

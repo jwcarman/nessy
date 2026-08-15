@@ -125,6 +125,23 @@ class EnvModelProvidersTest {
       assertThat(captured.stderr().lines().count()).isEqualTo(1);
       assertThat(captured.stderr()).containsIgnoringCase("anthropic");
     }
+
+    @Test
+    void defaults_to_anthropic_and_prints_a_one_line_notice_when_nessy_provider_is_unrecognized() {
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "OPENAI_API_KEY", "fake-openai-key",
+              // Neither "anthropic" nor "openai" — the tiebreak's fallback arm, same as unset.
+              "NESSY_PROVIDER", "gemini");
+
+      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+
+      assertThat(captured.provider()).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(captured.stderr()).isNotEmpty();
+      assertThat(captured.stderr().lines().count()).isEqualTo(1);
+      assertThat(captured.stderr()).containsIgnoringCase("anthropic");
+    }
   }
 
   @Nested

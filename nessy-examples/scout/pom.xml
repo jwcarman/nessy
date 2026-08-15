@@ -90,6 +90,11 @@
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>${exec-maven-plugin.version}</version>
+        <configuration>
+          <!-- The one main this module has, pinned like hello's and chat-cli's: no
+               -Dexec.mainClass needed on the command line. -->
+          <mainClass>org.jwcarman.nessy.examples.scout.Scout</mainClass>
+        </configuration>
       </plugin>
     </plugins>
   </build>

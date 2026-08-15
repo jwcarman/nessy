@@ -104,6 +104,8 @@ approve: read the current time
 y/n>
 ```
 
-Anything other than `y` (including EOF) reads as a denial
-(`"declined at the console"`); the conversation then continues from wherever
-the model takes the denial, same as any other turn.
+`y` allows the call; `n` or end of input (EOF) denies it
+(`"declined at the console"`); anything else reprompts with
+`please answer y or n` rather than being read as a denial. Once the call is
+allowed or denied, the conversation continues from wherever the model takes
+it, same as any other turn.
