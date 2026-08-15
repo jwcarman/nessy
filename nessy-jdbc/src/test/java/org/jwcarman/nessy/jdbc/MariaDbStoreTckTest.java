@@ -34,9 +34,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
+import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.jwcarman.nessy.tck.ConversationStoreContract;
 import org.jwcarman.nessy.tck.ParksContract;
+import org.jwcarman.nessy.tck.PlanStoreContract;
 import org.jwcarman.nessy.tck.SummaryStoreContract;
 import org.jwcarman.nessy.tck.TranscriptContract;
 import org.testcontainers.containers.MariaDBContainer;
@@ -157,6 +159,23 @@ class MariaDbStoreTckTest {
     @Override
     protected SummaryStore summaries() {
       return summaries;
+    }
+  }
+
+  @Nested
+  class Plan_store_contract extends PlanStoreContract {
+
+    private PlanStore plans;
+
+    @BeforeEach
+    void a_fresh_store_over_an_empty_table() {
+      plans = JdbcPlanStore.create(dataSource);
+      truncate("nessy_plan");
+    }
+
+    @Override
+    protected PlanStore plans() {
+      return plans;
     }
   }
 
