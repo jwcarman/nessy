@@ -282,9 +282,9 @@ class PipelineMemoryTest {
   void one_hydration_strategy_per_pipeline() {
     Transcript transcript = Transcript.inMemory();
     PipelineMemory.Builder builder = Memory.pipeline(transcript).hydrator(ContextHydrator.full());
+    ContextHydrator second = ContextHydrator.full();
 
-    assertThatThrownBy(() -> builder.hydrator(ContextHydrator.full()))
-        .isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> builder.hydrator(second)).isInstanceOf(IllegalStateException.class);
   }
 
   @Test

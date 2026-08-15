@@ -80,7 +80,12 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "welcome aboard", "you> ", Set.of("exit", "quit"), null, reader, writer)
+              agent,
+              "welcome aboard",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("welcome aboard\nyou> ");
@@ -93,7 +98,9 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("exit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
 
       assertThat(writer).hasToString("you> ");
     }
@@ -111,7 +118,9 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
 
       int promptCount = writer.toString().split("you> ", -1).length - 1;
       assertThat(promptCount).isEqualTo(3);
@@ -128,7 +137,9 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("quit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
 
       assertThat(writer).hasToString("you> ");
     }
@@ -146,7 +157,9 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader(""));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
 
       assertThat(writer).hasToString("you> ");
     }
@@ -162,7 +175,9 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
 
       assertThat(writer).hasToString("you> you> ");
     }
@@ -178,7 +193,9 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
 
       assertThat(writer).hasToString("you> hello once\nyou> hello twice\nyou> ");
     }
@@ -214,7 +231,9 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
 
       String output = writer.toString();
       assertThat(output).contains(Ansi.red("! boom"));
@@ -246,7 +265,14 @@ class ConsoleReplTest {
       List<TurnEvent> seen = new ArrayList<>();
       TurnObserver custom = seen::add;
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), custom, reader, writer).run();
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              custom,
+              new ConsoleRepl.Io(reader, writer))
+          .run();
 
       assertThat(seen).isNotEmpty();
       // the custom observer writes nothing of its own; only the loop's prompts and the blank
@@ -311,7 +337,14 @@ class ConsoleReplTest {
               .approver(approver)
               .build();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, sharedReader, writer).run();
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(sharedReader, writer))
+          .run();
 
       String output = writer.toString();
       // The approval went through — proof the approver's "y" read landed, not end-of-stream — and
@@ -363,10 +396,17 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              store)
           .run();
 
-      assertThat(writer.toString()).isEqualTo("you> ok\n  [ ] write tests\nyou> ");
+      assertThat(writer).hasToString("you> ok\n  [ ] write tests\nyou> ");
     }
 
     @Test
@@ -378,7 +418,14 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              store)
           .run();
 
       int occurrences = writer.toString().split("write tests", -1).length - 1;
@@ -392,9 +439,17 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, null).run();
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              null)
+          .run();
 
-      assertThat(writer.toString()).isEqualTo("you> ok\nyou> ");
+      assertThat(writer).hasToString("you> ok\nyou> ");
     }
 
     @Test
@@ -406,10 +461,17 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              store)
           .run();
 
-      assertThat(writer.toString()).isEqualTo("you> ok1\nyou> ok2\nyou> ");
+      assertThat(writer).hasToString("you> ok1\nyou> ok2\nyou> ");
       assertThat(store.reads()).isEqualTo(2);
     }
 
@@ -424,11 +486,18 @@ class ConsoleReplTest {
       BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
       StringWriter writer = new StringWriter();
 
-      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              store)
           .run();
 
-      assertThat(writer.toString())
-          .isEqualTo("you> working\n  [>] ship it\nyou> done\n  [x] ship it\nyou> ");
+      assertThat(writer)
+          .hasToString("you> working\n  [>] ship it\nyou> done\n  [x] ship it\nyou> ");
     }
 
     private static final class ScriptedPlanStore implements PlanStore {
@@ -480,9 +549,9 @@ class ConsoleReplTest {
     void rejects_a_second_call() {
       Agent<String> agent = agent_saying();
       ConsoleRepl.Builder builder = ConsoleRepl.of(agent).plan(PlanStore.inMemory());
+      PlanStore second = PlanStore.inMemory();
 
-      assertThatThrownBy(() -> builder.plan(PlanStore.inMemory()))
-          .isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> builder.plan(second)).isInstanceOf(IllegalStateException.class);
     }
   }
 }

@@ -62,15 +62,12 @@ public final class ConsoleRepl {
   private final PlanStore planStore;
   private Plan lastRenderedPlan;
 
-  ConsoleRepl(
-      Agent<String> agent,
-      String banner,
-      String prompt,
-      Set<String> exitWords,
-      TurnObserver renderer,
-      BufferedReader reader,
-      Writer writer) {
-    this(agent, banner, prompt, exitWords, renderer, reader, writer, null);
+  /** The console seam as one value: where lines come from and where output goes (S107). */
+  record Io(BufferedReader reader, Writer writer) {
+    Io {
+      Objects.requireNonNull(reader, "reader must not be null");
+      Objects.requireNonNull(writer, "writer must not be null");
+    }
   }
 
   ConsoleRepl(
@@ -79,17 +76,27 @@ public final class ConsoleRepl {
       String prompt,
       Set<String> exitWords,
       TurnObserver renderer,
-      BufferedReader reader,
-      Writer writer,
+      Io io) {
+    this(agent, banner, prompt, exitWords, renderer, io, null);
+  }
+
+  ConsoleRepl(
+      Agent<String> agent,
+      String banner,
+      String prompt,
+      Set<String> exitWords,
+      TurnObserver renderer,
+      Io io,
       PlanStore planStore) {
     Objects.requireNonNull(agent, "agent must not be null");
-    this.writer = Objects.requireNonNull(writer, "writer must not be null");
+    Objects.requireNonNull(io, "io must not be null");
+    this.writer = io.writer();
     this.conversation = agent.converse();
     this.banner = Objects.requireNonNull(banner, "banner must not be null");
     this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
     this.exitWords = Set.copyOf(Objects.requireNonNull(exitWords, "exitWords must not be null"));
     this.renderer = renderer != null ? renderer : ConsoleRenderer.observer(this.writer);
-    this.reader = Objects.requireNonNull(reader, "reader must not be null");
+    this.reader = io.reader();
     this.planStore = planStore;
   }
 
@@ -282,8 +289,7 @@ public final class ConsoleRepl {
               prompt,
               exitWords,
               renderer,
-              ConsoleIo.stdin(),
-              ConsoleIo.stdout(),
+              new Io(ConsoleIo.stdin(), ConsoleIo.stdout()),
               planStore)
           .run();
     }

@@ -98,20 +98,6 @@ public final class PlanTools {
     };
   }
 
-  /** The confirmation the model reads in-band after a successful {@code update_plan} call. */
-  private static String confirmationFor(Plan plan) {
-    long inProgress =
-        plan.tasks().stream().filter(task -> task.status() == Plan.Status.IN_PROGRESS).count();
-    long done = plan.tasks().stream().filter(task -> task.status() == Plan.Status.DONE).count();
-    return "Plan updated: "
-        + plan.tasks().size()
-        + " tasks ("
-        + inProgress
-        + " in progress, "
-        + done
-        + " done).";
-  }
-
   /**
    * The wire twin of {@link Plan}: the schema the model's tool call deserializes into, kept
    * separate so {@link Plan} itself never grows schema annotations.
@@ -183,6 +169,20 @@ public final class PlanTools {
         tasks.add(new Plan.Task(planned.title(), planned.status()));
       }
       return new Plan(tasks);
+    }
+
+    /** The confirmation the model reads in-band after a successful {@code update_plan} call. */
+    private static String confirmationFor(Plan plan) {
+      long inProgress =
+          plan.tasks().stream().filter(task -> task.status() == Plan.Status.IN_PROGRESS).count();
+      long done = plan.tasks().stream().filter(task -> task.status() == Plan.Status.DONE).count();
+      return "Plan updated: "
+          + plan.tasks().size()
+          + " tasks ("
+          + inProgress
+          + " in progress, "
+          + done
+          + " done).";
     }
   }
 }
