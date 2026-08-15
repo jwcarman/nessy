@@ -18,8 +18,10 @@ ModelProvider provider = EnvModelProviders.fromEnv();
 - `OPENAI_API_KEY` present, `ANTHROPIC_API_KEY` absent → OpenAI.
 - Both present → `NESSY_PROVIDER` (`anthropic`/`openai`, case-insensitive)
   breaks the tie. An explicit, recognized choice is silent. Unset or
-  unrecognized defaults to Anthropic and prints exactly one line to
-  `System.err` naming the default and how to override it.
+  unrecognized defaults to Anthropic and logs exactly one `WARN` line (SLF4J,
+  `org.jwcarman.nessy.model.env.EnvModelProviders`) naming the default and
+  how to override it — visible in the demos' consoles because their logback
+  thresholds pass `WARN` through.
 - Neither present → fails fast with an `IllegalStateException` naming all
   three variables it checked (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
   `NESSY_PROVIDER`).

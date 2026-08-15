@@ -20,6 +20,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -261,13 +262,41 @@ public final class JdbcConversationStore implements ConversationStore {
         ps.addBatch();
         pending++;
         if (pending == DRAIN_BATCH_SIZE) {
-          ps.executeBatch();
+          checkBatchResults(ps.executeBatch(), id);
           pending = 0;
         }
       }
       if (pending > 0) {
-        ps.executeBatch();
+        checkBatchResults(ps.executeBatch(), id);
       }
+    }
+  }
+
+  /**
+   * {@code executeBatch()} is not obligated to throw on a failed element: the JDBC spec also
+   * permits a driver to continue past one and report {@link Statement#EXECUTE_FAILED} (a negative
+   * count other than {@link Statement#SUCCESS_NO_INFO}) for that element in the array it returns,
+   * with the batch call itself returning normally. Left unchecked, that path would commit the
+   * surrounding transaction with the failed delete's entry still sitting in {@code nessy_inbox},
+   * undrained forever — nothing else ever revisits it. Scanning the counts here turns that silent
+   * partial failure into a thrown {@link SQLException}, which rolls back this drain's transaction
+   * (the same one {@link #save} opened) and lets the standard stale-retry machinery re-drive the
+   * whole save, drain included.
+   */
+  private static void checkBatchResults(int[] counts, ConversationId id) throws SQLException {
+    int failed = 0;
+    for (int count : counts) {
+      if (count < 0 && count != Statement.SUCCESS_NO_INFO) {
+        failed++;
+      }
+    }
+    if (failed > 0) {
+      throw new SQLException(
+          "inbox drain batch reported "
+              + failed
+              + " failed delete(s) for conversation "
+              + id.value()
+              + " without throwing");
     }
   }
 

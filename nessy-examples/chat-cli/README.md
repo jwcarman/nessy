@@ -27,7 +27,7 @@ neither run needs `-Dexec.mainClass` on the command line — the provider
 choice moved to which API key is set, not which main you run. Set both keys
 and `NESSY_PROVIDER=openai` (or `anthropic`) to be explicit about the tie;
 leave it unset with both keys present and the demo defaults to Anthropic,
-noisily, on one `System.err` line.
+noisily, on one `WARN` log line.
 
 The `-am` flag also builds this module's reactor dependencies — the first
 run compiles that whole upstream chain and takes noticeably longer; every
