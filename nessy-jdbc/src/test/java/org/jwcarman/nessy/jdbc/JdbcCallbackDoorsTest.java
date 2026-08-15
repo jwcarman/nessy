@@ -94,7 +94,7 @@ class JdbcCallbackDoorsTest {
   private static DataSource dataSource;
 
   @BeforeAll
-  static void nessy_store_jdbc_test_points_a_data_source_at_the_container() {
+  static void nessy_jdbc_test_points_a_data_source_at_the_container() {
     dataSource =
         new DriverManagerDataSource(
             POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
