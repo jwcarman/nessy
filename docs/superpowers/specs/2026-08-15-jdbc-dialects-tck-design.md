@@ -115,10 +115,15 @@ resolver picked the expected dialect). Drivers test-scope,
 Boot-BOM-managed where Boot manages them (implementer verifies which of
 the four drivers Boot's BOM carries and pins the rest as properties).
 The callback-doors end-to-end test stays Postgres-only (it proves door
-logic, not dialect). CI is unaffected (the workflow runs the offline
-build; the matrix lives behind the container tag) — the container
-sweep gets longer locally, Oracle's image being the heavyweight, and
-the README says so.
+logic, not dialect). *(Amended at Task 4's review, 2026-08-15: this
+section originally claimed "CI is unaffected — the workflow runs the
+offline build," which was FALSE repo-wide — the workflow's
+`-Dnessy.excludedGroups=live` overrides the pom's `live,container`
+default, so CI has always run the container suites on Docker-equipped
+runners. The correction: CI keeps its de-facto container coverage; the
+five-vendor matrix alone is fenced behind an additional `vendor` tag
+that CI excludes. The full matrix runs locally, Oracle's image being
+the heavyweight, and the README says so truthfully.)*
 
 ## 7. Deliberately not in this wave
 
