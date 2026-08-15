@@ -201,6 +201,15 @@ Memory memory = Memory.pipeline(transcript)                              // full
   the whole history, every time, behaviorally identical to `TranscriptMemory`. Every addition
   to the chain is strictly opt-in from there.
 
+**Ruling, re-affirmed (retention stays delegated):** the kernel knows only `Memory` —
+`remember`/`recall` is the whole retention contract, and nothing in the loop or the api
+references `Transcript` (the one kernel-adjacent mention is `AgentBuilder`'s no-memory
+default, which merely picks an implementation). `PipelineMemory` does not change that: it is
+one `Memory` implementation family that *chooses* transcript backing, declared in its own
+constructor; `ContextHydrator`'s `Transcript` parameter is that family's internal seam, not a
+kernel contract. A Memory that wants different retention implements the two-method interface
+directly and owes the pipeline nothing.
+
 `Memory.windowed(delegate, n)` stays for the simple wrap-anything case. `TranscriptMemory` and
 `SummarizingMemory` stay public. The pipeline becomes the documented front door for composing
 transcript-backed memory.
