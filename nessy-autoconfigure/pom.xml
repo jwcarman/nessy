@@ -78,7 +78,7 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-store-jdbc</artifactId>
+      <artifactId>nessy-jdbc</artifactId>
       <version>${project.version}</version>
       <optional>true</optional>
     </dependency>

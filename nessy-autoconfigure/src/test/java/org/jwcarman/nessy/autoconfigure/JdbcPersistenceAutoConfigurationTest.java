@@ -26,11 +26,11 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.Transcript;
-import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
@@ -41,8 +41,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
  * {@link JdbcPersistenceAutoConfiguration} against an offline {@link DataSource} stub — every test
  * here runs with {@code bootstrap-schema=false} (or never registers a {@link DataSource} bean at
  * all) so construction never opens a connection, the same offline pattern {@code
- * JdbcPersistenceRecordTest} (nessy-store-jdbc) uses. Real-DDL bootstrap proof is chat-web's smoke
- * test's job, not this context runner's.
+ * JdbcPersistenceRecordTest} (nessy-jdbc) uses. Real-DDL bootstrap proof is chat-web's smoke test's
+ * job, not this context runner's.
  */
 class JdbcPersistenceAutoConfigurationTest {
 
@@ -168,7 +168,7 @@ class JdbcPersistenceAutoConfigurationTest {
     // of whether the property's value is honored or silently dropped, so nothing here could catch
     // that regression. The override actually bypassing resolution is proven where it can be
     // proven offline without opening a real connection: JdbcDialectTest's "An_explicit_override"
-    // nest, in nessy-store-jdbc, one layer down from this property-parsing seam.
+    // nest, in nessy-jdbc, one layer down from this property-parsing seam.
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withBean(ObjectMapper.class, ObjectMapper::new)
@@ -233,7 +233,7 @@ class JdbcPersistenceAutoConfigurationTest {
   /**
    * A {@link DataSource} that is never actually connected to — every test here keeps bootstrap off
    * or the beans unresolved, so construction alone must suffice. Mirrors {@code
-   * JdbcPersistenceRecordTest}'s {@code UnusedDataSource} (nessy-store-jdbc).
+   * JdbcPersistenceRecordTest}'s {@code UnusedDataSource} (nessy-jdbc).
    */
   private static final class UnusedDataSource implements DataSource {
 

@@ -57,11 +57,11 @@
     <module>nessy-bom</module>
     <module>nessy-core</module>
     <module>nessy-testing</module>
-    <module>nessy-store-tck</module>
+    <module>nessy-tck</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
     <module>nessy-model-env</module>
-    <module>nessy-store-jdbc</module>
+    <module>nessy-jdbc</module>
     <module>nessy-tool-mcp</module>
     <module>nessy-autoconfigure</module>
     <module>nessy-spring-boot-starter</module>
@@ -97,7 +97,7 @@
     <!-- Held at the 1.21 line deliberately: testcontainers 2.0 renamed every module artifact
          (org.testcontainers:postgresql -> org.testcontainers:testcontainers-postgresql) and moved
          the container classes to per-module packages. 2.0.x still ships the old
-         org.testcontainers.containers.PostgreSQLContainer<?> shape nessy-store-jdbc's container
+         org.testcontainers.containers.PostgreSQLContainer<?> shape nessy-jdbc's container
          test relies on as a deprecated shim, so this isn't a compatibility blocker — migrating is
          a small deferred follow-up, not a reason to skip 2.0 forever. -->
     <testcontainers.version>1.21.4</testcontainers.version>
@@ -229,7 +229,7 @@
         <version>${junit.version}</version>
       </dependency>
       <!-- The TCK's contracts are main-scope classes that import only the annotation/assertion
-           API, never the engine: nessy-store-tck depends on this artifact directly (not the
+           API, never the engine: nessy-tck depends on this artifact directly (not the
            junit-jupiter aggregator, which would drag junit-jupiter-engine into every consumer's
            main scope). -->
       <dependency>
@@ -244,7 +244,7 @@
       </dependency>
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
-        <artifactId>nessy-store-tck</artifactId>
+        <artifactId>nessy-tck</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

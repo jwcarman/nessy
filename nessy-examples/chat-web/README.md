@@ -23,7 +23,7 @@ The whole nessy wiring an application writes itself — one bean in `ChatWebConf
 
 `Harness` and `Memory` arrive as method parameters, autoconfigured by the
 starter from the classpath: `nessy-model-anthropic` (plus `.fromEnv()`
-credential resolution) yields the `ModelProvider`, `nessy-store-jdbc` next
+credential resolution) yields the `ModelProvider`, `nessy-jdbc` next
 to the app's `DataSource` bean yields the Postgres-backed `ConversationStore`
 and `Memory`, and both feed the autoconfigured `Harness` — Boot's own
 auto-configured `ObservationRegistry` included, so nessy's spans join Boot's

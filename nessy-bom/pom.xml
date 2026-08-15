@@ -46,7 +46,7 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-store-tck</artifactId>
+                <artifactId>nessy-tck</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -66,7 +66,7 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-store-jdbc</artifactId>
+                <artifactId>nessy-jdbc</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

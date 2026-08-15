@@ -58,7 +58,7 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
-    <!-- nessy-store-jdbc brings no Spring JDBC autoconfiguration of its own (only the postgresql
+    <!-- nessy-jdbc brings no Spring JDBC autoconfiguration of its own (only the postgresql
          driver, see its own pom); DataSourceAutoConfiguration (and therefore
          JdbcPersistenceAutoConfiguration, which is @ConditionalOnBean(DataSource.class)) needs
          this starter on the classpath to ever build a DataSource bean at all — chat-web's same
@@ -116,7 +116,7 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-store-jdbc</artifactId>
+      <artifactId>nessy-jdbc</artifactId>
       <version>${project.version}</version>
     </dependency>
 

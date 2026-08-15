@@ -125,7 +125,7 @@
          both queues' unacked messages and the database's conversations (spec §4). -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-store-jdbc</artifactId>
+      <artifactId>nessy-jdbc</artifactId>
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>

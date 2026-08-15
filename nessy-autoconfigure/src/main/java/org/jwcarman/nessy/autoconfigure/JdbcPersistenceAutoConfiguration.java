@@ -18,16 +18,16 @@ package org.jwcarman.nessy.autoconfigure;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Locale;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.jdbc.JdbcConversationStore;
+import org.jwcarman.nessy.jdbc.JdbcDialect;
+import org.jwcarman.nessy.jdbc.JdbcParks;
+import org.jwcarman.nessy.jdbc.JdbcPersistence;
+import org.jwcarman.nessy.jdbc.JdbcTranscript;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.Transcript;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
-import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
-import org.jwcarman.nessy.store.jdbc.JdbcDialect;
-import org.jwcarman.nessy.store.jdbc.JdbcParks;
-import org.jwcarman.nessy.store.jdbc.JdbcPersistence;
-import org.jwcarman.nessy.store.jdbc.JdbcTranscript;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -39,10 +39,9 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 
 /**
- * A {@link DataSource} bean plus {@code nessy-store-jdbc} on the classpath is the whole opt-in: the
- * app becomes durable the moment both are true, no other wiring required (design §3). Add the jar
- * next to a datasource and sessions survive a restart; leave either one out and nothing here
- * activates.
+ * A {@link DataSource} bean plus {@code nessy-jdbc} on the classpath is the whole opt-in: the app
+ * becomes durable the moment both are true, no other wiring required (design §3). Add the jar next
+ * to a datasource and sessions survive a restart; leave either one out and nothing here activates.
  *
  * <p>{@code nessy.jdbc.enabled=false} is the master switch, overriding both signals above. Absent
  * that override, each bean method still yields to a user-declared {@link ConversationStore}, {@link

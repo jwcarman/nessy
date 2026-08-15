@@ -197,14 +197,14 @@ actually needs:
   <!-- Durable conversations and parks across a restart (design's store rework). -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-store-jdbc</artifactId>
+    <artifactId>nessy-jdbc</artifactId>
   </dependency>
 
   <!-- Optional: certify your own ConversationStore/Parks/Transcript/SummaryStore
-       implementation against the same contracts nessy-store-jdbc must pass. -->
+       implementation against the same contracts nessy-jdbc must pass. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-store-tck</artifactId>
+    <artifactId>nessy-tck</artifactId>
     <scope>test</scope>
   </dependency>
 
@@ -468,8 +468,8 @@ Nessy itself will provide, and room for anyone else to extend it.
 | Seam | In-core default | Upgrades Nessy provides | Extenders build |
 |---|---|---|---|
 | `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai` | any vendor |
-| `Memory` | `TranscriptMemory` (verbatim, over `Transcript.inMemory()`) | `nessy-store-jdbc`'s durable `Transcript`; `SummarizingMemory` | RAG, redaction, external stores |
-| `ConversationStore` | `ConversationStore.inMemory()` | `nessy-store-jdbc` | Dynamo, Redis… |
+| `Memory` | `TranscriptMemory` (verbatim, over `Transcript.inMemory()`) | `nessy-jdbc`'s durable `Transcript`; `SummarizingMemory` | RAG, redaction, external stores |
+| `ConversationStore` | `ConversationStore.inMemory()` | `nessy-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll(String)` / `parkAll()` (the durable-HITL posture: every approval parks, the UI is the approver) | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-model-calls | cost budget (post-usage) | custom |
 | `UsagePolicy` | `allow()` / `requireApproval()` stated per `ToolGrant#grant` | path/allowlist rules | OPA, corporate policy |
@@ -566,7 +566,7 @@ bean is autoconfigured from `nessy.provider`/`nessy.{anthropic,openai}.*`
 properties layered over the SDK's own `fromEnv()` resolution — those
 properties are overrides, not replacements, and an explicit one outranks an
 ambient env var; both jars present and neither disambiguated fails fast,
-naming the property. Add `nessy-store-jdbc` next to a `DataSource` bean and a
+naming the property. Add `nessy-jdbc` next to a `DataSource` bean and a
 Postgres-backed `ConversationStore`/`Memory` pair is autoconfigured too
 (`nessy.jdbc.enabled` is the master switch; `nessy.jdbc.bootstrap-schema`
 picks DDL-on-startup vs. bring-your-own-schema). Either way, a `Harness` is
@@ -732,7 +732,7 @@ statuses — a parked conversation self-describes to any ops surface: no
 driver, no lease, durable patience.
 
 `ConversationStore.inMemory()` (the default) does not survive a process
-restart; `nessy-store-jdbc` does, against one Postgres, no cluster membership
+restart; `nessy-jdbc` does, against one Postgres, no cluster membership
 required:
 
 ```java
@@ -748,7 +748,7 @@ Agent<String> agent =
 ```
 
 In a Spring Boot app the wiring above is optional: add
-`nessy-spring-boot-starter` and `nessy-store-jdbc` next to a `DataSource`
+`nessy-spring-boot-starter` and `nessy-jdbc` next to a `DataSource`
 bean, and the store, parks, transcript, memory, and harness above are all
 autoconfigured — the application declares one bean, the agent. See [Spring
 Boot](#spring-boot) above for the whole story.
@@ -761,7 +761,7 @@ and `TranscriptMemory` over a durable `Transcript` keeps the message log the
 in-core default, dies with the JVM. The `chat-web` example
 ([Examples](#examples)) demonstrates the trio surviving a kill mid-approval.
 
-`nessy-store-jdbc`'s own test suite includes container-backed tests against a
+`nessy-jdbc`'s own test suite includes container-backed tests against a
 real `postgres:17-alpine` (via Testcontainers), tagged `container` and
 excluded from the default build the same way `live` tests are — `./mvnw
 verify` needs no Docker daemon. `./mvnw test -Dnessy.excludedGroups=live`
@@ -770,7 +770,7 @@ runs them (needs a Docker daemon); clearing the exclusion entirely
 
 ### Supported databases
 
-`nessy-store-jdbc` speaks five dialects from one code path each — a small,
+`nessy-jdbc` speaks five dialects from one code path each — a small,
 enumerable Postgres-specific surface (a handful of `jsonb` columns and casts,
 one row-limiting/locking idiom, the write-once inserts) rather than five
 parallel implementations. `JdbcDialect.resolve(DatabaseMetaData)` reads
@@ -794,7 +794,7 @@ explicitly**, bypassing the resolver entirely for a driver that lies about
 its own metadata or a caller that already knows; in a Spring Boot
 application, `nessy.jdbc.dialect`
 (`postgres`/`mysql`/`mariadb`/`sqlserver`/`oracle`) is that same override as
-a property. See `nessy-store-jdbc/README.md` for the per-vendor type mapping,
+a property. See `nessy-jdbc/README.md` for the per-vendor type mapping,
 the write-once/duplicate-signal unification, and the Oracle isolation-level
 and row-lock notes.
 
@@ -805,7 +805,7 @@ Three honest notes on the shape of this coverage:
   and has always exercised the `container`-tagged suites — Postgres,
   RabbitMQ — with `-Dnessy.excludedGroups=live`. `nessy-tool-mcp`'s own MCP
   fixtures carry no `container` tag at all and run in every build, container
-  or not. The full TCK-run-five-times matrix (all four `nessy-store-tck` contracts
+  or not. The full TCK-run-five-times matrix (all four `nessy-tck` contracts
   against real MySQL, MariaDB, SQL Server, and Oracle containers, each plus a
   dialect-resolution pin proving `JdbcDialect.resolve` picks the right enum
   from that vendor's own live `DatabaseMetaData` — MariaDB's being the
@@ -897,7 +897,7 @@ in the loop today, reserved for a future token-aware `Memory` to read.
 The durable kernel has landed too: every entry — a `tell`, a `resume` —
 appends to the conversation's durable inbox and drives with the same
 re-entrant verb, `PARKED` conversations wait for an `agent.resume`/
-`agent.progress` from any node, and `nessy-store-jdbc` gives that three
+`agent.progress` from any node, and `nessy-jdbc` gives that three
 real Postgres-backed doors — `ConversationStore`, `Parks`, and `Memory`
 (`TranscriptMemory` over `JdbcTranscript`, the durable transcript) — see
 [Durable, autonomous agents](#durable-autonomous-agents) above and the
