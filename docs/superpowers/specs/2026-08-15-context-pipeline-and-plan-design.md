@@ -69,7 +69,7 @@ new messages. The general seam, new in `org.jwcarman.nessy.spi.memory`:
  * <p>Legality is enforced by the type, not by trust: a {@link Context} can only be built
  * through {@code Context.of}, which rejects illegal shapes (a split tool exchange, an
  * unanswered tool-use mid-history). A transformer therefore cannot hand the model a corrupted
- * dialogue — the worst it can do is throw, which is what stage failure policy (§2.3) governs.
+ * dialogue — the worst it can do is throw, and §2.3 says what a throw means.
  * Eliding a tool exchange means removing the pair atomically; the border check makes a
  * half-elision fail loud.
  *
@@ -113,22 +113,35 @@ Anthropic merges consecutive same-role messages into one turn (with `tool_result
 required before text within a turn, which tail-append satisfies). `SummarizingMemory` has
 injected a fabricated `Message.user(...)` since it shipped; this seam generalizes that move.
 
-### 2.3 Stage failure policy — fail-closed by default
+### 2.3 Stage failure — fail-closed by construction, optionality as a wrapper
 
-A stage that throws is a decision point, and the decision belongs to whoever composed the
-pipeline:
+To the pipeline, **every stage is required**. A stage that throws propagates out of `recall`:
+the turn fails, the durable machinery retries it later, and the model never sees a context the
+stage did not bless. A redactor that failed to strip a credit-card number must stop the
+context from being built at all — and with this design that is not a default to configure but
+the only behavior the pipeline has.
 
-- **`REQUIRED`** (the default): the exception propagates out of `recall`. The turn fails and
-  the durable machinery retries it later; the model never sees a context the stage did not
-  bless. This is the only safe default — a redactor that failed to strip a credit-card number
-  must stop the context from being built at all, not be politely skipped.
-- **`OPTIONAL`**: the stage's failure is logged at WARN (SLF4J, one line, with the stage's
-  toString and the conversation id) and the pipeline continues with the stage's **input**
-  context, exactly as if the stage were absent this call. For enrichment that is nice to have
-  and safe to lose — a flaky relevance lookup, a best-effort annotation.
+Optionality is not the pipeline's concept; a stage optionalizes itself via a decorator:
 
-The policy is per-stage, declared at registration (§2.4). There is no half-way: a partial
-output from a failed stage is never used.
+```java
+/** On any exception: one WARN line (stage toString + conversation id), return the input
+ *  context unchanged — this call behaves as if the stage were absent. A partial output from
+ *  a failed stage is never used. */
+static ContextTransformer optional(ContextTransformer delegate) { ... }
+```
+
+with the symmetric `ContextContributor.optional(delegate)` returning an empty contribution on
+failure. Wrap what is nice to have and safe to lose — a flaky relevance lookup, a best-effort
+annotation, the plan contributor if an application decides a down `PlanStore` should not stall
+turns:
+
+```java
+.contribute(ContextContributor.optional(PlanTools.contributor(planStore)))
+```
+
+One concept fewer in the builder, and the safety property gets stronger: fail-closed is
+unconditional at the seam, and every fail-open decision is visible in the composition as an
+explicit `optional(...)` wrapper.
 
 ### 2.4 The builder
 
@@ -138,8 +151,8 @@ A static factory on `Memory`, beside `windowed`:
 Memory memory = Memory.pipeline(transcript)                              // full hydration
     .summarizing(summaries, provider, model, prompt, tailThreshold)      // …or fold instead
     .keepRecent(50)                                                      // pair-safe clamp
-    .transform(redactor)                                                 // REQUIRED: a throw fails the recall
-    .transform(annotator, StagePolicy.OPTIONAL)                          // OPTIONAL: a throw skips it
+    .transform(redactor)                                                 // a throw fails the recall
+    .transform(ContextTransformer.optional(annotator))                   // self-optionalized: a throw skips it
     .contribute(PlanTools.contributor(planStore))                        // append-only stage
     .build();
 ```
@@ -153,13 +166,12 @@ Memory memory = Memory.pipeline(transcript)                              // full
   per pipeline.
 - `.keepRecent(int n)` — registers the pair-safe trim as a required stage at its call
   position; same `n >= 1` floor as `Memory.windowed`.
-- `.transform(ContextTransformer)` / `.transform(ContextTransformer, StagePolicy)` — zero or
-  more; the one-argument form is `REQUIRED`.
-- `.contribute(ContextContributor)` / `.contribute(ContextContributor, StagePolicy)` — zero or
-  more; adapted internally into an appending transformer; one-argument form is `REQUIRED`.
+- `.transform(ContextTransformer)` — zero or more.
+- `.contribute(ContextContributor)` — zero or more; adapted internally into an appending
+  transformer.
 - All stages — clamps, transforms, contributors — occupy **one ordered list** and run in
-  registration order.
-- `StagePolicy` is an enum (`REQUIRED`, `OPTIONAL`) nested in `MemoryPipeline`.
+  registration order. Every stage is required (§2.3); optional behavior arrives pre-wrapped
+  via `ContextTransformer.optional` / `ContextContributor.optional`.
 - `.build()` returns a `Memory`. Internally it delegates to `TranscriptMemory` or
   `SummarizingMemory` for hydration, then folds the stage list. No behavior is reimplemented;
   the builder is composition sugar with names.
@@ -369,16 +381,16 @@ the token-usage listener's turn boundaries.
 House rules apply throughout: prose snake_case names, no mocking libraries, hand-rolled
 doubles, S5778/S5841 discipline, Awaitility over sleep.
 
-- **Pipeline:** builder validation (double hydration, `n < 1`, null stage, null policy);
-  pass-through of `remember`; stage ordering (two contributors, second sees the first's
-  message in `soFar`; a transform registered between them observed in sequence);
-  empty-contribution injects nothing; clamp-then-contribute order proven by a contributor
-  observing an already-clamped context; a contributor returning an illegal message shape fails
-  loud at `Context.of`; a genuinely mutating transform (redaction double: rewrites a message
-  body) applied and visible downstream; **failure policy:** a throwing `REQUIRED` stage
-  propagates out of `recall`, a throwing `OPTIONAL` stage is skipped — downstream stages
-  receive its input unchanged — and exactly one WARN line is logged (Logback `ListAppender`,
-  filtered to WARN, per the established fixture pattern).
+- **Pipeline:** builder validation (double hydration, `n < 1`, null stage); pass-through of
+  `remember`; stage ordering (two contributors, second sees the first's message in `soFar`; a
+  transform registered between them observed in sequence); empty-contribution injects nothing;
+  clamp-then-contribute order proven by a contributor observing an already-clamped context; a
+  contributor returning an illegal message shape fails loud at `Context.of`; a genuinely
+  mutating transform (redaction double: rewrites a message body) applied and visible
+  downstream; **failure:** a throwing bare stage propagates out of `recall`; the same stage
+  wrapped in `optional(...)` is skipped — downstream stages receive its input unchanged, a
+  contributor's partial output discarded — and exactly one WARN line is logged (Logback
+  `ListAppender`, filtered to WARN, per the established fixture pattern).
 - **Plan records:** blank-title rejection, defensive copy, `empty()`/`isEmpty()`.
 - **Tool:** wholesale replace (second call with fewer tasks shrinks the stored plan), replay
   idempotency (same input executed twice, same stored plan), empty-list clears, confirmation
