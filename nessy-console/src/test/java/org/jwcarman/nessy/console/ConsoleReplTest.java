@@ -366,7 +366,7 @@ class ConsoleReplTest {
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
           .run();
 
-      assertThat(writer.toString()).contains("[ ] write tests");
+      assertThat(writer.toString()).isEqualTo("you> ok\n  [ ] write tests\nyou> ");
     }
 
     @Test
@@ -427,9 +427,8 @@ class ConsoleReplTest {
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
           .run();
 
-      String output = writer.toString();
-      assertThat(output).contains("[>] ship it");
-      assertThat(output).contains("[x] ship it");
+      assertThat(writer.toString())
+          .isEqualTo("you> working\n  [>] ship it\nyou> done\n  [x] ship it\nyou> ");
     }
 
     private static final class ScriptedPlanStore implements PlanStore {
