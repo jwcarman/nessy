@@ -58,8 +58,10 @@ in one compare-and-insert loop:
 1. Read the partition's last row (`ORDER BY version DESC LIMIT 1`).
 2. If its message equals the incoming one: return that entry — the
    at-least-once re-telling absorbed, same as every other impl.
-3. Else `INSERT … IF NOT EXISTS` at `last.version + 1` (or `1` for an
-   empty partition).
+3. Else `INSERT … IF NOT EXISTS` at `last.version + 1` (or `0` for an
+   empty partition — `TranscriptContract` pins zero-based versions, as
+   `JdbcTranscript` already mints; corrected at Task 1, the spec's
+   original "1" was a wording slip).
 4. If the LWT is not applied, another writer won that version: re-read
    and loop — which re-evaluates the stutter rule against the winner's
    message, exactly the serialization `JdbcTranscript` gets from
