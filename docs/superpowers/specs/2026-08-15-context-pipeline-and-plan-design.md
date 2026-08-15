@@ -472,3 +472,30 @@ doubles, S5778/S5841 discipline, Awaitility over sleep.
   every `update_plan` call and result, so history is reconstructible where it matters.
 - **Cross-conversation (agent-scoped) plans:** ruled per-conversation; a standing backlog is a
   different beast with different keying.
+
+## 10. Amendment (owner-ruled, 2026-08-15): one shipped Memory
+
+`PipelineMemory` becomes the **only** `Memory` implementation nessy ships. The `Memory`
+interface remains the SPI — bring-your-own retention is untouched — but the facades die:
+
+- **Delete `TranscriptMemory` and `SummarizingMemory`.** Post-extraction they are pure
+  delegation shells: `TranscriptMemory.recall` is `ContextHydrator.full().hydrate(...)` (the
+  degenerate-floor identity test proves it), and `SummarizingMemory` is a held
+  `SummarizingHydrator` plus `transcript.append`. The logic lives in the hydrators and stays
+  there. `SummarizingMemory`'s watermark/no-fencing class javadoc — the best prose in the
+  package — migrates to `SummarizingHydrator`, where the mechanism it describes now lives.
+- **Delete `Memory.windowed(delegate, n)`.** Its transcript-backed use case is
+  `Memory.pipeline(transcript).keepRecent(n)`; a custom `Memory` clips inside its own
+  implementation. One composition surface, not two.
+- **`AgentBuilder`'s no-memory default** becomes `Memory.pipeline(Transcript.inMemory()).build()`
+  — behaviorally identical (same floor, same WARN story).
+- **`JdbcPersistence.memory()`** returns `Memory.pipeline(transcript()).build()`.
+- **Ripples:** night-watchman's window wiring moves from `Memory.windowed` to
+  `.keepRecent(n)`; every javadoc `{@link}` to the deleted classes re-targets the pipeline or
+  the hydrators; `TranscriptMemoryTest`/`SummarizingMemoryTest`/`MemoryWindowedTest` fold into
+  the hydrator/pipeline suites — assertions that pin behavior not already covered there move,
+  they do not die; README/CHANGELOG tell the one-implementation story.
+
+Rationale: three public names for one concept is API clutter with a choice tax, and the
+pre-1.0 breaking window is open now (§5 shipped in it). The kernel's posture is unchanged:
+it knows only `Memory` (§2.4's retention ruling).
