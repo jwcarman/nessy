@@ -61,6 +61,7 @@
     <module>nessy-model-openai</module>
     <module>nessy-store-jdbc</module>
     <module>nessy-transcript-cassandra</module>
+    <module>nessy-tool-mcp</module>
     <module>nessy-autoconfigure</module>
     <module>nessy-spring-boot-starter</module>
     <module>nessy-examples</module>
@@ -99,6 +100,12 @@
          a small deferred follow-up, not a reason to skip 2.0 forever. -->
     <testcontainers.version>1.21.4</testcontainers.version>
     <postgresql.version>42.7.13</postgresql.version>
+    <!-- The MCP Java SDK's 2.0.0 line splits its JSON backend into a separate artifact
+         (mcp-json-jackson2 vs. mcp-json-jackson3); nessy-tool-mcp pulls the core artifact
+         plus the jackson2 backend explicitly rather than the `mcp` facade, which defaults
+         to jackson3 (com.fasterxml.jackson.core's Jackson 2 line is what the rest of this
+         repo, including ToolSpec's ObjectNode, is built on). -->
+    <mcp-sdk.version>2.0.0</mcp-sdk.version>
 
     <!-- Test groups the default build skips. Override to empty to run them:
          ./mvnw test -Dnessy.excludedGroups= -->
@@ -245,6 +252,16 @@
         <groupId>com.fasterxml.uuid</groupId>
         <artifactId>java-uuid-generator</artifactId>
         <version>${jug.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.modelcontextprotocol.sdk</groupId>
+        <artifactId>mcp-core</artifactId>
+        <version>${mcp-sdk.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.modelcontextprotocol.sdk</groupId>
+        <artifactId>mcp-json-jackson2</artifactId>
+        <version>${mcp-sdk.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
