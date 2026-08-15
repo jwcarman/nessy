@@ -26,14 +26,22 @@ package org.jwcarman.nessy.api;
  */
 public sealed interface Awaited<T> {
 
+  /** The wait finished in-process: {@code value} is the answer, in hand right now. */
   record Ready<T>(T value) implements Awaited<T> {}
 
+  /**
+   * The wait outlives this process: {@code token} is the correlation contract a later {@link
+   * org.jwcarman.nessy.Agent#resume} looks up to finish it — see {@link
+   * org.jwcarman.nessy.api.tool.Tool#execute} for the minting recipe.
+   */
   record Parked<T>(ParkToken token) implements Awaited<T> {}
 
+  /** {@link Ready#Ready(Object)} wrapping {@code value}. */
   static <T> Awaited<T> ready(T value) {
     return new Ready<>(value);
   }
 
+  /** {@link Parked#Parked(ParkToken)} wrapping {@code token}. */
   static <T> Awaited<T> parked(ParkToken token) {
     return new Parked<>(token);
   }

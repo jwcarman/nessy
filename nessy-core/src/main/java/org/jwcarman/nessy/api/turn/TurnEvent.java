@@ -50,13 +50,14 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *       live segment alone.
  *   <li><b>The entry-scoped-observer invariant.</b> The token may ride {@link ToolCallParked}
  *       <em>because</em> a {@link TurnObserver} is supplied by the caller of {@code tell}/{@code
- *       resume}, who already holds tokens via {@code RunOutcome} — the event grants nothing to
- *       anyone who lacks it. Capability-bearing events like this one are legal only while observers
- *       are entry-scoped; any future agent-wide standing observer must revisit {@link
- *       ToolCallParked} loudly rather than silently becoming a capability broadcast. A throwing
- *       observer costs the caller its {@code RunOutcome}, never the record — the park (or any other
- *       committed transition) stays durable and recoverable via {@code Agent.snapshot} / {@code
- *       Agent.peek}.
+ *       resume} — the two real places a caller can read a token back from are {@code
+ *       Agent.snapshot} and {@code Agent.peek} ({@code RunOutcome.Parked} itself carries only
+ *       state, not the token) — the event grants nothing to anyone who lacks it. Capability-bearing
+ *       events like this one are legal only while observers are entry-scoped; any future agent-wide
+ *       standing observer must revisit {@link ToolCallParked} loudly rather than silently becoming
+ *       a capability broadcast. A throwing observer costs the caller its {@code RunOutcome}, never
+ *       the record — the park (or any other committed transition) stays durable and recoverable via
+ *       {@code Agent.snapshot} / {@code Agent.peek}.
  * </ul>
  */
 public sealed interface TurnEvent {

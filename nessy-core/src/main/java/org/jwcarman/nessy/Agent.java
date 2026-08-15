@@ -113,17 +113,20 @@ public final class Agent<I> {
   }
 
   /**
-   * Answers a parked call: {@code token} names a wait some prior turn is durably patient for.
-   * Unknown tokens are rejected loud rather than silently dropped, and a token minted by a
-   * different agent is refused, after verifying the park's stamp, before anything is appended or
-   * driven (design §3, §5). The registry entry survives resolution (design §5) — it is the durable
-   * record that this token once named this wait, not a single-use claim — so a redelivered resume
-   * (every real transport is at-least-once) translates the token again, appends another {@code
-   * Resolved} entry, and the fold's own is-this-call-still-outstanding check drains it quietly
-   * rather than replaying the call: the drive simply reads whatever the first delivery already
-   * produced. Either way, appending always succeeds and driving is the same re-entrant act {@link
-   * #resume} shares with {@code tell}: the inbox absorbs the answer, the status pointer says what
-   * happens next.
+   * Answers a parked call. Pass {@code token} — naming the wait some prior turn is durably patient
+   * for — and {@code resolution}, the answer it has been waiting on; an optional {@code observer}
+   * watches the drive that follows, the same re-entrant act {@link #resume} shares with {@code
+   * tell}: the inbox absorbs the answer, the status pointer says what happens next. Unknown tokens
+   * are rejected loud rather than silently dropped, and a token minted by a different agent is
+   * refused, after verifying the park's stamp, before anything is appended or driven (design §3,
+   * §5).
+   *
+   * <p>The registry entry survives resolution (design §5) — it is the durable record that this
+   * token once named this wait, not a single-use claim — so a redelivered resume (every real
+   * transport is at-least-once) translates the token again, appends another {@code Resolved} entry,
+   * and the fold's own is-this-call-still-outstanding check drains it quietly rather than replaying
+   * the call: the drive simply reads whatever the first delivery already produced. Either way,
+   * appending always succeeds.
    *
    * <p>That quiet-drain protection is serial, not concurrent: it is the fold picking a winner among
    * entries already appended, so it only shields a resume that arrives after an earlier one has
@@ -175,7 +178,6 @@ public final class Agent<I> {
    * @see #deny(ParkToken, String, TurnObserver)
    */
   public RunOutcome deny(ParkToken token, String reason) {
-    Objects.requireNonNull(reason, "reason must not be null");
     return deny(token, reason, TurnObserver.noop());
   }
 
@@ -263,7 +265,7 @@ public final class Agent<I> {
    */
   private Park verified(Park park) {
     if (!park.agentName().equals(name)) {
-      throw new WrongAgentException(park.agentName(), name);
+      throw new WrongAgentException(park.token(), park.agentName(), name);
     }
     return park;
   }

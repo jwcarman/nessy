@@ -60,7 +60,10 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
     return this;
   }
 
-  /** The callback door's own registry. Default: {@link Parks#inMemory()}. */
+  /**
+   * Where parked waits live, so a callback door can find its way back to them. Default: {@link
+   * Parks#inMemory()}.
+   */
   public HarnessBuilder parks(Parks parks) {
     this.parks = Objects.requireNonNull(parks, "parks must not be null");
     return this;
@@ -143,17 +146,20 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   }
 
   /**
-   * {@link Parks#inMemory()} — parked waits kept only for the process's lifetime. A harness backed
-   * by a durable {@link #store} is not automatically a durable harness: parks defaults separately,
-   * so this warns once per {@link #build()} rather than leaving a hand-wired durable deployment to
-   * discover in production that its tokens die with the JVM.
+   * {@link Parks#inMemory()} — parked waits kept only for the process's lifetime. An all-in-memory
+   * harness is a coherent choice and stays silent; a harness whose {@link #store} was explicitly
+   * configured is a different story — that mismatch (durable session state, in-memory parks) is
+   * worth shouting about, so this warns once per {@link #build()} only when {@link #storeSet} is
+   * true, mirroring {@link AgentBuilder}'s own memory-defaulting guard.
    */
   private Parks defaultParks() {
-    LOGGER.warn(
-        "no parks registry configured for this harness: defaulting to Parks.inMemory(), so every"
-            + " parked wait's token is lost on process exit; call .parks(...) with a durable"
-            + " implementation (e.g. JdbcParks.create(...)) for any deployment that needs parks to"
-            + " survive a restart");
+    if (storeSet) {
+      LOGGER.warn(
+          "no parks registry configured for this harness: defaulting to Parks.inMemory(), even"
+              + " though this harness's store was explicitly configured — every parked wait's token"
+              + " is lost on process exit; call .parks(...) with a durable implementation (e.g."
+              + " JdbcParks.create(...)) for any deployment that needs parks to survive a restart");
+    }
     return Parks.inMemory();
   }
 

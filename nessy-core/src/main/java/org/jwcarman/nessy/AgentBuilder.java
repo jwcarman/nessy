@@ -131,11 +131,13 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
    * harness cannot detect that collision, so avoiding it is an application contract, not a
    * framework-enforced one.
    *
-   * @throws IllegalArgumentException if {@code name} is null or blank
+   * @throws AgentConfigurationException if {@code name} is null or blank
    */
   public AgentBuilder<I> name(String name) {
     if (name == null || name.isBlank()) {
-      throw new IllegalArgumentException("name must not be blank");
+      throw new AgentConfigurationException(
+          "an agent name must not be blank: it is how parked work finds its way home across"
+              + " restarts, the durable stamp every callback door checks a resolution against");
     }
     this.name = name;
     return this;
@@ -150,11 +152,16 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     return this;
   }
 
+  /** The system prompt sent with every model call. Default: {@link #DEFAULT_SYSTEM_PROMPT}. */
   public AgentBuilder<I> systemPrompt(String systemPrompt) {
-    this.systemPrompt = systemPrompt;
+    this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     return this;
   }
 
+  /**
+   * The model's per-response token ceiling, folded into {@link #build()}'s {@code ModelSettings}.
+   * Default: {@link #DEFAULT_MAX_TOKENS}.
+   */
   public AgentBuilder<I> maxTokens(int maxTokens) {
     this.maxTokens = maxTokens;
     return this;
@@ -185,13 +192,23 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     return this;
   }
 
+  /**
+   * The human-in-the-loop authority consulted for every tool call whose {@link UsagePolicy} is not
+   * the canonical {@link UsagePolicy#allow()} singleton. Default: {@link #defaultApprover}, which
+   * warns unless no approval path can exist in the first place; for the durable posture — a park
+   * that survives past this process — see {@link Approver#parkAll()}.
+   */
   public AgentBuilder<I> approver(Approver approver) {
-    this.approver = approver;
+    this.approver = Objects.requireNonNull(approver, "approver must not be null");
     return this;
   }
 
+  /**
+   * When the loop stops asking the model for another turn. Default: {@link
+   * TerminationPolicy#defaults()}.
+   */
   public AgentBuilder<I> termination(TerminationPolicy termination) {
-    this.termination = termination;
+    this.termination = Objects.requireNonNull(termination, "termination must not be null");
     return this;
   }
 
@@ -209,6 +226,8 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
 
   /**
    * Declares the model's total token budget, folded into {@link #build()}'s {@code ModelSettings}.
+   * Nothing in the loop consumes this yet — it rides {@code ModelSettings} for a future compaction
+   * trigger, not read anywhere today.
    */
   public AgentBuilder<I> contextWindow(long contextWindow) {
     this.contextWindow = contextWindow;
@@ -261,7 +280,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
 
   public Agent<I> build() {
     if (name == null) {
-      throw new IllegalStateException(
+      throw new AgentConfigurationException(
           "an agent name is required: call .name(...) before build() — the name is how parked work"
               + " finds its way home across restarts, the durable stamp every callback door checks"
               + " a resolution against");

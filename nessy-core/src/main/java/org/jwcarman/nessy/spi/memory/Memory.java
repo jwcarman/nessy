@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
+import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -51,4 +52,30 @@ public interface Memory {
   void remember(ConversationId id, Message message);
 
   Context recall(ConversationId id);
+
+  /**
+   * The bounded default for a long-lived agent: {@code remember} delegates to {@code delegate}
+   * unchanged, while {@code recall} clips whatever {@code delegate} returns to its last {@code n}
+   * messages via {@link Context#keepRecent(int)} — a pair-safe trim, never splitting a tool-use
+   * message from the results answering it. A one-line factory for the shape most agents actually
+   * want in production: unlimited retention underneath, a bounded window at the border.
+   *
+   * @param delegate the {@code Memory} whose full history is retained and clipped on the way out
+   * @param n how many of the most recent messages {@code recall} keeps intact; forwarded verbatim
+   *     to {@link Context#keepRecent(int)}, so the same {@code n} constraints apply
+   */
+  static Memory windowed(Memory delegate, int n) {
+    Objects.requireNonNull(delegate, "delegate must not be null");
+    return new Memory() {
+      @Override
+      public void remember(ConversationId id, Message message) {
+        delegate.remember(id, message);
+      }
+
+      @Override
+      public Context recall(ConversationId id) {
+        return delegate.recall(id).keepRecent(n);
+      }
+    };
+  }
 }

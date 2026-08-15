@@ -16,11 +16,13 @@
 package org.jwcarman.nessy.api;
 
 /**
- * {@code token} names no wait an {@link org.jwcarman.nessy.Agent} can resume — either the store has
- * never heard of it, or it named a park that has already settled (every real transport is
- * at-least-once, but a token this store no longer recognizes at all is not the same as one it still
- * recognizes but has already consumed — see {@link org.jwcarman.nessy.Agent#resume(ParkToken,
- * ToolResolution, org.jwcarman.nessy.api.turn.TurnObserver)}).
+ * {@code token} names no wait an {@link org.jwcarman.nessy.Agent} can resume — the registry has
+ * never heard of it at all. Registry entries survive resolution (design §5): a token this registry
+ * still recognizes but whose call has already settled does not throw this — a redelivered resume
+ * (every real transport is at-least-once) drains quietly instead, the fold's own
+ * is-this-call-still-outstanding check telling a genuine replay from a live wait (see {@link
+ * org.jwcarman.nessy.Agent#resume(ParkToken, ToolResolution,
+ * org.jwcarman.nessy.api.turn.TurnObserver)}).
  *
  * <p>Distinct from {@link IllegalArgumentException}, which everywhere else in this package still
  * covers a caller's own argument misuse — this is a named rejection over a specific token, not a
@@ -29,6 +31,6 @@ package org.jwcarman.nessy.api;
 public final class UnknownParkTokenException extends RuntimeException {
 
   public UnknownParkTokenException(ParkToken token) {
-    super("unknown or settled park token: " + token);
+    super("unknown park token: " + token.value());
   }
 }

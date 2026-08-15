@@ -35,6 +35,10 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * <p>This is how the whole loop gets tested without a key, a network, or a nondeterministic remote
  * service that charges per call. It also records every request it received, so tests can assert on
  * what the harness <em>sent</em>, which is usually the more interesting half.
+ *
+ * <p>Its turn-and-request bookkeeping is synchronized: examples drive on virtual threads, and a
+ * concurrent resume racing a park against this same provider must not corrupt {@code nextTurn} or
+ * the request log.
  */
 public final class ScriptedModelProvider implements ModelProvider {
 
@@ -51,7 +55,7 @@ public final class ScriptedModelProvider implements ModelProvider {
   }
 
   @Override
-  public ModelStream stream(ModelRequest request) {
+  public synchronized ModelStream stream(ModelRequest request) {
     if (nextTurn >= turns.size()) {
       throw new IllegalStateException(
           "script exhausted: the harness asked for turn " + (nextTurn + 1) + " of " + turns.size());
@@ -87,7 +91,7 @@ public final class ScriptedModelProvider implements ModelProvider {
   }
 
   /** A snapshot of every request this provider was handed, oldest first. */
-  public List<ModelRequest> requests() {
+  public synchronized List<ModelRequest> requests() {
     return List.copyOf(requests);
   }
 

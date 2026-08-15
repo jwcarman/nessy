@@ -764,7 +764,11 @@ class AgentDoorsTest {
 
       assertThatThrownBy(() -> agentB.resume(tokenA, decided))
           .isInstanceOf(WrongAgentException.class)
-          .hasMessage("park was minted by agent 'agent-a'; this agent is 'agent-b'");
+          .hasMessage(
+              "park "
+                  + tokenA.value()
+                  + " was minted by agent 'agent-a'; this agent is 'agent-b' — an agent's name is a"
+                  + " durable wire contract; redeploy under 'agent-a' to drain its parks");
       assertThat(store.load(conversationA)).contains(before);
     }
 

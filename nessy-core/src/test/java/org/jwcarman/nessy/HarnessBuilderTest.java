@@ -18,6 +18,10 @@ package org.jwcarman.nessy;
 import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import io.micrometer.observation.tck.TestObservationRegistry;
@@ -29,6 +33,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ConversationEvent;
@@ -36,11 +42,14 @@ import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.spi.conversation.ConversationStore;
+import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@code HarnessBuilder}'s own setters — {@link HarnessBuilder#observations}, {@link
@@ -215,6 +224,69 @@ class HarnessBuilderTest {
 
       assertThat(RunOutcomes.failed(reply)).isFalse();
       assertThat(handled.await(5, TimeUnit.SECONDS)).isTrue();
+    }
+  }
+
+  @Nested
+  class Parks_downgrade_warning {
+
+    private ListAppender<ILoggingEvent> appender;
+    private Logger logger;
+    private Level originalLevel;
+
+    @BeforeEach
+    void wires_a_capturing_appender_onto_the_harness_builder_logger() {
+      logger = (Logger) LoggerFactory.getLogger(HarnessBuilder.class);
+      originalLevel = logger.getLevel();
+      logger.setLevel(Level.WARN);
+      appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void unwires_the_appender_and_restores_the_loggers_level() {
+      logger.detachAppender(appender);
+      logger.setLevel(originalLevel);
+    }
+
+    @Test
+    void parks_defaulted_with_an_explicitly_configured_store_warns_about_the_downgrade() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider).store(ConversationStore.inMemory()).build();
+
+      assertThat(appender.list).hasSize(1);
+      ILoggingEvent event = appender.list.getFirst();
+      assertThat(event.getLevel()).isEqualTo(Level.WARN);
+      assertThat(event.getFormattedMessage()).contains("parks").contains(".parks(");
+    }
+
+    @Test
+    void both_defaulted_stays_silent() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider).build();
+
+      assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void an_explicitly_configured_parks_stays_silent_even_with_a_configured_store() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider).store(ConversationStore.inMemory()).parks(Parks.inMemory()).build();
+
+      assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void an_explicitly_configured_parks_stays_silent_with_a_defaulted_store() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider).parks(Parks.inMemory()).build();
+
+      assertThat(appender.list).isEmpty();
     }
   }
 }

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api.turn;
 
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -74,6 +75,20 @@ public interface TurnObserver {
    * @param prefix the log-line tag — an incident id, an order id, a conversation label
    */
   static TurnObserver logging(Logger logger, String prefix) {
+    Objects.requireNonNull(prefix, "prefix must not be null");
+    return logging(logger, () -> prefix);
+  }
+
+  /**
+   * {@link #logging(Logger, String)}, with the prefix resolved once per event, at the moment that
+   * event narrates, rather than fixed up front. Prefer this overload whenever the tag is not yet
+   * known when the observer is built — a correlation id minted only once a drive returns, say — and
+   * the fixed-{@code String} overload would force capturing a value before it exists.
+   *
+   * @param logger the slf4j {@code Logger} every line is written to
+   * @param prefix supplies the log-line tag on demand, called once per narrated line
+   */
+  static TurnObserver logging(Logger logger, Supplier<String> prefix) {
     Objects.requireNonNull(logger, "logger must not be null");
     Objects.requireNonNull(prefix, "prefix must not be null");
     return builder()
@@ -81,30 +96,30 @@ public interface TurnObserver {
             said -> {
               String text = joinedText(said.message());
               if (!text.isBlank()) {
-                logger.info("{} says: {}", prefix, text);
+                logger.info("{} says: {}", prefix.get(), text);
               }
             })
         .onToolCallRequested(
-            requested -> logger.info("{} tool: {}", prefix, requested.call().name()))
+            requested -> logger.info("{} tool: {}", prefix.get(), requested.call().name()))
         .onToolCallCompleted(
             completed ->
                 logger.info(
                     "{} tool completed: {} (error={})",
-                    prefix,
+                    prefix.get(),
                     completed.call().name(),
                     completed.result().isError()))
         .onToolCallParked(
             parked ->
                 logger.info(
                     "{} parked: tool={} token={}",
-                    prefix,
+                    prefix.get(),
                     parked.call().name(),
                     parked.token().value()))
         .onTurnEnded(
             ended -> {
-              logger.info("{} ends: {}", prefix, ended.status());
+              logger.info("{} ends: {}", prefix.get(), ended.status());
               if (ended.status() == ConversationStatus.FAILED) {
-                logger.warn("{} failed: {}", prefix, ended.failureReason());
+                logger.warn("{} failed: {}", prefix.get(), ended.failureReason());
               }
             })
         .build();

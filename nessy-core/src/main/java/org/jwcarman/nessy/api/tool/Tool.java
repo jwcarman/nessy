@@ -51,7 +51,18 @@ public interface Tool<T> {
     return String.valueOf(input);
   }
 
-  /** Runs the tool. Returns {@link Awaited.Parked} only if it genuinely must wait. */
+  /**
+   * Runs the tool. Returns {@link Awaited.Parked} only if it genuinely must wait.
+   *
+   * <p>The parking recipe, in three steps: mint a token via {@link
+   * org.jwcarman.nessy.api.ParkToken#generate()}; return {@link
+   * Awaited#parked(org.jwcarman.nessy.api.ParkToken)} with it; then get that token to the outside
+   * world — the tool's own job, not the harness's, done via {@link ToolContext#progress}, the
+   * tool's own transport (a webhook payload, a queued message), or a caller reading it back off
+   * {@link org.jwcarman.nessy.Agent#snapshot}.
+   *
+   * @see org.jwcarman.nessy.Agent#resume
+   */
   Awaited<ToolResult> execute(T input, ToolContext context);
 
   /** The wire description derived from {@link #inputType()}. */

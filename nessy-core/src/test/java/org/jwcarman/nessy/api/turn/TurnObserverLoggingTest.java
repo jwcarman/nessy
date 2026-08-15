@@ -23,8 +23,11 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
@@ -170,7 +173,51 @@ class TurnObserverLoggingTest {
 
   @Test
   void a_null_prefix_is_rejected() {
-    assertThatThrownBy(() -> TurnObserver.logging(logger, null))
+    String nullPrefix = null;
+
+    assertThatThrownBy(() -> TurnObserver.logging(logger, nullPrefix))
         .isInstanceOf(NullPointerException.class);
+  }
+
+  @Nested
+  class Deferred_prefix_supplier {
+
+    @Test
+    void each_line_carries_whatever_the_supplier_returns_at_its_own_narration() {
+      List<String> prefixes = new ArrayList<>(List.of("unknown"));
+      TurnObserver observer = TurnObserver.logging(logger, () -> prefixes.getFirst());
+
+      observer.on(new TurnEvent.ToolCallRequested(CALL));
+      prefixes.set(0, "order-42");
+      observer.on(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+
+      assertThat(appender.list).hasSize(2);
+      assertThat(appender.list.get(0).getFormattedMessage()).isEqualTo("unknown tool: search");
+      assertThat(appender.list.get(1).getFormattedMessage()).isEqualTo("order-42 ends: COMPLETE");
+    }
+
+    @Test
+    void a_constant_supplier_behaves_exactly_like_the_fixed_prefix_overload() {
+      TurnObserver observer = TurnObserver.logging(logger, () -> PREFIX);
+
+      observer.on(new TurnEvent.ToolCallRequested(CALL));
+
+      assertThat(appender.list).hasSize(1);
+      assertThat(appender.list.getFirst().getFormattedMessage()).isEqualTo("watchman tool: search");
+    }
+
+    @Test
+    void a_null_logger_is_rejected() {
+      assertThatThrownBy(() -> TurnObserver.logging(null, () -> PREFIX))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_null_prefix_supplier_is_rejected() {
+      Supplier<String> nullSupplier = null;
+
+      assertThatThrownBy(() -> TurnObserver.logging(logger, nullSupplier))
+          .isInstanceOf(NullPointerException.class);
+    }
   }
 }

@@ -19,8 +19,9 @@ package org.jwcarman.nessy.api;
  * {@code token} names a wait this {@link org.jwcarman.nessy.Agent} did not mint — the park's own
  * {@link org.jwcarman.nessy.spi.conversation.Parks.Park#agentName()} names a different agent than
  * the one a callback door was called on (design §3, §5). Self-diagnosing on purpose: the message
- * names both sides, so a rename-without-redeploy breaks the first callback loud, with the fix
- * spelled out, rather than misrouting a resolution through the wrong agent's grants and listeners.
+ * names the token and both agents and spells out the fix — an agent's name is a durable wire
+ * contract, so a rename-without-redeploy breaks the first callback loud, rather than misrouting a
+ * resolution through the wrong agent's grants and listeners.
  *
  * <p>Every callback door verifies this <em>before</em> appending or driving anything — a refused
  * delivery leaves the conversation exactly as it was.
@@ -31,12 +32,16 @@ package org.jwcarman.nessy.api;
  */
 public final class WrongAgentException extends RuntimeException {
 
-  public WrongAgentException(String parkedByAgentName, String thisAgentName) {
+  public WrongAgentException(ParkToken token, String parkedByAgentName, String thisAgentName) {
     super(
-        "park was minted by agent '"
+        "park "
+            + token.value()
+            + " was minted by agent '"
             + parkedByAgentName
             + "'; this agent is '"
             + thisAgentName
-            + "'");
+            + "' — an agent's name is a durable wire contract; redeploy under '"
+            + parkedByAgentName
+            + "' to drain its parks");
   }
 }

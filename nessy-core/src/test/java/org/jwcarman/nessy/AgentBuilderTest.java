@@ -576,19 +576,52 @@ class AgentBuilderTest {
       var builder = Nessy.harness(NEVER_CALLED).build().agent().model("fake-model");
 
       assertThatThrownBy(builder::build)
-          .isInstanceOf(IllegalStateException.class)
+          .isInstanceOf(AgentConfigurationException.class)
           .hasMessageContaining("name")
           .hasMessageContaining("parked work")
           .hasMessageContaining("restarts");
     }
 
     @Test
-    void a_blank_name_is_rejected_at_the_setter() {
+    void a_blank_name_is_rejected_at_the_setter_with_the_covenant() {
       var builder = Nessy.harness(NEVER_CALLED).build().agent();
 
       assertThatThrownBy(() -> builder.name("   "))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("name");
+          .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("name")
+          .hasMessageContaining("parked work")
+          .hasMessageContaining("restarts");
+    }
+  }
+
+  @Nested
+  class Null_rejection {
+
+    @Test
+    void a_null_approver_is_rejected() {
+      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+
+      assertThatThrownBy(() -> builder.approver(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("approver");
+    }
+
+    @Test
+    void a_null_termination_policy_is_rejected() {
+      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+
+      assertThatThrownBy(() -> builder.termination(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("termination");
+    }
+
+    @Test
+    void a_null_system_prompt_is_rejected() {
+      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+
+      assertThatThrownBy(() -> builder.systemPrompt(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("systemPrompt");
     }
   }
 }
