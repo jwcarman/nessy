@@ -21,10 +21,10 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
-/** Span names and attribute assembly for the engine's phases. GenAI-semconv attribute keys. */
-public final class EngineObservations {
+/** Span names and attribute assembly for the loop's phases. GenAI-semconv attribute keys. */
+public final class LoopObservations {
 
-  private EngineObservations() {}
+  private LoopObservations() {}
 
   // Observation names are Nessy's stable metric identity; contextual names follow the
   // (pre-1.0) OTel GenAI agent span conventions (invoke_agent, chat {model}, execute_tool

@@ -50,9 +50,8 @@ import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
- * The invariant loop — the fold→perform cycle, written once, owned by the core. Engines do not
- * exist anymore; this is the machinery every assembly shares, varying only in the executors,
- * memory, store, and policy handed to it.
+ * The invariant loop — the fold→perform cycle, written once, owned by the core: the machinery every
+ * assembly shares, varying only in the executors, memory, store, and policy handed to it.
  *
  * <p>The unified drive (design 2026-08-12): every entry — a tell, a resolution — appends to the
  * conversation's durable inbox regardless of status; nothing is ever refused. Exactly one verb,
@@ -124,7 +123,7 @@ public final class ConversationLoop {
    */
   public RunOutcome drive(ConversationId id, TurnObserver observer) {
     Objects.requireNonNull(observer, "observer must not be null");
-    Observation observation = EngineObservations.run(observations, id);
+    Observation observation = LoopObservations.run(observations, id);
     try (var _ = observation.openScope()) {
       return driveWithRetries(id, observer);
     } catch (RuntimeException e) {

@@ -23,7 +23,7 @@ import java.util.function.Predicate;
 /**
  * Retries the OPENING of a model stream, with exponential backoff.
  *
- * <p>A decorator, not engine machinery — the upgrade path is {@code wrap(provider, …)} and nothing
+ * <p>A decorator, not loop machinery — the upgrade path is {@code wrap(provider, …)} and nothing
  * else changes. Only the initial {@link ModelProvider#stream} call is retried: once events flow,
  * tokens have already been fed downstream and a mid-stream failure propagates, because a
  * transparent re-call would replay the turn from the top.

@@ -42,16 +42,15 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.internal.EngineObservations;
+import org.jwcarman.nessy.internal.LoopObservations;
 import org.jwcarman.nessy.internal.ToolInvoker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The one door into a tool's execution: gate, then invoke. Ported from the retired in-process
- * engine's {@code decide}/{@code requestApproval}/{@code executeTool} trio, now living at the
- * executor seam so a call's authority question and its performance are answered by the same method
- * instead of two effects the loop has to sequence itself.
+ * The one door into a tool's execution: gate, then invoke. Living at the executor seam means a
+ * call's authority question and its performance are answered by the same method instead of two
+ * effects the loop has to sequence itself.
  *
  * <p>A grant's {@link UsagePolicy} is consulted first, fail-closed on a broken policy; only {@link
  * PolicyDecision.RequireApproval} ever reaches {@link #approver}. A call to a tool this executor
@@ -91,7 +90,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
   /**
    * The wiring-time belt for the {@code tools}/{@code grants} pair: every tool {@code
    * tools.specs()} advertises to the model must have a grant, or the model could be offered a tool
-   * whose authority was never decided. Ported unchanged from the retired in-process engine.
+   * whose authority was never decided.
    */
   private static void requireEveryRegisteredToolIsGranted(
       ToolRegistry tools, Map<String, ToolGrant> grants) {
@@ -160,7 +159,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
     ApprovalRequest request =
         new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
     emitter.emit(new ApprovalRequested(state.id(), request));
-    Observation observation = EngineObservations.approvalWait(observations, tool.name());
+    Observation observation = LoopObservations.approvalWait(observations, tool.name());
     Awaited<Decision> decision;
     try (var _ = observation.openScope()) {
       decision = approver.approve(request);
@@ -188,7 +187,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
 
   /**
    * Runs one policy, fail-closed: a policy is supposed to be pure and total, but a broken or
-   * incomplete one must never become an allow. Ported unchanged from the retired in-process engine.
+   * incomplete one must never become an allow.
    */
   private static PolicyDecision evaluate(
       UsagePolicy policy, ToolCall call, ConversationState state) {
@@ -202,7 +201,6 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
 
   /**
    * Renders a call for the approval prompt without letting malformed arguments blow up the session.
-   * Ported unchanged from the retired in-process engine.
    */
   private String describeForApproval(Tool<?> tool, ToolCall call) {
     try {
@@ -226,7 +224,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
       return finished(
           call, state, ToolResult.error("No such tool: " + call.name()), observer, null);
     }
-    Observation observation = EngineObservations.toolCall(observations, call.name(), call.id());
+    Observation observation = LoopObservations.toolCall(observations, call.name(), call.id());
     try (var _ = observation.openScope()) {
       return invokeAndRecord(state, call, found.get(), observer, observation);
     } catch (RuntimeException e) {
@@ -257,12 +255,12 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
       // as a success to anything watching the span.
       observation.error(e);
       ToolResult result = ToolResult.error(describe(e));
-      EngineObservations.recordOutcome(observation, result);
+      LoopObservations.recordOutcome(observation, result);
       return finished(call, state, result, observer, null);
     }
     return switch (awaited) {
       case Awaited.Ready<ToolResult>(ToolResult result) -> {
-        EngineObservations.recordOutcome(observation, result);
+        LoopObservations.recordOutcome(observation, result);
         yield finished(call, state, result, observer, null);
       }
       case Awaited.Parked<ToolResult>(var token) -> Awaited.parked(token);

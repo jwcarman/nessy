@@ -32,7 +32,7 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.internal.EngineObservations;
+import org.jwcarman.nessy.internal.LoopObservations;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ContextOverflowException;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -47,11 +47,10 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * and yield the one settled fact. Message construction lives here and nowhere else on the model
  * side: facts are what happened; this is where what happened is assembled.
  *
- * <p>Stream consumption runs inside one {@code nessy.model.call} observation, ported unchanged from
- * the retired in-process engine's {@code streamModelTurn}: opened before the provider is asked to
- * stream, marked {@link Observation#error(Throwable)} on an unexpected {@link RuntimeException},
- * stopped in a {@code finally} regardless of outcome, and tagged with the settled usage the instant
- * {@link ModelEvent.TurnEnded} arrives.
+ * <p>Stream consumption runs inside one {@code nessy.model.call} observation: opened before the
+ * provider is asked to stream, marked {@link Observation#error(Throwable)} on an unexpected {@link
+ * RuntimeException}, stopped in a {@code finally} regardless of outcome, and tagged with the
+ * settled usage the instant {@link ModelEvent.TurnEnded} arrives.
  */
 public final class ProviderModelCallExecutor implements ModelCallExecutor {
 
@@ -99,7 +98,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
    */
   private Awaited<ConversationEvent> stream(
       ConversationState state, ModelRequest request, TurnObserver observer) {
-    Observation modelCall = EngineObservations.modelCall(observations, config.model());
+    Observation modelCall = LoopObservations.modelCall(observations, config.model());
     List<ContentBlock> blocks = new ArrayList<>();
     try (var _ = modelCall.openScope();
         ModelStream stream = provider.stream(request)) {
@@ -123,7 +122,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
             blocks.add(new ToolUseBlock(call));
           }
           case ModelEvent.TurnEnded(var reason, var usage) -> {
-            EngineObservations.recordUsage(modelCall, usage);
+            LoopObservations.recordUsage(modelCall, usage);
             return Awaited.ready(
                 new ConversationEvent.ModelResponded(
                     state.id(), Message.assistant(List.copyOf(blocks)), reason, usage));

@@ -61,8 +61,8 @@ class ZoneBoundariesTest {
   /**
    * The only spi types allowed to reach into internal machinery, and why: each is an executor
    * living at the seam between the loop and its performances, and each needs exactly one internal
-   * helper — {@code ProviderModelCallExecutor} the {@code EngineObservations} span helpers, {@code
-   * GatedToolCallExecutor} both {@code EngineObservations} and the shared {@code ToolInvoker}.
+   * helper — {@code ProviderModelCallExecutor} the {@code LoopObservations} span helpers, {@code
+   * GatedToolCallExecutor} both {@code LoopObservations} and the shared {@code ToolInvoker}.
    */
   private static final Set<String> SANCTIONED_SPI_TO_INTERNAL_IMPORTS =
       Set.of("ProviderModelCallExecutor.java", "GatedToolCallExecutor.java");
