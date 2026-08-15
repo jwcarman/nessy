@@ -28,6 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.plan.Plan;
+import org.jwcarman.nessy.spi.plan.PlanStore;
 
 /**
  * The loop every REPL example hand-rolled three times over: read a line, tell the agent, render
@@ -57,6 +59,8 @@ public final class ConsoleRepl {
   private final TurnObserver renderer;
   private final BufferedReader reader;
   private final Writer writer;
+  private final PlanStore planStore;
+  private Plan lastRenderedPlan;
 
   ConsoleRepl(
       Agent<String> agent,
@@ -66,6 +70,18 @@ public final class ConsoleRepl {
       TurnObserver renderer,
       BufferedReader reader,
       Writer writer) {
+    this(agent, banner, prompt, exitWords, renderer, reader, writer, null);
+  }
+
+  ConsoleRepl(
+      Agent<String> agent,
+      String banner,
+      String prompt,
+      Set<String> exitWords,
+      TurnObserver renderer,
+      BufferedReader reader,
+      Writer writer,
+      PlanStore planStore) {
     Objects.requireNonNull(agent, "agent must not be null");
     this.writer = Objects.requireNonNull(writer, "writer must not be null");
     this.conversation = agent.converse();
@@ -74,6 +90,7 @@ public final class ConsoleRepl {
     this.exitWords = Set.copyOf(Objects.requireNonNull(exitWords, "exitWords must not be null"));
     this.renderer = renderer != null ? renderer : ConsoleRenderer.observer(this.writer);
     this.reader = Objects.requireNonNull(reader, "reader must not be null");
+    this.planStore = planStore;
   }
 
   /** Prints the banner (if any), then loops: prompt, read, exit or tell, until end of input. */
@@ -122,6 +139,29 @@ public final class ConsoleRepl {
       spinner.stop();
     }
     write("\n");
+    renderPlanIfChanged();
+  }
+
+  /**
+   * The end-of-turn half of design §9's plan checklist: when a {@link PlanStore} was granted (see
+   * {@link Builder#plan}), reads the current plan for this REPL's own conversation and prints the
+   * checklist only when it is present, non-empty, and different from the last one printed — quiet
+   * turns, and turns where the plan didn't change, print nothing. No store granted means no read at
+   * all.
+   */
+  private void renderPlanIfChanged() {
+    if (planStore == null) {
+      return;
+    }
+    planStore
+        .find(conversation.conversationId())
+        .filter(plan -> !plan.isEmpty())
+        .filter(plan -> !plan.equals(lastRenderedPlan))
+        .ifPresent(
+            plan -> {
+              ConsoleRenderer.checklist(writer, plan);
+              lastRenderedPlan = plan;
+            });
   }
 
   /**
@@ -171,6 +211,7 @@ public final class ConsoleRepl {
     private String prompt = "> ";
     private Set<String> exitWords = new LinkedHashSet<>(DEFAULT_EXIT_WORDS);
     private TurnObserver renderer;
+    private PlanStore planStore;
 
     private Builder(Agent<String> agent) {
       this.agent = Objects.requireNonNull(agent, "agent must not be null");
@@ -212,6 +253,23 @@ public final class ConsoleRepl {
     }
 
     /**
+     * Opts into the plan checklist (design §9): the app that granted the model {@code update_plan}
+     * hands the same {@code store} here, and the REPL prints the checklist at the end of every turn
+     * whose plan changed. Mirrors the grant principle — the console never guesses a plan facility
+     * exists.
+     *
+     * @throws IllegalStateException if called a second time
+     */
+    public Builder plan(PlanStore store) {
+      Objects.requireNonNull(store, "store must not be null");
+      if (this.planStore != null) {
+        throw new IllegalStateException("plan(PlanStore) was already called");
+      }
+      this.planStore = store;
+      return this;
+    }
+
+    /**
      * The real-console entry point: a thin adapter over {@link System#in}/{@link System#out}. The
      * reader is {@link ConsoleIo#stdin()}, not a fresh wrap of {@link System#in} — shared with
      * {@link ConsoleApprover}'s own default constructor, so a mid-turn approval prompt reads from
@@ -219,7 +277,14 @@ public final class ConsoleRepl {
      */
     public void run() {
       new ConsoleRepl(
-              agent, banner, prompt, exitWords, renderer, ConsoleIo.stdin(), ConsoleIo.stdout())
+              agent,
+              banner,
+              prompt,
+              exitWords,
+              renderer,
+              ConsoleIo.stdin(),
+              ConsoleIo.stdout(),
+              planStore)
           .run();
     }
   }

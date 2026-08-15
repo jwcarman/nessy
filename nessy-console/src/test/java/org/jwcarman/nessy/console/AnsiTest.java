@@ -79,6 +79,13 @@ class AnsiTest {
 
       assertThat(Ansi.green("hi")).isEqualTo("[32mhi[0m");
     }
+
+    @Test
+    void strikethrough_wraps_the_text_in_the_strikethrough_sgr_code_and_a_reset() {
+      Ansi.overrideEnabled(true);
+
+      assertThat(Ansi.strikethrough("hi")).isEqualTo("[9mhi[0m");
+    }
   }
 
   @Nested
@@ -95,6 +102,13 @@ class AnsiTest {
       assertThat(Ansi.yellow("hi")).isEqualTo("hi");
       assertThat(Ansi.red("hi")).isEqualTo("hi");
       assertThat(Ansi.green("hi")).isEqualTo("hi");
+    }
+
+    @Test
+    void strikethrough_is_an_exact_pass_through_too() {
+      Ansi.overrideEnabled(false);
+
+      assertThat(Ansi.strikethrough("hi")).isEqualTo("hi");
     }
   }
 
