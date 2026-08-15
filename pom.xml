@@ -511,6 +511,7 @@ limitations under the License.]]></inlineHeader>
                     <exclude>**/*.sh</exclude>
                     <exclude>**/*.md</exclude>
                     <exclude>docs/**</exclude>
+                    <exclude>site/**</exclude>
                     <exclude>.mvn/**</exclude>
                     <exclude>mvnw</exclude>
                     <exclude>mvnw.cmd</exclude>

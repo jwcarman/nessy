@@ -1,0 +1,101 @@
+#
+# Copyright © 2026 James Carman
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+site_name: Nessy
+site_description: An agent harness framework for Java.
+site_url: https://jwcarman.github.io/nessy/
+repo_url: https://github.com/jwcarman/nessy
+repo_name: jwcarman/nessy
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+# Nessy's process artifacts (specs, plans) live under docs/superpowers and
+# stay out of the published site.
+exclude_docs: |
+  /superpowers/
+
+theme:
+  name: material
+  logo: assets/brand/nessy-mark.png
+  favicon: assets/brand/favicon.ico
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  # Nessy brand palette — defined in docs/assets/stylesheets/nessy.css
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+  - assets/stylesheets/nessy.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Concepts:
+      - The Durable Loop: concepts/durable-loop.md
+      - Tools and Grants: concepts/tools-and-grants.md
+      - Parks and Callbacks: concepts/parks-and-callbacks.md
+      - Memory and the Pipeline: concepts/memory-and-the-pipeline.md
+      - Planning: concepts/planning.md
+      - Storage: concepts/storage.md
+  - Guides:
+      - Getting Started: guides/getting-started.md
+      - Providers: guides/providers.md
+      - Durable Persistence: guides/durable-persistence.md
+      - Console Apps: guides/console-apps.md
+      - MCP Clients: guides/mcp-clients.md
+      - Planning Your Agent's Work: guides/planning-your-agents-work.md
+      - Summarizing Memory: guides/summarizing-memory.md
+      - Triggers: guides/triggers.md
+      - Observability: guides/observability.md
+      - Spring Boot: guides/spring-boot.md
+  - Examples: examples/index.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - TCK: reference/tck.md
+      - Changelog: https://github.com/jwcarman/nessy/blob/main/CHANGELOG.md
+      - Javadoc (source): https://github.com/jwcarman/nessy

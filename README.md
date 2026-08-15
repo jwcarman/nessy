@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/nessy-hero.png" width="360" alt="Nessy — a friendly sea monster wearing a harness"/>
+  <img src="brand/mascot/nessy-mascot-512.png" alt="Nessy mascot" width="320">
 </p>
 
 # Nessy
@@ -15,13 +15,10 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jwcarman_nessy&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jwcarman_nessy)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=jwcarman_nessy&metric=coverage)](https://sonarcloud.io/summary/new_code?id=jwcarman_nessy)
 
-An AI agent harness framework for Java.
+An agent harness framework for Java.
 
-> **What's in a name?** Look at the middle of the word *har****ness***: the name
-> was hiding inside the thing the whole time. And once your agent framework is
-> named Nessy, the mascot picks itself — a certain famously elusive resident of
-> Loch Ness, here wearing (what else?) a harness. Like her namesake, she's
-> mostly calm water on the surface with a great deal going on underneath.
+**[Documentation site](https://jwcarman.github.io/nessy/)** — concepts, guides,
+examples, and reference, in one place.
 
 Nessy supplies the machinery that turns a model API into an agent — the effectful
 loop, the tool plumbing, an approval gate the model cannot route around, conversations
@@ -708,7 +705,7 @@ and a process ago. Nothing about the shape above changes to get this —
 point that does the same thing for the other direction a conversation moves:
 
 ```java
-RunOutcome outcome = agent.resume(token, ToolResolution.completed(result));
+RunOutcome outcome = agent.resume(token, new ToolResolution.Completed(result));
 ```
 
 `agent.resume(token, resolution[, observer])` answers a parked call by
@@ -1063,6 +1060,14 @@ for the full script. To run it:
 ```bash
 ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/dispatcher spring-boot:run
 ```
+
+## The name
+
+> **What's in a name?** Look at the middle of the word *har****ness***: the name
+> was hiding inside the thing the whole time. And once your agent framework is
+> named Nessy, the mascot picks itself — a certain famously elusive resident of
+> Loch Ness, here wearing (what else?) a harness. Like her namesake, she's
+> mostly calm water on the surface with a great deal going on underneath.
 
 ## License
 

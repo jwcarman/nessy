@@ -1,0 +1,118 @@
+[
+  {
+    "path": "README.md",
+    "bytes": 4068
+  },
+  {
+    "path": "icons/favicon.ico",
+    "bytes": 1829
+  },
+  {
+    "path": "icons/github-avatar.png",
+    "bytes": 211188
+  },
+  {
+    "path": "icons/nessy-app-avatar.png",
+    "bytes": 56705
+  },
+  {
+    "path": "icons/nessy-icon-128.png",
+    "bytes": 1672
+  },
+  {
+    "path": "icons/nessy-icon-16.png",
+    "bytes": 193
+  },
+  {
+    "path": "icons/nessy-icon-256.png",
+    "bytes": 5042
+  },
+  {
+    "path": "icons/nessy-icon-32.png",
+    "bytes": 349
+  },
+  {
+    "path": "icons/nessy-icon-48.png",
+    "bytes": 533
+  },
+  {
+    "path": "icons/nessy-icon-512.png",
+    "bytes": 15977
+  },
+  {
+    "path": "icons/nessy-icon-64.png",
+    "bytes": 684
+  },
+  {
+    "path": "icons/nessy-icon-master.png",
+    "bytes": 48078
+  },
+  {
+    "path": "logo/nessy-logo-horizontal.png",
+    "bytes": 108014
+  },
+  {
+    "path": "logo/nessy-logo-stacked.png",
+    "bytes": 60360
+  },
+  {
+    "path": "logo/nessy-mark.png",
+    "bytes": 43188
+  },
+  {
+    "path": "mascot/nessy-mascot-1024.png",
+    "bytes": 1282180
+  },
+  {
+    "path": "mascot/nessy-mascot-512.png",
+    "bytes": 360007
+  },
+  {
+    "path": "mascot/nessy-mascot-full.png",
+    "bytes": 1598572
+  },
+  {
+    "path": "monochrome/nessy-mark-monochrome.png",
+    "bytes": 53796
+  },
+  {
+    "path": "monochrome/nessy-mark-reversed.png",
+    "bytes": 55554
+  },
+  {
+    "path": "monochrome/nessy-mark-single-color.png",
+    "bytes": 47059
+  },
+  {
+    "path": "nessy-brand-sheet.png",
+    "bytes": 1496526
+  },
+  {
+    "path": "palette/nessy-palette.png",
+    "bytes": 4200
+  },
+  {
+    "path": "palette/palette.css",
+    "bytes": 233
+  },
+  {
+    "path": "palette/palette.json",
+    "bytes": 198
+  },
+  {
+    "path": "social/github-social-preview.png",
+    "bytes": 506355
+  },
+  {
+    "path": "social/open-graph.png",
+    "bytes": 506355
+  },
+  {
+    "path": "source/nessy-brand-board-original.png",
+    "bytes": 1496526
+  },
+  {
+    "path": "source/nessy-mascot-original.png",
+    "bytes": 1598572
+  }
+]
