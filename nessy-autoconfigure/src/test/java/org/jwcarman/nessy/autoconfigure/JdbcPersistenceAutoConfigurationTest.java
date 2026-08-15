@@ -30,6 +30,7 @@ import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -51,7 +52,8 @@ class JdbcPersistenceAutoConfigurationTest {
           .withConfiguration(AutoConfigurations.of(JdbcPersistenceAutoConfiguration.class));
 
   @Test
-  void jdbc_on_the_classpath_with_a_datasource_yields_store_parks_transcript_and_memory() {
+  void
+      jdbc_on_the_classpath_with_a_datasource_yields_store_parks_transcript_plan_store_and_memory() {
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withBean(ObjectMapper.class, ObjectMapper::new)
@@ -61,6 +63,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(ConversationStore.class);
               assertThat(context).hasSingleBean(Parks.class);
               assertThat(context).hasSingleBean(Transcript.class);
+              assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -73,6 +76,7 @@ class JdbcPersistenceAutoConfigurationTest {
           assertThat(context).doesNotHaveBean(ConversationStore.class);
           assertThat(context).doesNotHaveBean(Parks.class);
           assertThat(context).doesNotHaveBean(Transcript.class);
+          assertThat(context).doesNotHaveBean(PlanStore.class);
           assertThat(context).doesNotHaveBean(Memory.class);
         });
   }
@@ -88,6 +92,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).doesNotHaveBean(ConversationStore.class);
               assertThat(context).doesNotHaveBean(Parks.class);
               assertThat(context).doesNotHaveBean(Transcript.class);
+              assertThat(context).doesNotHaveBean(PlanStore.class);
               assertThat(context).doesNotHaveBean(Memory.class);
             });
   }
@@ -119,6 +124,17 @@ class JdbcPersistenceAutoConfigurationTest {
   }
 
   @Test
+  void a_user_declared_plan_store_bean_wins() {
+    PlanStore mine = PlanStore.inMemory();
+    runner
+        .withBean(DataSource.class, UnusedDataSource::new)
+        .withBean(ObjectMapper.class, ObjectMapper::new)
+        .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
+        .withBean("mine", PlanStore.class, () -> mine)
+        .run(context -> assertThat(context.getBean(PlanStore.class)).isSameAs(mine));
+  }
+
+  @Test
   void a_user_declared_transcript_bean_wins_and_memory_wraps_it() {
     Transcript mine = Transcript.inMemory();
     runner
@@ -141,11 +157,12 @@ class JdbcPersistenceAutoConfigurationTest {
   }
 
   @Test
-  void a_missing_object_mapper_bean_still_yields_store_parks_transcript_and_memory() {
+  void a_missing_object_mapper_bean_still_yields_store_parks_transcript_plan_store_and_memory() {
     // A non-web Boot app pulls in no Jackson autoconfiguration, so no ObjectMapper bean exists
     // in context at all; JdbcPersistence must fall back to a mapper of its own rather than fail
     // with NoSuchBeanDefinitionException the moment ConversationStore/Parks/Transcript/Memory try
-    // to resolve one.
+    // to resolve one. PlanStore needs no ObjectMapper at all (see JdbcPlanStore's javadoc), so it
+    // is unaffected either way, but it still belongs in this assertion for completeness.
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
@@ -155,6 +172,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(ConversationStore.class);
               assertThat(context).hasSingleBean(Parks.class);
               assertThat(context).hasSingleBean(Transcript.class);
+              assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -179,6 +197,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(ConversationStore.class);
               assertThat(context).hasSingleBean(Parks.class);
               assertThat(context).hasSingleBean(Transcript.class);
+              assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -211,6 +230,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).doesNotHaveBean(ConversationStore.class);
               assertThat(context).doesNotHaveBean(Parks.class);
               assertThat(context).doesNotHaveBean(Transcript.class);
+              assertThat(context).doesNotHaveBean(PlanStore.class);
               assertThat(context).doesNotHaveBean(Memory.class);
             });
   }

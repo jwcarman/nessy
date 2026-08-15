@@ -25,18 +25,19 @@ import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 
 /**
  * The three doors a durable {@code AgentBuilder} actually needs, plus the summary shelf {@code
- * SummarizingMemory} reaches for, all over one database — any of the five {@link JdbcDialect} knows
- * (design §2) — bootstrapped in one call: a {@link JdbcConversationStore}, a {@link JdbcParks}
- * registry, a {@link JdbcTranscript}, and a {@link JdbcSummaryStore}. {@link #create} exists
- * because those four schemas are always stood up together in practice — nothing here couples them
- * beyond that convenience; each component still works fine constructed on its own.
+ * SummarizingMemory} reaches for and the plan facility's own store, all over one database — any of
+ * the five {@link JdbcDialect} knows (design §2) — bootstrapped in one call: a {@link
+ * JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, a {@link
+ * JdbcSummaryStore}, and a {@link JdbcPlanStore}. {@link #create} exists because those five schemas
+ * are always stood up together in practice — nothing here couples them beyond that convenience;
+ * each component still works fine constructed on its own.
  *
  * <p>{@link #create(DataSource, ObjectMapper)} is this module's one shared dialect-resolution seam
  * (design §2): it resolves the dialect exactly once, from one borrowed connection, before any of
- * the four components bootstraps its own schema, then hands that single resolved value down to each
- * component's own explicit-dialect {@code create} overload — four schemas, one resolution, not four
+ * the five components bootstraps its own schema, then hands that single resolved value down to each
+ * component's own explicit-dialect {@code create} overload — five schemas, one resolution, not five
  * independent ones that could in principle disagree. {@link #create(DataSource, ObjectMapper,
- * JdbcDialect)} carries the same null-means-resolve contract every one of those four components'
+ * JdbcDialect)} carries the same null-means-resolve contract every one of those five components'
  * own explicit-dialect overload already has: passing {@code null} does not skip resolution, it asks
  * for exactly the one-resolution behavior {@link #create(DataSource, ObjectMapper)} provides;
  * passing a non-null value bypasses resolution entirely, for every component at once.
@@ -45,25 +46,27 @@ public record JdbcPersistence(
     JdbcConversationStore store,
     JdbcParks parks,
     JdbcTranscript transcript,
-    JdbcSummaryStore summaries) {
+    JdbcSummaryStore summaries,
+    JdbcPlanStore planStore) {
 
   public JdbcPersistence {
     Objects.requireNonNull(store, "store must not be null");
     Objects.requireNonNull(parks, "parks must not be null");
     Objects.requireNonNull(transcript, "transcript must not be null");
     Objects.requireNonNull(summaries, "summaries must not be null");
+    Objects.requireNonNull(planStore, "planStore must not be null");
   }
 
-  /** Bootstraps all four schemas against {@code dataSource}, resolving the dialect once. */
+  /** Bootstraps all five schemas against {@code dataSource}, resolving the dialect once. */
   public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) {
     return create(dataSource, mapper, null);
   }
 
   /**
-   * Bootstraps all four schemas against {@code dataSource}. {@code dialect} of {@code null} means
+   * Bootstraps all five schemas against {@code dataSource}. {@code dialect} of {@code null} means
    * resolve — exactly once, here, before any component bootstraps — the same contract every
    * component's own explicit-dialect overload already has; a non-null {@code dialect} bypasses
-   * resolution entirely and is handed to all four components unchanged.
+   * resolution entirely and is handed to all five components unchanged.
    */
   public static JdbcPersistence create(
       DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
@@ -72,7 +75,8 @@ public record JdbcPersistence(
         JdbcConversationStore.create(dataSource, mapper, resolved),
         JdbcParks.create(dataSource, mapper, resolved),
         JdbcTranscript.create(dataSource, mapper, resolved),
-        JdbcSummaryStore.create(dataSource, resolved));
+        JdbcSummaryStore.create(dataSource, resolved),
+        JdbcPlanStore.create(dataSource, resolved));
   }
 
   /** The one connection this whole bootstrap borrows purely to resolve the dialect once. */

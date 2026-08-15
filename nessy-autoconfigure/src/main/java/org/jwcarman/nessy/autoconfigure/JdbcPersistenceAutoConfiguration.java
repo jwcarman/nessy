@@ -22,11 +22,13 @@ import org.jwcarman.nessy.jdbc.JdbcConversationStore;
 import org.jwcarman.nessy.jdbc.JdbcDialect;
 import org.jwcarman.nessy.jdbc.JdbcParks;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
+import org.jwcarman.nessy.jdbc.JdbcPlanStore;
 import org.jwcarman.nessy.jdbc.JdbcTranscript;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.TranscriptMemory;
+import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -45,7 +47,7 @@ import org.springframework.context.annotation.Bean;
  *
  * <p>{@code nessy.jdbc.enabled=false} is the master switch, overriding both signals above. Absent
  * that override, each bean method still yields to a user-declared {@link ConversationStore}, {@link
- * Parks}, {@link Transcript}, or {@link Memory} — see the individual
+ * Parks}, {@link Transcript}, {@link Memory}, or {@link PlanStore} — see the individual
  * {@code @ConditionalOnMissingBean} bean methods.
  *
  * <p>{@link org.jwcarman.nessy.autoconfigure.NessyProperties#bootstrapSchema()} chooses between
@@ -126,6 +128,23 @@ public class JdbcPersistenceAutoConfiguration {
         resolveDialect(properties),
         JdbcTranscript::create,
         JdbcTranscript::new);
+  }
+
+  /**
+   * Mirrors {@link #conversationStore}/{@link #parks}/{@link #transcript} in every conditional
+   * annotation and in {@code bootstrapSchema}-vs-constructor branching, but not in its parameter
+   * list: {@link JdbcPlanStore}, unlike those three doors, has no {@link ObjectMapper}-accepting
+   * {@code create}/constructor overload (design §4 — {@code nessy_plan} is one row per task, no
+   * JSON column, nothing for a mapper to serialize), so this method does not go through the shared
+   * {@link #build} helper, whose {@link DoorFactory} shape requires one.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  PlanStore planStore(DataSource dataSource, NessyProperties properties) {
+    JdbcDialect dialect = resolveDialect(properties);
+    return properties.bootstrapSchema()
+        ? JdbcPlanStore.create(dataSource, dialect)
+        : new JdbcPlanStore(dataSource, dialect);
   }
 
   /**
