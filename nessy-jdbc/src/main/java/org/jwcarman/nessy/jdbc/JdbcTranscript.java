@@ -32,7 +32,7 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
 /**
  * The durable transcript over any of the five databases {@link JdbcDialect} knows (design §2): an
  * append-only, versioned, per-conversation message log — the storage primitive {@code
- * TranscriptMemory} and audit reads are both built on.
+ * PipelineMemory} and audit reads are both built on.
  *
  * <p>Every telling lands in {@code nessy_transcript}, one row per message, ordered by an
  * append-only {@code version} column. {@link #append} holds the no-stutter rule — appending unless

@@ -139,3 +139,33 @@ builder, or it does not ship).
 None to published API. chat-cli's package-private `ConsoleApprover`
 and scout's copy die unpublished; the mains' behavior upgrades
 in-place.
+
+## 9. Amendment (owner-ruled, 2026-08-15): the plan checklist
+
+The console learns to show the plan the model keeps — Claude Code's todo
+rendering, translated to the SGR-only covenant (§"hard line" unchanged: no
+raw mode, no cursor addressing; transcript-flow rendering only).
+
+- **`ConsoleRepl.Builder.plan(PlanStore store)`** — opt-in, mirroring the
+  grant principle: the console never guesses a plan facility exists; the
+  app that granted `update_plan` hands the same store to the repl. At most
+  once; null rejected.
+- **Render on change, end of turn:** the repl remembers the last plan it
+  printed; after each completed tell it reads `store.find(id)` for its own
+  conversation and prints the checklist only when the plan is present,
+  non-empty, and different from the last one printed. Quiet turns stay
+  quiet; three `update_plan` calls in one turn print once. Clearing or
+  finishing a plan simply stops the printing (the final all-DONE state
+  renders because it differs; an absent/empty read after that renders
+  nothing).
+- **`ConsoleRenderer` grows the checklist style:** two-space indent, one
+  line per task — `DONE` dim + strikethrough (SGR 9 joins the `Ansi`
+  helper), `IN_PROGRESS` bold with the `◐` marker, `PENDING` plain `☐`;
+  markers fall back to `[x]`/`[>]`/`[ ]` when styling is disabled
+  (non-TTY, NO_COLOR, TERM=dumb — the existing detection, untouched).
+- **No new dependencies:** `PlanStore`/`Plan` live in nessy-core's
+  `spi.plan`, which nessy-console already sees.
+
+Consumers: scout wires it as its showcase (multi-step research with a
+visible plan — see the scout design's own amendment); chat-cli adds the
+one-liner since it already holds the store.

@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
-import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -55,48 +54,18 @@ public interface Memory {
   Context recall(ConversationId id);
 
   /**
-   * The bounded default for a long-lived agent: {@code remember} delegates to {@code delegate}
-   * unchanged, while {@code recall} clips whatever {@code delegate} returns to its last {@code n}
-   * messages via {@link Context#keepRecent(int)} — a pair-safe trim, never splitting a tool-use
-   * message from the results answering it. A one-line factory for the shape most agents actually
-   * want in production: unlimited retention underneath, a bounded window at the border.
-   *
-   * @param delegate the {@code Memory} whose full history is retained and clipped on the way out
-   * @param n how many of the most recent messages {@code recall} keeps intact; must be at least 1
-   *     (the deleted {@code WindowedMemory} this factory replaces enforced the same floor at
-   *     construction, so a misconfigured window fails loud at startup — e.g. night-watchman's
-   *     {@code watchman.window} property — rather than quietly booting with a near-empty context);
-   *     forwarded verbatim to {@link Context#keepRecent(int)}, so the same {@code n} constraints
-   *     apply beyond that floor
-   * @throws IllegalArgumentException if {@code n} is less than 1
-   */
-  static Memory windowed(Memory delegate, int n) {
-    Objects.requireNonNull(delegate, "delegate must not be null");
-    if (n < 1) {
-      throw new IllegalArgumentException("window must be at least 1");
-    }
-    return new Memory() {
-      @Override
-      public void remember(ConversationId id, Message message) {
-        delegate.remember(id, message);
-      }
-
-      @Override
-      public Context recall(ConversationId id) {
-        return delegate.recall(id).keepRecent(n);
-      }
-    };
-  }
-
-  /**
    * The documented front door for composing transcript-backed memory: hydrate, then run an ordered
    * list of {@link ContextTransformer} stages. {@code transcript} is the one required ingredient —
-   * {@code remember} always appends to it, whatever hydration chooses to re-read.
+   * {@code remember} always appends to it, whatever hydration chooses to re-read. A bounded window
+   * over the whole history is one stage among the rest: {@link
+   * PipelineMemory.Builder#keepRecent(int)} registers the pair-safe trim ({@link
+   * Context#keepRecent(int)}) at its call position — the one composition surface for retention, not
+   * a second one beside it.
    *
    * <p>The degenerate case is the floor, not a special case: {@code Memory.pipeline(transcript)
    * .build()} — no hydrator named, no stages — hydrates with {@link ContextHydrator#full()} and
-   * transforms nothing, the whole history every time, behaviorally identical to {@link
-   * TranscriptMemory}. Every addition to the chain from there is strictly opt-in.
+   * transforms nothing, the whole history every time. Every addition to the chain from there is
+   * strictly opt-in.
    *
    * @param transcript the log {@code remember} appends to and the default hydrator reads whole
    */

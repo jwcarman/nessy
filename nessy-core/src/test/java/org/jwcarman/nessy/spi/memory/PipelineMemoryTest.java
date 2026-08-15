@@ -18,6 +18,7 @@ package org.jwcarman.nessy.spi.memory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
@@ -25,6 +26,9 @@ import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 
 class PipelineMemoryTest {
@@ -49,24 +53,122 @@ class PipelineMemoryTest {
   }
 
   @Test
-  void the_degenerate_pipeline_is_transcript_memory_in_pipeline_clothing() {
+  void the_degenerate_pipeline_hydrates_with_the_full_floor() {
+    // One shipped Memory now (design §10): the degenerate pipeline is exactly
+    // ContextHydrator.full()'s hydration over the same transcript, not a second implementation
+    // pinned to agree with it.
     ConversationId id = ConversationId.generate();
-    Transcript transcriptForPipeline = Transcript.inMemory();
-    Transcript transcriptForTranscriptMemory = Transcript.inMemory();
-    PipelineMemory pipeline = Memory.pipeline(transcriptForPipeline).build();
-    TranscriptMemory transcriptMemory = new TranscriptMemory(transcriptForTranscriptMemory);
+    Transcript transcript = Transcript.inMemory();
+    PipelineMemory pipeline = Memory.pipeline(transcript).build();
     Message first = Message.user("one");
     Message second = Message.user("two");
     Message third = Message.user("three");
 
     pipeline.remember(id, first);
-    transcriptMemory.remember(id, first);
     pipeline.remember(id, second);
-    transcriptMemory.remember(id, second);
     pipeline.remember(id, third);
-    transcriptMemory.remember(id, third);
 
-    assertThat(pipeline.recall(id)).isEqualTo(transcriptMemory.recall(id));
+    assertThat(pipeline.recall(id)).isEqualTo(ContextHydrator.full().hydrate(id, transcript));
+  }
+
+  @Test
+  void recalls_nothing_for_a_conversation_never_told_anything() {
+    Transcript transcript = Transcript.inMemory();
+    PipelineMemory memory = Memory.pipeline(transcript).build();
+
+    Context recalled = memory.recall(ConversationId.generate());
+
+    assertThat(recalled.messages()).isEmpty();
+  }
+
+  @Test
+  void keeps_conversations_apart() {
+    Transcript transcript = Transcript.inMemory();
+    PipelineMemory memory = Memory.pipeline(transcript).build();
+    ConversationId one = ConversationId.generate();
+    ConversationId other = ConversationId.generate();
+
+    memory.remember(one, Message.user("for one"));
+    memory.remember(other, Message.user("for the other"));
+
+    assertThat(memory.recall(one).messages()).containsExactly(Message.user("for one"));
+    assertThat(memory.recall(other).messages()).containsExactly(Message.user("for the other"));
+  }
+
+  @Test
+  void tolerates_the_same_message_told_twice_in_a_row() {
+    // At-least-once tellings (design 2026-08-11, ruling 6): a crash between telling Memory and
+    // persisting state re-tells the same message. remember is idempotent — the transcript's own
+    // no-stutter rule, not reimplemented here.
+    Transcript transcript = Transcript.inMemory();
+    PipelineMemory memory = Memory.pipeline(transcript).build();
+    ConversationId id = ConversationId.generate();
+    Message toldFirst = Message.user("once only, please");
+    Message toldAgain = Message.user("once only, please");
+
+    memory.remember(id, toldFirst);
+    memory.remember(id, toldAgain);
+
+    assertThat(memory.recall(id).messages()).containsExactly(toldFirst);
+  }
+
+  @Test
+  void recall_returns_an_immutable_snapshot() {
+    Transcript transcript = Transcript.inMemory();
+    PipelineMemory memory = Memory.pipeline(transcript).build();
+    ConversationId id = ConversationId.generate();
+    Message first = Message.user("first");
+    memory.remember(id, first);
+
+    Context recalled = memory.recall(id);
+    List<Message> messages = recalled.messages();
+
+    assertThat(messages).containsExactly(first);
+    Message mutation = Message.user("mutation");
+    assertThatThrownBy(() -> messages.add(mutation))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void recall_keeps_an_answered_tool_use_pair_intact() {
+    // Narrowly targeted trimming: once the batched results message lands, the tool-use message is
+    // no longer trailing and no longer open, so it must survive recall along with its answer.
+    Transcript transcript = Transcript.inMemory();
+    PipelineMemory memory = Memory.pipeline(transcript).build();
+    ConversationId id = ConversationId.generate();
+    Message userTurn = Message.user("issue a coupon, please");
+    Message answeredToolUse =
+        Message.assistant(
+            List.of(
+                new ToolUseBlock(
+                    new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode()))));
+    Message toolResults =
+        Message.toolResults(List.of(new ToolResultBlock("c1", "coupon issued", false)));
+    memory.remember(id, userTurn);
+    memory.remember(id, answeredToolUse);
+    memory.remember(id, toolResults);
+
+    Context recalled = memory.recall(id);
+
+    assertThat(recalled.messages()).containsExactly(userTurn, answeredToolUse, toolResults);
+  }
+
+  @Test
+  void two_pipeline_memories_over_the_same_transcript_see_each_others_tellings() {
+    // The seam is the storage, the memory is the policy: two PipelineMemory instances wrapping
+    // the same Transcript are two windows on one log, not two logs.
+    Transcript transcript = Transcript.inMemory();
+    PipelineMemory memory = Memory.pipeline(transcript).build();
+    PipelineMemory other = Memory.pipeline(transcript).build();
+    ConversationId id = ConversationId.generate();
+    Message first = Message.user("told through the first instance");
+    Message second = Message.user("told through the second instance");
+
+    memory.remember(id, first);
+    other.remember(id, second);
+
+    assertThat(memory.recall(id).messages()).containsExactly(first, second);
+    assertThat(other.recall(id).messages()).containsExactly(first, second);
   }
 
   @Test
@@ -188,8 +290,14 @@ class PipelineMemoryTest {
   @Test
   void keep_recent_rejects_a_window_below_one() {
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory.Builder builder = Memory.pipeline(transcript);
+    PipelineMemory.Builder zeroBuilder = Memory.pipeline(transcript);
+    PipelineMemory.Builder negativeBuilder = Memory.pipeline(transcript);
 
-    assertThatThrownBy(() -> builder.keepRecent(0)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> zeroBuilder.keepRecent(0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("window must be at least 1");
+    assertThatThrownBy(() -> negativeBuilder.keepRecent(-1))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("window must be at least 1");
   }
 }

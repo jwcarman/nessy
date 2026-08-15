@@ -20,7 +20,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /**
- * One conversation's folded prefix: the summary text a {@link SummarizingMemory} has already
+ * One conversation's folded prefix: the summary text a {@link SummarizingHydrator} has already
  * distilled from the transcript, and the transcript version through which it speaks for the
  * conversation.
  *

@@ -468,7 +468,7 @@ Nessy itself will provide, and room for anyone else to extend it.
 | Seam | In-core default | Upgrades Nessy provides | Extenders build |
 |---|---|---|---|
 | `ModelProvider` | `ScriptedModelProvider` (testing) | `nessy-model-anthropic`, `nessy-model-openai` | any vendor |
-| `Memory` | `TranscriptMemory` (verbatim, over `Transcript.inMemory()`) | `nessy-jdbc`'s durable `Transcript`; `SummarizingMemory` | RAG, redaction, external stores |
+| `Memory` | `Memory.pipeline(Transcript.inMemory()).build()` (verbatim) | `nessy-jdbc`'s durable `Transcript`; the pipeline's summarizing hydrator | RAG, redaction, external stores |
 | `ConversationStore` | `ConversationStore.inMemory()` | `nessy-jdbc` | Dynamo, Redis… |
 | `Approver` | `allowAll()` / `denyAll(String)` / `parkAll()` (the durable-HITL posture: every approval parks, the UI is the approver) | console; Slack/webhook | anything human-shaped |
 | `TerminationPolicy` | error-ceiling + max-model-calls | cost budget (post-usage) | custom |
@@ -631,19 +631,21 @@ the batched tool-results message once the last pending call clears, a closed
 list of exactly three tellings — and `Memory#recall(conversationId)` answers
 with the `Context` (`api.message`) the next model call gets: a validated,
 pairing-legal message sequence. What happens between being told and being
-asked is entirely the implementation's business — verbatim retention
-(`TranscriptMemory`, the default), summarization (`SummarizingMemory`),
-checkpointing, embedding — as long as `recall` returns something legal and a
-tool-use/tool-result pair is never split or reordered.
+asked is entirely the implementation's business — verbatim retention,
+summarization, checkpointing, embedding — as long as `recall` returns
+something legal and a tool-use/tool-result pair is never split or reordered.
 `AgentBuilder#memory(Memory)` replaces the default outright.
 
 `Memory` is built on **`Transcript`** (`spi.memory`) — an append-only,
-versioned, per-conversation message log, the storage primitive some memories
-are based on and the read surface audit and chat history need.
-`TranscriptMemory` remembers everything verbatim through a `Transcript` and
-recalls it whole; `SummarizingMemory` keeps only a bounded tail of the
-transcript verbatim, folding everything older into a running summary (its
-`SummaryStore` watermark) once the tail grows past a threshold — a crash
+versioned, per-conversation message log, the storage primitive `PipelineMemory`
+is based on and the read surface audit and chat history need.
+`PipelineMemory` — `Memory.pipeline(transcript)`'s product, and the only
+`Memory` nessy ships — remembers everything verbatim through a `Transcript`;
+what `recall` builds from it is the hydrate-then-transform pipeline described
+below. Its default hydrator, `ContextHydrator#full()`, recalls the whole
+transcript verbatim; its `ContextHydrator#summarizing(...)` alternative keeps
+only a bounded tail verbatim, folding everything older into a running summary
+(its `SummaryStore` watermark) once the tail grows past a threshold — a crash
 between summarizing and saving just means the next recall re-summarizes the
 same tail, never loses words, since the transcript itself is the truth.
 
@@ -660,8 +662,8 @@ decides when and whether to reach for them.
 loop's own model-call executor consults on every send — *exactly what a call
 made right now would see*, truthfully and without spending a model call.
 
-`Memory.pipeline(transcript)` names the general shape behind `TranscriptMemory`
-and `SummarizingMemory` directly: a `ContextHydrator` bootstraps the initial
+`Memory.pipeline(transcript)` is the one composition surface for
+transcript-backed memory: a `ContextHydrator` bootstraps the initial
 `Context` from durable history (default `ContextHydrator#full()`, the whole
 transcript), then an ordered list of `ContextTransformer` stages — clamping,
 redacting, eliding, amending — reshapes it before `recall` hands it out. The
@@ -753,7 +755,7 @@ ConversationStore store =
     JdbcConversationStore.create(dataSource, objectMapper); // idempotent schema bootstrap
 Parks parks = JdbcParks.create(dataSource, objectMapper); // same discipline, same lifespan
 Transcript transcript = JdbcTranscript.create(dataSource, objectMapper); // same discipline, same lifespan
-Memory memory = new TranscriptMemory(transcript);
+Memory memory = Memory.pipeline(transcript).build();
 
 Harness harness = Nessy.harness(anthropic).store(store).parks(parks).build();
 Agent<String> agent =
@@ -769,8 +771,8 @@ Boot](#spring-boot) above for the whole story.
 Restart survival needs three doors now: the `ConversationStore` keeps the
 control block (status) and inbox; `Parks` keeps the registry of outstanding
 waits a callback's token must translate back into a conversation and call;
-and `TranscriptMemory` over a durable `Transcript` keeps the message log the
-`Memory` seam owns — `TranscriptMemory` over `Transcript.inMemory()`, the
+and the pipeline `Memory` over a durable `Transcript` keeps the message log
+the `Memory` seam owns — the same pipeline over `Transcript.inMemory()`, the
 in-core default, dies with the JVM. The `chat-web` example
 ([Examples](#examples)) demonstrates the trio surviving a kill mid-approval.
 
@@ -912,7 +914,7 @@ appends to the conversation's durable inbox and drives with the same
 re-entrant verb, `PARKED` conversations wait for an `agent.resume`/
 `agent.progress` from any node, and `nessy-jdbc` gives that three
 real Postgres-backed doors — `ConversationStore`, `Parks`, and `Memory`
-(`TranscriptMemory` over `JdbcTranscript`, the durable transcript) — see
+(the pipeline `Memory` over `JdbcTranscript`, the durable transcript) — see
 [Durable, autonomous agents](#durable-autonomous-agents) above and the
 `chat-web` example ([Examples](#examples) below), which dogfoods all three
 against a real browser UI and a kill-and-restart.

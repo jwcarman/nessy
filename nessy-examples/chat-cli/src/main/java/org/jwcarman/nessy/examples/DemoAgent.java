@@ -83,9 +83,8 @@ public final class DemoAgent {
             ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
             ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
             ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
-        // Replaces the builder's default in-memory TranscriptMemory with the pipeline over an
-        // explicitly held transcript — same durability class, now with the plan riding recall
-        // (spec §7).
+        // Replaces the builder's default in-memory pipeline Memory with one over an explicitly
+        // held transcript — same durability class, now with the plan riding recall (spec §7).
         .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
         .approver(new ConsoleApprover())
         .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage)

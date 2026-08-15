@@ -64,3 +64,23 @@ Starter wiring (Scout constructs its toolbox in plain code — the
 `nessy.mcp.clients.*` properties arrive with the queued starter-tidy
 generation, which may then slim Scout's wiring section); MS Learn or
 other servers; any second example adopting MCP.
+
+## Amendment (owner-ruled, 2026-08-15): scout plans its research
+
+Scout adopts the plan facility as its showcase — research is genuinely
+multi-step (map the wiki → read sections → ask targeted questions), the
+exact long-horizon shape plans fix:
+
+- `PlanStore.inMemory()` (the lesson is model behavior, not durability);
+- grant `PlanTools.updatePlan(store)` with `allow()` beside the existing
+  three DeepWiki grants (the grant principle demo now shows both faces:
+  imported tools gated, self-bookkeeping tool free);
+- memory becomes `Memory.pipeline(transcript).transform(PlanTools.transformer(store)).build()`
+  over an explicitly held `Transcript.inMemory()`;
+- system prompt gains one sentence steering multi-step research through
+  `update_plan`;
+- the repl adds `.plan(store)` so the checklist renders between turns
+  (console design §9);
+- README shows a sample session with the checklist ticking off.
+
+chat-cli adds only the `.plan(planStore)` line (its store already exists).

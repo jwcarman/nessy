@@ -254,12 +254,12 @@ class AgentFacadeTest {
   }
 
   /**
-   * A custom {@link Memory} replaces the {@code TranscriptMemory} floor entirely — the content
-   * jurisdiction the loop's own {@code ModelCallExecutor} consults on every send. A builder that
-   * ignored {@code .memory(m)} would still fall back to a working {@code TranscriptMemory}, so this
-   * test proves both halves of the wiring rather than only that the agent still answers: the seeded
-   * marker message reaches the wire request (recall wiring), and both the rendered user message and
-   * the settled assistant reply reach the custom memory's own {@code remember} (telling wiring).
+   * A custom {@link Memory} replaces the pipeline floor entirely — the content jurisdiction the
+   * loop's own {@code ModelCallExecutor} consults on every send. A builder that ignored {@code
+   * .memory(m)} would still fall back to a working pipeline {@code Memory}, so this test proves
+   * both halves of the wiring rather than only that the agent still answers: the seeded marker
+   * message reaches the wire request (recall wiring), and both the rendered user message and the
+   * settled assistant reply reach the custom memory's own {@code remember} (telling wiring).
    */
   @Test
   void a_custom_memory_is_wired_through_the_builder() {

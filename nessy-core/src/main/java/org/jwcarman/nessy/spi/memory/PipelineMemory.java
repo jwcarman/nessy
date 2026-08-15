@@ -34,8 +34,7 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
  *
  * <p><b>The degenerate floor.</b> {@code Memory.pipeline(transcript).build()} — no hydrator named,
  * no stages — hydrates with {@link ContextHydrator#full()} and transforms nothing: the whole
- * history, every time, behaviorally identical to {@link TranscriptMemory}. Every addition to the
- * chain from there is strictly opt-in.
+ * history, every time. Every addition to the chain from there is strictly opt-in.
  *
  * <p><b>Retention stays delegated.</b> The kernel knows only {@code Memory} — {@code
  * remember}/{@code recall} is the whole retention contract, and nothing in the loop or the api
@@ -104,7 +103,7 @@ public final class PipelineMemory implements Memory {
 
     /**
      * Sugar for {@code hydrator(ContextHydrator.summarizing(summaries, provider, model, prompt,
-     * tailThreshold))}; parameters mirror {@link SummarizingMemory}'s constructor exactly.
+     * tailThreshold))}; parameters mirror {@link ContextHydrator#summarizing} exactly.
      */
     public Builder summarizing(
         SummaryStore summaries,
@@ -118,7 +117,7 @@ public final class PipelineMemory implements Memory {
 
     /**
      * Registers the pair-safe trim ({@link Context#keepRecent(int)}) as a required stage at its
-     * call position; same {@code n >= 1} floor as {@link Memory#windowed(Memory, int)}.
+     * call position.
      *
      * @throws IllegalArgumentException if {@code n} is less than 1
      */

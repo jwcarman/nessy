@@ -21,13 +21,12 @@ import java.sql.SQLException;
 import java.util.Objects;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 
 /**
- * The three doors a durable {@code AgentBuilder} actually needs, plus the summary shelf {@code
- * SummarizingMemory} reaches for and the plan facility's own store, all over one database — any of
- * the five {@link JdbcDialect} knows (design §2) — bootstrapped in one call: a {@link
- * JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, a {@link
+ * The three doors a durable {@code AgentBuilder} actually needs, plus the summary shelf a
+ * summarizing {@code ContextHydrator} reaches for and the plan facility's own store, all over one
+ * database — any of the five {@link JdbcDialect} knows (design §2) — bootstrapped in one call: a
+ * {@link JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, a {@link
  * JdbcSummaryStore}, and a {@link JdbcPlanStore}. {@link #create} exists because those five schemas
  * are always stood up together in practice — nothing here couples them beyond that convenience;
  * each component still works fine constructed on its own.
@@ -90,6 +89,6 @@ public record JdbcPersistence(
 
   /** The durable {@link Memory}: verbatim retention over this pair's own {@link #transcript()}. */
   public Memory memory() {
-    return new TranscriptMemory(transcript);
+    return Memory.pipeline(transcript).build();
   }
 }

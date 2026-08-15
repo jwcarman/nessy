@@ -40,7 +40,8 @@ import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnEvent;
-import org.jwcarman.nessy.spi.memory.TranscriptMemory;
+import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.memory.PipelineMemory;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ContextOverflowException;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -54,7 +55,7 @@ class ProviderModelCallExecutorTest {
 
   private final ConversationId id = ConversationId.generate();
   private final ConversationState state = ConversationState.newConversation(id);
-  private final TranscriptMemory memory = new TranscriptMemory(Transcript.inMemory());
+  private final PipelineMemory memory = Memory.pipeline(Transcript.inMemory()).build();
   private final List<TurnEvent> observed = new ArrayList<>();
 
   @Test

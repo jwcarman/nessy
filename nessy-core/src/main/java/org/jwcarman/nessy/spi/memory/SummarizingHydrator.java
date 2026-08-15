@@ -31,12 +31,35 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.jwcarman.nessy.spi.transcript.TranscriptTrim;
 
 /**
- * {@link SummarizingMemory}'s recall, extracted: keeps only a bounded tail of the transcript
- * verbatim, folding everything older into a running summary once that tail grows past {@code
- * tailThreshold}. See {@link SummarizingMemory}'s class javadoc for the full design — the fold
- * mechanism (watermark bookkeeping, pair-safe cut, blank-summary no-advance rule) is unchanged by
- * its extraction here; only the transcript stopped being a held field and became a per-call
- * parameter, so one hydrator instance serves every conversation the pipeline hydrates.
+ * The tail API's dogfood (design §4): a {@link ContextHydrator} that keeps only a bounded tail of
+ * the transcript verbatim, folding everything older into a running summary once that tail grows
+ * past a threshold.
+ *
+ * <p>{@code hydrate} loads the current {@link SummaryStore.Summary} — absent means nothing has ever
+ * been folded, so the whole transcript is the tail — then loads {@link
+ * Transcript#tail(ConversationId, long) transcript.tail(id, watermark)}, and, only once that tail's
+ * size exceeds {@code tailThreshold}, asks the model to fold the summary and the tail's pair-safe
+ * prefix into a new summary. (Transcript versions start at {@code 0} (design §2), so "nothing
+ * folded yet" is tracked internally as watermark {@code -1} — one below the first real version —
+ * never as a stored {@code Summary}; a persisted watermark is always a real transcript version.)
+ * The boundary it folds up to is chosen the same way {@link Context#pairSafeCut} chooses one — a
+ * genuine user turn, never between a tool call and its answer — so a tool exchange straddling the
+ * threshold is always kept whole, whichever side of the cut it lands on. The new summary is saved
+ * watermarked at the last folded transcript version, and the tail is reloaded from there.
+ *
+ * <p>The watermark is the bookkeeping: a crash at any point between summarizing and saving simply
+ * means the next recall re-summarizes the same tail and lands on the same watermark. A lost {@link
+ * SummaryStore#save} is re-done work, never lost words — the words still live in the transcript,
+ * which {@link SummaryStore} never fences against (design §10).
+ *
+ * <p>Its model spend never touches {@link
+ * org.jwcarman.nessy.api.conversation.ConversationState#usage}: {@code hydrate} has no access to a
+ * {@code ConversationState} at all — it is keyed by {@link ConversationId} alone — so the existing
+ * usage jurisdiction ruling (design §10.6) is upheld by construction, not by discipline.
+ *
+ * <p>The rendered context is the summary, when non-empty, as one opening user message, followed by
+ * the tail's messages, open-tail-trimmed exactly as {@link ContextHydrator#full()} trims it — the
+ * same border law applies to every transcript-backed hydrator.
  */
 final class SummarizingHydrator implements ContextHydrator {
 

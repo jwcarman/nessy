@@ -987,8 +987,29 @@ sequence of renames and interim shapes that produced it.
   the root README's "Supported databases" section for the full table and
   the honest notes on scope.
 
+### Changed
+
+- **`AgentBuilder`'s no-memory default and `JdbcPersistence#memory()` speak
+  pipeline now.** Both were `new TranscriptMemory(...)` before `PipelineMemory`
+  existed to name the shape properly; both are now `Memory.pipeline(transcript)
+  .build()` over the same transcript they always used — same floor, same WARN
+  story, no behavior change, just the one surviving spelling.
+
 ### Removed
 
+- **`TranscriptMemory`, `SummarizingMemory`, and `Memory.windowed` — one
+  shipped `Memory` now.** All three were already pure delegation shells once
+  the context pipeline landed above: `TranscriptMemory#recall` was exactly
+  `ContextHydrator#full()`'s hydration, `SummarizingMemory#recall` was exactly
+  `ContextHydrator#summarizing(...)`'s, and `Memory.windowed(delegate, n)`'s
+  transcript-backed use case was exactly `Memory.pipeline(transcript)
+  .keepRecent(n)`. Three public names for one concept was API clutter with a
+  choice tax, so the facades retire; `Memory.pipeline(transcript)` is the one
+  composition surface left. `SummarizingMemory`'s watermark/no-fencing class
+  javadoc — the best prose in the package — migrated to `SummarizingHydrator`,
+  where the mechanism it describes lives. A custom `Memory` that wants a
+  bounded window clips inside its own implementation now, or reaches for
+  `Memory.pipeline(transcript).keepRecent(n)` like everything else.
 - **`nessy-transcript-cassandra`, withdrawn before release.** The
   Cassandra-backed `Transcript` and its `nessy-autoconfigure` arbitration
   were built and proved out, then withdrawn pre-release as premature. The

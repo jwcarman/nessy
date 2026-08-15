@@ -20,7 +20,6 @@ import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.memory.TranscriptMemory;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -30,7 +29,9 @@ import org.springframework.context.annotation.Configuration;
  * The nessy wiring — one bean, the agent (spec §5). {@code Harness} and {@code ModelProvider}
  * arrive from the starter's autoconfiguration over the in-memory defaults; identity is declared
  * here: the standing orders, the two always-allowed tools (no human in this loop, nothing parks),
- * and the {@link Memory#windowed(Memory, int)} bound over an in-memory {@link TranscriptMemory}.
+ * and the {@link Memory#pipeline(Transcript)} bound over an in-memory {@link Transcript}, its
+ * {@link org.jwcarman.nessy.spi.memory.PipelineMemory.Builder#keepRecent(int) keepRecent} stage
+ * carrying the window.
  */
 @Configuration
 public class WatchmanConfig {
@@ -51,7 +52,7 @@ public class WatchmanConfig {
         .name("night-watchman")
         .model("claude-sonnet-4-5")
         .systemPrompt(SYSTEM_PROMPT)
-        .memory(Memory.windowed(new TranscriptMemory(Transcript.inMemory()), window))
+        .memory(Memory.pipeline(Transcript.inMemory()).keepRecent(window).build())
         .tools(
             ToolGrant.grant(new CheckVitalsTool(engineRoom), UsagePolicy.allow()),
             ToolGrant.grant(new RaiseAlarmTool(), UsagePolicy.allow()))
