@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `nessy-store-cassandra` — a Cassandra-backed `Transcript` (LWT version minting, no-stutter under contention), starter arbitration so it wins over the JDBC transcript when a `CqlSession` exists, and the paperwork that tells the polyglot story.
+**Goal:** `nessy-transcript-cassandra` — a Cassandra-backed `Transcript` (LWT version minting, no-stutter under contention), starter arbitration so it wins over the JDBC transcript when a `CqlSession` exists, and the paperwork that tells the polyglot story.
 
 **Architecture:** Three tasks — the module (impl + contract + concurrency proof under containers), the starter seam (auto-config + arbitration context tests), paperwork. Sequential.
 
@@ -18,13 +18,13 @@
 
 ---
 
-### Task 1: The module — `nessy-store-cassandra`
+### Task 1: The module — `nessy-transcript-cassandra`
 
-**Files:** new module (aggregator line in root `pom.xml`, managed entry in `nessy-bom/pom.xml`, `nessy-store-cassandra/pom.xml` — mirror `nessy-store-jdbc`'s pom shape; driver dependency via Boot's managed `org.apache.cassandra` java-driver coordinates — VERIFY the exact managed artifactId against the Boot BOM the parent imports, do not guess), `CassandraTranscript.java` (spec §2 schema, §3 LWT loop — read `JdbcTranscript` AND its `StateCodec`'s message half first; reproduce the message JSON contract; `create(CqlSession, ObjectMapper)` bootstrap, constructor DDL-free), package-info matching the JDBC module's voice.
+**Files:** new module (aggregator line in root `pom.xml`, managed entry in `nessy-bom/pom.xml`, `nessy-transcript-cassandra/pom.xml` — mirror `nessy-store-jdbc`'s pom shape; driver dependency via Boot's managed `org.apache.cassandra` java-driver coordinates — VERIFY the exact managed artifactId against the Boot BOM the parent imports, do not guess), `CassandraTranscript.java` (spec §2 schema, §3 LWT loop — read `JdbcTranscript` AND its `StateCodec`'s message half first; reproduce the message JSON contract; `create(CqlSession, ObjectMapper)` bootstrap, constructor DDL-free), package-info matching the JDBC module's voice.
 
 **Tests:** `CassandraTranscriptTest` implements `TranscriptContract` (nessy-core test-jar) over Testcontainers Cassandra (keyspace created by the test, mirroring how JDBC tests own their schema bootstrap); a concurrency test — N parallel appenders, one conversation, assert versions strictly monotonic/gap-free-from-1, no lost messages, stutter held (two racing identical tellings yield one row); a bounded-attempts test if constructible without a real race (a hand-rolled CqlSession wrapper forcing not-applied — no mocking library, wrap the real session interface).
 
-- [ ] RED: contract + concurrency tests against a stub impl; GREEN: the LWT loop lands. Container suite: `./mvnw -q verify -pl nessy-store-cassandra -am -Dnessy.excludedGroups=live`. Offline reactor green (container tests tagged).
+- [ ] RED: contract + concurrency tests against a stub impl; GREEN: the LWT loop lands. Container suite: `./mvnw -q verify -pl nessy-transcript-cassandra -am -Dnessy.excludedGroups=live`. Offline reactor green (container tests tagged).
 - [ ] Commit: `feat: the transcript learns Cassandra — LWT where the row lock was`
 
 ### Task 2: The starter seam
@@ -38,7 +38,7 @@
 
 ### Task 3: Paperwork
 
-`nessy-store-cassandra/README.md` (polyglot rationale, schema, LWT-vs-row-lock, the compose service-connection wiring an app would add); root README substrate section one sentence + Install section artifact row; CHANGELOG `### Added` (module, auto-config, the polyglot claim now proven by tests — no Breaking section entries, purely additive). Full offline + container sweeps end to end.
+`nessy-transcript-cassandra/README.md` (polyglot rationale, schema, LWT-vs-row-lock, the compose service-connection wiring an app would add); root README substrate section one sentence + Install section artifact row; CHANGELOG `### Added` (module, auto-config, the polyglot claim now proven by tests — no Breaking section entries, purely additive). Full offline + container sweeps end to end.
 
 - [ ] Commit: `docs: the polyglot story in writing — one conversation, two stores`
 

@@ -61,7 +61,7 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-store-cassandra</artifactId>
+                <artifactId>nessy-transcript-cassandra</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

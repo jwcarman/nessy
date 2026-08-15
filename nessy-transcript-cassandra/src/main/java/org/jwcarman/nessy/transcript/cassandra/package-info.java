@@ -14,4 +14,4 @@
  * limitations under the License.
  */
 /** The durable {@code Transcript} against Apache Cassandra, over the {@code CqlSession} driver. */
-package org.jwcarman.nessy.store.cassandra;
+package org.jwcarman.nessy.transcript.cassandra;

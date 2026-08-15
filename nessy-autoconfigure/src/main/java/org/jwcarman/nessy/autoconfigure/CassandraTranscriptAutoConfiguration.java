@@ -18,7 +18,7 @@ package org.jwcarman.nessy.autoconfigure;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jwcarman.nessy.spi.memory.Transcript;
-import org.jwcarman.nessy.store.cassandra.CassandraTranscript;
+import org.jwcarman.nessy.transcript.cassandra.CassandraTranscript;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -30,7 +30,7 @@ import org.springframework.context.annotation.Bean;
 
 /**
  * The starter's arbitration seam (design §4): a {@link CqlSession} bean plus {@code
- * nessy-store-cassandra} on the classpath wins the {@link Transcript} bean over {@code
+ * nessy-transcript-cassandra} on the classpath wins the {@link Transcript} bean over {@code
  * nessy-store-jdbc}'s own — this class is pinned {@code before =
  * JdbcPersistenceAutoConfiguration.class} so its {@link Transcript} bean always lands first, and
  * {@link JdbcPersistenceAutoConfiguration}'s own {@code @ConditionalOnMissingBean} {@code

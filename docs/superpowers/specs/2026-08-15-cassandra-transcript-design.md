@@ -17,7 +17,7 @@ log — lives on Cassandra. **Transcript ONLY**: `ConversationStore` and
 `Parks` need fenced CAS semantics that are Cassandra-hostile and
 Postgres-happy; the polyglot split is the story, not a limitation.
 
-New module: **`nessy-store-cassandra`**, Spring-free like its JDBC
+New module: **`nessy-transcript-cassandra`**, Spring-free like its JDBC
 sibling — it depends on the Cassandra Java driver (`CqlSession`) exactly
 as `nessy-store-jdbc` depends on `DataSource`, versions managed by Boot's
 BOM. Reactor + `nessy-bom` entries; root README Install section gains the
@@ -95,7 +95,7 @@ own Cassandra auto-configuration — service connections included
 
 The matrix does not grow and no example switches stores. The proof lives
 in the module's container tests and the autoconfigure context test; the
-documentation lives in a `nessy-store-cassandra/README.md` (the polyglot
+documentation lives in a `nessy-transcript-cassandra/README.md` (the polyglot
 rationale, the schema, the LWT-instead-of-row-lock explanation, the
 compose/service-connection wiring an app would use) plus the root
 README's substrate section gaining one sentence and the Install section

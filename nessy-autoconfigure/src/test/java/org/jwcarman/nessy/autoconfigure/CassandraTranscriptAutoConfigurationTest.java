@@ -28,7 +28,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.Transcript;
-import org.jwcarman.nessy.store.cassandra.CassandraTranscript;
+import org.jwcarman.nessy.transcript.cassandra.CassandraTranscript;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.cassandra.autoconfigure.CassandraAutoConfiguration;

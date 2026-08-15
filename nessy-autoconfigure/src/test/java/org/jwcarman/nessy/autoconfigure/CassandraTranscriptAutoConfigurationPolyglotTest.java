@@ -33,9 +33,9 @@ import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.Transcript;
-import org.jwcarman.nessy.store.cassandra.CassandraTranscript;
 import org.jwcarman.nessy.store.jdbc.JdbcConversationStore;
 import org.jwcarman.nessy.store.jdbc.JdbcParks;
+import org.jwcarman.nessy.transcript.cassandra.CassandraTranscript;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.testcontainers.containers.CassandraContainer;
@@ -48,10 +48,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * over it, and the JDBC {@link ConversationStore}/{@link Parks} still in play. {@link
  * CassandraTranscript#create} always bootstraps real schema DDL (no non-bootstrapping variant), so
  * this is the one test in the module that needs a genuinely live session — a real Testcontainers
- * {@link CassandraContainer}, mirroring {@code CassandraTranscriptTest} (nessy-store-cassandra).
- * Tagged {@code container} so the offline default build never needs Docker; the JDBC side of the
- * context stays offline ({@code UnusedDataSource} + {@code bootstrap-schema=false}), exactly as
- * {@link JdbcPersistenceAutoConfigurationTest} runs it.
+ * {@link CassandraContainer}, mirroring {@code CassandraTranscriptTest}
+ * (nessy-transcript-cassandra). Tagged {@code container} so the offline default build never needs
+ * Docker; the JDBC side of the context stays offline ({@code UnusedDataSource} + {@code
+ * bootstrap-schema=false}), exactly as {@link JdbcPersistenceAutoConfigurationTest} runs it.
  */
 @Testcontainers
 @Tag("container")
