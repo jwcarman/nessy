@@ -193,6 +193,12 @@ actually needs:
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-transcript-cassandra</artifactId>
   </dependency>
+
+  <!-- Optional: wrap an MCP server's tools as nessy Tools. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-tool-mcp</artifactId>
+  </dependency>
 </dependencies>
 ```
 
@@ -244,7 +250,11 @@ agent, per tool — the same pairing `AgentFacadeTest`'s
 `a_grant_line_declares_capability_and_authority_together` exercises end to
 end. It is also the *only* way to attach a tool — `tools(Tool...)` does not
 exist, because no derivable policy exists: a tool carries zero authority
-content, so every attachment states its policy or does not compile.
+content, so every attachment states its policy or does not compile. An
+imported MCP toolbox is no exception: `nessy-tool-mcp`'s `McpToolbox`
+turns a server's tools into ordinary `Tool`s, and each one is granted
+individually, tool-by-tool, exactly like a hand-written one (see that
+module's [README](nessy-tool-mcp/README.md)).
 
 The odd-one-out agent — a different provider, a different store — is a
 **second harness**, one per infrastructure profile, never an override on

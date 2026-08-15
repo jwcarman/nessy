@@ -225,7 +225,10 @@ class McpToolboxTest {
       fixture.close();
 
       assertThatThrownBy(() -> tool.execute(arguments, context))
-          .isInstanceOf(RuntimeException.class);
+          .isInstanceOf(RuntimeException.class)
+          .hasMessageContaining("failed to initialize")
+          .rootCause()
+          .hasMessageContaining("transport is closed");
     }
   }
 }

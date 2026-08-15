@@ -800,6 +800,39 @@ sequence of renames and interim shapes that produced it.
   — the proof lives in the module's own container tests and this
   autoconfigure test; see `nessy-transcript-cassandra`'s README for the
   wiring an application adds.
+- **`nessy-tool-mcp` — the world's MCP toolboxes open, and the zero-kernel
+  claim proven end to end.** `McpToolbox.connect(McpClientTransport,
+  ObjectMapper)` performs the MCP `initialize`/`tools/list` handshake once
+  and hands back every server tool as a plain nessy `Tool<JsonNode>`;
+  `tools()` lists them all, `tool(name)` fails noisy — a
+  `NoSuchElementException` naming every tool actually on offer. The kernel
+  needed no change at all to carry an MCP-backed tool: `ToolSpec`'s
+  wire-neutral `ObjectNode` schema, `Tool#spec()`'s default-method override
+  point, and `ToolInvoker`'s identity-hop deserialization for
+  `inputType() = JsonNode.class` were already enough, proven not merely
+  asserted — an end-to-end test grants an `McpTool` through a real
+  `AgentBuilder` and drives it through the actual
+  `ToolInvoker`/`GatedToolCallExecutor` path against a real in-process MCP
+  server (the SDK's own server side, the first true end-to-end MCP
+  exchange in this repo, no Docker/key/network, default build). `McpTool`
+  maps text content blocks (newline-joined) to a success `ToolResult`,
+  `isError` to the error shape, and degrades non-text content (images,
+  embedded resources) by JSON-encoding it into the text output rather than
+  dropping it — a documented v1 limitation, tools-only and text-first;
+  elicitation, sampling, resources, prompts, and roots are deliberately
+  banked for a later generation, and MCP progress notifications are not
+  forwarded to `ToolContext.progress` in v1 because the SDK's sync client
+  offers only a session-global progress consumer, not one scoped to a
+  single call. Transports arrive entirely from the SDK (`StdioClientTransport`,
+  `HttpClientStreamableHttpTransport`, both `mcp-core`) — nessy adds none
+  of its own — and the module depends on `mcp-core` plus
+  `mcp-json-jackson2` explicitly rather than the `mcp` facade, keeping
+  Jackson 3 off the classpath entirely (the rest of this repo, including
+  `ToolSpec`'s `ObjectNode`, is built on Jackson 2). The import posture is
+  the grant principle applied to a whole server at once: opening a
+  toolbox authorizes nothing by itself, and every tool it yields still
+  needs its own `ToolGrant`/`UsagePolicy`, one at a time — see
+  `nessy-tool-mcp`'s README for the connect/grant idiom.
 
 ### Breaking (pre-1.0)
 

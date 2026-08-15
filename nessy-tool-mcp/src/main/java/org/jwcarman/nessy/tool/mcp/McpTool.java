@@ -40,6 +40,10 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
  * <p>Package-private on purpose: the only supported way to get one is {@link
  * McpToolbox#tool(String)} or {@link McpToolbox#tools()}, so a granted MCP tool always came from a
  * live, initialized session.
+ *
+ * <p>MCP progress notifications are not forwarded to {@link ToolContext#progress} in v1: the SDK's
+ * sync client offers only a session-global progress consumer, not one scoped to a single {@code
+ * tools/call}, so wiring one here would leak another call's progress into this tool's context.
  */
 final class McpTool implements Tool<JsonNode> {
 
