@@ -24,6 +24,13 @@
 
   <logger name="org.jwcarman.nessy" level="WARN"/>
 
+  <!-- The MCP SDK narrates its handshake at INFO; keep only its warnings. -->
+  <logger name="io.modelcontextprotocol" level="WARN"/>
+  <!-- DeepWiki sends logging notifications whose `data` is a JSON object; the SDK models that
+       field as String and logs an ERROR per notification while dropping it — out-of-band noise,
+       tool calls unaffected (modelcontextprotocol/java-sdk#193). Silence just that class. -->
+  <logger name="io.modelcontextprotocol.spec.McpClientSession" level="OFF"/>
+
   <root level="INFO">
     <appender-ref ref="CONSOLE"/>
   </root>
