@@ -24,29 +24,31 @@ import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
  * The three doors a durable {@code AgentBuilder} actually needs, plus the summary shelf a
- * summarizing {@code ContextHydrator} reaches for and the plan facility's own store, all over one
- * database — any of the five {@link JdbcDialect} knows (design §2) — bootstrapped in one call: a
- * {@link JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, a {@link
- * JdbcSummaryStore}, and a {@link JdbcPlanStore}. {@link #create} exists because those five schemas
- * are always stood up together in practice — nothing here couples them beyond that convenience;
- * each component still works fine constructed on its own.
+ * summarizing {@code ContextHydrator} reaches for, the plan facility's own store, and the notebook
+ * facility's own store, all over one database — any of the five {@link JdbcDialect} knows (design
+ * §2) — bootstrapped in one call: a {@link JdbcConversationStore}, a {@link JdbcParks} registry, a
+ * {@link JdbcTranscript}, a {@link JdbcSummaryStore}, a {@link JdbcPlanStore}, and a {@link
+ * JdbcNotebook}. {@link #create} exists because those six schemas are always stood up together in
+ * practice — nothing here couples them beyond that convenience; each component still works fine
+ * constructed on its own.
  *
  * <p>{@link #create(DataSource, ObjectMapper)} is this module's one shared dialect-resolution seam
  * (design §2): it resolves the dialect exactly once, from one borrowed connection, before any of
- * the five components bootstraps its own schema, then hands that single resolved value down to each
- * component's own explicit-dialect {@code create} overload — five schemas, one resolution, not five
+ * the six components bootstraps its own schema, then hands that single resolved value down to each
+ * component's own explicit-dialect {@code create} overload — six schemas, one resolution, not six
  * independent ones that could in principle disagree. {@link #create(DataSource, ObjectMapper,
- * JdbcDialect)} carries the same null-means-resolve contract every one of those five components'
- * own explicit-dialect overload already has: passing {@code null} does not skip resolution, it asks
- * for exactly the one-resolution behavior {@link #create(DataSource, ObjectMapper)} provides;
- * passing a non-null value bypasses resolution entirely, for every component at once.
+ * JdbcDialect)} carries the same null-means-resolve contract every one of those six components' own
+ * explicit-dialect overload already has: passing {@code null} does not skip resolution, it asks for
+ * exactly the one-resolution behavior {@link #create(DataSource, ObjectMapper)} provides; passing a
+ * non-null value bypasses resolution entirely, for every component at once.
  */
 public record JdbcPersistence(
     JdbcConversationStore store,
     JdbcParks parks,
     JdbcTranscript transcript,
     JdbcSummaryStore summaries,
-    JdbcPlanStore planStore) {
+    JdbcPlanStore planStore,
+    JdbcNotebook notebook) {
 
   public JdbcPersistence {
     Objects.requireNonNull(store, "store must not be null");
@@ -54,18 +56,19 @@ public record JdbcPersistence(
     Objects.requireNonNull(transcript, "transcript must not be null");
     Objects.requireNonNull(summaries, "summaries must not be null");
     Objects.requireNonNull(planStore, "planStore must not be null");
+    Objects.requireNonNull(notebook, "notebook must not be null");
   }
 
-  /** Bootstraps all five schemas against {@code dataSource}, resolving the dialect once. */
+  /** Bootstraps all six schemas against {@code dataSource}, resolving the dialect once. */
   public static JdbcPersistence create(DataSource dataSource, ObjectMapper mapper) {
     return create(dataSource, mapper, null);
   }
 
   /**
-   * Bootstraps all five schemas against {@code dataSource}. {@code dialect} of {@code null} means
+   * Bootstraps all six schemas against {@code dataSource}. {@code dialect} of {@code null} means
    * resolve — exactly once, here, before any component bootstraps — the same contract every
    * component's own explicit-dialect overload already has; a non-null {@code dialect} bypasses
-   * resolution entirely and is handed to all five components unchanged.
+   * resolution entirely and is handed to all six components unchanged.
    */
   public static JdbcPersistence create(
       DataSource dataSource, ObjectMapper mapper, JdbcDialect dialect) {
@@ -75,7 +78,8 @@ public record JdbcPersistence(
         JdbcParks.create(dataSource, mapper, resolved),
         JdbcTranscript.create(dataSource, mapper, resolved),
         JdbcSummaryStore.create(dataSource, resolved),
-        JdbcPlanStore.create(dataSource, resolved));
+        JdbcPlanStore.create(dataSource, resolved),
+        JdbcNotebook.create(dataSource, resolved));
   }
 
   /** The one connection this whole bootstrap borrows purely to resolve the dialect once. */

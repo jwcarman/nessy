@@ -34,9 +34,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
+import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.jwcarman.nessy.tck.ConversationStoreContract;
+import org.jwcarman.nessy.tck.NotebookContract;
 import org.jwcarman.nessy.tck.ParksContract;
 import org.jwcarman.nessy.tck.PlanStoreContract;
 import org.jwcarman.nessy.tck.SummaryStoreContract;
@@ -169,6 +171,23 @@ class MySqlStoreTckTest {
     @Override
     protected PlanStore plans() {
       return plans;
+    }
+  }
+
+  @Nested
+  class Notebook_contract extends NotebookContract {
+
+    private Notebook notebook;
+
+    @BeforeEach
+    void a_fresh_notebook_over_an_empty_table() {
+      notebook = JdbcNotebook.create(dataSource);
+      truncate("nessy_notebook");
+    }
+
+    @Override
+    protected Notebook notebook() {
+      return notebook;
     }
   }
 

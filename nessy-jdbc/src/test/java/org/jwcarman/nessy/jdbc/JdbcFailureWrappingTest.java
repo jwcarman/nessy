@@ -31,8 +31,10 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.SubjectId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.memory.SummaryStore.Summary;
+import org.jwcarman.nessy.spi.notebook.Notebook.Entry;
 import org.jwcarman.nessy.spi.plan.Plan;
 import org.jwcarman.nessy.spi.plan.Plan.Status;
 import org.jwcarman.nessy.spi.plan.Plan.Task;
@@ -104,6 +106,29 @@ class JdbcFailureWrappingTest {
     assertThatThrownBy(() -> summaries.save(id, summary))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("summary")
+        .cause()
+        .isSameAs(REFUSED);
+  }
+
+  /**
+   * {@link JdbcNotebook#save} follows {@link JdbcSummaryStore#save}'s upsert shape, not {@link
+   * JdbcPlanStore#save}'s explicit transaction (see {@link JdbcNotebook}'s class javadoc) — no
+   * {@code setAutoCommit(false)}/{@code commit}/{@code rollback} of its own, so there is nothing
+   * here for a rollback to undo. What this pins, mirroring {@link
+   * #the_summary_store_wraps_a_failed_save_naming_itself()}, is the same failure-wrapping contract
+   * every door in this module honors: a connection that refuses outright surfaces from {@link
+   * JdbcNotebook#save} as an {@link IllegalStateException} naming the notebook, with the original
+   * {@link SQLException} as its cause.
+   */
+  @Test
+  void the_notebook_wraps_a_failed_save_naming_itself() {
+    JdbcNotebook notebook = new JdbcNotebook(refusing());
+    SubjectId subject = new SubjectId("user-42");
+    Entry entry = new Entry("user-taste", "a hook", "a body");
+
+    assertThatThrownBy(() -> notebook.save(subject, entry))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("notebook")
         .cause()
         .isSameAs(REFUSED);
   }

@@ -20,6 +20,7 @@ import java.util.Locale;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.jdbc.JdbcConversationStore;
 import org.jwcarman.nessy.jdbc.JdbcDialect;
+import org.jwcarman.nessy.jdbc.JdbcNotebook;
 import org.jwcarman.nessy.jdbc.JdbcParks;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.jdbc.JdbcPlanStore;
@@ -27,6 +28,7 @@ import org.jwcarman.nessy.jdbc.JdbcTranscript;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
+import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.beans.factory.ObjectProvider;
@@ -46,8 +48,8 @@ import org.springframework.context.annotation.Bean;
  *
  * <p>{@code nessy.jdbc.enabled=false} is the master switch, overriding both signals above. Absent
  * that override, each bean method still yields to a user-declared {@link ConversationStore}, {@link
- * Parks}, {@link Transcript}, {@link Memory}, or {@link PlanStore} — see the individual
- * {@code @ConditionalOnMissingBean} bean methods.
+ * Parks}, {@link Transcript}, {@link Memory}, {@link PlanStore}, or {@link Notebook} — see the
+ * individual {@code @ConditionalOnMissingBean} bean methods.
  *
  * <p>{@link org.jwcarman.nessy.autoconfigure.NessyProperties#bootstrapSchema()} chooses between
  * {@code JdbcConversationStore}/{@code JdbcParks}/{@code JdbcTranscript}'s bootstrapping {@code
@@ -143,6 +145,20 @@ public class JdbcPersistenceAutoConfiguration {
     return properties.bootstrapSchema()
         ? JdbcPlanStore.create(dataSource, resolveDialect(properties))
         : new JdbcPlanStore(dataSource);
+  }
+
+  /**
+   * Mirrors {@link #planStore} exactly: {@link JdbcNotebook}, like {@link JdbcPlanStore}, has no
+   * {@link ObjectMapper}-accepting {@code create}/constructor overload (design §5 — {@code
+   * nessy_notebook} carries no JSON column), so this bean method does not go through {@link #build}
+   * either.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  Notebook notebook(DataSource dataSource, NessyProperties properties) {
+    return properties.bootstrapSchema()
+        ? JdbcNotebook.create(dataSource, resolveDialect(properties))
+        : new JdbcNotebook(dataSource);
   }
 
   /**
