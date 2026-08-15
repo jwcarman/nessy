@@ -4,7 +4,7 @@ An `Agent<I>` is a reusable identity — a model, a system prompt, a set of gran
 tools — built once from a `Harness` and then told things. This page builds the
 smallest one that actually calls a tool, against a real model, then shows the
 same shape running with no key at all — the seam your tests use — before
-pointing at the next two steps: an interactive console, and a restart that
+pointing at the next few steps: an interactive console, and a restart that
 doesn't lose anything.
 
 ## The shape
