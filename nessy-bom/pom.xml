@@ -61,6 +61,11 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-store-cassandra</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-autoconfigure</artifactId>
                 <version>${project.version}</version>
             </dependency>

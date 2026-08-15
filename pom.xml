@@ -60,6 +60,7 @@
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
     <module>nessy-store-jdbc</module>
+    <module>nessy-store-cassandra</module>
     <module>nessy-autoconfigure</module>
     <module>nessy-spring-boot-starter</module>
     <module>nessy-examples</module>
