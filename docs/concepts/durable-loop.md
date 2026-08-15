@@ -92,7 +92,7 @@ while parked; it joins the durable inbox and the next drive, from any node, pick
 ## Where next
 
 - [Parks and Callbacks](parks-and-callbacks.md) — the doors that answer a parked wait.
-- [Tools and Grants](tools-and-grants.md) — the capability and authority a tool call needs
-  before it ever runs.
 - [Storage](storage.md) — what has to be durable for a conversation to actually survive
   a restart.
+- [Observability](../guides/observability.md) — the three spans that trace the loop's
+  own phases.

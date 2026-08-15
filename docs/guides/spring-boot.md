@@ -130,7 +130,7 @@ can key off named listeners rather than parsing prose.
 
 - [Durable Persistence](durable-persistence.md) — the five components
   `JdbcPersistence.create` wires by hand, `SummaryStore` included.
-- [Providers](providers.md) — the same provider selection, driven by
-  environment variables instead of `nessy.*` properties.
+- [Observability](observability.md) — the `ObservationRegistry` bean
+  `nessy-autoconfigure` picks up automatically, no wiring required.
 - [Configuration](../reference/configuration.md) — the full property
   reference.

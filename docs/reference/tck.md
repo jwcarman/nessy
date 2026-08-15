@@ -119,5 +119,5 @@ contract run per real target, sharing the same five contract classes.
   one fits in the durable loop.
 - [Configuration](configuration.md) — the properties that wire the built-in
   JDBC doors.
-- [Durable persistence](../guides/durable-persistence.md) — what surviving a
+- [Durable Persistence](../guides/durable-persistence.md) — what surviving a
   restart requires end to end.

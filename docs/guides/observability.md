@@ -46,7 +46,7 @@ response settles.
 bean is already in the context, if one is present
 (`ObjectProvider<ObservationRegistry>.ifAvailable(builder::observations)`) —
 no application wiring required. `chat-web` dogfoods this: Boot's own
-auto-configured registry means nessy's model-call and tool-call
+auto-configured registry means Nessy's model-call and tool-call
 observations show up in the same trace as Boot's HTTP and JDBC spans — one
 chat turn, one trace, from the `POST` that started it down through the
 model call, the tool call, and the JDBC saves either side of it.

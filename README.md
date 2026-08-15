@@ -15,7 +15,7 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jwcarman_nessy&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jwcarman_nessy)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=jwcarman_nessy&metric=coverage)](https://sonarcloud.io/summary/new_code?id=jwcarman_nessy)
 
-An AI agent harness framework for Java.
+An agent harness framework for Java.
 
 **[Documentation site](https://jwcarman.github.io/nessy/)** — concepts, guides,
 examples, and reference, in one place.

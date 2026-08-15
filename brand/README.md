@@ -81,6 +81,8 @@ The files in `source/` are the approved generated concept artwork from which thi
 
 That is entirely suitable for a project README, GitHub avatar, social cards, documentation, and most digital use. If Nessy later needs print production, large-format merchandise, or strict brand reproduction, the next step should be to have the simplified mark redrawn as true vector paths and adopt that SVG as the canonical master.
 
+*The `source/` originals are not vendored in this repository; they remain in the design archive.*
+
 ## Directory layout
 
 ```text

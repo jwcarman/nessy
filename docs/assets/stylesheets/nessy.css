@@ -38,7 +38,7 @@
   --md-primary-fg-color--light: #1B4D5E;
   --md-primary-fg-color--dark: #06242E;
   --md-accent-fg-color: var(--nessy-nessy-teal);
-  --md-typeset-a-color: var(--nessy-nessy-teal);
+  --md-typeset-a-color: var(--nessy-deep-teal);
   --md-default-bg-color: #FAF6EA;
   --md-code-bg-color: #F1E9D2;
 }

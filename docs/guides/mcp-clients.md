@@ -1,6 +1,6 @@
 # MCP Clients
 
-`nessy-tool-mcp` turns an MCP server's tools into plain nessy `Tool<JsonNode>`
+`nessy-tool-mcp` turns an MCP server's tools into plain Nessy `Tool<JsonNode>`
 instances. `McpToolbox` opens a server; each tool it hands back is granted the
 same way a hand-written `Tool` is — named individually, paired with its own
 `UsagePolicy`.
@@ -38,7 +38,7 @@ swallowing the closed session.
 ## Building the transport
 
 `McpToolbox.connect(McpClientTransport transport, ObjectMapper mapper)` takes
-an already-built transport — nessy adds no transport of its own. The
+an already-built transport — Nessy adds no transport of its own. The
 official MCP Java SDK (`io.modelcontextprotocol.sdk`) ships what an
 application needs:
 
@@ -92,17 +92,17 @@ wrong thing mid-turn.
 ## v1 boundaries
 
 - **Tools only.** Resources, prompts, and roots are not wrapped — an MCP
-  server's tools are the only surface this module turns into a nessy `Tool`.
+  server's tools are the only surface this module turns into a Nessy `Tool`.
 - **Text-first, with honest degradation.** A tool's result maps text content
   blocks (joined with newlines) onto a success `ToolResult`, and an
   `isError` result onto the error-shaped `ToolResult`. Non-text content —
-  images, embedded resources — has no text-shaped nessy analog yet, so v1
+  images, embedded resources — has no text-shaped Nessy analog yet, so v1
   degrades honestly: the content object is JSON-encoded into the text output
   rather than silently dropped.
 - **No elicitation or sampling yet.** Every `McpTool#execute` call is a
   single request/response round trip — never a park. MCP elicitation (a
   server asking the *caller* a question mid-call) would pair naturally with
-  nessy's `Awaited.parked` and durable HITL, but that pairing is its own
+  Nessy's `Awaited.parked` and durable HITL, but that pairing is its own
   generation of work — banked, not forgotten.
 - **The SDK's 20-second request/init timeout applies as-is.** Neither
   `connect` nor `McpToolbox` exposes a way to raise it yet. Real MCP tools

@@ -46,7 +46,7 @@ already in context by the time it runs.
 
 - [Spring Boot](../guides/spring-boot.md) — the starter end to end: what
   gets wired, what doesn't, and how to override any of it.
-- [Durable persistence](../guides/durable-persistence.md) — what surviving a
+- [Durable Persistence](../guides/durable-persistence.md) — what surviving a
   restart actually requires.
 - [TCK](tck.md) — certifying a custom store against the same contracts the
   JDBC doors pass.

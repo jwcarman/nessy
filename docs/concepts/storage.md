@@ -1,9 +1,10 @@
 # Storage
 
-Restart survival rests on five storage SPIs (`spi.conversation`, `spi.transcript`,
-`spi.memory`, `spi.plan`), each with a zero-configuration in-memory default and a
-`nessy-jdbc` implementation behind it. Every one dies with the JVM by default; every one
-survives a restart once backed by a real database.
+Restart survival rests on five storage SPIs — `ConversationStore`, `Parks`,
+`Transcript`, `SummaryStore`, `PlanStore` — each with a zero-configuration
+in-memory default and a `nessy-jdbc` implementation behind it. Every one dies
+with the JVM by default; every one survives a restart once backed by a real
+database.
 
 | Door | Owns | In-memory default |
 |---|---|---|
