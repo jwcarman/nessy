@@ -27,7 +27,7 @@ Two placement rulings, made in conversation and binding here:
   precedent that core ships opinionated cognitive machinery, prompt text and all. Module
   boundaries in nessy isolate *dependencies* (`nessy-tool-mcp` exists because of the MCP SDK);
   the plan facility has none. Pluggability is preserved by the grant principle: an agent that
-  never grants the tool and never adds the contributor pays zero.
+  never grants the tool and never adds the transformer pays zero.
 - **Naming convention for persistence contracts:** new pure-persistence SPIs take the `Store`
   suffix (`ConversationStore`, `SummaryStore`, now `PlanStore`). `Transcript` and `Parks` keep
   their names: they are jurisdictions with semantics, not dumb persistence, and `Repository`
@@ -81,31 +81,27 @@ public interface ContextTransformer {
 }
 ```
 
-Stages run in registration order, each seeing its predecessors' output. Two conveniences ride
-on top of the general seam:
+`ContextTransformer` is the **only** stage concept — one interface, one builder verb. Stages
+run in registration order, each seeing its predecessors' output. No helper factories are
+needed, because **`Context` already carries the verb vocabulary** a stage body wants:
 
-- **`keepRecent(n)`** — a builder verb that registers `Context.keepRecent(n)` (the existing
-  pair-safe trim) as a required stage. Clamping after a summarizing hydration is legitimate
-  belt-and-suspenders: the summary absorbs old history, the window guarantees a ceiling.
-- **`ContextContributor`** — the append-only specialization for facilities that only add:
+- `enrich(ContentBlock...)` / `enrich(List<ContentBlock>)` — appends exactly one user-role
+  message, the documented carrier for non-human content. This is how appending stages amend:
+  `(id, ctx) -> ctx.enrich(new TextBlock(rendered))`. Note `enrich` rejects an empty block
+  list on purpose, so a nothing-to-add stage returns `ctx` unchanged rather than calling it.
+- `map(UnaryOperator<Message>)` — rewrite every message; the redaction verb.
+- `drop(Predicate<Message>)` — pair-atomic removal; matching either half of a tool exchange
+  removes the whole exchange.
+- `elideToolResults(n)` — blank old tool-result bodies, keep the recent window verbatim.
+- `keepRecent(n)` / `limitTokens(budget, estimator)` — the pair-safe clamps.
 
-```java
-/**
- * The append-only stage: returns messages the pipeline appends verbatim at the tail of the
- * context so far. Empty list means contribute nothing this call. Receiving the context as
- * input is what makes relevance possible — a future facts contributor reads the tail and
- * returns only what is germane. Tail appends can never split a tool exchange, so this is the
- * seam to reach for when adding is all you need.
- */
-public interface ContextContributor {
-  List<Message> contribute(ConversationId id, Context soFar);
-}
-```
+The builder's `keepRecent(n)` verb simply registers `ctx -> ctx.keepRecent(n)` as a stage
+(clamping after a summarizing hydration is legitimate belt-and-suspenders: the summary
+absorbs old history, the window guarantees a ceiling).
 
-The builder adapts a contributor into a transformer internally. Recommended order — clamp,
-then transforms, then contributors — keeps amendments unclippable and lets a relevance-judging
-contributor see the same fitted context the model will see; but order is the caller's, on
-purpose.
+Recommended order — clamp, then mutating stages, then appending ones — keeps amendments
+unclippable and lets a relevance-judging appender see the same fitted context the model will
+see; but order is the caller's, on purpose.
 
 Why injection-as-user-message is legal and sufficient: the only rigid wire constraint is the
 tool pair. Strict role alternation is not required — OpenAI accepts any sensible ordering and
@@ -130,13 +126,12 @@ Optionality is not the pipeline's concept; a stage optionalizes itself via a dec
 static ContextTransformer optional(ContextTransformer delegate) { ... }
 ```
 
-with the symmetric `ContextContributor.optional(delegate)` returning an empty contribution on
-failure. Wrap what is nice to have and safe to lose — a flaky relevance lookup, a best-effort
-annotation, the plan contributor if an application decides a down `PlanStore` should not stall
-turns:
+Wrap what is nice to have and safe to lose — a flaky relevance lookup, a best-effort
+annotation, the plan transformer if an application decides a down `PlanStore` should not
+stall turns:
 
 ```java
-.contribute(ContextContributor.optional(PlanTools.contributor(planStore)))
+.transform(ContextTransformer.optional(PlanTools.transformer(planStore)))
 ```
 
 One concept fewer in the builder, and the safety property gets stronger: fail-closed is
@@ -153,7 +148,7 @@ Memory memory = Memory.pipeline(transcript)                              // full
     .keepRecent(50)                                                      // pair-safe clamp
     .transform(redactor)                                                 // a throw fails the recall
     .transform(ContextTransformer.optional(annotator))                   // self-optionalized: a throw skips it
-    .contribute(PlanTools.contributor(planStore))                        // append-only stage
+    .transform(PlanTools.transformer(planStore))                         // appending stage
     .build();
 ```
 
@@ -169,12 +164,10 @@ Memory memory = Memory.pipeline(transcript)                              // full
   per pipeline.
 - `.keepRecent(int n)` — registers the pair-safe trim as a required stage at its call
   position; same `n >= 1` floor as `Memory.windowed`.
-- `.transform(ContextTransformer)` — zero or more.
-- `.contribute(ContextContributor)` — zero or more; adapted internally into an appending
-  transformer.
-- All stages — clamps, transforms, contributors — occupy **one ordered list** and run in
-  registration order. Every stage is required (§2.3); optional behavior arrives pre-wrapped
-  via `ContextTransformer.optional` / `ContextContributor.optional`.
+- `.transform(ContextTransformer)` — zero or more; the one and only stage verb.
+- All stages — clamps included — occupy **one ordered list** and run in registration order.
+  Every stage is required (§2.3); optional behavior arrives pre-wrapped via
+  `ContextTransformer.optional`.
 - `.build()` returns the `PipelineMemory`. Internally it delegates to `TranscriptMemory` or
   `SummarizingMemory` for hydration, then folds the stage list. No behavior is reimplemented;
   the builder is composition sugar with names.
@@ -247,7 +240,7 @@ public interface PlanStore {
 ### 3.3 The tool — wholesale replacement, idempotent by construction
 
 `PlanTools` (final, private constructor, two static factories) provides the tool and the
-contributor — the two halves of one invariant, kept in one reviewable place.
+transformer — the two halves of one invariant, kept in one reviewable place.
 
 ```java
 public static Tool<UpdatePlan> updatePlan(PlanStore store) { ... }
@@ -272,14 +265,15 @@ public static Tool<UpdatePlan> updatePlan(PlanStore store) { ... }
 - Blank titles are rejected by `Plan`'s compact constructor; the tool surfaces that as a failed
   `ToolResult` (the standard tool-error path), so the model can correct itself.
 
-### 3.4 The contributor
+### 3.4 The transformer
 
 ```java
-public static ContextContributor contributor(PlanStore store) { ... }
+public static ContextTransformer transformer(PlanStore store) { ... }
 ```
 
-`contribute` finds the plan; absent or empty means an empty list — nothing is injected, the
-"if applicable" rule. Otherwise it returns exactly one `Message.user(...)`:
+`transform` finds the plan; absent or empty returns the context unchanged — nothing is
+injected, the "if applicable" rule. Otherwise it appends via `Context.enrich` — exactly one
+user-role message carrying one `TextBlock`:
 
 ```
 <current-plan>
@@ -293,14 +287,14 @@ not a message from the user.
 
 Markers: `[ ]` pending, `[>]` in progress, `[x]` done. The framing sentence is part of the
 contract: models are post-trained to treat framed blocks inside user messages as environment,
-not dialogue. Tail position (contribute stages append at the tail; register the plan
-contributor last) puts the plan at maximum recency — the same reason Claude Code injects todo
-reminders last.
+not dialogue. Tail position (`enrich` appends at the tail; register the plan transformer
+last) puts the plan at maximum recency — the same reason Claude Code injects todo reminders
+last.
 
 ### 3.5 What the kernel does not learn
 
 Nothing. No loop change, no `Harness` change, no `Agent` change. The tool is granted like any
-tool; the contributor is composed like any memory decoration. The facility is opt-in at the
+tool; the transformer is composed like any memory decoration. The facility is opt-in at the
 composition line, and its two halves meet only at `PlanStore`.
 
 ## 4. Durability — `JdbcPlanStore`
@@ -363,7 +357,7 @@ README's changelog section if one exists.
 
 Minimal, additive: where the autoconfigure module wires `JdbcSummaryStore` today, it gains the
 parallel `JdbcPlanStore` bean (DataSource present → bean present), and `PlanStore.inMemory()`
-as the fallback default. Granting `update_plan` and adding the contributor remain app-code
+as the fallback default. Granting `update_plan` and adding the transformer remain app-code
 decisions — the grant principle is not softened by autoconfiguration. The queued starter-tidy
 generation (subpackages, MCP client properties) stays a separate generation; this design only
 adds the one bean pair and follows whatever package layout exists when it lands.
@@ -373,7 +367,7 @@ adds the one bean pair and follows whatever package layout exists when it lands.
 `chat-cli` (the cheapest host) demonstrates the pattern end-to-end:
 
 - grants `PlanTools.updatePlan(planStore)` with `allow()`,
-- builds memory via the pipeline: `Memory.pipeline(transcript).contribute(PlanTools.contributor(planStore)).build()`,
+- builds memory via the pipeline: `Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build()`,
 - keeps everything else as-is (env-based provider, `ConsoleRepl`).
 
 Asking it for anything multi-step shows the plan appear, progress, and complete — visible in
@@ -385,21 +379,22 @@ House rules apply throughout: prose snake_case names, no mocking libraries, hand
 doubles, S5778/S5841 discipline, Awaitility over sleep.
 
 - **Pipeline:** builder validation (double hydration, `n < 1`, null stage); pass-through of
-  `remember`; stage ordering (two contributors, second sees the first's message in `soFar`; a
-  transform registered between them observed in sequence); empty-contribution injects nothing;
-  clamp-then-contribute order proven by a contributor observing an already-clamped context; a
-  contributor returning an illegal message shape fails loud at `Context.of`; a genuinely
-  mutating transform (redaction double: rewrites a message body) applied and visible
-  downstream; **failure:** a throwing bare stage propagates out of `recall`; the same stage
-  wrapped in `optional(...)` is skipped — downstream stages receive its input unchanged, a
-  contributor's partial output discarded — and exactly one WARN line is logged (Logback
-  `ListAppender`, filtered to WARN, per the established fixture pattern).
+  `remember`; stage ordering (two appending stages, the second seeing the first's message in
+  its input; a mutating stage registered between them observed in sequence); a
+  nothing-to-add stage leaves the context untouched; clamp-then-append order proven by an
+  appending stage observing an already-clamped context; a genuinely mutating stage (redaction
+  double: rewrites a message body via `Context.map`) applied and visible downstream;
+  **failure:** a throwing bare stage propagates out of `recall`; the same stage wrapped in
+  `optional(...)` is skipped — downstream stages receive its input unchanged, partial output
+  discarded — and exactly one WARN line is logged (Logback `ListAppender`, filtered to WARN,
+  per the established fixture pattern).
 - **Plan records:** blank-title rejection, defensive copy, `empty()`/`isEmpty()`.
 - **Tool:** wholesale replace (second call with fewer tasks shrinks the stored plan), replay
   idempotency (same input executed twice, same stored plan), empty-list clears, confirmation
   text, blank-title error path returns a tool error rather than throwing out of the loop.
-- **Contributor:** absent plan → nothing; empty plan → nothing; rendering exact (all three
-  markers); framing sentence present.
+- **Plan transformer:** absent plan → context unchanged; empty plan → context unchanged;
+  rendering exact (all three markers); framing sentence present; appended as one user-role
+  message at the tail.
 - **JDBC:** `JdbcPlanStore` unit tests on the in-memory certification pattern where possible,
   plus the `PlanStoreContract` wired into all five vendor `TckTests`.
 - **Demo:** compiles; existing chat-cli tests unaffected.
@@ -408,7 +403,7 @@ doubles, S5778/S5841 discipline, Awaitility over sleep.
 ## 9. Out of scope, on purpose
 
 - **Relevance-gated fact memory** ("remember this for me"): the designed second consumer of
-  `ContextContributor`. It arrives with a real dependency decision (embeddings) and earns its
+  `ContextTransformer`. It arrives with a real dependency decision (embeddings) and earns its
   own generation — likely as a satellite module, per the core-vs-satellite rule (§1).
 - **Opening the hydration phase** to user strategies: closed until a second real hydrator
   exists outside core.
