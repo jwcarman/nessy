@@ -74,13 +74,7 @@ before letting a resume through. `Memory` here is the builder's default —
 an in-memory [pipeline](concepts/memory-and-the-pipeline.md) over the
 transcript — swapped for a durable one only when you ask.
 
-### Runs with no key too
-
-Swap `AnthropicModelProvider` for `nessy-testing`'s `ScriptedModelProvider`
-and the same shape runs with no key, no network, and no real model — the
-same seam your tests use. See the
-[Getting Started](guides/getting-started.md) guide for the offline variant in
-full, and [Providers](guides/providers.md) for OpenAI and the
+See [Providers](guides/providers.md) for OpenAI and the
 switch-by-environment-variable helper.
 
 ## Where to go next
@@ -95,7 +89,7 @@ switch-by-environment-variable helper.
 - **[Guides](guides/getting-started.md)**
 
     Task-shaped walkthroughs: getting started, providers, durable persistence,
-    console apps, MCP clients, and more.
+    console apps, MCP clients, [testing](guides/testing.md), and more.
 
 - **[Examples](examples/index.md)**
 
