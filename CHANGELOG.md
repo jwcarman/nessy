@@ -710,6 +710,45 @@ sequence of renames and interim shapes that produced it.
   listeners. The payoff: two agents built from the same harness can now each
   receive callbacks correctly — the single-agent restriction the earlier
   parked-lane entry above recorded as a design gap is closed.
+- **Install docs.** The root README gains an Install section, directly after
+  the five-minute example: the `nessy-bom` `<dependencyManagement>` import
+  and the artifacts an application actually depends on — `nessy-core`,
+  `nessy-spring-boot-starter`, a `nessy-model-*` provider, `nessy-testing`
+  for scripted tests, `nessy-store-jdbc` for durability — every coordinate
+  read straight off the reactor's own poms, plus the honest sentence: no
+  public release yet, `./mvnw install` and `0.1.0-SNAPSHOT` until there is
+  one.
+- **`Memory.windowed(Memory delegate, int n)`.** A decorator that clips
+  `recall` to the last `n` messages of whatever the delegate returns,
+  without changing what the delegate itself retains — a small, composable
+  answer to "make the model see less" that sits beside `TranscriptMemory`
+  and `SummarizingMemory` rather than replacing either.
+- **`TurnObserver.logging(Logger, Supplier<String>)`.** A sibling of the
+  existing `logging(Logger, String prefix)` factory for callers whose
+  prefix isn't known until the moment a `tell` actually happens (a
+  conversation id minted per call, say) — the supplier resolves once per
+  event, not once per registration.
+- **`Tool#execute`'s javadoc teaches the parking recipe.** Three steps, in
+  order: mint a token via `ParkToken.generate()`; return
+  `Awaited.parked(token)` with it; get that token to whatever will resume
+  the call later (a webhook, a queue, an approval UI) before the method
+  returns. The recipe lives at the one call site every tool author actually
+  reads.
+- **The parks-in-memory guard is now conditional, like its `Memory`
+  sibling.** `HarnessBuilder` warns at `build()` when parks are left at
+  their in-memory default while the harness's `ConversationStore` was
+  explicitly configured (`storeSet`) — a durable store paired with
+  in-memory parks is the mismatch worth shouting about; an all-in-memory
+  harness is a coherent choice and stays quiet. `hello`'s first line of
+  output is no longer a warning.
+- **Two exception messages stop asking the reader to guess.**
+  `WrongAgentException` now names the token, the agent that minted the
+  park, and the fix in one sentence ("an agent's name is a durable wire
+  contract; redeploy under '&lt;stamp&gt;' to drain its parks").
+  `UnknownParkTokenException` stops saying a token was "settled" — registry
+  entries survive resolution, and a settled token drains quietly rather
+  than throwing — and its message prints `token.value()` rather than the
+  record's own `toString()`.
 
 ### Breaking (pre-1.0)
 
@@ -793,3 +832,13 @@ because every signature named was public as of the previous entries above:
   README say what it is instead: substrate, immutable, a front door for
   *building* agents only — every field on `Harness` is final, and no
   method on the class ever writes to one.
+- **The name path speaks one exception, `AgentConfigurationException`, both
+  branches.** A missing name at `AgentBuilder#build()` used to throw
+  `IllegalStateException`; a null or blank name at `AgentBuilder#name(String)`
+  used to throw `IllegalArgumentException`. Both now throw
+  `AgentConfigurationException`, carrying the same durable-wire-contract
+  sentence the README promises — the promise this section's earlier
+  `AgentBuilder.name(String) is required` entry made true in wording only is
+  now true in the type callers actually catch. Callers catching either of
+  the two retired exception types for these two failures retune to
+  `AgentConfigurationException`.

@@ -66,7 +66,7 @@ Agent<String> agent =
     Nessy.harness(provider)
         .build()
         .agent()
-        .name("adder")
+        .name("hello")
         .model("fake-model")
         .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
         .build();
@@ -126,6 +126,68 @@ RunOutcome outcome =
         .tell(
             "what is 2+2?",
             TurnObserver.builder().onTextDelta(delta -> System.out.print(delta.text())).build());
+```
+
+## Install
+
+Nessy has not yet made a public release to Maven Central: until then, build
+locally (`./mvnw install`) and depend on `0.1.0-SNAPSHOT`. Every module shares
+`groupId` `org.jwcarman.nessy`.
+
+Import the BOM to align versions, then pick the artifacts your application
+actually needs:
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-bom</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+```
+
+```xml
+<dependencies>
+  <!-- The core API and loop — every application needs this. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-core</artifactId>
+  </dependency>
+
+  <!-- Spring Boot: one starter wires autoconfiguration for you. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-spring-boot-starter</artifactId>
+  </dependency>
+
+  <!-- A model provider — pick one (or both). -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-model-anthropic</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-model-openai</artifactId>
+  </dependency>
+
+  <!-- Scripted, no-key, no-network tests — see the five-minute example above. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-testing</artifactId>
+    <scope>test</scope>
+  </dependency>
+
+  <!-- Durable conversations and parks across a restart (design's store rework). -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-store-jdbc</artifactId>
+  </dependency>
+</dependencies>
 ```
 
 ## The harness
@@ -226,14 +288,21 @@ Agent<String> agent =
 
 The `on*`/`on*Async` methods are per-type sugar over `listen`/`listenAsync` —
 one pair for each of the four conversation facts plus `ToolProgress` and
-`ApprovalRequested`, mirroring `TurnObserver.builder()`'s hooks (`onTextDelta`,
+`ApprovalRequested`. `TurnObserver.builder()`'s hooks (`onTextDelta`,
 `onThinkingDelta`, `onRedactedThinking`, `onToolCallRequested`,
 `onToolCallDecided`, `onToolCallCompleted`, the durable generation's
 addition — `onToolCallProgressed`, narrating a running tool's `ToolProgress`
 onto the live segment — and, this generation's own addition, `onToolCallParked`,
-narrating the moment a call's save commits). The class-keyed primitives remain for anything else —
-including the `.listen(ConversationEvent.class, ...)` catch-all above, which
-deliberately has no sugar.
+narrating the moment a call's save commits) are a *different* vocabulary, not
+the same one restated: declared listeners report settled **facts**
+(`ConversationEvent`s — what happened, durable, replayable), while a
+`TurnObserver` narrates one call's live **texture** (streamed deltas, requests,
+decisions — ephemeral, scoped to the `tell` that's in flight). Reach for
+declared listeners when something else in the system needs to react — audit,
+journaling, another service; reach for a `TurnObserver` when a human is
+watching — a UI, a log line, a spinner. The class-keyed primitives remain for
+anything else — including the `.listen(ConversationEvent.class, ...)`
+catch-all above, which deliberately has no sugar.
 
 Delivery order per emitted event: this conversation's dynamic subscribers
 first (see below), then the frozen chain — the harness's declarations, then
@@ -780,7 +849,7 @@ one stack at once and here's what's listening where:
 | 5672, 15672 | `order-desk`'s RabbitMQ (AMQP, management UI) |
 | 8080        | `chat-web` (HTTP)             |
 | 8081        | `dispatcher` (HTTP)           |
-| 3000, 4318  | `chat-web`'s `otel-lgtm` (Grafana UI, OTLP)   |
+| 3000, 4317, 4318 | `chat-web`'s `otel-lgtm` (Grafana UI, OTLP gRPC, OTLP HTTP) |
 
 **`chat-cli`** — a terminal chat loop, one agent definition run against
 either provider:

@@ -234,7 +234,11 @@ class JdbcCallbackDoorsTest {
 
     assertThatThrownBy(() -> agentB.resume(token, decided))
         .isInstanceOf(WrongAgentException.class)
-        .hasMessage("park was minted by agent 'agent-a'; this agent is 'agent-b'");
+        .hasMessage(
+            "park "
+                + token.value()
+                + " was minted by agent 'agent-a'; this agent is 'agent-b' — an agent's name is a"
+                + " durable wire contract; redeploy under 'agent-a' to drain its parks");
     assertThat(restartedStore.load(conversationId)).contains(before);
   }
 
