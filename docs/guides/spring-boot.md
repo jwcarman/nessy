@@ -41,16 +41,36 @@ provider.
 ## Persistence
 
 Add `nessy-jdbc` next to a `DataSource` bean, and a JDBC-backed
-`ConversationStore`, `Parks`, `Transcript`, `Memory`, `SummaryStore`, and
-`PlanStore` are all autoconfigured — the same five doors
+`ConversationStore`, `Parks`, `Transcript`, `Memory`, and `PlanStore` are all
+autoconfigured — five beans, covering four of the five components
 [Durable Persistence](durable-persistence.md) wires by hand with
-`JdbcPersistence.create`. `nessy.jdbc.enabled` is the master switch;
+`JdbcPersistence.create` (`Memory` is synthesized from the autoconfigured
+`Transcript` bean, the same way `JdbcPersistence#memory()` synthesizes it).
+`nessy.jdbc.enabled` is the master switch;
 `nessy.jdbc.bootstrap-schema` picks DDL-on-startup versus bring-your-own-
 schema. Persistence wiring does not back off for a hand-declared `Harness`
 the way provider selection does — it wires independently from classpath plus
 `DataSource` plus property alone, so a hand-declared `Harness` may still
 consume the autoconfigured store the same way `NessyAutoConfiguration`
 itself does.
+
+`SummaryStore` is not part of this autoconfiguration — no `SummaryStore` bean
+exists anywhere in `nessy-autoconfigure` today. An application that wants a
+summarizing pipeline builds its own (`JdbcSummaryStore.create(dataSource)`)
+and wires it in by hand, past what the starter gives you:
+
+```java
+@Bean
+Memory memory(Transcript transcript, DataSource dataSource, ModelProvider provider) {
+    SummaryStore summaries = JdbcSummaryStore.create(dataSource);
+    return Memory.pipeline(transcript)
+        .summarizing(summaries, provider, "claude-haiku-4-5-20251001", "Summarize this conversation.", 20)
+        .build();
+}
+```
+
+That bean, once declared, satisfies `@ConditionalOnMissingBean` and replaces
+the autoconfigured plain-pipeline `Memory` above.
 
 A `Harness` is also fine with no store at all: `ConversationStore` and
 `Memory` are each optional, defaulting to an in-memory implementation when
@@ -108,8 +128,8 @@ can key off named listeners rather than parsing prose.
 
 ## Where next
 
-- [Durable Persistence](durable-persistence.md) — the five doors
-  `nessy-jdbc` autoconfigures here, wired by hand.
+- [Durable Persistence](durable-persistence.md) — the five components
+  `JdbcPersistence.create` wires by hand, `SummaryStore` included.
 - [Providers](providers.md) — the same provider selection, driven by
   environment variables instead of `nessy.*` properties.
 - [Configuration](../reference/configuration.md) — the full property

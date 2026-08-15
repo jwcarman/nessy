@@ -106,23 +106,36 @@ what each one owns.
 
 The wiring above is optional there: add `nessy-spring-boot-starter` and
 `nessy-jdbc` next to a `DataSource` bean, and the store, parks, transcript,
-memory, summaries, and plan store are all autoconfigured — the application
-declares one bean, the agent. See [Spring Boot](spring-boot.md).
+memory, and plan store are all autoconfigured — the application declares one
+bean, the agent. `SummaryStore` is the exception: nothing in
+`nessy-autoconfigure` builds one, so a summarizing pipeline still needs an
+application-declared `Memory` bean over a hand-built
+`JdbcSummaryStore.create(dataSource)`. See [Spring Boot](spring-boot.md).
 
 ## Testing this module
 
-`./mvnw verify` runs the offline suite only — no Docker needed. `./mvnw test
--Dnessy.excludedGroups=live` adds the Postgres-backed `container` suite;
-clearing the exclusion entirely (`-Dnessy.excludedGroups=`) also runs the
-five-vendor matrix (MySQL, MariaDB, SQL Server, Oracle) against real
-Testcontainers instances — a local-only run, excluded from CI to keep a push
-from pulling four extra images, Oracle's among them, every time.
+`./mvnw verify` runs the offline suite only — no Docker needed. The root
+build's default `nessy.excludedGroups` is `live,container`, so both tiers
+above start out excluded. `./mvnw test -Dnessy.excludedGroups=live`
+un-excludes the whole `container` tier at once — not just Postgres: it adds
+Postgres's own test classes *and* one class per vendor (`MySqlStoreTckTest`,
+`MariaDbStoreTckTest`, `SqlServerStoreTckTest`, `OracleStoreTckTest`), each
+running all five `nessy-tck` contracts against a real Testcontainers
+instance for that vendor plus a dialect-resolution pin — the full
+five-vendor matrix, needing a Docker daemon. The four vendor classes also
+carry `@Tag("vendor")` alongside `@Tag("container")`: CI runs with
+`-Dnessy.excludedGroups=live,vendor`, so it exercises the `container` suite
+minus the four vendor classes (Postgres only), keeping the five-vendor
+matrix a local-only run that doesn't pull four extra images — Oracle's among
+them — on every push. Clearing the exclusion entirely
+(`-Dnessy.excludedGroups=`) additionally runs the `live` (token-spending)
+tier on top of everything else.
 
 ## Where next
 
 - [Storage](../concepts/storage.md) — the five SPIs `nessy-jdbc` implements,
   and the TCK contracts a backend has to pass.
-- [Spring Boot](spring-boot.md) — the same five doors, autoconfigured from a
-  `DataSource` bean.
+- [Spring Boot](spring-boot.md) — most of the same doors, autoconfigured
+  from a `DataSource` bean (`SummaryStore` excepted).
 - [The Durable Loop](../concepts/durable-loop.md) — why every one of these
   doors is written to be at-least-once safe.
