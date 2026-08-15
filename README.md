@@ -200,6 +200,14 @@ actually needs:
     <artifactId>nessy-store-jdbc</artifactId>
   </dependency>
 
+  <!-- Optional: certify your own ConversationStore/Parks/Transcript/SummaryStore
+       implementation against the same contracts nessy-store-jdbc must pass. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-store-tck</artifactId>
+    <scope>test</scope>
+  </dependency>
+
   <!-- Optional: wrap an MCP server's tools as nessy Tools. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
@@ -759,17 +767,58 @@ verify` needs no Docker daemon. `./mvnw test -Dnessy.excludedGroups=live`
 runs them (needs a Docker daemon); clearing the exclusion entirely
 (`-Dnessy.excludedGroups=`) runs both `container` and `live`.
 
-The same `container` tag also gates a five-vendor matrix: the full TCK
-(all four store contracts) runs again against real MySQL, MariaDB, SQL
-Server, and Oracle containers, each plus a dialect-resolution pin proving
-`JdbcDialect.resolve` picks the right enum from that vendor's own live
-`DatabaseMetaData` — MariaDB's is the interesting one, since its driver
-reports the MySQL product name for wire compatibility and the resolver has
-to read past that into the version string. CI never runs this matrix (the
-workflow builds offline, same as always); running it locally with
-`-Dnessy.excludedGroups=` takes noticeably longer than the Postgres-only
-sweep — Oracle's image is the heavyweight of the five, both to pull the
-first time and to start, so budget patience for it specifically.
+### Supported databases
+
+`nessy-store-jdbc` speaks five dialects from one code path each — a small,
+enumerable Postgres-specific surface (a handful of `jsonb` columns and casts,
+one row-limiting/locking idiom, the write-once inserts) rather than five
+parallel implementations. `JdbcDialect.resolve(DatabaseMetaData)` reads
+`getDatabaseProductName()` once, at the connection a store already borrows to
+bootstrap its schema, and normalizes it — no new dependency, Hibernate's
+`StandardDialectResolver` pattern borrowed in miniature, not imported:
+
+| Dialect | Detected from | Verified against |
+|---|---|---|
+| `POSTGRES` | `PostgreSQL` product name (CockroachDB and Yugabyte report this deliberately and ride the same dialect) | `postgres:17-alpine` |
+| `MYSQL` | `MySQL` product name, version string *without* `MariaDB` in it | `mysql:8.0` |
+| `MARIADB` | `MySQL` product name *with* `MariaDB` in the version string (the driver-lies-for-compatibility sniff), or `MariaDB` directly | `mariadb:11.4` |
+| `SQLSERVER` | `Microsoft SQL Server` product name | `mcr.microsoft.com/mssql/server:2022-latest` |
+| `ORACLE` | `Oracle` product name | `gvenzl/oracle-free:23-slim-faststart` |
+
+Anything else fails loudly at resolution time, naming the reported product,
+the five supported dialects, and the override below — never a silent
+fallback to Postgres syntax on an unrecognized database. **Every store
+class's constructor/`create` overload also accepts a `JdbcDialect`
+explicitly**, bypassing the resolver entirely for a driver that lies about
+its own metadata or a caller that already knows; in a Spring Boot
+application, `nessy.jdbc.dialect`
+(`postgres`/`mysql`/`mariadb`/`sqlserver`/`oracle`) is that same override as
+a property. See `nessy-store-jdbc/README.md` for the per-vendor type mapping,
+the write-once/duplicate-signal unification, and the Oracle isolation-level
+and row-lock notes.
+
+Three honest notes on the shape of this coverage:
+
+- **The five-vendor matrix is local and container-tagged, not part of CI.**
+  The full TCK (all four `nessy-store-tck` contracts) runs a second time
+  against real MySQL, MariaDB, SQL Server, and Oracle containers — Postgres's
+  own container suite already existed — each plus a dialect-resolution pin
+  proving `JdbcDialect.resolve` picks the right enum from that vendor's own
+  live `DatabaseMetaData`, MariaDB's being the interesting one since its
+  driver reports the MySQL product name for wire compatibility and the
+  resolver has to read past that into the version string. The GitHub Actions
+  workflow builds offline only (no Docker daemon there); running the matrix
+  locally needs `-Dnessy.excludedGroups=` and a Docker daemon.
+- **Oracle is the heavyweight of the five.** Its image is materially slower
+  to both pull the first time and start than the other four — budget
+  patience specifically for it when running the matrix locally, especially
+  on a cold Docker cache.
+- **CockroachDB and Yugabyte ride `POSTGRES`, not a dialect of their own.**
+  Both report `PostgreSQL` as their JDBC product name deliberately, for
+  exactly this kind of wire-compatible detection, and this resolver takes
+  them at their word rather than trying to tell them apart from the genuine
+  article — untested by this module's own matrix, which pins real Postgres,
+  not either of them.
 
 ## Testing
 

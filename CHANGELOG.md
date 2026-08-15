@@ -850,6 +850,57 @@ sequence of renames and interim shapes that produced it.
   cannot depend on another module's `src/test`) — rather than a parallel
   copy of it. See `nessy-examples/scout/README.md` for the grants, the
   approval-prompt transcript, and the DeepWiki covenant.
+- **`nessy-store-jdbc` speaks five dialects now, not just Postgres.**
+  `JdbcDialect.resolve(DatabaseMetaData)` — Hibernate's
+  `StandardDialectResolver` pattern borrowed in miniature, no new dependency
+  — reads `getDatabaseProductName()` once, at the connection a store already
+  borrows to bootstrap its schema, and normalizes it to `POSTGRES`, `MYSQL`,
+  `MARIADB`, `SQLSERVER`, or `ORACLE`; an unrecognized product fails loudly,
+  naming what it saw and the five supported dialects. MariaDB gets its own
+  sniff (its driver reports the `MySQL` product name for wire compatibility,
+  so the resolver reads past that into the version string); CockroachDB and
+  Yugabyte ride `POSTGRES` deliberately, since both report `PostgreSQL` the
+  same way. Every store class's constructor/`create` overload also accepts a
+  `JdbcDialect` explicitly, bypassing the resolver for a driver that lies or
+  a caller that already knows; `nessy-autoconfigure` gains a matching
+  `nessy.jdbc.dialect` property. Five per-dialect schema resource sets carry
+  the DDL each vendor actually needs (`jsonb` → `json`/`json`/`nvarchar
+  (max)`/`clob`, `IF NOT EXISTS` guarded the vendor-idiomatic way where the
+  vendor's own grammar demands it); `JdbcStatements` carries the small set of
+  SQL fragments that genuinely vary (the transcript's row-lock and page read,
+  the inbox drain, the JSON parameter placeholder, a MySQL/MariaDB
+  reserved-word column quoting wrinkle live verification turned up).
+  `WriteOnceInsert` unifies every dialect's "insert unless a duplicate key
+  exists" write onto one SQLState-and-vendor-code-driven code path (see
+  Breaking, below, for what this replaces on Postgres). See
+  `nessy-store-jdbc/README.md` for the full type-mapping table and the
+  Oracle-specific isolation-level (`ORA-17030`) and row-lock (`ORA-02014`)
+  fixes the live container matrix caught.
+- **`nessy-store-tck` — the four store contracts become a published kit.**
+  `ConversationStoreContract`, `ParksContract`, `TranscriptContract`, and
+  `SummaryStoreContract` (`org.jwcarman.nessy.store.tck`) move to a new
+  main-scope module any implementer can depend on and extend directly,
+  supplying only the one factory method each contract asks for — the
+  certification story a test-jar classifier never quite delivered. The
+  module's own in-memory implementations (`InMemoryConversationStoreTest`
+  and three siblings) serve as the worked example. See
+  `nessy-store-tck/README.md`.
+- **The vendor matrix: the TCK run five times.** `nessy-store-jdbc` gains
+  one container-tagged test class per new vendor (`MySqlStoreTckTest`,
+  `MariaDbStoreTckTest`, `SqlServerStoreTckTest`, `OracleStoreTckTest`),
+  each nesting all four `nessy-store-tck` contracts over one shared
+  Testcontainers instance for that vendor plus a dialect-resolution pin,
+  alongside Postgres's own pre-existing container suite. Image versions are
+  pinned and documented (`mysql:8.0`, `mariadb:11.4`,
+  `mcr.microsoft.com/mssql/server:2022-latest`,
+  `gvenzl/oracle-free:23-slim-faststart`); the four vendor JDBC drivers are
+  test-scope, version-pinned as properties (none are Boot-BOM-managed inside
+  this Spring-free module). `container`-tagged, excluded from the default
+  build and from CI the same way `live` tests are — `./mvnw verify` needs no
+  Docker daemon; `./mvnw test -Dnessy.excludedGroups=` runs the whole
+  five-vendor matrix locally, Oracle's image being the heavyweight of the
+  five to pull and start. See the root README's "Supported databases"
+  section for the full table and the honest notes on scope.
 
 ### Removed
 
@@ -955,3 +1006,25 @@ because every signature named was public as of the previous entries above:
   README say what it is instead: substrate, immutable, a front door for
   *building* agents only — every field on `Harness` is final, and no
   method on the class ever writes to one.
+- **The four store contracts move from `nessy-core`'s test-jar to
+  `nessy-store-tck`, stated loud (design §8).** `ConversationStoreContract`,
+  `ParksContract`, `TranscriptContract`, and `SummaryStoreContract` no longer
+  resolve from `nessy-core`'s `test-jar` classifier; any existing test
+  extending one of them now imports from `org.jwcarman.nessy.store.tck` in
+  the new `nessy-store-tck` module instead, and needs that dependency added
+  (test scope is enough — see the root README's Install section). Semantics
+  are identical; only the import and the dependency coordinate move.
+- **Postgres's write-once inserts no longer use `ON CONFLICT DO NOTHING`
+  (design §8).** `nessy_conversation`'s version-0 insert and `nessy_parks`'s
+  idempotent `park` now detect a duplicate key the same way every other
+  dialect must — a plain `INSERT` whose duplicate-key `SQLException`
+  (SQLState `23505`) is caught and swallowed as the documented no-op — rather
+  than a statement that never raises an error in the first place. Observable
+  behavior is unchanged (the same no-op on a duplicate key, the same
+  successful insert otherwise); what changes is mechanism, visible only in
+  Postgres's own logs (a caught, expected error now appears where none did
+  before) and in the fact that a write-once insert now runs inside a
+  `Savepoint` when it participates in an explicit, multi-statement
+  transaction, so the caught error can't poison the rest of that
+  transaction. Stated for honesty, not because any caller-visible contract
+  changed.
