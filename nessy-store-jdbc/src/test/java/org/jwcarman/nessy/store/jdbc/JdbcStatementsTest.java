@@ -97,11 +97,12 @@ class JdbcStatementsTest {
     }
 
     @Test
-    void oracle_uses_fetch_first_one_row_only_for_update() {
+    void oracle_locks_by_rowid_found_via_an_unlocked_fetch_first_inner_query() {
       assertThat(JdbcStatements.forDialect(JdbcDialect.ORACLE).transcriptLastRowForUpdateSql())
           .isEqualTo(
-              "SELECT version, message FROM nessy_transcript WHERE conversation_id = ?"
-                  + " ORDER BY version DESC FETCH FIRST 1 ROWS ONLY FOR UPDATE");
+              "SELECT version, message FROM nessy_transcript WHERE rowid = ("
+                  + "SELECT rowid FROM nessy_transcript WHERE conversation_id = ?"
+                  + " ORDER BY version DESC FETCH FIRST 1 ROWS ONLY) FOR UPDATE");
     }
   }
 

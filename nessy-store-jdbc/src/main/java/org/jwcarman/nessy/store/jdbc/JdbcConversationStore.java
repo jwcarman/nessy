@@ -109,7 +109,7 @@ public final class JdbcConversationStore implements ConversationStore {
   public Optional<Loaded> load(ConversationId id) {
     Objects.requireNonNull(id, "id must not be null");
     return inTransaction(
-        Connection.TRANSACTION_REPEATABLE_READ,
+        this::consistentReadIsolationLevel,
         connection -> {
           Optional<ConversationState> row = readState(connection, id);
           List<InboxEntry> inbox = readInbox(connection, id);
@@ -165,7 +165,7 @@ public final class JdbcConversationStore implements ConversationStore {
     String json = codec.writeState(bumped);
 
     return inTransaction(
-        Connection.TRANSACTION_READ_COMMITTED,
+        connection -> Connection.TRANSACTION_READ_COMMITTED,
         connection -> {
           JdbcStatements statements = statementsFor(connection);
           int updated =
@@ -313,17 +313,24 @@ public final class JdbcConversationStore implements ConversationStore {
   }
 
   /**
-   * Runs {@code body} inside one explicit transaction at {@code isolationLevel}, committing on a
-   * normal return and rolling back on any exception — a {@link StaleStateException} included, so
-   * the caller's failed save leaves no partial effect behind either. Restores the borrowed
-   * connection's autocommit and isolation to what it had on loan before returning it to the pool:
-   * on a non-resetting pool, handing back a connection still in {@code autoCommit(false)} would
-   * silently discard the next borrower's own INSERT at close, with nothing marking the loss — see
-   * {@link #withConnection}.
+   * Runs {@code body} inside one explicit transaction at the isolation level {@code
+   * isolationLevelFor} picks, committing on a normal return and rolling back on any exception — a
+   * {@link StaleStateException} included, so the caller's failed save leaves no partial effect
+   * behind either. Restores the borrowed connection's autocommit and isolation to what it had on
+   * loan before returning it to the pool: on a non-resetting pool, handing back a connection still
+   * in {@code autoCommit(false)} would silently discard the next borrower's own INSERT at close,
+   * with nothing marking the loss — see {@link #withConnection}.
+   *
+   * <p>{@code isolationLevelFor} runs against the already-open connection, not before it — a fixed
+   * level like {@link #save}'s {@code READ_COMMITTED} could be decided earlier, but {@link #load}'s
+   * dialect-dependent choice (see {@link #consistentReadIsolationLevel}) needs {@link
+   * #statementsFor}, which itself needs a live connection to resolve an as-yet-unresolved dialect
+   * against.
    */
-  private <T> T inTransaction(int isolationLevel, SqlFunction<Connection, T> body) {
+  private <T> T inTransaction(
+      SqlFunction<Connection, Integer> isolationLevelFor, SqlFunction<Connection, T> body) {
     try (Connection connection = dataSource.getConnection()) {
-      return runInTransaction(connection, isolationLevel, body);
+      return runInTransaction(connection, isolationLevelFor, body);
     } catch (SQLException e) {
       throw new IllegalStateException("jdbc conversation store operation failed", e);
     }
@@ -331,12 +338,14 @@ public final class JdbcConversationStore implements ConversationStore {
 
   /** The transaction body of {@link #inTransaction}, extracted so it is not a nested try block. */
   private static <T> T runInTransaction(
-      Connection connection, int isolationLevel, SqlFunction<Connection, T> body)
+      Connection connection,
+      SqlFunction<Connection, Integer> isolationLevelFor,
+      SqlFunction<Connection, T> body)
       throws SQLException {
     int originalIsolation = connection.getTransactionIsolation();
     try {
       connection.setAutoCommit(false);
-      connection.setTransactionIsolation(isolationLevel);
+      connection.setTransactionIsolation(isolationLevelFor.apply(connection));
       T result = body.apply(connection);
       connection.commit();
       return result;
@@ -349,6 +358,23 @@ public final class JdbcConversationStore implements ConversationStore {
     } finally {
       restoreConnection(connection, originalIsolation);
     }
+  }
+
+  /**
+   * {@link #load}'s isolation level: {@link Connection#TRANSACTION_REPEATABLE_READ} everywhere
+   * except Oracle, which does not support it at all — confirmed live against a real Oracle
+   * container in Task 3's matrix: {@code connection.setTransactionIsolation
+   * (TRANSACTION_REPEATABLE_READ)} raises {@code ORA-17030} ("READ_COMMITTED and SERIALIZABLE are
+   * the only valid transaction levels"), Oracle's JDBC driver rejecting the level outright rather
+   * than silently downgrading it. {@link Connection#TRANSACTION_SERIALIZABLE} is the closest level
+   * Oracle actually offers — at least as strong as repeatable read, so {@link #load}'s combined
+   * state-plus-inbox read still lands as one consistent snapshot there too, just via a stricter
+   * isolation level than the other four dialects need for the same guarantee.
+   */
+  private int consistentReadIsolationLevel(Connection connection) throws SQLException {
+    return statementsFor(connection).dialect() == JdbcDialect.ORACLE
+        ? Connection.TRANSACTION_SERIALIZABLE
+        : Connection.TRANSACTION_REPEATABLE_READ;
   }
 
   /** Rolls back, folding a rollback failure into {@code cause} rather than losing either one. */

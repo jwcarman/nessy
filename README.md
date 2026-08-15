@@ -759,6 +759,18 @@ verify` needs no Docker daemon. `./mvnw test -Dnessy.excludedGroups=live`
 runs them (needs a Docker daemon); clearing the exclusion entirely
 (`-Dnessy.excludedGroups=`) runs both `container` and `live`.
 
+The same `container` tag also gates a five-vendor matrix: the full TCK
+(all four store contracts) runs again against real MySQL, MariaDB, SQL
+Server, and Oracle containers, each plus a dialect-resolution pin proving
+`JdbcDialect.resolve` picks the right enum from that vendor's own live
+`DatabaseMetaData` — MariaDB's is the interesting one, since its driver
+reports the MySQL product name for wire compatibility and the resolver has
+to read past that into the version string. CI never runs this matrix (the
+workflow builds offline, same as always); running it locally with
+`-Dnessy.excludedGroups=` takes noticeably longer than the Postgres-only
+sweep — Oracle's image is the heavyweight of the five, both to pull the
+first time and to start, so budget patience for it specifically.
+
 ## Testing
 
 **You will never need a mocking library to test a Nessy agent.** The fold is

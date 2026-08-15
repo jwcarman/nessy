@@ -87,17 +87,26 @@ class JdbcSummaryStoreTest extends SummaryStoreContract {
   }
 
   /**
-   * The I-3 fix (Task 2 fix round): two connections racing the very first {@code save} of a
+   * A liveness smoke test, not a regression discriminator — named and documented honestly after a
+   * review round caught the original name ({@code
+   * two_connections_racing_the_first_save_of_a_conversation_both_land}) overselling what this
+   * assertion actually distinguishes. Two connections racing the very first {@code save} of a
    * brand-new conversation both hit zero rows on their {@code UPDATE} and race an {@code INSERT}
-   * for the same key. The loser used to discard {@link WriteOnceInsert#attempt}'s {@code false} and
-   * drop its own write silently; it now re-runs its {@code UPDATE}, which finds the winner's row
-   * and applies. Neither racer may throw (there is no fencing here, design §10), and the row that
-   * lands must be one of the two writes — never neither, which is what the discarded-boolean bug
-   * produced whenever the loser's save happened to be the one carrying the value a caller cared
-   * about.
+   * for the same key; this asserts only that neither racer throws and that exactly one value ends
+   * up persisted. That shape passes identically whether or not the I-3 fix (Task 2 fix round: the
+   * loser re-running its {@code UPDATE} after a swallowed duplicate-key {@code INSERT} via {@link
+   * WriteOnceInsert#attempt}) is present — pre-fix, the loser's own write is silently dropped
+   * rather than retried, but the winner's {@code INSERT} still leaves exactly one of the two values
+   * in the table and still throws nothing, so this test cannot tell the fixed and broken behavior
+   * apart (confirmed: it passes against the pre-fix code too). {@link
+   * JdbcSummaryStoreRaceRecoveryTest} is the real regression proof for the I-3 retry — a
+   * deterministic, offline, forced-duplicate seam that observes the loser's retry actually
+   * happening, not just that some value survives. This test still earns its keep as a
+   * real-container liveness check: no vendor-specific SQL error surfaces from the live race, across
+   * whichever dialect runs it.
    */
   @Test
-  void two_connections_racing_the_first_save_of_a_conversation_both_land()
+  void two_connections_racing_the_first_save_neither_throws_and_exactly_one_value_lands()
       throws InterruptedException {
     ConversationId id = ConversationId.generate();
     Summary first = new Summary(1L, "from the first racer");

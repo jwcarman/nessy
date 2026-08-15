@@ -77,7 +77,15 @@ final class JdbcStatements {
    * same {@code WHERE conversation_id = ?} — only the limit-one-row-locked idiom itself differs:
    * Postgres/MySQL/MariaDB share {@code ORDER BY ... LIMIT 1 FOR UPDATE}; SQL Server has no {@code
    * FOR UPDATE} and locks via {@code WITH (UPDLOCK, ROWLOCK)} on a {@code TOP 1} instead; Oracle
-   * has no {@code LIMIT} and expresses "one row" via {@code FETCH FIRST 1 ROWS ONLY}.
+   * cannot combine {@code FOR UPDATE} with its own row-limiting clause at all — confirmed live
+   * against a real Oracle container in Task 3's matrix (not caught by Task 2's fix round, which
+   * pinned the syntax offline but never ran it against a real database): {@code ... FETCH FIRST 1
+   * ROWS ONLY FOR UPDATE} raises {@code ORA-02014 ("cannot select FOR UPDATE from view with
+   * DISTINCT, GROUP BY, etc.")}, because Oracle implements the row-limiting clause as an implicit
+   * inline view internally, and {@code FOR UPDATE} refuses to lock through one. Oracle's fragment
+   * instead finds the target row's {@code rowid} in an unlocked, row-limited inner query, then
+   * locks by {@code rowid} equality in a plain outer query that carries no row-limiting clause of
+   * its own for {@code FOR UPDATE} to object to.
    */
   String transcriptLastRowForUpdateSql() {
     return switch (dialect) {
@@ -88,8 +96,9 @@ final class JdbcStatements {
           "SELECT TOP 1 version, message FROM nessy_transcript WITH (UPDLOCK, ROWLOCK)"
               + " WHERE conversation_id = ? ORDER BY version DESC";
       case ORACLE ->
-          "SELECT version, message FROM nessy_transcript WHERE conversation_id = ?"
-              + " ORDER BY version DESC FETCH FIRST 1 ROWS ONLY FOR UPDATE";
+          "SELECT version, message FROM nessy_transcript WHERE rowid = ("
+              + "SELECT rowid FROM nessy_transcript WHERE conversation_id = ?"
+              + " ORDER BY version DESC FETCH FIRST 1 ROWS ONLY) FOR UPDATE";
     };
   }
 
