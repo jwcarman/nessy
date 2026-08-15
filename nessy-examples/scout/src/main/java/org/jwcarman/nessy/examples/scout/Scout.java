@@ -27,7 +27,11 @@ import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.ConsoleRepl;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.plan.PlanStore;
+import org.jwcarman.nessy.spi.plan.PlanTools;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.jwcarman.nessy.tool.mcp.McpToolbox;
 
 /**
@@ -52,7 +56,8 @@ public final class Scout {
       "You are Scout, a research assistant that answers questions about public GitHub "
           + "repositories using DeepWiki's documentation tools. Read the wiki structure first, "
           + "then its contents, before asking a follow-up question of the repository itself. "
-          + "Cite what you found. Be concise.";
+          + "Cite what you found. Be concise. For multi-step research, maintain a task list with "
+          + "update_plan.";
 
   private Scout() {}
 
@@ -73,9 +78,9 @@ public final class Scout {
     try (McpToolbox toolbox =
         McpToolbox.connect(
             HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper)) {
-      Agent<String> agent = scout(harness, toolbox, model, new ConsoleApprover());
+      Built built = scout(harness, toolbox, model, new ConsoleApprover());
 
-      ConsoleRepl.of(agent)
+      ConsoleRepl.of(built.agent())
           .banner(
               "Scout ("
                   + (anthropic ? "Anthropic" : "OpenAI")
@@ -83,6 +88,7 @@ public final class Scout {
                   + model
                   + "), reading via DeepWiki. Type exit or quit to leave.")
           .prompt("you> ")
+          .plan(built.planStore())
           .run();
     }
   }
@@ -94,18 +100,32 @@ public final class Scout {
    * runs, not a parallel copy of it. The approver is a parameter, not baked in: {@link #main}
    * always hands it a {@link ConsoleApprover}, but the test needs a non-blocking double, and the
    * grant table — the thing under test — is identical either way.
+   *
+   * <p>Returns the {@link PlanStore} alongside the agent (rather than the agent alone) so {@link
+   * #main} can hand the same store to {@code ConsoleRepl.Builder#plan(PlanStore)} — the grant
+   * principle applied to the console's own opt-in: the store the model writes through {@code
+   * update_plan} is the exact store the REPL reads back to render the checklist.
    */
-  static Agent<String> scout(Harness harness, McpToolbox toolbox, String model, Approver approver) {
-    return harness
-        .agent()
-        .name("scout")
-        .model(model)
-        .systemPrompt(SYSTEM_PROMPT)
-        .tools(
-            ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-            ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-            ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
-        .approver(approver)
-        .build();
+  static Built scout(Harness harness, McpToolbox toolbox, String model, Approver approver) {
+    PlanStore planStore = PlanStore.inMemory();
+    Transcript transcript = Transcript.inMemory();
+    Agent<String> agent =
+        harness
+            .agent()
+            .name("scout")
+            .model(model)
+            .systemPrompt(SYSTEM_PROMPT)
+            .tools(
+                ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
+                ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
+                ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()),
+                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+            .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
+            .approver(approver)
+            .build();
+    return new Built(agent, planStore);
   }
+
+  /** The agent {@link #scout} builds, paired with the {@link PlanStore} it writes its plan into. */
+  record Built(Agent<String> agent, PlanStore planStore) {}
 }

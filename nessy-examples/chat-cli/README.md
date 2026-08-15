@@ -141,3 +141,26 @@ This is your task list, maintained by you through the update_plan tool. It is am
 should be `[>]` at a time. An absent or empty plan injects nothing: the
 "if applicable" rule, so a chat that never asks for anything multi-step
 never sees the block.
+
+`Chat` hands the same `planStore` `DemoAgent.agentFor` built to
+`ConsoleRepl.Builder#plan(PlanStore)`, so the checklist itself — not just
+the model's own recall of it — prints in the terminal after any turn that
+changed it (console design §9; markers shown here are the ASCII fallback
+— `[x]`/`[>]`/`[ ]` — since this README renders unstyled):
+
+```
+you> add 2 and 3, then tell me the time
+
+  [ ] add 2 and 3
+  [ ] tell the time
+
+⚙ tool: add requested
+
+⚙ tool: add completed
+
+  [x] add 2 and 3
+  [>] tell the time
+
+approve: read the current time
+y/n>
+```

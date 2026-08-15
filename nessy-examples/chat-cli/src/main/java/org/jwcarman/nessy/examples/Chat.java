@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.examples;
 
-import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.console.ConsoleRepl;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
@@ -48,9 +47,9 @@ public final class Chat {
     }
     boolean anthropic = provider instanceof AnthropicModelProvider;
     String model = anthropic ? ANTHROPIC_MODEL : OPENAI_MODEL;
-    Agent<String> agent = DemoAgent.agentFor(provider, model);
+    DemoAgent.Built built = DemoAgent.agentFor(provider, model);
 
-    ConsoleRepl.of(agent)
+    ConsoleRepl.of(built.agent())
         .banner(
             "Nessy demo ("
                 + (anthropic ? "Anthropic" : "OpenAI")
@@ -59,6 +58,7 @@ public final class Chat {
                 + "). Type exit or quit to leave. Ask for something multi-step to watch it"
                 + " plan.")
         .prompt("you> ")
+        .plan(built.planStore())
         .run();
   }
 }

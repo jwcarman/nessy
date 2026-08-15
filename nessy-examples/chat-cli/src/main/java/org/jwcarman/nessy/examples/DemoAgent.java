@@ -69,27 +69,40 @@ public final class DemoAgent {
    * the family's first demonstration of tool-writable, recall-injected context (spec §1): the model
    * maintains its own plan through {@code update_plan}, and the context pipeline recalls it into
    * every subsequent turn unconditionally.
+   *
+   * <p>Returns the {@link PlanStore} alongside the agent (rather than the agent alone) so {@code
+   * Chat}'s {@code main} can hand the same store to {@code ConsoleRepl.Builder#plan(PlanStore)} —
+   * the grant principle applied to the console's own opt-in: the store the model writes through
+   * {@code update_plan} is the exact store the REPL reads back to render the checklist.
    */
-  public static Agent<String> agentFor(ModelProvider provider, String model) {
+  public static Built agentFor(ModelProvider provider, String model) {
     PlanStore planStore = PlanStore.inMemory();
     Transcript transcript = Transcript.inMemory();
-    return Nessy.harness(provider)
-        .build()
-        .agent()
-        .name("chat-cli")
-        .model(model)
-        .systemPrompt(SYSTEM_PROMPT)
-        .tools(
-            ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
-            ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
-            ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
-        // Replaces the builder's default in-memory pipeline Memory with one over an explicitly
-        // held transcript — same durability class, now with the plan riding recall (spec §7).
-        .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
-        .approver(new ConsoleApprover())
-        .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage)
-        .build();
+    Agent<String> agent =
+        Nessy.harness(provider)
+            .build()
+            .agent()
+            .name("chat-cli")
+            .model(model)
+            .systemPrompt(SYSTEM_PROMPT)
+            .tools(
+                ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
+                ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
+                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+            // Replaces the builder's default in-memory pipeline Memory with one over an
+            // explicitly held transcript — same durability class, now with the plan riding
+            // recall (spec §7).
+            .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
+            .approver(new ConsoleApprover())
+            .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage)
+            .build();
+    return new Built(agent, planStore);
   }
+
+  /**
+   * The agent {@link #agentFor} builds, paired with the {@link PlanStore} it writes its plan into.
+   */
+  public record Built(Agent<String> agent, PlanStore planStore) {}
 
   /** The fact-log side of the story: printed independently of whatever the renderer narrates. */
   private static void announceUsage(ConversationEvent.ModelResponded responded) {
