@@ -1151,6 +1151,14 @@ one. A future `nessy-store-cassandra` ships a listener class, not a store.
 `MessageCodec` survives, unchanged in role, in `spi.conversation`. Retained
 below for the reasoning history that led here.
 
+> **AMENDED 2026-08-15:** superseded by the store rework's `Transcript`
+> primitive and the shipped **`nessy-transcript-cassandra`** module
+> (spec: `2026-08-15-cassandra-transcript-design.md`) — a `Transcript`
+> implementation, not a listener; the journal-as-listener posture this
+> section argued was retired when `Transcript` became first-class. The
+> `nessy-store-cassandra` mentions in this document are that retired
+> hypothesis, kept as reasoning history.
+
 **`TranscriptStore` (spi.conversation) — the append-only journal (historical; deleted by §17).**
 
 ```java
