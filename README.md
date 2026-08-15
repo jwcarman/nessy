@@ -90,43 +90,6 @@ works: in-memory conversation store, in-memory `Memory`, an allow-all approver
 (replace it before you point real tools at anything), no-op observations. The
 smallest useful agent is a provider and a model name.
 
-### The same shape, no key
-
-`ScriptedModelProvider` (from `nessy-testing`) plays back a scripted
-conversation instead of calling a real model — no key, no network, no real
-model. It is the testing story, not a toy: it is why the framework's own
-suite, and CI, never touch the network.
-
-```java
-ObjectNode args = JsonNodeFactory.instance.objectNode();
-args.put("left", 2);
-args.put("right", 2);
-
-ScriptedModelProvider provider = ScriptedModelProvider.builder()
-        .toolUse("c1", "add", args)
-        .endWithToolUse()
-        .text("The answer is 4.")
-        .endTurn()
-        .build();
-
-Agent<String> agent =
-    Nessy.harness(provider)
-        .build()
-        .agent()
-        .name("hello")
-        .model("fake-model")
-        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-        .build();
-```
-
-The rest — `converse().tell(...)`, the `RunOutcome` — is unchanged from
-above. This exact example is a runnable module, `nessy-examples/hello` — no
-key, no network, no Docker:
-
-```bash
-./mvnw -q -pl nessy-examples/hello -am compile exec:java
-```
-
 ## Install
 
 Nessy has not yet made a public release to Maven Central: until then, build
@@ -186,7 +149,8 @@ actually needs:
     <artifactId>nessy-console</artifactId>
   </dependency>
 
-  <!-- Scripted, no-key, no-network tests — see "The same shape, no key" above. -->
+  <!-- ScriptedModelProvider: the offline, no-key test double — see the docs
+       site's Testing guide. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-testing</artifactId>
@@ -844,11 +808,12 @@ Three honest notes on the shape of this coverage:
 ## Testing
 
 **You will never need a mocking library to test a Nessy agent.** The fold is
-pure, so most of the loop is tested with plain unit tests and no doubles at all.
-`ScriptedModelProvider` plays back a scripted conversation and records every
-request the harness sent, so tool-calling, streaming, and approval flows are
-assertable without a key or a network call. The framework's own suite holds
-itself to this promise: its only test dependencies are JUnit and AssertJ.
+pure, so most of the loop is tested with plain unit tests and no doubles at
+all. Where a test needs a model, `nessy-testing`'s `ScriptedModelProvider` is
+the offline, no-key test double — the framework's own suite holds itself to
+this promise: its only test dependencies are JUnit and AssertJ. See the
+[Testing guide](https://jwcarman.github.io/nessy/guides/testing/) on the docs
+site for the builder walkthrough and the test-tier tags.
 
 ## Building
 

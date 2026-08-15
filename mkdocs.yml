@@ -93,6 +93,7 @@ nav:
       - Triggers: guides/triggers.md
       - Observability: guides/observability.md
       - Spring Boot: guides/spring-boot.md
+      - Testing: guides/testing.md
   - Examples: examples/index.md
   - Reference:
       - Configuration: reference/configuration.md
