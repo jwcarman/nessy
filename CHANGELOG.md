@@ -833,6 +833,24 @@ sequence of renames and interim shapes that produced it.
   toolbox authorizes nothing by itself, and every tool it yields still
   needs its own `ToolGrant`/`UsagePolicy`, one at a time — see
   `nessy-tool-mcp`'s README for the connect/grant idiom.
+- **`nessy-example-scout` — the agent that reads other people's code.** The
+  sixth example, and `nessy-tool-mcp`'s security story made runnable: a
+  terminal REPL, chat-cli's exact posture, granted a toolbox imported from
+  DeepWiki's public, no-auth MCP server — `read_wiki_structure` and
+  `read_wiki_contents` allowed outright, `ask_question` behind
+  `UsagePolicy.requireApproval()`, so a human approves a *remote* server's
+  tool call at the console before it runs. The tool names are verified
+  against the live server rather than guessed (`initialize` against
+  `https://mcp.deepwiki.com/mcp`, 2026-08-15); a drifted name fails loud at
+  `McpToolbox#tool(String)`, before the REPL ever opens. `Scout#main` and the
+  fully offline `ScoutTest` share one package-private construction seam,
+  `Scout#scout(Harness, McpToolbox, String, Approver)`, so the test exercises
+  the demo's own grant table — over an in-process MCP server reproducing
+  `nessy-tool-mcp`'s own test-tree pairing (`InMemoryMcpTransport`/
+  `PipedClientTransport`, copied locally with attribution, since this module
+  cannot depend on another module's `src/test`) — rather than a parallel
+  copy of it. See `nessy-examples/scout/README.md` for the grants, the
+  approval-prompt transcript, and the DeepWiki covenant.
 
 ### Breaking (pre-1.0)
 

@@ -853,13 +853,14 @@ input schema into the system prompt. See
 
 ## Examples
 
-`nessy-examples` is a family of six runnable apps, all real key required
+`nessy-examples` is a family of seven runnable apps, all real key required
 except `hello` (the five-minute example above, in its own runnable
 module — no key, no network, no Docker). No mocking, nothing hand-waved.
 The matrix: `hello` (the five-minute example, standalone), `chat-cli`
-(plain + interactive), `chat-web` (Boot web + HITL), `night-watchman`
-(Boot + scheduled autonomy), `order-desk` (Boot + message-driven
-autonomy), `dispatcher` (Boot web + durable parks over HTTP).
+(plain + interactive), `scout` (plain + interactive, an imported MCP
+toolbox), `chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled
+autonomy), `order-desk` (Boot + message-driven autonomy), `dispatcher` (Boot
+web + durable parks over HTTP).
 
 Several examples share Docker containers on fixed host ports; run more than
 one stack at once and here's what's listening where:
@@ -896,6 +897,18 @@ OpenAI wire format with `baseUrl(...)`:
 ```java
 ModelProvider provider =
     OpenAiModelProvider.builder().fromEnv().baseUrl("https://openrouter.ai/api/v1").build();
+```
+
+**`scout`** — the tool-import showcase: an agent granted a toolbox imported
+from a remote, no-auth MCP server (DeepWiki), tool-by-tool —
+`read_wiki_structure` and `read_wiki_contents` ungated, `ask_question` behind
+the console approval gate, so a human approves a *remote* server's tool call.
+See [`nessy-examples/scout/README.md`](nessy-examples/scout/README.md) for
+the grants, the approval-prompt transcript, and the DeepWiki covenant. To run
+it:
+
+```bash
+ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/scout -am compile exec:java -Dexec.mainClass=org.jwcarman.nessy.examples.scout.Scout
 ```
 
 **`chat-web`** — the first non-toy dogfood: a Spring Boot chat app against a

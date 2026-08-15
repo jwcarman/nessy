@@ -44,5 +44,6 @@
     <module>night-watchman</module>
     <module>order-desk</module>
     <module>dispatcher</module>
+    <module>scout</module>
   </modules>
 </project>
