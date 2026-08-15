@@ -660,6 +660,19 @@ decides when and whether to reach for them.
 loop's own model-call executor consults on every send — *exactly what a call
 made right now would see*, truthfully and without spending a model call.
 
+`Memory.pipeline(transcript)` names the general shape behind `TranscriptMemory`
+and `SummarizingMemory` directly: a `ContextHydrator` bootstraps the initial
+`Context` from durable history (default `ContextHydrator#full()`, the whole
+transcript), then an ordered list of `ContextTransformer` stages — clamping,
+redacting, eliding, amending — reshapes it before `recall` hands it out. The
+plan facility (`spi.plan`) is the pipeline's first shipped stage: an agent that
+grants `PlanTools.updatePlan(planStore)` lets the model maintain its own task
+list through the `update_plan` tool, and adding
+`PlanTools.transformer(planStore)` to the pipeline recalls that plan as a
+checklist on every subsequent turn — unconditionally, for as long as tasks
+remain — so a long-running agent doesn't forget step 4 while grinding on step
+2.
+
 ### Declaring a small model's window
 
 `AgentBuilder#contextWindow(long)` declares the model's total token budget on

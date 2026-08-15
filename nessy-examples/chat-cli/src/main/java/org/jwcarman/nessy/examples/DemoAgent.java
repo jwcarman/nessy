@@ -27,7 +27,11 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.console.ConsoleApprover;
+import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.plan.PlanStore;
+import org.jwcarman.nessy.spi.plan.PlanTools;
+import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
  * The one agent definition {@code Chat}'s single main drives, whichever provider {@link
@@ -55,12 +59,20 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
 public final class DemoAgent {
 
   private static final String SYSTEM_PROMPT =
-      "You are Nessy's demo assistant. You can add numbers and tell the current time. Be brief.";
+      "You are Nessy's demo assistant. You can add numbers and tell the current time. Be brief."
+          + " For multi-step requests, maintain a task list with update_plan.";
 
   private DemoAgent() {}
 
-  /** Builds the demo agent — the same identity whichever provider the environment handed us. */
+  /**
+   * Builds the demo agent — the same identity whichever provider the environment handed us. Also
+   * the family's first demonstration of tool-writable, recall-injected context (spec §1): the model
+   * maintains its own plan through {@code update_plan}, and the context pipeline recalls it into
+   * every subsequent turn unconditionally.
+   */
   public static Agent<String> agentFor(ModelProvider provider, String model) {
+    PlanStore planStore = PlanStore.inMemory();
+    Transcript transcript = Transcript.inMemory();
     return Nessy.harness(provider)
         .build()
         .agent()
@@ -69,7 +81,12 @@ public final class DemoAgent {
         .systemPrompt(SYSTEM_PROMPT)
         .tools(
             ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
-            ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()))
+            ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
+            ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+        // Replaces the builder's default in-memory TranscriptMemory with the pipeline over an
+        // explicitly held transcript — same durability class, now with the plan riding recall
+        // (spec §7).
+        .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
         .approver(new ConsoleApprover())
         .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage)
         .build();

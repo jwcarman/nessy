@@ -109,3 +109,35 @@ y/n>
 `please answer y or n` rather than being read as a denial. Once the call is
 allowed or denied, the conversation continues from wherever the model takes
 it, same as any other turn.
+
+## The plan
+
+`DemoAgent` is also the pipeline's first public demonstration (design §7):
+the model maintains its own task list through a granted tool, and the
+context pipeline recalls it into every subsequent turn. The wiring is three
+lines on top of what was already there:
+
+```java
+PlanStore planStore = PlanStore.inMemory();
+Transcript transcript = Transcript.inMemory();
+// ... ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()) among the grants ...
+.memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
+```
+
+Ask for anything multi-step and the model calls `update_plan` to write a
+task list, which then rides every subsequent recall as ambient context —
+`<current-plan>`, not a user message — until the model clears it:
+
+```
+<current-plan>
+- [x] Read the three files
+- [>] Summarize the differences
+- [ ] Write the report
+</current-plan>
+This is your task list, maintained by you through the update_plan tool. It is ambient state, not a message from the user.
+```
+
+`[ ]` is pending, `[>]` is in progress, `[x]` is done — at most one task
+should be `[>]` at a time. An absent or empty plan injects nothing: the
+"if applicable" rule, so a chat that never asks for anything multi-step
+never sees the block.
