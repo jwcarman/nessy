@@ -15,13 +15,11 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
-import java.util.List;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.transcript.Transcript;
-import org.jwcarman.nessy.spi.transcript.TranscriptTrim;
 
 /**
  * The floor: remembers everything verbatim through a transcript, recalls it whole.
@@ -40,10 +38,15 @@ import org.jwcarman.nessy.spi.transcript.TranscriptTrim;
  *
  * <p>Two {@code TranscriptMemory} instances built over the same {@link Transcript} are two windows
  * on one log, not two logs: the seam is the storage, the memory is the policy.
+ *
+ * <p>A thin face now: {@code recall} is {@link ContextHydrator#full()}'s hydration over this
+ * instance's transcript — the guts moved to the hydrator, this class only holds the transcript and
+ * delegates.
  */
 public final class TranscriptMemory implements Memory {
 
   private final Transcript transcript;
+  private final ContextHydrator hydrator = ContextHydrator.full();
 
   public TranscriptMemory(Transcript transcript) {
     this.transcript = transcript;
@@ -56,7 +59,6 @@ public final class TranscriptMemory implements Memory {
 
   @Override
   public Context recall(ConversationId id) {
-    List<Message> messages = transcript.all(id).stream().map(Transcript.Entry::message).toList();
-    return Context.of(TranscriptTrim.withoutOpenTail(messages));
+    return hydrator.hydrate(id, transcript);
   }
 }
