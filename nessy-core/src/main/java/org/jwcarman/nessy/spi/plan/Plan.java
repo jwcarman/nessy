@@ -56,7 +56,8 @@ public record Plan(List<Task> tasks) {
   /**
    * One line of the plan.
    *
-   * @param title what the task is, in the model's own words; never blank
+   * @param title what the task is, in the model's own words; never blank once the task is part of a
+   *     {@link Plan} (the enclosing record enforces it)
    * @param status how far along it is
    */
   public record Task(String title, Status status) {
