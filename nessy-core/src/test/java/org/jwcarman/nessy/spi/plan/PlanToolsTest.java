@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
@@ -194,8 +195,8 @@ class PlanToolsTest {
       PlanStore store =
           new PlanStore() {
             @Override
-            public java.util.Optional<Plan> find(ConversationId id) {
-              return java.util.Optional.of(Plan.empty());
+            public Optional<Plan> find(ConversationId id) {
+              return Optional.of(Plan.empty());
             }
 
             @Override

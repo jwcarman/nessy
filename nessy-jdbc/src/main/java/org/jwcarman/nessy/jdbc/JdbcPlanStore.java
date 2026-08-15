@@ -37,9 +37,11 @@ import org.jwcarman.nessy.spi.plan.PlanStore;
  *
  * <p>Unlike {@link JdbcSummaryStore}, this store's runtime SQL ({@link #DELETE_SQL}, {@link
  * #INSERT_SQL}, {@link #FIND_SQL}) is dialect-IDENTICAL — no upsert, no vendor-specific cast, no
- * per-dialect variant needed. The {@link JdbcDialect} this class resolves and caches is used for
- * exactly one thing: picking the right {@code plan-schema.sql} resource at bootstrap. Every runtime
- * operation below runs the same three constants regardless of which of the five databases backs it.
+ * per-dialect variant needed. A {@link JdbcDialect} matters here only to {@link #create(DataSource,
+ * JdbcDialect)}, which needs it to pick the right {@code plan-schema.sql} resource to bootstrap;
+ * this store never resolves or caches a dialect of its own, and the plain constructor does not
+ * accept one. Every runtime operation below runs the same three constants regardless of which of
+ * the five databases backs it.
  *
  * <p>{@link #save} replaces a conversation's whole plan in one transaction: {@code DELETE} every
  * existing row for the conversation, then a batched {@code INSERT} of the new rows in ordinal order
@@ -54,10 +56,11 @@ import org.jwcarman.nessy.spi.plan.PlanStore;
  * <p>The constructor alone does not create {@code nessy_plan} — a caller pointing at a database
  * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
  * #create(DataSource)} to bootstrap and construct in one call; its per-dialect schema resource's
- * guarded-create statement is safe to run more than once. As with {@link JdbcConversationStore},
- * the dialect is resolved once — at bootstrap for {@code create}, lazily and cached thereafter for
- * the plain constructor — and every {@code create}/constructor pair has an explicit-dialect
- * overload that skips resolution entirely.
+ * guarded-create statement is safe to run more than once. {@link #create(DataSource, JdbcDialect)}
+ * accepts an explicit dialect for a caller that already knows it (or a driver whose metadata lies),
+ * bypassing {@link JdbcDialect#resolve} entirely for the bootstrap step; {@code null} there means
+ * resolve, same as {@link #create(DataSource)}. Once bootstrap is done — or skipped entirely, via
+ * the plain constructor — this store has no further use for a dialect.
  */
 public final class JdbcPlanStore implements PlanStore {
 
@@ -71,20 +74,8 @@ public final class JdbcPlanStore implements PlanStore {
 
   private final DataSource dataSource;
 
-  /** See {@link JdbcConversationStore#dialect} for the resolve-once-then-cache discipline. */
-  private volatile JdbcDialect dialect;
-
   public JdbcPlanStore(DataSource dataSource) {
-    this(dataSource, null);
-  }
-
-  /**
-   * {@code null} means resolve lazily on first use, same as the one-arg constructor — a non-null
-   * value bypasses resolution entirely. See the class javadoc.
-   */
-  public JdbcPlanStore(DataSource dataSource, JdbcDialect dialect) {
     this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
-    this.dialect = dialect;
   }
 
   /**
@@ -96,10 +87,9 @@ public final class JdbcPlanStore implements PlanStore {
 
   /** Bootstraps against an explicitly known {@code dialect} — see the class javadoc. */
   public static JdbcPlanStore create(DataSource dataSource, JdbcDialect dialect) {
-    JdbcDialect resolved =
-        JdbcSchemaBootstrap.bootstrap(
-            dataSource, JdbcPlanStore.class, "plan-schema.sql", dialect, "plan");
-    return new JdbcPlanStore(dataSource, resolved);
+    JdbcSchemaBootstrap.bootstrap(
+        dataSource, JdbcPlanStore.class, "plan-schema.sql", dialect, "plan");
+    return new JdbcPlanStore(dataSource);
   }
 
   @Override
@@ -141,6 +131,9 @@ public final class JdbcPlanStore implements PlanStore {
             connection.commit();
             return null;
           } catch (SQLException e) {
+            rollbackQuietly(connection, e);
+            throw e;
+          } catch (RuntimeException e) {
             rollbackQuietly(connection, e);
             throw e;
           } finally {

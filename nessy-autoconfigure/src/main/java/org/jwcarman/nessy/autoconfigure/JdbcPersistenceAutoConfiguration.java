@@ -141,10 +141,9 @@ public class JdbcPersistenceAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   PlanStore planStore(DataSource dataSource, NessyProperties properties) {
-    JdbcDialect dialect = resolveDialect(properties);
     return properties.bootstrapSchema()
-        ? JdbcPlanStore.create(dataSource, dialect)
-        : new JdbcPlanStore(dataSource, dialect);
+        ? JdbcPlanStore.create(dataSource, resolveDialect(properties))
+        : new JdbcPlanStore(dataSource);
   }
 
   /**

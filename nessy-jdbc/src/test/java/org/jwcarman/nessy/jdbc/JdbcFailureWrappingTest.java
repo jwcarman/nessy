@@ -24,6 +24,7 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
@@ -32,12 +33,18 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.memory.SummaryStore.Summary;
+import org.jwcarman.nessy.spi.plan.Plan;
+import org.jwcarman.nessy.spi.plan.Plan.Status;
+import org.jwcarman.nessy.spi.plan.Plan.Task;
 
 /**
  * The doors' failure contract, pinned without a database: a {@link SQLException} anywhere inside a
  * door surfaces as an {@link IllegalStateException} naming the door, with the original as its cause
- * — never a checked leak, never a swallow. And the transactional door rolls back before it reports.
- * No Docker, no container tag: the failure happens before any real database could matter.
+ * — never a checked leak, never a swallow. And the transactional door rolls back before it reports
+ * — {@link JdbcPlanStore#save} included, whether the failure is a checked {@link SQLException} or
+ * (the regression this file pins) an unchecked {@link RuntimeException} escaping between its {@code
+ * DELETE} and its {@code commit}. No Docker, no container tag: the failure happens before any real
+ * database could matter.
  *
  * <p>The doubles here are hand-rolled (a tiny {@link DataSource} and a dynamic-proxy {@link
  * Connection}) — the house bans mocking libraries, not test doubles.
@@ -164,6 +171,54 @@ class JdbcFailureWrappingTest {
         .isInstanceOf(IllegalStateException.class)
         .cause()
         .isSameAs(REFUSED);
+    assertThat(rolledBack).isTrue();
+    assertThat(autoCommitRestored).isTrue();
+  }
+
+  /**
+   * Pins the fix for the gap {@link JdbcPlanStore#save} once had: its transaction body caught
+   * {@link SQLException} and rolled back, but not {@link RuntimeException} — so an unchecked
+   * failure between the {@code DELETE} and the {@code commit} would skip {@code rollback()}
+   * entirely, and the {@code finally} block's {@code setAutoCommit(true)} would then durably commit
+   * the bare {@code DELETE} it left behind: a silent plan wipe, not a reported failure. This
+   * connection's {@code prepareStatement} (the first call {@link JdbcPlanStore#save}'s {@code
+   * DELETE} makes) throws a plain unchecked {@link IllegalStateException} standing in for any
+   * driver bug or unrelated runtime failure — not a {@link SQLException}, deliberately, since that
+   * checked path is already covered by {@link
+   * #a_failure_inside_the_transcripts_transaction_rolls_back_before_reporting()} above.
+   */
+  @Test
+  void a_failure_inside_the_plan_stores_transaction_rolls_back_before_reporting() {
+    AtomicBoolean rolledBack = new AtomicBoolean();
+    AtomicBoolean autoCommitRestored = new AtomicBoolean();
+    RuntimeException unexpected = new IllegalStateException("driver bug (test)");
+    Connection failingInside =
+        (Connection)
+            Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[] {Connection.class},
+                (proxy, method, args) ->
+                    switch (method.getName()) {
+                      case "prepareStatement" -> throw unexpected;
+                      case "rollback" -> {
+                        rolledBack.set(true);
+                        yield null;
+                      }
+                      case "setAutoCommit" -> {
+                        if (Boolean.TRUE.equals(args[0])) {
+                          autoCommitRestored.set(true);
+                        }
+                        yield null;
+                      }
+                      case "close" -> null;
+                      case "isClosed" -> false;
+                      default -> throw new UnsupportedOperationException(method.getName());
+                    });
+    JdbcPlanStore plans = new JdbcPlanStore(new OneConnectionDataSource(failingInside));
+    ConversationId id = ConversationId.generate();
+    Plan plan = new Plan(List.of(new Task("draft the refund email", Status.PENDING)));
+
+    assertThatThrownBy(() -> plans.save(id, plan)).isSameAs(unexpected);
     assertThat(rolledBack).isTrue();
     assertThat(autoCommitRestored).isTrue();
   }
