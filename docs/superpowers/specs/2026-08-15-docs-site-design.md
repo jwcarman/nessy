@@ -92,3 +92,46 @@ each on what it teaches, links into the repo.
 - The Pages dashboard toggle (owner's click).
 - Notebook documentation — lands with the Notebook generation, which will add its concepts
   section then.
+
+## 5. Amendment (owner-supplied, 2026-08-15): the Nessy brand
+
+The owner supplied the Nessy brand guide (v1, 2026) and asset kit; §1's "stock Material"
+ruling is superseded. The kit is vendored at repo-root `brand/` (canonical, per its own
+README; `source/` originals excluded), with the docs site's subset copied to
+`docs/assets/brand/`.
+
+**Theme (mkdocs.yml + docs/assets/stylesheets/nessy.css):**
+
+- `theme.logo: assets/brand/nessy-mark.png`; `theme.favicon: assets/brand/favicon.ico`.
+- Fonts: `theme.font.text: IBM Plex Sans`, `theme.font.code: IBM Plex Mono` (Material loads
+  Google Fonts); Source Serif 4 loaded in `nessy.css` and applied to h1/h2/h3 and the header
+  site title — the wordmark font, per guide §6. Never substitute another serif.
+- Palette via `extra_css` custom properties (both schemes keep the light/dark toggle):
+  - Light ("default" scheme): primary/header Deep Teal `#0A3644`, accent/links Nessy Teal
+    `#46A1A4`, page background warmed toward Loch Cream (a light tint of `#EBE0C1` that keeps
+    body text AA — guide: Deep Teal on Loch Cream clears AA at body sizes), code blocks on a
+    cream-tinted surface.
+  - Dark ("slate" scheme): Deep Teal surfaces, Nessy Aqua `#8CD0CD` links/accents, Loch Cream
+    for reversed type accents.
+  - Harness Leather `#814F2F` for admonition-warning accents; Harness Brass `#C99B5A` only
+    as rare emphasis — guide: "leather and brass are accents that should stay rare". Nessy
+    Teal and Harness Brass are display-only on light backgrounds — never small body copy.
+  - Root tokens copied verbatim from `brand/palette/palette.css`.
+- The home page gets the mascot: `nessy-mascot-512.png` centered near the top (≥240px per
+  the mark hierarchy; below that size the badge/mark is the correct asset). No stretching,
+  rotating, recoloring, cropping, or effects (guide §4).
+- Root README hero (kit README's own snippet): centered `brand/mascot/nessy-mascot-512.png`
+  at width 320.
+
+**Voice (guide §7) — binding on every docs page, retroactive:**
+
+1. Plain sentences; docs read like good docs; no hype adjectives; no exclamation marks in
+   reference material.
+2. At most ONE loch/monster reference per page, only where it earns the space.
+3. "Nessy" capitalized in prose; artifact ids stay lowercase code literals.
+4. The framework is "it"; the mascot is she/her; never mixed in one sentence.
+5. The one-liner, verbatim where a one-liner is wanted: "An agent harness framework for
+   Java."
+
+Site description/tagline uses the one-liner. Task 6 (added to the plan) applies the theme;
+the voice rules bind Tasks 2-5's content as written.
