@@ -110,7 +110,7 @@ class PlanToolsTest {
 
       tool.execute(new PlanTools.UpdatePlan(List.of()), context);
 
-      assertThat(store.find(conversationId)).contains(Plan.empty());
+      assertThat(store.find(conversationId)).isEmpty();
     }
 
     @Test
@@ -189,9 +189,21 @@ class PlanToolsTest {
 
     @Test
     void an_empty_plan_leaves_the_context_untouched() {
-      PlanStore store = PlanStore.inMemory();
+      // Hand-rolled store double: the shipped stores clear on empty save (spec §3.2), so only a
+      // custom backend can still answer with a present-but-empty plan — the branch stays covered.
+      PlanStore store =
+          new PlanStore() {
+            @Override
+            public java.util.Optional<Plan> find(ConversationId id) {
+              return java.util.Optional.of(Plan.empty());
+            }
+
+            @Override
+            public void save(ConversationId id, Plan plan) {
+              throw new UnsupportedOperationException("read-only double");
+            }
+          };
       ConversationId conversationId = ConversationId.generate();
-      store.save(conversationId, Plan.empty());
       ContextTransformer transformer = PlanTools.transformer(store);
       Context original = Context.of(List.of(Message.user("hello")));
 

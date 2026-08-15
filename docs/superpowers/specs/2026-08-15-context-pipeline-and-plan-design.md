@@ -264,7 +264,7 @@ public interface PlanStore {
   /** The current plan for {@code id}, or empty if the model has never written one. */
   Optional<Plan> find(ConversationId id);
 
-  /** Replaces whatever plan {@code id} had, wholesale. */
+  /** Replaces whatever plan {@code id} had, wholesale. Saving the empty plan clears it. */
   void save(ConversationId id, Plan plan);
 
   /** The zero-configuration default: plans live in this JVM and die with it. */
@@ -274,6 +274,13 @@ public interface PlanStore {
 
 `InMemoryPlanStore` is package-private, a `ConcurrentHashMap`, in the image of
 `InMemorySummaryStore`.
+
+**Amendment (implementation ruling):** saving `Plan.empty()` **clears** — a subsequent `find`
+returns `Optional.empty()`, in every backend. "No plan" and "empty plan" are one state: nothing
+downstream distinguishes them (the transformer injects nothing either way), and
+one-row-per-task storage (§4) cannot tell them apart without a marker row it has no other use
+for. The original draft's "empty save distinguishable from absent" test case is superseded by
+"saving the empty plan clears it".
 
 ### 3.3 The tool — wholesale replacement, idempotent by construction
 

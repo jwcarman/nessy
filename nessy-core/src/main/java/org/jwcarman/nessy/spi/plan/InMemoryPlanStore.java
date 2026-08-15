@@ -38,6 +38,10 @@ final class InMemoryPlanStore implements PlanStore {
   public void save(ConversationId id, Plan plan) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(plan, "plan must not be null");
+    if (plan.isEmpty()) {
+      plans.remove(id); // clearing makes the plan absent — one state, every backend (spec §3.2)
+      return;
+    }
     plans.put(id, plan);
   }
 }

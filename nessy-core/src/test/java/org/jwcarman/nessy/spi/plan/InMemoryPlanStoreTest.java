@@ -69,14 +69,13 @@ class InMemoryPlanStoreTest {
     }
 
     @Test
-    void saving_an_empty_plan_is_found_as_empty() {
+    void saving_the_empty_plan_clears_it() {
       ConversationId id = ConversationId.generate();
+      store.save(id, new Plan(List.of(new Plan.Task("draft the plan", Plan.Status.PENDING))));
 
       store.save(id, Plan.empty());
 
-      Optional<Plan> found = store.find(id);
-      assertThat(found).isPresent();
-      assertThat(found.orElseThrow().isEmpty()).isTrue();
+      assertThat(store.find(id)).isEmpty();
     }
 
     @Test

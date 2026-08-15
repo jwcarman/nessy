@@ -26,10 +26,19 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
  */
 public interface PlanStore {
 
-  /** The current plan for {@code id}, or empty if the model has never written one. */
+  /**
+   * The current plan for {@code id}, or empty if the model has never written one — or has cleared
+   * it (see {@link #save}).
+   */
   Optional<Plan> find(ConversationId id);
 
-  /** Replaces whatever plan {@code id} had, wholesale. */
+  /**
+   * Replaces whatever plan {@code id} had, wholesale. Saving {@link Plan#empty()} clears: a
+   * subsequent {@link #find} returns {@link Optional#empty()} — "no plan" and "empty plan" are one
+   * state, for every backend, because nothing downstream distinguishes them (the transformer
+   * injects nothing either way) and one-row-per-task storage could not tell them apart without a
+   * marker it has no other use for.
+   */
   void save(ConversationId id, Plan plan);
 
   /** The zero-configuration default: plans live in this JVM and die with it. */

@@ -131,7 +131,7 @@ class JdbcPlanStoreTest {
 
     plans.save(id, Plan.empty());
 
-    assertThat(plans.find(id)).contains(Plan.empty());
+    assertThat(plans.find(id)).isEmpty();
   }
 
   @Test
