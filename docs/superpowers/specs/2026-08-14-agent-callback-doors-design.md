@@ -204,7 +204,11 @@ starter auto-collection of named `Agent` beans) — sanctioned shape for
 generic token-only endpoints, ships when a multi-agent example needs
 it; conversation-level ownership stamping (the park stamp covers the
 callback doors; whether conversations themselves record an owner waits
-for the multi-agent example); any change to `ToolContext.progress` (the
+for the multi-agent example — noted at final review: until then,
+`snapshot`/`cards` are NOT stamp-filtered, so an app that drives one
+conversation id through two agents can read the other agent's parked
+cards; disclosure-within-one-app only, and any *action* on such a card
+still fails loud at the verifying doors); any change to `ToolContext.progress` (the
 in-tool lane is untouched); the callback-desk *extraction* idea from
 the store-rework brainstorm — this spec answers that open question
 differently: the desk was never a missing object, it was a misplaced
