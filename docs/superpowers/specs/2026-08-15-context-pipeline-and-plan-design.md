@@ -33,11 +33,13 @@ Two placement rulings, made in conversation and binding here:
   their names: they are jurisdictions with semantics, not dumb persistence, and `Repository`
   buys nothing `Store` doesn't while carrying DDD baggage these narrow contracts don't honor.
 
-## 2. The context pipeline — hydrate, clamp, amend
+## 2. The context pipeline — hydrate, then stages
 
-Recall-side context production becomes a named pipeline with three phases in fixed order. The
-phases already exist in the code as separate classes; this section names them and gives them one
-composition surface.
+Recall-side context production becomes a named pipeline: a **hydration strategy** (closed,
+core-authored) produces the initial context, and then an ordered list of **stages** (open,
+user-pluggable) reshapes it — clamping, redacting, eliding, amending — before it goes out the
+door. The hydrators already exist in the code as separate classes; this section names them and
+gives the whole assembly one composition surface.
 
 ### 2.1 Hydrate — the strategy owns how much history it reads
 
@@ -53,49 +55,80 @@ Hydration is a **closed phase**: strategies ship in core because they need trans
 watermarks, and legality guarantees a rendered `Context` no longer carries. The existing classes
 stay public; the builder composes them.
 
-### 2.2 Clamp — optional, pair-safe
+### 2.2 Stages — open, ordered, full mutation
 
-`keepRecent(n)` applies `Context.keepRecent(n)` after hydration — the existing pair-safe trim,
-unchanged. Clamping after a summarizing hydration is legitimate belt-and-suspenders: the summary
-absorbs old history and the window guarantees a ceiling even when the tail grows faster than
-folding keeps up.
-
-**Phase invariant (binding on every fit-side stage, present and future):** no cut splits a
-tool-use message from the results message answering it.
-
-### 2.3 Amend — the open seam
-
-The one new SPI this design introduces, in `org.jwcarman.nessy.spi.memory`:
+Everything after hydration is a stage. A stage may mutate the context in any way — clamp it,
+redact a credit-card number out of a message body, elide a stale tool exchange whole, or append
+new messages. The general seam, new in `org.jwcarman.nessy.spi.memory`:
 
 ```java
 /**
- * Amends the outgoing context: given the context as built so far, returns messages the
- * pipeline appends verbatim at the tail. Empty list means contribute nothing this call.
+ * One stage of the context pipeline: takes the context as built so far, returns the context
+ * as it should continue. May trim, redact, elide, reorder-within-law, or append.
  *
- * <p>Append-only on purpose: the pipeline does the appending, tail position can never split
- * a tool exchange, and a contributor cannot reorder or drop history. Receiving the context
- * as input is what makes relevance possible — a future facts contributor can read the fitted
- * tail and return only what is germane. Contributed messages carry plain content (no tool-use
- * or tool-result blocks); the final {@code Context.of} still rejects illegal shapes, so a
- * misbehaving contributor fails loud at the border, never silently corrupts the dialogue.
+ * <p>Legality is enforced by the type, not by trust: a {@link Context} can only be built
+ * through {@code Context.of}, which rejects illegal shapes (a split tool exchange, an
+ * unanswered tool-use mid-history). A transformer therefore cannot hand the model a corrupted
+ * dialogue — the worst it can do is throw, which is what stage failure policy (§2.3) governs.
+ * Eliding a tool exchange means removing the pair atomically; the border check makes a
+ * half-elision fail loud.
  *
- * <p>Contributions are synthesized at recall and never remembered: not told to the transcript,
- * not folded into any summary. One fresh copy per model call, no accumulation, no drift.
+ * <p>Stage output is synthesized at recall and never remembered: not told to the transcript,
+ * not folded into any summary. One fresh pass per model call, no accumulation, no drift.
+ */
+public interface ContextTransformer {
+  Context transform(ConversationId id, Context context);
+}
+```
+
+Stages run in registration order, each seeing its predecessors' output. Two conveniences ride
+on top of the general seam:
+
+- **`keepRecent(n)`** — a builder verb that registers `Context.keepRecent(n)` (the existing
+  pair-safe trim) as a required stage. Clamping after a summarizing hydration is legitimate
+  belt-and-suspenders: the summary absorbs old history, the window guarantees a ceiling.
+- **`ContextContributor`** — the append-only specialization for facilities that only add:
+
+```java
+/**
+ * The append-only stage: returns messages the pipeline appends verbatim at the tail of the
+ * context so far. Empty list means contribute nothing this call. Receiving the context as
+ * input is what makes relevance possible — a future facts contributor reads the tail and
+ * returns only what is germane. Tail appends can never split a tool exchange, so this is the
+ * seam to reach for when adding is all you need.
  */
 public interface ContextContributor {
   List<Message> contribute(ConversationId id, Context soFar);
 }
 ```
 
-Contributors run in registration order, each seeing the context including prior contributions.
-They run **after** clamping, so an amendment can never be clipped by the window, and a
-contributor judging relevance sees the same fitted context the model will see.
+The builder adapts a contributor into a transformer internally. Recommended order — clamp,
+then transforms, then contributors — keeps amendments unclippable and lets a relevance-judging
+contributor see the same fitted context the model will see; but order is the caller's, on
+purpose.
 
 Why injection-as-user-message is legal and sufficient: the only rigid wire constraint is the
 tool pair. Strict role alternation is not required — OpenAI accepts any sensible ordering and
 Anthropic merges consecutive same-role messages into one turn (with `tool_result` blocks
 required before text within a turn, which tail-append satisfies). `SummarizingMemory` has
 injected a fabricated `Message.user(...)` since it shipped; this seam generalizes that move.
+
+### 2.3 Stage failure policy — fail-closed by default
+
+A stage that throws is a decision point, and the decision belongs to whoever composed the
+pipeline:
+
+- **`REQUIRED`** (the default): the exception propagates out of `recall`. The turn fails and
+  the durable machinery retries it later; the model never sees a context the stage did not
+  bless. This is the only safe default — a redactor that failed to strip a credit-card number
+  must stop the context from being built at all, not be politely skipped.
+- **`OPTIONAL`**: the stage's failure is logged at WARN (SLF4J, one line, with the stage's
+  toString and the conversation id) and the pipeline continues with the stage's **input**
+  context, exactly as if the stage were absent this call. For enrichment that is nice to have
+  and safe to lose — a flaky relevance lookup, a best-effort annotation.
+
+The policy is per-stage, declared at registration (§2.4). There is no half-way: a partial
+output from a failed stage is never used.
 
 ### 2.4 The builder
 
@@ -104,8 +137,10 @@ A static factory on `Memory`, beside `windowed`:
 ```java
 Memory memory = Memory.pipeline(transcript)                              // full hydration
     .summarizing(summaries, provider, model, prompt, tailThreshold)      // …or fold instead
-    .keepRecent(50)                                                      // optional clamp
-    .contribute(PlanTools.contributor(planStore))                        // amend, repeatable
+    .keepRecent(50)                                                      // pair-safe clamp
+    .transform(redactor)                                                 // REQUIRED: a throw fails the recall
+    .transform(annotator, StagePolicy.OPTIONAL)                          // OPTIONAL: a throw skips it
+    .contribute(PlanTools.contributor(planStore))                        // append-only stage
     .build();
 ```
 
@@ -116,11 +151,18 @@ Memory memory = Memory.pipeline(transcript)                              // full
   switches hydration from full to summarizing; parameters mirror `SummarizingMemory`'s
   constructor exactly. Calling it twice is an `IllegalStateException` — one hydration strategy
   per pipeline.
-- `.keepRecent(int n)` — at most once, same `n >= 1` floor as `Memory.windowed`.
-- `.contribute(ContextContributor)` — zero or more, run in call order.
+- `.keepRecent(int n)` — registers the pair-safe trim as a required stage at its call
+  position; same `n >= 1` floor as `Memory.windowed`.
+- `.transform(ContextTransformer)` / `.transform(ContextTransformer, StagePolicy)` — zero or
+  more; the one-argument form is `REQUIRED`.
+- `.contribute(ContextContributor)` / `.contribute(ContextContributor, StagePolicy)` — zero or
+  more; adapted internally into an appending transformer; one-argument form is `REQUIRED`.
+- All stages — clamps, transforms, contributors — occupy **one ordered list** and run in
+  registration order.
+- `StagePolicy` is an enum (`REQUIRED`, `OPTIONAL`) nested in `MemoryPipeline`.
 - `.build()` returns a `Memory`. Internally it delegates to `TranscriptMemory` or
-  `SummarizingMemory` for hydration, applies the clamp, then folds contributors. No behavior is
-  reimplemented; the builder is composition sugar with names.
+  `SummarizingMemory` for hydration, then folds the stage list. No behavior is reimplemented;
+  the builder is composition sugar with names.
 
 `Memory.windowed(delegate, n)` stays for the simple wrap-anything case. `TranscriptMemory` and
 `SummarizingMemory` stay public. The pipeline becomes the documented front door for composing
@@ -236,8 +278,9 @@ not a message from the user.
 
 Markers: `[ ]` pending, `[>]` in progress, `[x]` done. The framing sentence is part of the
 contract: models are post-trained to treat framed blocks inside user messages as environment,
-not dialogue. Tail position (guaranteed by the amend phase) puts the plan at maximum recency —
-the same reason Claude Code injects todo reminders last.
+not dialogue. Tail position (contribute stages append at the tail; register the plan
+contributor last) puts the plan at maximum recency — the same reason Claude Code injects todo
+reminders last.
 
 ### 3.5 What the kernel does not learn
 
@@ -326,11 +369,16 @@ the token-usage listener's turn boundaries.
 House rules apply throughout: prose snake_case names, no mocking libraries, hand-rolled
 doubles, S5778/S5841 discipline, Awaitility over sleep.
 
-- **Pipeline:** builder validation (double hydration, double clamp, `n < 1`, null contributor);
-  pass-through of `remember`; contributor ordering (two contributors, second sees the first's
-  message in `soFar`); empty-contribution injects nothing; clamp-then-contribute order proven
-  by a contributor observing an already-clamped context; a contributor returning an illegal
-  message shape fails loud at `Context.of`.
+- **Pipeline:** builder validation (double hydration, `n < 1`, null stage, null policy);
+  pass-through of `remember`; stage ordering (two contributors, second sees the first's
+  message in `soFar`; a transform registered between them observed in sequence);
+  empty-contribution injects nothing; clamp-then-contribute order proven by a contributor
+  observing an already-clamped context; a contributor returning an illegal message shape fails
+  loud at `Context.of`; a genuinely mutating transform (redaction double: rewrites a message
+  body) applied and visible downstream; **failure policy:** a throwing `REQUIRED` stage
+  propagates out of `recall`, a throwing `OPTIONAL` stage is skipped — downstream stages
+  receive its input unchanged — and exactly one WARN line is logged (Logback `ListAppender`,
+  filtered to WARN, per the established fixture pattern).
 - **Plan records:** blank-title rejection, defensive copy, `empty()`/`isEmpty()`.
 - **Tool:** wholesale replace (second call with fewer tasks shrinks the stored plan), replay
   idempotency (same input executed twice, same stored plan), empty-list clears, confirmation
