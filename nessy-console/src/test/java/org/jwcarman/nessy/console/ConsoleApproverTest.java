@@ -56,7 +56,7 @@ class ConsoleApproverTest {
       Awaited<Decision> decision = approver.approve(REQUEST);
 
       assertThat(decision).isEqualTo(Awaited.ready(Decision.allow()));
-      assertThat(out.toString()).isEqualTo("\napprove: read the current time\ny/n> ");
+      assertThat(out).hasToString("\napprove: read the current time\ny/n> ");
     }
   }
 
@@ -73,7 +73,7 @@ class ConsoleApproverTest {
       Awaited<Decision> decision = approver.approve(REQUEST);
 
       assertThat(decision).isEqualTo(Awaited.ready(new Decision.Deny("declined at the console")));
-      assertThat(out.toString()).isEqualTo("\napprove: read the current time\ny/n> ");
+      assertThat(out).hasToString("\napprove: read the current time\ny/n> ");
     }
   }
 
@@ -90,8 +90,8 @@ class ConsoleApproverTest {
       Awaited<Decision> decision = approver.approve(REQUEST);
 
       assertThat(decision).isEqualTo(Awaited.ready(Decision.allow()));
-      assertThat(out.toString())
-          .isEqualTo("\napprove: read the current time\ny/n> please answer y or n\ny/n> ");
+      assertThat(out)
+          .hasToString("\napprove: read the current time\ny/n> please answer y or n\ny/n> ");
     }
   }
 

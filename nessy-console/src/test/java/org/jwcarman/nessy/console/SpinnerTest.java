@@ -45,8 +45,7 @@ class SpinnerTest {
       spinner.stop();
 
       String written = out.toString();
-      assertThat(written).isNotEmpty();
-      assertThat(written).endsWith(" \r");
+      assertThat(written).isNotEmpty().endsWith(" \r");
     }
   }
 

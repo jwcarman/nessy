@@ -42,6 +42,14 @@ import javax.sql.DataSource;
  */
 final class JdbcSchemaBootstrap {
 
+  /**
+   * The path separator between {@link JdbcDialect#schemaDirectory()} and a schema resource's own
+   * file name — a classpath resource path, always {@code /}-separated regardless of the host
+   * platform's own {@link java.io.File#separator} (java:S1075: never the host's path delimiter,
+   * which is exactly the confusion this constant's name and javadoc rule out).
+   */
+  private static final String CLASSPATH_SEPARATOR = "/";
+
   private JdbcSchemaBootstrap() {}
 
   /** Bootstraps with dialect resolution: see the class javadoc. */
@@ -86,7 +94,7 @@ final class JdbcSchemaBootstrap {
 
   private static String readSchemaResource(
       Class<?> anchor, JdbcDialect dialect, String resourceName, String errorContext) {
-    String path = dialect.schemaDirectory() + "/" + resourceName;
+    String path = dialect.schemaDirectory() + CLASSPATH_SEPARATOR + resourceName;
     try (InputStream in = anchor.getResourceAsStream(path)) {
       if (in == null) {
         throw new IllegalStateException(

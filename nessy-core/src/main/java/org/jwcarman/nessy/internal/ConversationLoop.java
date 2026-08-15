@@ -88,21 +88,40 @@ public final class ConversationLoop {
     record Parked(ToolCall call, ParkToken token) implements PerformOutcome {}
   }
 
-  public ConversationLoop(
+  /**
+   * The five collaborators an agent's own identity picks — its model/tool executors, its memory,
+   * its termination policy, the durable store, the parks registry — bundled into one parameter
+   * (java:S107: a ninth constructor parameter otherwise) because every one of them travels
+   * together, assembled once by {@link org.jwcarman.nessy.AgentBuilder#build()} and never varied
+   * independently thereafter.
+   */
+  public record Collaborators(
       EffectExecutors executors,
       Memory memory,
       TerminationPolicy termination,
       ConversationStore store,
       Parks parks,
-      EventEmitter emitter,
-      ObservationRegistry observations,
-      String agentName) {
-    this.executors = Objects.requireNonNull(executors, "executors must not be null");
-    this.memory = Objects.requireNonNull(memory, "memory must not be null");
-    this.termination = Objects.requireNonNull(termination, "termination must not be null");
-    this.store = Objects.requireNonNull(store, "store must not be null");
-    this.parks = Objects.requireNonNull(parks, "parks must not be null");
-    this.emitter = Objects.requireNonNull(emitter, "emitter must not be null");
+      EventEmitter emitter) {
+
+    public Collaborators {
+      Objects.requireNonNull(executors, "executors must not be null");
+      Objects.requireNonNull(memory, "memory must not be null");
+      Objects.requireNonNull(termination, "termination must not be null");
+      Objects.requireNonNull(store, "store must not be null");
+      Objects.requireNonNull(parks, "parks must not be null");
+      Objects.requireNonNull(emitter, "emitter must not be null");
+    }
+  }
+
+  public ConversationLoop(
+      Collaborators collaborators, ObservationRegistry observations, String agentName) {
+    Objects.requireNonNull(collaborators, "collaborators must not be null");
+    this.executors = collaborators.executors();
+    this.memory = collaborators.memory();
+    this.termination = collaborators.termination();
+    this.store = collaborators.store();
+    this.parks = collaborators.parks();
+    this.emitter = collaborators.emitter();
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     this.agentName = Objects.requireNonNull(agentName, "agentName must not be null");
   }

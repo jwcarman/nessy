@@ -17,10 +17,8 @@ package org.jwcarman.nessy.console;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
@@ -53,7 +51,7 @@ public final class ConsoleApprover implements Approver {
    * stealing from the other's read of stdin.
    */
   public ConsoleApprover() {
-    this(ConsoleIo.stdin(), new OutputStreamWriter(System.out, StandardCharsets.UTF_8));
+    this(ConsoleIo.stdin(), ConsoleIo.stdout());
   }
 
   /** The testability seam: every decision above is exercised headless against these streams. */

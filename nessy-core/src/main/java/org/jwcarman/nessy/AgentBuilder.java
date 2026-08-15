@@ -320,12 +320,13 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
                 observations));
     ConversationLoop loop =
         new ConversationLoop(
-            executors,
-            resolvedMemory,
-            Optional.ofNullable(termination).orElseGet(this::defaultTermination),
-            store,
-            parks,
-            events,
+            new ConversationLoop.Collaborators(
+                executors,
+                resolvedMemory,
+                Optional.ofNullable(termination).orElseGet(this::defaultTermination),
+                store,
+                parks,
+                events),
             observations,
             name);
     return new Agent<>(name, loop, events, store, parks, resolvedMemory, renderer);

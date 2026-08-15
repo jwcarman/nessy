@@ -54,7 +54,7 @@ class ConsoleRendererTest {
 
       observer.on(new TurnEvent.TextDelta("hello"));
 
-      assertThat(out.toString()).isEqualTo("hello");
+      assertThat(out).hasToString("hello");
     }
 
     @Test
@@ -65,7 +65,7 @@ class ConsoleRendererTest {
 
       observer.on(new TurnEvent.ThinkingDelta("pondering"));
 
-      assertThat(out.toString()).isEqualTo(Ansi.dim(Ansi.italic("pondering")));
+      assertThat(out).hasToString(Ansi.dim(Ansi.italic("pondering")));
     }
 
     @Test
@@ -76,7 +76,7 @@ class ConsoleRendererTest {
 
       observer.on(new TurnEvent.ToolCallRequested(CALL));
 
-      assertThat(out.toString()).isEqualTo("\n" + Ansi.dim("⚙ tool: clock requested") + "\n");
+      assertThat(out).hasToString("\n" + Ansi.dim("⚙ tool: clock requested") + "\n");
     }
 
     @Test
@@ -87,7 +87,7 @@ class ConsoleRendererTest {
 
       observer.on(new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("14:00")));
 
-      assertThat(out.toString()).isEqualTo("\n" + Ansi.dim("⚙ tool: clock completed") + "\n");
+      assertThat(out).hasToString("\n" + Ansi.dim("⚙ tool: clock completed") + "\n");
     }
 
     @Test
@@ -99,7 +99,7 @@ class ConsoleRendererTest {
 
       observer.on(new TurnEvent.ToolCallParked(CALL, token));
 
-      assertThat(out.toString()).isEqualTo("\n" + Ansi.dim("⚙ tool: clock parked (wait-1)") + "\n");
+      assertThat(out).hasToString("\n" + Ansi.dim("⚙ tool: clock parked (wait-1)") + "\n");
     }
 
     @Test
@@ -110,7 +110,7 @@ class ConsoleRendererTest {
 
       observer.on(new TurnEvent.TurnEnded(ConversationStatus.FAILED, "too many tool errors"));
 
-      assertThat(out.toString()).isEqualTo("\n" + Ansi.red("! too many tool errors") + "\n");
+      assertThat(out).hasToString("\n" + Ansi.red("! too many tool errors") + "\n");
     }
 
     @Test
@@ -139,7 +139,7 @@ class ConsoleRendererTest {
       observer.on(new TurnEvent.ToolCallRequested(CALL));
       observer.on(new TurnEvent.TurnEnded(ConversationStatus.FAILED, "boom"));
 
-      assertThat(out.toString()).isEqualTo("hello pondering\n⚙ tool: clock requested\n\n! boom\n");
+      assertThat(out).hasToString("hello pondering\n⚙ tool: clock requested\n\n! boom\n");
     }
   }
 }

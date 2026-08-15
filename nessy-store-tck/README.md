@@ -90,7 +90,10 @@ Server/Oracle — see that module's own README for the dialect story.
 
 Main scope, not test: the contracts are abstract JUnit/AssertJ-based classes
 shipped as production code so a downstream project can `extend` them
-directly, at whatever scope its own test tree needs.
+directly, at whatever scope its own test tree needs. Sonar analysis treats
+this module's `src/main/java` as test code too (`sonar.tests` in this
+module's `pom.xml`), since a certification kit is test infrastructure by
+nature regardless of which Maven scope ships it.
 
 ```xml
 <dependency>

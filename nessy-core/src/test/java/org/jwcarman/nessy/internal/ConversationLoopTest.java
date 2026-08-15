@@ -589,12 +589,13 @@ class ConversationLoopTest {
       RecordingEmitter emitter = new RecordingEmitter(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              memory,
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              emitter,
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  memory,
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  emitter),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -627,12 +628,13 @@ class ConversationLoopTest {
       RecordingMemory memory = new RecordingMemory(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              memory,
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  memory,
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -669,12 +671,13 @@ class ConversationLoopTest {
           new CountingTerminationPolicy(journal, TerminationPolicy.never());
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              termination,
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  termination,
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -701,12 +704,13 @@ class ConversationLoopTest {
       RecordingMemory memory = new RecordingMemory(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              memory,
-              TerminationPolicy.maxConsecutiveErrors(1),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  memory,
+                  TerminationPolicy.maxConsecutiveErrors(1),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -742,12 +746,13 @@ class ConversationLoopTest {
       RecordingMemory memory = new RecordingMemory(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              memory,
-              TerminationPolicy.maxModelCalls(1),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  memory,
+                  TerminationPolicy.maxModelCalls(1),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -783,12 +788,13 @@ class ConversationLoopTest {
               .andFor("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -839,12 +845,13 @@ class ConversationLoopTest {
       RecordingStore store = new RecordingStore(new ArrayList<>());
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(new ArrayList<>())),
-              memory,
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              EventEmitter.noop(),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(new ArrayList<>())),
+                  memory,
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  EventEmitter.noop()),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       ConversationEvent.AgentTold echoA = ConversationEvent.AgentTold.of(ID, "echo a");
@@ -878,12 +885,13 @@ class ConversationLoopTest {
           new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -907,12 +915,13 @@ class ConversationLoopTest {
       store.append(ID, InboxEntry.told(List.of(new TextBlock("three"))));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              memory,
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  memory,
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -942,12 +951,13 @@ class ConversationLoopTest {
       store.append(ID, second);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -980,12 +990,13 @@ class ConversationLoopTest {
       store.append(ID, InboxEntry.told(List.of(new TextBlock("also check y"))));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              memory,
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  memory,
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -1009,12 +1020,13 @@ class ConversationLoopTest {
       store.append(ID, InboxEntry.told(List.of(new TextBlock("more context"))));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -1039,12 +1051,13 @@ class ConversationLoopTest {
       Parks parks = Parks.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              parks,
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  parks,
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -1071,12 +1084,13 @@ class ConversationLoopTest {
       ParkToken token = tools.parksWhen("c1");
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              ConversationStore.inMemory(),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  ConversationStore.inMemory(),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1097,12 +1111,13 @@ class ConversationLoopTest {
       ParkToken token = tools.parksWhen("c1");
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              ConversationStore.inMemory(),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  ConversationStore.inMemory(),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1137,12 +1152,13 @@ class ConversationLoopTest {
       AlwaysStaleStore store = new AlwaysStaleStore(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1172,12 +1188,13 @@ class ConversationLoopTest {
       StaleOnceStore store = new StaleOnceStore(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1210,12 +1227,13 @@ class ConversationLoopTest {
       SabotagesTheParkedSaveOnceStore store = new SabotagesTheParkedSaveOnceStore(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1254,12 +1272,13 @@ class ConversationLoopTest {
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              memory,
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  memory,
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -1309,12 +1328,13 @@ class ConversationLoopTest {
       tools.andFor("c2", new ConversationEvent.ToolFinished(ID, c2, ToolResult.ok("b")));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              ConversationStore.inMemory(),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  ConversationStore.inMemory(),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1353,13 +1373,15 @@ class ConversationLoopTest {
           List.of());
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(
-                  new ScriptedModelCallExecutor(journal), new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(
+                      new ScriptedModelCallExecutor(journal),
+                      new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1390,12 +1412,13 @@ class ConversationLoopTest {
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
@@ -1429,12 +1452,13 @@ class ConversationLoopTest {
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
@@ -1475,12 +1499,13 @@ class ConversationLoopTest {
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
@@ -1512,13 +1537,15 @@ class ConversationLoopTest {
           ID, InboxEntry.resolved("settled-call", new ToolResolution.Decided(Decision.allow())));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(
-                  new ScriptedModelCallExecutor(journal), new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(
+                      new ScriptedModelCallExecutor(journal),
+                      new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1573,12 +1600,13 @@ class ConversationLoopTest {
           ID, InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("a"))));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              memory,
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  memory,
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1622,13 +1650,15 @@ class ConversationLoopTest {
           ID, InboxEntry.resolved("settled-call", new ToolResolution.Decided(Decision.allow())));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(
-                  new ScriptedModelCallExecutor(journal), new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(
+                      new ScriptedModelCallExecutor(journal),
+                      new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1659,12 +1689,13 @@ class ConversationLoopTest {
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
@@ -1689,12 +1720,13 @@ class ConversationLoopTest {
       StaleOnceStore store = new StaleOnceStore(journal);
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1739,12 +1771,13 @@ class ConversationLoopTest {
       store.seed(ConversationState.newConversation(ID).with(ConversationStatus.AWAITING_MODEL));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1770,12 +1803,13 @@ class ConversationLoopTest {
           new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       ConversationEvent.AgentTold whatIs2Plus2 = ConversationEvent.AgentTold.of(ID, "what is 2+2?");
@@ -1828,12 +1862,13 @@ class ConversationLoopTest {
           InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("duplicate"))));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1844,12 +1879,13 @@ class ConversationLoopTest {
       assertThat(outcome.state().parkedCalls()).extracting(ToolCall::id).containsExactly(d1.id());
       List<TurnEvent> endings =
           events.stream().filter(e -> e instanceof TurnEvent.TurnEnded).toList();
-      assertThat(endings).isNotEmpty();
-      assertThat(endings).containsOnly(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+      assertThat(endings)
+          .isNotEmpty()
+          .containsOnly(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
       long attempts = journal.stream().filter("load"::equals).count();
       // No more than one TurnEnded per attempt: the CAS inside one driveOnce call structurally
       // forbids it, so the total narrated can never exceed the number of attempts this drive took.
-      assertThat(endings.size()).isLessThanOrEqualTo((int) attempts);
+      assertThat(endings).hasSizeLessThanOrEqualTo((int) attempts);
       // The bug this test exists to pin: the fenced-out attempt's narration was not suppressed, so
       // this drive really did narrate the ending twice — once per attempt.
       assertThat(endings).hasSize(2);
@@ -1871,12 +1907,13 @@ class ConversationLoopTest {
           new ScriptedModelCallExecutor(journal, plainAnswer("First."), plainAnswer("Second."));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -1906,12 +1943,13 @@ class ConversationLoopTest {
           List.of());
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              store,
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -1932,12 +1970,13 @@ class ConversationLoopTest {
           new ScriptedModelCallExecutor(journal, new ConversationEvent.ModelCallFailed(ID, "boom"));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
 
@@ -1965,12 +2004,13 @@ class ConversationLoopTest {
               .andFor("c1", new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("a")));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -1997,12 +2037,13 @@ class ConversationLoopTest {
           new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -2021,12 +2062,13 @@ class ConversationLoopTest {
           new ScriptedModelCallExecutor(journal, new ConversationEvent.ModelCallFailed(ID, "boom"));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();
@@ -2051,12 +2093,13 @@ class ConversationLoopTest {
               .andFor("c2", new ConversationEvent.ToolFinished(ID, c2, ToolResult.ok("b")));
       ConversationLoop loop =
           new ConversationLoop(
-              new EffectExecutors(model, tools),
-              new RecordingMemory(journal),
-              TerminationPolicy.never(),
-              new RecordingStore(journal),
-              Parks.inMemory(),
-              new RecordingEmitter(journal),
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
       List<TurnEvent> events = new ArrayList<>();

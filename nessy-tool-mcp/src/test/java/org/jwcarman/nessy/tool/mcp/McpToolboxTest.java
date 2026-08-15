@@ -100,8 +100,9 @@ class McpToolboxTest {
     void tool_lookup_fails_noisy_and_names_every_tool_actually_on_offer() {
       try (McpTestServer fixture =
           McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"))) {
+        McpToolbox toolbox = fixture.toolbox();
 
-        assertThatThrownBy(() -> fixture.toolbox().tool("missing"))
+        assertThatThrownBy(() -> toolbox.tool("missing"))
             .isInstanceOf(NoSuchElementException.class)
             .hasMessageContaining("missing")
             .hasMessageContaining("echo");

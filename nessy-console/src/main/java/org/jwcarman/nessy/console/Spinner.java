@@ -18,7 +18,7 @@ package org.jwcarman.nessy.console;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The wait between {@code tell} and the first token: a {@code \r}-based spinner on its own virtual
@@ -27,6 +27,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>{@link #start()} is a complete no-op when {@link Ansi#enabled()} is false: a piped consumer (a
  * file redirect, a CI log) sees zero spinner bytes, not merely an invisible one.
+ *
+ * <p>{@link #threadRef} is the single source of truth for "is this spinner running", not a separate
+ * boolean paired with it: an earlier version CAS'd a {@code volatile boolean running} to {@code
+ * true} and only assigned the {@code Thread} field afterward, which let a {@link #stop()} racing a
+ * concurrent {@link #start()} observe {@code running == true} while the thread field was still
+ * {@code null} — a {@link NullPointerException} on {@code thread.interrupt()}. Folding both into
+ * one {@link AtomicReference} makes that ordering impossible: the field is never visibly non-null
+ * before the {@link Thread} it names actually exists.
  */
 final class Spinner {
 
@@ -34,8 +42,7 @@ final class Spinner {
   private static final long FRAME_MILLIS = 80L;
 
   private final Writer writer;
-  private final AtomicBoolean running = new AtomicBoolean();
-  private volatile Thread thread;
+  private final AtomicReference<Thread> threadRef = new AtomicReference<>();
 
   Spinner(Writer writer) {
     this.writer = writer;
@@ -46,21 +53,23 @@ final class Spinner {
     if (!Ansi.enabled()) {
       return;
     }
-    if (!running.compareAndSet(false, true)) {
+    Thread candidate = Thread.ofVirtual().name("nessy-console-spinner").unstarted(this::spin);
+    if (!threadRef.compareAndSet(null, candidate)) {
       return;
     }
-    thread = Thread.ofVirtual().name("nessy-console-spinner").start(this::spin);
+    candidate.start();
   }
 
   /** Stops the spinner, if running, and erases its last frame. Idempotent. */
   void stop() {
-    if (!running.compareAndSet(true, false)) {
+    Thread spinning = threadRef.getAndSet(null);
+    if (spinning == null) {
       return;
     }
-    thread.interrupt();
+    spinning.interrupt();
     try {
-      thread.join();
-    } catch (InterruptedException e) {
+      spinning.join();
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
     write("\r \r");
@@ -68,12 +77,12 @@ final class Spinner {
 
   private void spin() {
     int frame = 0;
-    while (running.get()) {
+    while (!Thread.currentThread().isInterrupted()) {
       write("\r" + FRAMES[frame % FRAMES.length]);
       frame++;
       try {
         Thread.sleep(FRAME_MILLIS);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         return;
       }

@@ -79,7 +79,7 @@ class ConsoleReplTest {
               agent, "welcome aboard", "you> ", Set.of("exit", "quit"), null, reader, writer)
           .run();
 
-      assertThat(writer.toString()).isEqualTo("welcome aboard\nyou> ");
+      assertThat(writer).hasToString("welcome aboard\nyou> ");
     }
 
     @Test
@@ -91,7 +91,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
 
-      assertThat(writer.toString()).isEqualTo("you> ");
+      assertThat(writer).hasToString("you> ");
     }
   }
 
@@ -126,7 +126,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
 
-      assertThat(writer.toString()).isEqualTo("you> ");
+      assertThat(writer).hasToString("you> ");
     }
   }
 
@@ -144,7 +144,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
 
-      assertThat(writer.toString()).isEqualTo("you> ");
+      assertThat(writer).hasToString("you> ");
     }
   }
 
@@ -160,7 +160,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
 
-      assertThat(writer.toString()).isEqualTo("you> you> ");
+      assertThat(writer).hasToString("you> you> ");
     }
   }
 
@@ -176,7 +176,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer).run();
 
-      assertThat(writer.toString()).isEqualTo("you> hello once\nyou> hello twice\nyou> ");
+      assertThat(writer).hasToString("you> hello once\nyou> hello twice\nyou> ");
     }
   }
 
@@ -247,7 +247,7 @@ class ConsoleReplTest {
       assertThat(seen).isNotEmpty();
       // the custom observer writes nothing of its own; only the loop's prompts and the blank
       // line the loop itself prints after every told turn land in the writer.
-      assertThat(writer.toString()).isEqualTo("you> \nyou> ");
+      assertThat(writer).hasToString("you> \nyou> ");
     }
   }
 
@@ -310,11 +310,10 @@ class ConsoleReplTest {
       new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, sharedReader, writer).run();
 
       String output = writer.toString();
-      // The approval went through — proof the approver's "y" read landed, not end-of-stream.
-      assertThat(output).contains("pong received");
+      // The approval went through — proof the approver's "y" read landed, not end-of-stream — and
       // "exit" was still there for the REPL's next read — proof nothing was swallowed — so the
       // loop actually ended rather than blocking on a fourth read that was never scripted.
-      assertThat(output).endsWith("you> ");
+      assertThat(output).contains("pong received").endsWith("you> ");
     }
 
     private record PingInput() {}

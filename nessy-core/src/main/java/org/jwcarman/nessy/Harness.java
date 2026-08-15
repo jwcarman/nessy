@@ -61,18 +61,25 @@ public final class Harness {
   private final String defaultModel;
   private final ListenerRegistry registry;
 
+  /**
+   * The session store and whether {@link HarnessBuilder#store(ConversationStore)} was ever called
+   * to choose it explicitly — bundled together (java:S107: an eighth constructor parameter
+   * otherwise) because they are never meaningful apart: {@link #storeSet()} exists only to describe
+   * {@link #store()}'s own provenance.
+   */
+  record StoreSelection(ConversationStore store, boolean storeSet) {}
+
   Harness(
       ModelProvider provider,
-      ConversationStore store,
-      boolean storeSet,
+      StoreSelection storeSelection,
       Parks parks,
       ObservationRegistry observations,
       ObjectMapper mapper,
       String defaultModel,
       ListenerRegistry registry) {
     this.provider = provider;
-    this.store = store;
-    this.storeSet = storeSet;
+    this.store = storeSelection.store();
+    this.storeSet = storeSelection.storeSet();
     this.parks = parks;
     this.observations = observations;
     this.mapper = mapper;

@@ -99,11 +99,7 @@ public final class JdbcParks implements Parks {
           WriteOnceInsert.attempt(
               connection,
               statements.dialect(),
-              "INSERT INTO nessy_parks (token, conversation_id, "
-                  + statements.parkedCallColumn()
-                  + ", agent_name) VALUES (?, ?, "
-                  + statements.jsonPlaceholder()
-                  + ", ?)",
+              statements.parksInsertSql(),
               ps -> {
                 ps.setString(1, park.token().value());
                 ps.setString(2, park.conversationId().value());
@@ -120,11 +116,7 @@ public final class JdbcParks implements Parks {
     return withConnection(
         connection -> {
           JdbcStatements statements = statementsFor(connection);
-          try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "SELECT conversation_id, "
-                      + statements.parkedCallColumn()
-                      + ", agent_name FROM nessy_parks WHERE token = ?")) {
+          try (PreparedStatement ps = connection.prepareStatement(statements.parksFindSql())) {
             ps.setString(1, token.value());
             try (ResultSet rs = ps.executeQuery()) {
               if (!rs.next()) {
@@ -146,10 +138,7 @@ public final class JdbcParks implements Parks {
         connection -> {
           JdbcStatements statements = statementsFor(connection);
           try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "SELECT token, "
-                      + statements.parkedCallColumn()
-                      + ", agent_name FROM nessy_parks WHERE conversation_id = ?")) {
+              connection.prepareStatement(statements.parksForConversationSql())) {
             ps.setString(1, id.value());
             try (ResultSet rs = ps.executeQuery()) {
               List<Park> parks = new ArrayList<>();

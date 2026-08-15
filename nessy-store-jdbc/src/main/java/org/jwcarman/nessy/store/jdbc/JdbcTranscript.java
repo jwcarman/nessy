@@ -205,11 +205,7 @@ public final class JdbcTranscript implements Transcript {
       long version,
       Message message)
       throws SQLException {
-    try (PreparedStatement ps =
-        connection.prepareStatement(
-            "INSERT INTO nessy_transcript (conversation_id, version, message) VALUES (?, ?, "
-                + statements.jsonPlaceholder()
-                + ")")) {
+    try (PreparedStatement ps = connection.prepareStatement(statements.transcriptInsertSql())) {
       ps.setString(1, id.value());
       ps.setLong(2, version);
       ps.setString(3, codec.writeMessage(message));

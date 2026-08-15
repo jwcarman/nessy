@@ -179,19 +179,19 @@ class JdbcConversationStoreTest extends ConversationStoreContract {
   }
 
   /**
-   * S-4 (final review): {@link JdbcStatements#inboxDrainDeleteSql(int)}'s dynamic {@code IN (?, …)}
-   * has no ceiling of its own, so a long-parked conversation's inbox is a real way to reach one —
-   * Oracle rejects more than 1000 expressions in an {@code IN} list outright. This drains 1001
-   * entries — one past {@link InboxDrainChunks#BATCH_SIZE} twice over plus one — end to end against
-   * the real container, proving {@code drainInbox}'s batching actually deletes every entry, not
-   * just that the batching math checks out offline (see {@code InboxDrainChunksTest} for that).
-   * Postgres only: cheap here, and the vendor matrix (Task 3) is not this wave's job.
+   * S-4 (final review): {@code drainInbox} now deletes each drained id with its own JDBC-batched
+   * {@code DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?}, flushing every
+   * {@code DRAIN_BATCH_SIZE} entries — so a long-parked conversation's inbox exercising more than
+   * one flush is a real scenario worth proving end to end, not just that the batch-flushing math
+   * checks out offline. This drains 1001 entries — one past the 500-entry flush size twice over
+   * plus one — against the real container, proving {@code drainInbox}'s batching actually deletes
+   * every entry. Postgres only: cheap here, and the vendor matrix (Task 3) is not this wave's job.
    */
   @Test
   void draining_more_entries_than_one_batch_holds_removes_every_one_of_them() {
     ConversationId id = ConversationId.generate();
     ConversationState base = store().save(ConversationState.newConversation(id), List.of());
-    int entryCount = InboxDrainChunks.BATCH_SIZE * 2 + 1;
+    int entryCount = 1001;
     List<String> entryIds = new ArrayList<>(entryCount);
     for (int i = 0; i < entryCount; i++) {
       InboxEntry.Told entry = InboxEntry.told(List.of(new TextBlock("entry " + i)));

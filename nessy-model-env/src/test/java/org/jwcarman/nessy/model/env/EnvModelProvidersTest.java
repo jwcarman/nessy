@@ -18,42 +18,29 @@ package org.jwcarman.nessy.model.env;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.util.Map;
-import java.util.function.Supplier;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.slf4j.LoggerFactory;
 
 /**
  * Drives {@link EnvModelProviders#fromEnv(Map)} entirely through the env-map seam — no real
  * environment variable, no network — the same offline shape {@code ConsoleReplTest} drives {@code
- * ConsoleRepl} through its reader/writer seam.
+ * ConsoleRepl} through its reader/writer seam. The default-provider notice is asserted through a
+ * capturing {@link ListAppender} on {@link EnvModelProviders}'s own logger — the same house pattern
+ * {@code AgentBuilderTest}'s {@code Memory_downgrade_warning} uses — rather than by redirecting
+ * {@link System#err}, since the notice moved off that raw stream and onto a logger (java:S106).
  */
 class EnvModelProvidersTest {
-
-  /** The provider {@link #capturingStderr} returned, paired with whatever it wrote to stderr. */
-  private record Captured(ModelProvider provider, String stderr) {}
-
-  /**
-   * Runs {@code call} with {@link System#err} redirected, so both halves of "the explicit choice is
-   * silent, only the default notices" can be asserted the same deliberate way: emptiness proven by
-   * inspecting the channel, not merely by an assertion that never happened to check it.
-   */
-  private static Captured capturingStderr(Supplier<ModelProvider> call) {
-    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-    PrintStream originalErr = System.err;
-    System.setErr(new PrintStream(buffer, true, StandardCharsets.UTF_8));
-    try {
-      return new Captured(call.get(), buffer.toString(StandardCharsets.UTF_8));
-    } finally {
-      System.setErr(originalErr);
-    }
-  }
 
   @Nested
   class Only_the_anthropic_key_set {
@@ -82,6 +69,26 @@ class EnvModelProvidersTest {
   @Nested
   class Both_keys_set {
 
+    private ListAppender<ILoggingEvent> appender;
+    private Logger logger;
+    private Level originalLevel;
+
+    @BeforeEach
+    void wires_a_capturing_appender_onto_the_env_model_providers_logger() {
+      logger = (Logger) LoggerFactory.getLogger(EnvModelProviders.class);
+      originalLevel = logger.getLevel();
+      logger.setLevel(Level.WARN);
+      appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void unwires_the_appender_and_restores_the_loggers_level() {
+      logger.detachAppender(appender);
+      logger.setLevel(originalLevel);
+    }
+
     @Test
     void an_explicit_openai_choice_is_silent_even_with_mixed_case() {
       Map<String, String> env =
@@ -91,10 +98,10 @@ class EnvModelProvidersTest {
               // Mixed case, on purpose: the tiebreak reads NESSY_PROVIDER case-insensitively.
               "NESSY_PROVIDER", "OpenAI");
 
-      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+      ModelProvider provider = EnvModelProviders.fromEnv(env);
 
-      assertThat(captured.provider()).isInstanceOf(OpenAiModelProvider.class);
-      assertThat(captured.stderr()).isEmpty();
+      assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(appender.list).isEmpty();
     }
 
     @Test
@@ -105,29 +112,30 @@ class EnvModelProvidersTest {
               "OPENAI_API_KEY", "fake-openai-key",
               "NESSY_PROVIDER", "anthropic");
 
-      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+      ModelProvider provider = EnvModelProviders.fromEnv(env);
 
-      assertThat(captured.provider()).isInstanceOf(AnthropicModelProvider.class);
-      assertThat(captured.stderr()).isEmpty();
+      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(appender.list).isEmpty();
     }
 
     @Test
-    void defaults_to_anthropic_and_prints_a_one_line_notice_when_nessy_provider_is_unset() {
+    void defaults_to_anthropic_and_warns_once_when_nessy_provider_is_unset() {
       Map<String, String> env =
           Map.of(
               "ANTHROPIC_API_KEY", "fake-anthropic-key",
               "OPENAI_API_KEY", "fake-openai-key");
 
-      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+      ModelProvider provider = EnvModelProviders.fromEnv(env);
 
-      assertThat(captured.provider()).isInstanceOf(AnthropicModelProvider.class);
-      assertThat(captured.stderr()).isNotEmpty();
-      assertThat(captured.stderr().lines().count()).isEqualTo(1);
-      assertThat(captured.stderr()).containsIgnoringCase("anthropic");
+      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(appender.list).hasSize(1);
+      ILoggingEvent event = appender.list.getFirst();
+      assertThat(event.getLevel()).isEqualTo(Level.WARN);
+      assertThat(event.getFormattedMessage()).containsIgnoringCase("anthropic");
     }
 
     @Test
-    void defaults_to_anthropic_and_prints_a_one_line_notice_when_nessy_provider_is_unrecognized() {
+    void defaults_to_anthropic_and_warns_once_when_nessy_provider_is_unrecognized() {
       Map<String, String> env =
           Map.of(
               "ANTHROPIC_API_KEY", "fake-anthropic-key",
@@ -135,12 +143,13 @@ class EnvModelProvidersTest {
               // Neither "anthropic" nor "openai" — the tiebreak's fallback arm, same as unset.
               "NESSY_PROVIDER", "gemini");
 
-      Captured captured = capturingStderr(() -> EnvModelProviders.fromEnv(env));
+      ModelProvider provider = EnvModelProviders.fromEnv(env);
 
-      assertThat(captured.provider()).isInstanceOf(AnthropicModelProvider.class);
-      assertThat(captured.stderr()).isNotEmpty();
-      assertThat(captured.stderr().lines().count()).isEqualTo(1);
-      assertThat(captured.stderr()).containsIgnoringCase("anthropic");
+      assertThat(provider).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(appender.list).hasSize(1);
+      ILoggingEvent event = appender.list.getFirst();
+      assertThat(event.getLevel()).isEqualTo(Level.WARN);
+      assertThat(event.getFormattedMessage()).containsIgnoringCase("anthropic");
     }
   }
 

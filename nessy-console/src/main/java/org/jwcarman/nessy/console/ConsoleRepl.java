@@ -17,10 +17,8 @@ package org.jwcarman.nessy.console;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -220,8 +218,8 @@ public final class ConsoleRepl {
      * the same buffer this loop does, rather than each stealing from the other's read of stdin.
      */
     public void run() {
-      Writer systemWriter = new OutputStreamWriter(System.out, StandardCharsets.UTF_8);
-      new ConsoleRepl(agent, banner, prompt, exitWords, renderer, ConsoleIo.stdin(), systemWriter)
+      new ConsoleRepl(
+              agent, banner, prompt, exitWords, renderer, ConsoleIo.stdin(), ConsoleIo.stdout())
           .run();
     }
   }

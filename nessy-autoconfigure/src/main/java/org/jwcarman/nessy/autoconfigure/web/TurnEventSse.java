@@ -122,8 +122,8 @@ public final class TurnEventSse {
   private static String textOf(Message message) {
     StringBuilder text = new StringBuilder();
     for (ContentBlock block : message.content()) {
-      if (block instanceof TextBlock textBlock) {
-        text.append(textBlock.text());
+      if (block instanceof TextBlock(String blockText)) {
+        text.append(blockText);
       }
     }
     return text.toString();

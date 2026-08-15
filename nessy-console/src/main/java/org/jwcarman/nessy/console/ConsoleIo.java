@@ -17,6 +17,8 @@ package org.jwcarman.nessy.console;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -45,5 +47,18 @@ final class ConsoleIo {
   /** The one {@link BufferedReader} every real-console entry point in this module reads through. */
   static BufferedReader stdin() {
     return STDIN;
+  }
+
+  /**
+   * A fresh {@link Writer} over the real process stdout — the one place in this module that names
+   * {@link System#out} directly, so {@link ConsoleRepl.Builder#run()} and {@link ConsoleApprover}'s
+   * default constructor both delegate here instead of each wrapping the stream themselves. This is
+   * the adapter boundary a console REPL cannot avoid: the whole point of this library is writing to
+   * the real terminal a human is watching, not logging, so there is no logger to route through here
+   * — a fresh {@link Writer} per call (unlike {@link #stdin()}'s single shared reader) because,
+   * unlike input, two writers over the same output stream do not steal bytes from each other.
+   */
+  static Writer stdout() {
+    return new OutputStreamWriter(System.out, StandardCharsets.UTF_8);
   }
 }

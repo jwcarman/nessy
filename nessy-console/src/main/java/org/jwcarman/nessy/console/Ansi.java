@@ -28,14 +28,22 @@ package org.jwcarman.nessy.console;
  */
 public final class Ansi {
 
-  private static final String RESET = "[0m";
-  private static final String BOLD = "[1m";
-  private static final String DIM = "[2m";
-  private static final String ITALIC = "[3m";
-  private static final String CYAN = "[36m";
-  private static final String YELLOW = "[33m";
-  private static final String RED = "[31m";
-  private static final String GREEN = "[32m";
+  /**
+   * The ANSI escape character ({@code ESC}, {@code 0x1B}) that opens every SGR sequence below,
+   * spelled with an explicit {@code \u001B} escape rather than a bare control character embedded in
+   * the source -- readable in a diff and an editor, and it satisfies java:S2479 (raw control
+   * characters in string literals) without suppressing the rule.
+   */
+  private static final String ESC = "\u001B[";
+
+  private static final String RESET = ESC + "0m";
+  private static final String BOLD = ESC + "1m";
+  private static final String DIM = ESC + "2m";
+  private static final String ITALIC = ESC + "3m";
+  private static final String CYAN = ESC + "36m";
+  private static final String YELLOW = ESC + "33m";
+  private static final String RED = ESC + "31m";
+  private static final String GREEN = ESC + "32m";
 
   private static final boolean DETECTED = detect();
 

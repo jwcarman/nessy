@@ -131,8 +131,8 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   public Harness build() {
     return new Harness(
         provider,
-        Optional.ofNullable(store).orElseGet(this::defaultStore),
-        storeSet,
+        new Harness.StoreSelection(
+            Optional.ofNullable(store).orElseGet(this::defaultStore), storeSet),
         Optional.ofNullable(parks).orElseGet(this::defaultParks),
         Optional.ofNullable(observations).orElseGet(this::defaultObservations),
         Optional.ofNullable(mapper).orElseGet(this::defaultMapper),

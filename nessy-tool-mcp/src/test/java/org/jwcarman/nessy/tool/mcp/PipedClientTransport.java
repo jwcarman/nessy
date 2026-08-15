@@ -135,7 +135,7 @@ final class PipedClientTransport implements McpClientTransport {
   private static void closeQuietly(Closeable closeable) {
     try {
       closeable.close();
-    } catch (IOException ignored) {
+    } catch (IOException _) {
       // best-effort teardown; the streams are pipes that only this pair uses
     }
   }

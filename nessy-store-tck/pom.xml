@@ -31,6 +31,22 @@
   <name>Nessy Store TCK</name>
   <description>The technology-compatibility kit every ConversationStore/Parks/Transcript/SummaryStore implementation must pass, published as a main-scope artifact so third-party store implementers can certify against it.</description>
 
+  <properties>
+    <!-- This module's main scope IS test code by nature, the same shape as JUnit itself: the
+         contracts under src/main/java are abstract JUnit/AssertJ test classes shipped as
+         production code on purpose (see the dependency comment below), not application logic.
+         Sonar's default source/test split has no third bucket for "production-scoped test
+         code", so java:S5960 (assertions in "production" code), java:S100 (JUnit's own
+         snake_case-adjacent contract method names), and java:S1192 (literal duplication Sonar
+         only frowns on outside tests) all fire here on code that is, in substance, entirely
+         test code. Reclassifying both source roots as sonar.tests — rather than excluding the
+         rules — tells the scanner the truth about what this module is; sonar.sources is left
+         empty on purpose, the documented way to tell the Maven scanner "there is no production
+         source root here" (see docs.sonarsource.com/.../sonarscanner-for-maven). -->
+    <sonar.sources></sonar.sources>
+    <sonar.tests>src/main/java,src/test/java</sonar.tests>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>

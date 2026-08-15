@@ -174,9 +174,7 @@ public final class JdbcConversationStore implements ConversationStore {
           int updated =
               update(
                   connection,
-                  "UPDATE nessy_conversation SET version = ?, state = "
-                      + statements.jsonPlaceholder()
-                      + " WHERE id = ? AND version = ?",
+                  statements.conversationUpdateSql(),
                   ps -> {
                     ps.setLong(1, bumped.version());
                     ps.setString(2, json);
@@ -207,9 +205,7 @@ public final class JdbcConversationStore implements ConversationStore {
     return WriteOnceInsert.attempt(
         connection,
         statements.dialect(),
-        "INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, "
-            + statements.jsonPlaceholder()
-            + ")",
+        statements.conversationInsertSql(),
         ps -> {
           ps.setString(1, id.value());
           ps.setLong(2, bumped.version());
@@ -228,14 +224,25 @@ public final class JdbcConversationStore implements ConversationStore {
   }
 
   /**
-   * Deletes exactly the drained entries — a no-op if there is nothing to drain, since the dynamic
-   * {@code IN (?, …)} {@link JdbcStatements#inboxDrainDeleteSql(int)} builds has no valid shape for
-   * zero ids (unlike Postgres's retired {@code = ANY(?)}, which tolerated an empty array without
-   * complaint). A drain larger than {@link InboxDrainChunks#BATCH_SIZE} runs as several {@code
-   * DELETE}s instead of one — see that class's javadoc for the vendor ceilings that cap how large a
-   * single {@code IN} list may safely get — each batch on this same {@code connection}, inside the
-   * one explicit transaction {@link #save} already opened, so the whole drain stays atomic with the
-   * save it accompanies regardless of how many batches it took.
+   * How many {@code DELETE}s {@link #drainInbox} batches into one {@link
+   * PreparedStatement#executeBatch()} round trip before flushing. JDBC batching binds each drained
+   * id's {@code DELETE} as its own statement execution rather than growing a single statement's
+   * parameter list, so unlike the retired dynamic {@code IN (?, …, ?)} this constant is not a
+   * vendor parameter ceiling — no single execution ever carries more than {@link
+   * JdbcStatements#inboxDrainDeleteSql()}'s fixed two parameters. It exists purely to cap how much
+   * unflushed batch state (and driver-side buffering) one drain accumulates before a round trip,
+   * same rationale as any batch-insert loop.
+   */
+  private static final int DRAIN_BATCH_SIZE = 500;
+
+  /**
+   * Deletes exactly the drained entries — a no-op if there is nothing to drain. Each drained id's
+   * {@code DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?} is added to one
+   * {@link PreparedStatement} batch and flushed every {@link #DRAIN_BATCH_SIZE} entries (and once
+   * more at the end for the remainder), all on this same {@code connection}, inside the one
+   * explicit transaction {@link #save} already opened — so the whole drain stays atomic with the
+   * save it accompanies regardless of how many entries it drained or how many batch flushes that
+   * took.
    */
   private void drainInbox(
       Connection connection,
@@ -246,26 +253,21 @@ public final class JdbcConversationStore implements ConversationStore {
     if (drainedInboxIds.isEmpty()) {
       return;
     }
-    List<String> ids =
-        drainedInboxIds instanceof List<String> alreadyAList
-            ? alreadyAList
-            : new ArrayList<>(drainedInboxIds);
-    for (List<String> batch : InboxDrainChunks.chunk(ids)) {
-      drainBatch(connection, statements, id, batch);
-    }
-  }
-
-  private void drainBatch(
-      Connection connection, JdbcStatements statements, ConversationId id, List<String> batch)
-      throws SQLException {
-    try (PreparedStatement ps =
-        connection.prepareStatement(statements.inboxDrainDeleteSql(batch.size()))) {
-      int index = 1;
-      for (String entryId : batch) {
-        ps.setString(index++, entryId);
+    try (PreparedStatement ps = connection.prepareStatement(statements.inboxDrainDeleteSql())) {
+      int pending = 0;
+      for (String entryId : drainedInboxIds) {
+        ps.setString(1, id.value());
+        ps.setString(2, entryId);
+        ps.addBatch();
+        pending++;
+        if (pending == DRAIN_BATCH_SIZE) {
+          ps.executeBatch();
+          pending = 0;
+        }
       }
-      ps.setString(index, id.value());
-      ps.executeUpdate();
+      if (pending > 0) {
+        ps.executeBatch();
+      }
     }
   }
 
@@ -277,12 +279,7 @@ public final class JdbcConversationStore implements ConversationStore {
     withConnection(
         connection -> {
           JdbcStatements statements = statementsFor(connection);
-          try (PreparedStatement ps =
-              connection.prepareStatement(
-                  "INSERT INTO nessy_inbox (entry_id, conversation_id, kind, payload)"
-                      + " VALUES (?, ?, ?, "
-                      + statements.jsonPlaceholder()
-                      + ")")) {
+          try (PreparedStatement ps = connection.prepareStatement(statements.inboxInsertSql())) {
             ps.setString(1, entry.id());
             ps.setString(2, id.value());
             ps.setString(3, kind);

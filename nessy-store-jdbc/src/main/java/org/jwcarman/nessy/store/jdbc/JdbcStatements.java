@@ -16,17 +16,18 @@
 package org.jwcarman.nessy.store.jdbc;
 
 import java.util.Objects;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
- * The small set of SQL fragments that actually vary by {@link JdbcDialect} (design §4): a JSON
- * parameter placeholder, the transcript's last-row read-and-lock, the transcript's page read, and
- * the inbox drain's dynamically-sized delete — plus one fragment the design's audit did not
- * anticipate, {@link #parkedCallColumn()}, a reserved-word quoting wrinkle live verification
- * against MySQL turned up. Everything else — the fenced CAS {@code UPDATE}, every other plain read,
- * and the write-once inserts (unified onto one SQLState-and-vendor-code-driven code path in {@link
- * WriteOnceInsert} rather than varied per dialect) — is ANSI SQL already and needs no variant here.
+ * The complete per-dialect SQL text {@link JdbcDialect} variance touches (design §4). Earlier this
+ * class assembled statements by splicing small fragments — a JSON parameter placeholder, a
+ * reserved-word column quoting wrinkle — into shared templates at prepare time. Sonar's data-flow
+ * analysis cannot prove those fragments constant once spliced, and (worse) miscounts the resulting
+ * statement's placeholders, so every fragment-assembled statement using two variable pieces read as
+ * a dynamically-formatted SQL query (java:S2077) and a suspiciously-mismatched parameter count
+ * (java:S2695) — both false positives, but Sonar has no way to know that from the spliced form.
+ * Every statement below is instead a complete literal per dialect, chosen by a {@code switch} over
+ * {@link JdbcDialect} with no {@code default} arm — the compiler, not a runtime fallback, is what
+ * catches a sixth dialect arriving without its own literal here.
  */
 final class JdbcStatements {
 
@@ -46,28 +47,97 @@ final class JdbcStatements {
   }
 
   /**
-   * The parameter placeholder a {@code jsonb}/{@code json}/{@code clob} column's bound value needs:
-   * Postgres alone requires the explicit {@code ?::jsonb} cast (its driver otherwise binds the
-   * parameter as {@code unknown} or {@code text} and the server rejects the assignment); every
-   * other dialect accepts the bare {@code ?} the driver already sends as a string.
+   * {@code nessy_conversation}'s fenced {@code UPDATE} (design §4): identical everywhere but the
+   * {@code state} column's parameter placeholder, which Postgres alone must cast explicitly to
+   * {@code jsonb} (its driver otherwise binds the parameter as {@code unknown} or {@code text} and
+   * the server rejects the assignment); every other dialect accepts the bare {@code ?} the driver
+   * already sends as a string.
    */
-  String jsonPlaceholder() {
-    return dialect == JdbcDialect.POSTGRES ? "?::jsonb" : "?";
+  String conversationUpdateSql() {
+    return switch (dialect) {
+      case POSTGRES ->
+          "UPDATE nessy_conversation SET version = ?, state = ?::jsonb WHERE id = ? AND version = ?";
+      case MYSQL, MARIADB, SQLSERVER, ORACLE ->
+          "UPDATE nessy_conversation SET version = ?, state = ? WHERE id = ? AND version = ?";
+    };
   }
 
   /**
-   * The {@code nessy_parks.call} column's reference in SQL text: bare {@code call} on Postgres, SQL
-   * Server, and Oracle (all three confirmed live to accept it as an ordinary column name), but
-   * backtick-quoted on MySQL/MariaDB, where {@code CALL} is a reserved word their grammar will not
-   * accept bare in this position — a MySQL-family wrinkle the design's audit did not anticipate,
-   * found running the actual schema against a live container rather than by inspection. Not part of
-   * design §4's enumerated variance list, but the same shape of variance: one identifier, one
-   * per-dialect spelling.
+   * {@code nessy_conversation}'s version-0 insert (design §4) — see {@link
+   * #conversationUpdateSql()} for why Postgres alone needs the {@code ?::jsonb} cast.
    */
-  String parkedCallColumn() {
+  String conversationInsertSql() {
     return switch (dialect) {
-      case MYSQL, MARIADB -> "`call`";
-      case POSTGRES, SQLSERVER, ORACLE -> "call";
+      case POSTGRES ->
+          "INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, ?::jsonb)";
+      case MYSQL, MARIADB, SQLSERVER, ORACLE ->
+          "INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, ?)";
+    };
+  }
+
+  /**
+   * {@code nessy_inbox}'s append insert (design §4) — see {@link #conversationUpdateSql()} for why
+   * Postgres alone needs the {@code ?::jsonb} cast.
+   */
+  String inboxInsertSql() {
+    return switch (dialect) {
+      case POSTGRES ->
+          "INSERT INTO nessy_inbox (entry_id, conversation_id, kind, payload) VALUES (?, ?, ?, ?::jsonb)";
+      case MYSQL, MARIADB, SQLSERVER, ORACLE ->
+          "INSERT INTO nessy_inbox (entry_id, conversation_id, kind, payload) VALUES (?, ?, ?, ?)";
+    };
+  }
+
+  /**
+   * {@code nessy_transcript}'s append insert (design §4) — see {@link #conversationUpdateSql()} for
+   * why Postgres alone needs the {@code ?::jsonb} cast.
+   */
+  String transcriptInsertSql() {
+    return switch (dialect) {
+      case POSTGRES ->
+          "INSERT INTO nessy_transcript (conversation_id, version, message) VALUES (?, ?, ?::jsonb)";
+      case MYSQL, MARIADB, SQLSERVER, ORACLE ->
+          "INSERT INTO nessy_transcript (conversation_id, version, message) VALUES (?, ?, ?)";
+    };
+  }
+
+  /**
+   * {@code nessy_parks}'s insert (design §4): both the Postgres-only {@code ?::jsonb} cast (see
+   * {@link #conversationUpdateSql()}) and the {@code call} column's reserved-word quoting wrinkle
+   * apply here at once. {@code call} is bare on Postgres, SQL Server, and Oracle (all three
+   * confirmed live to accept it as an ordinary column name) but backtick-quoted on MySQL/MariaDB,
+   * where {@code CALL} is a reserved word their grammar will not accept bare in this position — a
+   * MySQL-family wrinkle the design's audit did not anticipate, found running the actual schema
+   * against a live container rather than by inspection.
+   */
+  String parksInsertSql() {
+    return switch (dialect) {
+      case POSTGRES ->
+          "INSERT INTO nessy_parks (token, conversation_id, call, agent_name) VALUES (?, ?, ?::jsonb, ?)";
+      case MYSQL, MARIADB ->
+          "INSERT INTO nessy_parks (token, conversation_id, `call`, agent_name) VALUES (?, ?, ?, ?)";
+      case SQLSERVER, ORACLE ->
+          "INSERT INTO nessy_parks (token, conversation_id, call, agent_name) VALUES (?, ?, ?, ?)";
+    };
+  }
+
+  /** {@code nessy_parks}'s by-token read (design §4) — see {@link #parksInsertSql()}. */
+  String parksFindSql() {
+    return switch (dialect) {
+      case MYSQL, MARIADB ->
+          "SELECT conversation_id, `call`, agent_name FROM nessy_parks WHERE token = ?";
+      case POSTGRES, SQLSERVER, ORACLE ->
+          "SELECT conversation_id, call, agent_name FROM nessy_parks WHERE token = ?";
+    };
+  }
+
+  /** {@code nessy_parks}'s by-conversation read (design §4) — see {@link #parksInsertSql()}. */
+  String parksForConversationSql() {
+    return switch (dialect) {
+      case MYSQL, MARIADB ->
+          "SELECT token, `call`, agent_name FROM nessy_parks WHERE conversation_id = ?";
+      case POSTGRES, SQLSERVER, ORACLE ->
+          "SELECT token, call, agent_name FROM nessy_parks WHERE conversation_id = ?";
     };
   }
 
@@ -139,21 +209,13 @@ final class JdbcStatements {
   }
 
   /**
-   * {@code nessy_inbox}'s drain delete for exactly {@code idCount} drained entry ids (design §4):
-   * Postgres's {@code entry_id = ANY(?)} array binding has no portable equivalent, so every dialect
-   * — Postgres included — now shares one dynamically-sized {@code IN (?, …, ?)} instead; inbox
-   * drains are small (one save's worth of entries), so the per-call statement text this builds
-   * stays short. {@code idCount} must be at least 1 — callers with nothing to drain skip the delete
-   * entirely rather than ask for an empty, invalid {@code IN ()}.
+   * {@code nessy_inbox}'s drain delete (design §4): one row at a time, by primary key — {@link
+   * JdbcConversationStore#drainInbox} batches this statement with JDBC's own {@code addBatch()} /
+   * {@code executeBatch()} rather than growing a dynamically-sized {@code IN (?, …, ?)} per call,
+   * so the statement text itself is a constant, identical across every dialect and every drain
+   * size.
    */
-  String inboxDrainDeleteSql(int idCount) {
-    if (idCount < 1) {
-      throw new IllegalArgumentException("idCount must be at least 1, was " + idCount);
-    }
-    String placeholders =
-        Stream.generate(() -> "?").limit(idCount).collect(Collectors.joining(","));
-    return "DELETE FROM nessy_inbox WHERE entry_id IN ("
-        + placeholders
-        + ") AND conversation_id = ?";
+  String inboxDrainDeleteSql() {
+    return "DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?";
   }
 }

@@ -185,7 +185,7 @@ class TurnObserverLoggingTest {
     @Test
     void each_line_carries_whatever_the_supplier_returns_at_its_own_narration() {
       List<String> prefixes = new ArrayList<>(List.of("unknown"));
-      TurnObserver observer = TurnObserver.logging(logger, () -> prefixes.getFirst());
+      TurnObserver observer = TurnObserver.logging(logger, prefixes::getFirst);
 
       observer.on(new TurnEvent.ToolCallRequested(CALL));
       prefixes.set(0, "order-42");

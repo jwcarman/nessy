@@ -31,44 +31,174 @@ import org.junit.jupiter.api.Test;
 class JdbcStatementsTest {
 
   @Nested
-  class Json_placeholder {
+  class Conversation_update {
 
     @Test
-    void postgres_casts_to_jsonb() {
-      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).jsonPlaceholder())
-          .isEqualTo("?::jsonb");
+    void postgres_casts_the_state_column_to_jsonb() {
+      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).conversationUpdateSql())
+          .isEqualTo(
+              "UPDATE nessy_conversation SET version = ?, state = ?::jsonb"
+                  + " WHERE id = ? AND version = ?");
     }
 
     @Test
-    void every_other_dialect_is_a_bare_placeholder() {
+    void every_other_dialect_uses_a_bare_placeholder() {
+      String expected =
+          "UPDATE nessy_conversation SET version = ?, state = ? WHERE id = ? AND version = ?";
       for (JdbcDialect dialect :
           new JdbcDialect[] {
             JdbcDialect.MYSQL, JdbcDialect.MARIADB, JdbcDialect.SQLSERVER, JdbcDialect.ORACLE
           }) {
-        assertThat(JdbcStatements.forDialect(dialect).jsonPlaceholder()).isEqualTo("?");
+        assertThat(JdbcStatements.forDialect(dialect).conversationUpdateSql()).isEqualTo(expected);
       }
     }
   }
 
   @Nested
-  class Parked_call_column {
+  class Conversation_insert {
 
     @Test
-    void my_sql_and_maria_db_backtick_quote_it() {
-      assertThat(JdbcStatements.forDialect(JdbcDialect.MYSQL).parkedCallColumn())
-          .isEqualTo("`call`");
-      assertThat(JdbcStatements.forDialect(JdbcDialect.MARIADB).parkedCallColumn())
-          .isEqualTo("`call`");
+    void postgres_casts_the_state_column_to_jsonb() {
+      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).conversationInsertSql())
+          .isEqualTo("INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, ?::jsonb)");
     }
 
     @Test
-    void postgres_sql_server_and_oracle_leave_it_bare() {
-      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).parkedCallColumn())
-          .isEqualTo("call");
-      assertThat(JdbcStatements.forDialect(JdbcDialect.SQLSERVER).parkedCallColumn())
-          .isEqualTo("call");
-      assertThat(JdbcStatements.forDialect(JdbcDialect.ORACLE).parkedCallColumn())
-          .isEqualTo("call");
+    void every_other_dialect_uses_a_bare_placeholder() {
+      String expected = "INSERT INTO nessy_conversation (id, version, state) VALUES (?, ?, ?)";
+      for (JdbcDialect dialect :
+          new JdbcDialect[] {
+            JdbcDialect.MYSQL, JdbcDialect.MARIADB, JdbcDialect.SQLSERVER, JdbcDialect.ORACLE
+          }) {
+        assertThat(JdbcStatements.forDialect(dialect).conversationInsertSql()).isEqualTo(expected);
+      }
+    }
+  }
+
+  @Nested
+  class Inbox_insert {
+
+    @Test
+    void postgres_casts_the_payload_column_to_jsonb() {
+      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).inboxInsertSql())
+          .isEqualTo(
+              "INSERT INTO nessy_inbox (entry_id, conversation_id, kind, payload)"
+                  + " VALUES (?, ?, ?, ?::jsonb)");
+    }
+
+    @Test
+    void every_other_dialect_uses_a_bare_placeholder() {
+      String expected =
+          "INSERT INTO nessy_inbox (entry_id, conversation_id, kind, payload) VALUES (?, ?, ?, ?)";
+      for (JdbcDialect dialect :
+          new JdbcDialect[] {
+            JdbcDialect.MYSQL, JdbcDialect.MARIADB, JdbcDialect.SQLSERVER, JdbcDialect.ORACLE
+          }) {
+        assertThat(JdbcStatements.forDialect(dialect).inboxInsertSql()).isEqualTo(expected);
+      }
+    }
+  }
+
+  @Nested
+  class Transcript_insert {
+
+    @Test
+    void postgres_casts_the_message_column_to_jsonb() {
+      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).transcriptInsertSql())
+          .isEqualTo(
+              "INSERT INTO nessy_transcript (conversation_id, version, message)"
+                  + " VALUES (?, ?, ?::jsonb)");
+    }
+
+    @Test
+    void every_other_dialect_uses_a_bare_placeholder() {
+      String expected =
+          "INSERT INTO nessy_transcript (conversation_id, version, message) VALUES (?, ?, ?)";
+      for (JdbcDialect dialect :
+          new JdbcDialect[] {
+            JdbcDialect.MYSQL, JdbcDialect.MARIADB, JdbcDialect.SQLSERVER, JdbcDialect.ORACLE
+          }) {
+        assertThat(JdbcStatements.forDialect(dialect).transcriptInsertSql()).isEqualTo(expected);
+      }
+    }
+  }
+
+  @Nested
+  class Parks_insert {
+
+    @Test
+    void postgres_casts_the_call_column_to_jsonb_and_leaves_the_column_name_bare() {
+      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).parksInsertSql())
+          .isEqualTo(
+              "INSERT INTO nessy_parks (token, conversation_id, call, agent_name)"
+                  + " VALUES (?, ?, ?::jsonb, ?)");
+    }
+
+    @Test
+    void my_sql_and_maria_db_backtick_quote_the_column_name() {
+      String expected =
+          "INSERT INTO nessy_parks (token, conversation_id, `call`, agent_name)"
+              + " VALUES (?, ?, ?, ?)";
+      assertThat(JdbcStatements.forDialect(JdbcDialect.MYSQL).parksInsertSql()).isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.MARIADB).parksInsertSql())
+          .isEqualTo(expected);
+    }
+
+    @Test
+    void sql_server_and_oracle_leave_the_column_name_bare_with_a_plain_placeholder() {
+      String expected =
+          "INSERT INTO nessy_parks (token, conversation_id, call, agent_name) VALUES (?, ?, ?, ?)";
+      assertThat(JdbcStatements.forDialect(JdbcDialect.SQLSERVER).parksInsertSql())
+          .isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.ORACLE).parksInsertSql())
+          .isEqualTo(expected);
+    }
+  }
+
+  @Nested
+  class Parks_find {
+
+    @Test
+    void my_sql_and_maria_db_backtick_quote_the_call_column() {
+      String expected =
+          "SELECT conversation_id, `call`, agent_name FROM nessy_parks WHERE token = ?";
+      assertThat(JdbcStatements.forDialect(JdbcDialect.MYSQL).parksFindSql()).isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.MARIADB).parksFindSql()).isEqualTo(expected);
+    }
+
+    @Test
+    void postgres_sql_server_and_oracle_leave_the_call_column_bare() {
+      String expected = "SELECT conversation_id, call, agent_name FROM nessy_parks WHERE token = ?";
+      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).parksFindSql())
+          .isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.SQLSERVER).parksFindSql())
+          .isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.ORACLE).parksFindSql()).isEqualTo(expected);
+    }
+  }
+
+  @Nested
+  class Parks_for_conversation {
+
+    @Test
+    void my_sql_and_maria_db_backtick_quote_the_call_column() {
+      String expected =
+          "SELECT token, `call`, agent_name FROM nessy_parks WHERE conversation_id = ?";
+      assertThat(JdbcStatements.forDialect(JdbcDialect.MYSQL).parksForConversationSql())
+          .isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.MARIADB).parksForConversationSql())
+          .isEqualTo(expected);
+    }
+
+    @Test
+    void postgres_sql_server_and_oracle_leave_the_call_column_bare() {
+      String expected = "SELECT token, call, agent_name FROM nessy_parks WHERE conversation_id = ?";
+      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).parksForConversationSql())
+          .isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.SQLSERVER).parksForConversationSql())
+          .isEqualTo(expected);
+      assertThat(JdbcStatements.forDialect(JdbcDialect.ORACLE).parksForConversationSql())
+          .isEqualTo(expected);
     }
   }
 
@@ -150,36 +280,11 @@ class JdbcStatementsTest {
   class Inbox_drain_delete {
 
     @Test
-    void builds_exactly_id_count_placeholders() {
-      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).inboxDrainDeleteSql(1))
-          .isEqualTo("DELETE FROM nessy_inbox WHERE entry_id IN (?) AND conversation_id = ?");
-      assertThat(JdbcStatements.forDialect(JdbcDialect.POSTGRES).inboxDrainDeleteSql(3))
-          .isEqualTo("DELETE FROM nessy_inbox WHERE entry_id IN (?,?,?) AND conversation_id = ?");
-    }
-
-    @Test
-    void is_the_same_shape_for_every_dialect() {
+    void is_one_constant_statement_for_every_dialect() {
+      String expected = "DELETE FROM nessy_inbox WHERE conversation_id = ? AND entry_id = ?";
       for (JdbcDialect dialect : JdbcDialect.values()) {
-        assertThat(JdbcStatements.forDialect(dialect).inboxDrainDeleteSql(2))
-            .isEqualTo("DELETE FROM nessy_inbox WHERE entry_id IN (?,?) AND conversation_id = ?");
+        assertThat(JdbcStatements.forDialect(dialect).inboxDrainDeleteSql()).isEqualTo(expected);
       }
-    }
-
-    @Test
-    void zero_ids_is_rejected_rather_than_building_an_invalid_in_clause() {
-      JdbcStatements statements = JdbcStatements.forDialect(JdbcDialect.POSTGRES);
-
-      assertThatThrownBy(() -> statements.inboxDrainDeleteSql(0))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("0");
-    }
-
-    @Test
-    void a_negative_id_count_is_rejected_too() {
-      JdbcStatements statements = JdbcStatements.forDialect(JdbcDialect.POSTGRES);
-
-      assertThatThrownBy(() -> statements.inboxDrainDeleteSql(-1))
-          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 
