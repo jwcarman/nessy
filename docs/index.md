@@ -22,12 +22,11 @@ once-only delivery.
 
 ## An agent in about twenty lines
 
-This runs with no API key, no network, and no real model:
-`ScriptedModelProvider` plays back a scripted conversation, so the example
-compiles and runs against exactly what ships today. Real providers are
-`nessy-model-*` modules (`nessy-model-anthropic`, `nessy-model-openai`); swap
-one in and nothing else about this shape changes — see the
-[Getting Started](guides/getting-started.md) guide.
+Export a key and run — this one calls a real model:
+
+```bash
+export ANTHROPIC_API_KEY=...
+```
 
 ```java
 record Add(int left, int right) {}
@@ -42,23 +41,14 @@ class AddTool implements Tool<Add> {
     }
 }
 
-ObjectNode args = JsonNodeFactory.instance.objectNode();
-args.put("left", 2);
-args.put("right", 2);
-
-ScriptedModelProvider provider = ScriptedModelProvider.builder()
-        .toolUse("c1", "add", args)
-        .endWithToolUse()
-        .text("The answer is 4.")
-        .endTurn()
-        .build();
+AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
 
 Agent<String> agent =
     Nessy.harness(provider)
         .build()
         .agent()
-        .name("hello")
-        .model("fake-model")
+        .name("adder")
+        .model("claude-haiku-4-5-20251001")
         .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
         .build();
 
@@ -78,11 +68,20 @@ The wiring itself — provider, harness, agent, `tell` — is about twenty lines
 `AddTool` is another dozen, and it's the part that changes from agent to
 agent.
 
-`.name("hello")` isn't decoration — every agent identifies itself, and that
+`.name("adder")` isn't decoration — every agent identifies itself, and that
 identity is what a [parked callback](concepts/parks-and-callbacks.md) checks
 before letting a resume through. `Memory` here is the builder's default —
 an in-memory [pipeline](concepts/memory-and-the-pipeline.md) over the
 transcript — swapped for a durable one only when you ask.
+
+### Runs with no key too
+
+Swap `AnthropicModelProvider` for `nessy-testing`'s `ScriptedModelProvider`
+and the same shape runs with no key, no network, and no real model — the
+same seam your tests use. See the
+[Getting Started](guides/getting-started.md) guide for the offline variant in
+full, and [Providers](guides/providers.md) for OpenAI and the
+switch-by-environment-variable helper.
 
 ## Where to go next
 

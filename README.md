@@ -28,12 +28,12 @@ deliberate seam: swap the piece, keep the framework.
 
 ## The five-minute example
 
-This runs with no key, no network, and no real model: `ScriptedModelProvider`
-(from `nessy-testing`) plays back a scripted conversation so the example compiles
-and runs against exactly what ships today. Real providers are `nessy-model-*`
-modules (`nessy-model-anthropic`, `nessy-model-openai`, both live-validated);
-swap in one of those and nothing else about this shape changes — see
-[the real variant](#the-same-example-for-real) below.
+Export a key and run — this one makes a real network call to a real model,
+a fraction of a cent on a small model for a prompt this size:
+
+```bash
+export ANTHROPIC_API_KEY=...
+```
 
 ```java
 record Add(int left, int right) {}
@@ -48,6 +48,56 @@ class AddTool implements Tool<Add> {
     }
 }
 
+AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
+
+Agent<String> agent =
+    Nessy.harness(provider)
+        .build()
+        .agent()
+        .name("adder")
+        .model("claude-haiku-4-5-20251001")
+        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+        .build();
+
+StringBuilder text = new StringBuilder();
+RunOutcome outcome =
+    agent
+        .converse()
+        .tell(
+            "what is 2+2?",
+            TurnObserver.builder().onTextDelta(delta -> text.append(delta.text())).build());
+
+text.toString(); // "The answer is 4."
+outcome.state().status(); // ConversationStatus.COMPLETE
+```
+
+`OPENAI_API_KEY` and `OpenAiModelProvider.builder().fromEnv().build()` are the
+one-line swap for OpenAI instead, with nothing else about the shape above
+changing. `EnvModelProviders.fromEnv()` (from `nessy-model-env`) reads
+whichever key is set and picks the provider for you, so an application
+switches providers by switching an environment variable, not its code.
+
+`Nessy.harness(provider)` is the only front door — the provider is the
+harness's one required thing, enforced by signature rather than discovered
+later at `build()`. `Agent<I>` is a configured, reusable handle over its input
+vocabulary `I`; `converse()` opens a conversation and returns a `Conversation<I>`,
+whose `tell(I, TurnObserver)` narrates the model's prose and tool activity live
+as `TurnEvent`s and returns a `RunOutcome` — `Completed` or `Parked` — carrying
+the settled `ConversationState`. `.agent()` gives you `Agent<String>`, the
+degenerate case where `I` is plain text — see [Typed agents](#typed-agents)
+below for an application's own input vocabulary. Every builder default already
+works: in-memory conversation store, in-memory `Memory`, an allow-all approver
+(replace it before you point real tools at anything), no-op observations. The
+smallest useful agent is a provider and a model name.
+
+### The same shape, no key
+
+`ScriptedModelProvider` (from `nessy-testing`) plays back a scripted
+conversation instead of calling a real model — no key, no network, no real
+model. It is the testing story, not a toy: it is why the framework's own
+suite, and CI, never touch the network.
+
+```java
 ObjectNode args = JsonNodeFactory.instance.objectNode();
 args.put("left", 2);
 args.put("right", 2);
@@ -67,62 +117,14 @@ Agent<String> agent =
         .model("fake-model")
         .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
         .build();
-
-StringBuilder text = new StringBuilder();
-RunOutcome outcome =
-    agent
-        .converse()
-        .tell(
-            "what is 2+2?",
-            TurnObserver.builder().onTextDelta(delta -> text.append(delta.text())).build());
-
-text.toString(); // "The answer is 4."
-outcome.state().status(); // ConversationStatus.COMPLETE
 ```
 
-This exact example is a runnable module, `nessy-examples/hello` — no key, no
-network, no Docker:
+The rest — `converse().tell(...)`, the `RunOutcome` — is unchanged from
+above. This exact example is a runnable module, `nessy-examples/hello` — no
+key, no network, no Docker:
 
 ```bash
 ./mvnw -q -pl nessy-examples/hello -am compile exec:java
-```
-
-`Nessy.harness(provider)` is the only front door — the provider is the
-harness's one required thing, enforced by signature rather than discovered
-later at `build()`. `Agent<I>` is a configured, reusable handle over its input
-vocabulary `I`; `converse()` opens a conversation and returns a `Conversation<I>`,
-whose `tell(I, TurnObserver)` narrates the model's prose and tool activity live
-as `TurnEvent`s and returns a `RunOutcome` — `Completed` or `Parked` — carrying
-the settled `ConversationState`. `.agent()` gives you `Agent<String>`, the
-degenerate case where `I` is plain text — see [Typed agents](#typed-agents)
-below for an application's own input vocabulary. Every builder default already
-works: in-memory conversation store, in-memory `Memory`, an allow-all approver
-(replace it before you point real tools at anything), no-op observations. The
-smallest useful agent is a provider and a model name.
-
-### The same example, for real
-
-Swap `ScriptedModelProvider` for `AnthropicModelProvider.builder().fromEnv()`
-and nothing else about the shape above changes. Set `ANTHROPIC_API_KEY` first —
-this one makes a real network call and spends real tokens (a couple of cents at
-most for a prompt this size on a small model):
-
-```java
-AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
-
-Agent<String> agent =
-    Nessy.harness(provider)
-        .build()
-        .agent()
-        .name("adder")
-        .model("claude-haiku-4-5-20251001")
-        .build();
-RunOutcome outcome =
-    agent
-        .converse()
-        .tell(
-            "what is 2+2?",
-            TurnObserver.builder().onTextDelta(delta -> System.out.print(delta.text())).build());
 ```
 
 ## Install
@@ -184,7 +186,7 @@ actually needs:
     <artifactId>nessy-console</artifactId>
   </dependency>
 
-  <!-- Scripted, no-key, no-network tests — see the five-minute example above. -->
+  <!-- Scripted, no-key, no-network tests — see "The same shape, no key" above. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-testing</artifactId>
@@ -933,9 +935,9 @@ input schema into the system prompt. See
 ## Examples
 
 `nessy-examples` is a family of seven runnable apps, all real key required
-except `hello` (the five-minute example above, in its own runnable
-module — no key, no network, no Docker). No mocking, nothing hand-waved.
-The matrix: `hello` (the five-minute example, standalone), `chat-cli`
+except `hello` (the no-key variant of the five-minute example above, in its
+own runnable module — no key, no network, no Docker). No mocking, nothing
+hand-waved. The matrix: `hello` (the offline five-minute example, standalone), `chat-cli`
 (plain + interactive), `scout` (plain + interactive, an imported MCP
 toolbox), `chat-web` (Boot web + HITL), `night-watchman` (Boot + scheduled
 autonomy), `order-desk` (Boot + message-driven autonomy), `dispatcher` (Boot
