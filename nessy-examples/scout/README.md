@@ -55,6 +55,50 @@ family, Scout's tools live on someone else's server. There is no offline mode
 for the demo itself — `mcp.deepwiki.com` is a live dependency of the running
 app, by design (see "The DeepWiki covenant" below).
 
+## The plan
+
+Research is genuinely multi-step (map the wiki, read sections, then ask a
+targeted question) — the exact long-horizon shape the plan facility fixes
+(design §9), so Scout adopts it as its showcase: `Scout#scout` grants
+`PlanTools.updatePlan(store)` with `allow()` beside the three DeepWiki
+grants, wires `memory` as
+`Memory.pipeline(transcript).transform(PlanTools.transformer(store)).build()`,
+and `Scout#main` hands that same `PlanStore` to
+`ConsoleRepl.Builder#plan(PlanStore)`. `ConsoleRepl` renders the checklist
+at most once per turn — after the turn's own output, once
+`conversation.tell` has returned, right before the next prompt — not
+interleaved between individual tool calls. A sample session, one turn of
+multi-step research ending with the checklist all ticked off (markers shown
+here are the ASCII fallback — `[x]`/`[>]`/`[ ]` — since this README renders
+unstyled):
+
+```
+you> what does jwcarman/nessy's reducer do, and why does it live in one method?
+
+⚙ tool: read_wiki_structure requested
+
+⚙ tool: read_wiki_structure completed
+
+⚙ tool: read_wiki_contents requested
+
+⚙ tool: read_wiki_contents completed
+
+⚙ tool: ask_question requested
+
+approve: ask_question {"repoName":"jwcarman/nessy","question":"why does the reducer live in one method?"}
+y/n> y
+
+⚙ tool: ask_question completed
+
+The reducer lives in one method for locality — [...]
+
+  [x] Read the wiki structure for jwcarman/nessy
+  [x] Read the reducer's wiki section
+  [x] Ask DeepWiki why the reducer lives in one method
+
+you>
+```
+
 ## The approval prompt
 
 Ask something that needs `ask_question` and the turn parks on

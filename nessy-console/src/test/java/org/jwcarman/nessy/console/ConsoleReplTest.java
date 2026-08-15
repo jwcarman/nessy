@@ -27,6 +27,7 @@ import java.io.StringWriter;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -42,6 +44,8 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.plan.Plan;
+import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
 
 /**
@@ -344,6 +348,141 @@ class ConsoleReplTest {
       public Awaited<ToolResult> execute(PingInput input, ToolContext context) {
         return Awaited.ready(ToolResult.ok("pong"));
       }
+    }
+  }
+
+  @Nested
+  class The_plan_checklist {
+
+    @Test
+    void a_changed_plan_prints_once_at_the_end_of_the_turn() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying("ok");
+      Plan plan = new Plan(List.of(new Plan.Task("write tests", Plan.Status.PENDING)));
+      ScriptedPlanStore store = ScriptedPlanStore.answering(Optional.of(plan));
+      BufferedReader reader = new BufferedReader(new StringReader("hi\nexit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+          .run();
+
+      assertThat(writer.toString()).isEqualTo("you> ok\n  [ ] write tests\nyou> ");
+    }
+
+    @Test
+    void an_unchanged_plan_prints_nothing_on_the_next_turn() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying("first", "second");
+      Plan plan = new Plan(List.of(new Plan.Task("write tests", Plan.Status.PENDING)));
+      ScriptedPlanStore store = ScriptedPlanStore.answering(Optional.of(plan), Optional.of(plan));
+      BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+          .run();
+
+      int occurrences = writer.toString().split("write tests", -1).length - 1;
+      assertThat(occurrences).isEqualTo(1);
+    }
+
+    @Test
+    void renders_nothing_and_reads_no_store_when_no_store_is_configured() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying("ok");
+      BufferedReader reader = new BufferedReader(new StringReader("hi\nexit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, null).run();
+
+      assertThat(writer.toString()).isEqualTo("you> ok\nyou> ");
+    }
+
+    @Test
+    void an_absent_or_empty_plan_prints_nothing() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying("ok1", "ok2");
+      ScriptedPlanStore store =
+          ScriptedPlanStore.answering(Optional.empty(), Optional.of(Plan.empty()));
+      BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+          .run();
+
+      assertThat(writer.toString()).isEqualTo("you> ok1\nyou> ok2\nyou> ");
+      assertThat(store.reads()).isEqualTo(2);
+    }
+
+    @Test
+    void the_final_all_done_state_prints_because_it_differs_from_the_previous_render() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying("working", "done");
+      Plan inProgress = new Plan(List.of(new Plan.Task("ship it", Plan.Status.IN_PROGRESS)));
+      Plan allDone = new Plan(List.of(new Plan.Task("ship it", Plan.Status.DONE)));
+      ScriptedPlanStore store =
+          ScriptedPlanStore.answering(Optional.of(inProgress), Optional.of(allDone));
+      BufferedReader reader = new BufferedReader(new StringReader("hi\nhi again\nexit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(agent, "", "you> ", Set.of("exit", "quit"), null, reader, writer, store)
+          .run();
+
+      assertThat(writer.toString())
+          .isEqualTo("you> working\n  [>] ship it\nyou> done\n  [x] ship it\nyou> ");
+    }
+
+    private static final class ScriptedPlanStore implements PlanStore {
+
+      private final List<Optional<Plan>> answers;
+      private int index;
+      private int reads;
+
+      private ScriptedPlanStore(List<Optional<Plan>> answers) {
+        this.answers = answers;
+      }
+
+      @SafeVarargs
+      private static ScriptedPlanStore answering(Optional<Plan>... answers) {
+        return new ScriptedPlanStore(List.of(answers));
+      }
+
+      @Override
+      public Optional<Plan> find(ConversationId id) {
+        reads++;
+        Optional<Plan> answer = answers.get(Math.min(index, answers.size() - 1));
+        index++;
+        return answer;
+      }
+
+      @Override
+      public void save(ConversationId id, Plan plan) {
+        throw new UnsupportedOperationException("ConsoleRepl never writes to the plan store");
+      }
+
+      private int reads() {
+        return reads;
+      }
+    }
+  }
+
+  @Nested
+  class The_plan_builder_verb {
+
+    @Test
+    void rejects_a_null_store() {
+      Agent<String> agent = agent_saying();
+      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+
+      assertThatThrownBy(() -> builder.plan(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void rejects_a_second_call() {
+      Agent<String> agent = agent_saying();
+      ConsoleRepl.Builder builder = ConsoleRepl.of(agent).plan(PlanStore.inMemory());
+
+      assertThatThrownBy(() -> builder.plan(PlanStore.inMemory()))
+          .isInstanceOf(IllegalStateException.class);
     }
   }
 }

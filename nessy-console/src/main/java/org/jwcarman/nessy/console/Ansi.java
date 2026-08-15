@@ -40,6 +40,7 @@ public final class Ansi {
   private static final String BOLD = ESC + "1m";
   private static final String DIM = ESC + "2m";
   private static final String ITALIC = ESC + "3m";
+  private static final String STRIKETHROUGH = ESC + "9m";
   private static final String CYAN = ESC + "36m";
   private static final String YELLOW = ESC + "33m";
   private static final String RED = ESC + "31m";
@@ -91,6 +92,14 @@ public final class Ansi {
    */
   public static String italic(String text) {
     return style(ITALIC, text);
+  }
+
+  /**
+   * {@code text}, wrapped strikethrough (SGR 9) — combined with {@link #dim} for a {@code DONE}
+   * plan task in {@link ConsoleRenderer}'s checklist (design §9).
+   */
+  public static String strikethrough(String text) {
+    return style(STRIKETHROUGH, text);
   }
 
   /**

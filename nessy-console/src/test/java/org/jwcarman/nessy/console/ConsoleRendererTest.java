@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.StringWriter;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.plan.Plan;
 
 class ConsoleRendererTest {
 
@@ -140,6 +142,81 @@ class ConsoleRendererTest {
       observer.on(new TurnEvent.TurnEnded(ConversationStatus.FAILED, "boom"));
 
       assertThat(out).hasToString("hello pondering\n⚙ tool: clock requested\n\n! boom\n");
+    }
+  }
+
+  @Nested
+  class The_plan_checklist {
+
+    @Test
+    void a_done_task_renders_dim_and_struck_through_with_its_box_checked() {
+      Ansi.overrideEnabled(true);
+      StringWriter out = new StringWriter();
+      Plan plan = new Plan(List.of(new Plan.Task("ship it", Plan.Status.DONE)));
+
+      ConsoleRenderer.checklist(out, plan);
+
+      assertThat(out).hasToString(Ansi.dim(Ansi.strikethrough("  ☒ ship it")) + "\n");
+    }
+
+    @Test
+    void an_in_progress_task_renders_bold_with_the_half_circle_marker() {
+      Ansi.overrideEnabled(true);
+      StringWriter out = new StringWriter();
+      Plan plan = new Plan(List.of(new Plan.Task("ship it", Plan.Status.IN_PROGRESS)));
+
+      ConsoleRenderer.checklist(out, plan);
+
+      assertThat(out).hasToString(Ansi.bold("  ◐ ship it") + "\n");
+    }
+
+    @Test
+    void a_pending_task_renders_plain_with_an_empty_box() {
+      Ansi.overrideEnabled(true);
+      StringWriter out = new StringWriter();
+      Plan plan = new Plan(List.of(new Plan.Task("ship it", Plan.Status.PENDING)));
+
+      ConsoleRenderer.checklist(out, plan);
+
+      assertThat(out).hasToString("  ☐ ship it\n");
+    }
+
+    @Test
+    void every_task_gets_its_own_two_space_indented_line_in_plan_order() {
+      Ansi.overrideEnabled(true);
+      StringWriter out = new StringWriter();
+      Plan plan =
+          new Plan(
+              List.of(
+                  new Plan.Task("first", Plan.Status.DONE),
+                  new Plan.Task("second", Plan.Status.IN_PROGRESS),
+                  new Plan.Task("third", Plan.Status.PENDING)));
+
+      ConsoleRenderer.checklist(out, plan);
+
+      assertThat(out)
+          .hasToString(
+              Ansi.dim(Ansi.strikethrough("  ☒ first"))
+                  + "\n"
+                  + Ansi.bold("  ◐ second")
+                  + "\n"
+                  + "  ☐ third\n");
+    }
+
+    @Test
+    void markers_fall_back_to_ascii_when_styling_is_disabled() {
+      Ansi.overrideEnabled(false);
+      StringWriter out = new StringWriter();
+      Plan plan =
+          new Plan(
+              List.of(
+                  new Plan.Task("first", Plan.Status.DONE),
+                  new Plan.Task("second", Plan.Status.IN_PROGRESS),
+                  new Plan.Task("third", Plan.Status.PENDING)));
+
+      ConsoleRenderer.checklist(out, plan);
+
+      assertThat(out).hasToString("  [x] first\n  [>] second\n  [ ] third\n");
     }
   }
 }

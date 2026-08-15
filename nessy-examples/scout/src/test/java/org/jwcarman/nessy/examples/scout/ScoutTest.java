@@ -77,7 +77,8 @@ class ScoutTest {
         // the approver would have said, which is the other half of proving the gate actually
         // gates (see The_require_approval_granted_tool below).
         Agent<String> agent =
-            Scout.scout(harness, fixture.toolbox(), "fake-model", Approver.denyAll("never asked"));
+            Scout.scout(harness, fixture.toolbox(), "fake-model", Approver.denyAll("never asked"))
+                .agent();
         Conversation<String> conversation = agent.converse();
 
         RunOutcome outcome = conversation.tell("what's the structure of jwcarman/nessy?");
@@ -116,7 +117,11 @@ class ScoutTest {
         Harness harness = Nessy.harness(provider).build();
         Agent<String> agent =
             Scout.scout(
-                harness, fixture.toolbox(), "fake-model", Approver.denyAll("declined by policy"));
+                    harness,
+                    fixture.toolbox(),
+                    "fake-model",
+                    Approver.denyAll("declined by policy"))
+                .agent();
         Conversation<String> conversation = agent.converse();
 
         RunOutcome outcome = conversation.tell("how does the reducer work in jwcarman/nessy?");
@@ -156,7 +161,7 @@ class ScoutTest {
         // remote server, and its answer flows back into context — the mirror image of the
         // declining-approver case above, which only proves the gate can say no.
         Agent<String> agent =
-            Scout.scout(harness, fixture.toolbox(), "fake-model", Approver.allowAll());
+            Scout.scout(harness, fixture.toolbox(), "fake-model", Approver.allowAll()).agent();
         Conversation<String> conversation = agent.converse();
 
         RunOutcome outcome = conversation.tell("how does the reducer work in jwcarman/nessy?");

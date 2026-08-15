@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.plan.Plan;
 
 /**
  * The default look: composed on {@link TurnObserver#builder()} — this module's own dogfood of the
@@ -56,6 +57,41 @@ public final class ConsoleRenderer {
             parked -> toolLine(writer, parked.call(), "parked (" + parked.token().value() + ")"))
         .onTurnEnded(ended -> turnEnded(writer, ended))
         .build();
+  }
+
+  /**
+   * Renders {@code plan} as a checklist — two-space indent, one line per task, in the plan's own
+   * order (design §9): {@code DONE} dim and struck through with {@code ☒}, {@code IN_PROGRESS} bold
+   * with {@code ◐}, {@code PENDING} plain with {@code ☐}. When styling is disabled, the markers
+   * fall back to plain ASCII ({@code [x]}/{@code [>]}/{@code [ ]}) and every line is otherwise
+   * unstyled — the same pass-through {@link Ansi} already guarantees.
+   */
+  public static void checklist(Writer writer, Plan plan) {
+    Objects.requireNonNull(writer, "writer must not be null");
+    Objects.requireNonNull(plan, "plan must not be null");
+    StringBuilder rendered = new StringBuilder();
+    for (Plan.Task task : plan.tasks()) {
+      rendered.append(checklistLine(task)).append('\n');
+    }
+    write(writer, rendered.toString());
+  }
+
+  private static String checklistLine(Plan.Task task) {
+    String line = "  " + marker(task.status()) + " " + task.title();
+    return switch (task.status()) {
+      case DONE -> Ansi.dim(Ansi.strikethrough(line));
+      case IN_PROGRESS -> Ansi.bold(line);
+      case PENDING -> line;
+    };
+  }
+
+  private static String marker(Plan.Status status) {
+    boolean styled = Ansi.enabled();
+    return switch (status) {
+      case DONE -> styled ? "☒" : "[x]";
+      case IN_PROGRESS -> styled ? "◐" : "[>]";
+      case PENDING -> styled ? "☐" : "[ ]";
+    };
   }
 
   private static void toolLine(Writer writer, ToolCall call, String suffix) {
