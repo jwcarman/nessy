@@ -1,26 +1,26 @@
 # Subagents — an agent launches agents
 
 **Date:** 2026-08-15
-**Status:** DRAFT — written under standing autonomy while the owner was away; the
-**Open questions** below are flagged for their review before planning.
+**Status:** RATIFIED in conversation (owner, 2026-08-15) — all open questions answered;
+see §0 for the rulings and §9 for the second-round decisions.
 **Design of record:** subordinate to `2026-08-09-nessy-agent-harness-design-v2.md`; builds
 directly on the agent-callback-doors design (park stamps, `WrongAgentException`, the
 name-keyed `CallbackRouter` sanctioned in its §9).
 
-## 0. Open questions for the owner
+## 0. Open questions — ANSWERED (owner rulings)
 
 1. **Tool-per-child vs one generic tool.** This draft chooses one tool per child agent
    (tool name = the child's agent name, description written by the app). The alternative —
    one `delegate(agent, task)` tool — centralizes but blurs the grant principle and gives
-   the model a weaker affordance. Confirm or flip.
+   the model a weaker affordance. **RULED: tool per child.**
 2. **The link store vs deterministic tokens.** This draft adds a tiny `SubagentLinks` store
    (child conversation id → parent park token). The alternative — deriving the parent's park
    token deterministically from the child id — needs no storage but makes tokens guessable,
-   and tokens double as capability handles at the callback doors. Confirm the store.
+   and tokens double as capability handles at the callback doors. **RULED: the store.**
 3. **Depth guard.** This draft ships none (wiring makes accidental cycles hard; a
-   parent-chain id prefix makes them visible). Veto if you want a hard depth cap in v1.
+   parent-chain id prefix makes them visible). **RULED: no guard in v1.**
 4. **Module placement.** Core (`spi.subagent`), zero dependencies, same argument as
-   plan/notebook. Confirm.
+   plan/notebook. **RULED: core.**
 
 ## 1. The idea
 
@@ -146,3 +146,21 @@ duplicate-completion replay; `WrongAgentException` surfaces when the wrong agent
 parent name. JDBC: links table, five dialects, TCK contract, vendor nests, offline
 race/rollback rigs per the established patterns. Example: ScriptedModelProvider on both
 agents driving the full park-and-wake chain offline.
+
+## 9. Second-round rulings (owner, 2026-08-15)
+
+- **Fresh child per call, continuity via the Notebook.** Each delegation opens a new child
+  conversation (`parent-id/call-id` guarantees it). There is no follow-up-the-same-researcher
+  affordance in v1, on purpose: the continuity story is a shared `SubjectId` — give parent
+  and child the same subject and they share a Notebook, durable model-gated memory across the
+  agent family with zero new machinery. The newsroom demo wires exactly that.
+- **Sequential fan-out, stated plainly.** The loop executes a turn's tool calls in order;
+  N delegations in one turn run N children sequentially. Parallel fan-out is a loop-level
+  feature deserving its own generation and is out of scope — the docs and the demo README say
+  so rather than implying parallelism.
+- **Coarse progress pings, v1.** The subagent tool relays one `ToolContext.progress` event
+  per child turn boundary ("researcher: turn 3") so long delegations never look frozen in an
+  observer or console. Delta-streaming of child output remains deferred (§6 unchanged).
+- **Demo confirmed:** `nessy-examples/newsroom`, writer + researcher, with the researcher's
+  `ask_question` approval gate exercising the child-parks-therefore-parent-parks chain,
+  restartable mid-delegation.
