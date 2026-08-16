@@ -25,9 +25,10 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
 /**
  * What {@link Reflection#critic(ReflectionCustomizer)} hands a customizer: a CONFIG, not a builder
  * (design of record 2026-08-16 §1) — fluent setters, no public {@code build()}. An interface (owner
- * ruling, 2026-08-16 evening, same as {@link org.jwcarman.nessy.api.turn.TurnObserverConfig}): only
- * these verbs are reachable through this reference; the package-private implementation the factory
- * hands out typed as this interface carries the assembly into a real critic.
+ * ruling, 2026-08-16 evening): only these verbs are reachable through this reference; the
+ * package-private implementation the factory hands out typed as this interface carries the assembly
+ * into a real critic. (The interface-split precedent this ruling follows, {@code
+ * TurnObserverConfig}, lives on an unmerged sibling branch as of this writing, not this one.)
  *
  * <p>{@link #transcript}, {@link #notebook}, {@link #subject}, {@link #provider}, and {@link
  * #model} are required — {@link Reflection#critic(ReflectionCustomizer)} throws {@link

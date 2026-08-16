@@ -23,6 +23,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
@@ -125,6 +126,29 @@ class ReflectionTest {
 
       assertThat(provider.callCount()).isZero();
       assertThat(notebook.headings(subject)).isEmpty();
+    }
+
+    @Test
+    void the_settled_conversations_own_id_is_what_the_resolver_is_asked_about() {
+      ConversationId id = told("did the thing");
+      provider.reply("[{\"hook\": \"h\", \"body\": \"b\"}]");
+      List<ConversationId> resolved = new ArrayList<>();
+      Consumer<ConversationSettled> reflect =
+          Reflection.critic(
+              c ->
+                  c.transcript(transcript)
+                      .notebook(notebook)
+                      .subject(
+                          conversationId -> {
+                            resolved.add(conversationId);
+                            return subject;
+                          })
+                      .provider(provider)
+                      .model("critic-model"));
+
+      reflect.accept(new ConversationSettled(id, ConversationStatus.FAILED, "boom", ""));
+
+      assertThat(resolved).containsExactly(id);
     }
   }
 

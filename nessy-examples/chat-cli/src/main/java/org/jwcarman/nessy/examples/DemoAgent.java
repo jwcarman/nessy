@@ -22,6 +22,7 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.ConversationSettled;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.SubjectId;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.notebook.NotebookTools;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.plan.PlanTools;
+import org.jwcarman.nessy.spi.reflection.Reflection;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
@@ -96,7 +98,25 @@ public final class DemoAgent {
     Function<ConversationId, SubjectId> subjectResolver = id -> new SubjectId("chat-cli-user");
     Transcript transcript = Transcript.inMemory();
     Agent<String> agent =
-        Nessy.harness(h -> h.provider(provider))
+        Nessy.harness(
+                h ->
+                    h.provider(provider)
+                        // The critic (design of record 2026-08-16 §3): fires on every settled
+                        // conversation, FAILED always, reviews the transcript with a side call
+                        // against the same provider and model this agent already talks to, and
+                        // writes distilled lessons into the same process-lifetime notebook and
+                        // subject the notebook tools above already share — so a failure this
+                        // process suffers teaches the very next conversation, not just this one.
+                        .listen(
+                            ConversationSettled.class,
+                            Reflection.critic(
+                                c ->
+                                    c.transcript(transcript)
+                                        .notebook(notebook)
+                                        .subject(subjectResolver)
+                                        .provider(provider)
+                                        .model(model)
+                                        .reflectOnSuccess(false))))
             .agent(
                 a ->
                     a.name("chat-cli")
