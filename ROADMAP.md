@@ -25,6 +25,9 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
 - **Embeddings-ranked recall** — semantic retrieval over Notebook entries and
   transcripts; today's recall is model-gated via the index, which scales
   further than expected but not forever.
+- **Lesson retention** — reflection's index grows without bound today
+  (every failed conversation adds lessons forever); pruning, capping, or
+  expiry policies for notebook entries.
 - **Knowledge-graph memory** — the long-horizon landing: entities and
   relationships distilled from conversations, queryable as context.
 
