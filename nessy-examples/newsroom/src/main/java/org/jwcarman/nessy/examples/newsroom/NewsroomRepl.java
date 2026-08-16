@@ -140,8 +140,14 @@ final class NewsroomRepl {
       write("\n! " + reason + "\n");
       return;
     }
-    driveApprovalLoop();
-    printWriterAnswer();
+    boolean woken = driveApprovalLoop();
+    if (woken) {
+      // The post-wake turn ran inside the internal completion wiring, with no console
+      // observer attached — nothing streamed it, so echo the settled answer here. On the
+      // no-park path the observer above already painted every delta; echoing again would
+      // print the answer twice.
+      printWriterAnswer();
+    }
     renderPlanIfChanged();
   }
 
@@ -150,10 +156,13 @@ final class NewsroomRepl {
    * until the writer's own park clears — the writer may delegate again, or ask a further question
    * through the same researcher, before it finally settles.
    */
-  private void driveApprovalLoop() {
+  private boolean driveApprovalLoop() {
+    boolean resolvedAny = false;
     while (writerStatus() == ConversationStatus.PARKED) {
       resolvePendingQuestion();
+      resolvedAny = true;
     }
+    return resolvedAny;
   }
 
   private ConversationStatus writerStatus() {
