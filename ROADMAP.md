@@ -71,6 +71,12 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
   hand-rolling approval loops.
 - **Loop maturity** — re-parking shipped with subagents v2; parallel tool
   execution is the next loop milestone.
+- **Tool-input validation, two layers** — JSON Schema validation of raw
+  tool-call arguments before binding (uniform across providers) plus Jakarta
+  validation on the bound input object, with victools' jakarta module feeding
+  the same annotations into the schema the model sees; failures compact into
+  `ToolResult.error` for model self-correction. (The Mocapi pattern, applied
+  to tools.)
 - **GraalVM native-image support** — runtime hints (reflection, resources,
   serialization) so agents compile to native executables; instant-start,
   low-footprint agents are a natural fit for queue- and webhook-triggered
