@@ -291,9 +291,17 @@ AuthorizationReport report = agent.authorizationReport();
 report.render();
 ```
 
+For the order-desk grant above, `report.render()` produces:
+
 ```
-order-desk:  FulfillmentEffect → rush-order flag → policy (OrderApprovalPolicy)
-clock: allow()
+request_fulfillment:  FulfillmentEffect → rush-order flag → policy (OrderApprovalPolicy)
+```
+
+A rung-0 grant renders plainly, without an effect stage — `night-watchman`'s own
+`check_vitals` tool, granted `UsagePolicy.allow()` with no enrichers, reads:
+
+```
+check_vitals: allow()
 ```
 
 `AuthorizationReport.of(...)` reads each `ToolGrant`'s own `tool()`, `policy()`, and
