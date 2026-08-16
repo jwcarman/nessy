@@ -89,7 +89,7 @@ base-url override looks, by type, exactly like an OpenAI model, so nothing
 else can tell `select()` which model name is right for it. Without
 `NESSY_MODEL`, `select()` falls back to a small, cheap default for the
 chosen provider — Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's
-`gemini-2.5-flash`, or a current Grok default for xAI.
+`gemini-3.6-flash`, or a current Grok default for xAI.
 
 ## Testing
 

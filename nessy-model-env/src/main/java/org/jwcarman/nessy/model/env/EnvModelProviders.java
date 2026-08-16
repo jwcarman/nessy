@@ -93,7 +93,11 @@ public final class EnvModelProviders {
   private static final String ANTHROPIC_DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 
   private static final String OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
-  private static final String GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
+
+  /**
+   * per ai.google.dev, 2026-08-16; model availability churns — override with {@code NESSY_MODEL}.
+   */
+  private static final String GEMINI_DEFAULT_MODEL = "gemini-3.6-flash";
 
   /**
    * xAI ships no small/cheap alias; {@code grok-4.6} is verified (docs.x.ai, 2026-08-15) as the

@@ -53,7 +53,7 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 class GeminiLiveTest {
 
   // Google's current cheapest general-purpose Gemini model as of this writing.
-  private static final String MODEL = "gemini-2.5-flash";
+  private static final String MODEL = "gemini-3.6-flash";
 
   record Add(int left, int right) {}
 
