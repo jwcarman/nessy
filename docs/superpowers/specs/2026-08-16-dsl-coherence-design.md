@@ -29,8 +29,10 @@ The naming family: `XCustomizer` customizes `XConfig`. Customizers are
   front-door prose updates accordingly.
 - **Agents:** `harness.agent(AgentCustomizer<String>)` → `Agent<String>` (the everyday
   door) and `harness.agent(Class<T>, AgentCustomizer<T>)` → `Agent<T>` (typed inputs —
-  the `Class` token up front also lets the config validate renderer-type agreement at
-  construction). `AgentBuilder` becomes `AgentConfig<T>`; the subagent doors it
+  the `Class` token up front lets the compiler unify `T` across the customizer, config,
+  and renderer — type agreement is compile-time, not a runtime check (amended after
+  Task 1 review: the default JSON renderer means no reachable missing-renderer path
+  exists, and erasure leaves a stored token nothing to compare against)). `AgentBuilder` becomes `AgentConfig<T>`; the subagent doors it
   already carries keep their `SubagentCustomizer` shape unchanged.
 - **Providers (ruled: statics + customizer):** each provider module kills its public
   builder and ships the blessed one-call statics plus a customizer factory:
