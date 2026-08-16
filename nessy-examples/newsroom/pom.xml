@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Copyright © 2026 James Carman
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-examples</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>nessy-example-newsroom</artifactId>
+  <name>Nessy Example: Newsroom</name>
+  <description>Runnable example: a writer agent delegating research to a subagent, with the child-parks-therefore-parent-parks chain, durable across restart</description>
+
+  <properties>
+    <!-- Examples are never published: no jar, sources, or javadoc leaves this module. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+    <!-- Opts back into exec:java, which the root pom defaults off (see its own comment) — this
+         module runs that goal on purpose. -->
+    <exec.skip>false</exec.skip>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-console</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Both providers ride the classpath non-optionally (nessy-model-env's whole point): either
+         ANTHROPIC_API_KEY or OPENAI_API_KEY just works, with no per-provider dependency choice
+         left to this module. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-env</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- The durable substrate (design's restart story): conversation store, parks, transcript,
+         plan store, and notebook all bootstrap from one Postgres database via JdbcPersistence,
+         plus the sixth store this example is the first to use, JdbcSubagentLinks. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-jdbc</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Compile-scope, not runtime: this module builds its own DataSource (PGSimpleDataSource)
+         by hand rather than through Spring Boot's autoconfiguration — a plain CLI, chat-cli's
+         shape, not a web app — so the driver's own DataSource class is this module's own code,
+         not just wiring underneath a framework. -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+    </dependency>
+    <!-- Compile-scope, unlike every other module's test-only provider: examples are runnable
+         apps, and an app picks its own SLF4J provider rather than inheriting the build's
+         test-classpath default. -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>${exec-maven-plugin.version}</version>
+        <configuration>
+          <mainClass>org.jwcarman.nessy.examples.newsroom.Newsroom</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
