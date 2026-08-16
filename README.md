@@ -194,6 +194,7 @@ framework. The docs site page teaches the whole story; this is just the map.
 | Memory and the context pipeline — what a model call actually sees | [Memory and the Pipeline](https://jwcarman.github.io/nessy/concepts/memory-and-the-pipeline/) |
 | Planning — a model-maintained task list, recalled every turn | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
 | The notebook — model-gated memory: an always-present index, bodies on demand | [Notebook](https://jwcarman.github.io/nessy/concepts/notebook/) |
+| Subagents — delegation as an ordinary tool call, with the same replay and parking guarantees | [Subagents](https://jwcarman.github.io/nessy/concepts/subagents/) |
 | Storage and JDBC dialects — five vendors, one code path | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
 | MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
 | Console apps — a terminal REPL for any `Agent<String>` in one line | [Console Apps](https://jwcarman.github.io/nessy/guides/console-apps/) |
@@ -209,9 +210,10 @@ in `nessy-core` today; see the Javadoc until they get a home on the site.
 
 ## Examples
 
-`nessy-examples` is a family of seven runnable apps — a hello-world starter, a
+`nessy-examples` is a family of eight runnable apps — a hello-world starter, a
 CLI, an MCP toolbox import, a Spring Boot chat app with HITL, a scheduled
-agent, a queue-driven agent, and a durable-parks HTTP dispatcher. See the
+agent, a queue-driven agent, a durable-parks HTTP dispatcher, and a
+subagent delegation demo. See the
 [Examples](https://jwcarman.github.io/nessy/examples/) page on the docs site
 for the full tour and run commands.
 

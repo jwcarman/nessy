@@ -85,7 +85,7 @@ switch-by-environment-variable helper, and the OpenAI-compatible services
 - **[Concepts](concepts/durable-loop.md)**
 
     The vocabulary: the durable loop, tools and grants, parks and callbacks,
-    the memory pipeline, planning, and storage.
+    the memory pipeline, planning, the notebook, subagents, and storage.
 
 - **[Guides](guides/getting-started.md)**
 
@@ -94,7 +94,7 @@ switch-by-environment-variable helper, and the OpenAI-compatible services
 
 - **[Examples](examples/index.md)**
 
-    A tour of the shipped example modules — `hello` through `order-desk` —
+    A tour of the shipped example modules — `hello` through `newsroom` —
     what each one teaches.
 
 - **[Reference](reference/configuration.md)**
