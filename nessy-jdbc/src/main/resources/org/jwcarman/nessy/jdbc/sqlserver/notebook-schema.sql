@@ -14,6 +14,7 @@
 
 -- SQL Server -- see schema.sql's header. No semicolons below, same reason.
 
+-- NONCLUSTERED, not the CLUSTERED default: two nvarchar(255) key columns is a 1020-byte key, over the 900-byte clustered cap (CREATE only warns) but under the 1700-byte nonclustered one, so inserts with long combined subject_id+name would fail at runtime (msg 1946) under the default.
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'nessy_notebook')
 BEGIN
   CREATE TABLE nessy_notebook (
@@ -21,6 +22,6 @@ BEGIN
     name       nvarchar(255)  NOT NULL,
     hook       nvarchar(1024) NOT NULL,
     body       nvarchar(max)  NOT NULL,
-    PRIMARY KEY (subject_id, name)
+    PRIMARY KEY NONCLUSTERED (subject_id, name)
   )
 END

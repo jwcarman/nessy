@@ -34,7 +34,7 @@ Agent<String> agent =
 `persistence.memory()` is `Memory.pipeline(persistence.transcript()).build()`
 — the durable `Memory`, verbatim retention over the same transcript
 `JdbcPersistence` just bootstrapped. `JdbcPersistence` exists purely for
-convenience: the five schemas are always stood up together in practice, but
+convenience: the six schemas are always stood up together in practice, but
 nothing couples them beyond that — each component also works fine
 constructed on its own, via its own `create(dataSource, objectMapper)` (or
 `create(dataSource, objectMapper, dialect)` to bypass resolution).

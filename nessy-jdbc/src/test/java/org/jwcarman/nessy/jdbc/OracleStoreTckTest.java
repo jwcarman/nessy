@@ -53,7 +53,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.oracle.OracleContainer;
 
 /**
- * The full TCK, all four contracts, run against a real Oracle — plus the dialect-resolution pin
+ * The full TCK, all six contracts, run against a real Oracle — plus the dialect-resolution pin
  * (design §6). One container for the whole class (nested contracts share it, each truncating its
  * own table between tests) rather than four, the same efficiency trade the vendor matrix needs five
  * times over — most valuable here, where Oracle is the matrix's heavyweight: its image pull and

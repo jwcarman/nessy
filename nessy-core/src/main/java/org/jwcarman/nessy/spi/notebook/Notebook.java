@@ -73,7 +73,10 @@ public interface Notebook {
 
   /**
    * Every heading for {@code subject}, in a stable order — alphabetical by name — so a rendered
-   * index never reorders itself between calls.
+   * index never reorders itself between calls. "Alphabetical" is each implementation's own
+   * collation — an in-memory notebook orders by {@link String} code point, a JDBC one by its
+   * database's collation — which only agrees across implementations because {@link
+   * NotebookTools#remember}'s kebab-case, lowercase names order identically under either rule.
    */
   List<Heading> headings(SubjectId subject);
 

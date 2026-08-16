@@ -96,12 +96,20 @@ public abstract class NotebookContract {
     SubjectId mine = new SubjectId("user-42");
     SubjectId theirs = new SubjectId("user-99");
     Entry myEntry = new Entry("user-taste", "my hook", "my body");
+    Entry theirEntry = new Entry("user-taste", "their hook", "their body");
     notebook().save(mine, myEntry);
-    notebook().save(theirs, new Entry("user-taste", "their hook", "their body"));
+    notebook().save(theirs, theirEntry);
 
     assertThat(notebook().find(mine, "user-taste")).contains(myEntry);
     assertThat(notebook().headings(theirs))
         .containsExactly(new Heading("user-taste", "their hook"));
+
+    // Forgetting my same-named note must not touch theirs — closes the hole a subject-blind
+    // `DELETE WHERE name = ?` (no subject_id in the WHERE clause) would leave open.
+    notebook().forget(mine, "user-taste");
+
+    assertThat(notebook().find(mine, "user-taste")).isEmpty();
+    assertThat(notebook().find(theirs, "user-taste")).contains(theirEntry);
   }
 
   @Test

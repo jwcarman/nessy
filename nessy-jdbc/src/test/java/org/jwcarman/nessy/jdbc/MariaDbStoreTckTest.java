@@ -48,7 +48,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * The full TCK, all four contracts, run against a real MariaDB — plus the dialect-resolution pin
+ * The full TCK, all six contracts, run against a real MariaDB — plus the dialect-resolution pin
  * (design §6). One container for the whole class (nested contracts share it, each truncating its
  * own table between tests) rather than four, the same efficiency trade the vendor matrix needs five
  * times over. Requires Docker; tagged {@code container} so the offline default build never needs
