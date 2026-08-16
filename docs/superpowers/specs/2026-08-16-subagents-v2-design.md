@@ -92,10 +92,13 @@ conversations — dies here. The loop currently refuses to park a call that has 
 been through a park cycle ("does not support re-parking an already-parked call").
 The behavioral contract changes to:
 
-- **Parking is a repeatable state of a call, not a one-shot.** A call may park for
-  approval, be resumed, execute, and park again for its own wait — each cycle minting
-  its own token. The invariant that matters is narrower than v1 enforced: at most one
-  OUTSTANDING park per call; a resolved park is history, not a lock.
+- **Parking is two waits, not one: permission, then work.** A call may park for
+  approval, be resumed, execute, and park again for its own wait — each wait minting
+  its own token. (Amended after Task 1 review, 2026-08-16: a THIRD park is
+  structurally unreachable — approval gating runs only from execute, never from
+  resume, and only `Decided(Allow)` re-invokes a tool — so the contract is precisely
+  "at most one approval wait and one execution wait, at most one outstanding." A
+  resolved park is history, not a lock.)
 - **The drained resolution is consumed by the execution it triggered**, whatever that
   execution's outcome — ok, error, or a fresh park. A fresh park after an approval is
   a legal fold, not a protocol violation.
