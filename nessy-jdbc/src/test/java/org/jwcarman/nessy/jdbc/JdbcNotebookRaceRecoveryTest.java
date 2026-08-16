@@ -47,7 +47,8 @@ class JdbcNotebookRaceRecoveryTest {
     AtomicInteger updateAttempts = new AtomicInteger();
     SubjectId subject = new SubjectId("user-42");
     Entry entry =
-        new Entry("user-taste", "recovered hook", "recovered after losing the insert race");
+        new Entry(
+            "user-taste", "recovered hook", "recovered after losing the insert race", "writer");
     DataSource dataSource = new OneConnectionDataSource(raceRecoveryConnection(updateAttempts));
     JdbcNotebook notebook = new JdbcNotebook(dataSource, JdbcDialect.POSTGRES);
 

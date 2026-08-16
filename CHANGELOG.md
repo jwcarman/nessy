@@ -69,6 +69,24 @@ sequence of renames and interim shapes that produced it.
   place to write durable notes keyed to a `SubjectId` — a compact index
   rides every recall, and the model reads a note's full body only when it
   judges it relevant. Two agents sharing a `SubjectId` share the same notes.
+  Every entry carries a `source` — the identity that wrote it — and
+  `NotebookTools` enforces it: `remember` and `forget` may only mutate an
+  entry whose stored source already matches the calling identity, so one
+  author can't silently overwrite or erase another's note; the rendered
+  index annotates any heading sourced from elsewhere as `(from <source>)`.
+- **Reflection.** `spi.reflection` and `Reflection.critic(ReflectionCustomizer)`
+  build a listener for `ConversationSettled` that reviews a settled
+  transcript with a side model call and writes 0..n distilled lessons into
+  the subject's notebook, sourced `"reflection"`. A `FAILED` settlement
+  always reflects; a `COMPLETE` one only when `reflectOnSuccess(true)` is
+  set. Lesson names derive deterministically from the conversation id, so a
+  redelivered settlement overwrites its own earlier lesson through the
+  notebook's ordinary last-write-wins upsert rather than duplicating it.
+  Injection needs no new machinery — a lesson is recalled exactly like any
+  other notebook entry. Reflection failures are logged and dropped rather
+  than thrown, the deliberate opposite of the subagent completion
+  listener's throw-for-retry: a lost lesson is a shame, a conversation
+  failed over its own homework is worse.
 - **Subagents.** `AgentConfig#subagent(SubagentCustomizer<String>)` and
   `#subagent(Class<T>, SubagentCustomizer<T>)` define a child agent right
   inside its parent's own config — a `SubagentConfig`, not a builder, with

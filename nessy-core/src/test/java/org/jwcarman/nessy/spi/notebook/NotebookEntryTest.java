@@ -29,47 +29,55 @@ class NotebookEntryTest {
 
     @Test
     void a_blank_name_is_rejected() {
-      assertThatThrownBy(() -> new Notebook.Entry("  ", "hook", "body"))
+      assertThatThrownBy(() -> new Notebook.Entry("  ", "hook", "body", "writer"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_null_name_is_rejected() {
-      assertThatThrownBy(() -> new Notebook.Entry(null, "hook", "body"))
+      assertThatThrownBy(() -> new Notebook.Entry(null, "hook", "body", "writer"))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void a_blank_hook_is_rejected() {
-      assertThatThrownBy(() -> new Notebook.Entry("name", "  ", "body"))
+      assertThatThrownBy(() -> new Notebook.Entry("name", "  ", "body", "writer"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_null_hook_is_rejected() {
-      assertThatThrownBy(() -> new Notebook.Entry("name", null, "body"))
+      assertThatThrownBy(() -> new Notebook.Entry("name", null, "body", "writer"))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void a_blank_body_is_rejected() {
-      assertThatThrownBy(() -> new Notebook.Entry("name", "hook", "  "))
+      assertThatThrownBy(() -> new Notebook.Entry("name", "hook", "  ", "writer"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_null_body_is_rejected() {
-      assertThatThrownBy(() -> new Notebook.Entry("name", "hook", null))
+      assertThatThrownBy(() -> new Notebook.Entry("name", "hook", null, "writer"))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_null_source_is_rejected() {
+      assertThatThrownBy(() -> new Notebook.Entry("name", "hook", "body", null))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void a_fully_populated_entry_is_kept_verbatim() {
-      Notebook.Entry entry = new Notebook.Entry("user-taste", "Prefers terse answers", "Full body");
+      Notebook.Entry entry =
+          new Notebook.Entry("user-taste", "Prefers terse answers", "Full body", "writer");
 
       assertThat(entry.name()).isEqualTo("user-taste");
       assertThat(entry.hook()).isEqualTo("Prefers terse answers");
       assertThat(entry.body()).isEqualTo("Full body");
+      assertThat(entry.source()).isEqualTo("writer");
     }
   }
 
@@ -77,11 +85,13 @@ class NotebookEntryTest {
   class Heading_construction {
 
     @Test
-    void a_heading_carries_only_name_and_hook() {
-      Notebook.Heading heading = new Notebook.Heading("user-taste", "Prefers terse answers");
+    void a_heading_carries_name_hook_and_source() {
+      Notebook.Heading heading =
+          new Notebook.Heading("user-taste", "Prefers terse answers", "writer");
 
       assertThat(heading.name()).isEqualTo("user-taste");
       assertThat(heading.hook()).isEqualTo("Prefers terse answers");
+      assertThat(heading.source()).isEqualTo("writer");
     }
   }
 }

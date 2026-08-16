@@ -37,19 +37,25 @@ public interface Notebook {
 
   /**
    * A note: the name the model files it under, the one-line hook the index shows, the body {@link
-   * #find} returns. All three fields are non-blank; {@code name} is the upsert key within a
-   * subject.
+   * #find} returns, and the {@code source} that wrote it. {@code name}, {@code hook}, and {@code
+   * body} are non-blank; {@code name} is the upsert key within a subject. {@code source} is only
+   * required non-null — it is supplied by trusted wiring (an agent name, or {@code "reflection"}
+   * for the critic), never by the model, so it carries no blank check of its own. The store itself
+   * treats {@code source} as an opaque field to persist and return faithfully (the grant
+   * principle); only {@link NotebookTools} reads it to gate mutation.
    *
    * @param name the note's key within its subject, never blank
    * @param hook the one line the index shows, never blank
    * @param body the full content {@link NotebookTools#recall} returns, never blank
+   * @param source the author's identity — an agent name, or {@code "reflection"} for the critic
    */
-  record Entry(String name, String hook, String body) {
+  record Entry(String name, String hook, String body, String source) {
 
     public Entry {
       Objects.requireNonNull(name, "name must not be null");
       Objects.requireNonNull(hook, "hook must not be null");
       Objects.requireNonNull(body, "body must not be null");
+      Objects.requireNonNull(source, "source must not be null");
       if (name.isBlank()) {
         throw new IllegalArgumentException("name must not be blank");
       }
@@ -63,13 +69,15 @@ public interface Notebook {
   }
 
   /**
-   * The index view of an {@link Entry}: name and hook only, the body deliberately absent — the
-   * whole point of gating recall behind a separate tool call.
+   * The index view of an {@link Entry}: name, hook, and source — the body deliberately absent — the
+   * whole point of gating recall behind a separate tool call. {@code source} rides along so {@link
+   * NotebookTools}'s rendered index can annotate entries a different author wrote.
    *
    * @param name the note's key, matching some {@link Entry#name()}
    * @param hook the one line the index shows
+   * @param source the author's identity, matching some {@link Entry#source()}
    */
-  record Heading(String name, String hook) {}
+  record Heading(String name, String hook, String source) {}
 
   /**
    * Every heading for {@code subject}, in a stable order — alphabetical by name — so a rendered

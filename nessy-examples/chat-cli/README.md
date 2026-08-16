@@ -226,3 +226,8 @@ Bodies never ride the index — the model reads one back only when it judges
 it relevant, via `recall`. Notes here live and die with the process, same as
 the plan and the transcript; surviving a restart is one `JdbcNotebook` swap
 away, no other wiring change.
+
+A failed conversation now writes its own note, too: `DemoAgent` also wires
+`Reflection.critic(...)` on the harness, over that same notebook and
+subject, so a chat that ends `FAILED` teaches the very next conversation
+rather than just going quiet.

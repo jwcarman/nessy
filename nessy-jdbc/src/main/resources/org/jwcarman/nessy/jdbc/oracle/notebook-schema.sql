@@ -21,5 +21,6 @@ CREATE TABLE IF NOT EXISTS nessy_notebook (
   name       varchar2(255)  NOT NULL,
   hook       varchar2(1024) NOT NULL,
   body       clob           NOT NULL,
+  source     varchar2(255)  NOT NULL,
   PRIMARY KEY (subject_id, name)
 );

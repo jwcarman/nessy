@@ -127,7 +127,8 @@ class NewsroomGatedDelegationProofTest {
                             transcript,
                             config ->
                                 config.transform(
-                                    NotebookTools.transformer(notebook, subjectResolver))))
+                                    NotebookTools.transformer(
+                                        notebook, "writer", subjectResolver))))
                     .subagent(
                         sub ->
                             sub.name("researcher")
@@ -145,7 +146,7 @@ class NewsroomGatedDelegationProofTest {
                                         config ->
                                             config.transform(
                                                 NotebookTools.transformer(
-                                                    notebook, subjectResolver))))));
+                                                    notebook, "researcher", subjectResolver))))));
     Subagent researcher = writer.subagent("researcher");
 
     RunOutcome delegationParked = writer.converse().tell("write about octopuses");

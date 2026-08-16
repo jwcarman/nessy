@@ -24,6 +24,7 @@ BEGIN
     name       nvarchar(255)  NOT NULL,
     hook       nvarchar(1024) NOT NULL,
     body       nvarchar(max)  NOT NULL,
+    source     nvarchar(255)  NOT NULL,
     PRIMARY KEY NONCLUSTERED (subject_id, name)
   )
 END
