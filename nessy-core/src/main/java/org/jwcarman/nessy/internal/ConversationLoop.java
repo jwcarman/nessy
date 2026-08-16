@@ -574,9 +574,11 @@ public final class ConversationLoop {
   /**
    * Routes a resolved inbox entry to the parked executor's own {@code resume} and classifies what
    * it yielded (design §4, the re-park fix): a settled fact folds exactly as v1 always allowed; a
-   * park is either the call's own next, legitimate wait — nothing on record for this call but the
-   * token whose resolution is being consumed right now — or a redelivered replay of the token the
-   * call is already outstanding under, classified by {@link #classifyRepark}.
+   * park is either the call's own next, legitimate wait, a redelivered replay of the token the call
+   * is already outstanding under, or the one-outstanding violation — classified by {@link
+   * #classifyRepark}, which also sees {@code resolution} since the executor contract (design §4,
+   * traced against {@code GatedToolCallExecutor.resume}) only ever reparks in answer to a {@code
+   * Decided} resolution — a {@code Completed} one settles or fails, never parks again.
    */
   private ResumeOutcome resumeParkedCall(
       ToolCall parkedCall,
@@ -589,38 +591,54 @@ public final class ConversationLoop {
       case Awaited.Ready<ConversationEvent>(ConversationEvent value) ->
           new ResumeOutcome.Settled(value);
       case Awaited.Parked<ConversationEvent>(ParkToken token) ->
-          classifyRepark(state.id(), parkedCall, token);
+          classifyRepark(state.id(), parkedCall, token, resolution);
     };
   }
 
   /**
    * Tells a legitimate repark from a redelivered replay from the one-outstanding violation (design
-   * §4). {@code token} already present in {@link #parks} for this exact call is the idempotent
-   * replay shape a redelivered resolution takes once the subagent tool's own snapshot short-circuit
-   * kicks in on a second dispatch — a no-op, not a third wait. A never-seen token is legitimate
-   * only when nothing but the just-consumed wait is on record for the call ({@code
-   * Parks.forConversation} names at most one prior entry): the ordinary approval-then-execution
-   * transition. A never-seen token arriving when two or more entries already exist for the call
-   * means some other wait is already outstanding underneath it — a non-idempotent tool minting a
-   * fresh token instead of replaying its last one — and that is refused loud rather than silently
+   * §4) without counting {@link #parks} history for the call's whole lifetime — call ids legally
+   * recur across turns (a Gemini response missing a function-call id mints {@code "gemini-call-" +
+   * N} from a per-response counter that restarts every turn), so "how many park entries has this
+   * call id ever had" is not the same question as "is this call's current wait still outstanding,"
+   * and counting the former wedges a second, unrelated delegation under the same recurred id.
+   *
+   * <p>{@code token} already registered to <em>this exact</em> {@code (conversationId, call)} pair
+   * is the idempotent replay shape a redelivered resolution takes once the subagent tool's own
+   * snapshot short-circuit kicks in on a second dispatch — a no-op, not a third wait. {@code token}
+   * registered to anything else — a sibling call, a foreign conversation — is never a replay of
+   * this call's wait, whatever it looks like; folding it as one would silently let one Parks entry
+   * answer two different calls, the quieter and more dangerous mistake, so it falls straight
+   * through to the violation below instead. A never-seen token is legitimate exactly when {@code
+   * resolution} is {@link ToolResolution.Decided} — the approval answer transitioning the call into
+   * its own execution wait, the only shape the executor contract ever reparks in response to,
+   * regardless of how many prior episodes this call id has lived through. Anything else reaching
+   * here — a never-seen token minted in answer to a {@link ToolResolution.Completed}, which the
+   * executor contract says should settle or fail, never park — is refused loud rather than silently
    * accepted, the same way v1 refused every repark.
    */
-  private ResumeOutcome classifyRepark(ConversationId id, ToolCall call, ParkToken token) {
-    if (parks.find(token).isPresent()) {
-      return new ResumeOutcome.ReplayedNoOp();
+  private ResumeOutcome classifyRepark(
+      ConversationId id, ToolCall call, ParkToken token, ToolResolution resolution) {
+    Optional<Parks.Park> existing = parks.find(token);
+    if (existing.isPresent()) {
+      Parks.Park found = existing.get();
+      if (found.conversationId().equals(id) && found.call().id().equals(call.id())) {
+        return new ResumeOutcome.ReplayedNoOp();
+      }
+      throw oneOutstandingParkViolation(call.id());
     }
-    long onRecordForThisCall =
-        parks.forConversation(id).stream()
-            .filter(park -> park.call().id().equals(call.id()))
-            .count();
-    if (onRecordForThisCall >= 2) {
-      throw new IllegalStateException(
-          "call "
-              + call.id()
-              + " parked under a new token while a different park was already outstanding for it;"
-              + " at most one outstanding park per call is supported (design §4)");
+    if (resolution instanceof ToolResolution.Decided) {
+      return new ResumeOutcome.Reparked(call, token);
     }
-    return new ResumeOutcome.Reparked(call, token);
+    throw oneOutstandingParkViolation(call.id());
+  }
+
+  private static IllegalStateException oneOutstandingParkViolation(String callId) {
+    return new IllegalStateException(
+        "call "
+            + callId
+            + " parked under a new token while a different park was already outstanding for it;"
+            + " at most one outstanding park per call is supported (design §4)");
   }
 
   private PerformOutcome perform(Effect effect, ConversationState state, TurnObserver observer) {
