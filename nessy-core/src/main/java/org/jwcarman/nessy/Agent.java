@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
@@ -66,6 +67,7 @@ public final class Agent<I> {
   private final Map<String, Agent<?>> subagents;
   private final Memory memory;
   private final InputRenderer<I> renderer;
+  private final AuthorizationReport authorizationReport;
 
   /**
    * The two coordination pieces a subagent's doors need — {@link Parks}, for the ordinary callback
@@ -90,6 +92,20 @@ public final class Agent<I> {
     }
   }
 
+  /**
+   * The two facts about this agent's own identity that carry no lifecycle of their own — {@code
+   * renderer} and {@link #authorizationReport()}'s own material — bundled together (java:S107: an
+   * eighth constructor parameter otherwise, the same bundling {@link Coordination} already applies
+   * to the parks/subagents pair).
+   */
+  record SelfDescription<T>(InputRenderer<T> renderer, AuthorizationReport authorizationReport) {
+
+    SelfDescription {
+      Objects.requireNonNull(renderer, "renderer must not be null");
+      Objects.requireNonNull(authorizationReport, "authorizationReport must not be null");
+    }
+  }
+
   Agent(
       String name,
       ConversationLoop loop,
@@ -97,7 +113,7 @@ public final class Agent<I> {
       ConversationStore store,
       Coordination coordination,
       Memory memory,
-      InputRenderer<I> renderer) {
+      SelfDescription<I> selfDescription) {
     this.name = Objects.requireNonNull(name, "name must not be null");
     this.loop = Objects.requireNonNull(loop, "loop must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
@@ -106,12 +122,25 @@ public final class Agent<I> {
     this.parks = coordination.parks();
     this.subagents = coordination.subagents();
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
-    this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+    Objects.requireNonNull(selfDescription, "selfDescription must not be null");
+    this.renderer = selfDescription.renderer();
+    this.authorizationReport = selfDescription.authorizationReport();
   }
 
   /** This agent's required, durable identity (design §3) — the stamp its parks carry. */
   public String name() {
     return name;
+  }
+
+  /**
+   * This agent's own authorization story, read from its grants' wiring — the self-documentation
+   * requirement made literal (design of record 2026-08-16-authorization §8). Rebuilding it never
+   * renders an effect, runs an enricher, or evaluates a policy: it is a read of the same wiring
+   * {@link org.jwcarman.nessy.spi.execute.GatedToolCallExecutor} consults, never a second place
+   * authority is declared.
+   */
+  public AuthorizationReport authorizationReport() {
+    return authorizationReport;
   }
 
   /**

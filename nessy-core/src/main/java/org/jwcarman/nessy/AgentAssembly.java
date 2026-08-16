@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
@@ -126,7 +127,8 @@ final class AgentAssembly {
             harness.store(),
             new Agent.Coordination(harness.parks(), childrenByName),
             resolvedMemory,
-            config.renderer());
+            new Agent.SelfDescription<>(
+                config.renderer(), AuthorizationReport.of(resolvedGrants.values())));
     harness.subagents().register(agent);
     return agent;
   }
@@ -142,12 +144,14 @@ final class AgentAssembly {
     Function<ConversationId, ?> resolver = config.principalResolver();
     if (resolver != null) {
       enrichers.add(
-          (context, effect) -> {
-            Object principal = resolver.apply(context.conversationId());
-            return principal == null
-                ? context
-                : context.with(AuthorizationContext.PRINCIPAL, principal);
-          });
+          Enricher.named(
+              "principal",
+              (context, effect) -> {
+                Object principal = resolver.apply(context.conversationId());
+                return principal == null
+                    ? context
+                    : context.with(AuthorizationContext.PRINCIPAL, principal);
+              }));
     }
     if (config.intentType() != null) {
       enrichers.add(

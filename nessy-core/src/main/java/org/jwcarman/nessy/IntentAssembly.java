@@ -255,6 +255,11 @@ final class IntentAssembly {
     }
 
     @Override
+    public Optional<String> displayName() {
+      return Optional.of("intent");
+    }
+
+    @Override
     public AuthorizationContext enrich(AuthorizationContext context, Object effect) {
       Optional<IntentStore.StoredIntent> stored = store.get(context.conversationId());
       if (stored.isEmpty()) {

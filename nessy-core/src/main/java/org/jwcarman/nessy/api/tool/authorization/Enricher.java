@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.api.tool.authorization;
 
+import java.util.Objects;
+import java.util.Optional;
+
 /**
  * The impure gathering stage: deposits assessments into the context before the {@code UsagePolicy}
  * judges (design of record 2026-08-16-authorization §4). A grant wires these as an ordered list;
@@ -41,4 +44,37 @@ public interface Enricher<E> {
 
   /** Returns the next context — {@code context} functionally extended, never mutated. */
   AuthorizationContext enrich(AuthorizationContext context, E effect);
+
+  /**
+   * A human-readable label for this enricher, read by {@link AuthorizationReport} (design §8) —
+   * never by {@link #enrich} itself, and never consulted by the chokepoint: behavior never depends
+   * on it. Empty by default, since a bare lambda has no name worth reporting (its {@code
+   * getClass()} is a synthetic, unreadable token); name one with {@link #named(String, Enricher)}.
+   */
+  default Optional<String> displayName() {
+    return Optional.empty();
+  }
+
+  /**
+   * Wraps {@code delegate} so it reports {@code displayName} to {@link AuthorizationReport} —
+   * decoration only, {@link #enrich} still delegates through unchanged.
+   */
+  static <E> Enricher<E> named(String displayName, Enricher<E> delegate) {
+    Objects.requireNonNull(displayName, "displayName must not be null");
+    if (displayName.isBlank()) {
+      throw new IllegalArgumentException("displayName must not be blank");
+    }
+    Objects.requireNonNull(delegate, "delegate must not be null");
+    return new Enricher<>() {
+      @Override
+      public AuthorizationContext enrich(AuthorizationContext context, E effect) {
+        return delegate.enrich(context, effect);
+      }
+
+      @Override
+      public Optional<String> displayName() {
+        return Optional.of(displayName);
+      }
+    };
+  }
 }

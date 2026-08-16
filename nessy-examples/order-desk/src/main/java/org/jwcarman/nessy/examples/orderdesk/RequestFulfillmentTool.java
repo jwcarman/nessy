@@ -15,11 +15,12 @@
  */
 package org.jwcarman.nessy.examples.orderdesk;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.EffectfulTool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -30,13 +31,22 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
  * handed to {@link RabbitTemplate#convertAndSend}; it never appears in the payload (spec §1: the
  * kernel's "the token is the correlation contract" claim made wire-visible). The warehouse's reply
  * listener preserves that correlation id and resumes this same token when the job completes.
+ *
+ * <p>The typed tier (design of record 2026-08-16-authorization §2): {@link #effect(Input)} renders
+ * a {@link FulfillmentEffect} priced by {@link OrderPricing} — looked up here, from the tool's own
+ * trusted collaborator, never taken from the model's own arguments — so {@code OrderDeskConfig}'s
+ * grant can weld a threshold policy to it at compile time.
  */
-public final class RequestFulfillmentTool implements Tool<RequestFulfillmentTool.Input> {
+public final class RequestFulfillmentTool
+    implements EffectfulTool<
+        RequestFulfillmentTool.Input, RequestFulfillmentTool.FulfillmentEffect> {
 
   private final RabbitTemplate rabbit;
+  private final OrderPricing pricing;
 
-  public RequestFulfillmentTool(RabbitTemplate rabbit) {
+  public RequestFulfillmentTool(RabbitTemplate rabbit, OrderPricing pricing) {
     this.rabbit = Objects.requireNonNull(rabbit, "rabbit must not be null");
+    this.pricing = Objects.requireNonNull(pricing, "pricing must not be null");
   }
 
   /** What the model supplies: the order and the items the warehouse must pick and ship. */
@@ -63,6 +73,28 @@ public final class RequestFulfillmentTool implements Tool<RequestFulfillmentTool
     }
   }
 
+  /**
+   * The order desk's own effect statement (design of record 2026-08-16-authorization §2, §8):
+   * priced by {@link OrderPricing}, never by the model. Its {@link #toString()} is what an approver
+   * or an audit record reads — a skimmable sentence, not a record dump.
+   */
+  public record FulfillmentEffect(String orderId, List<String> items, BigDecimal orderTotal) {
+
+    public FulfillmentEffect {
+      if (orderId == null || orderId.isBlank()) {
+        throw new IllegalArgumentException("orderId must not be blank");
+      }
+      Objects.requireNonNull(items, "items must not be null");
+      items = List.copyOf(items);
+      Objects.requireNonNull(orderTotal, "orderTotal must not be null");
+    }
+
+    @Override
+    public String toString() {
+      return "Fulfill order " + orderId + " (" + String.join(", ", items) + ") — $" + orderTotal;
+    }
+  }
+
   @Override
   public String name() {
     return "request_fulfillment";
@@ -76,6 +108,11 @@ public final class RequestFulfillmentTool implements Tool<RequestFulfillmentTool
   @Override
   public Class<Input> inputType() {
     return Input.class;
+  }
+
+  @Override
+  public FulfillmentEffect effect(Input input) {
+    return new FulfillmentEffect(input.orderId(), input.items(), pricing.totalFor(input.items()));
   }
 
   @Override

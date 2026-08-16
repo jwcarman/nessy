@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.ParkedCall;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.event.ApprovalRequested;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -65,7 +66,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * The whole order-desk story against a real broker and a real database (spec §7): a message on
  * {@code orders} drives a turn, the tool parks with the AMQP correlation id carrying the park
- * token, the reply queue narrates and then resumes, and the durable conversation remembers.
+ * token, the reply queue narrates and then resumes, and the durable conversation remembers. Also
+ * both sides of the authorization threshold (design of record 2026-08-16-authorization §5): a
+ * routine order clears straight through with no approval request at all, while a big-basket order
+ * crosses {@link OrderApprovalPolicy}'s own line and is handed to the approver before the tool ever
+ * runs — auto-approved here, since this module wires no {@code .approver(...)} of its own, but the
+ * {@link ApprovalRequested} event proves the gate was actually asked.
  *
  * <p>The warehouse is disabled ({@code order-desk.warehouse.enabled=false}) so THIS test plays
  * warehouse by hand — the deterministic design the brief prefers over racing the real {@link
@@ -84,6 +90,9 @@ class OrderDeskSmokeTest {
   private static final List<ToolProgress> PROGRESS = new CopyOnWriteArrayList<>();
 
   private static final List<ConversationEvent.ToolFinished> FINISHED = new CopyOnWriteArrayList<>();
+
+  /** Heard whenever a call's policy defers to the approver (design of record 2026-08-16 §5). */
+  private static final List<ApprovalRequested> APPROVALS = new CopyOnWriteArrayList<>();
 
   @Container @ServiceConnection
   static final RabbitMQContainer RABBIT = new RabbitMQContainer("rabbitmq:4-management");
@@ -173,6 +182,47 @@ class OrderDeskSmokeTest {
     // Re-read AFTER order 9000 completes: a transcript captured before 9000 existed could never
     // have contained "compass" regardless of isolation, which would make this assertion vacuous.
     assertThat(transcriptOf("order-4711")).doesNotContain("compass");
+
+    // Both sides of the authorization threshold (design of record 2026-08-16-authorization §5):
+    // order 4711's own basket (2 items, $300) cleared OrderApprovalPolicy's standard $500 line with
+    // no approval request at all — asserted first, before this order's own request could exist, so
+    // the later non-vacuous check has something to contrast against.
+    assertThat(APPROVALS)
+        .noneMatch(
+            requested -> requested.conversationId().equals(new ConversationId("order-4711")));
+
+    rabbitTemplate.convertAndSend(
+        Queues.ORDERS,
+        new OrderEvent.OrderPlaced("9500", List.of("helmet", "boots", "tent", "stove")));
+
+    await()
+        .atMost(ofSeconds(10))
+        .untilAsserted(
+            () -> {
+              ConversationSnapshot snapshot = agent.snapshot(new ConversationId("order-9500"));
+              assertThat(snapshot.status()).isEqualTo(ConversationStatus.PARKED);
+              assertThat(snapshot.parkedCalls()).hasSize(1);
+            });
+
+    // The four-item basket ($600) crossed the threshold and was handed to the approver — auto
+    // approved (no .approver(...) is wired here), but the request itself proves the gate ran.
+    assertThat(APPROVALS)
+        .isNotEmpty()
+        .anyMatch(requested -> requested.conversationId().equals(new ConversationId("order-9500")));
+
+    ParkedCall bigBasketParked =
+        agent.snapshot(new ConversationId("order-9500")).parkedCalls().getFirst();
+    publishReply(
+        bigBasketParked.token().value(),
+        FulfillmentReplies.FulfillmentReply.COMPLETED,
+        "Order 9500 fulfilled — NESSY-TEST-9500");
+
+    await()
+        .atMost(ofSeconds(10))
+        .untilAsserted(
+            () ->
+                assertThat(agent.snapshot(new ConversationId("order-9500")).status())
+                    .isEqualTo(ConversationStatus.COMPLETE));
   }
 
   private void publishReply(String token, String kind, String text) {
@@ -219,7 +269,10 @@ class OrderDeskSmokeTest {
         ScriptedOrderDeskProvider provider, ObjectProvider<ObservationRegistry> observations) {
       return Nessy.harness(
           h -> {
-            h.provider(provider).onToolProgress(PROGRESS::add).onToolFinished(FINISHED::add);
+            h.provider(provider)
+                .onToolProgress(PROGRESS::add)
+                .onToolFinished(FINISHED::add)
+                .onApprovalRequested(APPROVALS::add);
             observations.ifAvailable(h::observations);
           });
     }
@@ -227,10 +280,13 @@ class OrderDeskSmokeTest {
 
   /**
    * Serves calls by index (spec §7): call 1 asks for {@code request_fulfillment} on order 4711;
-   * call 2 (after the warehouse's reply resumes the park) answers with the tracking marker; every
-   * later call is a short all-quiet answer with no tool use — the isolation lesson only needs order
-   * 9000's turn to settle, not to re-drive fulfillment (task-5 brief: "the agent chose not to
-   * fulfill" is fine here).
+   * call 2 (after the warehouse's reply resumes the park) answers with the tracking marker; call 3
+   * (order 9000) is a short all-quiet answer with no tool use — the isolation lesson only needs
+   * that turn to settle, not to re-drive fulfillment (task-5 brief: "the agent chose not to
+   * fulfill" is fine here); call 4 asks for {@code request_fulfillment} on order 9500's four-item,
+   * over-threshold basket (design of record 2026-08-16-authorization §5); call 5 (after that
+   * resume) answers with its own tracking marker; every later call is the same short all-quiet
+   * answer as call 3.
    */
   static final class ScriptedOrderDeskProvider implements ModelProvider {
 
@@ -252,11 +308,27 @@ class OrderDeskSmokeTest {
             case 1 ->
                 List.of(
                     new ModelEvent.ToolUseEmitted(
-                        new ToolCall("c1", "request_fulfillment", fulfillmentArguments())),
+                        new ToolCall(
+                            "c1",
+                            "request_fulfillment",
+                            fulfillmentArguments("4711", List.of("lantern", "rope")))),
                     new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
             case 2 ->
                 List.of(
                     new ModelEvent.TextChunk("Order 4711 fulfilled — NESSY-TEST-4711"),
+                    new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
+            case 4 ->
+                List.of(
+                    new ModelEvent.ToolUseEmitted(
+                        new ToolCall(
+                            "c2",
+                            "request_fulfillment",
+                            fulfillmentArguments(
+                                "9500", List.of("helmet", "boots", "tent", "stove")))),
+                    new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+            case 5 ->
+                List.of(
+                    new ModelEvent.TextChunk("Order 9500 fulfilled — NESSY-TEST-9500"),
                     new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
             default ->
                 List.of(
@@ -277,10 +349,11 @@ class OrderDeskSmokeTest {
       };
     }
 
-    private static JsonNode fulfillmentArguments() {
+    private static JsonNode fulfillmentArguments(String orderId, List<String> items) {
       ObjectNode arguments = JsonNodeFactory.instance.objectNode();
-      arguments.put("orderId", "4711");
-      arguments.putArray("items").add("lantern").add("rope");
+      arguments.put("orderId", orderId);
+      var itemsNode = arguments.putArray("items");
+      items.forEach(itemsNode::add);
       return arguments;
     }
   }

@@ -22,7 +22,6 @@ import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolGrant;
-import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,13 +36,21 @@ import org.springframework.context.annotation.Configuration;
  * The nessy wiring — one bean, the typed agent (spec §5, §9.6: {@code Agent<OrderEvent>}, not
  * {@code Agent<String>} — the first typed-vocabulary agent in the family). {@code Harness} and
  * {@code Memory} arrive from the starter's autoconfiguration over the durable JDBC store; identity
- * is declared here: the standing orders, the one tool (granted {@link UsagePolicy#allow()} — no
- * human in this loop), and a logging listener on tool progress.
+ * is declared here: the standing orders, the one tool and its authorization story (below), and a
+ * logging listener on tool progress.
  *
  * <p>The {@link JacksonJsonMessageConverter} bean is declared here too: Boot wires any {@link
  * MessageConverter} bean into both the {@code RabbitTemplate} and the listener container factory
  * automatically, so this is the one place the queue's JSON contract for {@link OrderEvent} is
  * stated.
+ *
+ * <p>The one tool is granted at rung 3 (design of record 2026-08-16-authorization §1): {@link
+ * RequestFulfillmentTool} renders a typed {@link RequestFulfillmentTool.FulfillmentEffect}, {@link
+ * RushOrderEnricher} flags a big basket before judgment, and {@link OrderApprovalPolicy} allows
+ * routine orders straight through but asks a human before shipping anything expensive — no {@code
+ * .approver(...)} is configured here, so an order that clears the threshold falls to {@link
+ * org.jwcarman.nessy.api.approval.Approver#allowAll()}'s own logged warning, same as any other
+ * unconfigured approval path.
  */
 @Configuration
 public class OrderDeskConfig {
@@ -57,7 +64,8 @@ public class OrderDeskConfig {
           + " with your tool. Answer inquiries using only this order's own history. Be terse.";
 
   @Bean
-  Agent<OrderEvent> agent(Harness harness, Memory memory, RabbitTemplate rabbit) {
+  Agent<OrderEvent> agent(
+      Harness harness, Memory memory, RabbitTemplate rabbit, OrderPricing pricing) {
     return harness.agent(
         OrderEvent.class,
         a ->
@@ -66,7 +74,11 @@ public class OrderDeskConfig {
                 .systemPrompt(ORDER_DESK_ORDERS)
                 .memory(memory)
                 .renderer(ORDER_EVENT_RENDERER)
-                .tools(ToolGrant.grant(new RequestFulfillmentTool(rabbit), UsagePolicy.allow()))
+                .tools(
+                    ToolGrant.grant(
+                        new RequestFulfillmentTool(rabbit, pricing),
+                        List.of(new RushOrderEnricher()),
+                        new OrderApprovalPolicy()))
                 .onToolProgressAsync(progress -> LOGGER.info("tool progress: {}", progress)));
   }
 
