@@ -39,9 +39,9 @@ class SubagentLinksTest {
       ConversationId child = ConversationId.generate();
       ParkToken parentToken = ParkToken.generate();
 
-      links.save(child, parentToken, "parent-agent");
+      links.save(child, parentToken);
 
-      assertThat(links.find(child)).contains(new SubagentLinks.Link(parentToken, "parent-agent"));
+      assertThat(links.find(child)).contains(parentToken);
     }
   }
 
@@ -54,10 +54,10 @@ class SubagentLinksTest {
       ParkToken firstToken = ParkToken.generate();
       ParkToken secondToken = ParkToken.generate();
 
-      links.save(child, firstToken, "first-agent");
-      links.save(child, secondToken, "second-agent");
+      links.save(child, firstToken);
+      links.save(child, secondToken);
 
-      assertThat(links.find(child)).contains(new SubagentLinks.Link(secondToken, "second-agent"));
+      assertThat(links.find(child)).contains(secondToken);
     }
   }
 
@@ -67,7 +67,7 @@ class SubagentLinksTest {
     @Test
     void forgetting_a_saved_link_makes_it_no_longer_findable() {
       ConversationId child = ConversationId.generate();
-      links.save(child, ParkToken.generate(), "parent-agent");
+      links.save(child, ParkToken.generate());
 
       links.forget(child);
 
@@ -77,7 +77,7 @@ class SubagentLinksTest {
     @Test
     void forgetting_twice_is_a_quiet_no_op() {
       ConversationId child = ConversationId.generate();
-      links.save(child, ParkToken.generate(), "parent-agent");
+      links.save(child, ParkToken.generate());
       links.forget(child);
 
       links.forget(child);

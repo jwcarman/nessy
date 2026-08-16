@@ -23,22 +23,23 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /**
- * The in-process {@link SubagentLinks}: one {@link SubagentLinks.Link} per child conversation, kept
+ * The in-process {@link SubagentLinks}: one parent {@link ParkToken} per child conversation, kept
  * in a map for the life of the process, last write wins.
  */
 final class InMemorySubagentLinks implements SubagentLinks {
 
-  private final Map<ConversationId, Link> links = new ConcurrentHashMap<>();
+  private final Map<ConversationId, ParkToken> links = new ConcurrentHashMap<>();
 
   @Override
-  public Optional<Link> find(ConversationId child) {
+  public Optional<ParkToken> find(ConversationId child) {
     return Optional.ofNullable(links.get(child));
   }
 
   @Override
-  public void save(ConversationId child, ParkToken parentToken, String parentAgentName) {
+  public void save(ConversationId child, ParkToken parentToken) {
     Objects.requireNonNull(child, "child must not be null");
-    links.put(child, new Link(parentToken, parentAgentName));
+    Objects.requireNonNull(parentToken, "parentToken must not be null");
+    links.put(child, parentToken);
   }
 
   @Override

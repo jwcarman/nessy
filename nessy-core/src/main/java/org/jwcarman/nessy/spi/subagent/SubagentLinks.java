@@ -15,15 +15,20 @@
  */
 package org.jwcarman.nessy.spi.subagent;
 
-import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 
 /**
  * The parent-child correlation a subagent callback resumes against: which parent {@link ParkToken}
- * a child conversation's completion answers, and which agent minted that token — the same two facts
- * {@link org.jwcarman.nessy.Agent#resume} needs to route the answer home.
+ * a child conversation's completion answers.
+ *
+ * <p>The parent agent's name is deliberately not carried here (spec §5 amendment): {@link
+ * org.jwcarman.nessy.spi.conversation.Parks.Park#agentName()} already holds it, stamped by the loop
+ * itself the moment the parent's own park is registered — the same durable record {@link
+ * org.jwcarman.nessy.Agent#resume} verifies before routing. A subagent callback door looks the
+ * parent token up in {@link org.jwcarman.nessy.spi.conversation.Parks} to learn the routing name
+ * rather than duplicating it here, so there is exactly one place that fact can go stale.
  *
  * <p>One link per child conversation, last write wins — a redelivered spawn rewrites the identical
  * link, the same replay-tolerance reasoning as {@link org.jwcarman.nessy.spi.plan.PlanStore}.
@@ -31,27 +36,13 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 public interface SubagentLinks {
 
   /**
-   * One parent-child correlation: the token the parent is waiting on, and the name of the agent
-   * that minted it — the stamp {@link org.jwcarman.nessy.Agent#resume} verifies before routing.
-   *
-   * @param parentToken the park the child's completion resumes
-   * @param parentAgentName the name of the agent that minted {@code parentToken}
+   * The parent {@link ParkToken} saved for {@code child}, or empty if none has been saved (or it
+   * was {@link #forget}).
    */
-  record Link(ParkToken parentToken, String parentAgentName) {
-
-    public Link {
-      Objects.requireNonNull(parentToken, "parentToken must not be null");
-      Objects.requireNonNull(parentAgentName, "parentAgentName must not be null");
-    }
-  }
-
-  /**
-   * The link saved for {@code child}, or empty if none has been saved (or it was {@link #forget}).
-   */
-  Optional<Link> find(ConversationId child);
+  Optional<ParkToken> find(ConversationId child);
 
   /** Upserts the link for {@code child}, last write wins — a redelivered spawn rewrites it. */
-  void save(ConversationId child, ParkToken parentToken, String parentAgentName);
+  void save(ConversationId child, ParkToken parentToken);
 
   /** Removes the link for {@code child}; absent is a no-op (idempotent). */
   void forget(ConversationId child);
