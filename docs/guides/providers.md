@@ -7,9 +7,9 @@ from the environment so an application can switch providers by switching a
 variable, not its code. `OpenAiModelProvider` also reaches every service that
 speaks OpenAI's wire protocol, covered below.
 
-Anthropic and OpenAI are live-validated against their real APIs. Gemini's
-request/response mapping is offline-validated only — see
-[Gemini](#gemini) below for what that means in practice.
+Anthropic, OpenAI, and Gemini are all live-validated against their real
+APIs — Gemini most recently on 2026-08-15, including the tool-call round
+trip with real thought signatures.
 
 ## Building one directly
 
@@ -148,12 +148,11 @@ authored by another provider in a mixed setup — replays with Google's own
 documented skip-validation sentinel instead of failing the call, at the cost
 of degraded reasoning continuity for that one call only.
 
-!!! warning "Not yet live-validated"
-    The Gemini mapping, including the signature capture/replay above, is
-    covered by offline unit tests against the SDK's own response types, but
+!!! note "Live-validated"
+    The Gemini mapping, including the signature capture/replay above, passed
     the live suite — a real conversation and tool round trip against the
-    Gemini Developer API — has not been run against a real key as of this
-    writing. Run it yourself before depending on this path in production:
+    Gemini Developer API on `gemini-3.6-flash` — on 2026-08-15. Rerun it
+    yourself anytime:
     `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl
     nessy-model-gemini`.
 
