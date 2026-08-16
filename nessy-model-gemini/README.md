@@ -39,12 +39,26 @@ ModelProvider provider = GeminiModelProvider.builder().apiKey(apiKey).build();
 
 ## Capabilities
 
-v1 advertises none of the four opt-in `Capability` flags. `THINKING` is deliberately deferred —
-Gemini's `thought`-flagged parts are dropped rather than translated; wiring them up needs both a
-thought-part mapping and a capabilities flag, banked for later. `PROMPT_CACHING`,
-`PARALLEL_TOOL_CALLS`, and `IMAGE_INPUT` are equally unwired in this module's request/response
-mapping, so none is claimed. `IMAGE_INPUT` in particular: an `ImageBlock` in a user message fails
-loudly (`IllegalArgumentException`) rather than being silently dropped.
+v1 advertises `PARALLEL_TOOL_CALLS`: the request mapping already sends several `functionCall`
+parts in one `model`-role `Content` and the stream mapping already emits each as its own
+`ModelEvent.ToolUseEmitted`, so claiming it is honest, not aspirational. `THINKING` is deliberately
+deferred — Gemini's `thought`-flagged parts are dropped rather than translated; wiring them up
+needs both a thought-part mapping and a capabilities flag, banked for later. `PROMPT_CACHING` and
+`IMAGE_INPUT` are equally unwired in this module's request/response mapping, so neither is
+claimed. `IMAGE_INPUT` in particular: an `ImageBlock` in a user message fails loudly
+(`IllegalArgumentException`) rather than being silently dropped.
+
+## Dependency footprint
+
+The java-genai SDK pulls a materially heavier transitive tree than its siblings: where
+`nessy-model-anthropic`/`nessy-model-openai` each resolve to roughly 23–24 jars, this module
+resolves to around 46 — Guava, Protobuf, gRPC's API surface, OpenCensus, Gson, OkHttp, and the
+Kotlin stdlib all ride along underneath Google's auth/HTTP plumbing (`google-auth-library-*`,
+`google-http-client`, `api-common`). This is a conscious trade, not an oversight: it's the cost of
+depending on Google's own official SDK rather than hand-rolling a Gemini client, and no dependency
+exclusions are currently applied — none of those transitives have shown a conflict with the rest
+of the reactor. Revisit if that changes (a version clash, or if the weight becomes a real problem
+for a consumer that wants Gemini without the rest of Google's client plumbing).
 
 ## Testing
 

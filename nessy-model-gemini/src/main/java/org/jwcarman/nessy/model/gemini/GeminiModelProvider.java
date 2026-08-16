@@ -32,17 +32,19 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * GeminiStream}); this class is the one place that owns a {@link GeminiClient} and actually talks
  * to the network.
  *
- * <p>{@link Capability#THINKING} is deliberately absent: Gemini's {@code thought}-flagged parts are
- * dropped by {@link GeminiStream} rather than translated, and wiring them up requires both a
- * thought-part-to-{@code ThinkingChunk} mapping and a capabilities flag — banked, not done, per the
- * provider-expansion design (§2, §6). {@link Capability#PROMPT_CACHING}, {@link
- * Capability#PARALLEL_TOOL_CALLS}, and {@link Capability#IMAGE_INPUT} are equally unadvertised:
- * none of the request/response mapping in this module wires them up yet, so none is claimed — this
- * provider's v1 surface is exactly what the design calls for: text, tool calls, and honest usage.
+ * <p>{@link Capability#PARALLEL_TOOL_CALLS} <em>is</em> advertised: {@link GeminiRequests} and
+ * {@link GeminiStream} already handle several {@code functionCall} parts arriving on one turn —
+ * {@code GeminiStreamTest}'s {@code multiple_function_calls_in_one_turn_each_emit_in_order} proves
+ * it — so claiming it is honest, not aspirational. {@link Capability#THINKING} is deliberately
+ * absent: Gemini's {@code thought}-flagged parts are dropped by {@link GeminiStream} rather than
+ * translated, and wiring them up requires both a thought-part-to-{@code ThinkingChunk} mapping and
+ * a capabilities flag — banked, not done, per the provider-expansion design (§2, §6). {@link
+ * Capability#PROMPT_CACHING} and {@link Capability#IMAGE_INPUT} are equally unadvertised: neither
+ * is wired into this module's request/response mapping, so neither is claimed.
  */
 public final class GeminiModelProvider implements ModelProvider {
 
-  private static final Set<Capability> CAPABILITIES = Set.of();
+  private static final Set<Capability> CAPABILITIES = Set.of(Capability.PARALLEL_TOOL_CALLS);
 
   private final GeminiClient client;
 

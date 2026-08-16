@@ -26,6 +26,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class GeminiModelProviderTest {
@@ -139,10 +140,10 @@ class GeminiModelProviderTest {
   class Capabilities {
 
     @Test
-    void v1_advertises_no_optional_capabilities() {
+    void v1_advertises_parallel_tool_calls_but_not_thinking_caching_or_image_input() {
       var provider = GeminiModelProvider.builder().apiKey("test-key").build();
 
-      assertThat(provider.capabilities()).isEmpty();
+      assertThat(provider.capabilities()).containsExactly(Capability.PARALLEL_TOOL_CALLS);
     }
   }
 }

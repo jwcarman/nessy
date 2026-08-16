@@ -329,13 +329,17 @@ class GeminiRequestsTest {
     private static ToolSpec toolSpec(String name) {
       ObjectNode schema = MAPPER.createObjectNode();
       schema.put("type", "object");
-      schema.putObject("properties").putObject("path").put("type", "string");
+      var properties = schema.putObject("properties");
+      properties.putObject("path").put("type", "string");
+      properties.putObject("lineCount").put("type", "integer");
+      schema.putArray("required").add("path");
       return new ToolSpec(name, "does things called " + name, schema);
     }
 
     @Test
     void becomes_a_function_declaration_carrying_the_schema_as_is() {
-      var config = GeminiRequests.toConfig(request(List.of(), List.of(toolSpec("read_file"))));
+      var spec = toolSpec("read_file");
+      var config = GeminiRequests.toConfig(request(List.of(), List.of(spec)));
 
       var tools = config.tools().orElseThrow();
       assertThat(tools).hasSize(1);
@@ -344,7 +348,9 @@ class GeminiRequestsTest {
       var declaration = declarations.get(0);
       assertThat(declaration.name()).contains("read_file");
       assertThat(declaration.description()).contains("does things called read_file");
-      assertThat(declaration.parametersJsonSchema()).isPresent();
+      // Node equality, not just presence: a wrong implementation that substituted an empty or
+      // reshaped schema would still pass an isPresent()-only check.
+      assertThat(declaration.parametersJsonSchema()).contains(spec.inputSchema());
     }
 
     @Test
