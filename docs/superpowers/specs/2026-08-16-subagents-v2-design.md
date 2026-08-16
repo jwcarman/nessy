@@ -12,20 +12,24 @@ not deprecated.
 ## 0. The rulings
 
 1. **Construction: inside the parent's builder.** `AgentBuilder` gains
-   `.subagent(Consumer<SubagentConfig>)`. The delegation graph is a build-time lexical
+   `.subagent(SubagentCustomizer<String>)` and
+   `.subagent(Class<T>, SubagentCustomizer<T>)` — `SubagentCustomizer<T>` is a named
+   functional interface (`void customize(SubagentConfig<T>)`), per the DSL-idiom
+   rulings of 2026-08-16. The delegation graph is a build-time lexical
    tree: a subagent may declare its own `.subagent(...)`, and a cycle is unrepresentable
    because a child is defined inside its parent and cannot reference it. The v1
    depth-cap/cycle concern (final review N-6) dissolves by construction.
 2. **Trimming: prompt/model/tools/memory only — and it is a CONFIG, not a builder
-   (owner ruling).** `SubagentConfig` has fluent setters and NO `build()` method: the
+   (owner ruling).** `SubagentConfig<T>` has fluent setters and NO `build()` method: the
    app describes the child; only the parent's builder constructs it. Nothing
    half-buildable escapes the lambda. It exposes `name`
    (required), `description` (required — it IS the delegation tool's description),
    `model`, system prompt, tool grants, context transformers (plan/notebook style),
    termination policy, and `policy(UsagePolicy)` for the delegation tool itself
    (default allow; gating a parking child is fully supported once §4's re-park fix
-   lands — same generation). Everything else is inherited from the harness and not
-   overridable: provider, stores, approver, observations, listeners.
+   lands — same generation), plus `renderer(InputRenderer<T>)` for typed subagents
+   (§0.5). Everything else is inherited from the harness and not overridable:
+   provider, stores, approver, observations, listeners.
 3. **Child doors: through the parent handle.** `Agent` gains
    `subagent(String name)` returning a `Subagent` handle — a narrow doors view:
    `approve(token)`, `deny(token, reason)`, `resume(token, resolution)`, `name()`,
@@ -33,6 +37,21 @@ not deprecated.
    `converse()`/`tell()`: a subagent's conversations exist only through delegation.
    Unknown name → IllegalArgumentException naming parent and requested child.
 4. **Timing: now, before anything else.** The v1 surface never calcifies in examples.
+5. **Typed delegation inputs (owner ruling, 2026-08-16): both doors ship.**
+   - The **degenerate String door** — `.subagent(sub -> ...)` — keeps v1's wire shape:
+     the delegation tool's input is `Delegation(String task)` (a bare String makes a
+     degenerate tool schema; the wrapper gives the model a proper one-field object),
+     and the child is `Agent<String>` told the task text. No renderer involved.
+   - The **typed door** — `.subagent(ResearchRequest.class, sub -> ...)` — makes `T`
+     the delegation tool's wire shape directly: `Tool.inputType()` already drives the
+     victools schema, the invoker already parses tool-call JSON to `T`, and the child
+     is `Agent<T>` opened through its `InputRenderer<T>`. The subagent's input type IS
+     its tool schema — structured arguments instead of prose-packed strings.
+   - `renderer(...)` is REQUIRED on the typed door (parent build fails loudly naming
+     the missing renderer); no silent render-as-JSON default — explicit renderers make
+     deliberate child prompts.
+   - Typed OUTPUT (structured results to the parent instead of final text) is out of
+     scope and banked — it changes ToolResult mapping and deserves its own design.
 
 ## 1. What the app writes (the whole story)
 

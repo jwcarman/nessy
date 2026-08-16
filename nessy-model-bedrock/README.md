@@ -151,12 +151,11 @@ mid-stream failure, missing-`messageStop` completion, `close()`-cancels-the-futu
 before-any-event failure throwing from `stream()` itself rather than from iteration.
 
 `BedrockLiveTest` (`@Tag("live")`) mirrors the sibling providers' live suites: a real conversation
-and a real tool-call round trip against Amazon Bedrock. **Not yet live-validated** — no AWS
-credentials with Bedrock model access were available in the environment this module was built in;
-see the class javadoc's honesty note. The model id
+and a real tool-call round trip against Amazon Bedrock. **Live-validated 2026-08-16** — both live
+tests passed against real Bedrock with real AWS credentials, including the tool round trip through
+the ConverseStream bridge, on the default model id
 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`, the `us` cross-region inference profile for Claude
-Haiku 4.5) is **docs-verified**, not live-verified: confirmed 2026-08-16 against Anthropic's own
-Amazon Bedrock documentation, but never sent to Bedrock. Run it once credentials are available:
+Haiku 4.5). Rerun anytime:
 
 ```sh
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \

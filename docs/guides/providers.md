@@ -7,10 +7,10 @@ them from the environment so an application can switch providers by
 switching a variable, not its code. `OpenAiModelProvider` also reaches every
 service that speaks OpenAI's wire protocol, covered below.
 
-Anthropic, OpenAI, and Gemini are all live-validated against their real
-APIs — Gemini most recently on 2026-08-15, including the tool-call round
-trip with real thought signatures. Bedrock is **not yet live-validated** —
-see [Bedrock](#bedrock) below.
+All four native providers are live-validated against their real APIs —
+Gemini on 2026-08-15 including the tool-call round trip with real thought
+signatures, and Bedrock on 2026-08-16 including the tool round trip through
+the ConverseStream bridge.
 
 ## Building one directly
 
@@ -114,10 +114,10 @@ tell `select()` which model name is right for it. The same applies to
 OpenRouter and LM Studio models reached the same way. Without `NESSY_MODEL`,
 `select()` falls back to a small, cheap default for the chosen provider
 (Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-3.6-flash`,
-`grok-4.6` for xAI — read from docs.x.ai on 2026-08-15; not exercised against
-the live API — or, for Bedrock, `us.anthropic.claude-haiku-4-5-20251001-v1:0`,
-the `us` cross-region inference profile id for Claude Haiku 4.5, docs-verified
-2026-08-16 and likewise not yet exercised against the live API).
+`grok-4.6` for xAI — live-validated 2026-08-16, including a multi-tool turn
+with an approval gate — or, for Bedrock, `us.anthropic.claude-haiku-4-5-20251001-v1:0`,
+the `us` cross-region inference profile id for Claude Haiku 4.5,
+live-validated 2026-08-16).
 
 `nessy-examples/chat-cli`'s `Chat` main is this in practice: one main, no
 `if` branch for which provider module to import, because `select()` already
@@ -232,21 +232,17 @@ blocks per turn, each on its own `contentBlockIndex`). Thinking output is
 not yet mapped — `ThinkingBlock`/`RedactedThinkingBlock` are dropped on
 replay, the same discipline Gemini's own unadvertised capabilities document.
 
-!!! note "Not yet live-validated"
-    Unlike Anthropic, OpenAI, and Gemini above, the Bedrock mapping has not
-    been exercised against the real Bedrock API — no AWS credentials with
-    Bedrock model access were available in the environment this module was
-    built in. The default model id
+!!! note "Live-validated"
+    The Bedrock mapping passed the live suite — a real conversation and a
+    real tool round trip through the ConverseStream bridge against Amazon
+    Bedrock — on 2026-08-16, on the default model id
     (`us.anthropic.claude-haiku-4-5-20251001-v1:0`, the `us` cross-region
-    inference profile for Claude Haiku 4.5) is **docs-verified**, not
-    live-verified: confirmed 2026-08-16 against Anthropic's own Amazon
-    Bedrock documentation, but never sent to Bedrock. Offline mapping tests
+    inference profile for Claude Haiku 4.5). Offline mapping tests
     (request/response translation, the async-to-blocking bridge, stop-reason
-    and usage tables) are exercised entirely against hand-built SDK fixtures
-    and a hand-rolled async-client fake — no mocking library, no network.
-    Run the live suite yourself once credentials are available — `AWS_ACCESS_KEY_ID`
-    is the gate the suite itself checks (`BedrockLiveTest.assumeCredentialsPresent()`),
-    so it, not `AWS_REGION` alone, is what actually opts the tests in:
+    and usage tables) run entirely against hand-built SDK fixtures and a
+    hand-rolled async-client fake — no mocking library, no network. Rerun the
+    live suite anytime — `AWS_ACCESS_KEY_ID` is the gate the suite itself
+    checks, so it, not `AWS_REGION` alone, is what opts the tests in:
 
     ```sh
     AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \
@@ -272,7 +268,12 @@ ModelProvider provider =
 `XAI_API_KEY` is a first-class `EnvModelProviders` citizen — set it alone
 and `fromEnv()` wires Grok with no other code, as shown above.
 
-**OpenRouter**:
+**OpenRouter** (validated 2026-08-16 — `openai/gpt-4o-mini` and the free
+open-weight `nvidia/nemotron-3.5-lightning-30b-a3b` through chat-cli, each
+covering text, an approval-gated tool round trip, and a notebook write;
+note OpenRouter model ids are vendor-prefixed slugs, so set `NESSY_MODEL`,
+and cached-token counts may read zero since usage passthrough varies by
+upstream model):
 
 ```java
 ModelProvider provider =
@@ -363,6 +364,8 @@ ambiguous-classpath failure mode.
 
 ## Where next
 
+- [Trying a Provider](trying-a-provider.md) — the two-minute live smoke test
+  for any provider path above.
 - [Getting Started](getting-started.md) — the smallest agent, provider swap
   included.
 - [Spring Boot](spring-boot.md) — the same provider selection, driven by
