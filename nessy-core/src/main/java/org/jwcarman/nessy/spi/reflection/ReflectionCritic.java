@@ -198,6 +198,19 @@ final class ReflectionCritic implements Consumer<ConversationSettled> {
    * silently omitted. The critic wants a conversation to critique, not a resumable one.
    */
   static String renderTranscript(List<Message> messages) {
+    Map<String, ToolResultBlock> resultsByCallId = collectToolResults(messages);
+    StringBuilder rendered = new StringBuilder();
+    for (Message message : messages) {
+      String role = message.role() == Role.USER ? "User" : "Assistant";
+      for (ContentBlock block : message.content()) {
+        appendBlock(rendered, role, block, resultsByCallId);
+      }
+    }
+    return rendered.toString();
+  }
+
+  /** The {@link ToolResultBlock}s a call's line folds in, indexed by the call's own id. */
+  private static Map<String, ToolResultBlock> collectToolResults(List<Message> messages) {
     Map<String, ToolResultBlock> resultsByCallId = new LinkedHashMap<>();
     for (Message message : messages) {
       for (ContentBlock block : message.content()) {
@@ -206,49 +219,54 @@ final class ReflectionCritic implements Consumer<ConversationSettled> {
         }
       }
     }
-    StringBuilder rendered = new StringBuilder();
-    for (Message message : messages) {
-      String role = message.role() == Role.USER ? "User" : "Assistant";
-      for (ContentBlock block : message.content()) {
-        switch (block) {
-          case TextBlock(String text) -> {
-            if (!text.isBlank()) {
-              rendered.append(role).append(": ").append(text).append('\n');
-            }
-          }
-          case ToolUseBlock toolUse ->
-              rendered
-                  .append(role)
-                  .append(": ")
-                  .append(renderToolUse(toolUse, resultsByCallId))
-                  .append('\n');
-          case ToolResultBlock ignored -> {
-            // Folded into its call's line above, not rendered as its own turn.
-          }
-          case ThinkingBlock ignored -> {
-            // The model's visible reasoning carries nothing a text critique needs.
-          }
-          case RedactedThinkingBlock ignored -> {
-            // Opaque to everyone but the provider that issued it.
-          }
-          case ImageBlock ignored -> {
-            // No textual content to fold into a prose critique.
-          }
-        }
+    return resultsByCallId;
+  }
+
+  /** Renders one {@code block} as its own line onto {@code rendered}, or nothing at all. */
+  private static void appendBlock(
+      StringBuilder rendered,
+      String role,
+      ContentBlock block,
+      Map<String, ToolResultBlock> resultsByCallId) {
+    switch (block) {
+      case TextBlock(String text) when !text.isBlank() ->
+          rendered.append(role).append(": ").append(text).append('\n');
+      case TextBlock _ -> {
+        // Blank text carries nothing a text critique needs.
+      }
+      case ToolUseBlock toolUse ->
+          rendered
+              .append(role)
+              .append(": ")
+              .append(renderToolUse(toolUse, resultsByCallId))
+              .append('\n');
+      case ToolResultBlock _ -> {
+        // Folded into its call's line above, not rendered as its own turn.
+      }
+      case ThinkingBlock _ -> {
+        // The model's visible reasoning carries nothing a text critique needs.
+      }
+      case RedactedThinkingBlock _ -> {
+        // Opaque to everyone but the provider that issued it.
+      }
+      case ImageBlock _ -> {
+        // No textual content to fold into a prose critique.
       }
     }
-    return rendered.toString();
   }
 
   private static String renderToolUse(
       ToolUseBlock toolUse, Map<String, ToolResultBlock> resultsByCallId) {
     ToolCall call = toolUse.call();
     ToolResultBlock result = resultsByCallId.get(call.id());
-    String outcome =
-        result == null
-            ? "(no result recorded)"
-            : (result.isError() ? "error: " : "") + result.content();
+    String outcome = result == null ? "(no result recorded)" : renderResult(result);
     return "called " + call.name() + "(" + call.arguments() + ") → " + outcome;
+  }
+
+  /** The result half of a call's line: an {@code error: } prefix only when the call failed. */
+  private static String renderResult(ToolResultBlock result) {
+    String prefix = result.isError() ? "error: " : "";
+    return prefix + result.content();
   }
 
   private static String outcomeLine(ConversationSettled settled) {

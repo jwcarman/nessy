@@ -62,6 +62,8 @@ import org.jwcarman.nessy.spi.memory.ContextTransformer;
  */
 public final class NotebookTools {
 
+  private static final String IDENTITY_NOT_NULL = "identity must not be null";
+
   private NotebookTools() {}
 
   /**
@@ -79,7 +81,7 @@ public final class NotebookTools {
    * be a meaningful author name is refused at wiring time rather than silently becoming one.
    */
   private static String requireIdentity(String identity) {
-    Objects.requireNonNull(identity, "identity must not be null");
+    Objects.requireNonNull(identity, IDENTITY_NOT_NULL);
     if (identity.isBlank()) {
       throw new IllegalArgumentException("identity must not be blank");
     }
@@ -246,7 +248,7 @@ public final class NotebookTools {
     private RememberNoteTool(
         Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
       this.notebook = notebook;
-      this.identity = Objects.requireNonNull(identity, "identity must not be null");
+      this.identity = Objects.requireNonNull(identity, IDENTITY_NOT_NULL);
       this.resolver = resolver;
     }
 
@@ -344,7 +346,7 @@ public final class NotebookTools {
     private ForgetNoteTool(
         Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
       this.notebook = notebook;
-      this.identity = Objects.requireNonNull(identity, "identity must not be null");
+      this.identity = Objects.requireNonNull(identity, IDENTITY_NOT_NULL);
       this.resolver = resolver;
     }
 
