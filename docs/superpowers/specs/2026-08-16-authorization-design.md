@@ -187,6 +187,20 @@ public interface Enricher<E> {
     declared?") keep working; `AuthorizationContext.declaredIntent(Class<T>)`
     remains as the escape hatch for apps that skip the support object and run their
     own key discipline. The support is the opinion; the raw slot is the seam.
+  - **The agent-level shortcut (owner design)** is the documented path — the three
+    wirings have no independent meaning, so the DSL hides them, and the one-per-agent
+    rule becomes enforceable at wiring time (a second call THROWS; silent row
+    overwrites are the bug it prevents):
+    ```java
+    AgentConfig<I> intent(IntentSupport<V> support);            // typed reads: support.declaredIn(ctx)
+    AgentConfig<I> intent(Class<V> vocabulary, IntentStore store);
+    AgentConfig<I> intent(Class<V> vocabulary);                 // store inherited from the harness
+    ```
+    Construct-then-wire when a policy reads intent typed; the terse forms when the
+    policy only requires that SOMETHING was declared. `HarnessConfig.intentStore(...)`
+    follows every other store's precedent (in-memory default, inherited by agents), so
+    the shipped example reads `.intent(RefundIntent.class)`. No ordering hazard against
+    `.grant(...)`: policy lambdas run per call, not at wiring.
   - RULE: at most one `IntentSupport` per agent — the store row is
     one-intent-per-conversation LWW, so two vocabularies on one agent would
     overwrite each other. A read whose stored type does not match `V` returns
