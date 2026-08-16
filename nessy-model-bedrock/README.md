@@ -82,8 +82,33 @@ two: a visitor pushes every raw `ConverseStreamOutput` (plus a completion or fai
 a `BlockingQueue`, and a small `Iterator` pulls from that same queue on the caller's thread. This
 bridge is production-only glue — `BedrockClient` is the seam that isolates it: `BedrockStream`
 itself is constructed from a plain `Iterable<ConverseStreamOutput>` and a close callback, exactly
-the shape `GeminiStream` takes, so the mapping tests below never need the bridge, the async client,
-or any mocking library — only the AWS SDK's own builder-constructed fixtures.
+the shape `GeminiStream` takes, so the pure mapping tests never need the bridge, the async client,
+or any mocking library — only the AWS SDK's own builder-constructed fixtures. The bridge itself
+*is* covered offline, through the public `.client(BedrockRuntimeAsyncClient)` escape hatch and a
+hand-rolled `ScriptedBedrockRuntimeAsyncClient` fake (see Testing below) — not a mock, and no live
+credentials needed.
+
+The queue is **deliberately unbounded**: the producer side runs on the SDK's own Netty event-loop
+thread, and blocking that thread on a full queue would stall every other request multiplexed over
+the same loop — far worse than letting one turn's events buffer in memory. `maxTokens` bounds how
+much one turn can produce, so the buffer stays bounded in practice.
+
+The bridge also **primes the pump**: `wrap` blocks for the stream's first queue item —
+translated event, completion, or failure — before `stream()` returns, so a failure on the very
+first call (a 429 throttle, an expired credential) throws from `stream()` itself. This is what
+lets `RetryingModelProvider` retry a Bedrock opening failure exactly the way it retries the
+identical failure on every synchronous-SDK sibling provider — `RetryingModelProvider` only ever
+retries the call that opens a stream, not a mid-stream failure.
+
+`BedrockModelProvider` is also `AutoCloseable`: the real `BedrockClient` owns a
+`BedrockRuntimeAsyncClient`, whose Netty transport holds resources that outlive one `stream()`
+call. Close the provider (or the SDK client passed to `.client(...)`) when done with it.
+
+A stream failure's `CompletionException` wrapper (the SDK's own future-chaining artifact) is
+unwrapped before it reaches the harness: the underlying cause — an `SdkServiceException` for a
+throttle, a guardrail block, an auth failure, … — is rethrown directly when it is already a
+`RuntimeException`, so the reason recorded in the durable transcript names the provider's own
+diagnosis instead of a generic wrapper every Bedrock failure would otherwise collapse into.
 
 ## Capabilities
 
@@ -112,8 +137,14 @@ build every fixture from the AWS SDK's own builders — real `MessageStartEvent`
 `ContentBlockStartEvent`, `ContentBlockDeltaEvent`, `ContentBlockStopEvent`, `MessageStopEvent`,
 `ConverseStreamMetadataEvent` objects, each of which implements `ConverseStreamOutput` directly and
 is fully offline-constructible — no mocking library. `BedrockClient` is the thin package-private
-seam seam-tests fake directly; the async-to-blocking bridge (see above) lives only in production
-code and is exercised by `BedrockLiveTest`, not the offline suite.
+seam the pure mapping tests fake directly.
+
+`BedrockModelProviderTest$Bridge` pins the async-to-blocking bridge itself, offline: a hand-rolled
+`ScriptedBedrockRuntimeAsyncClient` (not a mock — a real `BedrockRuntimeAsyncClient` implementation
+driven through the SDK's own `SdkPublisher.fromIterable`) is passed through the public
+`.client(...)` escape hatch, covering the ordering guarantee (events before the terminal signal),
+mid-stream failure, missing-`messageStop` completion, `close()`-cancels-the-future, and a
+before-any-event failure throwing from `stream()` itself rather than from iteration.
 
 `BedrockLiveTest` (`@Tag("live")`) mirrors the sibling providers' live suites: a real conversation
 and a real tool-call round trip against Amazon Bedrock. **Not yet live-validated** — no AWS

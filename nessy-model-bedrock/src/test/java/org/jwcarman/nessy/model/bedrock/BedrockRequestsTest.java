@@ -221,6 +221,30 @@ class BedrockRequestsTest {
     }
 
     @Test
+    void number_and_boolean_arguments_convert_to_the_matching_document_kinds() {
+      ObjectNode arguments = MAPPER.createObjectNode();
+      arguments.put("lineCount", 25);
+      arguments.put("ratio", 3.5);
+      arguments.put("verbose", true);
+      var toolUse = new ToolUseBlock(new ToolCall("call-1", "read_file", arguments));
+      var assistantTurn = Message.assistant(List.of(toolUse));
+      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var built = BedrockRequests.toRequest(request(List.of(assistantTurn, toolResultTurn)));
+
+      var input = built.messages().get(0).content().get(0).toolUse().input().asMap();
+      // Node equality on document kind, not just string form: a wrong implementation that
+      // stringified everything (Document.fromString(node.asText())) would still show "25", "3.5",
+      // and "true" as text — asserting isNumber()/isBoolean() catches that a schema promising an
+      // integer or a boolean would otherwise silently receive a JSON string instead.
+      assertThat(input.get("lineCount").isNumber()).isTrue();
+      assertThat(input.get("lineCount").asNumber().intValue()).isEqualTo(25);
+      assertThat(input.get("ratio").isNumber()).isTrue();
+      assertThat(input.get("ratio").asNumber().doubleValue()).isEqualTo(3.5);
+      assertThat(input.get("verbose").isBoolean()).isTrue();
+      assertThat(input.get("verbose").asBoolean()).isTrue();
+    }
+
+    @Test
     void a_tool_use_block_s_stored_signature_is_ignored_on_replay() {
       var toolUse =
           new ToolUseBlock(

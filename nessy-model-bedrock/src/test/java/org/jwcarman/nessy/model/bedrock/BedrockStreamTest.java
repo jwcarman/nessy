@@ -279,13 +279,31 @@ class BedrockStreamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"malformed_model_output", "malformed_tool_use", "bogus_reason"})
-    void an_unmapped_stop_reason_fails_loudly_naming_it(String stopReason) {
+    @ValueSource(strings = {"malformed_model_output", "malformed_tool_use"})
+    void an_unmapped_known_stop_reason_fails_loudly_naming_it(String stopReason) {
       var chunks = List.of(messageStop(stopReason));
       var stream = new BedrockStream(chunks, () -> {});
 
       assertThatThrownBy(() -> stream.forEach(event -> {}))
-          .isInstanceOf(IllegalStateException.class);
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(stopReason);
+    }
+
+    /**
+     * A wire value this SDK build has never heard of collapses to the SDK's own {@code
+     * UNKNOWN_TO_SDK_VERSION} sentinel before it ever reaches {@code mapStopReason} — and that
+     * sentinel carries no copy of the original string (its {@code toString()} is {@code "null"}),
+     * so unlike the known-but-unmapped case above, the original wire value cannot be named in the
+     * failure message. Only the fact that stop-reason mapping is what failed can be.
+     */
+    @Test
+    void a_stop_reason_this_sdk_build_does_not_recognize_still_fails_loudly() {
+      var chunks = List.of(messageStop("bogus_reason"));
+      var stream = new BedrockStream(chunks, () -> {});
+
+      assertThatThrownBy(() -> stream.forEach(event -> {}))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("stopReason");
     }
   }
 

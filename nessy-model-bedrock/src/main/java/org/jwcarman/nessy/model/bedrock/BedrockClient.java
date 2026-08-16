@@ -36,9 +36,19 @@ import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamReques
  * the module: tests implement it directly with a hand-rolled fake that returns a {@link
  * BedrockStream} built from plain SDK response fixtures — no async client, no mocking library, no
  * SDK internals touched.
+ *
+ * <p>{@link org.jwcarman.nessy.spi.model.ModelStream} is the blocking-{@code Iterable} contract
+ * this seam ultimately serves.
  */
 interface BedrockClient {
 
   /** Starts one streaming {@code ConverseStream} call. */
   BedrockStream converseStream(ConverseStreamRequest request);
+
+  /**
+   * Releases whatever this client owns — the real implementation closes the wrapped {@code
+   * BedrockRuntimeAsyncClient}'s Netty resources; a no-op by default so hand-rolled test fakes
+   * never need to implement it.
+   */
+  default void close() {}
 }

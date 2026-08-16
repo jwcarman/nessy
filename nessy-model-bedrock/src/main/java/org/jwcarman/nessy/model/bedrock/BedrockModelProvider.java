@@ -19,6 +19,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -33,6 +34,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStartEve
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlockStopEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamMetadataEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamOutput;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamResponseHandler;
 import software.amazon.awssdk.services.bedrockruntime.model.MessageStartEvent;
 import software.amazon.awssdk.services.bedrockruntime.model.MessageStopEvent;
@@ -59,8 +61,16 @@ import software.amazon.awssdk.services.bedrockruntime.model.MessageStopEvent;
  * Capability#IMAGE_INPUT} are deliberately absent: none is wired into this module's
  * request/response mapping, so none is claimed — the same discipline {@code GeminiModelProvider}
  * documents for its own unadvertised capabilities.
+ *
+ * <p>Also {@link AutoCloseable}: the real {@link BedrockClient} built by {@link Builder#wrap} owns
+ * a {@code BedrockRuntimeAsyncClient}, whose default Netty transport holds an event-loop group and
+ * connection pool that outlive a single {@link #stream} call. {@link ModelProvider} itself declares
+ * no {@code close()} — most sibling providers wrap a client with no such teardown need — so this is
+ * additive: callers that construct a {@code BedrockModelProvider} directly (rather than through a
+ * DI container that already manages its lifecycle) should close it when done, the same as they
+ * would the underlying SDK client itself.
  */
-public final class BedrockModelProvider implements ModelProvider {
+public final class BedrockModelProvider implements ModelProvider, AutoCloseable {
 
   private static final Set<Capability> CAPABILITIES = Set.of(Capability.PARALLEL_TOOL_CALLS);
 
@@ -87,6 +97,11 @@ public final class BedrockModelProvider implements ModelProvider {
   @Override
   public String name() {
     return "Bedrock";
+  }
+
+  @Override
+  public void close() {
+    client.close();
   }
 
   /** Assembles a {@link BedrockModelProvider}. */
@@ -198,18 +213,47 @@ public final class BedrockModelProvider implements ModelProvider {
      * {@link #DONE} on success, a {@link StreamFailure} on error — so a caller iterating the
      * resulting {@link BedrockStream} sees a normal end of iteration or a thrown exception, never a
      * silently truncated stream.
+     *
+     * <p>The queue is deliberately unbounded ({@link LinkedBlockingQueue}'s no-capacity
+     * constructor): the producer side runs on the SDK's own Netty event-loop thread, and blocking
+     * an event loop on a full queue would stall every other request multiplexed over that loop —
+     * far worse than letting one turn's events buffer in memory. {@code maxTokens} already bounds
+     * how much one turn can produce, so the buffer is bounded in practice even though the queue
+     * itself is not.
+     *
+     * <p><b>Priming the pump.</b> This method blocks for the stream's first queue item — translated
+     * event, {@link #DONE}, or {@link StreamFailure} — before returning, so a failure on the very
+     * first call (a 429 throttle, an expired credential, a guardrail-blocked request) throws from
+     * {@link BedrockModelProvider#stream} itself rather than only once the caller starts iterating.
+     * This matters: {@code RetryingModelProvider} retries only the opening of a stream (its
+     * javadoc: "once events flow, tokens have already been fed downstream"), so an opening failure
+     * that instead surfaced from the first {@code hasNext()}/{@code next()} call would silently
+     * never be retried, unlike the identical failure on every synchronous-SDK sibling provider.
      */
     private static BedrockClient wrap(BedrockRuntimeAsyncClient sdkClient) {
-      return request -> {
-        BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
-        var handler =
-            ConverseStreamResponseHandler.builder().subscriber(new QueueingVisitor(queue)).build();
-        var future = sdkClient.converseStream(request, handler);
-        future.whenComplete(
-            (ignored, error) ->
-                putUninterruptibly(queue, error == null ? DONE : new StreamFailure(error)));
-        Iterable<ConverseStreamOutput> bridge = () -> new BridgeIterator(queue);
-        return new BedrockStream(bridge, () -> future.cancel(true));
+      return new BedrockClient() {
+        @Override
+        public BedrockStream converseStream(ConverseStreamRequest request) {
+          BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+          var handler =
+              ConverseStreamResponseHandler.builder()
+                  .subscriber(new QueueingVisitor(queue))
+                  .build();
+          var future = sdkClient.converseStream(request, handler);
+          future.whenComplete(
+              (ignored, error) -> queue.add(error == null ? DONE : new StreamFailure(error)));
+          Object first = take(queue);
+          if (first instanceof StreamFailure failure) {
+            throw failure.toRuntimeException();
+          }
+          Iterable<ConverseStreamOutput> bridge = () -> new BridgeIterator(queue, first);
+          return new BedrockStream(bridge, () -> future.cancel(true));
+        }
+
+        @Override
+        public void close() {
+          sdkClient.close();
+        }
       };
     }
   }
@@ -220,8 +264,25 @@ public final class BedrockModelProvider implements ModelProvider {
   /** Enqueued once the SDK's stream future completes exceptionally. */
   private record StreamFailure(Throwable cause) {
 
+    /**
+     * Unwraps a {@link CompletionException} the SDK's own future chaining may have wrapped the real
+     * failure in, and rethrows the underlying cause directly when it is already a {@link
+     * RuntimeException} — an {@code SdkServiceException} (throttling, guardrail, auth, …) always is
+     * — so the reason that lands in the durable transcript ({@code ProviderModelCallExecutor}'s
+     * {@code e.getClass().getSimpleName() + ": " + e.getMessage()}) names the provider's own
+     * diagnosis instead of a generic wrapper every Bedrock failure would otherwise collapse into
+     * identically.
+     */
     RuntimeException toRuntimeException() {
-      return new IllegalStateException("Bedrock ConverseStream failed", cause);
+      Throwable actual =
+          cause instanceof CompletionException && cause.getCause() != null
+              ? cause.getCause()
+              : cause;
+      if (actual instanceof RuntimeException runtimeException) {
+        return runtimeException;
+      }
+      return new IllegalStateException(
+          actual.getClass().getSimpleName() + ": " + actual.getMessage(), actual);
     }
   }
 
@@ -267,8 +328,13 @@ public final class BedrockModelProvider implements ModelProvider {
       offer(event);
     }
 
+    /**
+     * The queue is unbounded (see {@link Builder#wrap}'s javadoc), so {@link
+     * BlockingQueue#add(Object)} never actually blocks here — it says that plainly, unlike a {@code
+     * put} that would need interrupt handling it can never hit in practice.
+     */
     private void offer(ConverseStreamOutput event) {
-      putUninterruptibly(queue, event);
+      queue.add(event);
     }
   }
 
@@ -276,6 +342,11 @@ public final class BedrockModelProvider implements ModelProvider {
    * Pulls from the bridging queue on the caller's thread, translating the queue's two sentinel
    * shapes ({@link #DONE}, {@link StreamFailure}) into ordinary {@link Iterator} termination: a
    * clean end of iteration, or a thrown {@link IllegalStateException} wrapping the SDK's failure.
+   *
+   * <p>Constructed with the stream's already-taken first item ({@link Builder#wrap}'s pump-priming
+   * read) so that item is not lost — it becomes this iterator's initial lookahead (or marks it
+   * already finished, if the very first item was {@link #DONE}) rather than being re-fetched from
+   * the queue.
    */
   private static final class BridgeIterator implements Iterator<ConverseStreamOutput> {
 
@@ -283,8 +354,13 @@ public final class BedrockModelProvider implements ModelProvider {
     private ConverseStreamOutput lookahead;
     private boolean finished;
 
-    private BridgeIterator(BlockingQueue<Object> queue) {
+    private BridgeIterator(BlockingQueue<Object> queue, Object primedFirst) {
       this.queue = queue;
+      if (primedFirst == DONE) {
+        finished = true;
+      } else {
+        lookahead = (ConverseStreamOutput) primedFirst;
+      }
     }
 
     @Override
@@ -308,7 +384,7 @@ public final class BedrockModelProvider implements ModelProvider {
       if (lookahead != null || finished) {
         return;
       }
-      Object item = takeUninterruptibly(queue);
+      Object item = take(queue);
       if (item == DONE) {
         finished = true;
       } else if (item instanceof StreamFailure failure) {
@@ -320,38 +396,19 @@ public final class BedrockModelProvider implements ModelProvider {
     }
   }
 
-  private static void putUninterruptibly(BlockingQueue<Object> queue, Object item) {
-    boolean interrupted = false;
+  /**
+   * Blocks for the next queue item, restoring the interrupt flag and failing loudly rather than
+   * swallowing cancellation — the same precedent {@code Sleeper.REAL} sets for this repository's
+   * only other blocking wait. A container shutdown or a request-timeout filter that interrupts the
+   * thread folding a Bedrock turn must unwind that thread, not have its interrupt silently consumed
+   * while this method keeps waiting for a queue element that may never arrive.
+   */
+  private static Object take(BlockingQueue<Object> queue) {
     try {
-      while (true) {
-        try {
-          queue.put(item);
-          return;
-        } catch (InterruptedException e) {
-          interrupted = true;
-        }
-      }
-    } finally {
-      if (interrupted) {
-        Thread.currentThread().interrupt();
-      }
-    }
-  }
-
-  private static Object takeUninterruptibly(BlockingQueue<Object> queue) {
-    boolean interrupted = false;
-    try {
-      while (true) {
-        try {
-          return queue.take();
-        } catch (InterruptedException e) {
-          interrupted = true;
-        }
-      }
-    } finally {
-      if (interrupted) {
-        Thread.currentThread().interrupt();
-      }
+      return queue.take();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("interrupted while streaming from Bedrock", e);
     }
   }
 }
