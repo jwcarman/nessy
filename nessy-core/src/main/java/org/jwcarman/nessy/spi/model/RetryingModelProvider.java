@@ -75,4 +75,9 @@ public final class RetryingModelProvider implements ModelProvider {
   public Set<Capability> capabilities() {
     return delegate.capabilities();
   }
+
+  @Override
+  public String name() {
+    return delegate.name();
+  }
 }

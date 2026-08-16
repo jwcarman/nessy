@@ -183,4 +183,12 @@ class ScriptedModelProviderTest {
 
     assertThat(provider.capabilities()).isEmpty();
   }
+
+  @Test
+  void reports_scripted_as_its_name() {
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+
+    assertThat(provider.name()).isEqualTo("Scripted");
+  }
 }

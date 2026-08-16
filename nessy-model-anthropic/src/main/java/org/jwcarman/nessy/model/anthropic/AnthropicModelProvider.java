@@ -106,6 +106,11 @@ public final class AnthropicModelProvider implements ModelProvider {
     return CAPABILITIES;
   }
 
+  @Override
+  public String name() {
+    return "Anthropic";
+  }
+
   private ThinkingConfig thinkingConfigFor(ModelRequest request) {
     return new ThinkingConfig(request.requested().contains(Capability.THINKING), thinkingBudget);
   }

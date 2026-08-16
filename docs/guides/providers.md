@@ -73,14 +73,41 @@ the API key (and, for OpenAI, `OPENAI_BASE_URL`) is read. Other SDK-level
 environment variables are silently ignored here — construct the provider
 directly when one of those is needed.
 
-`nessy-examples/chat-cli`'s `Chat` main is this in practice: one main, no
-`if` branch for which provider module to import, because `fromEnv()` already
-decided.
+### Picking a model too — `select()`
+
+`fromEnv()` returns only the `ModelProvider`. `select()` returns a
+`Selection` — the provider, its lowercase name (`"anthropic"`/`"openai"`/
+`"gemini"`/`"xai"`, the same vocabulary `NESSY_PROVIDER` accepts), and a
+model — so an application that wants to show or log what was picked (a
+demo's banner, for instance) doesn't have to re-derive the provider's
+identity itself via `instanceof`: the knowledge of which provider was
+chosen, and which model goes with it, belongs to the selector, not the
+caller.
 
 ```java
-ModelProvider provider;
+EnvModelProviders.Selection selection = EnvModelProviders.select();
+ModelProvider provider = selection.provider();
+```
+
+The model comes from `NESSY_MODEL` when that variable is set and
+non-blank — it wins outright, regardless of which provider was chosen. This
+is the one way to name a model whose provider instance can't reveal it on
+its own: a Grok model reached through `OpenAiModelProvider`'s base-url
+override looks, by type, exactly like an OpenAI model, so nothing else can
+tell `select()` which model name is right for it. The same applies to
+OpenRouter and LM Studio models reached the same way. Without `NESSY_MODEL`,
+`select()` falls back to a small, cheap default for the chosen provider
+(Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-2.5-flash`, or
+a current Grok default for xAI).
+
+`nessy-examples/chat-cli`'s `Chat` main is this in practice: one main, no
+`if` branch for which provider module to import, because `select()` already
+decided both the provider and the model.
+
+```java
+EnvModelProviders.Selection selection;
 try {
-    provider = EnvModelProviders.fromEnv();
+    selection = EnvModelProviders.select();
 } catch (IllegalStateException e) {
     System.out.println(e.getMessage());
     System.exit(1);
@@ -188,6 +215,38 @@ ModelProvider provider =
     OpenAI example above, produces a `.../v1/v1/messages` double path that
     fails. Use the bare origin for `AnthropicModelProvider.baseUrl(...)`,
     and keep the `/v1` suffix for `OpenAiModelProvider.baseUrl(...)`.
+
+## Running the examples
+
+`nessy-examples/chat-cli` and `nessy-examples/scout` both build their model
+choice from `EnvModelProviders.select()`, so any of the four env setups
+above just works — set the key, run `exec:java`:
+
+```console
+$ GEMINI_API_KEY=... ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+xAI has no small/cheap alias, so `select()`'s built-in Grok default may not
+be the model you want — name one explicitly with `NESSY_MODEL`, the same
+override described above:
+
+```console
+$ XAI_API_KEY=... NESSY_MODEL=<your-grok-model> \
+    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+The same `NESSY_MODEL` override reaches any OpenAI-compatible local runtime
+wired through `OPENAI_BASE_URL` — LM Studio, for instance, once a model is
+loaded there:
+
+```console
+$ OPENAI_API_KEY=lm-studio OPENAI_BASE_URL=http://127.0.0.1:1234/v1 \
+    NESSY_MODEL=<loaded-model> \
+    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+`nessy-examples/scout` takes the same three env recipes — swap the module
+coordinate for `nessy-examples/scout` in any of the commands above.
 
 ## In a Spring Boot application
 

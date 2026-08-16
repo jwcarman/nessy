@@ -68,6 +68,11 @@ public final class GeminiModelProvider implements ModelProvider {
     return CAPABILITIES;
   }
 
+  @Override
+  public String name() {
+    return "Gemini";
+  }
+
   /** Assembles a {@link GeminiModelProvider}. */
   public static final class Builder {
 

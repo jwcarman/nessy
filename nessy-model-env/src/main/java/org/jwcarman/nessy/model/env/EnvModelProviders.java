@@ -79,6 +79,9 @@ public final class EnvModelProviders {
   static final String XAI_API_KEY_ENV_VAR = "XAI_API_KEY";
   static final String NESSY_PROVIDER_ENV_VAR = "NESSY_PROVIDER";
 
+  /** Honored first by {@link #select(Map)} — see the class javadoc's model-precedence note. */
+  static final String NESSY_MODEL_ENV_VAR = "NESSY_MODEL";
+
   private static final String ANTHROPIC_CHOICE = "anthropic";
   private static final String OPENAI_CHOICE = "openai";
   private static final String GEMINI_CHOICE = "gemini";
@@ -86,24 +89,63 @@ public final class EnvModelProviders {
   private static final String XAI_ALIAS = "grok";
   private static final String XAI_BASE_URL = "https://api.x.ai/v1";
 
+  /** Small/cheap defaults, one per provider — the model each demo used to hardcode itself. */
+  private static final String ANTHROPIC_DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+
+  private static final String OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
+  private static final String GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
+
+  /**
+   * xAI ships no small/cheap alias; {@code grok-4.6} is verified (docs.x.ai, 2026-08-15) as the
+   * vendor's own current general-purpose recommendation ("the most intelligent and fastest model
+   * we've built," for code and chat alike) among the models listed there — {@code grok-4.5}, {@code
+   * grok-4.3}, the dated {@code grok-4.20-*} variants, and {@code grok-build-0.1}.
+   */
+  private static final String XAI_DEFAULT_MODEL = "grok-4.6";
+
   private EnvModelProviders() {}
 
   /** The public entry point: chooses a provider from the real process environment. */
   public static ModelProvider fromEnv() {
-    return fromEnv(System.getenv());
+    return select(System.getenv()).provider();
   }
 
   /** The offline seam: chooses a provider from {@code env} rather than the real environment. */
   static ModelProvider fromEnv(Map<String, String> env) {
+    return select(env).provider();
+  }
+
+  /**
+   * The public entry point for demos and applications that also want to know, and show, what was
+   * chosen: chooses a provider from the real process environment, alongside the provider's
+   * lowercase name and the model that goes with it.
+   *
+   * <p><strong>Model precedence:</strong> {@value #NESSY_MODEL_ENV_VAR}, when set and non-blank,
+   * wins outright regardless of which provider was chosen — the one way to name a model whose
+   * provider instance can't reveal it, such as a Grok, OpenRouter, or LM Studio model reached
+   * through {@link OpenAiModelProvider}'s base-url override. Otherwise the chosen provider's own
+   * default constant applies: {@value #ANTHROPIC_DEFAULT_MODEL} for Anthropic, {@value
+   * #OPENAI_DEFAULT_MODEL} for OpenAI, {@value #GEMINI_DEFAULT_MODEL} for Gemini, {@value
+   * #XAI_DEFAULT_MODEL} for xAI.
+   */
+  public static Selection select() {
+    return select(System.getenv());
+  }
+
+  /** The offline seam: chooses a {@link Selection} from {@code env} rather than the real one. */
+  static Selection select(Map<String, String> env) {
     Objects.requireNonNull(env, "env must not be null");
     List<Candidate> candidates = presentCandidates(env);
     if (candidates.isEmpty()) {
       throw missingCredentials();
     }
-    if (candidates.size() == 1) {
-      return candidates.get(0).provider().get();
-    }
-    return tiebreak(env.get(NESSY_PROVIDER_ENV_VAR), candidates);
+    Candidate chosen =
+        candidates.size() == 1
+            ? candidates.get(0)
+            : tiebreak(env.get(NESSY_PROVIDER_ENV_VAR), candidates);
+    var override = env.get(NESSY_MODEL_ENV_VAR);
+    var model = override != null && !override.isBlank() ? override : chosen.defaultModel();
+    return new Selection(chosen.provider().get(), chosen.name(), model);
   }
 
   /**
@@ -115,19 +157,21 @@ public final class EnvModelProviders {
     var candidates = new ArrayList<Candidate>();
     var anthropicKey = env.get(ANTHROPIC_API_KEY_ENV_VAR);
     if (anthropicKey != null) {
-      candidates.add(new Candidate(ANTHROPIC_CHOICE, () -> anthropic(anthropicKey)));
+      candidates.add(
+          new Candidate(ANTHROPIC_CHOICE, ANTHROPIC_DEFAULT_MODEL, () -> anthropic(anthropicKey)));
     }
     var openAiKey = env.get(OPENAI_API_KEY_ENV_VAR);
     if (openAiKey != null) {
-      candidates.add(new Candidate(OPENAI_CHOICE, () -> openai(openAiKey, env)));
+      candidates.add(
+          new Candidate(OPENAI_CHOICE, OPENAI_DEFAULT_MODEL, () -> openai(openAiKey, env)));
     }
     var geminiKey = geminiKey(env);
     if (geminiKey != null) {
-      candidates.add(new Candidate(GEMINI_CHOICE, () -> gemini(geminiKey)));
+      candidates.add(new Candidate(GEMINI_CHOICE, GEMINI_DEFAULT_MODEL, () -> gemini(geminiKey)));
     }
     var xaiKey = env.get(XAI_API_KEY_ENV_VAR);
     if (xaiKey != null) {
-      candidates.add(new Candidate(XAI_CHOICE, () -> xai(xaiKey)));
+      candidates.add(new Candidate(XAI_CHOICE, XAI_DEFAULT_MODEL, () -> xai(xaiKey)));
     }
     return candidates;
   }
@@ -141,11 +185,11 @@ public final class EnvModelProviders {
     return key != null ? key : env.get(GOOGLE_API_KEY_ENV_VAR);
   }
 
-  private static ModelProvider tiebreak(String preference, List<Candidate> candidates) {
+  private static Candidate tiebreak(String preference, List<Candidate> candidates) {
     var normalized = normalize(preference);
     var explicit = candidates.stream().filter(c -> c.name().equals(normalized)).findFirst();
     if (explicit.isPresent()) {
-      return explicit.get().provider().get();
+      return explicit.get();
     }
     var fallback = candidates.get(0);
     LOGGER.warn(
@@ -155,7 +199,7 @@ public final class EnvModelProviders {
         fallback.name(),
         NESSY_PROVIDER_ENV_VAR,
         fallback.name());
-    return fallback.provider().get();
+    return fallback;
   }
 
   /**
@@ -218,7 +262,18 @@ public final class EnvModelProviders {
   }
 
   /**
-   * One present, keyed provider — {@code name} is one of the lowercase tiebreak vocabulary tokens.
+   * One present, keyed provider — {@code name} is one of the lowercase tiebreak vocabulary tokens;
+   * {@code defaultModel} is what {@link #select(Map)} uses when {@value #NESSY_MODEL_ENV_VAR} is
+   * unset or blank.
    */
-  private record Candidate(String name, Supplier<ModelProvider> provider) {}
+  private record Candidate(String name, String defaultModel, Supplier<ModelProvider> provider) {}
+
+  /**
+   * What {@link #select()}/{@link #select(Map)} chose: the built {@code provider}, its lowercase
+   * name ({@code "anthropic"}/{@code "openai"}/{@code "gemini"}/{@code "xai"} — the same tiebreak
+   * vocabulary {@value #NESSY_PROVIDER_ENV_VAR} accepts), and the {@code model} that goes with it,
+   * so a caller — a demo's banner, an application's logging — can show what was picked without
+   * re-deriving it via {@code instanceof}.
+   */
+  public record Selection(ModelProvider provider, String providerName, String model) {}
 }

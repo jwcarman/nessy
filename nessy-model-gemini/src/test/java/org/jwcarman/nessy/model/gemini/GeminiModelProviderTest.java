@@ -146,4 +146,15 @@ class GeminiModelProviderTest {
       assertThat(provider.capabilities()).containsExactly(Capability.PARALLEL_TOOL_CALLS);
     }
   }
+
+  @Nested
+  class Name {
+
+    @Test
+    void reports_gemini() {
+      var provider = GeminiModelProvider.builder().apiKey("test-key").build();
+
+      assertThat(provider.name()).isEqualTo("Gemini");
+    }
+  }
 }

@@ -16,45 +16,45 @@
 package org.jwcarman.nessy.examples;
 
 import org.jwcarman.nessy.console.ConsoleRepl;
-import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.model.env.EnvModelProviders.Selection;
 
 /**
  * The one main {@code AnthropicChat} and {@code OpenAiChat} collapsed into (design §5): {@link
- * EnvModelProviders#fromEnv()} is the provider lesson now — "switch providers by switching the key"
+ * EnvModelProviders#select()} is the provider lesson now — "switch providers by switching the key"
  * — strictly better teaching than two parallel mains that differed only in which provider module
- * they imported. {@link DemoAgent} still supplies the one shared agent definition (tools, grants,
- * the fact-channel listener); {@link ConsoleRepl} supplies the loop, the default renderer, and the
+ * they imported. The provider and model names shown in the banner come straight from the {@link
+ * Selection} the env helper made, rather than this class re-deriving them via {@code instanceof} —
+ * the knowledge of which provider was picked, and which model goes with it, belongs to the
+ * selector. {@link DemoAgent} still supplies the one shared agent definition (tools, grants, the
+ * fact-channel listener); {@link ConsoleRepl} supplies the loop, the default renderer, and the
  * spinner this module used to hand-roll three times over across the family.
  */
 public final class Chat {
 
-  private static final String ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
-  private static final String OPENAI_MODEL = "gpt-4o-mini";
-
   private Chat() {}
 
-  /** Picks the provider from the environment, then hands the console to {@code ConsoleRepl}. */
+  /**
+   * Picks the provider and model from the environment, then hands the console to {@code
+   * ConsoleRepl}.
+   */
   public static void main(String[] args) {
-    ModelProvider provider;
+    Selection selection;
     try {
-      provider = EnvModelProviders.fromEnv();
+      selection = EnvModelProviders.select();
     } catch (IllegalStateException e) {
       IO.println(e.getMessage());
       System.exit(1);
       return;
     }
-    boolean anthropic = provider instanceof AnthropicModelProvider;
-    String model = anthropic ? ANTHROPIC_MODEL : OPENAI_MODEL;
-    DemoAgent.Built built = DemoAgent.agentFor(provider, model);
+    DemoAgent.Built built = DemoAgent.agentFor(selection.provider(), selection.model());
 
     ConsoleRepl.of(built.agent())
         .banner(
             "Nessy demo ("
-                + (anthropic ? "Anthropic" : "OpenAI")
+                + selection.providerName()
                 + ", "
-                + model
+                + selection.model()
                 + "). Type exit or quit to leave. Ask for something multi-step to watch it"
                 + " plan.")
         .prompt("you> ")

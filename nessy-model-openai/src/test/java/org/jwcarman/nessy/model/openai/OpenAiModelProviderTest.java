@@ -259,6 +259,18 @@ class OpenAiModelProviderTest {
     }
   }
 
+  @Nested
+  class Name {
+
+    @Test
+    void reports_openai_even_when_wired_to_a_compatible_endpoint_such_as_xai() {
+      OpenAiModelProvider provider =
+          OpenAiModelProvider.builder().apiKey("sk-test").baseUrl("https://api.x.ai/v1").build();
+
+      assertThat(provider.name()).isEqualTo("OpenAI");
+    }
+  }
+
   /**
    * Classifies every exception type in the openai-java SDK's {@code com.openai.errors} hierarchy
    * (4.50.0) against {@link OpenAiModelProvider#RETRYABLE}.

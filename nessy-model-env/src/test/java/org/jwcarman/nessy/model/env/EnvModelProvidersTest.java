@@ -377,4 +377,93 @@ class EnvModelProvidersTest {
       assertThat(appender.list).isEmpty();
     }
   }
+
+  /**
+   * {@link EnvModelProviders#select(Map)} — the {@link EnvModelProviders.Selection}-returning
+   * overload demos use for their banners — layered on top of the same {@code fromEnv(Map)}
+   * machinery: same provider choice, plus the provider name and the model that goes with it.
+   */
+  @Nested
+  class Selecting {
+
+    @Test
+    void names_and_defaults_the_anthropic_model_when_only_its_key_is_set() {
+      EnvModelProviders.Selection selection =
+          EnvModelProviders.select(Map.of("ANTHROPIC_API_KEY", "fake-anthropic-key"));
+
+      assertThat(selection.provider()).isInstanceOf(AnthropicModelProvider.class);
+      assertThat(selection.providerName()).isEqualTo("anthropic");
+      assertThat(selection.model()).isEqualTo("claude-haiku-4-5-20251001");
+    }
+
+    @Test
+    void names_and_defaults_the_openai_model_when_only_its_key_is_set() {
+      EnvModelProviders.Selection selection =
+          EnvModelProviders.select(Map.of("OPENAI_API_KEY", "fake-openai-key"));
+
+      assertThat(selection.provider()).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(selection.providerName()).isEqualTo("openai");
+      assertThat(selection.model()).isEqualTo("gpt-4o-mini");
+    }
+
+    @Test
+    void names_and_defaults_the_gemini_model_when_only_its_key_is_set() {
+      EnvModelProviders.Selection selection =
+          EnvModelProviders.select(Map.of("GEMINI_API_KEY", "fake-gemini-key"));
+
+      assertThat(selection.provider()).isInstanceOf(GeminiModelProvider.class);
+      assertThat(selection.providerName()).isEqualTo("gemini");
+      assertThat(selection.model()).isEqualTo("gemini-2.5-flash");
+    }
+
+    @Test
+    void names_and_defaults_the_xai_model_when_only_its_key_is_set() {
+      EnvModelProviders.Selection selection =
+          EnvModelProviders.select(Map.of("XAI_API_KEY", "fake-xai-key"));
+
+      assertThat(selection.provider()).isInstanceOf(OpenAiModelProvider.class);
+      assertThat(selection.providerName()).isEqualTo("xai");
+      assertThat(selection.model()).isEqualTo("grok-4.6");
+    }
+
+    @Test
+    void a_non_blank_nessy_model_wins_over_the_provider_default() {
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "NESSY_MODEL", "claude-opus-4-1-20260805");
+
+      EnvModelProviders.Selection selection = EnvModelProviders.select(env);
+
+      assertThat(selection.providerName()).isEqualTo("anthropic");
+      assertThat(selection.model()).isEqualTo("claude-opus-4-1-20260805");
+    }
+
+    @Test
+    void a_blank_nessy_model_is_ignored_in_favor_of_the_provider_default() {
+      Map<String, String> env =
+          Map.of(
+              "OPENAI_API_KEY", "fake-openai-key",
+              "NESSY_MODEL", "   ");
+
+      EnvModelProviders.Selection selection = EnvModelProviders.select(env);
+
+      assertThat(selection.model()).isEqualTo("gpt-4o-mini");
+    }
+
+    @Test
+    void nessy_model_wins_even_when_multiple_keys_are_set_and_a_tiebreak_runs() {
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "OPENAI_API_KEY", "fake-openai-key",
+              "NESSY_PROVIDER", "openai",
+              "NESSY_MODEL", "gpt-5-nano");
+
+      EnvModelProviders.Selection selection = EnvModelProviders.select(env);
+
+      assertThat(selection.providerName()).isEqualTo("openai");
+      assertThat(selection.model()).isEqualTo("gpt-5-nano");
+    }
+  }
 }
