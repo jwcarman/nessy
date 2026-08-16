@@ -173,39 +173,29 @@ public interface Enricher<E> {
   vocabulary IS the tool's schema: an enum or sealed class boxes the model into a
   strict vocabulary at parse time; `String.class` permits open-ended intent.
 - **Lifetime: until re-declared or cleared**, scoped to the conversation.
-- **Wired as one object — `IntentSupport<V>` (amended after owner review):** the
-  declare tool, the clear tool, and the reading enricher are only ever correct
-  together, parameterized by the SAME vocabulary and the SAME store, so they are
-  constructed together: `IntentSupport.of(Class<V> vocabulary, IntentStore store)`
-  yields `declareTool()`, `clearTool()`, `enricher()`, and the typed read
-  `Optional<V> declaredIn(AuthorizationContext)`. Mis-wiring a vocabulary against a
-  foreign reader stops being expressible. `V` binds at construction, so the one
-  unavoidable downcast lives inside framework code instead of at every policy call
-  site — no class tokens in app code.
-  - Storage stays the single blessed slot (`INTENT_KEY`, a `Key<Object>`), so
-    vocabulary-blind readers (the §8 report, audit rendering, "was anything
-    declared?") keep working; `AuthorizationContext.declaredIntent(Class<T>)`
-    remains as the escape hatch for apps that skip the support object and run their
-    own key discipline. The support is the opinion; the raw slot is the seam.
-  - **The agent-level shortcut (owner design)** is the documented path — the three
-    wirings have no independent meaning, so the DSL hides them, and the one-per-agent
-    rule becomes enforceable at wiring time (a second call THROWS; silent row
-    overwrites are the bug it prevents):
-    ```java
-    AgentConfig<I> intent(IntentSupport<V> support);            // typed reads: support.declaredIn(ctx)
-    AgentConfig<I> intent(Class<V> vocabulary, IntentStore store);
-    AgentConfig<I> intent(Class<V> vocabulary);                 // store inherited from the harness
-    ```
-    Construct-then-wire when a policy reads intent typed; the terse forms when the
-    policy only requires that SOMETHING was declared. `HarnessConfig.intentStore(...)`
-    follows every other store's precedent (in-memory default, inherited by agents), so
-    the shipped example reads `.intent(RefundIntent.class)`. No ordering hazard against
-    `.grant(...)`: policy lambdas run per call, not at wiring.
-  - RULE: at most one `IntentSupport` per agent — the store row is
-    one-intent-per-conversation LWW, so two vocabularies on one agent would
-    overwrite each other. A read whose stored type does not match `V` returns
-    empty (fail closed), never a ClassCastException; likewise an unresolvable
-    stored type after a class rename.
+- **Wired by one field on the agent (amended after owner review — IntentSupport is
+  WITHDRAWN):** `AgentConfig<I>.intent(Class<?> intentType)` is the whole public
+  surface. The build assembles the declare tool, the clear tool, and the reading
+  enricher internally from that type plus the harness's store; the user never learns
+  a second noun. The withdrawn `IntentSupport<V>` failed on its own signature —
+  `AgentConfig<I>` is parameterized on the AGENT'S input type, so `V` could only ever
+  be a method-level type variable appearing in one argument and nowhere in the return:
+  decoration, not typing. It would have bought `support.declaredIn(ctx)` over
+  `context.declaredIntent(RefundIntent.class)` — one class token, written where the
+  vocabulary is already known — at the price of a permanent public type at 0.1.0.
+  - One field makes the one-intent-per-agent rule true by construction (a second
+    call is a wiring-time error, not a runtime row overwrite).
+  - `HarnessConfig.intentStore(...)` follows every other store (in-memory default,
+    inherited by agents), so the shipped example reads `.intent(RefundIntent.class)`
+    and nothing else. No ordering hazard against `.grant(...)`: policy lambdas run
+    per call, not at wiring.
+  - Policies read the blessed accessor `context.declaredIntent(Class<T>)`; storage
+    stays the single `INTENT_KEY` (`Key<Object>`) so vocabulary-blind readers (the §8
+    report, audit rendering) keep working, and app-defined keys remain the seam for
+    anyone running their own intent discipline.
+  - Reads FAIL CLOSED: a stored intent of a different vocabulary, or one whose class
+    no longer resolves after a rename, reads as ABSENT — never a ClassCastException,
+    never an allow. The deny-teaches-protocol path handles it.
 - **Backed by its own tiny store (amended after owner review — the plan-store
   pattern, not transcript scanning):** `IntentStore` — `(conversation_id) → the
   declared intent (serialized, with its type)` — LWW on declare, delete on clear;
