@@ -232,73 +232,18 @@ public final class ConversationLoop {
     AtomicReference<Message> lastAssistantMessage = new AtomicReference<>();
     boolean settled = false;
     try {
-      // 1. Notes: fold every Told entry, in order (facts minted here, one per entry). The entry's
-      //    own id joins `drained` BEFORE its fold, transactional with that fold's own save (design
-      //    §4): a note is never left on the inbox once the fold that consumed it has landed.
-      for (InboxEntry entry : loaded.inbox()) {
-        if (entry instanceof InboxEntry.Told(String entryId, List<ContentBlock> content)) {
-          drained.add(entryId);
-          fold(
-              progress,
-              new ConversationEvent.AgentTold(id, content),
-              drained,
-              observer,
-              lastAssistantMessage);
-        }
-      }
+      // 1. Notes: fold every Told entry, in order (facts minted here, one per entry).
+      foldNotes(id, loaded, progress, drained, observer, lastAssistantMessage);
 
-      // 2. Resolutions: route every Resolved entry whose call id still names a live park —
-      //    regardless of the conversation's current status. A resolution can legitimately arrive
-      //    while a fan-out sibling is still unsettled (crash mid-fan-out: EXECUTING_TOOL with
-      //    parkedCalls non-empty, not PARKED), and gating this pass on status == PARKED alone
-      //    stranded that resolution — consumed by resume, appended to the inbox, but never
-      //    routed, wedging the conversation. Routing by park membership instead fixes both
-      //    directions: a resolution whose call id IS a live park routes here no matter the status;
-      //    a resolution whose call id is NOT a live park drains quietly no matter the status too (a
-      //    stale entry left behind by a settled call no longer lingers outside PARKED waiting for
-      //    a status it will never see again — the retired single-use-token-claim's replay guard,
-      //    now this same fold-owned is-this-call-still-outstanding check, design §5). A call that
-      //    stays outstanding across a repark (design §4) keeps routing every later Resolved entry
-      //    naming it the same way — including a redelivery of the very resolution that triggered
-      //    the repark, which resumeParkedCall folds as a no-op rather than a third wait. Unlike a
-      //    note's fold, resuming a call can throw before ever reaching a fold or a park closure —
-      //    the one-outstanding-park violation, below — so the entry's id joins `drained` only once
-      //    resumeParkedCall and whatever it triggers have both succeeded; a throw between them must
-      //    leave the entry on the inbox for a future retry to find, not destroy the only copy
-      //    of the resolution that arrived.
-      for (InboxEntry entry : loaded.inbox()) {
-        if (entry instanceof InboxEntry.Resolved(String entryId, String callId, var resolution)) {
-          Optional<ToolCall> park =
-              progress.get().parkedCalls().stream()
-                  .filter(candidate -> candidate.id().equals(callId))
-                  .findFirst();
-          if (park.isEmpty()) {
-            drained.add(entryId); // stale resolution: call already settled
-            continue;
-          }
-          ResumeOutcome resumed =
-              resumeParkedCall(
-                  park.get(), resolution, progress.get(), observer, repartedThisAttempt);
-          switch (resumed) {
-            case ResumeOutcome.Settled(ConversationEvent fact) -> {
-              FoldOutcome folded = fold(progress, fact, drained, observer, lastAssistantMessage);
-              drained.add(entryId);
-              runCycle(
-                  progress,
-                  new ArrayDeque<>(folded.effects()),
-                  drained,
-                  observer,
-                  endingNarrated,
-                  lastAssistantMessage);
-            }
-            case ResumeOutcome.Reparked(ToolCall call, ParkToken token) -> {
-              applyParked(progress, call, token, drained, observer, endingNarrated);
-              drained.add(entryId);
-            }
-            case ResumeOutcome.ReplayedNoOp _ -> drained.add(entryId);
-          }
-        }
-      }
+      // 2. Resolutions: route every Resolved entry whose call id still names a live park.
+      routeResolutions(
+          loaded,
+          progress,
+          drained,
+          observer,
+          endingNarrated,
+          lastAssistantMessage,
+          repartedThisAttempt);
 
       // 3. The continuation pointer: do what status says until quiescent or parked.
       continueByStatus(progress, drained, observer, endingNarrated, lastAssistantMessage);
@@ -331,6 +276,94 @@ public final class ConversationLoop {
           // The winning driver owns the base now: whatever this attempt was trying to persist is
           // superseded, and the exception (or the original one already propagating) is the true
           // signal — a redundant stale save here must never mask it.
+        }
+      }
+    }
+  }
+
+  /**
+   * {@code driveOnce}'s step 1: fold every {@code Told} entry, in order (facts minted here, one per
+   * entry). The entry's own id joins {@code drained} BEFORE its fold, transactional with that
+   * fold's own save (design §4): a note is never left on the inbox once the fold that consumed it
+   * has landed.
+   */
+  private void foldNotes(
+      ConversationId id,
+      ConversationStore.Loaded loaded,
+      AtomicReference<ConversationState> progress,
+      List<String> drained,
+      TurnObserver observer,
+      AtomicReference<Message> lastAssistantMessage) {
+    for (InboxEntry entry : loaded.inbox()) {
+      if (entry instanceof InboxEntry.Told(String entryId, List<ContentBlock> content)) {
+        drained.add(entryId);
+        fold(
+            progress,
+            new ConversationEvent.AgentTold(id, content),
+            drained,
+            observer,
+            lastAssistantMessage);
+      }
+    }
+  }
+
+  /**
+   * {@code driveOnce}'s step 2: routes every {@code Resolved} entry whose call id still names a
+   * live park — regardless of the conversation's current status. A resolution can legitimately
+   * arrive while a fan-out sibling is still unsettled (crash mid-fan-out: EXECUTING_TOOL with
+   * parkedCalls non-empty, not PARKED), and gating this pass on status == PARKED alone stranded
+   * that resolution — consumed by resume, appended to the inbox, but never routed, wedging the
+   * conversation. Routing by park membership instead fixes both directions: a resolution whose call
+   * id IS a live park routes here no matter the status; a resolution whose call id is NOT a live
+   * park drains quietly no matter the status too (a stale entry left behind by a settled call no
+   * longer lingers outside PARKED waiting for a status it will never see again — the retired
+   * single-use-token-claim's replay guard, now this same fold-owned is-this-call-still-outstanding
+   * check, design §5). A call that stays outstanding across a repark (design §4) keeps routing
+   * every later Resolved entry naming it the same way — including a redelivery of the very
+   * resolution that triggered the repark, which resumeParkedCall folds as a no-op rather than a
+   * third wait. Unlike a note's fold, resuming a call can throw before ever reaching a fold or a
+   * park closure — the one-outstanding-park violation, below — so the entry's id joins {@code
+   * drained} only once resumeParkedCall and whatever it triggers have both succeeded; a throw
+   * between them must leave the entry on the inbox for a future retry to find, not destroy the only
+   * copy of the resolution that arrived.
+   */
+  private void routeResolutions(
+      ConversationStore.Loaded loaded,
+      AtomicReference<ConversationState> progress,
+      List<String> drained,
+      TurnObserver observer,
+      AtomicBoolean endingNarrated,
+      AtomicReference<Message> lastAssistantMessage,
+      Set<String> repartedThisAttempt) {
+    for (InboxEntry entry : loaded.inbox()) {
+      if (entry instanceof InboxEntry.Resolved(String entryId, String callId, var resolution)) {
+        Optional<ToolCall> park =
+            progress.get().parkedCalls().stream()
+                .filter(candidate -> candidate.id().equals(callId))
+                .findFirst();
+        if (park.isEmpty()) {
+          drained.add(entryId); // stale resolution: call already settled
+          continue;
+        }
+        ResumeOutcome resumed =
+            resumeParkedCall(park.get(), resolution, progress.get(), observer, repartedThisAttempt);
+        switch (resumed) {
+          case ResumeOutcome.Settled(ConversationEvent fact) -> {
+            FoldOutcome folded = fold(progress, fact, drained, observer, lastAssistantMessage);
+            drained.add(entryId);
+            runCycle(
+                progress,
+                new ArrayDeque<>(folded.effects()),
+                drained,
+                observer,
+                endingNarrated,
+                lastAssistantMessage);
+          }
+          case ResumeOutcome.Reparked(ToolCall call, ParkToken token) -> {
+            applyParked(progress, call, token, drained, observer, endingNarrated);
+            drained.add(entryId);
+          }
+          case ResumeOutcome.ReplayedNoOp _ -> drained.add(entryId);
         }
       }
     }

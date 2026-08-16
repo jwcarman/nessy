@@ -477,15 +477,14 @@ class AgentBuilderTest {
 
   /**
    * S2 (task-2-review.md, task-2 fix round 2): the agent-level warning {@code
-   * AgentBuilder.buildSubagents()} logs when a subagent is declared against a harness whose own
-   * store was explicitly configured but whose {@code subagentLinks} was left on the in-memory
-   * default — the durability gap where a child settling after a restart leaves its parent parked
-   * forever with nothing logged anywhere. Distinct from {@link
-   * HarnessBuilderTest.Parks_downgrade_warning}: that one fires from {@code HarnessBuilder}
-   * whenever a durable store is configured, regardless of subagents; this one fires from {@code
-   * AgentBuilder} only when a subagent is actually declared — {@code AgentBuilder.build()} is the
-   * only place both facts (a durable store, and at least one {@code .subagent(...)}) are known
-   * together.
+   * SubagentAssembly.build()} logs when a subagent is declared against a harness whose own store
+   * was explicitly configured but whose {@code subagentLinks} was left on the in-memory default —
+   * the durability gap where a child settling after a restart leaves its parent parked forever with
+   * nothing logged anywhere. Distinct from {@link HarnessBuilderTest.Parks_downgrade_warning}: that
+   * one fires from {@code HarnessBuilder} whenever a durable store is configured, regardless of
+   * subagents; this one fires from {@code AgentBuilder} only when a subagent is actually declared —
+   * {@code AgentBuilder.build()} is the only place both facts (a durable store, and at least one
+   * {@code .subagent(...)}) are known together.
    */
   @Nested
   class Subagent_links_warning {
