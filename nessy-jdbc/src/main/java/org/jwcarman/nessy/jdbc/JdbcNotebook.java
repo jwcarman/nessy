@@ -57,6 +57,8 @@ import org.jwcarman.nessy.spi.notebook.Notebook;
  */
 public final class JdbcNotebook implements Notebook {
 
+  private static final String SUBJECT_NOT_NULL = "subject must not be null";
+
   private static final String HEADINGS_SQL =
       "SELECT name, hook FROM nessy_notebook WHERE subject_id = ? ORDER BY name";
 
@@ -108,7 +110,7 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public List<Heading> headings(SubjectId subject) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     return withConnection(
         connection -> {
           List<Heading> headings = new ArrayList<>();
@@ -126,7 +128,7 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public Optional<Entry> find(SubjectId subject, String name) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     Objects.requireNonNull(name, "name must not be null");
     return withConnection(
         connection -> {
@@ -151,7 +153,7 @@ public final class JdbcNotebook implements Notebook {
    */
   @Override
   public void save(SubjectId subject, Entry entry) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     Objects.requireNonNull(entry, "entry must not be null");
     withConnection(
         connection -> {
@@ -190,7 +192,7 @@ public final class JdbcNotebook implements Notebook {
 
   @Override
   public void forget(SubjectId subject, String name) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     Objects.requireNonNull(name, "name must not be null");
     withConnection(
         connection -> {

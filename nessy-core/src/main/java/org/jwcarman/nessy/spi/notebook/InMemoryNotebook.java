@@ -30,11 +30,13 @@ import org.jwcarman.nessy.api.conversation.SubjectId;
  */
 final class InMemoryNotebook implements Notebook {
 
+  private static final String SUBJECT_NOT_NULL = "subject must not be null";
+
   private final Map<SubjectId, Map<String, Entry>> notes = new ConcurrentHashMap<>();
 
   @Override
   public List<Heading> headings(SubjectId subject) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     Map<String, Entry> entries = notes.get(subject);
     if (entries == null) {
       return List.of();
@@ -47,7 +49,7 @@ final class InMemoryNotebook implements Notebook {
 
   @Override
   public Optional<Entry> find(SubjectId subject, String name) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     Objects.requireNonNull(name, "name must not be null");
     Map<String, Entry> entries = notes.get(subject);
     if (entries == null) {
@@ -58,14 +60,14 @@ final class InMemoryNotebook implements Notebook {
 
   @Override
   public void save(SubjectId subject, Entry entry) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     Objects.requireNonNull(entry, "entry must not be null");
     notes.computeIfAbsent(subject, ignored -> new ConcurrentHashMap<>()).put(entry.name(), entry);
   }
 
   @Override
   public void forget(SubjectId subject, String name) {
-    Objects.requireNonNull(subject, "subject must not be null");
+    Objects.requireNonNull(subject, SUBJECT_NOT_NULL);
     Objects.requireNonNull(name, "name must not be null");
     Map<String, Entry> entries = notes.get(subject);
     if (entries != null) {

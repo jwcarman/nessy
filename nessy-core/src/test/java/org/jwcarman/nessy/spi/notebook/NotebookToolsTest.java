@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.SubjectId;
@@ -103,46 +105,13 @@ class NotebookToolsTest {
       assertThat(afterReplay).isEqualTo(afterOneExecution);
     }
 
-    @Test
-    void a_blank_name_returns_a_tool_error_not_a_throw() {
+    @ParameterizedTest
+    @MethodSource("org.jwcarman.nessy.spi.notebook.NotebookToolsTest#blankFieldNotes")
+    void a_blank_field_returns_a_tool_error_not_a_throw(NotebookTools.RememberNote input) {
       Notebook notebook = Notebook.inMemory();
       SubjectId subject = new SubjectId("subject-1");
       Tool<NotebookTools.RememberNote> tool = NotebookTools.remember(notebook, id -> subject);
-      ConversationId conversationId = ConversationId.generate();
-      ToolContext context = toolContext(conversationId);
-      NotebookTools.RememberNote input = new NotebookTools.RememberNote("  ", "hook", "body");
-
-      Awaited<ToolResult> awaited = tool.execute(input, context);
-
-      ToolResult result = readyResultOf(awaited).value();
-      assertThat(result.isError()).isTrue();
-      assertThat(notebook.headings(subject)).isEmpty();
-    }
-
-    @Test
-    void a_blank_hook_returns_a_tool_error_not_a_throw() {
-      Notebook notebook = Notebook.inMemory();
-      SubjectId subject = new SubjectId("subject-1");
-      Tool<NotebookTools.RememberNote> tool = NotebookTools.remember(notebook, id -> subject);
-      ConversationId conversationId = ConversationId.generate();
-      ToolContext context = toolContext(conversationId);
-      NotebookTools.RememberNote input = new NotebookTools.RememberNote("name", "  ", "body");
-
-      Awaited<ToolResult> awaited = tool.execute(input, context);
-
-      ToolResult result = readyResultOf(awaited).value();
-      assertThat(result.isError()).isTrue();
-      assertThat(notebook.headings(subject)).isEmpty();
-    }
-
-    @Test
-    void a_blank_body_returns_a_tool_error_not_a_throw() {
-      Notebook notebook = Notebook.inMemory();
-      SubjectId subject = new SubjectId("subject-1");
-      Tool<NotebookTools.RememberNote> tool = NotebookTools.remember(notebook, id -> subject);
-      ConversationId conversationId = ConversationId.generate();
-      ToolContext context = toolContext(conversationId);
-      NotebookTools.RememberNote input = new NotebookTools.RememberNote("name", "hook", "  ");
+      ToolContext context = toolContext(ConversationId.generate());
 
       Awaited<ToolResult> awaited = tool.execute(input, context);
 
@@ -456,5 +425,13 @@ class NotebookToolsTest {
 
       assertThat(transformed).isNotSameAs(original);
     }
+  }
+
+  /** One blank field each: name, hook, body — the remember tool must error, never throw. */
+  static java.util.stream.Stream<NotebookTools.RememberNote> blankFieldNotes() {
+    return java.util.stream.Stream.of(
+        new NotebookTools.RememberNote("  ", "hook", "body"),
+        new NotebookTools.RememberNote("name", "  ", "body"),
+        new NotebookTools.RememberNote("name", "hook", "  "));
   }
 }
