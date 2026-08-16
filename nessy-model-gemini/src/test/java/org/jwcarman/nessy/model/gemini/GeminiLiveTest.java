@@ -90,7 +90,7 @@ class GeminiLiveTest {
     assumeKeyPresent();
 
     Agent<String> agent =
-        Nessy.harness(h -> h.provider(GeminiModelProvider.builder().fromEnv().build()))
+        Nessy.harness(h -> h.provider(GeminiModelProvider.fromEnv()))
             .agent(a -> a.name("gemini-live").model(MODEL).maxTokens(64));
 
     TextObserver observer = new TextObserver();
@@ -105,7 +105,7 @@ class GeminiLiveTest {
     assumeKeyPresent();
 
     Agent<String> agent =
-        Nessy.harness(h -> h.provider(GeminiModelProvider.builder().fromEnv().build()))
+        Nessy.harness(h -> h.provider(GeminiModelProvider.fromEnv()))
             .agent(
                 a ->
                     a.name("gemini-live")

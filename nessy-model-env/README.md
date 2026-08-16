@@ -74,7 +74,7 @@ keys — see [Explicit-only: Bedrock](#explicit-only-bedrock).
 | `XAI_API_KEY` | `OpenAiModelProvider` with `baseUrl("https://api.x.ai/v1")` |
 
 Each provider is built the same way its own module builds one from an
-explicit key (`Provider.builder().apiKey(key).build()`), not that provider's
+explicit key (`Provider.create(c -> c.apiKey(key))`), not that provider's
 own `fromEnv()` — the choice this class makes from the map handed to it is
 the choice that gets built, not a second, independent read of the real
 environment underneath it. `OPENAI_BASE_URL` is the one exception: it is
@@ -84,8 +84,8 @@ layered onto the OpenAI provider via `.baseUrl(String)` when
 URL is fixed. One consequence of building this way: no other SDK-level
 environment variable (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
 friends) is read by this helper — construct the provider directly
-(`Provider.builder().fromEnv()`, which *does* delegate to the underlying
-SDK's full environment support) when one of those is needed.
+(`Provider.fromEnv()`, which *does* delegate to the underlying SDK's full
+environment support) when one of those is needed.
 
 ## Explicit-only: Bedrock
 
@@ -104,12 +104,11 @@ win, or even enter the tiebreak, would silently hijack every laptop with a
 stray AWS profile into talking to Bedrock. Explicit selection is the only
 door.
 
-Once chosen, the provider is built via
-`BedrockModelProvider.builder().fromEnv().build()` — the AWS SDK's own
-default credentials chain, plus `AWS_REGION`/`AWS_DEFAULT_REGION` for the
-region. An explicit choice with neither region variable set fails fast from
-that `build()` call itself, naming both variables — the same shape
-`nessy-model-bedrock`'s own tests exercise.
+Once chosen, the provider is built via `BedrockModelProvider.fromEnv()` —
+the AWS SDK's own default credentials chain, plus
+`AWS_REGION`/`AWS_DEFAULT_REGION` for the region. An explicit choice with
+neither region variable set fails fast from that call itself, naming both
+variables — the same shape `nessy-model-bedrock`'s own tests exercise.
 
 ## The model
 

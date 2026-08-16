@@ -78,7 +78,7 @@ class OpenAiLiveTest {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(h -> h.provider(OpenAiModelProvider.builder().fromEnv().build()))
+        Nessy.harness(h -> h.provider(OpenAiModelProvider.fromEnv()))
             .agent(a -> a.name("openai-live").model(MODEL).maxTokens(64));
 
     TextObserver observer = new TextObserver();
@@ -93,7 +93,7 @@ class OpenAiLiveTest {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(h -> h.provider(OpenAiModelProvider.builder().fromEnv().build()))
+        Nessy.harness(h -> h.provider(OpenAiModelProvider.fromEnv()))
             .agent(
                 a ->
                     a.name("openai-live")
@@ -126,10 +126,10 @@ class OpenAiLiveTest {
         Nessy.harness(
                 h ->
                     h.provider(
-                        OpenAiModelProvider.builder()
-                            .apiKey(System.getenv("OPENROUTER_API_KEY"))
-                            .baseUrl("https://openrouter.ai/api/v1")
-                            .build()))
+                        OpenAiModelProvider.create(
+                            c ->
+                                c.apiKey(System.getenv("OPENROUTER_API_KEY"))
+                                    .baseUrl("https://openrouter.ai/api/v1"))))
             .agent(a -> a.name("openai-live").model("openai/gpt-4o-mini").maxTokens(64));
 
     TextObserver observer = new TextObserver();

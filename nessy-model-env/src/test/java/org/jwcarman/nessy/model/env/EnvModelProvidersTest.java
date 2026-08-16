@@ -210,7 +210,7 @@ class EnvModelProvidersTest {
 
     @Test
     void a_google_api_key_alongside_a_gemini_api_key_still_builds_the_gemini_provider() {
-      // GEMINI_API_KEY wins internally (GeminiModelProvider.Builder#fromEnv's own documented
+      // GEMINI_API_KEY wins internally (GeminiProviderConfig#fromEnv's own documented
       // pair order), but that resolved key is never exposed by an accessor to assert on directly
       // — the same offline limit OpenAiModelProviderTest documents for its own base URL/org
       // fields. What's verified here is the observable half: both variables set together still
@@ -389,16 +389,16 @@ class EnvModelProvidersTest {
   /**
    * Bedrock joins the {@code NESSY_PROVIDER} vocabulary as explicit-selection-only (design §4): no
    * key of its own, never a candidate, never part of the ambiguity count or the which-key tiebreak.
-   * {@code EnvModelProviders} builds the provider itself via {@code
-   * BedrockModelProvider.Builder#fromEnv()} once chosen, which depends on {@code AWS_REGION}/{@code
-   * AWS_DEFAULT_REGION} being set in the real process environment — a fact that varies machine to
-   * machine, including CI runners and any developer box with AWS configured. An earlier version of
-   * this suite proved the selection guarantee by asserting on that build's own missing-region
-   * failure message, which meant the guarantee went untested (silently skipped via {@code
-   * assumeTrue}) on precisely the AWS-configured machines the explicit-only ruling exists to defend
-   * — a final-review finding (S3). These tests instead pin the selection decision directly through
-   * {@link EnvModelProviders#isBedrockChosen(Map)} and {@link EnvModelProviders#bedrockModel(Map)}
-   * — the two package-private facts {@code select(env)}/{@code fromEnv(env)} branch on before ever
+   * {@code EnvModelProviders} builds the provider itself via {@code BedrockModelProvider#fromEnv()}
+   * once chosen, which depends on {@code AWS_REGION}/{@code AWS_DEFAULT_REGION} being set in the
+   * real process environment — a fact that varies machine to machine, including CI runners and any
+   * developer box with AWS configured. An earlier version of this suite proved the selection
+   * guarantee by asserting on that build's own missing-region failure message, which meant the
+   * guarantee went untested (silently skipped via {@code assumeTrue}) on precisely the
+   * AWS-configured machines the explicit-only ruling exists to defend — a final-review finding
+   * (S3). These tests instead pin the selection decision directly through {@link
+   * EnvModelProviders#isBedrockChosen(Map)} and {@link EnvModelProviders#bedrockModel(Map)} — the
+   * two package-private facts {@code select(env)}/{@code fromEnv(env)} branch on before ever
    * touching {@code fromEnv().build()} — so every assertion below runs, and means the same thing,
    * on every machine unconditionally.
    */
@@ -591,8 +591,7 @@ class EnvModelProvidersTest {
 
     @Test
     void rejects_a_null_provider_name() {
-      ModelProvider provider =
-          AnthropicModelProvider.builder().apiKey("fake-anthropic-key").build();
+      ModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey("fake-anthropic-key"));
 
       assertThatThrownBy(() -> new EnvModelProviders.Selection(provider, null, "a-model"))
           .isInstanceOf(NullPointerException.class)
@@ -601,8 +600,7 @@ class EnvModelProvidersTest {
 
     @Test
     void rejects_a_null_model() {
-      ModelProvider provider =
-          AnthropicModelProvider.builder().apiKey("fake-anthropic-key").build();
+      ModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey("fake-anthropic-key"));
 
       assertThatThrownBy(() -> new EnvModelProviders.Selection(provider, "anthropic", null))
           .isInstanceOf(NullPointerException.class)

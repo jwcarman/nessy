@@ -15,8 +15,7 @@
  */
 package org.jwcarman.nessy.model.gemini;
 
-import com.google.genai.Client;
-import com.google.genai.types.HttpOptions;
+import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -52,8 +51,26 @@ public final class GeminiModelProvider implements ModelProvider {
     this.client = client;
   }
 
-  public static Builder builder() {
-    return new Builder();
+  /**
+   * The blessed one-call shape: equivalent to {@code create(GeminiProviderConfig::fromEnv)}.
+   * Delegates credential resolution to {@link GeminiProviderConfig#fromEnv()}.
+   */
+  public static GeminiModelProvider fromEnv() {
+    return create(GeminiProviderConfig::fromEnv);
+  }
+
+  /**
+   * Builds a {@link GeminiModelProvider} from a live {@link GeminiProviderConfig}: {@code
+   * customizer} fills it in, then this factory validates its required field and constructs the
+   * finished provider. No public {@code build()} survives here; the factory is the only place a
+   * {@link GeminiProviderConfig} ever turns into a {@link GeminiModelProvider} (design of record
+   * 2026-08-16 §1).
+   */
+  public static GeminiModelProvider create(GeminiProviderCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    GeminiProviderConfig config = new GeminiProviderConfig();
+    customizer.customize(config);
+    return config.build();
   }
 
   @Override
@@ -71,118 +88,5 @@ public final class GeminiModelProvider implements ModelProvider {
   @Override
   public String name() {
     return "Gemini";
-  }
-
-  /** Assembles a {@link GeminiModelProvider}. */
-  public static final class Builder {
-
-    private static final String GEMINI_API_KEY_ENV_VAR = "GEMINI_API_KEY";
-    private static final String GOOGLE_API_KEY_ENV_VAR = "GOOGLE_API_KEY";
-
-    private String apiKey;
-    private String baseUrl;
-    private Client client;
-    private boolean useEnv;
-
-    private Builder() {}
-
-    public Builder apiKey(String apiKey) {
-      this.apiKey = apiKey;
-      return this;
-    }
-
-    /**
-     * Reads {@value #GEMINI_API_KEY_ENV_VAR} then, if that is unset, {@value
-     * #GOOGLE_API_KEY_ENV_VAR} — Google's own documented pair, in that order — itself, rather than
-     * delegating to the SDK's own environment resolution the way {@code new Client()} would. This
-     * is the seam-integrity rule the env module established: the choice this builder makes from the
-     * environment is the choice that gets built, not a second, independent read underneath it.
-     *
-     * <p>Only a flag is set here; nothing is read yet. {@link #build()} applies it, layering any
-     * explicit {@link #apiKey(String)} set on <em>this</em> builder on top so it wins over either
-     * environment variable.
-     *
-     * @throws IllegalStateException at {@link #build()} time if neither an explicit key nor either
-     *     environment variable is available
-     */
-    public Builder fromEnv() {
-      this.useEnv = true;
-      return this;
-    }
-
-    /**
-     * Overrides the API base URL — for proxies, gateways, or Gemini-compatible endpoints. Applied
-     * via the SDK's {@link HttpOptions#baseUrl()}.
-     */
-    public Builder baseUrl(String baseUrl) {
-      this.baseUrl = baseUrl;
-      return this;
-    }
-
-    /**
-     * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
-     * baseUrl}.
-     */
-    public Builder client(Client client) {
-      this.client = client;
-      return this;
-    }
-
-    public GeminiModelProvider build() {
-      return new GeminiModelProvider(resolveClient());
-    }
-
-    private GeminiClient resolveClient() {
-      if (client != null) {
-        return wrap(client);
-      }
-      if (useEnv) {
-        return wrap(buildFromEnv());
-      }
-      if (apiKey == null || apiKey.isBlank()) {
-        throw new IllegalStateException(
-            "an API key is required: call apiKey(...) or fromEnv(), or provide a preconfigured"
-                + " client via client(...)");
-      }
-      return wrap(buildClient(apiKey));
-    }
-
-    private Client buildFromEnv() {
-      String resolvedKey = apiKey;
-      if (resolvedKey == null) {
-        resolvedKey = System.getenv(GEMINI_API_KEY_ENV_VAR);
-      }
-      if (resolvedKey == null) {
-        resolvedKey = System.getenv(GOOGLE_API_KEY_ENV_VAR);
-      }
-      if (resolvedKey == null) {
-        throw missingEnvCredentials();
-      }
-      return buildClient(resolvedKey);
-    }
-
-    private Client buildClient(String key) {
-      var clientBuilder = Client.builder().apiKey(key);
-      if (baseUrl != null) {
-        clientBuilder.httpOptions(HttpOptions.builder().baseUrl(baseUrl).build());
-      }
-      return clientBuilder.build();
-    }
-
-    private static IllegalStateException missingEnvCredentials() {
-      var message =
-          GEMINI_API_KEY_ENV_VAR
-              + " (or "
-              + GOOGLE_API_KEY_ENV_VAR
-              + ") environment variable is not set; call apiKey(...) or client(...) instead";
-      return new IllegalStateException(message);
-    }
-
-    private static GeminiClient wrap(Client sdkClient) {
-      return (model, contents, config) -> {
-        var responseStream = sdkClient.models.generateContentStream(model, contents, config);
-        return new GeminiStream(responseStream, responseStream::close);
-      };
-    }
   }
 }

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.autoconfigure;
 import java.util.ArrayList;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
+import org.jwcarman.nessy.model.anthropic.AnthropicProviderConfig;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionMessage;
@@ -151,25 +152,27 @@ public class AnthropicProviderAutoConfiguration {
   /**
    * {@code nessy.anthropic.api-key} / {@code nessy.anthropic.base-url} are overrides layered on top
    * of the SDK's own environment resolution, not replacements for it: {@link
-   * AnthropicModelProvider.Builder#fromEnv()} is always called first (it only sets a flag — nothing
-   * is read until {@code build()}), so every ambient source the SDK understands ({@code
+   * AnthropicProviderConfig#fromEnv()} is always called first (it only sets a flag — nothing is
+   * read until the provider is built), so every ambient source the SDK understands ({@code
    * ANTHROPIC_AUTH_TOKEN}, {@code ANTHROPIC_BASE_URL}, profile files, workload-identity federation)
    * is still honored when a property here is absent, and an explicit property always wins when
-   * present. {@link AnthropicModelProvider.Builder#build()} does not throw in a keyless environment
-   * as long as an explicit {@code apiKey} was layered on, per {@code fromEnv()}'s own javadoc.
+   * present. Building does not throw in a keyless environment as long as an explicit {@code apiKey}
+   * was layered on, per {@code fromEnv()}'s own javadoc.
    */
   static ModelProvider buildAnthropicProvider(NessyProperties properties) {
     var anthropic = properties.anthropic();
-    var builder = AnthropicModelProvider.builder().fromEnv();
     var apiKey = anthropic == null ? null : anthropic.apiKey();
-    if (StringUtils.hasText(apiKey)) {
-      builder.apiKey(apiKey);
-    }
     var baseUrl = anthropic == null ? null : anthropic.baseUrl();
-    if (StringUtils.hasText(baseUrl)) {
-      builder.baseUrl(baseUrl);
-    }
-    return builder.build();
+    return AnthropicModelProvider.create(
+        config -> {
+          config.fromEnv();
+          if (StringUtils.hasText(apiKey)) {
+            config.apiKey(apiKey);
+          }
+          if (StringUtils.hasText(baseUrl)) {
+            config.baseUrl(baseUrl);
+          }
+        });
   }
 
   /**

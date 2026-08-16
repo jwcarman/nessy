@@ -87,13 +87,13 @@ class BedrockModelProviderTest {
   }
 
   @Nested
-  class Builder {
+  class Configuration {
 
     @Test
     void rejects_build_with_neither_a_region_nor_a_client() {
-      var builder = BedrockModelProvider.builder();
+      var config = new BedrockProviderConfig();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("region")
           .hasMessageContaining("fromEnv")
@@ -102,7 +102,7 @@ class BedrockModelProviderTest {
 
     @Test
     void a_region_alone_is_enough_to_build() {
-      try (var provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build()) {
+      try (var provider = new BedrockProviderConfig().region(Region.US_EAST_1).build()) {
         assertThat(provider).isNotNull();
       }
     }
@@ -113,9 +113,9 @@ class BedrockModelProviderTest {
       assumeTrue(
           System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
 
-      var builder = BedrockModelProvider.builder().fromEnv();
+      var config = new BedrockProviderConfig().fromEnv();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("AWS_REGION")
           .hasMessageContaining("AWS_DEFAULT_REGION");
@@ -123,8 +123,7 @@ class BedrockModelProviderTest {
 
     @Test
     void an_explicit_region_set_after_from_env_still_builds_without_needing_the_environment() {
-      try (var provider =
-          BedrockModelProvider.builder().fromEnv().region(Region.US_WEST_2).build()) {
+      try (var provider = new BedrockProviderConfig().fromEnv().region(Region.US_WEST_2).build()) {
         assertThat(provider).isNotNull();
       }
     }
@@ -133,7 +132,7 @@ class BedrockModelProviderTest {
     void a_preconfigured_sdk_client_bypasses_the_region_requirement() {
       var fake = ScriptedBedrockRuntimeAsyncClient.succeedingWith(List.of());
 
-      try (var provider = BedrockModelProvider.builder().client(fake).build()) {
+      try (var provider = new BedrockProviderConfig().client(fake).build()) {
         assertThat(provider).isNotNull();
       }
     }
@@ -144,7 +143,7 @@ class BedrockModelProviderTest {
 
     @Test
     void v1_advertises_parallel_tool_calls_but_not_thinking_caching_or_image_input() {
-      try (var provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build()) {
+      try (var provider = new BedrockProviderConfig().region(Region.US_EAST_1).build()) {
         assertThat(provider.capabilities()).containsExactly(Capability.PARALLEL_TOOL_CALLS);
       }
     }
@@ -155,15 +154,15 @@ class BedrockModelProviderTest {
 
     @Test
     void reports_bedrock() {
-      try (var provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build()) {
+      try (var provider = new BedrockProviderConfig().region(Region.US_EAST_1).build()) {
         assertThat(provider.name()).isEqualTo("Bedrock");
       }
     }
   }
 
   /**
-   * Pins the async-to-blocking bridge ({@link BedrockModelProvider.Builder#wrap}) end to end
-   * through the public {@code .client(BedrockRuntimeAsyncClient)} escape hatch — {@link
+   * Pins the async-to-blocking bridge ({@link BedrockProviderConfig#wrap}) end to end through the
+   * public {@code .client(BedrockRuntimeAsyncClient)} escape hatch — {@link
    * ScriptedBedrockRuntimeAsyncClient} is a hand-rolled fake, not a mock, driven through the real
    * {@code ConverseStreamResponseHandler}/{@code SdkPublisher} machinery the SDK itself ships.
    * Every scenario here previously had zero offline coverage; a future refactor of {@code wrap}
@@ -179,7 +178,7 @@ class BedrockModelProviderTest {
           ScriptedBedrockRuntimeAsyncClient.succeedingWith(
               List.of(textDelta("hello"), messageStop("end_turn")));
 
-      try (var provider = BedrockModelProvider.builder().client(fake).build()) {
+      try (var provider = new BedrockProviderConfig().client(fake).build()) {
         var collected = new ArrayList<ModelEvent>();
         try (var stream = provider.stream(request())) {
           stream.forEach(collected::add);
@@ -199,7 +198,7 @@ class BedrockModelProviderTest {
           ScriptedBedrockRuntimeAsyncClient.failingWith(
               List.of(textDelta("a"), textDelta("b")), new CompletionException(cause));
 
-      try (var provider = BedrockModelProvider.builder().client(fake).build()) {
+      try (var provider = new BedrockProviderConfig().client(fake).build()) {
         var collected = new ArrayList<ModelEvent>();
         try (var stream = provider.stream(request())) {
           // The ordering guarantee the whole bridge rests on: both events already queued ahead of
@@ -216,7 +215,7 @@ class BedrockModelProviderTest {
     void a_completion_with_no_message_stop_fails_loudly_through_the_bridge_not_just_a_list() {
       var fake = ScriptedBedrockRuntimeAsyncClient.succeedingWith(List.of(textDelta("only")));
 
-      try (var provider = BedrockModelProvider.builder().client(fake).build();
+      try (var provider = new BedrockProviderConfig().client(fake).build();
           var stream = provider.stream(request())) {
         assertThatThrownBy(() -> stream.forEach(event -> {}))
             .isInstanceOf(IllegalStateException.class)
@@ -228,7 +227,7 @@ class BedrockModelProviderTest {
     void closing_the_stream_cancels_the_underlying_future() {
       var fake = ScriptedBedrockRuntimeAsyncClient.leavingPendingAfter(List.of(textDelta("hi")));
 
-      try (var provider = BedrockModelProvider.builder().client(fake).build()) {
+      try (var provider = new BedrockProviderConfig().client(fake).build()) {
         var stream = provider.stream(request());
         stream.close();
 
@@ -242,7 +241,7 @@ class BedrockModelProviderTest {
       var fake = ScriptedBedrockRuntimeAsyncClient.failingWith(List.of(), failure);
       var request = request();
 
-      try (var provider = BedrockModelProvider.builder().client(fake).build()) {
+      try (var provider = new BedrockProviderConfig().client(fake).build()) {
         // The failure must surface from stream() itself — this is what lets
         // RetryingModelProvider retry it, exactly as it does for every synchronous-SDK sibling
         // provider's opening failure. A stream() that returned successfully here (with the
@@ -264,7 +263,7 @@ class BedrockModelProviderTest {
       BedrockRuntimeAsyncClient sdkClient =
           BedrockRuntimeAsyncClient.builder().region(Region.US_EAST_1).build();
 
-      try (var provider = BedrockModelProvider.builder().client(sdkClient).build()) {
+      try (var provider = new BedrockProviderConfig().client(sdkClient).build()) {
         assertThat(provider.name()).isEqualTo("Bedrock");
       }
       // provider.close() (via try-with-resources) must NOT delegate to sdkClient.close() — the
@@ -280,10 +279,10 @@ class BedrockModelProviderTest {
   /**
    * Pins close ownership: {@link BedrockModelProvider#close()} must close only a {@code
    * BedrockRuntimeAsyncClient} this provider built itself, never one supplied through {@link
-   * BedrockModelProvider.Builder#client(BedrockRuntimeAsyncClient)}. {@link
-   * BedrockModelProvider.Builder#wrap} is package-private specifically so this ownership branch is
-   * directly testable against {@link ScriptedBedrockRuntimeAsyncClient}'s close-tracking, without
-   * needing a real, network-capable SDK client on either side of the assertion.
+   * BedrockProviderConfig#client(BedrockRuntimeAsyncClient)}. {@link BedrockProviderConfig#wrap} is
+   * package-private specifically so this ownership branch is directly testable against {@link
+   * ScriptedBedrockRuntimeAsyncClient}'s close-tracking, without needing a real, network-capable
+   * SDK client on either side of the assertion.
    */
   @Nested
   class CloseOwnership {
@@ -291,7 +290,7 @@ class BedrockModelProviderTest {
     @Test
     void an_internally_built_client_is_closed_when_the_provider_is_closed() {
       var fake = ScriptedBedrockRuntimeAsyncClient.succeedingWith(List.of());
-      var provider = new BedrockModelProvider(BedrockModelProvider.Builder.wrap(fake, true));
+      var provider = new BedrockModelProvider(BedrockProviderConfig.wrap(fake, true));
 
       provider.close();
 
@@ -301,7 +300,7 @@ class BedrockModelProviderTest {
     @Test
     void a_caller_supplied_client_is_not_closed_when_the_provider_is_closed() {
       var fake = ScriptedBedrockRuntimeAsyncClient.succeedingWith(List.of());
-      var provider = new BedrockModelProvider(BedrockModelProvider.Builder.wrap(fake, false));
+      var provider = new BedrockModelProvider(BedrockProviderConfig.wrap(fake, false));
 
       provider.close();
 

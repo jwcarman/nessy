@@ -65,7 +65,7 @@ public class BedrockProviderAutoConfiguration {
   @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
   @Conditional(BedrockIsTheChoiceCondition.class)
   ModelProvider bedrockModelProvider() {
-    return BedrockModelProvider.builder().fromEnv().build();
+    return BedrockModelProvider.fromEnv();
   }
 
   /**

@@ -64,13 +64,13 @@ class GeminiModelProviderTest {
   }
 
   @Nested
-  class Builder {
+  class Configuration {
 
     @Test
     void rejects_build_with_neither_a_key_nor_a_client() {
-      var builder = GeminiModelProvider.builder();
+      var config = new GeminiProviderConfig();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
@@ -79,9 +79,9 @@ class GeminiModelProviderTest {
 
     @Test
     void a_blank_api_key_is_rejected_the_same_as_a_missing_one() {
-      var builder = GeminiModelProvider.builder().apiKey("   ");
+      var config = new GeminiProviderConfig().apiKey("   ");
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
@@ -90,7 +90,7 @@ class GeminiModelProviderTest {
 
     @Test
     void an_api_key_alone_is_enough_to_build() {
-      var provider = GeminiModelProvider.builder().apiKey("test-key").build();
+      var provider = new GeminiProviderConfig().apiKey("test-key").build();
 
       assertThat(provider).isNotNull();
     }
@@ -98,10 +98,7 @@ class GeminiModelProviderTest {
     @Test
     void a_base_url_is_accepted_without_error() {
       var provider =
-          GeminiModelProvider.builder()
-              .apiKey("test-key")
-              .baseUrl("https://example.invalid")
-              .build();
+          new GeminiProviderConfig().apiKey("test-key").baseUrl("https://example.invalid").build();
 
       assertThat(provider).isNotNull();
     }
@@ -110,7 +107,7 @@ class GeminiModelProviderTest {
     void a_preconfigured_client_bypasses_the_key_requirement() {
       Client client = Client.builder().apiKey("test-key").build();
 
-      var provider = GeminiModelProvider.builder().client(client).build();
+      var provider = new GeminiProviderConfig().client(client).build();
 
       assertThat(provider).isNotNull();
     }
@@ -120,9 +117,9 @@ class GeminiModelProviderTest {
       assumeTrue(System.getenv("GEMINI_API_KEY") == null, "GEMINI_API_KEY is set in this shell");
       assumeTrue(System.getenv("GOOGLE_API_KEY") == null, "GOOGLE_API_KEY is set in this shell");
 
-      var builder = GeminiModelProvider.builder().fromEnv();
+      var config = new GeminiProviderConfig().fromEnv();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("GEMINI_API_KEY")
           .hasMessageContaining("GOOGLE_API_KEY");
@@ -130,7 +127,7 @@ class GeminiModelProviderTest {
 
     @Test
     void an_explicit_api_key_set_after_from_env_still_builds_without_needing_the_environment() {
-      var provider = GeminiModelProvider.builder().fromEnv().apiKey("explicit-key").build();
+      var provider = new GeminiProviderConfig().fromEnv().apiKey("explicit-key").build();
 
       assertThat(provider).isNotNull();
     }
@@ -141,7 +138,7 @@ class GeminiModelProviderTest {
 
     @Test
     void v1_advertises_parallel_tool_calls_but_not_thinking_caching_or_image_input() {
-      var provider = GeminiModelProvider.builder().apiKey("test-key").build();
+      var provider = new GeminiProviderConfig().apiKey("test-key").build();
 
       assertThat(provider.capabilities()).containsExactly(Capability.PARALLEL_TOOL_CALLS);
     }
@@ -152,7 +149,7 @@ class GeminiModelProviderTest {
 
     @Test
     void reports_gemini() {
-      var provider = GeminiModelProvider.builder().apiKey("test-key").build();
+      var provider = new GeminiProviderConfig().apiKey("test-key").build();
 
       assertThat(provider.name()).isEqualTo("Gemini");
     }

@@ -16,11 +16,11 @@
 package org.jwcarman.nessy.model.anthropic;
 
 import com.anthropic.client.AnthropicClient;
-import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.errors.AnthropicIoException;
 import com.anthropic.errors.AnthropicRetryableException;
 import com.anthropic.errors.InternalServerException;
 import com.anthropic.errors.RateLimitException;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import org.jwcarman.nessy.model.anthropic.AnthropicRequests.ThinkingConfig;
@@ -86,13 +86,32 @@ public final class AnthropicModelProvider implements ModelProvider {
   private final AnthropicClient client;
   private final int thinkingBudget;
 
-  private AnthropicModelProvider(AnthropicClient client, int thinkingBudget) {
+  AnthropicModelProvider(AnthropicClient client, int thinkingBudget) {
     this.client = client;
     this.thinkingBudget = thinkingBudget;
   }
 
-  public static Builder builder() {
-    return new Builder();
+  /**
+   * The blessed one-call shape: equivalent to {@code create(AnthropicProviderConfig::fromEnv)}.
+   * Delegates credential and configuration resolution to the SDK's own environment table — see
+   * {@link AnthropicProviderConfig#fromEnv()}.
+   */
+  public static AnthropicModelProvider fromEnv() {
+    return create(AnthropicProviderConfig::fromEnv);
+  }
+
+  /**
+   * Builds an {@link AnthropicModelProvider} from a live {@link AnthropicProviderConfig}: {@code
+   * customizer} fills it in, then this factory validates its required field and constructs the
+   * finished provider. No public {@code build()} survives here; the factory is the only place an
+   * {@link AnthropicProviderConfig} ever turns into an {@link AnthropicModelProvider} (design of
+   * record 2026-08-16 §1).
+   */
+  public static AnthropicModelProvider create(AnthropicProviderCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    AnthropicProviderConfig config = new AnthropicProviderConfig();
+    customizer.customize(config);
+    return config.build();
   }
 
   @Override
@@ -113,138 +132,5 @@ public final class AnthropicModelProvider implements ModelProvider {
 
   private ThinkingConfig thinkingConfigFor(ModelRequest request) {
     return new ThinkingConfig(request.requested().contains(Capability.THINKING), thinkingBudget);
-  }
-
-  /** Assembles an {@link AnthropicModelProvider}. */
-  public static final class Builder {
-
-    // Anthropic's floor for the thinking budget. AgentBuilder.DEFAULT_MAX_TOKENS is 4096, and
-    // AnthropicRequests.toParams requires maxTokens to exceed the thinking budget, so the default
-    // here must stay comfortably under that default headroom — the lowest value the API accepts
-    // is also the only one guaranteed to leave room. A caller who wants a larger default thinking
-    // budget must also raise AgentBuilder.maxTokens(...) to keep the two in the same order.
-    private static final int DEFAULT_THINKING_BUDGET = 1024;
-    private static final String API_KEY_ENV_VAR = "ANTHROPIC_API_KEY";
-    private static final String AUTH_TOKEN_ENV_VAR = "ANTHROPIC_AUTH_TOKEN";
-
-    private String apiKey;
-    private String baseUrl;
-    private int thinkingBudget = DEFAULT_THINKING_BUDGET;
-    private AnthropicClient client;
-    private boolean useEnv;
-
-    private Builder() {}
-
-    public Builder apiKey(String apiKey) {
-      this.apiKey = apiKey;
-      return this;
-    }
-
-    /**
-     * Delegates credential and configuration resolution to the SDK's own {@link
-     * AnthropicOkHttpClient.Builder#fromEnv()} rather than reading {@value #API_KEY_ENV_VAR}
-     * ourselves, so every environment source the SDK understands is honored — not just the API key:
-     * {@value #AUTH_TOKEN_ENV_VAR}, {@code ANTHROPIC_BASE_URL}, profile files, and
-     * workload-identity federation.
-     *
-     * <p>Only a flag is set here; nothing is read yet. {@link #build()} applies it by calling the
-     * SDK's {@code fromEnv()} first, then layering any explicit {@link #apiKey(String)} / {@link
-     * #baseUrl(String)} set on <em>this</em> builder on top — an explicit override always wins over
-     * an ambient environment value.
-     *
-     * @throws IllegalStateException at {@link #build()} time if neither an explicit key nor {@value
-     *     #API_KEY_ENV_VAR} / {@value #AUTH_TOKEN_ENV_VAR} is available. (Credentials that come
-     *     only from a profile file or workload-identity federation are not checked here and are
-     *     trusted entirely to the SDK's own resolution — see {@link #build()}.)
-     */
-    public Builder fromEnv() {
-      this.useEnv = true;
-      return this;
-    }
-
-    /** Overrides the API base URL — for proxies or Anthropic-compatible gateways. */
-    public Builder baseUrl(String baseUrl) {
-      this.baseUrl = baseUrl;
-      return this;
-    }
-
-    /**
-     * The extended-thinking token budget used when a request asks for {@link Capability#THINKING}.
-     */
-    public Builder thinkingBudget(int thinkingBudget) {
-      this.thinkingBudget = thinkingBudget;
-      return this;
-    }
-
-    /**
-     * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
-     * baseUrl}.
-     */
-    public Builder client(AnthropicClient client) {
-      this.client = client;
-      return this;
-    }
-
-    public AnthropicModelProvider build() {
-      if (client != null) {
-        return new AnthropicModelProvider(client, thinkingBudget);
-      }
-      if (useEnv) {
-        return new AnthropicModelProvider(buildFromEnv(), thinkingBudget);
-      }
-      if (apiKey == null || apiKey.isBlank()) {
-        throw new IllegalStateException(
-            "an API key is required: call apiKey(...) or fromEnv(), or provide a preconfigured"
-                + " client via client(...)");
-      }
-      var clientBuilder = AnthropicOkHttpClient.builder().apiKey(apiKey);
-      if (baseUrl != null) {
-        clientBuilder.baseUrl(baseUrl);
-      }
-      return new AnthropicModelProvider(clientBuilder.build(), thinkingBudget);
-    }
-
-    /**
-     * Builds through the SDK's own {@code fromEnv()}, with this builder's explicit {@code apiKey} /
-     * {@code baseUrl} (if set) layered on top afterward so they win over whatever the environment
-     * supplied.
-     *
-     * <p>The SDK's {@code fromEnv()}/{@code build()} do not themselves throw when no credential
-     * source resolves — a client-less-of-credentials still builds, and the failure only surfaces as
-     * an authentication error on the first real request. {@value #API_KEY_ENV_VAR} and {@value
-     * #AUTH_TOKEN_ENV_VAR} are checked directly here so the common "nothing is configured" case
-     * still fails fast at {@code build()} with a message naming the variable, matching the
-     * friendly-error behavior of the {@code apiKey}-only path above. Any other failure the SDK does
-     * raise while resolving (a malformed profile file, for instance) is caught and rethrown in the
-     * same friendly shape.
-     */
-    private AnthropicClient buildFromEnv() {
-      if (apiKey == null
-          && System.getenv(API_KEY_ENV_VAR) == null
-          && System.getenv(AUTH_TOKEN_ENV_VAR) == null) {
-        throw missingEnvCredentials();
-      }
-      try {
-        var sdkBuilder = AnthropicOkHttpClient.builder().fromEnv();
-        if (apiKey != null) {
-          sdkBuilder.apiKey(apiKey);
-        }
-        if (baseUrl != null) {
-          sdkBuilder.baseUrl(baseUrl);
-        }
-        return sdkBuilder.build();
-      } catch (RuntimeException e) {
-        throw new IllegalStateException("could not resolve credentials from the environment", e);
-      }
-    }
-
-    private static IllegalStateException missingEnvCredentials() {
-      var message =
-          API_KEY_ENV_VAR
-              + " (or "
-              + AUTH_TOKEN_ENV_VAR
-              + ") environment variable is not set; call apiKey(...) or client(...) instead";
-      return new IllegalStateException(message);
-    }
   }
 }

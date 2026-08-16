@@ -337,8 +337,8 @@ class ProviderAutoConfigurationTest {
    * — is pinned separately in {@link Bedrock_is_the_choice_condition} below, against {@link
    * BedrockProviderAutoConfiguration.BedrockIsTheChoiceCondition} directly rather than through
    * {@link BedrockProviderAutoConfiguration#bedrockModelProvider()} (which calls {@code
-   * BedrockModelProvider.builder().fromEnv().build()}, dependent on the real process environment's
-   * {@code AWS_REGION}/{@code AWS_DEFAULT_REGION}). What remains here needs no such seam: classpath
+   * BedrockModelProvider.fromEnv()}, dependent on the real process environment's {@code
+   * AWS_REGION}/{@code AWS_DEFAULT_REGION}). What remains here needs no such seam: classpath
    * presence never selects Bedrock on its own, and an invalid {@code nessy.provider} value fails
    * fast the same way regardless of AWS configuration.
    */
@@ -393,13 +393,13 @@ class ProviderAutoConfigurationTest {
    * BedrockProviderAutoConfiguration#bedrockModelProvider()} itself.
    *
    * <p>The {@link Four_provider_scenarios} tests this replaces asserted the selection guarantee
-   * indirectly, by triggering {@code BedrockModelProvider.Builder#fromEnv()}'s own missing-region
-   * failure and reading its message — which meant those tests silently skipped (via {@code
-   * assumeTrue}) on any machine with {@code AWS_REGION} already set, exactly the AWS-configured
-   * environment the explicit-only ruling exists to defend (final-review finding S3). A marker bean
-   * guarded by the identical {@code @Conditional} the production bean carries proves the same
-   * condition-matching logic without ever calling {@code fromEnv().build()}, so every assertion
-   * here runs unconditionally, on every machine.
+   * indirectly, by triggering {@code BedrockModelProvider#fromEnv()}'s own missing-region failure
+   * and reading its message — which meant those tests silently skipped (via {@code assumeTrue}) on
+   * any machine with {@code AWS_REGION} already set, exactly the AWS-configured environment the
+   * explicit-only ruling exists to defend (final-review finding S3). A marker bean guarded by the
+   * identical {@code @Conditional} the production bean carries proves the same condition-matching
+   * logic without ever calling {@code fromEnv().build()}, so every assertion here runs
+   * unconditionally, on every machine.
    */
   @Nested
   class Bedrock_is_the_choice_condition {

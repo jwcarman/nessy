@@ -80,7 +80,7 @@ class AnthropicLiveTest {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(h -> h.provider(AnthropicModelProvider.builder().fromEnv().build()))
+        Nessy.harness(h -> h.provider(AnthropicModelProvider.fromEnv()))
             .agent(a -> a.name("anthropic-live").model(MODEL).maxTokens(64));
 
     TextObserver observer = new TextObserver();
@@ -95,7 +95,7 @@ class AnthropicLiveTest {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(h -> h.provider(AnthropicModelProvider.builder().fromEnv().build()))
+        Nessy.harness(h -> h.provider(AnthropicModelProvider.fromEnv()))
             .agent(
                 a ->
                     a.name("anthropic-live")
@@ -125,7 +125,7 @@ class AnthropicLiveTest {
         Nessy.harness(
                 h ->
                     h.provider(
-                        AnthropicModelProvider.builder().fromEnv().thinkingBudget(1024).build()))
+                        AnthropicModelProvider.create(c -> c.fromEnv().thinkingBudget(1024))))
             .agent(
                 a ->
                     a.name("anthropic-live")

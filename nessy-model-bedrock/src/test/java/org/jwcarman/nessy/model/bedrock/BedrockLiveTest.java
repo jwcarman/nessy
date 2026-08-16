@@ -49,7 +49,7 @@ import software.amazon.awssdk.regions.Region;
  * grounded in the AWS SDK for Java v2's own source (see {@code BedrockRequests}/{@code
  * BedrockStream}'s javadoc and the task report), and is covered by the offline mapping tests, but
  * the live round-trip below — including the async-to-blocking bridge in {@code
- * BedrockModelProvider.Builder} — is unvalidated until someone runs it against a real account.
+ * BedrockProviderConfig} — is unvalidated until someone runs it against a real account.
  *
  * <p>{@link #MODEL} is the {@code us} cross-region inference profile id for Claude Haiku 4.5,
  * confirmed 2026-08-16 against Anthropic's own Amazon Bedrock documentation (the "API model IDs"
@@ -61,10 +61,10 @@ import software.amazon.awssdk.regions.Region;
  * see the honesty note above.
  *
  * <p>{@link #REGION} honors {@code AWS_REGION} then, if unset, {@code AWS_DEFAULT_REGION} — the
- * same pair {@link BedrockModelProvider.Builder#fromEnv()} reads — falling back to {@code
- * us-east-1} only when neither is set, so the region named in the module README's and the providers
- * guide's documented run command (which sets {@code AWS_REGION} explicitly) actually takes effect
- * rather than being silently shadowed by a hardcoded value.
+ * same pair {@link BedrockProviderConfig#fromEnv()} reads — falling back to {@code us-east-1} only
+ * when neither is set, so the region named in the module README's and the providers guide's
+ * documented run command (which sets {@code AWS_REGION} explicitly) actually takes effect rather
+ * than being silently shadowed by a hardcoded value.
  */
 @Tag("live")
 class BedrockLiveTest {
@@ -126,7 +126,7 @@ class BedrockLiveTest {
     // whose Netty event-loop group and connection pool would otherwise leak for the rest of the
     // JVM's life, contradicting the close-ownership discipline this module's own production code
     // and BedrockModelProviderTest$CloseOwnership establish.
-    try (var provider = BedrockModelProvider.builder().region(REGION).build()) {
+    try (var provider = BedrockModelProvider.create(c -> c.region(REGION))) {
       Agent<String> agent =
           Nessy.harness(h -> h.provider(provider))
               .agent(a -> a.name("bedrock-live").model(MODEL).maxTokens(64));
@@ -143,7 +143,7 @@ class BedrockLiveTest {
   void a_real_tool_call_round_trips() {
     assumeCredentialsPresent();
 
-    try (var provider = BedrockModelProvider.builder().region(REGION).build()) {
+    try (var provider = BedrockModelProvider.create(c -> c.region(REGION))) {
       Agent<String> agent =
           Nessy.harness(h -> h.provider(provider))
               .agent(
