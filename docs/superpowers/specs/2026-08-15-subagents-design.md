@@ -54,8 +54,13 @@ public static Tool<Delegation> subagent(Agent<String> child, String description,
 - **Input:** `record Delegation(String task)` — one plain-text assignment, v1. Typed inputs
   ride the existing `InputRenderer` machinery in a later generation if wanted.
 - **`describe(input)`** shows the task text — this is what an approval prompt displays when
-  an app gates delegation with `requireApproval()` (deliberately supported: "may this agent
-  spend tokens on that agent" is a legitimate human gate).
+  an app gates delegation with `requireApproval()` ("may this agent spend tokens on that
+  agent" is a legitimate human gate). **v1 restriction (final-review amendment,
+  2026-08-16):** gate delegation only when the child cannot itself park — the loop does
+  not support re-parking an already-parked call, so an approval-gated subagent tool whose
+  child then parks would wedge both conversations. Approve-the-delegation and
+  child-parks-for-its-own-approval are each fine alone; combining them awaits a loop
+  enhancement (banked).
 
 ## 3. Execution — the child conversation
 
@@ -112,7 +117,9 @@ not reachable from inside `Tool.execute` and does not need to be: the loop stamp
 into `Parks.Park` when the parent's park settles, so `completions` takes `Parks` as a
 third collaborator and resolves the routing name from the park stamp at wake time —
 the stamp is the authoritative identity; a copied name in the link could only drift.
-A link whose park is already gone means nobody is waiting: forget it, no-op.) LWW, idempotent forget, same in-memory
+A link whose park is not yet visible is the registration race window: the wake THROWS so
+the at-least-once transport retries after the window closes — corrected during
+implementation from an earlier forget-it draft, which was a lost wakeup.) LWW, idempotent forget, same in-memory
 default + `JdbcSubagentLinks` + TCK contract pattern as every store before it — one table,
 `(child_conversation_id)` primary key. Concurrent writers are not real here (one child has
 one parent), but replay rewrites identically, the familiar argument.
