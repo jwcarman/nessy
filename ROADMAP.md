@@ -69,6 +69,10 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
   hand-rolling approval loops.
 - **Loop maturity** — re-parking shipped with subagents v2; parallel tool
   execution is the next loop milestone.
+- **GraalVM native-image support** — runtime hints (reflection, resources,
+  serialization) so agents compile to native executables; instant-start,
+  low-footprint agents are a natural fit for queue- and webhook-triggered
+  deployment.
 - **Jackson 3 migration** — retires the victools 4 bridge.
 - **First release** — `0.1.0` to Maven Central once the surface above
   stabilizes; the changelog is already written first-release style.
