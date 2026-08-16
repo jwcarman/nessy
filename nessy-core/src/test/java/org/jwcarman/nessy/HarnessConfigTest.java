@@ -17,6 +17,7 @@ package org.jwcarman.nessy;
 
 import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -135,6 +136,50 @@ class HarnessConfigTest {
         (TextBlock)
             provider.requests().getFirst().context().messages().getFirst().content().getFirst();
     assertThat(block.text().lines().count()).isGreaterThan(2);
+  }
+
+  @Nested
+  class Required_provider {
+
+    /**
+     * Before this generation, omitting the provider was a compile error — {@code
+     * Nessy.harness(ModelProvider)} demanded it by signature. Now a customizer can simply never
+     * call {@link HarnessConfig#provider}, so {@link HarnessConfig#build()}'s own {@code
+     * requireNonNull} is the only thing standing between a bare customizer and a harness with no
+     * provider at all; this pins that it actually fires, naming the field, and never silently
+     * defaults or drifts.
+     */
+    @Test
+    void a_customizer_that_never_calls_provider_fails_naming_the_field() {
+      assertThatThrownBy(() -> Nessy.harness(h -> {}))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("provider");
+    }
+
+    @Test
+    void a_null_harness_customizer_is_rejected() {
+      assertThatThrownBy(() -> Nessy.harness(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("customizer");
+    }
+
+    @Test
+    void a_null_agent_customizer_is_rejected_on_the_string_door() {
+      Harness harness = Nessy.harness(h -> h.provider(new FakeProvider("hi")));
+
+      assertThatThrownBy(() -> harness.agent(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("customizer");
+    }
+
+    @Test
+    void a_null_agent_customizer_is_rejected_on_the_typed_door() {
+      Harness harness = Nessy.harness(h -> h.provider(new FakeProvider("hi")));
+
+      assertThatThrownBy(() -> harness.agent(Greeting.class, null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("customizer");
+    }
   }
 
   @Nested

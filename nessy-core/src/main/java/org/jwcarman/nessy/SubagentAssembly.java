@@ -163,12 +163,12 @@ final class SubagentAssembly {
 
   /**
    * One string-door subagent, built as an ordinary {@code String}-vocabulary {@link Agent} from
-   * {@code harness} (the same construction path {@link Harness#agent()} uses — the "String door",
-   * which neither requires nor consults a renderer, unlike the typed door): inherits the harness's
-   * provider, stores, approver, observations, and harness-seeded listeners; owns its own name,
-   * prompt, model, tool grants, memory, and termination policy (design of record 2026-08-16 §3).
-   * {@code config}'s own nested declarations recurse through this same method / {@link
-   * #buildTypedChild}, so a grandchild is built and registered before this child is.
+   * {@code harness} (the same construction path {@link Harness#agent(AgentCustomizer)} uses — the
+   * "String door", which neither requires nor consults a renderer, unlike the typed door): inherits
+   * the harness's provider, stores, approver, observations, and harness-seeded listeners; owns its
+   * own name, prompt, model, tool grants, memory, and termination policy (design of record
+   * 2026-08-16 §3). {@code config}'s own nested declarations recurse through this same method /
+   * {@link #buildTypedChild}, so a grandchild is built and registered before this child is.
    *
    * <p>The completions listener that wakes the built agent's own parent once a further descendant
    * settles is registered here, synchronously, before {@link AgentConfig#build()} runs — the same

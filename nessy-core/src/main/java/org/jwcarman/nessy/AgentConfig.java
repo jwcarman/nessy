@@ -61,7 +61,6 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
   private static final Logger LOGGER = LoggerFactory.getLogger(AgentConfig.class);
 
   private final Harness harness;
-  private final Class<T> inputType;
   private final List<ListenerRegistration> registrations = new ArrayList<>();
   private final SubagentAssembly subagentAssembly = new SubagentAssembly(this);
 
@@ -79,16 +78,16 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
   private InputRenderer<T> renderer;
 
   /**
-   * Seeded from a {@link Harness}: {@code inputType} and {@code defaultRenderer} travel together
-   * (design of record 2026-08-16 — passing the {@code Class} token up front is what lets {@link
-   * Harness#agent(Class, AgentCustomizer)} choose a renderer that agrees with {@code T} before a
-   * single setter ever runs, rather than discovering a mismatch later); {@link
-   * #renderer(InputRenderer)} overrides the default. {@code defaultRenderer} is chosen by the
-   * caller ({@link Harness#agent(AgentCustomizer)} / {@link Harness#agent(Class, AgentCustomizer)})
-   * so that no unchecked cast is ever needed here.
+   * Seeded from a {@link Harness}: {@code inputType} is only used here to fail fast on a null
+   * vocabulary token; type agreement between it, {@code defaultRenderer}, and every subsequent
+   * {@link #renderer(InputRenderer)} override is closed by the compiler unifying {@code T} across
+   * the caller's own {@link Harness#agent(AgentCustomizer)} / {@link Harness#agent(Class,
+   * AgentCustomizer)} call, this config, and the returned {@code Agent<T>} — nothing here needs to
+   * check it again at runtime. {@code defaultRenderer} is chosen by that same caller so that no
+   * unchecked cast is ever needed here; {@link #renderer(InputRenderer)} overrides it.
    */
   AgentConfig(Harness harness, Class<T> inputType, InputRenderer<T> defaultRenderer) {
-    this.inputType = Objects.requireNonNull(inputType, "inputType must not be null");
+    Objects.requireNonNull(inputType, "inputType must not be null");
     this.renderer = Objects.requireNonNull(defaultRenderer, "renderer must not be null");
     this.harness = harness;
   }
@@ -330,9 +329,9 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
   void validate() {
     if (name == null) {
       throw new AgentConfigurationException(
-          "an agent name is required: call .name(...) before build() — the name is how parked work"
-              + " finds its way home across restarts, the durable stamp every callback door checks a"
-              + " resolution against");
+          "an agent name is required: call .name(...) before harness.agent(...) returns — the name"
+              + " is how parked work finds its way home across restarts, the durable stamp every"
+              + " callback door checks a resolution against");
     }
     String resolved = resolvedModel();
     if (resolved == null || resolved.isBlank()) {
@@ -354,11 +353,6 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
    */
   Harness harness() {
     return harness;
-  }
-
-  /** The vocabulary {@code T} this config was opened with — see the constructor's own javadoc. */
-  Class<T> inputType() {
-    return inputType;
   }
 
   String name() {

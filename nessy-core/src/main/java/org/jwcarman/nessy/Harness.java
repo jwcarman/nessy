@@ -141,9 +141,9 @@ public final class Harness {
    * vocabulary {@code T} — typically a sealed interface of records: {@code customizer} fills in a
    * fresh {@link AgentConfig} defaulted to {@link InputRenderer#json(ObjectMapper)} over this
    * harness's own mapper (override with {@link AgentConfig#renderer(InputRenderer)}); passing
-   * {@code inputType} up front is what lets this factory validate renderer-type agreement at
-   * construction rather than discovering a mismatch later, since the compiler unifies {@code T}
-   * across {@code inputType}, {@code customizer}, and the returned {@code Agent<T>}.
+   * {@code inputType} up front is what lets the compiler unify {@code T} across {@code inputType},
+   * {@code customizer}, and the returned {@code Agent<T>} — a renderer that disagrees with the
+   * vocabulary cannot be written. Type agreement is compile-time here, not a runtime check.
    */
   public <T> Agent<T> agent(Class<T> inputType, AgentCustomizer<T> customizer) {
     Objects.requireNonNull(inputType, "inputType must not be null");
@@ -163,7 +163,7 @@ public final class Harness {
 
   /**
    * Whether {@link HarnessConfig#store(ConversationStore)} was ever called on the config that
-   * produced this harness — the bit {@link AgentConfig#resolveMemory()} reads to know a durable
+   * produced this harness — the bit {@link AgentConfig#resolvedMemory()} reads to know a durable
    * store was explicitly chosen, so it can warn when an agent's memory was left on the in-memory
    * default anyway (the same set-vs-defaulted mismatch {@link HarnessConfig}'s own parks-defaulting
    * guard checks).

@@ -37,8 +37,9 @@ import org.springframework.util.StringUtils;
  * mapper, and seeded default model an application sets up once — so it is exactly what this class
  * assembles from whatever beans the classpath and configuration produced. An {@link
  * org.jwcarman.nessy.AgentConfig} is identity — model, system prompt, tools, policies, a particular
- * agent's own shape — and nothing in this module ever builds one: {@link Harness#agent()} is always
- * the application's own call, never Boot's.
+ * agent's own shape — and nothing in this module ever builds one: {@link
+ * Harness#agent(org.jwcarman.nessy.AgentCustomizer) Harness.agent(customizer)} is always the
+ * application's own call, never Boot's.
  *
  * <p>Runs after {@link AnthropicProviderAutoConfiguration}, {@link
  * OpenAiProviderAutoConfiguration}, {@link GeminiProviderAutoConfiguration}, and {@link
