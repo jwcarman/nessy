@@ -25,12 +25,14 @@ import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import java.util.ArrayDeque;
+import java.util.Base64;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -176,10 +178,15 @@ final class GeminiStream implements ModelStream {
       part.text()
           .filter(text -> !text.isEmpty())
           .ifPresent(text -> pending.add(new ModelEvent.TextChunk(text)));
-      part.functionCall().ifPresent(this::translateFunctionCall);
+      part.functionCall().ifPresent(call -> translateFunctionCall(call, part));
     }
 
-    private void translateFunctionCall(FunctionCall call) {
+    /**
+     * The {@code thoughtSignature} — Gemini's opaque continuity token for a function call — lives
+     * on the enclosing {@link Part}, not on {@link FunctionCall} itself, so the part is threaded
+     * through alongside the call it wraps.
+     */
+    private void translateFunctionCall(FunctionCall call, Part part) {
       sawToolCall = true;
       String id = call.id().orElseGet(this::mintCallId);
       String name =
@@ -187,7 +194,13 @@ final class GeminiStream implements ModelStream {
               .orElseThrow(() -> new IllegalStateException("function call arrived with no name"));
       Map<String, Object> args = call.args().orElse(Map.of());
       JsonNode arguments = MAPPER.valueToTree(args);
-      pending.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments)));
+      ToolCall toolCall = new ToolCall(id, name, arguments);
+      Optional<String> signature =
+          part.thoughtSignature().map(bytes -> Base64.getEncoder().encodeToString(bytes));
+      pending.add(
+          signature
+              .map(sig -> new ModelEvent.ToolUseEmitted(toolCall, sig))
+              .orElseGet(() -> new ModelEvent.ToolUseEmitted(toolCall)));
     }
 
     /**

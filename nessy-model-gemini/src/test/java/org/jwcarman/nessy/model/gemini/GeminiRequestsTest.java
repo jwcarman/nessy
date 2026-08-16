@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Nested;
@@ -211,6 +213,37 @@ class GeminiRequestsTest {
       assertThat(parts.get(0).text()).contains("running two tools");
       assertThat(parts.get(1).functionCall().orElseThrow().name()).contains("read_file");
       assertThat(parts.get(2).functionCall().orElseThrow().name()).contains("read_file");
+    }
+  }
+
+  @Nested
+  class ToolCallSignatures {
+
+    @Test
+    void a_signed_tool_use_block_replays_the_same_bytes_as_the_part_s_thought_signature() {
+      byte[] rawSignature = "opaque-continuity-token".getBytes(StandardCharsets.UTF_8);
+      String encoded = Base64.getEncoder().encodeToString(rawSignature);
+      var toolUse =
+          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), encoded);
+      var assistantTurn = Message.assistant(List.of(toolUse));
+      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+
+      var parts = contents.get(0).parts().orElseThrow();
+      assertThat(parts.get(0).thoughtSignature().orElseThrow()).isEqualTo(rawSignature);
+    }
+
+    @Test
+    void an_unsigned_tool_use_block_replays_google_s_skip_validation_sentinel() {
+      byte[] sentinel = "skip_thought_signature_validator".getBytes(StandardCharsets.UTF_8);
+      var toolUse =
+          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+      var assistantTurn = Message.assistant(List.of(toolUse));
+      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+
+      var parts = contents.get(0).parts().orElseThrow();
+      assertThat(parts.get(0).thoughtSignature().orElseThrow()).isEqualTo(sentinel);
     }
   }
 

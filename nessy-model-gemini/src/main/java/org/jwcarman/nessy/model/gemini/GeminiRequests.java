@@ -19,11 +19,14 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.types.Content;
+import com.google.genai.types.FunctionCall;
 import com.google.genai.types.FunctionDeclaration;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.Part;
 import com.google.genai.types.Tool;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +64,17 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 public final class GeminiRequests {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  /**
+   * Google's documented sentinel that tells the Gemini API to skip thought-signature validation for
+   * a function-call part, rather than reject a replayed history that carries no signature — one
+   * predating this project's signature capture, or one authored by another provider in a mixed
+   * setup. See <a href="https://ai.google.dev/gemini-api/docs/thought-signatures">Google's
+   * thought-signatures docs</a>. Tradeoff: validation is skipped for that call only, which degrades
+   * — but does not break — the model's reasoning continuity for it.
+   */
+  private static final byte[] SKIP_THOUGHT_SIGNATURE_VALIDATOR =
+      "skip_thought_signature_validator".getBytes(StandardCharsets.UTF_8);
 
   private GeminiRequests() {}
 
@@ -201,14 +215,32 @@ public final class GeminiRequests {
   private static Optional<Part> toModelPart(ContentBlock block) {
     return switch (block) {
       case TextBlock(String text) -> Optional.of(Part.fromText(text));
-      case ToolUseBlock(ToolCall call, var _) ->
-          Optional.of(Part.fromFunctionCall(call.name(), argumentsOf(call)));
+      case ToolUseBlock(ToolCall call, String signature) ->
+          Optional.of(toFunctionCallPart(call, signature));
       case ThinkingBlock _ -> Optional.empty();
       case RedactedThinkingBlock _ -> Optional.empty();
       default ->
           throw new IllegalArgumentException(
               "unsupported content block in an assistant message: " + block);
     };
+  }
+
+  /**
+   * Rebuilds a {@code functionCall} {@link Part}, replaying the block's stored signature (decoded
+   * from base64) onto the part's {@code thoughtSignature} when present. Absent signature means the
+   * block predates signature capture or was authored by another provider — not "no continuity token
+   * wanted" — so it stamps {@link #SKIP_THOUGHT_SIGNATURE_VALIDATOR} rather than leaving {@code
+   * thoughtSignature} unset, which the Gemini API would otherwise reject.
+   */
+  private static Part toFunctionCallPart(ToolCall call, String signature) {
+    byte[] thoughtSignature =
+        signature == null
+            ? SKIP_THOUGHT_SIGNATURE_VALIDATOR
+            : Base64.getDecoder().decode(signature);
+    return Part.builder()
+        .functionCall(FunctionCall.builder().name(call.name()).args(argumentsOf(call)).build())
+        .thoughtSignature(thoughtSignature)
+        .build();
   }
 
   private static Map<String, Object> argumentsOf(ToolCall call) {
