@@ -59,15 +59,30 @@ import software.amazon.awssdk.regions.Region;
  * giving {@code us.anthropic.claude-haiku-4-5-20251001-v1:0} per the documented {@code
  * <region-prefix>.<base-model-id>} inference-profile-id rule. Docs-verified, not live-verified —
  * see the honesty note above.
+ *
+ * <p>{@link #REGION} honors {@code AWS_REGION} then, if unset, {@code AWS_DEFAULT_REGION} — the
+ * same pair {@link BedrockModelProvider.Builder#fromEnv()} reads — falling back to {@code
+ * us-east-1} only when neither is set, so the region named in the module README's and the providers
+ * guide's documented run command (which sets {@code AWS_REGION} explicitly) actually takes effect
+ * rather than being silently shadowed by a hardcoded value.
  */
 @Tag("live")
 class BedrockLiveTest {
 
   // The us cross-region inference profile id for Claude Haiku 4.5 — see the class javadoc for
-  // how this string was confirmed. Override REGION below if the target account's Bedrock model
-  // access lives outside a region this profile routes through.
+  // how this string was confirmed. Override REGION below (or set AWS_REGION/AWS_DEFAULT_REGION)
+  // if the target account's Bedrock model access lives outside a region this profile routes
+  // through.
   private static final String MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
-  private static final Region REGION = Region.US_EAST_1;
+  private static final Region REGION = resolveRegion();
+
+  private static Region resolveRegion() {
+    var value = System.getenv("AWS_REGION");
+    if (value == null) {
+      value = System.getenv("AWS_DEFAULT_REGION");
+    }
+    return value != null ? Region.of(value) : Region.US_EAST_1;
+  }
 
   record Add(int left, int right) {}
 
@@ -106,45 +121,54 @@ class BedrockLiveTest {
   void a_real_conversation_answers() {
     assumeCredentialsPresent();
 
-    Agent<String> agent =
-        Nessy.harness(BedrockModelProvider.builder().region(REGION).build())
-            .build()
-            .agent()
-            .name("bedrock-live")
-            .model(MODEL)
-            .maxTokens(64)
-            .build();
+    // Try-with-resources: this test builds the only BedrockModelProvider in the repo that gets
+    // dropped without closing it if left inline — the provider owns a BedrockRuntimeAsyncClient
+    // whose Netty event-loop group and connection pool would otherwise leak for the rest of the
+    // JVM's life, contradicting the close-ownership discipline this module's own production code
+    // and BedrockModelProviderTest$CloseOwnership establish.
+    try (var provider = BedrockModelProvider.builder().region(REGION).build()) {
+      Agent<String> agent =
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .name("bedrock-live")
+              .model(MODEL)
+              .maxTokens(64)
+              .build();
 
-    TextObserver observer = new TextObserver();
-    RunOutcome outcome = agent.converse().tell("Reply with exactly: pong", observer);
+      TextObserver observer = new TextObserver();
+      RunOutcome outcome = agent.converse().tell("Reply with exactly: pong", observer);
 
-    assertThat(observer.text()).contains("pong");
-    assertThat(outcome.state().usage().inputTokens()).isGreaterThan(0);
+      assertThat(observer.text()).contains("pong");
+      assertThat(outcome.state().usage().inputTokens()).isGreaterThan(0);
+    }
   }
 
   @Test
   void a_real_tool_call_round_trips() {
     assumeCredentialsPresent();
 
-    Agent<String> agent =
-        Nessy.harness(BedrockModelProvider.builder().region(REGION).build())
-            .build()
-            .agent()
-            .name("bedrock-live")
-            .model(MODEL)
-            .maxTokens(256)
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+    try (var provider = BedrockModelProvider.builder().region(REGION).build()) {
+      Agent<String> agent =
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .name("bedrock-live")
+              .model(MODEL)
+              .maxTokens(256)
+              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+              .build();
 
-    Conversation<String> conversation = agent.converse();
-    TextObserver observer = new TextObserver();
-    conversation.tell("What is 2+2? Use the add tool to compute it.", observer);
+      Conversation<String> conversation = agent.converse();
+      TextObserver observer = new TextObserver();
+      conversation.tell("What is 2+2? Use the add tool to compute it.", observer);
 
-    assertThat(observer.text()).contains("4");
-    boolean hasToolResult =
-        agent.contextFor(conversation.conversationId()).messages().stream()
-            .flatMap(message -> message.content().stream())
-            .anyMatch(ToolResultBlock.class::isInstance);
-    assertThat(hasToolResult).isTrue();
+      assertThat(observer.text()).contains("4");
+      boolean hasToolResult =
+          agent.contextFor(conversation.conversationId()).messages().stream()
+              .flatMap(message -> message.content().stream())
+              .anyMatch(ToolResultBlock.class::isInstance);
+      assertThat(hasToolResult).isTrue();
+    }
   }
 }

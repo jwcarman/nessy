@@ -120,8 +120,9 @@ content blocks in one assistant turn (each on its own `contentBlockIndex`), and
 `BedrockRequests`/`BedrockStream` already handle that shape in both directions, so claiming it is
 honest, not aspirational. There is no dedicated `TOOLS` entry in `Capability` — the enum only
 tracks capabilities a provider might lack, and every provider module in this harness already
-handles tool calls unconditionally — so the task brief's "TOOLS + PARALLEL_TOOL_CALLS" phrasing is
-honored as best the enum allows. `THINKING`, `PROMPT_CACHING`, and `IMAGE_INPUT` are deliberately
+handles tool calls unconditionally, so nothing further is claimed for plain (non-parallel) tool use
+beyond what `PARALLEL_TOOL_CALLS` alone already communicates. `THINKING`, `PROMPT_CACHING`, and
+`IMAGE_INPUT` are deliberately
 absent: none is wired into this module's request/response mapping, so none is claimed.
 
 ## Dependency footprint

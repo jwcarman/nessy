@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.autoconfigure;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -30,6 +29,9 @@ import org.jwcarman.nessy.testing.ScriptedModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
+import org.springframework.context.annotation.Configuration;
 
 class ProviderAutoConfigurationTest {
 
@@ -330,13 +332,15 @@ class ProviderAutoConfigurationTest {
   /**
    * The four-way cases {@link BedrockProviderAutoConfiguration} adds: explicit-selection-only, no
    * key of its own, never counted by {@link
-   * AnthropicProviderAutoConfiguration.AmbiguousProviderCondition}. Every test here that reaches
-   * {@link BedrockProviderAutoConfiguration#bedrockModelProvider()} itself is guarded by {@code
-   * assumeTrue} exactly like {@code BedrockModelProviderTest}'s own {@code fromEnv()} tests: that
-   * bean calls {@code BedrockModelProvider.builder().fromEnv().build()}, which reads the real
-   * process environment for {@code AWS_REGION}/{@code AWS_DEFAULT_REGION} and fails without either
-   * — so what's proven offline is that the explicit choice reaches that call at all (never a
-   * different provider, never silently ignored), not the build's own success.
+   * AnthropicProviderAutoConfiguration.AmbiguousProviderCondition}. The selection guarantee itself
+   * — that an explicit {@code nessy.provider=bedrock} is honored, unconditionally, on every machine
+   * — is pinned separately in {@link Bedrock_is_the_choice_condition} below, against {@link
+   * BedrockProviderAutoConfiguration.BedrockIsTheChoiceCondition} directly rather than through
+   * {@link BedrockProviderAutoConfiguration#bedrockModelProvider()} (which calls {@code
+   * BedrockModelProvider.builder().fromEnv().build()}, dependent on the real process environment's
+   * {@code AWS_REGION}/{@code AWS_DEFAULT_REGION}). What remains here needs no such seam: classpath
+   * presence never selects Bedrock on its own, and an invalid {@code nessy.provider} value fails
+   * fast the same way regardless of AWS configuration.
    */
   @Nested
   class Four_provider_scenarios {
@@ -349,28 +353,6 @@ class ProviderAutoConfigurationTest {
                     OpenAiProviderAutoConfiguration.class,
                     GeminiProviderAutoConfiguration.class,
                     BedrockProviderAutoConfiguration.class));
-
-    @Test
-    void explicit_bedrock_choice_reaches_the_provider_builder_ahead_of_every_keyed_jar() {
-      assumeTrue(System.getenv("AWS_REGION") == null, "AWS_REGION is set in this shell");
-      assumeTrue(
-          System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
-      runner
-          .withPropertyValues(
-              "nessy.provider=bedrock",
-              "nessy.anthropic.api-key=k",
-              "nessy.openai.api-key=k",
-              "nessy.gemini.api-key=k")
-          .run(
-              context -> {
-                assertThat(context).hasFailed();
-                assertThat(context.getStartupFailure())
-                    .hasRootCauseMessage(
-                        "AWS_REGION (or AWS_DEFAULT_REGION) environment variable is not set; call"
-                            + " region(...) or fromEnv(), or provide a preconfigured client via"
-                            + " client(...)");
-              });
-    }
 
     @Test
     void bedrock_is_never_selected_by_classpath_presence_alone() {
@@ -403,25 +385,69 @@ class ProviderAutoConfigurationTest {
                             + " openai, gemini, or bedrock");
               });
     }
+  }
+
+  /**
+   * {@link BedrockProviderAutoConfiguration.BedrockIsTheChoiceCondition}'s own {@code
+   * ConditionOutcome}, pinned directly against a trivial marker bean rather than through {@link
+   * BedrockProviderAutoConfiguration#bedrockModelProvider()} itself.
+   *
+   * <p>The {@link Four_provider_scenarios} tests this replaces asserted the selection guarantee
+   * indirectly, by triggering {@code BedrockModelProvider.Builder#fromEnv()}'s own missing-region
+   * failure and reading its message — which meant those tests silently skipped (via {@code
+   * assumeTrue}) on any machine with {@code AWS_REGION} already set, exactly the AWS-configured
+   * environment the explicit-only ruling exists to defend (final-review finding S3). A marker bean
+   * guarded by the identical {@code @Conditional} the production bean carries proves the same
+   * condition-matching logic without ever calling {@code fromEnv().build()}, so every assertion
+   * here runs unconditionally, on every machine.
+   */
+  @Nested
+  class Bedrock_is_the_choice_condition {
+
+    private final ApplicationContextRunner runner =
+        new ApplicationContextRunner()
+            .withUserConfiguration(BedrockChoiceMarkerConfiguration.class);
 
     @Test
-    void bedrock_is_a_recognized_provider_value_not_an_invalid_one() {
-      // Guards against a regression where InvalidProviderCondition's "recognized" list forgets
-      // bedrock: if it did, this would fail fast naming an unrecognized value instead of reaching
-      // BedrockModelProvider.Builder#fromEnv()'s own missing-region failure.
-      assumeTrue(System.getenv("AWS_REGION") == null, "AWS_REGION is set in this shell");
-      assumeTrue(
-          System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
+    void matches_on_an_explicit_bedrock_choice_ahead_of_every_other_keyed_provider() {
+      runner
+          .withPropertyValues(
+              "nessy.provider=bedrock",
+              "nessy.anthropic.api-key=k",
+              "nessy.openai.api-key=k",
+              "nessy.gemini.api-key=k")
+          .run(context -> assertThat(context).hasBean("bedrockChoiceMarker"));
+    }
+
+    @Test
+    void matches_on_an_explicit_bedrock_choice_with_no_keys_present_at_all() {
       runner
           .withPropertyValues("nessy.provider=bedrock")
-          .run(
-              context -> {
-                assertThat(context).hasFailed();
-                assertThat(context.getStartupFailure())
-                    .rootCause()
-                    .hasMessageContaining("AWS_REGION")
-                    .hasMessageNotContaining("is not a recognized value");
-              });
+          .run(context -> assertThat(context).hasBean("bedrockChoiceMarker"));
+    }
+
+    @Test
+    void does_not_match_when_nessy_provider_is_unset_even_with_other_keys_present() {
+      runner
+          .withPropertyValues("nessy.anthropic.api-key=k", "nessy.openai.api-key=k")
+          .run(context -> assertThat(context).doesNotHaveBean("bedrockChoiceMarker"));
+    }
+
+    @Test
+    void does_not_match_when_nessy_provider_names_a_different_recognized_provider() {
+      runner
+          .withPropertyValues("nessy.provider=gemini", "nessy.gemini.api-key=k")
+          .run(context -> assertThat(context).doesNotHaveBean("bedrockChoiceMarker"));
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class BedrockChoiceMarkerConfiguration {
+
+      @Bean
+      @Conditional(BedrockProviderAutoConfiguration.BedrockIsTheChoiceCondition.class)
+      String bedrockChoiceMarker() {
+        return "bedrock-chosen";
+      }
     }
   }
 }

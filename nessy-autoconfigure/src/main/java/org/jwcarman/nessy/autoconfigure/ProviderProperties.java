@@ -24,10 +24,22 @@ package org.jwcarman.nessy.autoconfigure;
  * desync on a literal — a typo in a copy-pasted string constant would otherwise fail silently on
  * one side only.
  *
- * <p>{@code BEDROCK_KEY_PROPERTY} deliberately does not exist: Bedrock is explicit-selection-only
- * (bedrock-provider design §4) — it is never "keyed" the way the other three are, so it never
- * participates in {@link AnthropicProviderAutoConfiguration.AmbiguousProviderCondition}'s keyed
- * count. Only {@code BEDROCK_PROVIDER_CLASS_NAME} is needed, for classpath-presence checks.
+ * <p>Neither {@code BEDROCK_KEY_PROPERTY} nor {@code BEDROCK_PROVIDER_CLASS_NAME} exists here, and
+ * deliberately so: Bedrock is explicit-selection-only (bedrock-provider design §4) — it is never
+ * "keyed" the way the other three are, so it never participates in {@link
+ * AnthropicProviderAutoConfiguration.AmbiguousProviderCondition}'s keyed count; and its classpath
+ * presence must never influence any <em>other</em> provider's selection condition either — not even
+ * the "sole module present" fallback each of {@link
+ * AnthropicProviderAutoConfiguration.AnthropicIsTheChoiceCondition}, {@link
+ * OpenAiProviderAutoConfiguration.OpenAiIsTheChoiceCondition}, and {@link
+ * GeminiProviderAutoConfiguration.GeminiIsTheChoiceCondition} run, which deliberately checks only
+ * for each other, not for Bedrock. A classpath with Gemini and Bedrock both present, neither
+ * Anthropic nor OpenAI, and no explicit {@code nessy.provider} still lets Gemini's own fallback
+ * treat itself as the sole present module — correctly, since Bedrock can never contest that
+ * decision (explicit-only selection means it never auto-wins anything). {@link
+ * BedrockProviderAutoConfiguration} needs no string-name self-check either: its own
+ * {@code @ConditionalOnClass(BedrockModelProvider.class)} uses the class literal directly, the same
+ * as every sibling does for its own class.
  */
 final class ProviderProperties {
 
@@ -41,8 +53,6 @@ final class ProviderProperties {
       "org.jwcarman.nessy.model.openai.OpenAiModelProvider";
   static final String GEMINI_PROVIDER_CLASS_NAME =
       "org.jwcarman.nessy.model.gemini.GeminiModelProvider";
-  static final String BEDROCK_PROVIDER_CLASS_NAME =
-      "org.jwcarman.nessy.model.bedrock.BedrockModelProvider";
 
   private ProviderProperties() {}
 }

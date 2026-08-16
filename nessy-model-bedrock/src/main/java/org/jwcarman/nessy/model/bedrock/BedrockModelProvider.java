@@ -56,11 +56,12 @@ import software.amazon.awssdk.services.bedrockruntime.model.MessageStopEvent;
  * and {@link BedrockRequests}/{@link BedrockStream} already handle that shape in both directions.
  * There is no dedicated {@code TOOLS} entry in {@link Capability} to also advertise — the enum only
  * tracks capabilities a provider might lack, and every provider module here already handles tool
- * calls unconditionally; the task brief's "TOOLS + PARALLEL_TOOL_CALLS" phrasing is honored as best
- * this enum allows. {@link Capability#THINKING}, {@link Capability#PROMPT_CACHING}, and {@link
- * Capability#IMAGE_INPUT} are deliberately absent: none is wired into this module's
- * request/response mapping, so none is claimed — the same discipline {@code GeminiModelProvider}
- * documents for its own unadvertised capabilities.
+ * calls unconditionally, so nothing further is claimed for plain (non-parallel) tool use beyond
+ * what {@link Capability#PARALLEL_TOOL_CALLS} alone already communicates. {@link
+ * Capability#THINKING}, {@link Capability#PROMPT_CACHING}, and {@link Capability#IMAGE_INPUT} are
+ * deliberately absent: none is wired into this module's request/response mapping, so none is
+ * claimed — the same discipline {@code GeminiModelProvider} documents for its own unadvertised
+ * capabilities.
  *
  * <p>Also {@link AutoCloseable}: the real {@link BedrockClient} built by {@link Builder#wrap} owns
  * a {@code BedrockRuntimeAsyncClient}, whose default Netty transport holds an event-loop group and

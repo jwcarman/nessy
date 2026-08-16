@@ -244,9 +244,14 @@ replay, the same discipline Gemini's own unadvertised capabilities document.
     (request/response translation, the async-to-blocking bridge, stop-reason
     and usage tables) are exercised entirely against hand-built SDK fixtures
     and a hand-rolled async-client fake — no mocking library, no network.
-    Run the live suite yourself once credentials are available:
-    `AWS_REGION=... ./mvnw test -Dnessy.excludedGroups= -pl
-    nessy-model-bedrock`.
+    Run the live suite yourself once credentials are available — `AWS_ACCESS_KEY_ID`
+    is the gate the suite itself checks (`BedrockLiveTest.assumeCredentialsPresent()`),
+    so it, not `AWS_REGION` alone, is what actually opts the tests in:
+
+    ```sh
+    AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \
+      ./mvnw test -Dnessy.excludedGroups= -pl nessy-model-bedrock
+    ```
 
 ## The OpenAI-compatible universe
 

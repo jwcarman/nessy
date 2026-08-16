@@ -278,9 +278,9 @@ class BedrockModelProviderTest {
   }
 
   /**
-   * Pins the close-ownership rider from Task 1's re-review: {@link BedrockModelProvider#close()}
-   * must close only a {@code BedrockRuntimeAsyncClient} this provider built itself, never one
-   * supplied through {@link BedrockModelProvider.Builder#client(BedrockRuntimeAsyncClient)}. {@link
+   * Pins close ownership: {@link BedrockModelProvider#close()} must close only a {@code
+   * BedrockRuntimeAsyncClient} this provider built itself, never one supplied through {@link
+   * BedrockModelProvider.Builder#client(BedrockRuntimeAsyncClient)}. {@link
    * BedrockModelProvider.Builder#wrap} is package-private specifically so this ownership branch is
    * directly testable against {@link ScriptedBedrockRuntimeAsyncClient}'s close-tracking, without
    * needing a real, network-capable SDK client on either side of the assertion.

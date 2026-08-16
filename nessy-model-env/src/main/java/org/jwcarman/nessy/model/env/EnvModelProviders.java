@@ -170,8 +170,8 @@ public final class EnvModelProviders {
     // Bedrock is explicit-selection-only (class javadoc): checked before any keyed candidate is
     // even computed, so it never enters the candidate list, the ambiguity count, or the
     // which-key tiebreak, and wins outright regardless of which API keys happen to be present.
-    if (BEDROCK_CHOICE.equals(normalize(env.get(NESSY_PROVIDER_ENV_VAR)))) {
-      return bedrockSelection(env);
+    if (isBedrockChosen(env)) {
+      return new Selection(bedrock(), BEDROCK_CHOICE, bedrockModel(env));
     }
     List<Candidate> candidates = presentCandidates(env);
     if (candidates.isEmpty()) {
@@ -187,14 +187,28 @@ public final class EnvModelProviders {
   }
 
   /**
-   * Builds the {@link Selection} for an explicit {@value #BEDROCK_CHOICE} choice: {@value
-   * #NESSY_MODEL_ENV_VAR} still wins when set and non-blank, exactly as it does for every keyed
-   * provider; otherwise {@value #BEDROCK_DEFAULT_MODEL} applies.
+   * Whether {@code env} explicitly names {@value #BEDROCK_CHOICE} via {@value
+   * #NESSY_PROVIDER_ENV_VAR} — the sole selection signal (class javadoc): no key of Bedrock's own
+   * is ever consulted. Package-private so the selection decision itself — the branch on which the
+   * whole explicit-only ruling rests — is directly, deterministically testable without needing
+   * {@link BedrockModelProvider.Builder#fromEnv()} to actually succeed, which depends on {@code
+   * AWS_REGION}/{@code AWS_DEFAULT_REGION} being set in the real process environment and so varies
+   * machine to machine.
    */
-  private static Selection bedrockSelection(Map<String, String> env) {
+  static boolean isBedrockChosen(Map<String, String> env) {
+    return BEDROCK_CHOICE.equals(normalize(env.get(NESSY_PROVIDER_ENV_VAR)));
+  }
+
+  /**
+   * The model an explicit Bedrock choice resolves to: {@value #NESSY_MODEL_ENV_VAR} wins when set
+   * and non-blank, exactly as it does for every keyed provider; otherwise {@value
+   * #BEDROCK_DEFAULT_MODEL} applies. Package-private, alongside {@link #isBedrockChosen}, so both
+   * halves of what {@code select(env)} would report for Bedrock — that it was chosen, and which
+   * model — are pinned without ever constructing a {@link BedrockModelProvider}.
+   */
+  static String bedrockModel(Map<String, String> env) {
     var override = env.get(NESSY_MODEL_ENV_VAR);
-    var model = override != null && !override.isBlank() ? override : BEDROCK_DEFAULT_MODEL;
-    return new Selection(bedrock(), BEDROCK_CHOICE, model);
+    return override != null && !override.isBlank() ? override : BEDROCK_DEFAULT_MODEL;
   }
 
   /**
