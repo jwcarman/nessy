@@ -67,6 +67,35 @@ that's already gone still confirms success, because from the model's point of vi
 name is gone either way — there's nothing here for the model to get wrong by calling it
 twice.
 
+## Authorship
+
+Every entry carries a fourth field, `source` — the identity that wrote it: an
+agent name, or `"reflection"` for the [reflection](reflection.md) critic.
+`NotebookTools` takes that identity at wiring time and enforces it on every
+mutating call: `remember` and `forget` may only touch an entry whose stored
+`source` already matches the caller's own identity. Remembering a name that
+belongs to a different source doesn't overwrite it — it fails with a
+`ToolResult.error` naming the conflict and the entry's true owner, and
+`forget` fails the same way. The store itself stays dumb CRUD over whatever
+`source` a trusted caller hands it; only this model-facing layer gates by
+identity.
+
+The rendered index carries authorship too: a heading whose `source` differs
+from the caller's own identity is annotated `(from <source>)`, so the model
+can tell its own notes from ones another author left it.
+
+```
+<notebook>
+- user-taste — Prefers terse answers and metric units
+- lesson:0198... — retry with backoff (from reflection)
+</notebook>
+```
+
+One emergent win, for free: in the newsroom example, the writer and its
+researcher subagent already share one notebook and resolver — now the
+writer's notes are protected from any other identity's `remember` or
+`forget`, with no code beyond the identity string each agent already passes.
+
 ## The injected index
 
 `NotebookTools.transformer(notebook, resolver)` is a `ContextTransformer`: it looks up the
