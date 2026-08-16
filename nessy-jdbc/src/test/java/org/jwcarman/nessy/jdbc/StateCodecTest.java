@@ -28,6 +28,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.conversation.ConversationId;
@@ -118,6 +121,40 @@ class StateCodecTest {
       InboxEntry decoded = codec.readInboxEntry(codec.writeInboxEntry(entry));
 
       assertThat(decoded).isEqualTo(entry);
+    }
+  }
+
+  /**
+   * §4's no-migration guarantee for {@link ToolUseBlock#signature()}: a signed block's signature
+   * survives byte-for-byte, an unsigned one stays null rather than inventing an empty string, and
+   * an old-shape row written before the {@code signature} component existed still deserializes
+   * cleanly to a null signature.
+   */
+  @Nested
+  class Tool_use_signature {
+
+    @ParameterizedTest(name = "signature \"{0}\" round-trips")
+    @NullSource
+    @ValueSource(strings = {"sig-abc"})
+    void a_tool_use_block_round_trips_with_its_signature(String signature) {
+      InboxEntry.Told entry = told(new ToolUseBlock(toolCall("c1"), signature));
+
+      InboxEntry decoded = codec.readInboxEntry(codec.writeInboxEntry(entry));
+
+      assertThat(decoded).isEqualTo(entry);
+    }
+
+    @Test
+    void an_old_shape_payload_with_no_signature_property_yields_a_null_signature() {
+      String payload =
+          "{\"type\":\"told\",\"id\":\"e1\",\"content\":[{\"type\":\"tool_use\","
+              + "\"call\":{\"id\":\"c1\",\"name\":\"echo\",\"arguments\":{\"text\":\"hi\"}}}]}";
+
+      InboxEntry decoded = codec.readInboxEntry(payload);
+
+      InboxEntry.Told told = (InboxEntry.Told) decoded;
+      ToolUseBlock block = (ToolUseBlock) told.content().getFirst();
+      assertThat(block.signature()).isNull();
     }
   }
 

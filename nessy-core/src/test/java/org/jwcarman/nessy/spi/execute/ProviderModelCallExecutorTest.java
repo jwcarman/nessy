@@ -104,7 +104,7 @@ class ProviderModelCallExecutorTest {
     assertThat(observed).contains(new TurnEvent.ToolCallRequested(call));
     ConversationEvent.ModelResponded fact =
         (ConversationEvent.ModelResponded) ((Awaited.Ready<ConversationEvent>) outcome).value();
-    assertThat(fact.message().content()).hasSize(1); // the tool-use block rides the message
+    assertThat(fact.message().content()).containsExactly(new ToolUseBlock(call));
   }
 
   @Test
