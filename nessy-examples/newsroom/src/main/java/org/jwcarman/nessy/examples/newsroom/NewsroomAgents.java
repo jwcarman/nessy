@@ -21,28 +21,34 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
-import org.jwcarman.nessy.api.ConversationSettled;
+import org.jwcarman.nessy.Subagent;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.SubjectId;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.internal.subagent.AgentTools;
-import org.jwcarman.nessy.internal.subagent.CallbackRouter;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.notebook.NotebookTools;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.plan.PlanTools;
-import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 
 /**
- * The newsroom's two agents, wired over one shared, durable substrate (spec §9): {@code writer}
- * delegates research to {@code researcher} via {@link AgentTools#subagent}; {@code researcher}'s
- * one gated tool, {@link AskQuestionTool}, parks on approval alone ({@link Approver#parkAll()}),
- * and because a subagent call is an ordinary tool call, the writer's own delegation call parks
- * right alongside it — the child-parks-therefore-parent-parks chain the module demonstrates.
+ * The newsroom's two agents, built the v2 way (design of record 2026-08-16 §1): {@code writer}
+ * defines {@code researcher} right inside its own {@link org.jwcarman.nessy.AgentBuilder#subagent}
+ * call — no {@code AgentTools}, no {@code CallbackRouter}, no manual {@code SubagentLinks} wiring,
+ * no listener registration. Building the writer builds the researcher, grants the delegation tool,
+ * wires the links store from the harness's own store family, and registers the completion wiring
+ * internally.
+ *
+ * <p>The writer's {@link Approver#parkAll()} is declared once, on the writer's own builder, and
+ * cascades down to {@code researcher} by construction (design of record 2026-08-16 §3: the approver
+ * is inherited, not a {@link org.jwcarman.nessy.SubagentConfig} knob) — it is what makes {@link
+ * AskQuestionTool}, the researcher's one gated tool, park unconditionally rather than warn its way
+ * to {@link Approver#allowAll()}. Because a subagent call is an ordinary tool call, the writer's
+ * own delegation call parks right alongside it — the child-parks-therefore-parent-parks chain the
+ * module demonstrates.
  *
  * <p>Fan-out here is sequential, not parallel (spec §9): the writer waits on one {@code researcher}
  * call at a time before it can act on the answer or delegate again — there is no scatter/gather
@@ -79,16 +85,11 @@ final class NewsroomAgents {
 
   /** The agents built, plus the pieces {@link NewsroomRepl} needs to drive them. */
   record Built(
-      Agent<String> writer,
-      Agent<String> researcher,
-      PlanStore planStore,
-      PendingAnswers answers) {}
+      Agent<String> writer, Subagent researcher, PlanStore planStore, PendingAnswers answers) {}
 
   static Built agentsFor(ModelProvider provider, String model, DataSource dataSource) {
     ObjectMapper mapper = new ObjectMapper();
     JdbcPersistence persistence = JdbcPersistence.create(dataSource, mapper);
-    SubagentLinks links = persistence.subagentLinks();
-    CallbackRouter router = new CallbackRouter();
     PendingAnswers pendingAnswers = new PendingAnswers();
     Function<ConversationId, SubjectId> subjectResolver = id -> SUBJECT;
 
@@ -97,24 +98,7 @@ final class NewsroomAgents {
             .defaultModel(model)
             .store(persistence.store())
             .parks(persistence.parks())
-            .listen(
-                ConversationSettled.class,
-                AgentTools.completions(links, persistence.parks(), router))
-            .build();
-
-    Agent<String> researcher =
-        harness
-            .agent()
-            .name("researcher")
-            .systemPrompt(RESEARCHER_SYSTEM_PROMPT)
-            .tools(
-                ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
-                ToolGrant.grant(new AskQuestionTool(pendingAnswers), UsagePolicy.requireApproval()))
-            .approver(Approver.parkAll())
-            .memory(
-                Memory.pipeline(persistence.transcript())
-                    .transform(NotebookTools.transformer(persistence.notebook(), subjectResolver))
-                    .build())
+            .subagentLinks(persistence.subagentLinks())
             .build();
 
     Agent<String> writer =
@@ -122,15 +106,9 @@ final class NewsroomAgents {
             .agent()
             .name("writer")
             .systemPrompt(WRITER_SYSTEM_PROMPT)
+            .approver(Approver.parkAll())
             .tools(
                 ToolGrant.grant(PlanTools.updatePlan(persistence.planStore()), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    AgentTools.subagent(
-                        researcher,
-                        "Delegates a research task to the researcher subagent. The researcher may"
-                            + " ask a clarifying question before it answers.",
-                        links),
-                    UsagePolicy.allow()),
                 ToolGrant.grant(
                     NotebookTools.remember(persistence.notebook(), subjectResolver),
                     UsagePolicy.allow()),
@@ -145,11 +123,26 @@ final class NewsroomAgents {
                     .transform(PlanTools.transformer(persistence.planStore()))
                     .transform(NotebookTools.transformer(persistence.notebook(), subjectResolver))
                     .build())
+            .subagent(
+                sub ->
+                    sub.name("researcher")
+                        .description(
+                            "Delegates a research task to the researcher subagent. The researcher"
+                                + " may ask a clarifying question before it answers.")
+                        .systemPrompt(RESEARCHER_SYSTEM_PROMPT)
+                        .tools(
+                            ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
+                            ToolGrant.grant(
+                                new AskQuestionTool(pendingAnswers), UsagePolicy.requireApproval()))
+                        .memory(
+                            Memory.pipeline(persistence.transcript())
+                                .transform(
+                                    NotebookTools.transformer(
+                                        persistence.notebook(), subjectResolver))
+                                .build()))
             .build();
 
-    router.register(writer);
-    router.register(researcher);
-
-    return new Built(writer, researcher, persistence.planStore(), pendingAnswers);
+    return new Built(
+        writer, writer.subagent("researcher"), persistence.planStore(), pendingAnswers);
   }
 }

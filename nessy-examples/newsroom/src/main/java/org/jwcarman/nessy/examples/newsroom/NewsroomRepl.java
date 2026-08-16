@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
+import org.jwcarman.nessy.Subagent;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
@@ -53,19 +54,20 @@ import org.jwcarman.nessy.spi.plan.PlanStore;
  * (README's transcript). After every {@code tell}, and once more at startup (in case the previous
  * run was killed mid-delegation), {@link #driveApprovalLoop()} checks whether the writer is still
  * {@link ConversationStatus#PARKED}: if so, it finds the researcher's own pending {@code
- * ask_question} call underneath (the child conversation id is derived the same way {@code
- * AgentTools.subagent} derived it: {@code writerConversationId/toolCallId}), prints the question,
- * and reads an approve/deny decision from the console. Approving or denying drives the
- * <em>researcher's</em> conversation to settlement; the harness's own {@code
- * AgentTools.completions} listener, registered synchronously at build time, then wakes the writer
- * automatically — this loop never resumes the writer directly.
+ * ask_question} call underneath — via {@link org.jwcarman.nessy.Subagent#snapshot(ConversationId)}
+ * on {@link #researcher}, the child conversation id derived the same way the delegation tool
+ * derives it: {@code writerConversationId/toolCallId} — prints the question, and reads an
+ * approve/deny decision from the console. Approving or denying drives the <em>researcher's</em>
+ * conversation to settlement through the same {@link #researcher} handle; the internally-wired
+ * completions listener then wakes the writer automatically — this loop never resumes the writer
+ * directly.
  */
 final class NewsroomRepl {
 
   private static final Set<String> EXIT_WORDS = Set.of("exit", "quit");
 
   private final Agent<String> writer;
-  private final Agent<String> researcher;
+  private final Subagent researcher;
   private final PlanStore planStore;
   private final PendingAnswers pendingAnswers;
   private final Conversation<String> writerConversation;
