@@ -17,8 +17,9 @@
 
 An agent harness framework for Java.
 
-**[Read the docs →](https://jwcarman.github.io/nessy/)** — the
-[documentation site](https://jwcarman.github.io/nessy/) is the manual:
+## Read the docs
+
+The [documentation site](https://jwcarman.github.io/nessy/) is the manual —
 concepts, guides, examples, and reference, in one place. This README is just
 the front door: enough to run something real and decide what to install.
 
