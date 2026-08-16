@@ -22,7 +22,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.ListenerRegistration;
 import org.jwcarman.nessy.api.message.InputRenderer;
@@ -76,6 +78,8 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
   private Memory memory;
   private Long contextWindow;
   private InputRenderer<T> renderer;
+  private Function<ConversationId, ?> principalResolver;
+  private Class<?> intentType;
 
   /**
    * Seeded from a {@link Harness}: {@code inputType} is only used here to fail fast on a null
@@ -257,6 +261,63 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
   }
 
   /**
+   * The agent-level resolver seam for the who (design of record 2026-08-16-authorization §6):
+   * {@code resolver} runs once per evaluated call — impure allowed, since a token exchange or a
+   * directory lookup is exactly the kind of I/O the context-assembly stage exists for — and its
+   * return value is deposited into {@link
+   * org.jwcarman.nessy.api.tool.authorization.AuthorizationContext#PRINCIPAL}. A {@code null}
+   * return is a legitimate "no principal for this conversation" answer, not a failure: the slot
+   * stays absent for that call, exactly as if {@code resolver} had never been wired. A thrown
+   * exception is a different story — it propagates out of the enricher stage the same as any other
+   * enricher failure, so the chokepoint denies that one call closed, naming the enricher stage,
+   * rather than ever letting a broken resolver become an allow or escape into the loop. Unwired:
+   * {@link org.jwcarman.nessy.api.tool.authorization.AuthorizationContext#principal()} stays empty
+   * for every call, zero ceremony.
+   */
+  public AgentConfig<T> principal(Function<ConversationId, ?> resolver) {
+    this.principalResolver = Objects.requireNonNull(resolver, "resolver must not be null");
+    return this;
+  }
+
+  /**
+   * The whole public surface of {@code spi.intent} (design of record 2026-08-16-authorization §7 —
+   * the withdrawn {@code IntentSupport} companion is not coming back): declares this agent's one
+   * intent vocabulary, {@code intentType}. The build assembles {@code declare_intent} (whose input
+   * type IS {@code intentType}), {@code clear_intent} (no input), and an internal reader enricher
+   * from this type plus {@link HarnessConfig#intentStore}'s store — internally, in {@link
+   * AgentAssembly}; the caller never learns a second noun.
+   *
+   * <p>{@code intentType} must render as a JSON object schema — a record, a POJO, or a sealed
+   * interface of records — checked right here, at wiring time: a tool's parameters must be an
+   * OBJECT schema, so a bare {@code String}, a primitive or its box, an enum, a collection, or an
+   * array is rejected with {@link AgentConfigurationException} naming the offending type and
+   * pointing at wrapping it in a record. One field makes the one-intent-per-agent rule true by
+   * construction: a second call throws the same exception naming the vocabulary already declared,
+   * rather than silently overwriting it.
+   *
+   * <p>Unwired: no tools are offered, {@link
+   * org.jwcarman.nessy.api.tool.authorization.AuthorizationContext#declaredIntent()} stays empty
+   * for every call, and the intent store is never touched.
+   *
+   * @throws AgentConfigurationException if {@code intentType} cannot render as an object schema, or
+   *     if this agent already declared one
+   */
+  public AgentConfig<T> intent(Class<?> intentType) {
+    Objects.requireNonNull(intentType, "intentType must not be null");
+    if (this.intentType != null) {
+      throw new AgentConfigurationException(
+          "intent(...) was already called with "
+              + this.intentType.getName()
+              + " — an agent declares at most one intent vocabulary; the one-field rule makes the"
+              + " one-intent-per-agent invariant true by construction, a wiring-time error rather"
+              + " than a runtime row overwrite");
+    }
+    IntentAssembly.requireObjectSchema(intentType);
+    this.intentType = intentType;
+    return this;
+  }
+
+  /**
    * Declares a subagent over the degenerate {@code String} door (design of record 2026-08-16 §0,
    * ruling 1; §0.5): {@code customizer} fills in a {@link SubagentConfig} — {@link
    * SubagentConfig#name} and {@link SubagentConfig#description} required, everything else trimmed
@@ -401,6 +462,16 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
 
   InputRenderer<T> renderer() {
     return renderer;
+  }
+
+  /** This config's own principal resolver — {@code null} until {@link #principal(Function)}. */
+  Function<ConversationId, ?> principalResolver() {
+    return principalResolver;
+  }
+
+  /** This config's own declared intent vocabulary — {@code null} until {@link #intent(Class)}. */
+  Class<?> intentType() {
+    return intentType;
   }
 
   List<ListenerRegistration> registrations() {

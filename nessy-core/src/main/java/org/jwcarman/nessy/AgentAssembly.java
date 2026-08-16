@@ -15,13 +15,21 @@
  */
 package org.jwcarman.nessy;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
 import org.jwcarman.nessy.spi.execute.GatedToolCallExecutor;
@@ -65,9 +73,20 @@ final class AgentAssembly {
             config.contextWindow());
     ListenerRegistry events = harness.registry().extendedWith(config.registrations());
     Map<String, Agent<?>> childrenByName = config.subagentAssembly().build();
+    if (config.intentType() != null) {
+      // The whole "second noun" the withdrawn IntentSupport would have been: one field on
+      // AgentConfig folds declare_intent + clear_intent into this same tools()/explicitGrants()
+      // pair SubagentAssembly.build() just extended above, the identical merge idiom.
+      List<ToolGrant> combined = new ArrayList<>(config.explicitGrantsSnapshot());
+      combined.addAll(
+          IntentAssembly.grants(harness.intentStore(), config.intentType(), harness.mapper()));
+      config.tools(combined.toArray(new ToolGrant[0]));
+    }
     ToolRegistry resolvedTools = Optional.ofNullable(config.tools()).orElseGet(ToolRegistry::of);
     Map<String, ToolGrant> resolvedGrants =
-        Optional.ofNullable(config.explicitGrants()).orElseGet(Map::of);
+        crossCutEnrichers(
+            Optional.ofNullable(config.explicitGrants()).orElseGet(Map::of),
+            crossCuttingEnrichers(harness, config));
     // Constructed once here and handed to both the model-call executor and the Agent: the
     // invariant is one Memory instance per agent, so the wire request and contextFor never
     // disagree about what a call sees.
@@ -110,5 +129,56 @@ final class AgentAssembly {
             config.renderer());
     harness.subagents().register(agent);
     return agent;
+  }
+
+  /**
+   * The two effect-blind enrichers {@code config} wired at the agent level — {@link
+   * AgentConfig#principal(Function)} and {@link AgentConfig#intent(Class)} — in that order,
+   * principal before intent. Empty when neither was called: the common case, costing nothing.
+   */
+  private static List<Enricher<Object>> crossCuttingEnrichers(
+      Harness harness, AgentConfig<?> config) {
+    List<Enricher<Object>> enrichers = new ArrayList<>();
+    Function<ConversationId, ?> resolver = config.principalResolver();
+    if (resolver != null) {
+      enrichers.add(
+          (context, effect) -> {
+            Object principal = resolver.apply(context.conversationId());
+            return principal == null
+                ? context
+                : context.with(AuthorizationContext.PRINCIPAL, principal);
+          });
+    }
+    if (config.intentType() != null) {
+      enrichers.add(
+          IntentAssembly.reader(harness.intentStore(), config.intentType(), harness.mapper()));
+    }
+    return enrichers;
+  }
+
+  /**
+   * Prepends {@code crossCutting} onto every non-static grant's own enrichers, leaving a {@link
+   * UsagePolicy.Static} grant (rung 0) untouched — the ladder law's own fast path never even
+   * inspects a grant's enrichers for a static policy, but skipping the allocation here says so
+   * explicitly: rung-0 grants assemble no context, and this ensures nothing here disturbs that
+   * (design of record 2026-08-16-authorization §1, Task 2's own ladder law).
+   */
+  private static Map<String, ToolGrant> crossCutEnrichers(
+      Map<String, ToolGrant> grants, List<Enricher<Object>> crossCutting) {
+    if (crossCutting.isEmpty()) {
+      return grants;
+    }
+    Map<String, ToolGrant> wrapped = new LinkedHashMap<>();
+    for (Map.Entry<String, ToolGrant> entry : grants.entrySet()) {
+      ToolGrant grant = entry.getValue();
+      if (grant.policy() instanceof UsagePolicy.Static) {
+        wrapped.put(entry.getKey(), grant);
+        continue;
+      }
+      List<Enricher<?>> extended = new ArrayList<>(crossCutting);
+      extended.addAll(grant.enrichers());
+      wrapped.put(entry.getKey(), new ToolGrant(grant.tool(), grant.policy(), extended));
+    }
+    return wrapped;
   }
 }
