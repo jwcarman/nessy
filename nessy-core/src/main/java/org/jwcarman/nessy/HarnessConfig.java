@@ -26,6 +26,7 @@ import org.jwcarman.nessy.api.event.ListenerRegistration;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.slf4j.Logger;
@@ -51,6 +52,7 @@ public final class HarnessConfig implements ListenerDeclarations<HarnessConfig> 
   private Parks parks;
   private SubagentLinks subagentLinks;
   private boolean subagentLinksSet;
+  private IntentStore intentStore;
   private ObservationRegistry observations;
   private ObjectMapper mapper;
   private String defaultModel;
@@ -92,6 +94,15 @@ public final class HarnessConfig implements ListenerDeclarations<HarnessConfig> 
   public HarnessConfig subagentLinks(SubagentLinks subagentLinks) {
     this.subagentLinks = Objects.requireNonNull(subagentLinks, "subagentLinks must not be null");
     this.subagentLinksSet = true;
+    return this;
+  }
+
+  /**
+   * Where a declared intent lives, so a later call's authorization policy can read it back (design
+   * §7, Task 3b). Default: {@link IntentStore#inMemory()}.
+   */
+  public HarnessConfig intentStore(IntentStore intentStore) {
+    this.intentStore = Objects.requireNonNull(intentStore, "intentStore must not be null");
     return this;
   }
 
@@ -169,6 +180,7 @@ public final class HarnessConfig implements ListenerDeclarations<HarnessConfig> 
             Optional.ofNullable(parks).orElseGet(this::defaultParks),
             Optional.ofNullable(subagentLinks).orElseGet(this::defaultSubagentLinks),
             subagentLinksSet),
+        Optional.ofNullable(intentStore).orElseGet(this::defaultIntentStore),
         Optional.ofNullable(observations).orElseGet(this::defaultObservations),
         Optional.ofNullable(mapper).orElseGet(this::defaultMapper),
         defaultModel,
@@ -211,6 +223,11 @@ public final class HarnessConfig implements ListenerDeclarations<HarnessConfig> 
    */
   private SubagentLinks defaultSubagentLinks() {
     return SubagentLinks.inMemory();
+  }
+
+  /** {@link IntentStore#inMemory()} — declared intent kept only for the process's lifetime. */
+  private IntentStore defaultIntentStore() {
+    return IntentStore.inMemory();
   }
 
   /** {@link ObservationRegistry#NOOP} — no metrics or traces emitted. */

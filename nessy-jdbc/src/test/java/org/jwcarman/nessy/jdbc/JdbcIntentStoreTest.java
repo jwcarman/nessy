@@ -15,51 +15,41 @@
  */
 package org.jwcarman.nessy.jdbc;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
-import java.util.List;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.spi.conversation.Parks.Park;
-import org.jwcarman.nessy.spi.intent.IntentStore.StoredIntent;
-import org.jwcarman.nessy.spi.memory.SummaryStore.Summary;
+import org.jwcarman.nessy.spi.intent.IntentStore;
+import org.jwcarman.nessy.tck.IntentStoreContract;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * {@link JdbcPersistence#create} is the one-call bootstrap a durable {@code AgentBuilder} reaches
- * for; this pins that it actually stands up every schema and hands back a working set, not just
- * objects that happen to compile together. Requires Docker; tagged {@code container} so the offline
- * default build never needs it.
+ * The TCK run against a real Postgres, plus a JDBC-specific pin the in-memory intent store has no
+ * opinion on: bootstrap idempotency. Requires Docker; tagged {@code container} so the offline
+ * default build never needs it — the same posture {@link JdbcNotebookTest} takes.
  */
 @Testcontainers
 @Tag("container")
-class JdbcPersistenceTest {
+class JdbcIntentStoreTest extends IntentStoreContract {
 
   @Container
   static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine");
 
   private static DataSource dataSource;
 
-  private ObjectMapper mapper;
+  private IntentStore intents;
 
   @BeforeAll
   static void nessy_jdbc_test_points_a_data_source_at_the_container() {
@@ -69,54 +59,33 @@ class JdbcPersistenceTest {
   }
 
   @BeforeEach
-  void a_fresh_mapper_over_empty_tables() {
-    mapper = new ObjectMapper();
-    JdbcPersistence.create(dataSource, mapper);
-    truncateEveryTable();
+  void a_fresh_intent_store_over_an_empty_table() {
+    intents = JdbcIntentStore.create(dataSource);
+    truncateIntentTable();
   }
 
-  private void truncateEveryTable() {
+  @Override
+  protected IntentStore intents() {
+    return intents;
+  }
+
+  private void truncateIntentTable() {
     try (Connection connection = dataSource.getConnection();
         Statement statement = connection.createStatement()) {
-      statement.execute(
-          "TRUNCATE nessy_conversation, nessy_inbox, nessy_parks, nessy_transcript,"
-              + " nessy_summary, nessy_subagent_links, nessy_intent");
+      statement.execute("TRUNCATE nessy_intent");
     } catch (SQLException e) {
-      throw new IllegalStateException("failed to truncate tables between tests", e);
+      throw new IllegalStateException("failed to truncate nessy_intent between tests", e);
     }
   }
 
   @Test
-  void create_bootstraps_every_schema_and_returns_a_working_set() {
-    JdbcPersistence persistence = JdbcPersistence.create(dataSource, mapper);
-    ConversationId id = ConversationId.generate();
-
-    persistence.memory().remember(id, Message.user(List.of(new TextBlock("hi"))));
-
-    assertThat(persistence.memory().recall(id).messages()).hasSize(1);
-    assertThat(persistence.store().load(id)).isEmpty();
-
-    ParkToken token = ParkToken.generate();
-    ToolCall call = new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
-    Park park = new Park(id, token, call, "keeper");
-    persistence.parks().park(park);
-
-    assertThat(persistence.parks().find(token)).contains(park);
-
-    Summary summary = new Summary(1L, "the conversation so far");
-    persistence.summaries().save(id, summary);
-
-    assertThat(persistence.summaries().find(id)).contains(summary);
-
-    ConversationId childId = ConversationId.generate();
-    persistence.subagentLinks().save(childId, token);
-
-    assertThat(persistence.subagentLinks().find(childId)).contains(token);
-
-    persistence.intentStore().put(id, "com.example.BookFlight", "{\"destination\":\"DEN\"}");
-
-    assertThat(persistence.intentStore().get(id))
-        .contains(new StoredIntent("com.example.BookFlight", "{\"destination\":\"DEN\"}"));
+  void the_schema_bootstrap_is_idempotent() {
+    assertThatCode(
+            () -> {
+              JdbcIntentStore.create(dataSource);
+              JdbcIntentStore.create(dataSource);
+            })
+        .doesNotThrowAnyException();
   }
 
   /**
@@ -148,17 +117,17 @@ class JdbcPersistenceTest {
 
     @Override
     public PrintWriter getLogWriter() {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcIntentStoreTest");
     }
 
     @Override
     public void setLogWriter(PrintWriter out) {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcIntentStoreTest");
     }
 
     @Override
     public void setLoginTimeout(int seconds) {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcIntentStoreTest");
     }
 
     @Override
@@ -173,7 +142,7 @@ class JdbcPersistenceTest {
 
     @Override
     public <T> T unwrap(Class<T> iface) {
-      throw new UnsupportedOperationException("not used by JdbcPersistenceTest");
+      throw new UnsupportedOperationException("not used by JdbcIntentStoreTest");
     }
 
     @Override

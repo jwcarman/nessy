@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.internal.subagent.CallbackRouter;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 
@@ -61,6 +62,7 @@ public final class Harness {
   private final Parks parks;
   private final SubagentLinks subagentLinks;
   private final boolean subagentLinksSet;
+  private final IntentStore intentStore;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
   private final String defaultModel;
@@ -106,6 +108,7 @@ public final class Harness {
       ModelProvider provider,
       StoreSelection storeSelection,
       CoordinationStores coordinationStores,
+      IntentStore intentStore,
       ObservationRegistry observations,
       ObjectMapper mapper,
       String defaultModel,
@@ -116,6 +119,7 @@ public final class Harness {
     this.parks = coordinationStores.parks();
     this.subagentLinks = coordinationStores.subagentLinks();
     this.subagentLinksSet = coordinationStores.subagentLinksSet();
+    this.intentStore = intentStore;
     this.observations = observations;
     this.mapper = mapper;
     this.defaultModel = defaultModel;
@@ -196,6 +200,15 @@ public final class Harness {
    */
   boolean subagentLinksSet() {
     return subagentLinksSet;
+  }
+
+  /**
+   * Where a declared intent lives (design §7, Task 3b) — the store {@code AgentConfig.intent(...)}
+   * reads and writes through, seeded from {@link HarnessConfig#intentStore(IntentStore)} or
+   * defaulted to {@link IntentStore#inMemory()}.
+   */
+  IntentStore intentStore() {
+    return intentStore;
   }
 
   /**
