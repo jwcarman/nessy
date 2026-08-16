@@ -134,7 +134,8 @@ The behavioral contract changes to:
 
 - Sequential fan-out (loop, separate generation), child-delta streaming (deferred; the
   config now owns both sides, so the future feature has a home), cross-harness (A2A
-  generation), typed delegation inputs.
+  generation). (Typed delegation INPUTS shipped via §0.5 — this list once named them;
+  typed OUTPUT remains banked.)
 
 ## 5. Testing
 
