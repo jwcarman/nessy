@@ -18,18 +18,35 @@ package org.jwcarman.nessy.api.approval;
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
 
 /**
- * The question put to a human.
+ * The question put to a human — adjudication parity (design of record 2026-08-16-authorization §9):
+ * the approver sees exactly what the policy saw, the final {@code context} any enrichers extended
+ * and the tool's own rendered {@code effect}, because the approval UI is exactly where those matter
+ * most.
  *
- * @param description the tool's own rendering of the call, from {@code Tool.effect} — this is what
- *     a person actually reads
+ * @param context the final context the chokepoint assembled — every enricher's deposit, including
+ *     any principal or intent an enricher lifted in, is reachable through it
+ * @param effect the tool's own rendering of the call, from {@code Tool.effect} — this is what a
+ *     person actually reads via {@link #description()}
  */
-public record ApprovalRequest(ConversationId conversationId, ToolCall call, String description) {
+public record ApprovalRequest(
+    ConversationId conversationId, ToolCall call, AuthorizationContext context, Object effect) {
 
   public ApprovalRequest {
     Objects.requireNonNull(conversationId, "conversationId must not be null");
     Objects.requireNonNull(call, "call must not be null");
-    Objects.requireNonNull(description, "description must not be null");
+    Objects.requireNonNull(context, "context must not be null");
+    Objects.requireNonNull(effect, "effect must not be null");
+  }
+
+  /**
+   * {@link #effect}'s own {@code toString()} — unchanged from what every approver already reads;
+   * existing implementations (console, examples) migrate mechanically, with no source change at
+   * all.
+   */
+  public String description() {
+    return String.valueOf(effect);
   }
 }

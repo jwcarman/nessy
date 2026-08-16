@@ -81,6 +81,7 @@ final class AgentAssembly {
                 resolvedMemory,
                 harness.observations()),
             new GatedToolCallExecutor(
+                config.name(),
                 resolvedTools,
                 resolvedGrants,
                 config.resolvedApprover(resolvedGrants),

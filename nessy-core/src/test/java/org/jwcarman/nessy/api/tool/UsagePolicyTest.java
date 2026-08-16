@@ -21,16 +21,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
 
 class UsagePolicyTest {
 
-  private static final ConversationState STATE =
-      ConversationState.newConversation(new ConversationId("s1"));
+  private static final ConversationId CONVERSATION_ID = new ConversationId("s1");
+  private static final ConversationState STATE = ConversationState.newConversation(CONVERSATION_ID);
 
   private static ToolCall spendCall(int amount) {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
@@ -38,31 +40,39 @@ class UsagePolicyTest {
     return new ToolCall("c1", "spend", args);
   }
 
+  private static AuthorizationContext contextFor(ToolCall call) {
+    return AuthorizationContext.of(CONVERSATION_ID, "test-agent", call, STATE);
+  }
+
   @Nested
   class Factories {
 
     @Test
     void allow_always_allows() {
-      UsagePolicy policy = UsagePolicy.allow();
+      UsagePolicy<Object> policy = UsagePolicy.allow();
+      ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(spendCall(1), STATE)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(contextFor(call), call)).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void deny_always_denies_with_the_same_reason() {
-      UsagePolicy policy = UsagePolicy.deny("no budget");
+      UsagePolicy<Object> policy = UsagePolicy.deny("no budget");
+      ToolCall first = spendCall(1);
+      ToolCall second = spendCall(999);
 
-      assertThat(policy.evaluate(spendCall(1), STATE))
+      assertThat(policy.evaluate(contextFor(first), first))
           .isEqualTo(new PolicyDecision.Deny("no budget"));
-      assertThat(policy.evaluate(spendCall(999), STATE))
+      assertThat(policy.evaluate(contextFor(second), second))
           .isEqualTo(new PolicyDecision.Deny("no budget"));
     }
 
     @Test
     void require_approval_always_defers() {
-      UsagePolicy policy = UsagePolicy.requireApproval();
+      UsagePolicy<Object> policy = UsagePolicy.requireApproval();
+      ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(spendCall(1), STATE))
+      assertThat(policy.evaluate(contextFor(call), call))
           .isEqualTo(new PolicyDecision.RequireApproval());
     }
 
@@ -75,28 +85,36 @@ class UsagePolicyTest {
   @Nested
   class Contextual_policies {
 
-    /** A policy that behaves like a spend cap: allow under the limit, deny at or over it. */
-    private static UsagePolicy approveUnder(int limit) {
-      return (call, state) -> {
-        int amount = call.arguments().get("amount").asInt();
-        return amount < limit
-            ? new PolicyDecision.Allow()
-            : new PolicyDecision.Deny("amount " + amount + " exceeds limit " + limit);
-      };
+    /**
+     * A rung-1 policy that behaves like a spend cap: allow under the limit, deny at or over it —
+     * reading the call out of {@link AuthorizationContext#call()} rather than a raw {@code
+     * ToolCall} parameter (design of record 2026-08-16-authorization §5's migration: today's
+     * two-arg policies become context-reading lambdas).
+     */
+    private static UsagePolicy<Object> approveUnder(int limit) {
+      return UsagePolicy.of(
+          (context, effect) -> {
+            int amount = context.call().arguments().get("amount").asInt();
+            return amount < limit
+                ? new PolicyDecision.Allow()
+                : new PolicyDecision.Deny("amount " + amount + " exceeds limit " + limit);
+          });
     }
 
     @Test
     void a_call_under_the_limit_is_allowed() {
-      UsagePolicy policy = approveUnder(100);
+      UsagePolicy<Object> policy = approveUnder(100);
+      ToolCall call = spendCall(50);
 
-      assertThat(policy.evaluate(spendCall(50), STATE)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(contextFor(call), call)).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void a_call_at_or_over_the_limit_is_denied() {
-      UsagePolicy policy = approveUnder(100);
+      UsagePolicy<Object> policy = approveUnder(100);
+      ToolCall call = spendCall(100);
 
-      assertThat(policy.evaluate(spendCall(100), STATE))
+      assertThat(policy.evaluate(contextFor(call), call))
           .isEqualTo(new PolicyDecision.Deny("amount 100 exceeds limit 100"));
     }
   }
@@ -135,7 +153,7 @@ class UsagePolicyTest {
 
     @Test
     void grant_rejects_a_null_tool() {
-      UsagePolicy policy = UsagePolicy.allow();
+      UsagePolicy<Object> policy = UsagePolicy.allow();
 
       assertThatThrownBy(() -> ToolGrant.grant(null, policy))
           .isInstanceOf(NullPointerException.class)
@@ -154,7 +172,7 @@ class UsagePolicyTest {
     @Test
     void grant_states_the_tool_and_policy_it_was_given() {
       Recorder tool = new Recorder();
-      UsagePolicy policy = UsagePolicy.requireApproval();
+      UsagePolicy<Object> policy = UsagePolicy.requireApproval();
 
       ToolGrant grant = ToolGrant.grant(tool, policy);
 
@@ -168,9 +186,9 @@ class UsagePolicyTest {
 
     @Test
     void a_grant_rejects_a_null_tool() {
-      UsagePolicy policy = UsagePolicy.allow();
+      UsagePolicy<Object> policy = UsagePolicy.allow();
 
-      assertThatThrownBy(() -> new ToolGrant(null, policy))
+      assertThatThrownBy(() -> new ToolGrant(null, policy, List.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("tool");
     }
@@ -179,7 +197,7 @@ class UsagePolicyTest {
     void a_grant_rejects_a_null_policy() {
       Grant_construction.Recorder tool = new Grant_construction.Recorder();
 
-      assertThatThrownBy(() -> new ToolGrant(tool, null))
+      assertThatThrownBy(() -> new ToolGrant(tool, null, List.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("policy");
     }

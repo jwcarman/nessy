@@ -28,14 +28,25 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
 
 class ConsoleApproverTest {
 
+  private static final ConversationId CONVERSATION_ID = ConversationId.generate();
+  private static final ToolCall CALL =
+      new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode());
+
   private static final ApprovalRequest REQUEST =
       new ApprovalRequest(
-          ConversationId.generate(),
-          new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode()),
+          CONVERSATION_ID,
+          CALL,
+          AuthorizationContext.of(
+              CONVERSATION_ID,
+              "test-agent",
+              CALL,
+              ConversationState.newConversation(CONVERSATION_ID)),
           "read the current time");
 
   @AfterEach

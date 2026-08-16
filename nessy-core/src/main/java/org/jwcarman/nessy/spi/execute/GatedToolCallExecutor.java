@@ -40,6 +40,8 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.internal.LoopObservations;
@@ -64,6 +66,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
   private static final Logger LOGGER = LoggerFactory.getLogger(GatedToolCallExecutor.class);
   private static final String DENIED_PREFIX = "Denied: ";
 
+  private final String agentName;
   private final ToolRegistry tools;
   private final Map<String, ToolGrant> grants;
   private final Approver approver;
@@ -72,12 +75,14 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
   private final ObservationRegistry observations;
 
   public GatedToolCallExecutor(
+      String agentName,
       ToolRegistry tools,
       Map<String, ToolGrant> grants,
       Approver approver,
       ObjectMapper mapper,
       EventEmitter emitter,
       ObservationRegistry observations) {
+    this.agentName = Objects.requireNonNull(agentName, "agentName must not be null");
     this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.grants = Map.copyOf(Objects.requireNonNull(grants, "grants must not be null"));
     requireEveryRegisteredToolIsGranted(this.tools, this.grants);
@@ -112,7 +117,25 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
       }
       return invoke(call, state, observer);
     }
-    PolicyDecision decision = evaluate(grant.policy(), call, state);
+    if (grant.policy() instanceof UsagePolicy.Static staticPolicy) {
+      return decide(staticPolicy.decision(), null, call, state, observer);
+    }
+    Evaluation evaluation = evaluate(grant, call, state);
+    return decide(evaluation.decision(), evaluation, call, state, observer);
+  }
+
+  /**
+   * The one switch every gate verdict — static or fully assembled — settles into. {@code
+   * evaluation} carries the context and rendered effect {@link #gate} needs for adjudication parity
+   * (design §9); it is {@code null} for the rung-0 static path, which never reaches {@link #gate}
+   * because a {@link UsagePolicy.Static} verdict is never {@link PolicyDecision.RequireApproval}.
+   */
+  private Awaited<ConversationEvent> decide(
+      PolicyDecision decision,
+      Evaluation evaluation,
+      ToolCall call,
+      ConversationState state,
+      TurnObserver observer) {
     return switch (decision) {
       case PolicyDecision.Allow _ -> {
         observer.on(new TurnEvent.ToolCallDecided(call, Decision.allow()));
@@ -125,7 +148,8 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
               ToolResult.error(DENIED_PREFIX + reason),
               observer,
               new Decision.Deny(reason));
-      case PolicyDecision.RequireApproval _ -> gate(grant, call, state, observer);
+      case PolicyDecision.RequireApproval _ ->
+          gate(evaluation.context(), evaluation.effect(), call, state, observer);
     };
   }
 
@@ -151,15 +175,20 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
    * Consults {@link #approver} for a call whose policy deferred, inside the {@code
    * nessy.approval.wait} span. An {@link ApprovalRequested} system event is emitted first, so a
    * listener can see the question was asked before it is known whether the approver will answer or
-   * park.
+   * park. {@code context} and {@code effect} are what {@link #evaluate} already assembled — exactly
+   * what the policy itself saw — so the approver sees the same thing (design §9's adjudication
+   * parity); a static rung-0 policy never reaches here, since it can never decide {@link
+   * PolicyDecision.RequireApproval}.
    */
   private Awaited<ConversationEvent> gate(
-      ToolGrant grant, ToolCall call, ConversationState state, TurnObserver observer) {
-    Tool<?> tool = grant.tool();
-    ApprovalRequest request =
-        new ApprovalRequest(state.id(), call, describeForApproval(tool, call));
+      AuthorizationContext context,
+      Object effect,
+      ToolCall call,
+      ConversationState state,
+      TurnObserver observer) {
+    ApprovalRequest request = new ApprovalRequest(state.id(), call, context, effect);
     emitter.emit(new ApprovalRequested(state.id(), request));
-    Observation observation = LoopObservations.approvalWait(observations, tool.name());
+    Observation observation = LoopObservations.approvalWait(observations, call.name());
     Awaited<Decision> decision;
     try (var _ = observation.openScope()) {
       decision = approver.approve(request);
@@ -185,29 +214,60 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
     };
   }
 
+  /** What {@link #evaluate} settles on, plus what {@link #gate} needs if it deferred. */
+  private record Evaluation(PolicyDecision decision, AuthorizationContext context, Object effect) {}
+
   /**
-   * Runs one policy, fail-closed: a policy is supposed to be pure and total, but a broken or
-   * incomplete one must never become an allow.
+   * The staged chokepoint for every non-static grant: render the effect, assemble the context, fold
+   * the enrichers in order, then judge — each stage fail-closed on its own, so a throw never
+   * escapes into the loop and never becomes an allow (design §2, §4, §5).
    */
-  private static PolicyDecision evaluate(
-      UsagePolicy policy, ToolCall call, ConversationState state) {
+  private Evaluation evaluate(ToolGrant grant, ToolCall call, ConversationState state) {
+    Object effect;
     try {
-      PolicyDecision decision = policy.evaluate(call, state);
-      return decision != null ? decision : new PolicyDecision.Deny("policy returned no decision");
+      effect = invoker.effect(grant.tool(), call);
     } catch (RuntimeException e) {
-      return new PolicyDecision.Deny(describe(e));
+      return new Evaluation(new PolicyDecision.Deny("effect failed: " + describe(e)), null, null);
     }
+    AuthorizationContext context = AuthorizationContext.of(state.id(), agentName, call, state);
+    for (Enricher<?> enricher : grant.enrichers()) {
+      try {
+        context = enrichCaptured(enricher, context, effect);
+      } catch (RuntimeException e) {
+        return new Evaluation(
+            new PolicyDecision.Deny("enricher failed: " + describe(e)), null, null);
+      }
+    }
+    PolicyDecision decision;
+    try {
+      decision = evaluateCaptured(grant.policy(), context, effect);
+      if (decision == null) {
+        decision = new PolicyDecision.Deny("policy returned no decision");
+      }
+    } catch (RuntimeException e) {
+      return new Evaluation(new PolicyDecision.Deny("policy failed: " + describe(e)), null, null);
+    }
+    return new Evaluation(decision, context, effect);
   }
 
   /**
-   * Renders a call for the approval prompt without letting malformed arguments blow up the session.
+   * Captures an {@link Enricher}'s own wildcarded effect type so it can be invoked against the
+   * {@code Object} the chokepoint only has at hand. Every enricher a grant carries was welded to
+   * the tool's real effect type {@code E} at grant-construction time (checked there, by the
+   * compiler); by the time a call reaches this chokepoint {@code E} has erased away, so the cast
+   * back from {@code Object} is unchecked — narrowly isolated to this one line, exactly as {@link
+   * org.jwcarman.nessy.internal.ToolInvoker} captures {@code Tool<?>}'s own wildcard, except there
+   * is no {@code Class<E>} token here to check it against.
    */
-  private String describeForApproval(Tool<?> tool, ToolCall call) {
-    try {
-      return String.valueOf(invoker.effect(tool, call));
-    } catch (RuntimeException _) {
-      return call.name() + "(" + call.arguments() + ")";
-    }
+  private static <E> AuthorizationContext enrichCaptured(
+      Enricher<E> enricher, AuthorizationContext context, Object effect) {
+    return enricher.enrich(context, (E) effect);
+  }
+
+  /** {@link #enrichCaptured}, for the grant's own policy instead of one of its enrichers. */
+  private static <E> PolicyDecision evaluateCaptured(
+      UsagePolicy<E> policy, AuthorizationContext context, Object effect) {
+    return policy.evaluate(context, (E) effect);
   }
 
   /**

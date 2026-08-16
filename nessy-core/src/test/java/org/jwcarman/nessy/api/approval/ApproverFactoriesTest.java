@@ -23,14 +23,25 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
 
 class ApproverFactoriesTest {
 
+  private static final ConversationId CONVERSATION_ID = new ConversationId("s1");
+  private static final ToolCall CALL =
+      new ToolCall("c1", "anything", JsonNodeFactory.instance.objectNode());
+
   private final ApprovalRequest request =
       new ApprovalRequest(
-          new ConversationId("s1"),
-          new ToolCall("c1", "anything", JsonNodeFactory.instance.objectNode()),
+          CONVERSATION_ID,
+          CALL,
+          AuthorizationContext.of(
+              CONVERSATION_ID,
+              "test-agent",
+              CALL,
+              ConversationState.newConversation(CONVERSATION_ID)),
           "anything()");
 
   @Nested

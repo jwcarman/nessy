@@ -64,7 +64,7 @@ public final class SubagentConfig<T> {
   private List<ToolGrant> grants = List.of();
   private Memory memory;
   private TerminationPolicy termination;
-  private UsagePolicy policy;
+  private UsagePolicy<Object> policy;
   private InputRenderer<T> renderer;
   private final List<SubagentConfig<String>> stringSubagents = new ArrayList<>();
   private final List<TypedSubagentDeclaration<?>> typedSubagents = new ArrayList<>();
@@ -150,7 +150,7 @@ public final class SubagentConfig<T> {
    * delegation call parks for approval, then the child's own execution parks again once approved —
    * two waits, not a wedge.
    */
-  public SubagentConfig<T> policy(UsagePolicy policy) {
+  public SubagentConfig<T> policy(UsagePolicy<Object> policy) {
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     return this;
   }
@@ -246,7 +246,7 @@ public final class SubagentConfig<T> {
     return termination;
   }
 
-  UsagePolicy policy() {
+  UsagePolicy<Object> policy() {
     return policy;
   }
 

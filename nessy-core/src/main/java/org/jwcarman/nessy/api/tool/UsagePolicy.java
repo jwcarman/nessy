@@ -15,7 +15,8 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import org.jwcarman.nessy.api.conversation.ConversationState;
+import java.util.Objects;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
 
 /**
  * The authority half of a {@link ToolGrant}: whether one call to a granted tool may proceed.
@@ -25,34 +26,80 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
  * has no say in the outcome — it only ever sees the result, allowed, denied, or approved.
  *
  * <p>{@code evaluate} must be pure: no I/O, no mutation, nothing beyond a function of its two
- * arguments. The executor may call it from any thread and treats an escaping {@code
- * RuntimeException} as a {@link PolicyDecision.Deny} — a broken policy fails closed rather than
- * becoming an allow.
+ * arguments — the final {@link AuthorizationContext} an ordered chain of enrichers assembled, and
+ * the tool's own rendered effect. The executor may call it from any thread and treats an escaping
+ * {@code RuntimeException} as a {@link PolicyDecision.Deny} naming the policy stage — a broken
+ * policy fails closed rather than becoming an allow.
+ *
+ * <p>{@code E} is the effect type this policy judges. A grant welds it to the tool's own {@code
+ * EffectfulTool<I, E>} at compile time (rung 2); every accepting site takes {@code UsagePolicy<?
+ * super E>}, so the canonical {@link #allow()}, {@link #deny(String)}, and {@link
+ * #requireApproval()} — all {@code UsagePolicy<Object>} — terminate any grant regardless of what it
+ * welded.
+ *
+ * @param <E> the effect type this policy judges
  */
-public interface UsagePolicy {
+public interface UsagePolicy<E> {
 
-  /** Decides {@code call}'s fate, purely from the call and the session state it arrived in. */
-  PolicyDecision evaluate(ToolCall call, ConversationState state);
+  /** Decides {@code call}'s fate, purely from the final context and the tool's rendered effect. */
+  PolicyDecision evaluate(AuthorizationContext context, E effect);
 
   /**
    * Every call proceeds; the approver is never consulted. Always the same canonical instance — the
    * identity {@code org.jwcarman.nessy.AgentConfig}'s own approver-defaulting check compares a
    * grant's policy against to tell "no approval path can exist here" from an opaque custom policy
-   * that might.
+   * that might. Its verdict never depends on context or effect, so the chokepoint fast-paths it
+   * (ladder-law rung 0): no effect rendered, no context assembled, no enrichers run.
    */
-  static UsagePolicy allow() {
+  static UsagePolicy<Object> allow() {
     return Allow.INSTANCE;
   }
 
-  /** Every call is refused, with the same reason each time. */
-  static UsagePolicy deny(String reason) {
-    PolicyDecision decision = new PolicyDecision.Deny(reason);
-    return (call, state) -> decision;
+  /**
+   * Every call is refused, with the same reason each time. Like {@link #allow()}, its verdict never
+   * depends on context or effect, so it shares the same rung-0 fast path.
+   */
+  static UsagePolicy<Object> deny(String reason) {
+    return new Deny(reason);
   }
 
-  /** Every call defers to the approver — unlike {@link #allow()}, which never asks. */
-  static UsagePolicy requireApproval() {
-    return (call, state) -> new PolicyDecision.RequireApproval();
+  /**
+   * Every call defers to the approver — unlike {@link #allow()}, which never asks. Context-blind
+   * like the other two canonical factories, but NOT rung-0: the approver still needs to see the
+   * tool's rendered effect and the assembled context (design §9), so this does not fast-path them
+   * away. A context-aware policy may return {@link PolicyDecision.RequireApproval} conditionally
+   * instead of using this factory at all — it pays the assembly cost either way.
+   */
+  static UsagePolicy<Object> requireApproval() {
+    return (context, effect) -> new PolicyDecision.RequireApproval();
+  }
+
+  /**
+   * Pins the effect type {@code E} at the call site for a rung-1 lambda reading {@link
+   * AuthorizationContext#call()}/{@link AuthorizationContext#state()} — {@code
+   * UsagePolicy.<Foo>of((context, effect) -> ...)} where target-type inference alone would
+   * otherwise leave {@code E} ambiguous.
+   */
+  static <E> UsagePolicy<E> of(UsagePolicy<E> policy) {
+    return Objects.requireNonNull(policy, "policy must not be null");
+  }
+
+  /**
+   * Marker for a policy whose verdict never depends on context or effect — implemented by {@link
+   * Allow} and {@link Deny}, the two canonical statics. The chokepoint checks for this rather than
+   * for identity against a single instance, since {@link #deny(String)} cannot be one shared
+   * singleton across every reason: any policy, canonical or custom, may implement it to opt into
+   * the same rung-0 fast path.
+   *
+   * <p>{@link #decision()} must never be {@link PolicyDecision.RequireApproval}: the whole point of
+   * the fast path is that no context is assembled and no effect is rendered for a {@code Static}
+   * policy, and an approver has nothing to adjudicate without either. {@link #requireApproval()}
+   * deliberately does not implement this marker for exactly that reason.
+   */
+  interface Static {
+
+    /** The one verdict this policy ever returns — never {@link PolicyDecision.RequireApproval}. */
+    PolicyDecision decision();
   }
 
   /**
@@ -62,15 +109,44 @@ public interface UsagePolicy {
    * interfaces cannot hide a member type — but its constructor and {@link #INSTANCE} are private,
    * so the canonical instance is reachable only through {@link #allow()}.
    */
-  final class Allow implements UsagePolicy {
+  final class Allow implements UsagePolicy<Object>, Static {
 
-    private static final UsagePolicy INSTANCE = new Allow();
+    private static final Allow INSTANCE = new Allow();
 
     private Allow() {}
 
     @Override
-    public PolicyDecision evaluate(ToolCall call, ConversationState state) {
+    public PolicyDecision evaluate(AuthorizationContext context, Object effect) {
+      return decision();
+    }
+
+    @Override
+    public PolicyDecision decision() {
       return new PolicyDecision.Allow();
+    }
+  }
+
+  /**
+   * What {@link #deny(String)} returns: a fresh instance per reason (the reason varies, so unlike
+   * {@link Allow} there is no single shared singleton), but always {@link Static} — its verdict is
+   * fixed at construction, never a function of context or effect.
+   */
+  final class Deny implements UsagePolicy<Object>, Static {
+
+    private final PolicyDecision decision;
+
+    private Deny(String reason) {
+      this.decision = new PolicyDecision.Deny(reason);
+    }
+
+    @Override
+    public PolicyDecision evaluate(AuthorizationContext context, Object effect) {
+      return decision;
+    }
+
+    @Override
+    public PolicyDecision decision() {
+      return decision;
     }
   }
 }

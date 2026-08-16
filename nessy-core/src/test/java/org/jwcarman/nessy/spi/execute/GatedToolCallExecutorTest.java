@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.event.ApprovalRequested;
 import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.EffectfulTool;
+import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -49,10 +50,14 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.Enricher;
+import org.jwcarman.nessy.api.tool.authorization.Key;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 
 class GatedToolCallExecutorTest {
+
+  private static final String AGENT_NAME = "test-agent";
 
   private final ConversationId id = ConversationId.generate();
   private final ConversationState state = ConversationState.newConversation(id);
@@ -74,6 +79,7 @@ class GatedToolCallExecutorTest {
     Map<String, ToolGrant> grants = new LinkedHashMap<>();
     grants.put(grant.tool().name(), grant);
     return new GatedToolCallExecutor(
+        AGENT_NAME,
         registry,
         grants,
         approver,
@@ -115,6 +121,68 @@ class GatedToolCallExecutorTest {
       }
       return Awaited.ready(ToolResult.ok("echoed:" + input.value()));
     }
+  }
+
+  record SpendInput(int amount) {}
+
+  record SpendEffect(int amount) {}
+
+  /**
+   * An {@link EffectfulTool} that counts every {@link #effect} call — the ladder-law spy — and can
+   * be told to throw from {@link #effect} instead, to exercise the effect stage's own fail-closed
+   * path.
+   */
+  static final class SpendTool implements EffectfulTool<SpendInput, SpendEffect> {
+
+    private final boolean explodes;
+    private int effectCalls;
+
+    SpendTool() {
+      this(false);
+    }
+
+    SpendTool(boolean explodes) {
+      this.explodes = explodes;
+    }
+
+    int effectCalls() {
+      return effectCalls;
+    }
+
+    @Override
+    public String name() {
+      return "spend";
+    }
+
+    @Override
+    public String description() {
+      return "Spends money";
+    }
+
+    @Override
+    public Class<SpendInput> inputType() {
+      return SpendInput.class;
+    }
+
+    @Override
+    public SpendEffect effect(SpendInput input) {
+      effectCalls++;
+      if (explodes) {
+        throw new IllegalStateException("effect blew up");
+      }
+      return new SpendEffect(input.amount());
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(SpendInput input, ToolContext context) {
+      return Awaited.ready(ToolResult.ok("spent:" + input.amount()));
+    }
+  }
+
+  private static ToolCall spendCall(int amount) {
+    var args = JsonNodeFactory.instance.objectNode();
+    args.put("amount", amount);
+    return new ToolCall("c1", "spend", args);
   }
 
   /** An approver that records every request it is asked, then answers with a scripted decision. */
@@ -239,6 +307,7 @@ class GatedToolCallExecutorTest {
       assertThatThrownBy(
               () ->
                   new GatedToolCallExecutor(
+                      AGENT_NAME,
                       registry,
                       emptyGrants,
                       approver,
@@ -286,8 +355,8 @@ class GatedToolCallExecutorTest {
 
     @Test
     void a_throwing_policy_fails_closed_to_denial() {
-      UsagePolicy explodingPolicy =
-          (call, s) -> {
+      UsagePolicy<Object> explodingPolicy =
+          (context, effect) -> {
             throw new IllegalStateException("policy blew up");
           };
       RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
@@ -304,7 +373,7 @@ class GatedToolCallExecutorTest {
 
     @Test
     void a_null_returning_policy_fails_closed_to_denial() {
-      UsagePolicy nullReturningPolicy = (call, s) -> null;
+      UsagePolicy<Object> nullReturningPolicy = (context, effect) -> null;
       RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
       GatedToolCallExecutor executor =
           executorFor(ToolGrant.grant(new EchoTool(false), nullReturningPolicy), approver);
@@ -412,13 +481,16 @@ class GatedToolCallExecutorTest {
     void the_approval_prompt_renders_the_record_effects_own_tostring() {
       RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
       GatedToolCallExecutor executor =
-          executorFor(ToolGrant.grant(new TransferTool(), UsagePolicy.requireApproval()), approver);
+          executorFor(
+              ToolGrant.grant(new TransferTool(), List.of(), UsagePolicy.requireApproval()),
+              approver);
       TransferEffect expected = new TransferEffect("acct-1", "acct-2", 500);
 
       executor.execute(transferCall(), state, observed::add);
 
       assertThat(approver.requests).hasSize(1);
       assertThat(approver.requests.get(0).description()).isEqualTo(expected.toString());
+      assertThat(approver.requests.get(0).effect()).isEqualTo(expected);
     }
   }
 
@@ -444,6 +516,7 @@ class GatedToolCallExecutorTest {
       EchoTool tool = new EchoTool(false);
       GatedToolCallExecutor executor =
           new GatedToolCallExecutor(
+              AGENT_NAME,
               new ExoticRegistry(tool),
               Map.of(),
               new RecordingApprover(Awaited.ready(Decision.allow())),
@@ -508,7 +581,13 @@ class GatedToolCallExecutorTest {
       Map<String, ToolGrant> grants = Map.of(grant.tool().name(), grant);
       GatedToolCallExecutor executor =
           new GatedToolCallExecutor(
-              registry, grants, approver, new ObjectMapper(), emitter, ObservationRegistry.NOOP);
+              AGENT_NAME,
+              registry,
+              grants,
+              approver,
+              new ObjectMapper(),
+              emitter,
+              ObservationRegistry.NOOP);
       ToolCall call = echoCall("hi");
 
       executor.execute(call, state, observed::add);
@@ -578,7 +657,13 @@ class GatedToolCallExecutorTest {
       Map<String, ToolGrant> grants = Map.of(grant.tool().name(), grant);
       RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
       return new GatedToolCallExecutor(
-          registry, grants, approver, new ObjectMapper(), emitter, ObservationRegistry.NOOP);
+          AGENT_NAME,
+          registry,
+          grants,
+          approver,
+          new ObjectMapper(),
+          emitter,
+          ObservationRegistry.NOOP);
     }
 
     @Test
@@ -674,6 +759,204 @@ class GatedToolCallExecutorTest {
               echoCall("hi"), new ToolResolution.Completed(delivered), state, observed::add);
 
       assertThat(resultOf(outcome)).isEqualTo(delivered);
+    }
+  }
+
+  /**
+   * The ladder law's rung-0 promise (design of record 2026-08-16-authorization §1): a grant whose
+   * policy is a canonical static ({@link UsagePolicy#allow()}/{@link UsagePolicy#deny(String)})
+   * never renders the tool's effect, never assembles a context, and never runs an enricher — the
+   * spy tool's own call counter is the proof.
+   */
+  @Nested
+  class LadderLawRungZero {
+
+    @Test
+    void a_canonical_allow_grant_never_renders_the_effect() {
+      SpendTool tool = new SpendTool();
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(tool, List.of(), UsagePolicy.allow()), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(tool.effectCalls()).isZero();
+      assertThat(resultOf(outcome)).isEqualTo(ToolResult.ok("spent:5"));
+    }
+
+    @Test
+    void a_canonical_deny_grant_never_renders_the_effect() {
+      SpendTool tool = new SpendTool();
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(tool, List.of(), UsagePolicy.deny("no budget")), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(tool.effectCalls()).isZero();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).isEqualTo("Denied: no budget");
+    }
+
+    @Test
+    void an_enricher_attached_to_a_canonical_allow_grant_never_runs_either() {
+      SpendTool tool = new SpendTool();
+      List<Object> journal = new ArrayList<>();
+      Enricher<SpendEffect> countingEnricher =
+          (context, effect) -> {
+            journal.add("enriched");
+            return context;
+          };
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(
+              ToolGrant.grant(tool, List.of(countingEnricher), UsagePolicy.allow()), approver);
+
+      executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(journal).isEmpty();
+      assertThat(tool.effectCalls()).isZero();
+    }
+  }
+
+  /**
+   * Fail-closed staging (design §2, §4, §5): a throwing effect, enricher, or policy each yields a
+   * {@link PolicyDecision.Deny} whose reason names the stage that broke — never an allow, never an
+   * exception escaping into the loop.
+   */
+  @Nested
+  class FailClosedStages {
+
+    /** A policy that reads the context — not canonical, so it forces the full staged pipeline. */
+    private static final UsagePolicy<Object> NON_STATIC_ALLOW =
+        (context, effect) -> new PolicyDecision.Allow();
+
+    @Test
+    void a_throwing_effect_fails_closed_naming_the_effect_stage() {
+      SpendTool explodingTool = new SpendTool(true);
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(explodingTool, List.of(), NON_STATIC_ALLOW), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(approver.requests).isEmpty();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).contains("effect").contains("effect blew up");
+    }
+
+    @Test
+    void a_throwing_enricher_fails_closed_naming_the_enricher_stage() {
+      SpendTool tool = new SpendTool();
+      Enricher<SpendEffect> explodingEnricher =
+          (context, effect) -> {
+            throw new IllegalStateException("enricher blew up");
+          };
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(
+              ToolGrant.grant(tool, List.of(explodingEnricher), NON_STATIC_ALLOW), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(approver.requests).isEmpty();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).contains("enricher").contains("enricher blew up");
+    }
+
+    @Test
+    void a_throwing_policy_fails_closed_naming_the_policy_stage() {
+      SpendTool tool = new SpendTool();
+      UsagePolicy<SpendEffect> explodingPolicy =
+          (context, effect) -> {
+            throw new IllegalStateException("policy blew up");
+          };
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(tool, List.of(), explodingPolicy), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(approver.requests).isEmpty();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).contains("policy").contains("policy blew up");
+    }
+  }
+
+  /**
+   * Enricher ordering and context immutability (design §3, §4): each enricher sees only what ran
+   * before it, functionally extends the context rather than mutating it, and the final context —
+   * every deposit included — is what the policy judges. {@code firstEnricher} is declared as {@code
+   * Enricher<Object>}, proving the variance promise: an effect-blind enricher composes into a typed
+   * grant.
+   */
+  @Nested
+  class EnricherOrderingAndContextImmutability {
+
+    private static final Key<String> FIRST = new Key<>(String.class, "first");
+    private static final Key<String> SECOND = new Key<>(String.class, "second");
+
+    @Test
+    void a_later_enrichers_deposit_is_invisible_to_an_earlier_enricher_but_visible_to_the_policy() {
+      List<Optional<String>> secondAsSeenByFirstEnricher = new ArrayList<>();
+      Enricher<Object> firstEnricher =
+          (context, effect) -> {
+            secondAsSeenByFirstEnricher.add(context.get(SECOND));
+            return context.with(FIRST, "from-first");
+          };
+      Enricher<SpendEffect> secondEnricher =
+          (context, effect) -> context.with(SECOND, "from-second");
+      UsagePolicy<SpendEffect> policy =
+          (context, effect) ->
+              new PolicyDecision.Deny(
+                  context.get(FIRST).orElse("?") + "/" + context.get(SECOND).orElse("?"));
+
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(
+              ToolGrant.grant(new SpendTool(), List.of(firstEnricher, secondEnricher), policy),
+              approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(secondAsSeenByFirstEnricher).hasSize(1);
+      assertThat(secondAsSeenByFirstEnricher.getFirst()).isEmpty();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).isEqualTo("Denied: from-first/from-second");
+    }
+  }
+
+  /**
+   * Adjudication parity (design §9): the approver sees exactly what the policy saw — the final
+   * context, deposits included, and the tool's own rendered effect.
+   */
+  @Nested
+  class ApproverParity {
+
+    private static final Key<String> RISK = new Key<>(String.class, "risk");
+
+    @Test
+    void the_approver_sees_the_final_context_including_every_enrichers_deposit() {
+      Enricher<SpendEffect> riskEnricher = (context, effect) -> context.with(RISK, "high");
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(
+              ToolGrant.grant(
+                  new SpendTool(), List.of(riskEnricher), UsagePolicy.requireApproval()),
+              approver);
+
+      executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(approver.requests).hasSize(1);
+      ApprovalRequest request = approver.requests.getFirst();
+      assertThat(request.context().get(RISK)).contains("high");
+      assertThat(request.effect()).isEqualTo(new SpendEffect(5));
+      assertThat(request.description()).isEqualTo(new SpendEffect(5).toString());
     }
   }
 }
