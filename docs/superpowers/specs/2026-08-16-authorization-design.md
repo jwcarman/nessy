@@ -172,31 +172,29 @@ public interface Enricher<E> {
   which takes no input. (Ruled at planning: a clearing MEMBER inside the vocabulary
   was rejected — it would force every app's type to carry a "disregard me" constant
   and make the store's delete path depend on a blessed member.)
-- **The vocabulary must be a STRUCTURED type (owner ruling — open-ended `String`
-  intent is withdrawn).** A tool's parameters render as an OBJECT schema, so a bare
-  `String` — and equally a bare enum, the spec's own earlier example — renders a naked
-  string schema that is not a valid parameter object for OpenAI or Anthropic. The
-  vocabulary is therefore a record or a POJO; an enum is how you box a FIELD inside
-  one, never the vocabulary itself.
-  - **The gate validates the RENDERED SCHEMA, not the Java construct (amended after
-    owner review — the earlier abstract-type ban is WITHDRAWN as arbitrary):** the
-    invariant is that a vocabulary must render a schema a model can actually fill —
-    an object with at least one property, or a `oneOf`/`anyOf` of such objects.
-    Rejecting abstract types was a proxy for that, and a bad one in both directions:
-    it UNDER-rejected (a concrete POJO with no accessible properties renders the same
-    empty `{"type":"object"}` and passed), and it OVER-rejected (sealed interfaces
-    render poorly only because nessy's victools configuration enables no subtype
-    resolution — a gap in our wiring, elevated by mistake into a permanent
-    prohibition). The schema check is available for free: the wiring gate already
-    probes the schema, so it can assert the real property instead of a stand-in for it.
-  - Empirical finding that prompted this (Task 3b, still true): victools 4.38.0 with
-    nessy's current configuration renders a sealed interface of records as a bare
-    `{"type":"object"}` — no `oneOf`, no properties. Under the schema check such a
-    vocabulary is rejected with a message showing what it rendered and naming the
-    concrete-record-with-discriminator fallback. Should nessy later ship subtype
-    resolution, the same gate admits polymorphic vocabularies with no rule change —
-    that is the point of measuring the schema rather than the construct. Shipping that
-    resolution is a separate, additive question, deliberately left open.
+- **The vocabulary is an ordinary tool input type — there is NO wiring-time gate
+  (final ruling; every earlier gate proposal is withdrawn).** Nessy validates no other
+  tool's input type, and no check at the door can know whether the author's Jackson
+  serialization and round-tripping are configured correctly. A gate that inspects only
+  the rendered schema while passing silently on binding and round-tripping is a partial
+  check wearing a certifier's costume, so nessy does not ship one. (Withdrawn in turn:
+  the bare-`String` open-ended vocabulary, the structured-type requirement, the
+  abstract-type ban, and the schema-shape smoke check.)
+- **Enforcement is the runtime's existing fail-closed machinery**, the same every tool
+  call gets: an unfillable schema means the model cannot fill it; argument binding
+  failure denies the call with a reason the model sees and can correct against; a
+  store-write failure surfaces at declare time.
+- **What the DOCUMENTATION must therefore carry** — this is the deliverable that
+  replaces the gate: a vocabulary must render a schema a model can fill and must
+  round-trip through Jackson, and both are the author's responsibility. A concrete
+  record or POJO with properties is the straightforward choice. A POLYMORPHIC
+  vocabulary — a sealed interface or abstract base with several shapes — requires the
+  author to set up Jackson polymorphic handling themselves: `@JsonTypeInfo` with
+  `@JsonSubTypes`, so a type indicator rides in the JSON, plus a schema that conveys
+  the alternatives. Empirical finding behind that paragraph (Task 3b): victools 4.38.0
+  under nessy's configuration renders a sealed interface as a bare
+  `{"type":"object"}` — no `oneOf`, no properties — because nessy adds no subtype
+  resolution. Document what nessy does NOT do; do not imply it cannot be done.
   - Implementation note (as built): the declare/clear tools and the reader enricher
     are package-private in `org.jwcarman.nessy` (`IntentAssembly`), NOT under
     `spi/intent/` — deliberate, so `Tool` stays the only sanctioned api→internal
