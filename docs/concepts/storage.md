@@ -1,9 +1,9 @@
 # Storage
 
-Restart survival rests on six storage SPIs — `ConversationStore`, `Parks`,
-`Transcript`, `SummaryStore`, `PlanStore`, `Notebook` — each with a zero-configuration
-in-memory default and a `nessy-jdbc` implementation behind it. Every one dies
-with the JVM by default; every one survives a restart once backed by a real
+Restart survival rests on seven storage SPIs — `ConversationStore`, `Parks`,
+`Transcript`, `SummaryStore`, `PlanStore`, `Notebook`, `SubagentLinks` — each with a
+zero-configuration in-memory default and a `nessy-jdbc` implementation behind it. Every
+one dies with the JVM by default; every one survives a restart once backed by a real
 database.
 
 | Door | Owns | In-memory default |
@@ -14,6 +14,7 @@ database.
 | `SummaryStore` | One conversation's folded prefix (the summarizing hydrator's watermark) | `SummaryStore.inMemory()` |
 | `PlanStore` | One conversation's current plan | `PlanStore.inMemory()` |
 | `Notebook` | Durable, named notes about a subject | `Notebook.inMemory()` |
+| `SubagentLinks` | Which parent `ParkToken` a delegated child conversation answers | `SubagentLinks.inMemory()` |
 
 ## `ConversationStore`
 
@@ -101,9 +102,22 @@ Optional<Plan> find(ConversationId id);
 void save(ConversationId id, Plan plan);
 ```
 
+## `SubagentLinks`
+
+Which parent `ParkToken` a delegated child conversation answers — the correlation a
+subagent's settlement resumes against. See [Subagents](subagents.md) for the tool that
+saves a link when its child parks and the listener that resolves and forgets it once the
+child settles.
+
+```java
+Optional<ParkToken> find(ConversationId child);
+void save(ConversationId child, ParkToken parentToken);
+void forget(ConversationId child);
+```
+
 ## `nessy-jdbc`: one code path, five dialects
 
-`nessy-jdbc` implements this whole quintet over a plain `javax.sql.DataSource`.
+`nessy-jdbc` implements all seven stores over a plain `javax.sql.DataSource`.
 `JdbcDialect.resolve(DatabaseMetaData)` reads `getDatabaseProductName()` once, at the
 connection each store already borrows to bootstrap its schema, and normalizes it to one
 of `POSTGRES`, `MYSQL`, `MARIADB`, `SQLSERVER`, `ORACLE` — a small, enumerable
@@ -160,7 +174,7 @@ Postgres, not either of them.
 
 ## The TCK: certifying a backend
 
-`nessy-tck` ships six contract classes, one per SPI seam, each an abstract JUnit 5 test
+`nessy-tck` ships seven contract classes, one per SPI seam, each an abstract JUnit 5 test
 class with exactly one abstract factory method a concrete subclass supplies:
 
 | Contract | Certifies |
@@ -171,6 +185,7 @@ class with exactly one abstract factory method a concrete subclass supplies:
 | `SummaryStoreContract` | The summary watermark's save/load |
 | `PlanStoreContract` | Save-then-find, wholesale replacement, ordering, empty-save-clears, absence, last-write-wins |
 | `NotebookContract` | Round-trip, index-only headings in name order, upsert replacement, forget and its idempotence, subject isolation, last-write-wins |
+| `SubagentLinksContract` | Round-trip, last-write-wins on a double save, idempotent forget, an absent find |
 
 ```java
 class InMemoryConversationStoreTest extends ConversationStoreContract {
@@ -185,7 +200,7 @@ class InMemoryConversationStoreTest extends ConversationStoreContract {
 directly and extends the contract classes, supplying its own JUnit engine at test scope.
 A store implementation that passes every contract in the kit honors every invariant the
 loop relies on, whether it ships from this repository or someone else's. `nessy-jdbc`
-runs the same six contracts a second time, once per vendor, against real
+runs the same seven contracts a second time, once per vendor, against real
 Postgres/MySQL/MariaDB/SQL Server/Oracle containers.
 
 ## Where next

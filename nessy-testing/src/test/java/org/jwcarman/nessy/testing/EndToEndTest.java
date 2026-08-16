@@ -29,6 +29,7 @@ import org.jwcarman.nessy.Conversation;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.ConversationSettled;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
@@ -426,6 +427,40 @@ class EndToEndTest {
       public Set<Capability> capabilities() {
         return delegate.capabilities();
       }
+    }
+  }
+
+  @Nested
+  class A_conversation_settled_listener {
+
+    /**
+     * {@code ConversationSettled} is the subagent generation's wake-up signal: a listener declared
+     * on {@code HarnessBuilder} — not conversation-scoped, seeded into every agent the harness
+     * builds — must receive it once a drive settles {@code COMPLETE}, carrying the assistant's
+     * final text.
+     */
+    @Test
+    void a_harness_level_listener_receives_the_settlement_with_the_assistants_text() {
+      ScriptedModelProvider provider =
+          ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
+      RecordingSubscriber subscriber = new RecordingSubscriber();
+      Agent<String> agent =
+          Nessy.harness(provider)
+              .listen(ConversationSettled.class, subscriber::accept)
+              .build()
+              .agent()
+              .name("end-to-end")
+              .model("fake-model")
+              .build();
+
+      RunOutcome outcome = agent.converse().tell("what is 2+2?");
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      List<ConversationSettled> settled = subscriber.ofType(ConversationSettled.class);
+      assertThat(settled).isNotEmpty().hasSize(1);
+      assertThat(settled.getFirst().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(settled.getFirst().finalAssistantText()).isEqualTo("The answer is 4.");
+      assertThat(settled.getFirst().failureReason()).isNull();
     }
   }
 }

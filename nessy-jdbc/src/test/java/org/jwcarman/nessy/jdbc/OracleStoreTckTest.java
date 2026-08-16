@@ -41,11 +41,13 @@ import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
 import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.jwcarman.nessy.tck.ConversationStoreContract;
 import org.jwcarman.nessy.tck.NotebookContract;
 import org.jwcarman.nessy.tck.ParksContract;
 import org.jwcarman.nessy.tck.PlanStoreContract;
+import org.jwcarman.nessy.tck.SubagentLinksContract;
 import org.jwcarman.nessy.tck.SummaryStoreContract;
 import org.jwcarman.nessy.tck.TranscriptContract;
 import org.testcontainers.junit.jupiter.Container;
@@ -53,7 +55,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.oracle.OracleContainer;
 
 /**
- * The full TCK, all six contracts, run against a real Oracle — plus the dialect-resolution pin
+ * The full TCK, all seven contracts, run against a real Oracle — plus the dialect-resolution pin
  * (design §6). One container for the whole class (nested contracts share it, each truncating its
  * own table between tests) rather than six, the same efficiency trade the vendor matrix needs five
  * times over — most valuable here, where Oracle is the matrix's heavyweight: its image pull and
@@ -196,6 +198,23 @@ class OracleStoreTckTest {
     @Override
     protected Notebook notebook() {
       return notebook;
+    }
+  }
+
+  @Nested
+  class Subagent_links_contract extends SubagentLinksContract {
+
+    private SubagentLinks links;
+
+    @BeforeEach
+    void a_fresh_registry_over_an_empty_table() {
+      links = JdbcSubagentLinks.create(dataSource);
+      truncate("nessy_subagent_links");
+    }
+
+    @Override
+    protected SubagentLinks links() {
+      return links;
     }
   }
 
