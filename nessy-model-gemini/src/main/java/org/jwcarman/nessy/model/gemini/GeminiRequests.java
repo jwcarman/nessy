@@ -165,27 +165,23 @@ public final class GeminiRequests {
   }
 
   /**
-   * A {@code USER}-role {@link Message} is, by grammar construction, either an actual user turn
-   * (text) or a batch of tool results — never both. See the class javadoc for how tool results are
-   * addressed back to the function they answer.
+   * A {@code USER}-role {@link Message} may legally mix {@link ToolResultBlock}s with other blocks
+   * — the reducer's told-notes flush builds exactly that shape. Unlike Chat Completions, Gemini's
+   * user {@code Content} natively holds {@code functionResponse} parts and text parts side by side,
+   * so every block maps in place into a single {@code Content}'s part list, preserving the blocks'
+   * original relative order. See the class javadoc for how tool results are addressed back to the
+   * function they answer.
    */
   private static Optional<Content> toUserContent(
       List<ContentBlock> content, Map<String, String> callNamesById) {
-    if (content.stream().anyMatch(ToolResultBlock.class::isInstance)) {
-      var parts =
-          content.stream()
-              .map(ToolResultBlock.class::cast)
-              .map(result -> toFunctionResponsePart(result, callNamesById))
-              .toList();
-      return Optional.of(Content.builder().role("user").parts(parts).build());
-    }
-    var parts = content.stream().map(GeminiRequests::toUserPart).toList();
+    var parts = content.stream().map(block -> toUserPart(block, callNamesById)).toList();
     return Optional.of(Content.builder().role("user").parts(parts).build());
   }
 
-  private static Part toUserPart(ContentBlock block) {
+  private static Part toUserPart(ContentBlock block, Map<String, String> callNamesById) {
     return switch (block) {
       case TextBlock(String text) -> Part.fromText(text);
+      case ToolResultBlock result -> toFunctionResponsePart(result, callNamesById);
       default ->
           throw new IllegalArgumentException(
               "unsupported content block in a user message: " + block);

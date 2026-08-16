@@ -24,8 +24,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -368,6 +373,60 @@ class GeminiRequestsTest {
           .containsEntry("output", "first");
       assertThat(parts.get(1).functionResponse().orElseThrow().response().orElseThrow())
           .containsEntry("output", "second");
+    }
+  }
+
+  @Nested
+  class MixedToolResultsAndOtherBlocks {
+
+    @Test
+    void a_tool_result_followed_by_text_becomes_one_user_content_with_both_parts_in_order() {
+      var toolUse =
+          new ToolUseBlock(new ToolCall("call-1", "read_file", MAPPER.createObjectNode()));
+      var result = new ToolResultBlock("call-1", "13", false);
+      var text = new TextBlock("try again");
+      var contents =
+          GeminiRequests.toContents(
+              request(
+                  List.of(
+                      Message.assistant(List.of(toolUse)), Message.user(List.of(result, text)))));
+
+      var responseContent = contents.get(1);
+      assertThat(responseContent.role()).contains("user");
+      var parts = responseContent.parts().orElseThrow();
+      assertThat(parts).hasSize(2);
+      assertThat(parts.get(0).functionResponse().orElseThrow().name()).contains("read_file");
+      assertThat(parts.get(1).text()).contains("try again");
+    }
+
+    static Stream<Arguments> pure_content_messages() {
+      return Stream.of(
+          Arguments.of(List.of(new ToolResultBlock("call-1", "ok", false)), true),
+          Arguments.of(List.of(new TextBlock("hello there")), false));
+    }
+
+    @ParameterizedTest
+    @MethodSource("pure_content_messages")
+    void a_pure_content_message_is_pinned_unchanged(
+        List<ContentBlock> content, boolean expectFunctionResponse) {
+      List<Message> messages =
+          expectFunctionResponse
+              ? List.of(
+                  Message.assistant(
+                      List.of(
+                          new ToolUseBlock(
+                              new ToolCall("call-1", "noop", MAPPER.createObjectNode())))),
+                  Message.user(content))
+              : List.of(Message.user(content));
+
+      var contents = GeminiRequests.toContents(request(messages));
+
+      var lastContent = contents.get(contents.size() - 1);
+      assertThat(lastContent.role()).contains("user");
+      var parts = lastContent.parts().orElseThrow();
+      assertThat(parts).hasSize(1);
+      assertThat(parts.get(0).functionResponse().isPresent()).isEqualTo(expectFunctionResponse);
+      assertThat(parts.get(0).text().isPresent()).isEqualTo(!expectFunctionResponse);
     }
   }
 
