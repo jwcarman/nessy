@@ -105,15 +105,14 @@ class EndToEndTest {
     RecordingSubscriber subscriber = new RecordingSubscriber();
 
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("end-to-end")
-            .model("fake-model")
-            .systemPrompt("be helpful")
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .listen(Object.class, subscriber)
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(
+                a ->
+                    a.name("end-to-end")
+                        .model("fake-model")
+                        .systemPrompt("be helpful")
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+                        .listen(Object.class, subscriber));
     TextObserver observer = new TextObserver();
 
     RunOutcome outcome = agent.converse().tell("what is 2+2?", observer);
@@ -130,13 +129,12 @@ class EndToEndTest {
   void the_tool_schema_reaches_the_model() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("end-to-end")
-            .model("fake-model")
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(
+                a ->
+                    a.name("end-to-end")
+                        .model("fake-model")
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
     agent.converse().tell("hello");
 
@@ -158,13 +156,12 @@ class EndToEndTest {
   void requested_capabilities_reach_the_provider() {
     ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("end-to-end")
-            .model("fake-model")
-            .capabilities(Set.of(Capability.PROMPT_CACHING))
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(
+                a ->
+                    a.name("end-to-end")
+                        .model("fake-model")
+                        .capabilities(Set.of(Capability.PROMPT_CACHING)));
 
     agent.converse().tell("hello");
 
@@ -177,7 +174,8 @@ class EndToEndTest {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().text("hi").endTurn(new Usage(10, 5, 0)).build();
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(a -> a.name("end-to-end").model("fake-model"));
 
     RunOutcome outcome = agent.converse().tell("hi");
 
@@ -190,7 +188,8 @@ class EndToEndTest {
     ScriptedModelProvider provider =
         ScriptedModelProvider.builder().thinking("Let me think.").text("Answer.").endTurn().build();
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(a -> a.name("end-to-end").model("fake-model"));
     Conversation<String> conversation = agent.converse();
 
     conversation.tell("hi");
@@ -209,7 +208,8 @@ class EndToEndTest {
             .endTurn()
             .build();
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(a -> a.name("end-to-end").model("fake-model"));
     Conversation<String> conversation = agent.converse();
 
     conversation.tell("what is 2+2?");
@@ -237,13 +237,12 @@ class EndToEndTest {
             .endTurn()
             .build();
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("end-to-end")
-            .model("fake-model")
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(
+                a ->
+                    a.name("end-to-end")
+                        .model("fake-model")
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
     agent.converse().tell("what is 2+2?");
 
@@ -262,7 +261,8 @@ class EndToEndTest {
             .endTurn()
             .build();
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(a -> a.name("end-to-end").model("fake-model"));
     Conversation<String> conversation = agent.converse();
 
     conversation.tell("hi");
@@ -291,18 +291,17 @@ class EndToEndTest {
               .endTurn()
               .build();
       Agent<String> freeAgent =
-          Nessy.harness(freeProvider)
-              .build()
-              .agent()
-              .name("end-to-end")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-              // The approver denies everything, but it must never be asked: the tool-result
-              // assertion below checks the sum actually ran rather than being denied, which
-              // "The answer is 4." alone would not prove — that text comes from the script
-              // either way, denied or not.
-              .approver(Approver.denyAll("would fail if ever asked"))
-              .build();
+          Nessy.harness(h -> h.provider(freeProvider))
+              .agent(
+                  a ->
+                      a.name("end-to-end")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+                          // The approver denies everything, but it must never be asked: the
+                          // tool-result assertion below checks the sum actually ran rather than
+                          // being denied, which "The answer is 4." alone would not prove — that
+                          // text comes from the script either way, denied or not.
+                          .approver(Approver.denyAll("would fail if ever asked")));
 
       ScriptedModelProvider gatedProvider =
           ScriptedModelProvider.builder()
@@ -312,14 +311,13 @@ class EndToEndTest {
               .endTurn()
               .build();
       Agent<String> gatedAgent =
-          Nessy.harness(gatedProvider)
-              .build()
-              .agent()
-              .name("end-to-end")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.requireApproval()))
-              .approver(Approver.denyAll("not on this agent"))
-              .build();
+          Nessy.harness(h -> h.provider(gatedProvider))
+              .agent(
+                  a ->
+                      a.name("end-to-end")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new AddTool(), UsagePolicy.requireApproval()))
+                          .approver(Approver.denyAll("not on this agent")));
 
       Conversation<String> freeConversation = freeAgent.converse();
       TextObserver freeObserver = new TextObserver();
@@ -357,7 +355,8 @@ class EndToEndTest {
       ScriptedModelProvider provider =
           ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
       Agent<String> agent =
-          Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(a -> a.name("end-to-end").model("fake-model"));
       List<TurnEvent> observed = new ArrayList<>();
 
       agent.converse().tell("what is 2+2?", observed::add);
@@ -385,7 +384,8 @@ class EndToEndTest {
       FailFirstThenDelegate provider =
           new FailFirstThenDelegate(scripted, new RuntimeException("403: no credits"));
       Agent<String> agent =
-          Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(a -> a.name("end-to-end").model("fake-model"));
       Conversation<String> conversation = agent.converse();
 
       RunOutcome first = conversation.tell("hello");
@@ -435,7 +435,7 @@ class EndToEndTest {
 
     /**
      * {@code ConversationSettled} is the subagent generation's wake-up signal: a listener declared
-     * on {@code HarnessBuilder} — not conversation-scoped, seeded into every agent the harness
+     * on {@code HarnessConfig} — not conversation-scoped, seeded into every agent the harness
      * builds — must receive it once a drive settles {@code COMPLETE}, carrying the assistant's
      * final text.
      */
@@ -445,13 +445,9 @@ class EndToEndTest {
           ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
       RecordingSubscriber subscriber = new RecordingSubscriber();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .listen(ConversationSettled.class, subscriber::accept)
-              .build()
-              .agent()
-              .name("end-to-end")
-              .model("fake-model")
-              .build();
+          Nessy.harness(
+                  h -> h.provider(provider).listen(ConversationSettled.class, subscriber::accept))
+              .agent(a -> a.name("end-to-end").model("fake-model"));
 
       RunOutcome outcome = agent.converse().tell("what is 2+2?");
 

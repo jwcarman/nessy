@@ -128,13 +128,8 @@ class BedrockLiveTest {
     // and BedrockModelProviderTest$CloseOwnership establish.
     try (var provider = BedrockModelProvider.builder().region(REGION).build()) {
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("bedrock-live")
-              .model(MODEL)
-              .maxTokens(64)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(a -> a.name("bedrock-live").model(MODEL).maxTokens(64));
 
       TextObserver observer = new TextObserver();
       RunOutcome outcome = agent.converse().tell("Reply with exactly: pong", observer);
@@ -150,14 +145,13 @@ class BedrockLiveTest {
 
     try (var provider = BedrockModelProvider.builder().region(REGION).build()) {
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("bedrock-live")
-              .model(MODEL)
-              .maxTokens(256)
-              .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("bedrock-live")
+                          .model(MODEL)
+                          .maxTokens(256)
+                          .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
       Conversation<String> conversation = agent.converse();
       TextObserver observer = new TextObserver();

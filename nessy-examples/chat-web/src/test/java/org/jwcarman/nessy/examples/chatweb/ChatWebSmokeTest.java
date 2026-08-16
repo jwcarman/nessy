@@ -235,10 +235,8 @@ class ChatWebSmokeTest {
 
     @Bean
     Harness harness(ConversationStore store, ObservationRegistry observations) {
-      return Nessy.harness(new ScriptedModelProvider())
-          .store(store)
-          .observations(observations)
-          .build();
+      return Nessy.harness(
+          h -> h.provider(new ScriptedModelProvider()).store(store).observations(observations));
     }
   }
 

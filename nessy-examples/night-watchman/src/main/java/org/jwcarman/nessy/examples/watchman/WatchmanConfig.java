@@ -47,15 +47,14 @@ public class WatchmanConfig {
   @Bean
   Agent<String> agent(
       Harness harness, EngineRoom engineRoom, @Value("${watchman.window:40}") int window) {
-    return harness
-        .agent()
-        .name("night-watchman")
-        .model("claude-sonnet-4-5")
-        .systemPrompt(SYSTEM_PROMPT)
-        .memory(Memory.pipeline(Transcript.inMemory()).keepRecent(window).build())
-        .tools(
-            ToolGrant.grant(new CheckVitalsTool(engineRoom), UsagePolicy.allow()),
-            ToolGrant.grant(new RaiseAlarmTool(), UsagePolicy.allow()))
-        .build();
+    return harness.agent(
+        a ->
+            a.name("night-watchman")
+                .model("claude-sonnet-4-5")
+                .systemPrompt(SYSTEM_PROMPT)
+                .memory(Memory.pipeline(Transcript.inMemory()).keepRecent(window).build())
+                .tools(
+                    ToolGrant.grant(new CheckVitalsTool(engineRoom), UsagePolicy.allow()),
+                    ToolGrant.grant(new RaiseAlarmTool(), UsagePolicy.allow())));
   }
 }

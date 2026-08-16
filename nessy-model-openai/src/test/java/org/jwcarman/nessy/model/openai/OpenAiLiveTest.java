@@ -78,13 +78,8 @@ class OpenAiLiveTest {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(OpenAiModelProvider.builder().fromEnv().build())
-            .build()
-            .agent()
-            .name("openai-live")
-            .model(MODEL)
-            .maxTokens(64)
-            .build();
+        Nessy.harness(h -> h.provider(OpenAiModelProvider.builder().fromEnv().build()))
+            .agent(a -> a.name("openai-live").model(MODEL).maxTokens(64));
 
     TextObserver observer = new TextObserver();
     RunOutcome outcome = agent.converse().tell("Reply with exactly: pong", observer);
@@ -98,14 +93,13 @@ class OpenAiLiveTest {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(OpenAiModelProvider.builder().fromEnv().build())
-            .build()
-            .agent()
-            .name("openai-live")
-            .model(MODEL)
-            .maxTokens(256)
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+        Nessy.harness(h -> h.provider(OpenAiModelProvider.builder().fromEnv().build()))
+            .agent(
+                a ->
+                    a.name("openai-live")
+                        .model(MODEL)
+                        .maxTokens(256)
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
     Conversation<String> conversation = agent.converse();
     TextObserver observer = new TextObserver();
@@ -130,16 +124,13 @@ class OpenAiLiveTest {
   void a_real_conversation_answers_through_an_openai_compatible_endpoint() {
     Agent<String> agent =
         Nessy.harness(
-                OpenAiModelProvider.builder()
-                    .apiKey(System.getenv("OPENROUTER_API_KEY"))
-                    .baseUrl("https://openrouter.ai/api/v1")
-                    .build())
-            .build()
-            .agent()
-            .name("openai-live")
-            .model("openai/gpt-4o-mini")
-            .maxTokens(64)
-            .build();
+                h ->
+                    h.provider(
+                        OpenAiModelProvider.builder()
+                            .apiKey(System.getenv("OPENROUTER_API_KEY"))
+                            .baseUrl("https://openrouter.ai/api/v1")
+                            .build()))
+            .agent(a -> a.name("openai-live").model("openai/gpt-4o-mini").maxTokens(64));
 
     TextObserver observer = new TextObserver();
     agent.converse().tell("Reply with exactly: pong", observer);

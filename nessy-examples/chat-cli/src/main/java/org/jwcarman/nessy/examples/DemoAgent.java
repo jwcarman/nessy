@@ -53,7 +53,7 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
  * run()}, with no instance handed back to the caller — so there is no live {@code Conversation}
  * left at this call site to attach a per-conversation {@code events()} subscription to. The
  * equivalent channel survives here as a build-time {@link
- * org.jwcarman.nessy.AgentBuilder#listen(Class, java.util.function.Consumer) listen} declaration
+ * org.jwcarman.nessy.AgentConfig#listen(Class, java.util.function.Consumer) listen} declaration
  * instead: the same {@link org.jwcarman.nessy.api.event.ListenerRegistry} delivery, just declared
  * once on the agent rather than attached once per conversation. It announces {@link
  * ConversationEvent.ModelResponded}'s token usage — a fact the turn narration never shows — rather
@@ -95,35 +95,38 @@ public final class DemoAgent {
     Function<ConversationId, SubjectId> subjectResolver = id -> new SubjectId("chat-cli-user");
     Transcript transcript = Transcript.inMemory();
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("chat-cli")
-            .model(model)
-            .systemPrompt(SYSTEM_PROMPT)
-            .tools(
-                ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
-                ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
-                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
-            // Replaces the builder's default in-memory pipeline Memory with one over an
-            // explicitly held transcript — same durability class, now with the plan and the
-            // notebook index riding recall (spec §6). The notebook transformer is registered
-            // after the plan transformer: enrich appends at the tail, so the notebook index
-            // ends up closer to the model's next turn than the plan checklist does.
-            .memory(
-                Memory.pipeline(transcript)
-                    .transform(PlanTools.transformer(planStore))
-                    .transform(NotebookTools.transformer(notebook, subjectResolver))
-                    .build())
-            .approver(new ConsoleApprover())
-            .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage)
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(
+                a ->
+                    a.name("chat-cli")
+                        .model(model)
+                        .systemPrompt(SYSTEM_PROMPT)
+                        .tools(
+                            ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
+                            ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
+                            ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
+                            ToolGrant.grant(
+                                NotebookTools.remember(notebook, subjectResolver),
+                                UsagePolicy.allow()),
+                            ToolGrant.grant(
+                                NotebookTools.recall(notebook, subjectResolver),
+                                UsagePolicy.allow()),
+                            ToolGrant.grant(
+                                NotebookTools.forget(notebook, subjectResolver),
+                                UsagePolicy.allow()))
+                        // Replaces the config's default in-memory pipeline Memory with one over
+                        // an explicitly held transcript — same durability class, now with the
+                        // plan and the notebook index riding recall (spec §6). The notebook
+                        // transformer is registered after the plan transformer: enrich appends
+                        // at the tail, so the notebook index ends up closer to the model's next
+                        // turn than the plan checklist does.
+                        .memory(
+                            Memory.pipeline(transcript)
+                                .transform(PlanTools.transformer(planStore))
+                                .transform(NotebookTools.transformer(notebook, subjectResolver))
+                                .build())
+                        .approver(new ConsoleApprover())
+                        .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage));
     return new Built(agent, planStore);
   }
 

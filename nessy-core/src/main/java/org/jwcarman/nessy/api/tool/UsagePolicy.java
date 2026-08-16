@@ -36,8 +36,9 @@ public interface UsagePolicy {
 
   /**
    * Every call proceeds; the approver is never consulted. Always the same canonical instance — the
-   * identity {@link org.jwcarman.nessy.AgentBuilder#build()} checks a grant's policy against to
-   * tell "no approval path can exist here" from an opaque custom policy that might.
+   * identity {@code org.jwcarman.nessy.AgentConfig}'s own approver-defaulting check compares a
+   * grant's policy against to tell "no approval path can exist here" from an opaque custom policy
+   * that might.
    */
   static UsagePolicy allow() {
     return Allow.INSTANCE;

@@ -30,18 +30,19 @@ import org.jwcarman.nessy.spi.subagent.SubagentLinks;
  * The application's infrastructure, assembled once and shared by every agent it builds — inert
  * wiring, nothing more.
  *
- * <p>Nessy's front door is a two-builder story, disjoint by design (design §17's razor). A {@code
+ * <p>Nessy's front door is a two-config story, disjoint by design (design §17's razor). A {@code
  * Harness} owns the substrate — the model provider, session store, observation registry, and object
  * mapper — that make sense once per application, not once per agent; none of it is overridable from
- * {@link AgentBuilder}, which owns identity instead. {@link #defaultModel()} and this harness's
+ * {@link AgentConfig}, which owns identity instead. {@link #defaultModel()} and this harness's
  * {@link org.jwcarman.nessy.api.event.ListenerRegistry} are <em>seeded</em> rather than owned
  * outright: an agent may supply its own model, and always gets its own registrations appended after
  * the harness's, via {@link org.jwcarman.nessy.api.event.ListenerRegistry#extendedWith}.
  *
- * <p>{@link #agent()} returns an {@link AgentBuilder} pre-wired with this harness's shared pieces,
- * ready to be given the identity — model, system prompt, tools, policies — that makes it a
- * particular agent. The odd-one-out agent (a different provider, a different store) is a second
- * harness, never an override on this one.
+ * <p>{@link #agent(AgentCustomizer)} and {@link #agent(Class, AgentCustomizer)} hand the customizer
+ * an {@link AgentConfig} pre-wired with this harness's shared pieces, ready to be given the
+ * identity — model, system prompt, tools, policies — that makes it a particular agent, and return
+ * the finished {@link Agent}. The odd-one-out agent (a different provider, a different store) is a
+ * second harness, never an override on this one.
  *
  * <p><strong>{@code Harness} is immutable after construction: every field here is final, and no
  * method on this class ever writes to one.</strong> It is a front door for <em>building</em> agents
@@ -67,10 +68,10 @@ public final class Harness {
 
   /**
    * Every agent and subagent this harness has ever built, registered the moment {@link
-   * AgentBuilder#build()} finishes assembling it (subagents strictly before the parent whose build
-   * triggered them) — {@link #subagents()}'s own duplicate-name rejection (design of record
-   * 2026-08-16 §2) is what turns a name collision anywhere in the harness's whole delegation tree
-   * into an {@link IllegalArgumentException} at build time. Also the delivery address {@link
+   * AgentAssembly#build(AgentConfig)} finishes assembling it (subagents strictly before the parent
+   * whose build triggered them) — {@link #subagents()}'s own duplicate-name rejection (design of
+   * record 2026-08-16 §2) is what turns a name collision anywhere in the harness's whole delegation
+   * tree into an {@link IllegalArgumentException} at build time. Also the delivery address {@link
    * org.jwcarman.nessy.internal.subagent.AgentTools#completions}'s wake-up listener resolves a
    * settled child's parent against, by the name {@link
    * org.jwcarman.nessy.spi.conversation.Parks.Park#agentName()} carries — the v1 {@code
@@ -81,10 +82,10 @@ public final class Harness {
   private final CallbackRouter subagentRegistry = new CallbackRouter();
 
   /**
-   * The session store and whether {@link HarnessBuilder#store(ConversationStore)} was ever called
-   * to choose it explicitly — bundled together (java:S107: an eighth constructor parameter
-   * otherwise) because they are never meaningful apart: {@link #storeSet()} exists only to describe
-   * {@link #store()}'s own provenance.
+   * The session store and whether {@link HarnessConfig#store(ConversationStore)} was ever called to
+   * choose it explicitly — bundled together (java:S107: an eighth constructor parameter otherwise)
+   * because they are never meaningful apart: {@link #storeSet()} exists only to describe {@link
+   * #store()}'s own provenance.
    */
   record StoreSelection(ConversationStore store, boolean storeSet) {}
 
@@ -122,22 +123,34 @@ public final class Harness {
   }
 
   /**
-   * A fresh {@link AgentBuilder}, pre-wired with this harness's infrastructure, over the {@code
-   * String} vocabulary — the degenerate, single-text-block case. Defaults to {@link
-   * InputRenderer#text()}.
+   * Builds an {@link Agent} from a live {@link AgentConfig}, over the {@code String} vocabulary —
+   * the degenerate, single-text-block case: {@code customizer} fills in a fresh {@link AgentConfig}
+   * pre-wired with this harness's infrastructure and defaulted to {@link InputRenderer#text()},
+   * then this factory validates the required fields (name, model) and constructs the finished
+   * {@link Agent}. No public {@code build()} survives here.
    */
-  public AgentBuilder<String> agent() {
-    return new AgentBuilder<>(this, String.class, InputRenderer.text());
+  public Agent<String> agent(AgentCustomizer<String> customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    AgentConfig<String> config = new AgentConfig<>(this, String.class, InputRenderer.text());
+    customizer.customize(config);
+    return config.build();
   }
 
   /**
-   * A fresh {@link AgentBuilder} over an application-owned input vocabulary {@code I} — typically a
-   * sealed interface of records. Defaults to {@link InputRenderer#json(ObjectMapper)} over this
-   * harness's own mapper; override with {@link AgentBuilder#renderer(InputRenderer)}.
+   * Builds an {@link Agent} from a live {@link AgentConfig} over an application-owned input
+   * vocabulary {@code T} — typically a sealed interface of records: {@code customizer} fills in a
+   * fresh {@link AgentConfig} defaulted to {@link InputRenderer#json(ObjectMapper)} over this
+   * harness's own mapper (override with {@link AgentConfig#renderer(InputRenderer)}); passing
+   * {@code inputType} up front is what lets this factory validate renderer-type agreement at
+   * construction rather than discovering a mismatch later, since the compiler unifies {@code T}
+   * across {@code inputType}, {@code customizer}, and the returned {@code Agent<T>}.
    */
-  public <I> AgentBuilder<I> agent(Class<I> vocabulary) {
-    Objects.requireNonNull(vocabulary, "vocabulary must not be null");
-    return new AgentBuilder<>(this, vocabulary, InputRenderer.json(mapper));
+  public <T> Agent<T> agent(Class<T> inputType, AgentCustomizer<T> customizer) {
+    Objects.requireNonNull(inputType, "inputType must not be null");
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    AgentConfig<T> config = new AgentConfig<>(this, inputType, InputRenderer.json(mapper));
+    customizer.customize(config);
+    return config.build();
   }
 
   ModelProvider provider() {
@@ -149,10 +162,11 @@ public final class Harness {
   }
 
   /**
-   * Whether {@link HarnessBuilder#store(ConversationStore)} was ever called on the builder that
-   * produced this harness — the bit {@link AgentBuilder#build()} reads to know a durable store was
-   * explicitly chosen, so it can warn when an agent's memory was left on the in-memory default
-   * anyway (the same set-vs-defaulted mismatch {@link HarnessBuilder#defaultParks()} guards).
+   * Whether {@link HarnessConfig#store(ConversationStore)} was ever called on the config that
+   * produced this harness — the bit {@link AgentConfig#resolveMemory()} reads to know a durable
+   * store was explicitly chosen, so it can warn when an agent's memory was left on the in-memory
+   * default anyway (the same set-vs-defaulted mismatch {@link HarnessConfig}'s own parks-defaulting
+   * guard checks).
    */
   boolean storeSet() {
     return storeSet;
@@ -172,13 +186,13 @@ public final class Harness {
   }
 
   /**
-   * Whether {@link HarnessBuilder#subagentLinks(SubagentLinks)} was ever called on the builder that
-   * produced this harness — the bit {@link AgentBuilder#build()} reads to warn when an agent
+   * Whether {@link HarnessConfig#subagentLinks(SubagentLinks)} was ever called on the config that
+   * produced this harness — the bit {@link SubagentAssembly#build()} reads to warn when an agent
    * declares subagents against a harness whose own {@link #store} was explicitly chosen but whose
    * {@link #subagentLinks} was left on the in-memory default: a real durability gap (a settled
    * child after a restart leaves its parent parked forever, silently), not merely the "this harness
-   * has no durable state at all" case {@link HarnessBuilder#defaultSubagentLinks()} stays quiet
-   * for.
+   * has no durable state at all" case {@link HarnessConfig}'s own subagent-links default stays
+   * quiet for.
    */
   boolean subagentLinksSet() {
     return subagentLinksSet;

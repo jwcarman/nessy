@@ -63,13 +63,12 @@ public final class Hello {
             .build();
 
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("hello")
-            .model("fake-model")
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(
+                a ->
+                    a.name("hello")
+                        .model("fake-model")
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
     StringBuilder text = new StringBuilder();
     RunOutcome outcome =

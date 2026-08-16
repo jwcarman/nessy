@@ -36,9 +36,9 @@ import org.springframework.util.StringUtils;
  * Harness} is infrastructure — the model provider, session store, observation registry, object
  * mapper, and seeded default model an application sets up once — so it is exactly what this class
  * assembles from whatever beans the classpath and configuration produced. An {@link
- * org.jwcarman.nessy.AgentBuilder} is identity — model, system prompt, tools, policies, a
- * particular agent's own shape — and nothing in this module ever builds one: {@link
- * Harness#agent()} is always the application's own call, never Boot's.
+ * org.jwcarman.nessy.AgentConfig} is identity — model, system prompt, tools, policies, a particular
+ * agent's own shape — and nothing in this module ever builds one: {@link Harness#agent()} is always
+ * the application's own call, never Boot's.
  *
  * <p>Runs after {@link AnthropicProviderAutoConfiguration}, {@link
  * OpenAiProviderAutoConfiguration}, {@link GeminiProviderAutoConfiguration}, and {@link
@@ -50,7 +50,7 @@ import org.springframework.util.StringUtils;
  * Harness} bean always wins outright, this class never runs a second pass over it.
  *
  * <p>{@link org.jwcarman.nessy.spi.memory.Memory} is a Task 2 bean too, but it is not consumed
- * here: {@code Memory} is agent-scoped ({@link org.jwcarman.nessy.AgentBuilder#memory}), not a
+ * here: {@code Memory} is agent-scoped ({@link org.jwcarman.nessy.AgentConfig#memory}), not a
  * harness seam, so it stays available for the application's own agent bean to inject directly
  * rather than being wired through this class.
  */
@@ -76,15 +76,17 @@ public class NessyAutoConfiguration {
       ObjectProvider<SubagentLinks> subagentLinks,
       ObjectProvider<ObservationRegistry> observations,
       ObjectProvider<ObjectMapper> mapper) {
-    var builder = Nessy.harness(provider);
-    store.ifAvailable(builder::store);
-    parks.ifAvailable(builder::parks);
-    subagentLinks.ifAvailable(builder::subagentLinks);
-    observations.ifAvailable(builder::observations);
-    mapper.ifAvailable(builder::mapper);
-    if (StringUtils.hasText(properties.defaultModel())) {
-      builder.defaultModel(properties.defaultModel());
-    }
-    return builder.build();
+    return Nessy.harness(
+        h -> {
+          h.provider(provider);
+          store.ifAvailable(h::store);
+          parks.ifAvailable(h::parks);
+          subagentLinks.ifAvailable(h::subagentLinks);
+          observations.ifAvailable(h::observations);
+          mapper.ifAvailable(h::mapper);
+          if (StringUtils.hasText(properties.defaultModel())) {
+            h.defaultModel(properties.defaultModel());
+          }
+        });
   }
 }

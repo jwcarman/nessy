@@ -118,41 +118,42 @@ class NewsroomReplSmokeTest {
     Function<ConversationId, SubjectId> subjectResolver = id -> subject;
 
     Harness harness =
-        Nessy.harness(provider).store(store).parks(parks).subagentLinks(links).build();
+        Nessy.harness(h -> h.provider(provider).store(store).parks(parks).subagentLinks(links));
 
     Agent<String> writer =
-        harness
-            .agent()
-            .name("writer")
-            .model("test-model")
-            .approver(Approver.parkAll())
-            .tools(
-                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
-            .memory(
-                Memory.pipeline(transcript)
-                    .transform(PlanTools.transformer(planStore))
-                    .transform(NotebookTools.transformer(notebook, subjectResolver))
-                    .build())
-            .subagent(
-                sub ->
-                    sub.name("researcher")
-                        .description("Delegates research to the researcher.")
-                        .model("test-model")
-                        .tools(
-                            ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
-                            ToolGrant.grant(
-                                new AskQuestionTool(pendingAnswers), UsagePolicy.requireApproval()))
-                        .memory(
-                            Memory.pipeline(transcript)
-                                .transform(NotebookTools.transformer(notebook, subjectResolver))
-                                .build()))
-            .build();
+        harness.agent(
+            a ->
+                a.name("writer")
+                    .model("test-model")
+                    .approver(Approver.parkAll())
+                    .tools(
+                        ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
+                        ToolGrant.grant(
+                            NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
+                        ToolGrant.grant(
+                            NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
+                        ToolGrant.grant(
+                            NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
+                    .memory(
+                        Memory.pipeline(transcript)
+                            .transform(PlanTools.transformer(planStore))
+                            .transform(NotebookTools.transformer(notebook, subjectResolver))
+                            .build())
+                    .subagent(
+                        sub ->
+                            sub.name("researcher")
+                                .description("Delegates research to the researcher.")
+                                .model("test-model")
+                                .tools(
+                                    ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
+                                    ToolGrant.grant(
+                                        new AskQuestionTool(pendingAnswers),
+                                        UsagePolicy.requireApproval()))
+                                .memory(
+                                    Memory.pipeline(transcript)
+                                        .transform(
+                                            NotebookTools.transformer(notebook, subjectResolver))
+                                        .build())));
 
     NewsroomAgents.Built built =
         new NewsroomAgents.Built(writer, writer.subagent("researcher"), planStore, pendingAnswers);

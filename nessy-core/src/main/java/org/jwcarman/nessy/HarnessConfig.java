@@ -32,16 +32,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Assembles a {@link Harness}: the infrastructure an application sets up once and every agent it
- * builds then shares — disjointly from {@link AgentBuilder}, which owns identity instead (design
- * §17's razor). {@code provider} is required, by constructor signature via {@link
- * Nessy#harness(ModelProvider)}; everything else here has a default that works.
+ * What an application writes to describe a {@link Harness}, handed to {@link
+ * Nessy#harness(HarnessCustomizer)}: a CONFIG, not a builder (design of record 2026-08-16 §1) —
+ * fluent setters, no {@code build()}. {@link #provider} is the harness's one required thing;
+ * everything else here has a default that works.
+ *
+ * <p>Assembles a {@link Harness}: the infrastructure an application sets up once and every agent it
+ * builds then shares — disjointly from {@link AgentConfig}, which owns identity instead (design
+ * §17's razor).
  */
-public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder> {
+public final class HarnessConfig implements ListenerDeclarations<HarnessConfig> {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(HarnessBuilder.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(HarnessConfig.class);
 
-  private final ModelProvider provider;
+  private ModelProvider provider;
   private ConversationStore store;
   private boolean storeSet;
   private Parks parks;
@@ -52,12 +56,20 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   private String defaultModel;
   private final List<ListenerRegistration> registrations = new ArrayList<>();
 
-  HarnessBuilder(ModelProvider provider) {
+  HarnessConfig() {}
+
+  /**
+   * The model provider every agent this harness builds calls through. The harness's one required
+   * thing — {@link Nessy#harness(HarnessCustomizer)} throws {@link NullPointerException} naming
+   * this field if the customizer never calls it.
+   */
+  public HarnessConfig provider(ModelProvider provider) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    return this;
   }
 
   /** Where session state lives. Default: {@link ConversationStore#inMemory()}. */
-  public HarnessBuilder store(ConversationStore store) {
+  public HarnessConfig store(ConversationStore store) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.storeSet = true;
     return this;
@@ -67,7 +79,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    * Where parked waits live, so a callback door can find its way back to them. Default: {@link
    * Parks#inMemory()}.
    */
-  public HarnessBuilder parks(Parks parks) {
+  public HarnessConfig parks(Parks parks) {
     this.parks = Objects.requireNonNull(parks, "parks must not be null");
     return this;
   }
@@ -77,14 +89,14 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    * back to the parent's own park (design of record 2026-08-16 §3). Default: {@link
    * SubagentLinks#inMemory()}.
    */
-  public HarnessBuilder subagentLinks(SubagentLinks subagentLinks) {
+  public HarnessConfig subagentLinks(SubagentLinks subagentLinks) {
     this.subagentLinks = Objects.requireNonNull(subagentLinks, "subagentLinks must not be null");
     this.subagentLinksSet = true;
     return this;
   }
 
   /** Where loop-level metrics and traces go. Default: {@link ObservationRegistry#NOOP}. */
-  public HarnessBuilder observations(ObservationRegistry observations) {
+  public HarnessConfig observations(ObservationRegistry observations) {
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     return this;
   }
@@ -93,30 +105,30 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    * The Jackson mapper used for tool argument (de)serialization and the default JSON renderer.
    * Default: {@code new ObjectMapper()}.
    */
-  public HarnessBuilder mapper(ObjectMapper mapper) {
+  public HarnessConfig mapper(ObjectMapper mapper) {
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     return this;
   }
 
   /**
    * Seeded default: every agent built from this harness uses this model unless it calls its own
-   * {@link AgentBuilder#model(String)}. Neither supplied is an {@link AgentConfigurationException}
-   * at {@link AgentBuilder#build()}, not here — a harness with no default model is legal on its
-   * own, exactly like a harness with no listeners.
+   * {@link AgentConfig#model(String)}. Neither supplied is an {@link AgentConfigurationException}
+   * at the agent factory, not here — a harness with no default model is legal on its own, exactly
+   * like a harness with no listeners.
    */
-  public HarnessBuilder defaultModel(String defaultModel) {
+  public HarnessConfig defaultModel(String defaultModel) {
     this.defaultModel = defaultModel;
     return this;
   }
 
   /**
    * Declares a synchronous listener seeded into every agent this harness builds — before that
-   * agent's own registrations, in the order declared here. Frozen at {@link #build()}: no mutation
-   * path exists afterward. A throw from {@code listener} propagates and stops the emitting
-   * operation — the veto is the throw.
+   * agent's own registrations, in the order declared here. Frozen once this config becomes a {@link
+   * Harness}: no mutation path exists afterward. A throw from {@code listener} propagates and stops
+   * the emitting operation — the veto is the throw.
    */
   @Override
-  public <T> HarnessBuilder listen(Class<T> type, Consumer<T> listener) {
+  public <T> HarnessConfig listen(Class<T> type, Consumer<T> listener) {
     registrations.add(ListenerRegistration.sync(type, listener));
     return this;
   }
@@ -126,7 +138,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    * runs on a fresh virtual thread per event, and whatever it throws reaches {@code onError}
    * instead of the emitting thread — it never vetoes.
    */
-  public <T> HarnessBuilder listenAsync(
+  public <T> HarnessConfig listenAsync(
       Class<T> type, Consumer<T> listener, Consumer<Throwable> onError) {
     registrations.add(ListenerRegistration.async(type, listener, onError));
     return this;
@@ -137,12 +149,18 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    * Logger} rather than requiring every caller to supply its own handler.
    */
   @Override
-  public <T> HarnessBuilder listenAsync(Class<T> type, Consumer<T> listener) {
+  public <T> HarnessConfig listenAsync(Class<T> type, Consumer<T> listener) {
     Objects.requireNonNull(listener, "listener must not be null");
     return listenAsync(type, listener, t -> LOGGER.error("async event listener failed", t));
   }
 
-  public Harness build() {
+  /**
+   * Turns this config into the {@link Harness} it describes — the factory's own step, never a
+   * public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
+   * Nessy#harness(HarnessCustomizer)}, once {@code customize} has returned.
+   */
+  Harness build() {
+    Objects.requireNonNull(provider, "provider must not be null");
     return new Harness(
         provider,
         new Harness.StoreSelection(
@@ -167,7 +185,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    * harness is a coherent choice and stays silent; a harness whose {@link #store} was explicitly
    * configured is a different story — that mismatch (durable session state, in-memory parks) is
    * worth shouting about, so this warns once per {@link #build()} only when {@link #storeSet} is
-   * true, mirroring {@link AgentBuilder}'s own memory-defaulting guard.
+   * true, mirroring {@link AgentConfig}'s own memory-defaulting guard.
    */
   private Parks defaultParks() {
     if (storeSet) {
@@ -182,13 +200,13 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
 
   /**
    * {@link SubagentLinks#inMemory()} — subagent links kept only for the process's lifetime. Unlike
-   * {@link #defaultParks()} and {@link AgentBuilder}'s own memory-defaulting guard, this stays
+   * {@link #defaultParks()} and {@link AgentConfig}'s own memory-defaulting guard, this stays
    * silent even with an explicitly configured {@link #store}: a harness with no subagents never
    * touches this store at all, so warning unconditionally here would fire for every durable-store
    * harness whether or not it ever declares a single {@code .subagent(...)}. The narrower warning —
    * only when an agent actually declares a subagent against a store-set-but-links-defaulted harness
-   * — lives on {@link AgentBuilder#build()} instead, which is the only place both facts (a durable
-   * store, and at least one {@code .subagent(...)} declared) are known together; see {@link
+   * — lives on {@link AgentConfig}'s own build path instead, which is the only place both facts (a
+   * durable store, and at least one {@code .subagent(...)} declared) are known together; see {@link
    * Harness#subagentLinksSet()}.
    */
   private SubagentLinks defaultSubagentLinks() {

@@ -72,7 +72,7 @@ class ScoutTest {
                 .text("Here's the structure.")
                 .endTurn()
                 .build();
-        Harness harness = Nessy.harness(provider).build();
+        Harness harness = Nessy.harness(h -> h.provider(provider));
         // A denying approver, on purpose: an allow()-granted tool must run regardless of what
         // the approver would have said, which is the other half of proving the gate actually
         // gates (see The_require_approval_granted_tool below).
@@ -114,7 +114,7 @@ class ScoutTest {
                 .text("I wasn't allowed to ask.")
                 .endTurn()
                 .build();
-        Harness harness = Nessy.harness(provider).build();
+        Harness harness = Nessy.harness(h -> h.provider(provider));
         Agent<String> agent =
             Scout.scout(
                     harness,
@@ -156,7 +156,7 @@ class ScoutTest {
                 .text("Here's what DeepWiki said.")
                 .endTurn()
                 .build();
-        Harness harness = Nessy.harness(provider).build();
+        Harness harness = Nessy.harness(h -> h.provider(provider));
         // The demo's headline beat: approving the gate actually lets the call through to the
         // remote server, and its answer flows back into context — the mirror image of the
         // declining-approver case above, which only proves the gate can say no.

@@ -15,23 +15,35 @@
  */
 package org.jwcarman.nessy;
 
-import org.jwcarman.nessy.spi.model.ModelProvider;
+import java.util.Objects;
 
 /**
  * The front door — the only one. A {@link Harness} is the infrastructure — provider, session store,
  * observations, object mapper — every agent it builds shares; {@code provider} is the harness's one
- * required thing, enforced right here by signature rather than discovered later at {@code build()}.
+ * required thing, set inside the customizer and validated the instant it returns (design of record
+ * 2026-08-16 §1) rather than enforced by this method's own signature.
  *
  * <p>The razor: if a proposed harness feature could not be expressed as "pre-configuration of an
- * agent builder," it does not belong on the harness. A single agent is still just as short as ever
- * — {@code Nessy.harness(provider).agent().model(...).build()} — the harness is never optional
- * ceremony, only ever the one place infrastructure lives.
+ * agent config," it does not belong on the harness. A single agent is still just as short as ever —
+ * {@code Nessy.harness(h -> h.provider(provider)).agent(a -> a.name(...).model(...))} — the harness
+ * is never optional ceremony, only ever the one place infrastructure lives.
  */
 public final class Nessy {
 
   private Nessy() {}
 
-  public static HarnessBuilder harness(ModelProvider provider) {
-    return new HarnessBuilder(provider);
+  /**
+   * Builds a {@link Harness} from a live {@link HarnessConfig}: {@code customizer} fills it in,
+   * then this factory validates {@link
+   * HarnessConfig#provider(org.jwcarman.nessy.spi.model.ModelProvider)} was called — the harness's
+   * one required field — and constructs the finished {@link Harness}. No public {@code build()}
+   * survives here; the factory is the only place a {@link HarnessConfig} ever turns into a {@link
+   * Harness}.
+   */
+  public static Harness harness(HarnessCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    HarnessConfig config = new HarnessConfig();
+    customizer.customize(config);
+    return config.build();
   }
 }

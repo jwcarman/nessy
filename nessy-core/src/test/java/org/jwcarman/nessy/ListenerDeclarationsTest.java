@@ -111,18 +111,18 @@ class ListenerDeclarationsTest {
   void the_sync_sugar_hears_the_whole_gated_tool_story() {
     ConcurrentLinkedQueue<String> heard = new ConcurrentLinkedQueue<>();
     Agent<String> agent =
-        Nessy.harness(new ToolCallingProvider())
-            .build()
-            .agent()
-            .name("listener")
-            .model("fake-model")
-            .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
-            .onAgentTold(fact -> heard.add("told"))
-            .onApprovalRequested(event -> heard.add("approval:" + event.request().call().name()))
-            .onToolProgress(event -> heard.add("progress:" + event.message()))
-            .onToolFinished(fact -> heard.add("finished:" + fact.call().name()))
-            .onModelResponded(fact -> heard.add("responded:" + fact.reason()))
-            .build();
+        Nessy.harness(h -> h.provider(new ToolCallingProvider()))
+            .agent(
+                a ->
+                    a.name("listener")
+                        .model("fake-model")
+                        .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
+                        .onAgentTold(fact -> heard.add("told"))
+                        .onApprovalRequested(
+                            event -> heard.add("approval:" + event.request().call().name()))
+                        .onToolProgress(event -> heard.add("progress:" + event.message()))
+                        .onToolFinished(fact -> heard.add("finished:" + fact.call().name()))
+                        .onModelResponded(fact -> heard.add("responded:" + fact.reason())));
 
     agent.converse().tell("go");
 
@@ -152,13 +152,12 @@ class ListenerDeclarationsTest {
           }
         };
     Agent<String> agent =
-        Nessy.harness(overflowing)
-            .build()
-            .agent()
-            .name("listener")
-            .model("fake-model")
-            .onModelCallFailed(fact -> heard.add("failed:" + fact.reason()))
-            .build();
+        Nessy.harness(h -> h.provider(overflowing))
+            .agent(
+                a ->
+                    a.name("listener")
+                        .model("fake-model")
+                        .onModelCallFailed(fact -> heard.add("failed:" + fact.reason())));
 
     agent.converse().tell("go");
 
@@ -169,18 +168,17 @@ class ListenerDeclarationsTest {
   void the_async_sugar_hears_the_same_story_off_thread() throws InterruptedException {
     CountDownLatch heard = new CountDownLatch(5);
     Agent<String> agent =
-        Nessy.harness(new ToolCallingProvider())
-            .build()
-            .agent()
-            .name("listener")
-            .model("fake-model")
-            .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
-            .onAgentToldAsync(fact -> heard.countDown())
-            .onApprovalRequestedAsync(event -> heard.countDown())
-            .onToolProgressAsync(event -> heard.countDown())
-            .onToolFinishedAsync(fact -> heard.countDown())
-            .onModelRespondedAsync(fact -> heard.countDown())
-            .build();
+        Nessy.harness(h -> h.provider(new ToolCallingProvider()))
+            .agent(
+                a ->
+                    a.name("listener")
+                        .model("fake-model")
+                        .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
+                        .onAgentToldAsync(fact -> heard.countDown())
+                        .onApprovalRequestedAsync(event -> heard.countDown())
+                        .onToolProgressAsync(event -> heard.countDown())
+                        .onToolFinishedAsync(fact -> heard.countDown())
+                        .onModelRespondedAsync(fact -> heard.countDown()));
 
     agent.converse().tell("go");
 
@@ -204,13 +202,12 @@ class ListenerDeclarationsTest {
           }
         };
     Agent<String> agent =
-        Nessy.harness(overflowing)
-            .build()
-            .agent()
-            .name("listener")
-            .model("fake-model")
-            .onModelCallFailedAsync(fact -> heard.countDown())
-            .build();
+        Nessy.harness(h -> h.provider(overflowing))
+            .agent(
+                a ->
+                    a.name("listener")
+                        .model("fake-model")
+                        .onModelCallFailedAsync(fact -> heard.countDown()));
 
     agent.converse().tell("go");
 
@@ -221,14 +218,15 @@ class ListenerDeclarationsTest {
   void harness_level_sugar_seeds_into_every_agent_it_builds() {
     ConcurrentLinkedQueue<String> heard = new ConcurrentLinkedQueue<>();
     Agent<String> agent =
-        Nessy.harness(new ToolCallingProvider())
-            .onModelResponded(fact -> heard.add("harness:" + fact.reason()))
-            .build()
-            .agent()
-            .name("listener")
-            .model("fake-model")
-            .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval()))
-            .build();
+        Nessy.harness(
+                h ->
+                    h.provider(new ToolCallingProvider())
+                        .onModelResponded(fact -> heard.add("harness:" + fact.reason())))
+            .agent(
+                a ->
+                    a.name("listener")
+                        .model("fake-model")
+                        .tools(ToolGrant.grant(new NoisyTool(), UsagePolicy.requireApproval())));
 
     agent.converse().tell("go");
 

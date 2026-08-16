@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Harness;
-import org.jwcarman.nessy.HarnessBuilder;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
@@ -67,9 +66,11 @@ class NightWatchmanSchedulingTest {
 
     @Bean
     Harness harness(ObjectProvider<ObservationRegistry> observations) {
-      HarnessBuilder builder = Nessy.harness(new AllQuietProvider());
-      observations.ifAvailable(builder::observations);
-      return builder.build();
+      return Nessy.harness(
+          h -> {
+            h.provider(new AllQuietProvider());
+            observations.ifAvailable(h::observations);
+          });
     }
   }
 

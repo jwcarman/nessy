@@ -220,7 +220,8 @@ class AgentDoorsTest {
     @Test
     void resume_of_an_unknown_token_throws() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("keeper").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("keeper").model("m"));
       ParkToken token = ParkToken.generate();
       ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
 
@@ -238,7 +239,8 @@ class AgentDoorsTest {
     @Test
     void an_unknown_token_is_a_typed_rejection() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("keeper").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("keeper").model("m"));
       ParkToken unknown = ParkToken.generate();
       ToolResolution.Decided resolution = new ToolResolution.Decided(Decision.allow());
 
@@ -262,14 +264,13 @@ class AgentDoorsTest {
                   new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       agent.converse().tell("search for x");
       ParkToken token = approver.token();
 
@@ -298,14 +299,13 @@ class AgentDoorsTest {
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       agent.converse().tell("search for x");
       ParkToken token = approver.token();
 
@@ -341,14 +341,13 @@ class AgentDoorsTest {
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       agent.converse().tell("search for x");
       ParkToken token = approver.token();
 
@@ -370,7 +369,8 @@ class AgentDoorsTest {
     @Test
     void deny_rejects_a_null_reason() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("keeper").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("keeper").model("m"));
       ParkToken token = ParkToken.generate();
 
       assertThatThrownBy(() -> agent.deny(token, null))
@@ -402,15 +402,15 @@ class AgentDoorsTest {
       Parks parks = Parks.inMemory();
       parks.park(new Parks.Park(id, token, call, "keeper"));
       CountingSearchTool tool = new CountingSearchTool();
-      Harness harness = Nessy.harness(new FakeProvider("hi")).store(store).parks(parks).build();
+      Harness harness =
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")).store(store).parks(parks));
       Agent<String> agent =
-          harness
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
-              .approver(Approver.denyAll("never reached"))
-              .build();
+          harness.agent(
+              a ->
+                  a.name("keeper")
+                      .model("fake-model")
+                      .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
+                      .approver(Approver.denyAll("never reached")));
 
       RunOutcome outcome = agent.resume(token, new ToolResolution.Decided(Decision.allow()));
 
@@ -432,14 +432,13 @@ class AgentDoorsTest {
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
 
       RunOutcome parked = agent.converse().tell("search for x");
 
@@ -476,14 +475,13 @@ class AgentDoorsTest {
       ParkingApprover approver = new ParkingApprover();
       CountingSearchTool tool = new CountingSearchTool();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(tool, UsagePolicy.requireApproval()))
+                          .approver(approver));
       agent.converse().tell("search for x");
       ParkToken token = approver.token();
 
@@ -517,15 +515,13 @@ class AgentDoorsTest {
       ParkingApprover approver = new ParkingApprover();
       List<ToolProgress> heard = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .listen(ToolProgress.class, heard::add)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider).listen(ToolProgress.class, heard::add))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
 
       RunOutcome parked = agent.converse().tell("search for x");
       assertThat(parked).isInstanceOf(RunOutcome.Parked.class);
@@ -547,13 +543,9 @@ class AgentDoorsTest {
     void progress_for_an_unknown_token_reports_false_and_emits_nothing() {
       List<ToolProgress> heard = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi"))
-              .listen(ToolProgress.class, heard::add)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .build();
+          Nessy.harness(
+                  h -> h.provider(new FakeProvider("hi")).listen(ToolProgress.class, heard::add))
+              .agent(a -> a.name("keeper").model("fake-model"));
       ParkToken token = ParkToken.generate();
 
       boolean emitted = agent.progress(token, "halfway");
@@ -583,15 +575,14 @@ class AgentDoorsTest {
       ParkingApprover approver = new ParkingApprover();
       List<ToolProgress> heard = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .listen(ToolProgress.class, heard::add)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver)
+                          .listen(ToolProgress.class, heard::add));
 
       agent.converse().tell("search for x");
       ParkToken token = approver.token();
@@ -626,15 +617,13 @@ class AgentDoorsTest {
       ParkingApprover approver = new ParkingApprover();
       List<ToolProgress> heard = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .listen(ToolProgress.class, heard::add)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider).listen(ToolProgress.class, heard::add))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       agent.converse().tell("search for x");
       ParkToken token = approver.token();
       agent.resume(token, new ToolResolution.Decided(Decision.allow()));
@@ -674,23 +663,21 @@ class AgentDoorsTest {
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
       ParkingApprover approverA = new ParkingApprover();
       ParkingApprover approverB = new ParkingApprover();
-      Harness harness = Nessy.harness(provider).build();
+      Harness harness = Nessy.harness(h -> h.provider(provider));
       Agent<String> agentA =
-          harness
-              .agent()
-              .name("agent-a")
-              .model("model-a")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approverA)
-              .build();
+          harness.agent(
+              a ->
+                  a.name("agent-a")
+                      .model("model-a")
+                      .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                      .approver(approverA));
       Agent<String> agentB =
-          harness
-              .agent()
-              .name("agent-b")
-              .model("model-b")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approverB)
-              .build();
+          harness.agent(
+              a ->
+                  a.name("agent-b")
+                      .model("model-b")
+                      .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                      .approver(approverB));
       agentA.converse().tell("search for a");
       agentB.converse().tell("search for b");
       ParkToken tokenA = approverA.token();
@@ -743,16 +730,15 @@ class AgentDoorsTest {
                   new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       store = ConversationStore.inMemory();
-      harness = Nessy.harness(provider).store(store).build();
+      harness = Nessy.harness(h -> h.provider(provider).store(store));
       agentA =
-          harness
-              .agent()
-              .name("agent-a")
-              .model("model-a")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
-      agentB = harness.agent().name("agent-b").model("model-b").build();
+          harness.agent(
+              a ->
+                  a.name("agent-a")
+                      .model("model-a")
+                      .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                      .approver(approver));
+      agentB = harness.agent(a -> a.name("agent-b").model("model-b"));
       conversationA = agentA.converse().tell("search for a").state().id();
       tokenA = approver.token();
       before = store.load(conversationA).orElseThrow();

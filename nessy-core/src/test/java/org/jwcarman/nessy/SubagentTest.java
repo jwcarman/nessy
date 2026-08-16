@@ -170,21 +170,21 @@ class SubagentTest {
               .turn(new ModelEvent.TextChunk("writer wraps up"), endTurn());
       ParkingApprover approver = new ParkingApprover();
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .approver(approver)
-              .subagent(
-                  sub ->
-                      sub.name("researcher")
-                          .description("delegates research")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
                           .model("m")
-                          .tools(
-                              ToolGrant.grant(
-                                  new AskQuestionTool(), UsagePolicy.requireApproval())))
-              .build();
+                          .approver(approver)
+                          .subagent(
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("delegates research")
+                                      .model("m")
+                                      .tools(
+                                          ToolGrant.grant(
+                                              new AskQuestionTool(),
+                                              UsagePolicy.requireApproval()))));
       writer.converse().tell("investigate");
       ParkToken token = approver.token();
 
@@ -203,21 +203,21 @@ class SubagentTest {
               .turn(new ModelEvent.TextChunk("writer wraps up"), endTurn());
       ParkingApprover approver = new ParkingApprover();
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .approver(approver)
-              .subagent(
-                  sub ->
-                      sub.name("researcher")
-                          .description("delegates research")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
                           .model("m")
-                          .tools(
-                              ToolGrant.grant(
-                                  new AskQuestionTool(), UsagePolicy.requireApproval())))
-              .build();
+                          .approver(approver)
+                          .subagent(
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("delegates research")
+                                      .model("m")
+                                      .tools(
+                                          ToolGrant.grant(
+                                              new AskQuestionTool(),
+                                              UsagePolicy.requireApproval()))));
       writer.converse().tell("investigate");
       ParkToken token = approver.token();
 
@@ -251,21 +251,21 @@ class SubagentTest {
               .turn(new ModelEvent.TextChunk("writer wraps up"), endTurn());
       ParkingApprover approver = new ParkingApprover();
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .approver(approver)
-              .subagent(
-                  sub ->
-                      sub.name("researcher")
-                          .description("delegates research")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
                           .model("m")
-                          .tools(
-                              ToolGrant.grant(
-                                  new AskQuestionTool(), UsagePolicy.requireApproval())))
-              .build();
+                          .approver(approver)
+                          .subagent(
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("delegates research")
+                                      .model("m")
+                                      .tools(
+                                          ToolGrant.grant(
+                                              new AskQuestionTool(),
+                                              UsagePolicy.requireApproval()))));
       writer.converse().tell("investigate");
       ParkToken token = approver.token();
 
@@ -283,21 +283,21 @@ class SubagentTest {
               .turn(new ModelEvent.ToolUseEmitted(askQuestionCall()), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .approver(approver)
-              .subagent(
-                  sub ->
-                      sub.name("researcher")
-                          .description("delegates research")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
                           .model("m")
-                          .tools(
-                              ToolGrant.grant(
-                                  new AskQuestionTool(), UsagePolicy.requireApproval())))
-              .build();
+                          .approver(approver)
+                          .subagent(
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("delegates research")
+                                      .model("m")
+                                      .tools(
+                                          ToolGrant.grant(
+                                              new AskQuestionTool(),
+                                              UsagePolicy.requireApproval()))));
       RunOutcome outcome = writer.converse().tell("investigate");
       ConversationId parentId = outcome.state().id();
       ConversationId childId = new ConversationId(parentId.value() + "/d1");
@@ -314,7 +314,8 @@ class SubagentTest {
     @Test
     void agent_subagent_of_an_unknown_name_throws_naming_parent_and_child() {
       Agent<String> writer =
-          Nessy.harness(new ScriptedProvider()).build().agent().name("writer").model("m").build();
+          Nessy.harness(h -> h.provider(new ScriptedProvider()))
+              .agent(a -> a.name("writer").model("m"));
 
       assertThatThrownBy(() -> writer.subagent("nope"))
           .isInstanceOf(IllegalArgumentException.class)
@@ -325,18 +326,21 @@ class SubagentTest {
     @Test
     void a_grandchild_is_not_reachable_directly_from_the_top_level_agent() {
       Agent<String> a =
-          Nessy.harness(new ScriptedProvider())
-              .build()
-              .agent()
-              .name("a")
-              .model("m")
-              .subagent(
-                  b ->
-                      b.name("b")
-                          .description("delegates to b")
+          Nessy.harness(h -> h.provider(new ScriptedProvider()))
+              .agent(
+                  top ->
+                      top.name("a")
                           .model("m")
-                          .subagent(c -> c.name("c").description("delegates to c").model("m")))
-              .build();
+                          .subagent(
+                              b ->
+                                  b.name("b")
+                                      .description("delegates to b")
+                                      .model("m")
+                                      .subagent(
+                                          c ->
+                                              c.name("c")
+                                                  .description("delegates to c")
+                                                  .model("m"))));
 
       assertThatThrownBy(() -> a.subagent("c"))
           .isInstanceOf(IllegalArgumentException.class)
@@ -351,18 +355,21 @@ class SubagentTest {
     @Test
     void a_subagent_handle_reaches_its_own_child_by_name() {
       Agent<String> a =
-          Nessy.harness(new ScriptedProvider())
-              .build()
-              .agent()
-              .name("a")
-              .model("m")
-              .subagent(
-                  b ->
-                      b.name("b")
-                          .description("delegates to b")
+          Nessy.harness(h -> h.provider(new ScriptedProvider()))
+              .agent(
+                  top ->
+                      top.name("a")
                           .model("m")
-                          .subagent(c -> c.name("c").description("delegates to c").model("m")))
-              .build();
+                          .subagent(
+                              b ->
+                                  b.name("b")
+                                      .description("delegates to b")
+                                      .model("m")
+                                      .subagent(
+                                          c ->
+                                              c.name("c")
+                                                  .description("delegates to c")
+                                                  .model("m"))));
 
       Subagent b = a.subagent("b");
       Subagent c = b.subagent("c");

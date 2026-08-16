@@ -56,12 +56,8 @@ class RecoveryShapeTest {
     FailFirstThenDelegate provider =
         new FailFirstThenDelegate(new RuntimeException("403: no credits"));
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("recovery-shape")
-            .model("claude-sonnet")
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(a -> a.name("recovery-shape").model("claude-sonnet"));
     Conversation<String> conversation = agent.converse();
 
     RunOutcome first = conversation.tell("hello");

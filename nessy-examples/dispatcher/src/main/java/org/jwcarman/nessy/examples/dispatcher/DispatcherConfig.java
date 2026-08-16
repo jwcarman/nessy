@@ -46,15 +46,14 @@ public class DispatcherConfig {
 
   @Bean
   Agent<String> agent(Harness harness, Memory memory) {
-    return harness
-        .agent()
-        .name("dispatcher")
-        .model("claude-sonnet-4-5")
-        .systemPrompt(SYSTEM_PROMPT)
-        .memory(memory)
-        .tools(ToolGrant.grant(new RequestFieldCrewTool(), UsagePolicy.allow()))
-        .onToolProgressAsync(DispatcherConfig::logProgress)
-        .build();
+    return harness.agent(
+        a ->
+            a.name("dispatcher")
+                .model("claude-sonnet-4-5")
+                .systemPrompt(SYSTEM_PROMPT)
+                .memory(memory)
+                .tools(ToolGrant.grant(new RequestFieldCrewTool(), UsagePolicy.allow()))
+                .onToolProgressAsync(DispatcherConfig::logProgress));
   }
 
   private static void logProgress(ToolProgress progress) {

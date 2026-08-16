@@ -67,8 +67,8 @@ class ConsoleReplTest {
     for (String reply : replies) {
       builder.text(reply).endTurn();
     }
-    Harness harness = Nessy.harness(builder.build()).build();
-    return harness.agent().name("repl-test").model("fake-model").systemPrompt("test").build();
+    Harness harness = Nessy.harness(h -> h.provider(builder.build()));
+    return harness.agent(a -> a.name("repl-test").model("fake-model").systemPrompt("test"));
   }
 
   @Nested
@@ -233,19 +233,18 @@ class ConsoleReplTest {
       // spinner's own erase-on-first-event handoff never fires; only tell()'s own finally block
       // can save it from spinning forever.
       Harness harness =
-          Nessy.harness(ScriptedModelProvider.builder().text("unreached").endTurn().build())
-              .build();
+          Nessy.harness(
+              h -> h.provider(ScriptedModelProvider.builder().text("unreached").endTurn().build()));
       Agent<String> agent =
-          harness
-              .agent()
-              .name("repl-test")
-              .model("fake-model")
-              .systemPrompt("test")
-              .renderer(
-                  input -> {
-                    throw new IllegalStateException("boom");
-                  })
-              .build();
+          harness.agent(
+              a ->
+                  a.name("repl-test")
+                      .model("fake-model")
+                      .systemPrompt("test")
+                      .renderer(
+                          input -> {
+                            throw new IllegalStateException("boom");
+                          }));
       BufferedReader reader = new BufferedReader(new StringReader("hi\nexit\n"));
       StringWriter writer = new StringWriter();
 
@@ -337,7 +336,7 @@ class ConsoleReplTest {
               .text("pong received")
               .endTurn()
               .build();
-      Harness harness = Nessy.harness(provider).build();
+      Harness harness = Nessy.harness(h -> h.provider(provider));
       StringWriter writer = new StringWriter();
       // One BufferedReader, one combined script: "hi" is the REPL's own read, "y" is the
       // approver's read mid-turn, "exit" is the REPL's next read afterward — proving a single
@@ -347,14 +346,13 @@ class ConsoleReplTest {
       BufferedReader sharedReader = new BufferedReader(new StringReader("hi\ny\nexit\n"));
       ConsoleApprover approver = new ConsoleApprover(sharedReader, writer);
       Agent<String> agent =
-          harness
-              .agent()
-              .name("repl-test")
-              .model("fake-model")
-              .systemPrompt("test")
-              .tools(ToolGrant.grant(new PingTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          harness.agent(
+              a ->
+                  a.name("repl-test")
+                      .model("fake-model")
+                      .systemPrompt("test")
+                      .tools(ToolGrant.grant(new PingTool(), UsagePolicy.requireApproval()))
+                      .approver(approver));
 
       new ConsoleRepl(
               agent,

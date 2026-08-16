@@ -19,7 +19,7 @@ import java.util.Objects;
 
 /**
  * One typed-door subagent declaration (design of record 2026-08-16 §0.5): {@code inputType} pairs
- * with {@code config} so the two travel together through {@link AgentBuilder} and {@link
+ * with {@code config} so the two travel together through {@link AgentConfig} and {@link
  * SubagentConfig}'s own declaration lists without ever needing an unchecked cast to recover {@code
  * T} — a private generic helper method captures it straight off this record's own type parameter
  * instead (the standard wildcard-capture idiom), which is why this exists as its own type rather

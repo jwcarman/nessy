@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.event.ToolProgress;
  * TurnObserverBuilder}'s per-variant hooks so the whole codebase declares interest the same way:
  *
  * <pre>{@code
- * Nessy.harness(provider)
+ * Nessy.harness(h -> h
+ *     .provider(provider)
  *     .onModelResponded(fact -> billing.record(fact.usage()))
- *     .onToolFinishedAsync(fact -> audit.log(fact.call().name()))
- *     .build();
+ *     .onToolFinishedAsync(fact -> audit.log(fact.call().name())));
  * }</pre>
  *
  * <p>The async sugar uses the log-and-continue error default; an async listener that needs its own

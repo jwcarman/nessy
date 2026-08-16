@@ -70,7 +70,7 @@ public final class Scout {
       System.exit(1);
       return;
     }
-    Harness harness = Nessy.harness(selection.provider()).build();
+    Harness harness = Nessy.harness(h -> h.provider(selection.provider()));
     ObjectMapper mapper = new ObjectMapper();
 
     try (McpToolbox toolbox =
@@ -114,19 +114,22 @@ public final class Scout {
     PlanStore planStore = PlanStore.inMemory();
     Transcript transcript = Transcript.inMemory();
     Agent<String> agent =
-        harness
-            .agent()
-            .name("scout")
-            .model(model)
-            .systemPrompt(SYSTEM_PROMPT)
-            .tools(
-                ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-                ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-                ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()),
-                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
-            .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
-            .approver(approver)
-            .build();
+        harness.agent(
+            a ->
+                a.name("scout")
+                    .model(model)
+                    .systemPrompt(SYSTEM_PROMPT)
+                    .tools(
+                        ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
+                        ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
+                        ToolGrant.grant(
+                            toolbox.tool("ask_question"), UsagePolicy.requireApproval()),
+                        ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+                    .memory(
+                        Memory.pipeline(transcript)
+                            .transform(PlanTools.transformer(planStore))
+                            .build())
+                    .approver(approver));
     return new Built(agent, planStore);
   }
 

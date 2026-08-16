@@ -164,7 +164,8 @@ class CallbackRouterTest {
   }
 
   private Agent<String> agentNamed(String name) {
-    return Nessy.harness(new FakeProvider("hi")).build().agent().name(name).model("m").build();
+    return Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+        .agent(a -> a.name(name).model("m"));
   }
 
   private final CallbackRouter router = new CallbackRouter();
@@ -222,16 +223,15 @@ class CallbackRouterTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(call), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
-      Harness harness = Nessy.harness(provider).build();
+      Harness harness = Nessy.harness(h -> h.provider(provider));
       Agent<String> agentA =
-          harness
-              .agent()
-              .name("agent-a")
-              .model("model-a")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
-      Agent<String> agentB = harness.agent().name("agent-b").model("model-b").build();
+          harness.agent(
+              a ->
+                  a.name("agent-a")
+                      .model("model-a")
+                      .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                      .approver(approver));
+      Agent<String> agentB = harness.agent(a -> a.name("agent-b").model("model-b"));
       router.register(agentA);
       router.register(agentB);
       agentA.converse().tell("search for a");
