@@ -11,31 +11,18 @@ Each factor below carries a status: ✅ supported (shipped, tested), 🟡
 partial (shipped with a named gap), ⛔ not yet (honest absence). Every 🟡
 or ⛔ names the gap in the line right after the marker.
 
-| Factor | Status |
-|---|---|
-| 1. Natural language to tool calls | ✅ |
-| 2. Own your prompts | ✅ |
-| 3. Own your context window | ✅ |
-| 4. Tools are just structured outputs | ✅ |
-| 5. Unify execution state and business state | ✅ |
-| 6. Launch/pause/resume with simple APIs | ✅ |
-| 7. Contact humans with tool calls | ✅ |
-| 8. Own your control flow | ✅ |
-| 9. Compact errors into context window | ✅ |
-| 10. Small, focused agents | ✅ |
-| 11. Trigger from anywhere, meet users where they are | 🟡 |
-| 12. Make your agent a stateless reducer | ✅ |
+## 1. Natural language to tool calls
 
-## 1. Natural language to tool calls · ✅
-
+✅ **Supported.**
 The model doesn't choose freeform side effects — it emits a structured call
 against a schema, and something else decides whether it runs. `Tool<T>` is
 that structured half: a name, a description, an `inputType()` a JSON Schema
 is derived from, and an `execute` that only ever sees a typed record. See
 [Tools and Grants](tools-and-grants.md).
 
-## 2. Own your prompts · ✅
+## 2. Own your prompts
 
+✅ **Supported.**
 The system prompt is an application-owned string, not a framework template —
 `AgentConfig` takes it as-is and does nothing to it. Where this factor gets
 interesting is the injected context blocks: the plan checklist ([Planning](planning.md))
@@ -48,8 +35,9 @@ exact rendering, and pinned — `PlanTools`' own `renderChecklist` is the one
 place that byte sequence is produced, not a template scattered across the
 loop. See [Planning](planning.md).
 
-## 3. Own your context window · ✅
+## 3. Own your context window
 
+✅ **Supported.**
 `Memory` owns what a model call actually sees, and it's a pipeline an
 application composes explicitly: a hydrator that bootstraps the initial
 `Context` from durable history, then an ordered list of `ContextTransformer`
@@ -57,15 +45,17 @@ stages an application chooses and orders itself — clamp, redact, elide,
 append. Nothing about window shape happens implicitly inside the loop. See
 [Memory and the Pipeline](memory-and-the-pipeline.md).
 
-## 4. Tools are just structured outputs · ✅
+## 4. Tools are just structured outputs
 
+✅ **Supported.**
 A tool's input is a plain record (`Tool<Add>` over `record Add(int left, int
 right)`), and the model's call is that record, parsed and validated against
 the derived schema before `execute` ever runs — the loop never hands a tool a
 bag of untyped JSON. See [Tools and Grants](tools-and-grants.md).
 
-## 5. Unify execution state and business state · ✅
+## 5. Unify execution state and business state
 
+✅ **Supported.**
 `ConversationState` is the one record both live in: `fold` advances it on
 every fact, and it's the same state a durable store persists, resumes, and
 hands back after a restart — there's no separate "business" record the
@@ -75,8 +65,9 @@ order id itself, so every fact about one order folds onto the same state
 regardless of which process handles it. See [The Durable Loop](durable-loop.md)
 and [Storage](storage.md).
 
-## 6. Launch/pause/resume with simple APIs · ✅
+## 6. Launch/pause/resume with simple APIs
 
+✅ **Supported.**
 A tool or approver that can't finish in-process returns `Awaited.parked(token)`
 instead of a result; the loop persists and moves on. `agent.resume(token,
 resolution)` answers it later, from any process — the gap can be 200
@@ -84,8 +75,9 @@ milliseconds or two days, and nothing about the API changes either way. See
 [Parks and Callbacks](parks-and-callbacks.md) and
 [Durable Persistence](../guides/durable-persistence.md).
 
-## 7. Contact humans with tool calls · ✅
+## 7. Contact humans with tool calls
 
+✅ **Supported.**
 Human approval is a tool call the model already knows how to make, gated by
 `UsagePolicy.requireApproval()` and answered through the same park-and-resume
 door as any other long-running tool: `Approver.parkAll()` is the durable-HITL
@@ -95,8 +87,9 @@ survives a kill mid-approval on exactly this contract. See
 [Parks and Callbacks](parks-and-callbacks.md) and
 [Tools and Grants](tools-and-grants.md).
 
-## 8. Own your control flow · ✅
+## 8. Own your control flow
 
+✅ **Supported.**
 There's no hidden agent loop making its own decisions about when to stop
 retrying, when to hand off, or when to ask a human. The loop itself is an
 explicit fold an application drives by calling `tell` or `resume` —
@@ -107,8 +100,9 @@ max-model-calls wallet guard, in `nessy-core` today) bounds a runaway loop
 the same way — no dedicated site page yet, so check its Javadoc directly.
 See [The Durable Loop](durable-loop.md) and [Triggers](../guides/triggers.md).
 
-## 9. Compact errors into context window · ✅
+## 9. Compact errors into context window
 
+✅ **Supported.**
 A failed tool call doesn't throw out of the loop — it returns a `ToolResult`
 the model reads in-band, the same channel a successful result uses, so the
 model can see what went wrong and try again. The plan tool's own input
@@ -116,8 +110,9 @@ validation takes exactly this path: a blank task title surfaces as a failed
 result, not an exception. See [Tools and Grants](tools-and-grants.md) and
 [Planning](planning.md).
 
-## 10. Small, focused agents · ✅
+## 10. Small, focused agents
 
+✅ **Supported.**
 An agent is a cheap identity — a name, a model, a system prompt, a set of
 grants — not a heavyweight runtime object; a `Harness` holds the shared
 infrastructure and any number of narrowly-scoped agents run inside it. The
@@ -141,8 +136,9 @@ declare `.subagent(...)`, nesting a grandchild the same way; a name
 collision anywhere in the tree is rejected at build time. See
 [The Durable Loop](durable-loop.md) and [Subagents](subagents.md).
 
-## 11. Trigger from anywhere, meet users where they are · 🟡 redelivered tellings aren't deduplicated
+## 11. Trigger from anywhere, meet users where they are
 
+🟡 **Partial** — redelivered tellings aren't deduplicated.
 `agent.converse().tell(...)` looks the same whether the caller is a person at
 a keyboard, a browser request, a cron firing, or a message landing on a
 queue — the durable inbox absorbs a telling the same way regardless of where
@@ -157,8 +153,9 @@ Dedup, when a trigger needs it, is the caller's job — an idempotency key in
 the payload, checked before calling `tell`. See
 [Triggers](../guides/triggers.md) and [Examples](../examples/index.md).
 
-## 12. Make your agent a stateless reducer · ✅
+## 12. Make your agent a stateless reducer
 
+✅ **Supported.**
 `ConversationState#fold(ConversationEvent)` is the reducer, and it's held to
 the letter of this factor: pure, synchronous, total, no I/O, `f(state,
 event) -> (state, effects)`. `EffectExecutors` performs the effects the fold
