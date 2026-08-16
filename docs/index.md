@@ -74,8 +74,9 @@ before letting a resume through. `Memory` here is the builder's default —
 an in-memory [pipeline](concepts/memory-and-the-pipeline.md) over the
 transcript — swapped for a durable one only when you ask.
 
-See [Providers](guides/providers.md) for OpenAI and the
-switch-by-environment-variable helper.
+See [Providers](guides/providers.md) for OpenAI, Gemini, the
+switch-by-environment-variable helper, and the OpenAI-compatible services
+(Grok, OpenRouter, Ollama, LM Studio) `OpenAiModelProvider` also reaches.
 
 ## Where to go next
 

@@ -125,7 +125,7 @@ actually needs:
     <artifactId>nessy-spring-boot-starter</artifactId>
   </dependency>
 
-  <!-- A model provider — pick one (or both). -->
+  <!-- A model provider — pick one (or more). -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-model-anthropic</artifactId>
@@ -134,8 +134,12 @@ actually needs:
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-model-openai</artifactId>
   </dependency>
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-model-gemini</artifactId>
+  </dependency>
 
-  <!-- Optional: both providers non-optionally, switched by which API key is set. -->
+  <!-- Optional: all three providers non-optionally, switched by which API key is set. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-model-env</artifactId>
