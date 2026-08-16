@@ -554,4 +554,129 @@ class ConsoleReplTest {
       assertThatThrownBy(() -> builder.plan(second)).isInstanceOf(IllegalStateException.class);
     }
   }
+
+  @Nested
+  class The_farewell_line {
+
+    @Test
+    void prints_immediately_after_an_exit_word_before_returning() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying();
+      BufferedReader reader = new BufferedReader(new StringReader("quit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              null,
+              "goodbye.")
+          .run();
+
+      assertThat(writer).hasToString("you> goodbye.\n");
+    }
+
+    @Test
+    void prints_after_end_of_input_too() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying();
+      // An empty source: readLine() returns null on the very first read, the same shape as a
+      // closed pipe or Ctrl-D at a real terminal.
+      BufferedReader reader = new BufferedReader(new StringReader(""));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              null,
+              "goodbye.")
+          .run();
+
+      assertThat(writer).hasToString("you> goodbye.\n");
+    }
+
+    @Test
+    void is_dim_styled_when_styling_is_enabled() {
+      Ansi.overrideEnabled(true);
+      Agent<String> agent = agent_saying();
+      BufferedReader reader = new BufferedReader(new StringReader("exit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              null,
+              "goodbye.")
+          .run();
+
+      assertThat(writer).hasToString("you> " + Ansi.dim("goodbye.") + "\n");
+    }
+
+    @Test
+    void plain_text_when_styling_is_disabled() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying();
+      BufferedReader reader = new BufferedReader(new StringReader("exit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(
+              agent,
+              "",
+              "you> ",
+              Set.of("exit", "quit"),
+              null,
+              new ConsoleRepl.Io(reader, writer),
+              null,
+              "goodbye.")
+          .run();
+
+      assertThat(writer).hasToString("you> goodbye.\n");
+    }
+
+    @Test
+    void an_unconfigured_farewell_leaves_old_behavior_byte_identical() {
+      Ansi.overrideEnabled(false);
+      Agent<String> agent = agent_saying();
+      BufferedReader reader = new BufferedReader(new StringReader("exit\n"));
+      StringWriter writer = new StringWriter();
+
+      new ConsoleRepl(
+              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+          .run();
+
+      assertThat(writer).hasToString("you> ");
+    }
+  }
+
+  @Nested
+  class The_farewell_builder_verb {
+
+    @Test
+    void rejects_a_null_farewell() {
+      Agent<String> agent = agent_saying();
+      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+
+      assertThatThrownBy(() -> builder.farewell(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void rejects_a_second_call() {
+      Agent<String> agent = agent_saying();
+      ConsoleRepl.Builder builder = ConsoleRepl.of(agent).farewell("goodbye.");
+
+      assertThatThrownBy(() -> builder.farewell("bye again."))
+          .isInstanceOf(IllegalStateException.class);
+    }
+  }
 }

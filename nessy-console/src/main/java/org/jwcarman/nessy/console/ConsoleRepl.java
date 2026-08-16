@@ -60,6 +60,7 @@ public final class ConsoleRepl {
   private final BufferedReader reader;
   private final Writer writer;
   private final PlanStore planStore;
+  private final String farewell;
   private Plan lastRenderedPlan;
 
   /** The console seam as one value: where lines come from and where output goes (S107). */
@@ -77,7 +78,7 @@ public final class ConsoleRepl {
       Set<String> exitWords,
       TurnObserver renderer,
       Io io) {
-    this(agent, banner, prompt, exitWords, renderer, io, null);
+    this(agent, banner, prompt, exitWords, renderer, io, null, null);
   }
 
   ConsoleRepl(
@@ -88,6 +89,18 @@ public final class ConsoleRepl {
       TurnObserver renderer,
       Io io,
       PlanStore planStore) {
+    this(agent, banner, prompt, exitWords, renderer, io, planStore, null);
+  }
+
+  ConsoleRepl(
+      Agent<String> agent,
+      String banner,
+      String prompt,
+      Set<String> exitWords,
+      TurnObserver renderer,
+      Io io,
+      PlanStore planStore,
+      String farewell) {
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(io, "io must not be null");
     this.writer = io.writer();
@@ -98,15 +111,21 @@ public final class ConsoleRepl {
     this.renderer = renderer != null ? renderer : ConsoleRenderer.observer(this.writer);
     this.reader = io.reader();
     this.planStore = planStore;
+    this.farewell = farewell;
   }
 
-  /** Prints the banner (if any), then loops: prompt, read, exit or tell, until end of input. */
+  /**
+   * Prints the banner (if any), then loops: prompt, read, exit or tell, until end of input — an
+   * exit word or {@code null} (EOF) both print the farewell (if any, see {@link Builder#farewell})
+   * immediately, before returning.
+   */
   public void run() {
     printBanner();
     while (true) {
       write(prompt);
       String line = readLine();
       if (line == null || exitWords.contains(line.trim())) {
+        printFarewell();
         return;
       }
       if (line.isBlank()) {
@@ -119,6 +138,12 @@ public final class ConsoleRepl {
   private void printBanner() {
     if (!banner.isBlank()) {
       write(Ansi.bold(banner) + "\n");
+    }
+  }
+
+  private void printFarewell() {
+    if (farewell != null) {
+      write(Ansi.dim(farewell) + "\n");
     }
   }
 
@@ -219,6 +244,7 @@ public final class ConsoleRepl {
     private Set<String> exitWords = new LinkedHashSet<>(DEFAULT_EXIT_WORDS);
     private TurnObserver renderer;
     private PlanStore planStore;
+    private String farewell;
 
     private Builder(Agent<String> agent) {
       this.agent = Objects.requireNonNull(agent, "agent must not be null");
@@ -277,6 +303,22 @@ public final class ConsoleRepl {
     }
 
     /**
+     * The line printed the instant the loop ends — an exit word or end of input — before {@link
+     * #run()} returns: dim-styled when styling is enabled, plain text otherwise (see {@link
+     * Ansi#dim}). Optional; unset means the loop ends silently, exactly the old behavior.
+     *
+     * @throws IllegalStateException if called a second time
+     */
+    public Builder farewell(String farewell) {
+      Objects.requireNonNull(farewell, "farewell must not be null");
+      if (this.farewell != null) {
+        throw new IllegalStateException("farewell(String) was already called");
+      }
+      this.farewell = farewell;
+      return this;
+    }
+
+    /**
      * The real-console entry point: a thin adapter over {@link System#in}/{@link System#out}. The
      * reader is {@link ConsoleIo#stdin()}, not a fresh wrap of {@link System#in} — shared with
      * {@link ConsoleApprover}'s own default constructor, so a mid-turn approval prompt reads from
@@ -290,7 +332,8 @@ public final class ConsoleRepl {
               exitWords,
               renderer,
               new Io(ConsoleIo.stdin(), ConsoleIo.stdout()),
-              planStore)
+              planStore,
+              farewell)
           .run();
     }
   }
