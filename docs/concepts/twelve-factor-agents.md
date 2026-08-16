@@ -23,7 +23,7 @@ or ⛔ names the gap in the line right after the marker.
 | 8. Own your control flow | ✅ |
 | 9. Compact errors into context window | ✅ |
 | 10. Small, focused agents | ✅ |
-| 11. Trigger from anywhere, meet users where they are | ✅ |
+| 11. Trigger from anywhere, meet users where they are | 🟡 |
 | 12. Make your agent a stateless reducer | ✅ |
 
 ## 1. Natural language to tool calls · ✅
@@ -46,7 +46,7 @@ difference is that it's opt-in (nothing appears unless an agent grants
 `PlanTools.updatePlan` and wires the transformer), documented down to its
 exact rendering, and pinned — `PlanTools`' own `renderChecklist` is the one
 place that byte sequence is produced, not a template scattered across the
-loop.
+loop. See [Planning](planning.md).
 
 ## 3. Own your context window · ✅
 
@@ -81,7 +81,8 @@ A tool or approver that can't finish in-process returns `Awaited.parked(token)`
 instead of a result; the loop persists and moves on. `agent.resume(token,
 resolution)` answers it later, from any process — the gap can be 200
 milliseconds or two days, and nothing about the API changes either way. See
-[Parks and Callbacks](parks-and-callbacks.md).
+[Parks and Callbacks](parks-and-callbacks.md) and
+[Durable Persistence](../guides/durable-persistence.md).
 
 ## 7. Contact humans with tool calls · ✅
 
@@ -140,14 +141,21 @@ declare `.subagent(...)`, nesting a grandchild the same way; a name
 collision anywhere in the tree is rejected at build time. See
 [The Durable Loop](durable-loop.md) and [Subagents](subagents.md).
 
-## 11. Trigger from anywhere, meet users where they are · ✅
+## 11. Trigger from anywhere, meet users where they are · 🟡 redelivered tellings aren't deduplicated
 
 `agent.converse().tell(...)` looks the same whether the caller is a person at
 a keyboard, a browser request, a cron firing, or a message landing on a
 queue — the durable inbox absorbs a telling the same way regardless of where
 it came from. The example family demonstrates five trigger shapes end to end
-on this one entry point. See [Triggers](../guides/triggers.md) and
-[Examples](../examples/index.md).
+on this one entry point. The gap is real, not a rounding error: at-least-once
+transports (webhooks, queues) retry, and `tell` has no idempotency key of its
+own — a redelivered *resolution* drains quietly against a call that already
+settled, but a redelivered *telling* has no such guard and is re-told as a
+new event. `order-desk`'s own docs say so plainly: "the desk genuinely cannot
+distinguish a duplicate delivery from a second, identical order update."
+Dedup, when a trigger needs it, is the caller's job — an idempotency key in
+the payload, checked before calling `tell`. See
+[Triggers](../guides/triggers.md) and [Examples](../examples/index.md).
 
 ## 12. Make your agent a stateless reducer · ✅
 
@@ -158,7 +166,8 @@ describes and feeds results back in as new facts — the fold itself never
 retains anything between calls, and at-least-once delivery is designed for
 rather than fought: replayed facts fold safely, redundant appends resolve to
 the existing entry, redelivered resolutions drain quietly against a call
-that already settled. See [The Durable Loop](durable-loop.md).
+that already settled. See [The Durable Loop](durable-loop.md) and
+[Testing](../guides/testing.md).
 
 ## Where next
 
