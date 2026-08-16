@@ -63,7 +63,7 @@ public final class Agent<I> {
   private final ListenerRegistry events;
   private final ConversationStore store;
   private final Parks parks;
-  private final Map<String, Agent<String>> subagents;
+  private final Map<String, Agent<?>> subagents;
   private final Memory memory;
   private final InputRenderer<I> renderer;
 
@@ -74,8 +74,14 @@ public final class Agent<I> {
    * Grandchildren are not carried here: {@link Subagent#subagent(String)} reaches them by asking
    * the child's own {@link Agent#subagent(String)} in turn, so each agent only ever needs to
    * remember its own direct children.
+   *
+   * <p>{@code Agent<?>}, not {@code Agent<String>}: a typed-door child (design of record 2026-08-16
+   * §0.5) is an {@code Agent<T>} for whatever record its own delegation tool carries, not
+   * necessarily {@code String}. Every door {@link Subagent} delegates to —
+   * approve/deny/resume/snapshot/subagent — is independent of the child's own vocabulary, so the
+   * wildcard costs nothing at the handle and buys typed subagents their own agents.
    */
-  record Coordination(Parks parks, Map<String, Agent<String>> subagents) {
+  record Coordination(Parks parks, Map<String, Agent<?>> subagents) {
 
     Coordination {
       Objects.requireNonNull(parks, "parks must not be null");
@@ -114,14 +120,16 @@ public final class Agent<I> {
    * snapshot} against the child, and further traversal via {@link Subagent#subagent(String)} for a
    * grandchild. Only this agent's own directly-declared children are reachable here; a deeper
    * descendant is reached by chaining, one door at a time, exactly matching the lexical nesting
-   * {@link AgentBuilder#subagent(java.util.function.Consumer)} and {@link
-   * SubagentConfig#subagent(java.util.function.Consumer)} built the tree with.
+   * {@link AgentBuilder#subagent(SubagentCustomizer)} and {@link
+   * SubagentConfig#subagent(SubagentCustomizer)} built the tree with — either the degenerate {@code
+   * String} door or the typed door (design of record 2026-08-16 §0.5); the handle is the same
+   * either way.
    *
    * @throws IllegalArgumentException if this agent has no subagent named {@code name}
    */
   public Subagent subagent(String name) {
     Objects.requireNonNull(name, "name must not be null");
-    Agent<String> child = subagents.get(name);
+    Agent<?> child = subagents.get(name);
     if (child == null) {
       throw new IllegalArgumentException(
           "agent '" + this.name + "' has no subagent named '" + name + "'");

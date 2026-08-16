@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -34,8 +35,12 @@ import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
+import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.InputRenderer;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -50,10 +55,10 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@code AgentBuilder.subagent(Consumer)} / {@code SubagentConfig} — the build-time construction
- * surface (design of record 2026-08-16 §0-§3): required fields, the delegation tool grant it
- * produces, the harness's own internal name registry rejecting a collision anywhere in the whole
- * delegation tree, and the lexical A→B→C nesting settling bottom-up.
+ * {@code AgentBuilder.subagent(SubagentCustomizer)} / {@code SubagentConfig} — the build-time
+ * construction surface (design of record 2026-08-16 §0-§3): required fields, the delegation tool
+ * grant it produces, the harness's own internal name registry rejecting a collision anywhere in the
+ * whole delegation tree, and the lexical A→B→C nesting settling bottom-up.
  */
 class SubagentConfigTest {
 
@@ -191,6 +196,42 @@ class SubagentConfigTest {
                       .build())
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("description");
+    }
+
+    /**
+     * N2: partial registration must not survive a failed build. Every declared config, at every
+     * depth, is validated before any of them is built or registered (see {@code
+     * AgentBuilder.buildSubagents}'s own up-front pass) — so a later sibling's bad config never
+     * leaves an earlier, perfectly valid sibling sitting in the harness's own internal registry
+     * when the throw reaches the caller. Proved here by reusing "helper" on a second, independent
+     * build attempt: if the first attempt had left "helper" registered, this would collide instead
+     * of succeeding.
+     */
+    @Test
+    void a_later_siblings_invalid_config_leaves_no_earlier_sibling_registered() {
+      Harness harness = Nessy.harness(NEVER_CALLED).build();
+
+      assertThatThrownBy(
+              () ->
+                  harness
+                      .agent()
+                      .name("writer")
+                      .model("m")
+                      .subagent(sub -> sub.name("helper").description("d").model("m"))
+                      .subagent(sub -> sub.name("broken").model("m")) // missing description
+                      .build())
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("description");
+
+      Agent<String> retry =
+          harness
+              .agent()
+              .name("writer-2")
+              .model("m")
+              .subagent(sub -> sub.name("helper").description("d").model("m"))
+              .build();
+
+      assertThat(retry.subagent("helper").name()).isEqualTo("helper");
     }
   }
 
@@ -433,6 +474,213 @@ class SubagentConfigTest {
       assertThat(resolved.state().status()).isEqualTo(ConversationStatus.COMPLETE);
       assertThat(a.snapshot(outcome.state().id()).status()).isEqualTo(ConversationStatus.COMPLETE);
       assertThat(provider.requests()).hasSize(6);
+    }
+  }
+
+  /** The typed door's own wire shape (design of record 2026-08-16 §0.5). */
+  record ResearchRequest(String question, int depth) {}
+
+  private static InputRenderer<ResearchRequest> researchRequestRenderer() {
+    return request ->
+        List.of(new TextBlock("Q: " + request.question() + " (depth " + request.depth() + ")"));
+  }
+
+  private static ObjectNode researchRequestArguments(String question, int depth) {
+    return JsonNodeFactory.instance.objectNode().put("question", question).put("depth", depth);
+  }
+
+  @Nested
+  class Typed_door {
+
+    /**
+     * The typed door's own tool schema IS {@code T}'s victools schema (design of record 2026-08-16
+     * §0.5) — not the degenerate {@code Delegation(String task)} wrapper the String door always
+     * carries. Pinned against {@code ResearchRequest(String question, int depth)}: an object schema
+     * with both components required.
+     */
+    @Test
+    void the_delegation_tools_schema_is_the_records_own_victools_schema() {
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.TextChunk("ok"), endTurn());
+      Nessy.harness(provider)
+          .build()
+          .agent()
+          .name("writer")
+          .model("m")
+          .subagent(
+              ResearchRequest.class,
+              sub ->
+                  sub.name("researcher")
+                      .description("Delegates a structured research request.")
+                      .model("m")
+                      .renderer(researchRequestRenderer()))
+          .build()
+          .converse()
+          .tell("go");
+
+      ToolSpec spec =
+          provider.requests().getFirst().tools().stream()
+              .filter(t -> t.name().equals("researcher"))
+              .findFirst()
+              .orElseThrow();
+      ObjectNode schema = spec.inputSchema();
+
+      assertThat(schema.get("type").asText()).isEqualTo("object");
+      assertThat(schema.get("properties").get("question").get("type").asText()).isEqualTo("string");
+      assertThat(schema.get("properties").get("depth").get("type").asText()).isEqualTo("integer");
+      List<String> required = new ArrayList<>();
+      schema.get("required").forEach(node -> required.add(node.asText()));
+      assertThat(required).containsExactlyInAnyOrder("question", "depth");
+    }
+
+    /**
+     * The pin the review asked for, unchanged on the String door: even after the typed door exists
+     * alongside it, {@code .subagent(sub -> ...)}'s own delegation tool schema is still exactly
+     * v1's degenerate {@code Delegation(String task)} wrapper — one required string property named
+     * {@code task}, nothing else.
+     */
+    @Test
+    void the_string_doors_delegation_tool_keeps_v1s_wire_shape_byte_for_byte() {
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.TextChunk("ok"), endTurn());
+      Nessy.harness(provider)
+          .build()
+          .agent()
+          .name("writer")
+          .model("m")
+          .subagent(sub -> sub.name("researcher").description("Delegates research.").model("m"))
+          .build()
+          .converse()
+          .tell("go");
+
+      ToolSpec spec =
+          provider.requests().getFirst().tools().stream()
+              .filter(t -> t.name().equals("researcher"))
+              .findFirst()
+              .orElseThrow();
+      ObjectNode schema = spec.inputSchema();
+
+      assertThat(schema.get("type").asText()).isEqualTo("object");
+      assertThat(schema.get("properties").get("task").get("type").asText()).isEqualTo("string");
+      List<String> propertyNames = new ArrayList<>();
+      schema.get("properties").fieldNames().forEachRemaining(propertyNames::add);
+      assertThat(propertyNames).containsExactly("task");
+      List<String> required = new ArrayList<>();
+      schema.get("required").forEach(node -> required.add(node.asText()));
+      assertThat(required).containsExactly("task");
+    }
+
+    /**
+     * The full typed round trip: the parent's model calls the delegation tool with JSON arguments
+     * that deserialize into {@code ResearchRequest} (the ordinary tool-invocation path, unchanged),
+     * and the child's own {@code InputRenderer<ResearchRequest>} — required on this door — is what
+     * turns that record into the content block the child actually sees, not any prose task string.
+     */
+    @Test
+    void the_typed_door_carries_a_deserialized_record_through_to_the_childs_own_renderer() {
+      ToolCall delegateCall =
+          new ToolCall("d1", "researcher", researchRequestArguments("what is the answer", 2));
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(new ModelEvent.ToolUseEmitted(delegateCall), endWithToolUse())
+              .turn(new ModelEvent.TextChunk("the researcher's answer"), endTurn())
+              .turn(new ModelEvent.TextChunk("writer wraps up"), endTurn());
+      Agent<String> writer =
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(
+                  ResearchRequest.class,
+                  sub ->
+                      sub.name("researcher")
+                          .description("Delegates a structured research request.")
+                          .model("m")
+                          .renderer(researchRequestRenderer()))
+              .build();
+
+      RunOutcome outcome = writer.converse().tell("investigate");
+      ConversationId parentId = outcome.state().id();
+      ConversationId childId = new ConversationId(parentId.value() + "/d1");
+
+      List<Message> childMessages =
+          writer.subagent("researcher").snapshot(childId).context().messages();
+
+      assertThat(childMessages).isNotEmpty();
+      assertThat(childMessages.getFirst().content())
+          .containsExactly(new TextBlock("Q: what is the answer (depth 2)"));
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+    }
+
+    /**
+     * No silent render-as-JSON default (design of record 2026-08-16 §0.5): a typed door with no
+     * {@code .renderer(...)} call fails loudly at the PARENT's own {@code build()}, naming the
+     * subagent whose renderer is missing.
+     */
+    @Test
+    void a_missing_renderer_on_the_typed_door_fails_loudly_at_build_naming_the_subagent() {
+      Harness harness = Nessy.harness(NEVER_CALLED).build();
+
+      assertThatThrownBy(
+              () ->
+                  harness
+                      .agent()
+                      .name("writer")
+                      .model("m")
+                      .subagent(
+                          ResearchRequest.class,
+                          sub ->
+                              sub.name("researcher").description("Delegates research.").model("m"))
+                      .build())
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("renderer")
+          .hasMessageContaining("researcher");
+    }
+
+    /**
+     * The typed door composes inside lexical nesting exactly like the String door (design of record
+     * 2026-08-16 §0.5 + §0 ruling 1): A (String) delegates to B (String), B delegates to a TYPED
+     * grandchild C, and the whole chain still settles bottom-up with no park needed here — proof
+     * the typed door is not a special case the nesting machinery has to know about.
+     */
+    @Test
+    void a_typed_subagent_nests_inside_a_string_delegation_tree() {
+      ToolCall delegateToB =
+          new ToolCall("d-ab", "b", JsonNodeFactory.instance.objectNode().put("task", "go"));
+      ToolCall delegateToC =
+          new ToolCall("d-bc", "c", researchRequestArguments("what is the answer", 1));
+      ScriptedProvider provider =
+          new ScriptedProvider()
+              .turn(new ModelEvent.ToolUseEmitted(delegateToB), endWithToolUse())
+              .turn(new ModelEvent.ToolUseEmitted(delegateToC), endWithToolUse())
+              .turn(new ModelEvent.TextChunk("C's own answer"), endTurn())
+              .turn(new ModelEvent.TextChunk("B relays C's answer"), endTurn())
+              .turn(new ModelEvent.TextChunk("A wraps everything up"), endTurn());
+      Agent<String> a =
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .name("a")
+              .model("m")
+              .subagent(
+                  b ->
+                      b.name("b")
+                          .description("delegates to b")
+                          .model("m")
+                          .subagent(
+                              ResearchRequest.class,
+                              c ->
+                                  c.name("c")
+                                      .description("delegates to c")
+                                      .model("m")
+                                      .renderer(researchRequestRenderer())))
+              .build();
+
+      RunOutcome outcome = a.converse().tell("start");
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(provider.requests()).hasSize(5);
     }
   }
 }

@@ -37,9 +37,9 @@ import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
  */
 public final class Subagent {
 
-  private final Agent<String> agent;
+  private final Agent<?> agent;
 
-  Subagent(Agent<String> agent) {
+  Subagent(Agent<?> agent) {
     this.agent = Objects.requireNonNull(agent, "agent must not be null");
   }
 

@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -37,6 +38,7 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -63,14 +65,20 @@ class SubagentTest {
   private static final class ScriptedProvider implements ModelProvider {
 
     private final Deque<List<ModelEvent>> turns = new ArrayDeque<>();
+    private final List<ModelRequest> requests = new ArrayList<>();
 
     ScriptedProvider turn(ModelEvent... events) {
       turns.addLast(List.of(events));
       return this;
     }
 
+    List<ModelRequest> requests() {
+      return List.copyOf(requests);
+    }
+
     @Override
     public ModelStream stream(ModelRequest request) {
+      requests.add(request);
       Iterator<ModelEvent> events = turns.removeFirst().iterator();
       return new ModelStream() {
         @Override
@@ -216,6 +224,21 @@ class SubagentTest {
       RunOutcome outcome = writer.subagent("researcher").deny(token, "not now");
 
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      // N1: distinguishes deny from approve — a Subagent.deny mis-wired to the child's own approve
+      // (or one that dropped the reason) would still settle COMPLETE above but never carry this.
+      // Searches every request the shared provider ever saw (both writer's and researcher's own
+      // calls interleave here), not just the last one, since the researcher's own follow-up turn —
+      // the one carrying the denial — settles before the writer's final wrap-up turn does.
+      List<ToolResultBlock> denials =
+          provider.requests().stream()
+              .flatMap(request -> request.context().messages().stream())
+              .flatMap(message -> message.content().stream())
+              .filter(ToolResultBlock.class::isInstance)
+              .map(ToolResultBlock.class::cast)
+              .filter(ToolResultBlock::isError)
+              .toList();
+      assertThat(denials).isNotEmpty();
+      assertThat(denials.getFirst().content()).isEqualTo("Denied: not now");
     }
 
     @Test

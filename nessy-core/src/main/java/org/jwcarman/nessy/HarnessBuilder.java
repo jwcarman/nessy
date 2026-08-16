@@ -46,6 +46,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   private boolean storeSet;
   private Parks parks;
   private SubagentLinks subagentLinks;
+  private boolean subagentLinksSet;
   private ObservationRegistry observations;
   private ObjectMapper mapper;
   private String defaultModel;
@@ -78,6 +79,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    */
   public HarnessBuilder subagentLinks(SubagentLinks subagentLinks) {
     this.subagentLinks = Objects.requireNonNull(subagentLinks, "subagentLinks must not be null");
+    this.subagentLinksSet = true;
     return this;
   }
 
@@ -147,7 +149,8 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
             Optional.ofNullable(store).orElseGet(this::defaultStore), storeSet),
         new Harness.CoordinationStores(
             Optional.ofNullable(parks).orElseGet(this::defaultParks),
-            Optional.ofNullable(subagentLinks).orElseGet(this::defaultSubagentLinks)),
+            Optional.ofNullable(subagentLinks).orElseGet(this::defaultSubagentLinks),
+            subagentLinksSet),
         Optional.ofNullable(observations).orElseGet(this::defaultObservations),
         Optional.ofNullable(mapper).orElseGet(this::defaultMapper),
         defaultModel,
@@ -182,7 +185,11 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    * {@link #defaultParks()} and {@link AgentBuilder}'s own memory-defaulting guard, this stays
    * silent even with an explicitly configured {@link #store}: a harness with no subagents never
    * touches this store at all, so warning unconditionally here would fire for every durable-store
-   * harness whether or not it ever declares a single {@code .subagent(...)}.
+   * harness whether or not it ever declares a single {@code .subagent(...)}. The narrower warning —
+   * only when an agent actually declares a subagent against a store-set-but-links-defaulted harness
+   * — lives on {@link AgentBuilder#build()} instead, which is the only place both facts (a durable
+   * store, and at least one {@code .subagent(...)} declared) are known together; see {@link
+   * Harness#subagentLinksSet()}.
    */
   private SubagentLinks defaultSubagentLinks() {
     return SubagentLinks.inMemory();

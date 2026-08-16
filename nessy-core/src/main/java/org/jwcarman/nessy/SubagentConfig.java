@@ -19,32 +19,42 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
+import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
  * What an application writes to describe a subagent, handed to {@link
- * AgentBuilder#subagent(Consumer)}: a CONFIG, not a builder (design of record 2026-08-16 §0 owner
- * ruling) — fluent setters, no {@code build()}. Only the parent's own builder is ever allowed to
- * turn this into an {@link Agent}; nothing here is half-buildable on its own, because there is
- * nothing here that builds at all.
+ * AgentBuilder#subagent(SubagentCustomizer)} / {@link AgentBuilder#subagent(Class,
+ * SubagentCustomizer)}: a CONFIG, not a builder (design of record 2026-08-16 §0 owner ruling) —
+ * fluent setters, no {@code build()}. Only the parent's own builder is ever allowed to turn this
+ * into an {@link Agent}; nothing here is half-buildable on its own, because there is nothing here
+ * that builds at all.
  *
  * <p>{@link #name} and {@link #description} are required — {@code build()} on the enclosing {@link
  * AgentBuilder} throws {@link IllegalStateException} naming whichever is missing. Everything else
- * this class exposes trims to prompt/model/tools/memory/termination/policy; everything the parent
- * agent's own harness already owns — provider, stores, approver, observations, harness-seeded
- * listeners — is inherited by construction and is not overridable here (design of record 2026-08-16
- * §3).
+ * this class exposes trims to prompt/model/tools/memory/termination/policy/renderer; everything the
+ * parent agent's own harness already owns — provider, stores, approver, observations,
+ * harness-seeded listeners — is inherited by construction and is not overridable here (design of
+ * record 2026-08-16 §3).
  *
- * <p>{@link #subagent(Consumer)} lets a child declare its own children, so a delegation tree —
- * A→B→C — is a lexical nesting of these config lambdas, one inside the next: a cycle is
- * unrepresentable, because a child is always defined inside its parent and can never refer back to
- * it (design of record 2026-08-16 §0, ruling 1).
+ * <p>{@code T} is the subagent's own delegation wire shape (design of record 2026-08-16 §0.5): the
+ * degenerate {@code String} door wraps it in the v1 {@code Delegation(String task)} tool schema and
+ * never consults {@link #renderer}; the typed door makes {@code T} the delegation tool's own input
+ * type directly — its victools schema IS the tool schema — and {@link #renderer} is required to
+ * reach the child {@code Agent<T>} with it.
+ *
+ * <p>{@link #subagent(SubagentCustomizer)} and {@link #subagent(Class, SubagentCustomizer)} let a
+ * child declare its own children, so a delegation tree — A→B→C — is a lexical nesting of these
+ * config lambdas, one inside the next: a cycle is unrepresentable, because a child is always
+ * defined inside its parent and can never refer back to it (design of record 2026-08-16 §0, ruling
+ * 1).
+ *
+ * @param <T> this subagent's own delegation wire shape
  */
-public final class SubagentConfig {
+public final class SubagentConfig<T> {
 
   private String name;
   private String description;
@@ -55,10 +65,12 @@ public final class SubagentConfig {
   private Memory memory;
   private TerminationPolicy termination;
   private UsagePolicy policy;
-  private final List<SubagentConfig> subagents = new ArrayList<>();
+  private InputRenderer<T> renderer;
+  private final List<SubagentConfig<String>> stringSubagents = new ArrayList<>();
+  private final List<TypedSubagentDeclaration<?>> typedSubagents = new ArrayList<>();
 
   /** This subagent's required identity — the durable stamp its own parks carry. */
-  public SubagentConfig name(String name) {
+  public SubagentConfig<T> name(String name) {
     this.name = name;
     return this;
   }
@@ -67,31 +79,31 @@ public final class SubagentConfig {
    * Required — becomes the delegation tool's own {@link
    * org.jwcarman.nessy.api.tool.Tool#description()}.
    */
-  public SubagentConfig description(String description) {
+  public SubagentConfig<T> description(String description) {
     this.description = description;
     return this;
   }
 
   /** Wins over the harness's own default model, exactly like {@link AgentBuilder#model(String)}. */
-  public SubagentConfig model(String model) {
+  public SubagentConfig<T> model(String model) {
     this.model = model;
     return this;
   }
 
   /** The system prompt sent with every one of this subagent's model calls. */
-  public SubagentConfig systemPrompt(String systemPrompt) {
+  public SubagentConfig<T> systemPrompt(String systemPrompt) {
     this.systemPrompt = systemPrompt;
     return this;
   }
 
   /** This subagent's own per-response token ceiling. */
-  public SubagentConfig maxTokens(int maxTokens) {
+  public SubagentConfig<T> maxTokens(int maxTokens) {
     this.maxTokens = maxTokens;
     return this;
   }
 
   /** This subagent's own tool grants — the same grant-line-is-the-security-statement contract. */
-  public SubagentConfig tools(ToolGrant... grants) {
+  public SubagentConfig<T> tools(ToolGrant... grants) {
     Objects.requireNonNull(grants, "grants must not be null");
     for (int i = 0; i < grants.length; i++) {
       Objects.requireNonNull(grants[i], "grants[" + i + "] must not be null");
@@ -101,13 +113,13 @@ public final class SubagentConfig {
   }
 
   /** This subagent's own {@link Memory}, replacing the default pipeline floor. */
-  public SubagentConfig memory(Memory memory) {
+  public SubagentConfig<T> memory(Memory memory) {
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     return this;
   }
 
   /** This subagent's own termination policy. */
-  public SubagentConfig termination(TerminationPolicy termination) {
+  public SubagentConfig<T> termination(TerminationPolicy termination) {
     this.termination = Objects.requireNonNull(termination, "termination must not be null");
     return this;
   }
@@ -120,27 +132,56 @@ public final class SubagentConfig {
    * delegation call parks for approval, then the child's own execution parks again once approved —
    * two waits, not a wedge.
    */
-  public SubagentConfig policy(UsagePolicy policy) {
+  public SubagentConfig<T> policy(UsagePolicy policy) {
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     return this;
   }
 
   /**
-   * Nests a child inside this subagent, so the delegation tree can go A→B→C: this subagent's own
-   * builder grants a delegation tool to whatever {@code config} describes, exactly the way {@link
-   * AgentBuilder#subagent(Consumer)} does for the top-level agent.
+   * REQUIRED on the typed door — {@link AgentBuilder#subagent(Class, SubagentCustomizer)} fails
+   * loudly, naming this field, if it is never called; forbidden-to-matter on the degenerate {@code
+   * String} door (design of record 2026-08-16 §0.5), which never reads it even if set, since the
+   * wire shape there is always the v1 {@code Delegation(String task)} wrapper, not {@code T}
+   * itself.
    */
-  public SubagentConfig subagent(Consumer<SubagentConfig> config) {
-    Objects.requireNonNull(config, "config must not be null");
-    SubagentConfig nested = new SubagentConfig();
-    config.accept(nested);
-    subagents.add(nested);
+  public SubagentConfig<T> renderer(InputRenderer<T> renderer) {
+    this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+    return this;
+  }
+
+  /**
+   * Nests a degenerate {@code String}-vocabulary child inside this subagent, so the delegation tree
+   * can go A→B→C: this subagent's own builder grants a delegation tool to whatever {@code
+   * customizer} describes, exactly the way {@link AgentBuilder#subagent(SubagentCustomizer)} does
+   * for the top-level agent.
+   */
+  public SubagentConfig<T> subagent(SubagentCustomizer<String> customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    SubagentConfig<String> nested = new SubagentConfig<>();
+    customizer.customize(nested);
+    stringSubagents.add(nested);
+    return this;
+  }
+
+  /**
+   * Nests a typed child inside this subagent (design of record 2026-08-16 §0.5): {@code inputType}
+   * becomes the nested delegation tool's own wire shape, exactly the way {@link
+   * AgentBuilder#subagent(Class, SubagentCustomizer)} does for the top-level agent.
+   */
+  public <X> SubagentConfig<T> subagent(Class<X> inputType, SubagentCustomizer<X> customizer) {
+    Objects.requireNonNull(inputType, "inputType must not be null");
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    SubagentConfig<X> nested = new SubagentConfig<>();
+    customizer.customize(nested);
+    typedSubagents.add(new TypedSubagentDeclaration<>(inputType, nested));
     return this;
   }
 
   /**
    * Throws {@link IllegalStateException} naming whichever required field is missing — run by the
-   * enclosing {@link AgentBuilder#build()} before this config is turned into an {@link Agent}.
+   * enclosing {@link AgentBuilder#build()} before this config is turned into an {@link Agent}. The
+   * typed door's own required-renderer check is a separate, later step (it is not a property of the
+   * config alone, but of which door built it).
    */
   void validate() {
     if (name == null || name.isBlank()) {
@@ -191,7 +232,15 @@ public final class SubagentConfig {
     return policy;
   }
 
-  List<SubagentConfig> subagents() {
-    return subagents;
+  InputRenderer<T> renderer() {
+    return renderer;
+  }
+
+  List<SubagentConfig<String>> stringSubagents() {
+    return stringSubagents;
+  }
+
+  List<TypedSubagentDeclaration<?>> typedSubagents() {
+    return typedSubagents;
   }
 }

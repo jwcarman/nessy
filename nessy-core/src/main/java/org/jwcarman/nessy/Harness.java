@@ -59,6 +59,7 @@ public final class Harness {
   private final boolean storeSet;
   private final Parks parks;
   private final SubagentLinks subagentLinks;
+  private final boolean subagentLinksSet;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
   private final String defaultModel;
@@ -92,7 +93,7 @@ public final class Harness {
    * record 2026-08-16 §3) — bundled together (java:S107) since neither is meaningful without the
    * other once subagent construction internalizes both.
    */
-  record CoordinationStores(Parks parks, SubagentLinks subagentLinks) {
+  record CoordinationStores(Parks parks, SubagentLinks subagentLinks, boolean subagentLinksSet) {
 
     CoordinationStores {
       Objects.requireNonNull(parks, "parks must not be null");
@@ -113,6 +114,7 @@ public final class Harness {
     this.storeSet = storeSelection.storeSet();
     this.parks = coordinationStores.parks();
     this.subagentLinks = coordinationStores.subagentLinks();
+    this.subagentLinksSet = coordinationStores.subagentLinksSet();
     this.observations = observations;
     this.mapper = mapper;
     this.defaultModel = defaultModel;
@@ -167,6 +169,19 @@ public final class Harness {
    */
   SubagentLinks subagentLinks() {
     return subagentLinks;
+  }
+
+  /**
+   * Whether {@link HarnessBuilder#subagentLinks(SubagentLinks)} was ever called on the builder that
+   * produced this harness — the bit {@link AgentBuilder#build()} reads to warn when an agent
+   * declares subagents against a harness whose own {@link #store} was explicitly chosen but whose
+   * {@link #subagentLinks} was left on the in-memory default: a real durability gap (a settled
+   * child after a restart leaves its parent parked forever, silently), not merely the "this harness
+   * has no durable state at all" case {@link HarnessBuilder#defaultSubagentLinks()} stays quiet
+   * for.
+   */
+  boolean subagentLinksSet() {
+    return subagentLinksSet;
   }
 
   /**
