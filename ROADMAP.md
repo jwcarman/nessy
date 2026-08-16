@@ -51,6 +51,10 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
   agents can call.
 - **Queue-driven example, AMQP** — RabbitMQ joins the trigger family
   (chosen over NATS/Kafka for the example).
+- **Telling idempotency keys** — a redelivered telling from an at-least-once
+  transport is currently re-told rather than deduplicated (resolutions already
+  drain quietly); an optional idempotency key on `tell` closes the gap the
+  twelve-factor page's factor 11 discloses.
 
 ## Observability
 
