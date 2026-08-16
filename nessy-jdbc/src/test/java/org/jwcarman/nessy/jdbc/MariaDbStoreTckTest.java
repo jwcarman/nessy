@@ -33,12 +33,14 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
 import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.jwcarman.nessy.tck.ConversationStoreContract;
+import org.jwcarman.nessy.tck.IntentStoreContract;
 import org.jwcarman.nessy.tck.NotebookContract;
 import org.jwcarman.nessy.tck.ParksContract;
 import org.jwcarman.nessy.tck.PlanStoreContract;
@@ -50,11 +52,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * The full TCK, all seven contracts, run against a real MariaDB — plus the dialect-resolution pin
+ * The full TCK, all eight contracts, run against a real MariaDB — plus the dialect-resolution pin
  * (design §6). One container for the whole class (nested contracts share it, each truncating its
- * own table between tests) rather than six, the same efficiency trade the vendor matrix needs five
- * times over. Requires Docker; tagged {@code container} so the offline default build never needs
- * it.
+ * own table between tests) rather than seven, the same efficiency trade the vendor matrix needs
+ * five times over. Requires Docker; tagged {@code container} so the offline default build never
+ * needs it.
  *
  * <p>Image pinned to {@code mariadb:11.4} — the exact tag Task 2's live schema verification ran
  * against (see that task's report); this matrix reuses those findings rather than re-discovering
@@ -214,6 +216,23 @@ class MariaDbStoreTckTest {
     @Override
     protected SubagentLinks links() {
       return links;
+    }
+  }
+
+  @Nested
+  class Intent_store_contract extends IntentStoreContract {
+
+    private IntentStore intents;
+
+    @BeforeEach
+    void a_fresh_store_over_an_empty_table() {
+      intents = JdbcIntentStore.create(dataSource);
+      truncate("nessy_intent");
+    }
+
+    @Override
+    protected IntentStore intents() {
+      return intents;
     }
   }
 

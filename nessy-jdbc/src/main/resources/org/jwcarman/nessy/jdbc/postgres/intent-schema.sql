@@ -19,6 +19,6 @@
 
 CREATE TABLE IF NOT EXISTS nessy_intent (
   conversation_id text PRIMARY KEY,
-  type            text NOT NULL,
-  json            text NOT NULL
+  intent_type     text NOT NULL,
+  intent_json     text NOT NULL
 );

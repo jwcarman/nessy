@@ -20,7 +20,7 @@ IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'nessy_intent')
 BEGIN
   CREATE TABLE nessy_intent (
     conversation_id nvarchar(255) PRIMARY KEY,
-    type            nvarchar(255) NOT NULL,
-    json            nvarchar(max) NOT NULL
+    intent_type     nvarchar(255) NOT NULL,
+    intent_json     nvarchar(max) NOT NULL
   )
 END

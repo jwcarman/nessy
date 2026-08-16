@@ -18,6 +18,6 @@
 
 CREATE TABLE IF NOT EXISTS nessy_intent (
   conversation_id varchar2(255) PRIMARY KEY,
-  type            varchar2(255) NOT NULL,
-  json            clob NOT NULL
+  intent_type     varchar2(255) NOT NULL,
+  intent_json     clob NOT NULL
 );

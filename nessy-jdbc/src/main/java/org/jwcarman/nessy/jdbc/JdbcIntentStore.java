@@ -39,12 +39,15 @@ import org.jwcarman.nessy.spi.intent.IntentStore;
  * shape, not a vendor-specific {@code UPSERT}, is this module's portable answer across
  * Postgres/MySQL/MariaDB/SQL Server/Oracle.
  *
- * <p>{@code nessy_intent} carries no {@code jsonb} (or equivalent) column — {@code json} is stored
- * as an opaque string, never parsed or cast by this store (see {@link IntentStore}'s own javadoc on
- * the grant principle) — so every statement here is one dialect-independent literal; a {@link
- * JdbcDialect} matters only to {@link #create(DataSource, JdbcDialect)}, which needs it to pick the
- * right {@code intent-schema.sql} resource to bootstrap, and to {@link WriteOnceInsert#attempt},
- * which needs it to recognize each dialect's own duplicate-key signal.
+ * <p>{@code nessy_intent} carries no {@code jsonb} (or equivalent) column — {@code intent_json} is
+ * stored as an opaque string, never parsed or cast by this store (see {@link IntentStore}'s own
+ * javadoc on the grant principle) — so every statement here is one dialect-independent literal; a
+ * {@link JdbcDialect} matters only to {@link #create(DataSource, JdbcDialect)}, which needs it to
+ * pick the right {@code intent-schema.sql} resource to bootstrap, and to {@link
+ * WriteOnceInsert#attempt}, which needs it to recognize each dialect's own duplicate-key signal.
+ * {@code type} and {@code json} were deliberately avoided as column names: every sibling schema in
+ * this module avoids type-name-shaped identifiers, and both MySQL and Oracle reserve {@code JSON}
+ * as a type keyword.
  *
  * <p>The constructor alone does not create {@code nessy_intent} — a caller pointing at a database
  * another process already bootstrapped should not pay a DDL round trip on every startup. Use {@link
@@ -59,13 +62,13 @@ public final class JdbcIntentStore implements IntentStore {
   private static final String CONVERSATION_ID_NOT_NULL = "id must not be null";
 
   private static final String FIND_SQL =
-      "SELECT type, json FROM nessy_intent WHERE conversation_id = ?";
+      "SELECT intent_type, intent_json FROM nessy_intent WHERE conversation_id = ?";
 
   private static final String UPDATE_SQL =
-      "UPDATE nessy_intent SET type = ?, json = ? WHERE conversation_id = ?";
+      "UPDATE nessy_intent SET intent_type = ?, intent_json = ? WHERE conversation_id = ?";
 
   private static final String INSERT_SQL =
-      "INSERT INTO nessy_intent (conversation_id, type, json) VALUES (?, ?, ?)";
+      "INSERT INTO nessy_intent (conversation_id, intent_type, intent_json) VALUES (?, ?, ?)";
 
   private static final String DELETE_SQL = "DELETE FROM nessy_intent WHERE conversation_id = ?";
 
@@ -113,17 +116,18 @@ public final class JdbcIntentStore implements IntentStore {
               if (!rs.next()) {
                 return Optional.empty();
               }
-              return Optional.of(new StoredIntent(rs.getString("type"), rs.getString("json")));
+              return Optional.of(
+                  new StoredIntent(rs.getString("intent_type"), rs.getString("intent_json")));
             }
           }
         });
   }
 
   /**
-   * Upserts {@code id}'s intent to {@code (type, json)}: an {@code UPDATE} first, falling back to
-   * an {@code INSERT} only when that {@code UPDATE} touches no row — see the class javadoc for why
-   * this, not a vendor-specific {@code UPSERT}, is the shape a store with real concurrent writers
-   * needs.
+   * Upserts {@code id}'s intent to {@code (intent_type, intent_json)}: an {@code UPDATE} first,
+   * falling back to an {@code INSERT} only when that {@code UPDATE} touches no row — see the class
+   * javadoc for why this, not a vendor-specific {@code UPSERT}, is the shape a store with real
+   * concurrent writers needs.
    */
   @Override
   public void put(ConversationId id, String type, String json) {
