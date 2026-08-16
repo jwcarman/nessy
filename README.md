@@ -223,6 +223,11 @@ subagent delegation demo. See the
 [Examples](https://jwcarman.github.io/nessy/examples/) page on the docs site
 for the full tour and run commands.
 
+## Roadmap
+
+Where this is all headed lives in [ROADMAP.md](ROADMAP.md) — memory that
+learns, delegation that scales, and the road to a first release.
+
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to
