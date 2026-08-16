@@ -69,9 +69,9 @@ targeted question) — the exact long-horizon shape the plan facility fixes
 (design §9), so Scout adopts it as its showcase: `Scout#scout` grants
 `PlanTools.updatePlan(store)` with `allow()` beside the three DeepWiki
 grants, wires `memory` as
-`Memory.pipeline(transcript).transform(PlanTools.transformer(store)).build()`,
+`Memory.pipeline(transcript, config -> config.transform(PlanTools.transformer(store)))`,
 and `Scout#main` hands that same `PlanStore` to
-`ConsoleRepl.Builder#plan(PlanStore)`. `ConsoleRepl` renders the checklist
+`ReplConfig#plan(PlanStore)`. `ConsoleRepl` renders the checklist
 at most once per turn — after the turn's own output, once
 `conversation.tell` has returned, right before the next prompt — not
 interleaved between individual tool calls. A sample session, one turn of

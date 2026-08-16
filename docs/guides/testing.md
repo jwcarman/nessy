@@ -37,31 +37,28 @@ Add it as a test-scoped dependency:
 
 ## Scripting a conversation
 
-The builder scripts one turn at a time. Each turn is a sequence of model
-events closed by exactly one terminator — `endTurn()` (the model is done) or
-`endWithToolUse()` (the model wants a tool run, and the harness will call
-back with another turn):
+`ScriptedModelProvider.script(ScriptedModelProviderCustomizer)` scripts one
+turn at a time, over a `ScriptedModelProviderConfig`. Each turn is a sequence
+of model events closed by exactly one terminator — `endTurn()` (the model is
+done) or `endWithToolUse()` (the model wants a tool run, and the harness will
+call back with another turn):
 
 ```java
 ObjectNode args = JsonNodeFactory.instance.objectNode();
 args.put("left", 2);
 args.put("right", 2);
 
-ScriptedModelProvider provider = ScriptedModelProvider.builder()
-        .toolUse("c1", "add", args)
-        .endWithToolUse()
-        .text("The answer is 4.")
-        .endTurn()
-        .build();
+ScriptedModelProvider provider =
+    ScriptedModelProvider.script(
+        s -> s.toolUse("c1", "add", args).endWithToolUse().text("The answer is 4.").endTurn());
 
 Agent<String> agent =
-    Nessy.harness(provider)
-        .build()
-        .agent()
-        .name("hello")
-        .model("fake-model")
-        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-        .build();
+    Nessy.harness(h -> h.provider(provider))
+        .agent(
+            a ->
+                a.name("hello")
+                    .model("fake-model")
+                    .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 ```
 
 The first turn emits a tool call and ends with `TOOL_USE`; the harness runs
@@ -75,13 +72,13 @@ real provider produces. This exact wiring is a runnable module,
 ./mvnw -q -pl nessy-examples/hello -am compile exec:java
 ```
 
-The builder's other event methods cover the rest of what a model can emit
+The config's other event methods cover the rest of what a model can emit
 mid-turn: `text(String)` for a prose chunk, `thinking(String)` /
 `thinkingSigned(String)` / `redactedThinking(String)` for extended-thinking
 content, and `toolUse(id, name, arguments)` for a tool call. `endTurn(Usage)`
 attaches a specific token count when a test cares about usage accounting;
-plain `endTurn()` reports zero. Calling `build()` with an open, unterminated
-turn — no trailing `endTurn()`/`endWithToolUse()` — throws
+plain `endTurn()` reports zero. Returning from the customizer with an open,
+unterminated turn — no trailing `endTurn()`/`endWithToolUse()` — throws
 `IllegalStateException` rather than silently dropping it.
 
 ## Sharp edges
@@ -107,7 +104,7 @@ real approval gate (`Approver.parkAll()` or `requireApproval()` on a
 `RecordingSubscriber` captures whatever it is handed, for tests asserting on
 declared-listener or conversation-event traffic rather than on the model
 turns themselves. Wire it up as a declared listener
-(`.listen(Object.class, recorder)` on a `HarnessBuilder`/`AgentBuilder`) or
+(`.listen(Object.class, recorder)` on a `HarnessConfig`/`AgentConfig`) or
 as a conversation-local subscription via `Conversation#events()`, then read
 back `all()` for everything received or `ofType(TurnEvent.class)` filtered
 to one event type.

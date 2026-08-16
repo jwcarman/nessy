@@ -45,16 +45,15 @@ class AddTool implements Tool<Add> {
     }
 }
 
-AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
+AnthropicModelProvider provider = AnthropicModelProvider.fromEnv();
 
 Agent<String> agent =
-    Nessy.harness(provider)
-        .build()
-        .agent()
-        .name("adder")
-        .model("claude-haiku-4-5-20251001")
-        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-        .build();
+    Nessy.harness(h -> h.provider(provider))
+        .agent(
+            a ->
+                a.name("adder")
+                    .model("claude-haiku-4-5-20251001")
+                    .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
 StringBuilder text = new StringBuilder();
 RunOutcome outcome =
@@ -62,28 +61,31 @@ RunOutcome outcome =
         .converse()
         .tell(
             "what is 2+2?",
-            TurnObserver.builder().onTextDelta(delta -> text.append(delta.text())).build());
+            TurnObserver.observe(o -> o.onTextDelta(delta -> text.append(delta.text()))));
 
 text.toString(); // "The answer is 4."
 outcome.state().status(); // ConversationStatus.COMPLETE
 ```
 
-`OPENAI_API_KEY` and `OpenAiModelProvider.builder().fromEnv().build()` are the
-one-line swap for OpenAI instead, with nothing else about the shape above
-changing. `EnvModelProviders.fromEnv()` (from `nessy-model-env`) reads
-whichever key is set and picks the provider for you, so an application
-switches providers by switching an environment variable, not its code.
+`OPENAI_API_KEY` and `OpenAiModelProvider.fromEnv()` are the one-line swap for
+OpenAI instead, with nothing else about the shape above changing.
+`EnvModelProviders.fromEnv()` (from `nessy-model-env`) reads whichever key is
+set and picks the provider for you, so an application switches providers by
+switching an environment variable, not its code.
 
-`Nessy.harness(provider)` is the only front door — the provider is the
-harness's one required thing, enforced by signature rather than discovered
-later at `build()`. `Agent<I>` is a configured, reusable handle over its input
-vocabulary `I`; `converse()` opens a conversation and returns a `Conversation<I>`,
-whose `tell(I, TurnObserver)` narrates the model's prose and tool activity live
-as `TurnEvent`s and returns a `RunOutcome` — `Completed` or `Parked` — carrying
-the settled `ConversationState`. Every builder default already works:
-in-memory conversation store, in-memory `Memory`, an allow-all approver
-(replace it before you point real tools at anything), no-op observations. The
-smallest useful agent is a provider and a model name. See
+`Nessy.harness(HarnessCustomizer)` is the only front door — a customizer
+lambda over a `HarnessConfig`, a config rather than a builder: fluent setters,
+no `build()` to call yourself. The provider is the harness's one required
+thing, and `HarnessConfig` validates it the instant the customizer lambda
+returns — one rule, checked in one place, everywhere a harness gets built.
+`Agent<I>` is a configured, reusable handle over its input vocabulary `I`;
+`converse()` opens a conversation and returns a `Conversation<I>`, whose
+`tell(I, TurnObserver)` narrates the model's prose and tool activity live as
+`TurnEvent`s and returns a `RunOutcome` — `Completed` or `Parked` — carrying
+the settled `ConversationState`. Every config default already works: in-memory
+conversation store, in-memory `Memory`, an allow-all approver (replace it
+before you point real tools at anything), no-op observations. The smallest
+useful agent is a provider and a model name. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
 the docs site for the rest of the walkthrough — typed agents, talking back and
 forth, surviving a restart.
@@ -210,7 +212,7 @@ framework. The docs site page teaches the whole story; this is just the map.
 A few seams the site doesn't have a dedicated page for yet: a cost/call
 budget (`TerminationPolicy`, the wallet guard against runaway loops), a
 `RetryingModelProvider` decorator for wrapping any `ModelProvider` with retry
-policy, and `AgentBuilder#contextWindow(long)`, a declared-but-unconsumed
+policy, and `AgentConfig#contextWindow(long)`, a declared-but-unconsumed
 token-budget dial reserved for a future token-aware `Memory`. All three exist
 in `nessy-core` today; see the Javadoc until they get a home on the site.
 

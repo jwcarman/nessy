@@ -3,21 +3,24 @@
 `nessy-console` is the terminal front door: read a line, tell the agent,
 render deltas, prompt again. Three examples in this repository hand-rolled
 that loop before this module existed, `ConsoleApprover` included; depend on
-`nessy-core` alone, and console chat with any `Agent<String>` is a builder
-chain.
+`nessy-core` alone, and console chat with any `Agent<String>` is one call.
 
-## The builder chain
+## The one call
 
 ```java
-ConsoleRepl.of(agent)
-    .banner("scout — ask about any public GitHub repo")
-    .prompt("you> ")
-    .exitOn("exit", "quit")
-    .run();
+ConsoleRepl.run(
+    agent,
+    r ->
+        r.banner("scout — ask about any public GitHub repo")
+            .prompt("you> ")
+            .exitOn("exit", "quit"));
 ```
 
-- `ConsoleRepl.of(agent)` starts the builder. It opens one conversation and
-  drives it for the life of `run()`.
+`ConsoleRepl.run(Agent<String>, ReplCustomizer)` is the only front door — a
+customizer lambda over a `ReplConfig`, a config rather than a builder: fluent
+setters, no `build()` to call yourself. It opens one conversation, drives it
+for the life of the loop, and returns only once the loop ends.
+
 - `.banner(String)` — the line printed once, before the first prompt. Empty
   (the default) prints nothing.
 - `.prompt(String)` — the line printed before every read. Defaults to
@@ -28,12 +31,12 @@ ConsoleRepl.of(agent)
 - `.renderer(TurnObserver)` — overrides the default renderer wholesale.
 - `.plan(PlanStore)` — opts into the end-of-turn plan checklist, described
   below. Throws `IllegalStateException` if called twice.
-- `.run()` — the real-console entry point: a thin adapter over `System.in`
-  and `System.out`.
+- `.farewell(String)` — the line printed the instant the loop ends. Unset
+  means the loop ends silently.
 
-`run()` prints the banner (if any), then loops: print the prompt, read a
-line, an exit word ends the loop, a blank line reprompts without telling the
-agent, anything else is told with the default renderer watching.
+The loop itself prints the banner (if any), then loops: print the prompt,
+read a line, an exit word ends the loop, a blank line reprompts without
+telling the agent, anything else is told with the default renderer watching.
 
 ## The look
 
@@ -80,7 +83,7 @@ module's output to a file or another process yields clean, colorless text.
 ## The plan checklist
 
 Grant the model `update_plan` (see [Planning](../concepts/planning.md)) and
-hand `ConsoleRepl.Builder#plan` the same `PlanStore`, and the REPL prints the
+hand `ReplConfig#plan` the same `PlanStore`, and the REPL prints the
 checklist in the terminal itself — not just recalled into the model's own
 context. The checklist renders **at most once per turn**, at the very end,
 after `conversation.tell` has returned and only when the plan changed since
@@ -112,11 +115,12 @@ checklist at all — quiet turns stay quiet.
 ```java
 DemoAgent.Built built = DemoAgent.agentFor(provider, model);
 
-ConsoleRepl.of(built.agent())
-    .banner("Nessy demo. Ask for something multi-step to watch it plan.")
-    .prompt("you> ")
-    .plan(built.planStore())
-    .run();
+ConsoleRepl.run(
+    built.agent(),
+    r ->
+        r.banner("Nessy demo. Ask for something multi-step to watch it plan.")
+            .prompt("you> ")
+            .plan(built.planStore()));
 ```
 
 `nessy-examples/chat-cli`'s `Chat` main is this exact wiring: the same
@@ -127,10 +131,10 @@ recalls into its own context are reading the same durable state.
 ## Composing the renderer elsewhere
 
 `ConsoleRenderer.observer(Writer)` is the default renderer, built on
-`TurnObserver.builder()`. Reach for it directly — rather than
-`ConsoleRepl`'s default — when an application wants the console look
-composed alongside another concern, such as a transcript file or a metrics
-counter, on the same observer.
+`TurnObserver.observe(TurnObserverCustomizer)`. Reach for it directly —
+rather than `ConsoleRepl`'s default — when an application wants the console
+look composed alongside another concern, such as a transcript file or a
+metrics counter, on the same observer.
 
 ## Where next
 

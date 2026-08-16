@@ -14,13 +14,12 @@ blanket "trust this server":
 ```java
 try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
   Agent<String> agent =
-      harness
-          .agent()
-          .name("researcher")
-          .tools(
-              ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
-              ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
-          .build();
+      harness.agent(
+          a ->
+              a.name("researcher")
+                  .tools(
+                      ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
+                      ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval())));
 }
 ```
 
@@ -64,15 +63,15 @@ try (McpToolbox toolbox =
     McpToolbox.connect(
         HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper)) {
   Agent<String> agent =
-      harness
-          .agent()
-          .name("scout")
-          .tools(
-              ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-              ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-              ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
-          .approver(new ConsoleApprover())
-          .build();
+      harness.agent(
+          a ->
+              a.name("scout")
+                  .tools(
+                      ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
+                      ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
+                      ToolGrant.grant(
+                          toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
+                  .approver(new ConsoleApprover()));
 }
 ```
 

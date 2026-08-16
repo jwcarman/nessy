@@ -18,7 +18,7 @@ record Park(ConversationId conversationId, ParkToken token, ToolCall call, Strin
 ```
 
 `agentName` is the name of the agent whose loop parked the call — the same
-`.name(...)` every `AgentBuilder` requires at `build()`. Every callback door verifies
+`.name(...)` every `AgentConfig` requires. Every callback door verifies
 this stamp against the agent it's called on, **before** appending or driving anything.
 A mismatch throws `WrongAgentException`, naming both agents:
 

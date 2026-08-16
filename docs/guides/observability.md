@@ -6,14 +6,13 @@ watch a conversation. Neither is required — both default to doing nothing.
 
 ## Traces and metrics: `ObservationRegistry`
 
-`HarnessBuilder#observations(ObservationRegistry)` sets where loop-level
+`HarnessConfig#observations(ObservationRegistry)` sets where loop-level
 metrics and traces go; the default is `ObservationRegistry.NOOP` — nothing
 emitted, no cost paid.
 
 ```java
-Harness harness = Nessy.harness(provider)
-    .observations(observationRegistry)
-    .build();
+Harness harness =
+    Nessy.harness(h -> h.provider(provider).observations(observationRegistry));
 ```
 
 Three spans exist, named for stable metric identity, with contextual names
@@ -44,7 +43,7 @@ response settles.
 
 `nessy-autoconfigure`'s `Harness` bean takes whatever `ObservationRegistry`
 bean is already in the context, if one is present
-(`ObjectProvider<ObservationRegistry>.ifAvailable(builder::observations)`) —
+(`ObjectProvider<ObservationRegistry>.ifAvailable(h::observations)`) —
 no application wiring required. `chat-web` dogfoods this: Boot's own
 auto-configured registry means Nessy's model-call and tool-call
 observations show up in the same trace as Boot's HTTP and JDBC spans — one
@@ -53,8 +52,8 @@ model call, the tool call, and the JDBC saves either side of it.
 
 ## Everything else: event listeners
 
-`AgentBuilder#listen(Class, Consumer)` and `#listenAsync(Class, Consumer,
-Consumer<Throwable>)` (also on `HarnessBuilder`, seeded into every agent the
+`AgentConfig#listen(Class, Consumer)` and `#listenAsync(Class, Consumer,
+Consumer<Throwable>)` (also on `HarnessConfig`, seeded into every agent the
 harness builds) subscribe to the `ConversationEvent` grammar —
 `AgentTold`, `ModelResponded`, and the rest of the four settled facts the
 fold consumes. A synchronous listener that throws propagates and stops the
@@ -88,7 +87,7 @@ renderer built on the same interface.
 
 ## Where next
 
-- [Console Apps](console-apps.md) — `TurnObserver`, its builder, and the
+- [Console Apps](console-apps.md) — `TurnObserver`, its customizer, and the
   renderer chat-cli and scout both use.
 - [Triggers](triggers.md) — `chat-web`'s trace, end to end, across an
   HTTP-triggered turn.

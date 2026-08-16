@@ -50,22 +50,22 @@ completion wiring internally.
 
 ```java
 Agent<String> writer =
-    harness
-        .agent()
-        .name("writer")
-        .systemPrompt(WRITER_SYSTEM_PROMPT)
-        .approver(Approver.parkAll())
-        .tools(/* update_plan, remember/recall/forget */)
-        .subagent(
-            sub ->
-                sub.name("researcher")
-                    .description("Delegates a research task to the researcher subagent...")
-                    .systemPrompt(RESEARCHER_SYSTEM_PROMPT)
-                    .tools(
-                        ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
-                        ToolGrant.grant(
-                            new AskQuestionTool(pendingAnswers), UsagePolicy.requireApproval())))
-        .build();
+    harness.agent(
+        a ->
+            a.name("writer")
+                .systemPrompt(WRITER_SYSTEM_PROMPT)
+                .approver(Approver.parkAll())
+                .tools(/* update_plan, remember/recall/forget */)
+                .subagent(
+                    sub ->
+                        sub.name("researcher")
+                            .description("Delegates a research task to the researcher subagent...")
+                            .systemPrompt(RESEARCHER_SYSTEM_PROMPT)
+                            .tools(
+                                ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
+                                ToolGrant.grant(
+                                    new AskQuestionTool(pendingAnswers),
+                                    UsagePolicy.requireApproval()))));
 
 Subagent researcher = writer.subagent("researcher");
 ```

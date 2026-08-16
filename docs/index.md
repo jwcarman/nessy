@@ -41,16 +41,15 @@ class AddTool implements Tool<Add> {
     }
 }
 
-AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
+AnthropicModelProvider provider = AnthropicModelProvider.fromEnv();
 
 Agent<String> agent =
-    Nessy.harness(provider)
-        .build()
-        .agent()
-        .name("adder")
-        .model("claude-haiku-4-5-20251001")
-        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-        .build();
+    Nessy.harness(h -> h.provider(provider))
+        .agent(
+            a ->
+                a.name("adder")
+                    .model("claude-haiku-4-5-20251001")
+                    .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
 StringBuilder text = new StringBuilder();
 RunOutcome outcome =
@@ -58,7 +57,7 @@ RunOutcome outcome =
         .converse()
         .tell(
             "what is 2+2?",
-            TurnObserver.builder().onTextDelta(delta -> text.append(delta.text())).build());
+            TurnObserver.observe(o -> o.onTextDelta(delta -> text.append(delta.text()))));
 
 System.out.println(text + " (" + outcome.state().status() + ")");
 // The answer is 4. (COMPLETE)
@@ -70,7 +69,7 @@ agent.
 
 `.name("adder")` isn't decoration — every agent identifies itself, and that
 identity is what a [parked callback](concepts/parks-and-callbacks.md) checks
-before letting a resume through. `Memory` here is the builder's default —
+before letting a resume through. `Memory` here is the config's default —
 an in-memory [pipeline](concepts/memory-and-the-pipeline.md) over the
 transcript — swapped for a durable one only when you ask.
 

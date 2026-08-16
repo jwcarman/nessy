@@ -17,13 +17,16 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
-- **The front door.** `Nessy.harness(ModelProvider)` builds a `Harness` — the
-  infrastructure an application shares across every agent it builds: model
-  provider, conversation store family, observation registry, object mapper,
-  declared listeners. `Harness#agent()` (`Agent<String>`) and
-  `Harness#agent(Class<I>)` (typed) return an `AgentBuilder` seeded with that
-  infrastructure. `Agent#converse()` opens a `Conversation`; `.tell(input)`
-  (or `.tell(input, TurnObserver)` to narrate the turn live) returns a
+- **The front door.** `Nessy.harness(HarnessCustomizer)` builds a `Harness` —
+  the infrastructure an application shares across every agent it builds:
+  model provider, conversation store family, observation registry, object
+  mapper, declared listeners. A customizer lambda fills in a `HarnessConfig`
+  — fluent setters, no public `build()` — and the factory validates it the
+  instant the lambda returns. `Harness#agent(AgentCustomizer<String>)` and
+  `Harness#agent(Class<I>, AgentCustomizer<I>)` (typed) hand the same
+  customizer idiom an `AgentConfig` seeded with that infrastructure.
+  `Agent#converse()` opens a `Conversation`; `.tell(input)` (or
+  `.tell(input, TurnObserver)` to narrate the turn live) returns a
   `RunOutcome` — `Completed` or `Parked` — carrying the settled
   `ConversationState`.
 - **The durable loop: two effects, four facts, one fold.** An agent's whole
@@ -66,10 +69,10 @@ sequence of renames and interim shapes that produced it.
   place to write durable notes keyed to a `SubjectId` — a compact index
   rides every recall, and the model reads a note's full body only when it
   judges it relevant. Two agents sharing a `SubjectId` share the same notes.
-- **Subagents.** `AgentBuilder#subagent(SubagentCustomizer<String>)` and
+- **Subagents.** `AgentConfig#subagent(SubagentCustomizer<String>)` and
   `#subagent(Class<T>, SubagentCustomizer<T>)` define a child agent right
-  inside its parent's own builder — a `SubagentConfig`, not a builder, with
-  no `build()` of its own. Building the parent grants the delegation tool,
+  inside its parent's own config — a `SubagentConfig`, not a builder, with
+  no public `build()` of its own. Building the parent grants the delegation tool,
   wires the links store, and registers the wake-up listener internally. The
   delegation tree is a lexical nesting of these declarations, so a cycle is
   unrepresentable. The degenerate door wraps the call in a one-field
@@ -98,7 +101,7 @@ sequence of renames and interim shapes that produced it.
 - **Termination and retry seams.** `TerminationPolicy` is a per-agent
   cost/call budget guarding against a runaway loop; `RetryingModelProvider`
   decorates any `ModelProvider` with retry policy;
-  `AgentBuilder#contextWindow(long)` is a declared token-budget dial
+  `AgentConfig#contextWindow(long)` is a declared token-budget dial
   reserved for a future token-aware `Memory`.
 - **Native model providers.** `nessy-model-anthropic`, `nessy-model-openai`,
   `nessy-model-gemini`, and `nessy-model-bedrock` each implement

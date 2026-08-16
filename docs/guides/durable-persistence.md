@@ -18,28 +18,28 @@ JDBC-backed components that need a database — a `JdbcConversationStore`, a
 JdbcPersistence persistence = JdbcPersistence.create(dataSource, objectMapper);
 
 Harness harness =
-    Nessy.harness(anthropic)
-        .store(persistence.store())
-        .parks(persistence.parks())
-        .subagentLinks(persistence.subagentLinks())
-        .build();
+    Nessy.harness(
+        h ->
+            h.provider(anthropic)
+                .store(persistence.store())
+                .parks(persistence.parks())
+                .subagentLinks(persistence.subagentLinks()));
 
 Agent<String> agent =
-    harness
-        .agent()
-        .name("durable")
-        .model("claude-sonnet-4-5")
-        .memory(persistence.memory())
-        .build();
+    harness.agent(
+        a ->
+            a.name("durable")
+                .model("claude-sonnet-4-5")
+                .memory(persistence.memory()));
 ```
 
-`persistence.memory()` is `Memory.pipeline(persistence.transcript()).build()`
+`persistence.memory()` is `Memory.pipeline(persistence.transcript())`
 — the durable `Memory`, verbatim retention over the same transcript
 `JdbcPersistence` just bootstrapped. `.subagentLinks(...)` matters only for a
 harness with at least one `.subagent(...)` declared — the correlation a
 settled child's completion wakes its parent's own park against — but wiring
 it here costs nothing even when unused, and skipping it is the exact
-durability gap `AgentBuilder`'s own agent-level warning exists to catch
+durability gap `AgentConfig`'s own agent-level warning exists to catch
 (store configured, subagent declared, links left on the in-memory default).
 `JdbcPersistence` exists purely for convenience: the seven schemas are always
 stood up together in practice, but nothing couples them beyond that — each

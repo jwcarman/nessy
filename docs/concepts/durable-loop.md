@@ -3,22 +3,21 @@
 A **harness** is the model-independent runtime an agent runs inside — everything that
 stays the same when you swap the model or the prompt. An **agent** is an identity: a
 model binding, a system prompt, granted tools, declared authority, all running inside a
-harness. `Nessy.harness(provider).build()` gives you the harness; `harness.agent()...build()`
+harness. `Nessy.harness(HarnessCustomizer)` gives you the harness; `harness.agent(AgentCustomizer)`
 gives you an `Agent<I>` — a reusable factory of conversations.
 
 ```java
-Harness harness = Nessy.harness(anthropic).build();
+Harness harness = Nessy.harness(h -> h.provider(anthropic));
 
 Agent<String> agent =
-    harness
-        .agent()
-        .name("guardian")
-        .model("claude-sonnet-4-5")
-        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-        .build();
+    harness.agent(
+        a ->
+            a.name("guardian")
+                .model("claude-sonnet-4-5")
+                .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 ```
 
-`.name(...)` is required at `build()` — not a cosmetic label. It's the durable stamp every
+`.name(...)` is required — not a cosmetic label. It's the durable stamp every
 parked call carries and every callback door checks a resolution against (see
 [Parks and Callbacks](parks-and-callbacks.md)). Renaming an agent with parks in flight
 orphans them.

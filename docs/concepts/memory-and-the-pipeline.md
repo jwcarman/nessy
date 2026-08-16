@@ -16,7 +16,7 @@ public interface Memory {
 Freedom of retention, rule of law at the border: inside, an implementation may
 transcribe, summarize, checkpoint, embed, or discard — the harness never audits how it
 thinks. At the border, `recall` must return a legal `Context`: a tool-use/tool-result
-pair is never split or reordered. `AgentBuilder#memory(Memory)` replaces the default
+pair is never split or reordered. `AgentConfig#memory(Memory)` replaces the default
 outright.
 
 !!! warning "Tellings are at-least-once"
@@ -33,20 +33,23 @@ versioned, per-conversation message log); what `recall` builds from it is a two-
 pipeline: **hydrate, then stages**.
 
 ```java
-Memory memory = Memory.pipeline(transcript)                              // full hydration
-    .summarizing(summaries, provider, model, prompt, tailThreshold)      // …or fold instead
-    .keepRecent(50)                                                      // pair-safe clamp
-    .transform(redactor)                                                 // a throw fails the recall
-    .transform(ContextTransformer.optional(annotator))                   // self-optionalized
-    .transform(PlanTools.transformer(planStore))                         // appending stage
-    .build();
+Memory memory =
+    Memory.pipeline(
+        transcript,                                                        // full hydration
+        config ->
+            config
+                .summarizing(summaries, provider, model, prompt, tailThreshold) // …or fold instead
+                .keepRecent(50)                                             // pair-safe clamp
+                .transform(redactor)                                        // a throw fails the recall
+                .transform(ContextTransformer.optional(annotator))          // self-optionalized
+                .transform(PlanTools.transformer(planStore)));              // appending stage
 ```
 
-The **degenerate pipeline is the floor**: `Memory.pipeline(transcript).build()` — no
+The **degenerate pipeline is the floor**: `Memory.pipeline(transcript)` — no
 hydrator named, no stages — hydrates with `ContextHydrator.full()` and transforms
 nothing: the whole history, every time. Every addition to the chain from there is
-strictly opt-in. This is also `AgentBuilder`'s no-memory default:
-`Memory.pipeline(Transcript.inMemory()).build()`.
+strictly opt-in. This is also `AgentConfig`'s no-memory default:
+`Memory.pipeline(Transcript.inMemory())`.
 
 ### Hydrate — `ContextHydrator`
 
@@ -99,7 +102,7 @@ appends exactly one user-role message (the documented carrier for non-human cont
 this is how appending stages amend context); `map(UnaryOperator<Message>)` rewrites every
 message (the redaction verb); `drop(Predicate<Message>)` removes pair-atomically; and
 `elideToolResults(n)` / `keepRecent(n)` / `limitTokens(budget, estimator)` are the pair-safe
-clamps built on that kernel. The builder's `.keepRecent(n)` verb simply registers
+clamps built on that kernel. The config's `.keepRecent(n)` verb simply registers
 `ctx -> ctx.keepRecent(n)` as a stage at its call position.
 
 Stages run in registration order, each seeing its predecessors' output. Recommended

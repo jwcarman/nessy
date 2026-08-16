@@ -18,7 +18,7 @@ is derived from, and an `execute` that only ever sees a typed record. See
 ## 2. Own your prompts
 
 The system prompt is an application-owned string, not a framework template —
-`AgentBuilder` takes it as-is and does nothing to it. Where this factor gets
+`AgentConfig` takes it as-is and does nothing to it. Where this factor gets
 interesting is the injected context blocks: the plan checklist ([Planning](planning.md))
 is real text, framed and appended to a user-role message, byte-exact and
 reproducible. Own it plainly: that block **is** injected text into the

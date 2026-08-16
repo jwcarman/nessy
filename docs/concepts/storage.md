@@ -131,11 +131,11 @@ metadata.
 ConversationStore store = JdbcConversationStore.create(dataSource, objectMapper);
 Parks parks = JdbcParks.create(dataSource, objectMapper);
 Transcript transcript = JdbcTranscript.create(dataSource, objectMapper);
-Memory memory = Memory.pipeline(transcript).build();
+Memory memory = Memory.pipeline(transcript);
 
-Harness harness = Nessy.harness(anthropic).store(store).parks(parks).build();
+Harness harness = Nessy.harness(h -> h.provider(anthropic).store(store).parks(parks));
 Agent<String> agent =
-    harness.agent().name("durable").model("claude-sonnet-4-5").memory(memory).build();
+    harness.agent(a -> a.name("durable").model("claude-sonnet-4-5").memory(memory));
 ```
 
 Restart survival needs three doors: `ConversationStore` keeps the control block and

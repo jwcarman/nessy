@@ -76,7 +76,7 @@ That two-watching-surfaces lesson survives in `DemoAgent`, relocated: since
 conversation built inside its own `run()`, no instance handed back to the
 caller), there is no live `Conversation` left at the call site to attach a
 per-conversation `events()` subscription to. The equivalent channel is now a
-build-time `AgentBuilder#listen(Class, Consumer)` declaration on `DemoAgent`
+build-time `AgentConfig#listen(Class, Consumer)` declaration on `DemoAgent`
 instead — the same `ListenerRegistry` delivery, just declared once on the
 agent rather than attached once per conversation. It announces
 `ConversationEvent.ModelResponded`'s token usage, a fact the turn narration
@@ -134,7 +134,7 @@ lines on top of what was already there:
 PlanStore planStore = PlanStore.inMemory();
 Transcript transcript = Transcript.inMemory();
 // ... ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()) among the grants ...
-.memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
+.memory(Memory.pipeline(transcript, config -> config.transform(PlanTools.transformer(planStore))))
 ```
 
 Ask for anything multi-step and the model calls `update_plan` to write a
@@ -156,7 +156,7 @@ should be `[>]` at a time. An absent or empty plan injects nothing: the
 never sees the block.
 
 `Chat` hands the same `planStore` that `DemoAgent.agentFor` built to
-`ConsoleRepl.Builder#plan(PlanStore)`, so the checklist itself — not just
+`ReplConfig#plan(PlanStore)`, so the checklist itself — not just
 the model's own recall of it — prints in the terminal, at most once per
 turn: after that turn's own output, once `conversation.tell` has returned,
 right before the next prompt (console design §9; markers shown here are the
@@ -198,10 +198,12 @@ Function<ConversationId, SubjectId> subjectResolver = id -> new SubjectId("chat-
 // ... ToolGrant.grant(NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()) ...
 // ... ToolGrant.grant(NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()) ...
 .memory(
-    Memory.pipeline(transcript)
-        .transform(PlanTools.transformer(planStore))
-        .transform(NotebookTools.transformer(notebook, subjectResolver))
-        .build())
+    Memory.pipeline(
+        transcript,
+        config ->
+            config
+                .transform(PlanTools.transformer(planStore))
+                .transform(NotebookTools.transformer(notebook, subjectResolver))))
 ```
 
 The notebook transformer is registered after the plan transformer, so the

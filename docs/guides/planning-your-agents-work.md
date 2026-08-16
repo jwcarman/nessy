@@ -18,13 +18,13 @@ PlanStore planStore = PlanStore.inMemory();
 Transcript transcript = Transcript.inMemory();
 
 Agent<String> agent =
-    harness
-        .agent()
-        .name("scout")
-        .tools(
-            ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
-        .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
-        .build();
+    harness.agent(
+        a ->
+            a.name("scout")
+                .tools(ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+                .memory(
+                    Memory.pipeline(
+                        transcript, config -> config.transform(PlanTools.transformer(planStore)))));
 ```
 
 `PlanTools.updatePlan(planStore)` is the write half — the model calls
@@ -39,32 +39,36 @@ DeepWiki grants from [MCP Clients](mcp-clients.md):
 
 ```java
 Agent<String> agent =
-    harness
-        .agent()
-        .name("scout")
-        .model(model)
-        .systemPrompt(SYSTEM_PROMPT)
-        .tools(
-            ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-            ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-            ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()),
-            ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
-        .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
-        .approver(approver)
-        .build();
+    harness.agent(
+        a ->
+            a.name("scout")
+                .model(model)
+                .systemPrompt(SYSTEM_PROMPT)
+                .tools(
+                    ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
+                    ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
+                    ToolGrant.grant(
+                        toolbox.tool("ask_question"), UsagePolicy.requireApproval()),
+                    ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+                .memory(
+                    Memory.pipeline(
+                        transcript,
+                        config -> config.transform(PlanTools.transformer(planStore))))
+                .approver(approver));
 ```
 
 ## Wiring the console checklist too
 
 A console app can print the checklist itself — not just let the model recall
-it — by handing the same `PlanStore` to `ConsoleRepl.Builder#plan`:
+it — by handing the same `PlanStore` to `ReplConfig#plan`:
 
 ```java
-ConsoleRepl.of(agent)
-    .banner("scout — ask about any public GitHub repo")
-    .prompt("you> ")
-    .plan(planStore)
-    .run();
+ConsoleRepl.run(
+    agent,
+    r ->
+        r.banner("scout — ask about any public GitHub repo")
+            .prompt("you> ")
+            .plan(planStore));
 ```
 
 The store the model writes through `update_plan` is the exact store the REPL
@@ -135,5 +139,5 @@ otherwise get lost while it's grinding on step 2 — not by default.
   store, the injected block, replay idempotency.
 - [MCP Clients](mcp-clients.md) — Scout's other grants, imported from
   DeepWiki, wired beside `update_plan`.
-- [Console Apps](console-apps.md) — `ConsoleRepl.Builder#plan`, the REPL's
+- [Console Apps](console-apps.md) — `ReplConfig#plan`, the REPL's
   half of the same checklist.
