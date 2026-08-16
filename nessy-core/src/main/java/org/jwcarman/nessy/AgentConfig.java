@@ -287,26 +287,38 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
    * from this type plus {@link HarnessConfig#intentStore}'s store — internally, in {@link
    * AgentAssembly}; the caller never learns a second noun.
    *
-   * <p>{@code intentType} must be a CONCRETE type that renders as a JSON object schema — a record
-   * or a POJO — checked right here, at wiring time: a tool's parameters must be an OBJECT schema,
-   * so a bare {@code String}, a primitive or its box, an enum, a collection, or an array is
-   * rejected with {@link AgentConfigurationException} naming the offending type and pointing at
-   * wrapping it in a record. An abstract type — a sealed or unsealed interface, or an abstract
-   * class — is rejected too (amended after an empirical finding, Task 3b): victools renders a
-   * sealed interface of records as a bare, propertyless object schema rather than a {@code oneOf},
-   * so the model would receive an empty schema and Jackson could not reconstruct the abstract type
-   * without polymorphism wiring nessy does not ship in v1 — accepting it at wiring time and failing
-   * only at call time would be silent non-functionality. Use a concrete record with a discriminator
-   * field instead (the exception names the fallback shape). One field makes the
-   * one-intent-per-agent rule true by construction: a second call throws the same exception naming
-   * the vocabulary already declared, rather than silently overwriting it.
+   * <p>{@code intentType} is an ordinary tool input type: nessy validates no other tool's input
+   * type here either, and this method performs no check on {@code intentType} beyond rejecting
+   * {@code null} and a repeat call (below). Two things the author owns and this method cannot
+   * verify:
+   *
+   * <ul>
+   *   <li>The type must render a JSON schema a model can actually fill — an object with at least
+   *       one property, or (for a closed set of variants) a discriminated union. A record or a POJO
+   *       with properties is the straightforward choice. A POLYMORPHIC vocabulary — a sealed
+   *       interface or abstract base with several shapes — needs the author's own Jackson
+   *       polymorphic handling ({@code @JsonTypeInfo} with {@code @JsonSubTypes}, a type indicator
+   *       carried in the JSON) and a schema that conveys the alternatives: nessy's own victools
+   *       configuration adds no subtype resolution on its own, so a bare sealed interface renders
+   *       as an empty, propertyless object schema the model cannot fill.
+   *   <li>The declared JSON must bind back into an instance of {@code intentType} through the
+   *       harness's {@link com.fasterxml.jackson.databind.ObjectMapper}, and that instance must
+   *       round-trip through the {@link org.jwcarman.nessy.spi.intent.IntentStore}. Neither is
+   *       checked at wiring time — there is no sample instance to try binding against here. Both
+   *       are covered at call time by the same fail-closed machinery every tool call gets: a
+   *       binding failure denies that call with a reason the model sees, and a store-write failure
+   *       surfaces at declare time.
+   * </ul>
+   *
+   * <p>One field makes the one-intent-per-agent rule true by construction: a second call throws
+   * {@link AgentConfigurationException} naming the vocabulary already declared, rather than
+   * silently overwriting it.
    *
    * <p>Unwired: no tools are offered, {@link
    * org.jwcarman.nessy.api.tool.authorization.AuthorizationContext#declaredIntent()} stays empty
    * for every call, and the intent store is never touched.
    *
-   * @throws AgentConfigurationException if {@code intentType} is abstract or otherwise cannot
-   *     render as an object schema, or if this agent already declared one
+   * @throws AgentConfigurationException if this agent already declared an intent vocabulary
    */
   public AgentConfig<T> intent(Class<?> intentType) {
     Objects.requireNonNull(intentType, "intentType must not be null");
@@ -318,7 +330,6 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
               + " one-intent-per-agent invariant true by construction, a wiring-time error rather"
               + " than a runtime row overwrite");
     }
-    IntentAssembly.requireObjectSchema(intentType);
     this.intentType = intentType;
     return this;
   }

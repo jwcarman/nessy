@@ -16,10 +16,8 @@
 package org.jwcarman.nessy;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
@@ -46,90 +44,6 @@ final class IntentAssembly {
   private static final String CLEAR_TOOL_NAME = "clear_intent";
 
   private IntentAssembly() {}
-
-  /**
-   * The wiring-time belt {@link AgentConfig#intent(Class)} runs before ever accepting {@code
-   * intentType}: a tool's parameters must render as a JSON object schema, so anything that renders
-   * otherwise — a bare {@code String}, a primitive or its box, an enum, a collection, an array — is
-   * refused here rather than discovered later as a schema a provider rejects at call time. Reuses
-   * {@link Tool#spec()}'s own schema derivation (a throwaway probe tool, never registered or
-   * called) rather than reaching into {@code internal.Schemas} directly — {@code Tool.java} is
-   * already the one sanctioned api-to-internal crossing for exactly this derivation ({@code
-   * ZoneBoundariesTest}).
-   */
-  static void requireObjectSchema(Class<?> intentType) {
-    requireConcreteType(intentType);
-    requireObjectSchemaCaptured(intentType);
-  }
-
-  /**
-   * Rejects an abstract type — a sealed or unsealed interface, or an abstract class — before ever
-   * asking victools to render one. Empirical finding (Task 3b): victools 4.38.0 renders a sealed
-   * interface of records as a bare {@code {"type":"object"}} with no {@code oneOf} and no
-   * properties, so the model gets an empty schema and Jackson cannot reconstruct the abstract type
-   * without {@code @JsonTypeInfo} and subtype-resolver wiring nessy does not do. Accepting that
-   * shape at wiring time and failing at call time is silent non-functionality; nessy fails loudly
-   * here instead, where the developer is standing (design of record 2026-08-16-authorization §7,
-   * amended: polymorphic vocabularies are a roadmap item, not a v1 promise).
-   */
-  private static void requireConcreteType(Class<?> intentType) {
-    if (intentType.isInterface() || Modifier.isAbstract(intentType.getModifiers())) {
-      throw new AgentConfigurationException(
-          "intent vocabulary "
-              + intentType.getName()
-              + " is abstract; victools cannot render a polymorphic schema. Use a concrete record"
-              + " with a discriminator field (for example `record Intent(Kind kind, String"
-              + " orderId, String reason)`).");
-    }
-  }
-
-  private static <X> void requireObjectSchemaCaptured(Class<X> intentType) {
-    JsonNode type = new SchemaProbeTool<>(intentType).spec().inputSchema().get("type");
-    boolean isObjectSchema = type != null && type.isTextual() && "object".equals(type.asText());
-    if (!isObjectSchema) {
-      throw new AgentConfigurationException(
-          "intent("
-              + intentType.getName()
-              + ") is rejected: its JSON schema is not an OBJECT schema — a tool's parameters must"
-              + " be an object, and a bare String, a primitive or its box, an enum, a collection, or"
-              + " an array all render as something else. Wrap it in a record instead, e.g. `record"
-              + " "
-              + intentType.getSimpleName()
-              + "Intent("
-              + intentType.getSimpleName()
-              + " value) {}`.");
-    }
-  }
-
-  /** Exists only so {@link Tool#spec()} can derive {@code intentType}'s own schema. */
-  private static final class SchemaProbeTool<X> implements Tool<X> {
-
-    private final Class<X> intentType;
-
-    private SchemaProbeTool(Class<X> intentType) {
-      this.intentType = intentType;
-    }
-
-    @Override
-    public String name() {
-      return "probe";
-    }
-
-    @Override
-    public String description() {
-      return "";
-    }
-
-    @Override
-    public Class<X> inputType() {
-      return intentType;
-    }
-
-    @Override
-    public Awaited<ToolResult> execute(X input, ToolContext context) {
-      throw new UnsupportedOperationException("this probe tool is never actually run");
-    }
-  }
 
   /** {@code declare_intent} and {@code clear_intent}, granted {@link UsagePolicy#allow()}. */
   static List<ToolGrant> grants(IntentStore store, Class<?> intentType, ObjectMapper mapper) {
