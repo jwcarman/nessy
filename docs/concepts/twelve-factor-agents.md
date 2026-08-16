@@ -7,7 +7,26 @@ similar answers to similar problems. This page maps all twelve factors onto
 Nessy machinery, one receipt each, and says plainly where the match is
 partial.
 
-## 1. Natural language to tool calls
+Each factor below carries a status: ✅ supported (shipped, tested), 🟡
+partial (shipped with a named gap), ⛔ not yet (honest absence). Every 🟡
+or ⛔ names the gap in the line right after the marker.
+
+| Factor | Status |
+|---|---|
+| 1. Natural language to tool calls | ✅ |
+| 2. Own your prompts | ✅ |
+| 3. Own your context window | ✅ |
+| 4. Tools are just structured outputs | ✅ |
+| 5. Unify execution state and business state | ✅ |
+| 6. Launch/pause/resume with simple APIs | ✅ |
+| 7. Contact humans with tool calls | ✅ |
+| 8. Own your control flow | ✅ |
+| 9. Compact errors into context window | ✅ |
+| 10. Small, focused agents | ✅ |
+| 11. Trigger from anywhere, meet users where they are | ✅ |
+| 12. Make your agent a stateless reducer | ✅ |
+
+## 1. Natural language to tool calls · ✅
 
 The model doesn't choose freeform side effects — it emits a structured call
 against a schema, and something else decides whether it runs. `Tool<T>` is
@@ -15,7 +34,7 @@ that structured half: a name, a description, an `inputType()` a JSON Schema
 is derived from, and an `execute` that only ever sees a typed record. See
 [Tools and Grants](tools-and-grants.md).
 
-## 2. Own your prompts
+## 2. Own your prompts · ✅
 
 The system prompt is an application-owned string, not a framework template —
 `AgentConfig` takes it as-is and does nothing to it. Where this factor gets
@@ -29,7 +48,7 @@ exact rendering, and pinned — `PlanTools`' own `renderChecklist` is the one
 place that byte sequence is produced, not a template scattered across the
 loop.
 
-## 3. Own your context window
+## 3. Own your context window · ✅
 
 `Memory` owns what a model call actually sees, and it's a pipeline an
 application composes explicitly: a hydrator that bootstraps the initial
@@ -38,14 +57,14 @@ stages an application chooses and orders itself — clamp, redact, elide,
 append. Nothing about window shape happens implicitly inside the loop. See
 [Memory and the Pipeline](memory-and-the-pipeline.md).
 
-## 4. Tools are just structured outputs
+## 4. Tools are just structured outputs · ✅
 
 A tool's input is a plain record (`Tool<Add>` over `record Add(int left, int
 right)`), and the model's call is that record, parsed and validated against
 the derived schema before `execute` ever runs — the loop never hands a tool a
 bag of untyped JSON. See [Tools and Grants](tools-and-grants.md).
 
-## 5. Unify execution state and business state
+## 5. Unify execution state and business state · ✅
 
 `ConversationState` is the one record both live in: `fold` advances it on
 every fact, and it's the same state a durable store persists, resumes, and
@@ -56,7 +75,7 @@ order id itself, so every fact about one order folds onto the same state
 regardless of which process handles it. See [The Durable Loop](durable-loop.md)
 and [Storage](storage.md).
 
-## 6. Launch/pause/resume with simple APIs
+## 6. Launch/pause/resume with simple APIs · ✅
 
 A tool or approver that can't finish in-process returns `Awaited.parked(token)`
 instead of a result; the loop persists and moves on. `agent.resume(token,
@@ -64,7 +83,7 @@ resolution)` answers it later, from any process — the gap can be 200
 milliseconds or two days, and nothing about the API changes either way. See
 [Parks and Callbacks](parks-and-callbacks.md).
 
-## 7. Contact humans with tool calls
+## 7. Contact humans with tool calls · ✅
 
 Human approval is a tool call the model already knows how to make, gated by
 `UsagePolicy.requireApproval()` and answered through the same park-and-resume
@@ -75,7 +94,7 @@ survives a kill mid-approval on exactly this contract. See
 [Parks and Callbacks](parks-and-callbacks.md) and
 [Tools and Grants](tools-and-grants.md).
 
-## 8. Own your control flow
+## 8. Own your control flow · ✅
 
 There's no hidden agent loop making its own decisions about when to stop
 retrying, when to hand off, or when to ask a human. The loop itself is an
@@ -87,7 +106,7 @@ max-model-calls wallet guard, in `nessy-core` today) bounds a runaway loop
 the same way — no dedicated site page yet, so check its Javadoc directly.
 See [The Durable Loop](durable-loop.md) and [Triggers](../guides/triggers.md).
 
-## 9. Compact errors into context window
+## 9. Compact errors into context window · ✅
 
 A failed tool call doesn't throw out of the loop — it returns a `ToolResult`
 the model reads in-band, the same channel a successful result uses, so the
@@ -96,22 +115,32 @@ validation takes exactly this path: a blank task title surfaces as a failed
 result, not an exception. See [Tools and Grants](tools-and-grants.md) and
 [Planning](planning.md).
 
-## 10. Small, focused agents
+## 10. Small, focused agents · ✅
 
 An agent is a cheap identity — a name, a model, a system prompt, a set of
 grants — not a heavyweight runtime object; a `Harness` holds the shared
 infrastructure and any number of narrowly-scoped agents run inside it. The
 grant principle pushes the same way at the tool level: authority is stated
 per tool, per agent, so a focused agent's blast radius is exactly the tools
-it was handed, not everything the harness knows how to do. A subagent,
-defined right inside its parent's own `.subagent(...)` call, makes the
-factor literal rather than aspirational: a parent delegates to a child
-agent through an ordinary tool call, and the child is just another
-narrowly-scoped agent with its own grants — not a mode switch inside one
-sprawling agent. See [The Durable Loop](durable-loop.md) and
-[Subagents](subagents.md).
+it was handed, not everything the harness knows how to do.
 
-## 11. Trigger from anywhere, meet users where they are
+Delegation is shipped, not aspirational: `AgentConfig#subagent(...)` (or the
+typed door, `subagent(Class<T>, ...)`) declares a child agent right inside
+its parent's own config, and building the parent builds the child. The
+parent's model sees an ordinary tool named after the child; calling it opens
+a fresh child conversation, derived deterministically as
+`<parent-conversation-id>/<tool-call-id>` so a redelivered parent turn
+replays onto the same child rather than spawning a sibling. Everything the
+loop already guarantees for a tool call — at-least-once replay, approval
+gates, parking — applies to the child for free: if the child's own tool
+parks, the parent's delegation call parks alongside it on its own token, and
+an internally-wired listener resumes the parent the moment the child
+settles, with no application code driving that resume. A child can itself
+declare `.subagent(...)`, nesting a grandchild the same way; a name
+collision anywhere in the tree is rejected at build time. See
+[The Durable Loop](durable-loop.md) and [Subagents](subagents.md).
+
+## 11. Trigger from anywhere, meet users where they are · ✅
 
 `agent.converse().tell(...)` looks the same whether the caller is a person at
 a keyboard, a browser request, a cron firing, or a message landing on a
@@ -120,7 +149,7 @@ it came from. The example family demonstrates five trigger shapes end to end
 on this one entry point. See [Triggers](../guides/triggers.md) and
 [Examples](../examples/index.md).
 
-## 12. Make your agent a stateless reducer
+## 12. Make your agent a stateless reducer · ✅
 
 `ConversationState#fold(ConversationEvent)` is the reducer, and it's held to
 the letter of this factor: pure, synchronous, total, no I/O, `f(state,
