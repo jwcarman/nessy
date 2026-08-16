@@ -114,8 +114,8 @@ tell `select()` which model name is right for it. The same applies to
 OpenRouter and LM Studio models reached the same way. Without `NESSY_MODEL`,
 `select()` falls back to a small, cheap default for the chosen provider
 (Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-3.6-flash`,
-`grok-4.6` for xAI — read from docs.x.ai on 2026-08-15; not exercised against
-the live API — or, for Bedrock, `us.anthropic.claude-haiku-4-5-20251001-v1:0`,
+`grok-4.6` for xAI — live-validated 2026-08-16, including a multi-tool turn
+with an approval gate — or, for Bedrock, `us.anthropic.claude-haiku-4-5-20251001-v1:0`,
 the `us` cross-region inference profile id for Claude Haiku 4.5,
 live-validated 2026-08-16).
 
