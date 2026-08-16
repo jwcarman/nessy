@@ -413,7 +413,7 @@ class EnvModelProvidersTest {
 
       assertThat(selection.provider()).isInstanceOf(GeminiModelProvider.class);
       assertThat(selection.providerName()).isEqualTo("gemini");
-      assertThat(selection.model()).isEqualTo("gemini-2.5-flash");
+      assertThat(selection.model()).isEqualTo("gemini-3.6-flash");
     }
 
     @Test

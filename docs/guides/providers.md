@@ -97,7 +97,7 @@ override looks, by type, exactly like an OpenAI model, so nothing else can
 tell `select()` which model name is right for it. The same applies to
 OpenRouter and LM Studio models reached the same way. Without `NESSY_MODEL`,
 `select()` falls back to a small, cheap default for the chosen provider
-(Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-2.5-flash`, or
+(Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-3.6-flash`, or
 `grok-4.6` for xAI — read from docs.x.ai on 2026-08-15; not exercised against
 the live API).
 
@@ -134,7 +134,7 @@ ModelProvider provider = GeminiModelProvider.builder().fromEnv().build();
 `.fromEnv()` reads `GEMINI_API_KEY`, then — if unset — `GOOGLE_API_KEY`,
 Google's own documented pair, in that order. `.baseUrl(String)` overrides
 the endpoint for proxies, gateways, or Gemini-compatible services. Model
-names are the Gemini Developer API's own, e.g. `gemini-2.5-flash` or
+names are the Gemini Developer API's own, e.g. `gemini-3.6-flash` or
 `gemini-2.5-pro`.
 
 Capabilities in v1: text and tool calls, including parallel tool calls in
