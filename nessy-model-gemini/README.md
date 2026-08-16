@@ -1,0 +1,66 @@
+# Nessy Model Gemini
+
+A native `ModelProvider` on Google's own [java-genai](https://github.com/googleapis/java-genai)
+SDK, talking to the Gemini Developer API via a plain API key — the same family as
+`nessy-model-anthropic` and `nessy-model-openai`, built the same way.
+
+```java
+ModelProvider provider = GeminiModelProvider.builder().apiKey(apiKey).build();
+```
+
+## Credentials
+
+- `.apiKey(String)` — explicit key, the usual path.
+- `.fromEnv()` — reads `GEMINI_API_KEY`, then `GOOGLE_API_KEY` (Google's own documented pair, in
+  that order) itself, rather than delegating to the SDK's own environment resolution. An explicit
+  `.apiKey(...)` set alongside `.fromEnv()` still wins. Neither variable set fails fast at
+  `.build()` with an `IllegalStateException` naming both.
+- `.client(Client)` — escape hatch: supply a fully preconfigured java-genai `Client` instead.
+- `.baseUrl(String)` — for proxies, gateways, or Gemini-compatible endpoints.
+
+## Mapping
+
+- System prompt → `systemInstruction`; a blank prompt omits it entirely.
+- `Context` messages → `Content`s with `user`/`model` roles.
+- `ToolSpec` JSON schemas → `FunctionDeclaration.parametersJsonSchema`, copied as-is.
+- Tool results → `functionResponse` parts, addressed back to the function they answer by name
+  (looked up from the matching `tool_use` call id — `ToolResultBlock` itself carries no name).
+- `maxTokens` → `maxOutputTokens`.
+- Text deltas → `ModelEvent.TextChunk`; function calls → `ModelEvent.ToolUseEmitted`. The Gemini
+  Developer API never streams a function call's arguments incrementally the way OpenAI's Chat
+  Completions does — each `functionCall` part arrives already complete — so no id-keyed
+  accumulation is needed; an id is minted deterministically (`gemini-call-<n>`) only when the SDK
+  omits one.
+- `finishReason` has no dedicated "the model called a tool" value (a tool-calling turn still
+  reports `STOP`), so the stream tracks whether any function call was seen and reports
+  `StopReason.TOOL_USE` in that case regardless of the wire's own `finishReason`.
+- Usage: `promptTokenCount`/`candidatesTokenCount`/`cachedContentTokenCount`, honestly zeroed via
+  `Usage.zero()` for anything the SDK doesn't expose — never invented.
+
+## Capabilities
+
+v1 advertises none of the four opt-in `Capability` flags. `THINKING` is deliberately deferred —
+Gemini's `thought`-flagged parts are dropped rather than translated; wiring them up needs both a
+thought-part mapping and a capabilities flag, banked for later. `PROMPT_CACHING`,
+`PARALLEL_TOOL_CALLS`, and `IMAGE_INPUT` are equally unwired in this module's request/response
+mapping, so none is claimed. `IMAGE_INPUT` in particular: an `ImageBlock` in a user message fails
+loudly (`IllegalArgumentException`) rather than being silently dropped.
+
+## Testing
+
+Offline mapping tests (`GeminiRequestsTest`, `GeminiStreamTest`, `GeminiModelProviderTest`) build
+every fixture from the java-genai SDK's own builders — real `GenerateContentResponse`, `Candidate`,
+`Content`, `Part` objects — no mocking library. The one thing that resists offline construction is
+the SDK's own `Client`/`Models` (both `final`, no interface) and `ResponseStream` (needs a real
+`ApiResponse` plus a reflection-resolved converter method); `GeminiClient` is the thin
+package-private seam that seam-tests fake directly instead.
+
+`GeminiLiveTest` (`@Tag("live")`) mirrors the sibling providers' live suites: a real conversation
+and a real tool-call round trip against the Gemini Developer API. **Honesty note:** as of this
+module's creation, the live suite has **not** been executed against a real key — no
+`GEMINI_API_KEY`/`GOOGLE_API_KEY` was available in the environment this module was built in. The
+request/response mapping is grounded in the SDK's own source (`FunctionCall`, `FunctionResponse`,
+`FinishReason`, `GenerateContentResponseUsageMetadata`, ...) and its documented streaming examples,
+and is covered by the offline mapping tests above, but the live round-trip is unvalidated until
+someone runs it with a real key: `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl
+nessy-model-gemini`.
