@@ -4,8 +4,9 @@
 workflows in production — opinionated enough that the safe path is the default
 path, open enough that every policy a governed organization must impose has a
 seam to live in, and honest enough that enforcement belongs to the harness, not
-to convention. Every opinion ships with its escape hatch: swap the piece, keep
-the framework, roll your own where your organization knows better. Durability,
+to convention. Nessy has opinions, not mandates: the shipped implementations embody
+the opinions, the interfaces are the contract, and anyone can implement their
+own without the framework getting in the way. Durability,
 auditability, and human authority over agents are the substrate, not features.
 Every roadmap item below is judged against that aim; so is every gap.
 
