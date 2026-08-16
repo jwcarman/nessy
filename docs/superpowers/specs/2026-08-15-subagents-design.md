@@ -106,8 +106,13 @@ public interface SubagentLinks {
 }
 ```
 
-(Exact record shape settled at planning; the triple is child id → parent token + parent
-agent name, since the router routes by name.) LWW, idempotent forget, same in-memory
+(Exact record shape settled at planning — **amended during implementation, 2026-08-16:**
+the link is the PAIR child id → parent token, nothing more. The parent agent's name is
+not reachable from inside `Tool.execute` and does not need to be: the loop stamps it
+into `Parks.Park` when the parent's park settles, so `completions` takes `Parks` as a
+third collaborator and resolves the routing name from the park stamp at wake time —
+the stamp is the authoritative identity; a copied name in the link could only drift.
+A link whose park is already gone means nobody is waiting: forget it, no-op.) LWW, idempotent forget, same in-memory
 default + `JdbcSubagentLinks` + TCK contract pattern as every store before it — one table,
 `(child_conversation_id)` primary key. Concurrent writers are not real here (one child has
 one parent), but replay rewrites identically, the familiar argument.

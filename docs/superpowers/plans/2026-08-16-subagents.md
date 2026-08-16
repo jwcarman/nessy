@@ -85,9 +85,8 @@ does not): settlement is a NEW notification record, not a ConversationEvent subt
 **Interfaces (Produces):**
 ```java
 public interface SubagentLinks {
-  record Link(ParkToken parentToken, String parentAgentName) { /* requireNonNulls */ }
-  Optional<Link> find(ConversationId child);
-  void save(ConversationId child, ParkToken parentToken, String parentAgentName); // LWW upsert
+  Optional<ParkToken> find(ConversationId child);
+  void save(ConversationId child, ParkToken parentToken); // LWW upsert
   void forget(ConversationId child);                                              // idempotent
   static SubagentLinks inMemory() { return new InMemorySubagentLinks(); }
 }
@@ -121,7 +120,7 @@ CallbackRouter, Agent doors/Awaited/ParkToken from Global Constraints.
 public record Delegation(String task) {}
 public static Tool<Delegation> subagent(Agent<String> child, String description)                       // links = none: park path throws IllegalStateException naming the missing links store
 public static Tool<Delegation> subagent(Agent<String> child, String description, SubagentLinks links)
-public static Consumer<ConversationSettled> completions(SubagentLinks links, CallbackRouter router)
+public static Consumer<ConversationSettled> completions(SubagentLinks links, Parks parks, CallbackRouter router)
 // registered by the app: harnessBuilder.listen(ConversationSettled.class, AgentTools.completions(links, router))
 ```
 
@@ -137,17 +136,20 @@ public static Consumer<ConversationSettled> completions(SubagentLinks links, Cal
   - Complete → `Awaited.ready(ToolResult.ok(finalAssistantText))`; child FAILED →
     `Awaited.ready(ToolResult.error(reason))`; child parks → mint a parent ParkToken (the
     same way existing parking tools mint - see order-desk/dispatcher precedent),
-    `links.save(childId, parentToken, parentAgentName-from-ToolContext-or-tool-wiring)`,
-    return `Awaited.parked(parentToken)`.
+    `links.save(childId, parentToken)`, return `Awaited.parked(parentToken)`. (The parent
+    agent's name is NOT stored — the loop stamps it into `Parks.Park` when the park
+    settles; spec §5 amendment.)
   - Progress pings: pass a TurnObserver to the child's tell that calls
     `context.progress("<child-name>: ...")` on each `TurnEvent.ToolCallRequested` —
     activity pings so long delegations never look frozen (spec §9 wants per-turn; ledger
     the approximation, document honestly in javadoc).
 - [ ] completions factory: a `Consumer<ConversationSettled>` (registered sync via
   `HarnessBuilder.listen`) —
-  `links.find(event.conversationId())` → if present: COMPLETE →
-  `router.route(link.parentAgentName()).resume(link.parentToken(), ToolResolution.Completed(ToolResult.ok(event.finalAssistantText())))`;
-  FAILED → same door with `ToolResult.error(...)`; then `links.forget(childId)`.
+  `links.find(event.conversationId())` → if present, `parks.find(parentToken)` supplies
+  the park stamp (its `agentName()` is the routing name): COMPLETE →
+  `router.route(stamp.agentName()).resume(parentToken, ToolResolution.Completed(ToolResult.ok(event.finalAssistantText())))`;
+  FAILED → same door with `ToolResult.error(...)`; then `links.forget(childId)`. Park
+  already gone → nobody waits → `links.forget(childId)`, no-op.
   At-least-once: a second settlement for the same child (links already forgotten) is a
   silent no-op; a resume on an already-resolved token surfaces the doors' existing
   behavior — document, don't wrap.
@@ -176,7 +178,7 @@ public static Consumer<ConversationSettled> completions(SubagentLinks links, Cal
 **Steps:**
 - [ ] Contract: round-trip, LWW on double save, idempotent forget, absent find — public
   @Test methods, prose names.
-- [ ] Table: `(child_conversation_id PRIMARY KEY, parent_token, parent_agent_name)`;
+- [ ] Table: `(child_conversation_id PRIMARY KEY, parent_token)`;
   upsert via the JdbcSummaryStore race-recovery pattern (update → write-once insert →
   dup-swallow → retry-update); complete constant SQL; schema-comment semicolons only at
   line-end (Oracle).
