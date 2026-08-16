@@ -102,13 +102,24 @@ Bedrock console's model playground for the model you're targeting — loading
 it there is what actually triggers the form to appear.
 
 **OpenRouter** (model ids are vendor-prefixed slugs, so `NESSY_MODEL` is
-required — the validated free path is
-`nvidia/nemotron-3.5-lightning-30b-a3b`; note cached-token counts may read
-`0` regardless of whether the upstream model actually cached anything, since
+required — the validated path is `openai/gpt-4o-mini`; `:free`-tagged
+variants exist for many models; note cached-token counts may read `0`
+regardless of whether the upstream model actually cached anything, since
 usage passthrough varies by vendor):
 
 ```console
 $ OPENAI_API_KEY=sk-or-... OPENAI_BASE_URL=https://openrouter.ai/api/v1 \
+    NESSY_MODEL=openai/gpt-4o-mini \
+    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+**NVIDIA NIM** (free developer tier; keys are `nvapi-...` from
+build.nvidia.com, model ids are NVIDIA's catalog ids — the validated path is
+the free open-weight `nvidia/nemotron-3.5-lightning-30b-a3b`, which drove
+the full gauntlet):
+
+```console
+$ OPENAI_API_KEY=nvapi-... OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1 \
     NESSY_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b \
     ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
 ```

@@ -279,6 +279,17 @@ ModelProvider provider =
     OpenAiModelProvider.builder().apiKey(key).baseUrl("https://openrouter.ai/api/v1").build();
 ```
 
+**NVIDIA NIM** (validated 2026-08-16 — the free open-weight
+`nvidia/nemotron-3.5-lightning-30b-a3b` on NVIDIA's free developer tier,
+through chat-cli: text, an approval-gated tool round trip, and a notebook
+write — a no-cost model driving the whole loop; keys are `nvapi-...` from
+build.nvidia.com, model ids are NVIDIA's catalog ids):
+
+```java
+ModelProvider provider =
+    OpenAiModelProvider.builder().apiKey(key).baseUrl("https://integrate.api.nvidia.com/v1").build();
+```
+
 **Ollama** (local, no key required — any non-empty string works):
 
 ```java
