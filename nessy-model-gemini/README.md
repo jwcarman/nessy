@@ -97,4 +97,8 @@ pre-existing histories that carry no signature degrade gracefully via Google's o
 skip-validation sentinel rather than failing the call outright — both paths are covered offline
 (`GeminiStreamTest$ThoughtSignatures`, `GeminiRequestsTest$ToolCallSignatures`). This is still an
 offline-only claim: it changes what the mapping does, not the live-validation status above, which
-only changes once the owner runs the live suite with a real key.
+only changes once the owner runs the live suite with a real key. Note for that live run: replayed
+function-call parts now carry a `thoughtSignature` field unconditionally, including against
+`gemini-2.5-*` models that previously received none — whether those models tolerate the added
+field (rather than the 3.x-only signing behavior the sentinel doc describes) is itself unverified
+offline and worth confirming on the first live run against a 2.5 model.

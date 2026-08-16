@@ -22,7 +22,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * The model asking for a tool to run. Always on an assistant message.
  *
  * <p>{@code signature}: an opaque provider-issued continuity token, stored with the block and
- * returned verbatim on replay; absent for providers that issue none.
+ * returned verbatim on replay; absent for providers that issue none. Its sibling {@link
+ * ThinkingBlock} uses the opposite convention — {@code signature} there is non-null and empty
+ * ({@code ""}) means unsigned, an artifact of how Anthropic streams thinking deltas — the two
+ * conventions must never be normalized to each other.
  *
  * <p><b>Equality:</b> the signature participates in record equality, deliberately. The block is
  * constructed once, at stream time, and persisted; at-least-once re-drives replay the SAME stored

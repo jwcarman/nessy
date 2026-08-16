@@ -245,6 +245,21 @@ class GeminiRequestsTest {
       var parts = contents.get(0).parts().orElseThrow();
       assertThat(parts.get(0).thoughtSignature().orElseThrow()).isEqualTo(sentinel);
     }
+
+    @Test
+    void a_signature_that_is_not_valid_base64_replays_as_unsigned_instead_of_throwing() {
+      byte[] sentinel = "skip_thought_signature_validator".getBytes(StandardCharsets.UTF_8);
+      var toolUse =
+          new ToolUseBlock(
+              new ToolCall("call-1", "read_file", MAPPER.createObjectNode()), "not-base64!!");
+      var assistantTurn = Message.assistant(List.of(toolUse));
+      var toolResultTurn = Message.toolResults(List.of(new ToolResultBlock("call-1", "ok", false)));
+
+      var contents = GeminiRequests.toContents(request(List.of(assistantTurn, toolResultTurn)));
+
+      var parts = contents.get(0).parts().orElseThrow();
+      assertThat(parts.get(0).thoughtSignature().orElseThrow()).isEqualTo(sentinel);
+    }
   }
 
   @Nested

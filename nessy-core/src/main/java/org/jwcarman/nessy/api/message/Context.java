@@ -375,7 +375,7 @@ public record Context(List<Message> messages) {
     }
     List<String> ids = new ArrayList<>();
     for (ContentBlock block : message.content()) {
-      if (block instanceof ToolUseBlock(ToolCall call, var _)) {
+      if (block instanceof ToolUseBlock(ToolCall call, _)) {
         ids.add(call.id());
       }
     }

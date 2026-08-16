@@ -247,6 +247,30 @@ class StateCodecTest {
       assertThat(decoded).isEqualTo(message);
     }
 
+    @ParameterizedTest(name = "signature \"{0}\" round-trips through writeMessage/readMessage")
+    @NullSource
+    @ValueSource(strings = {"sig-abc"})
+    void a_tool_use_block_s_signature_round_trips_through_the_shared_message_codec_path(
+        String signature) {
+      Message message = Message.assistant(List.of(new ToolUseBlock(toolCall("c1"), signature)));
+
+      Message decoded = codec.readMessage(codec.writeMessage(message));
+
+      assertThat(decoded).isEqualTo(message);
+    }
+
+    @Test
+    void an_old_shape_message_payload_with_no_signature_property_yields_a_null_signature() {
+      String payload =
+          "{\"role\":\"ASSISTANT\",\"content\":[{\"type\":\"tool_use\","
+              + "\"call\":{\"id\":\"c1\",\"name\":\"echo\",\"arguments\":{\"text\":\"hi\"}}}]}";
+
+      Message decoded = codec.readMessage(payload);
+
+      ToolUseBlock block = (ToolUseBlock) decoded.content().getFirst();
+      assertThat(block.signature()).isNull();
+    }
+
     @Test
     void an_unknown_message_payload_fails_loudly() {
       String payload = "{\"role\":\"USER\",\"content\":[{\"type\":\"bogus\"}]}";
