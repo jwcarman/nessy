@@ -4,9 +4,10 @@
 workflows in production — opinionated enough that the safe path is the default
 path, open enough that every policy a governed organization must impose has a
 seam to live in, and honest enough that enforcement belongs to the harness, not
-to convention. Durability, auditability, and human authority over agents are
-the substrate, not features. Every roadmap item below is judged against that
-aim; so is every gap.
+to convention. Every opinion ships with its escape hatch: swap the piece, keep
+the framework, roll your own where your organization knows better. Durability,
+auditability, and human authority over agents are the substrate, not features.
+Every roadmap item below is judged against that aim; so is every gap.
 
 Where Nessy is headed, by theme. No dates — items ship when they're ready, in
 roughly the order listed within each theme. Everything here is subject to
