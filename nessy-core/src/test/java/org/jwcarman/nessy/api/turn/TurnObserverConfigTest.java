@@ -134,7 +134,7 @@ class TurnObserverConfigTest {
   }
 
   @Test
-  void a_builder_with_nothing_registered_builds_the_absent_audience() {
+  void a_config_with_nothing_registered_builds_the_absent_audience() {
     TurnObserver indifferent = TurnObserver.observe(o -> {});
 
     oneOfEveryVariant().forEach(indifferent::on);

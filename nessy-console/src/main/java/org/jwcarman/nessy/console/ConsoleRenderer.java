@@ -23,14 +23,14 @@ import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.api.turn.TurnObserverCustomizer;
 import org.jwcarman.nessy.spi.plan.Plan;
 
 /**
- * The default look: composed on {@link
- * TurnObserver#observe(org.jwcarman.nessy.api.turn.TurnObserverCustomizer)} — this module's own
- * dogfood of the same composition point {@code night-watchman}'s {@code Watchman} and {@code
- * order-desk}'s {@code OrderDesk} dogfooded before it. Assistant prose streams plain, thinking
- * streams dim-italic, tool activity gets one dim {@code ⚙ tool:} line per
+ * The default look: composed on {@link TurnObserver#observe(TurnObserverCustomizer)} — this
+ * module's own dogfood of the same composition point {@code night-watchman}'s {@code Watchman} and
+ * {@code order-desk}'s {@code OrderDesk} dogfooded before it. Assistant prose streams plain,
+ * thinking streams dim-italic, tool activity gets one dim {@code ⚙ tool:} line per
  * requested/completed/parked event (the parked line carries the park token), and a failed turn
  * ending gets one red line with its reason. A quiescent ending ({@code COMPLETE}, {@code IDLE}, or
  * {@code PARKED}) renders nothing here — {@link ConsoleRepl} already leaves a blank line after
@@ -38,9 +38,9 @@ import org.jwcarman.nessy.spi.plan.Plan;
  *
  * <p>Exposed as a factory rather than a class so it composes: {@code ConsoleRepl}'s default is this
  * observer; a caller wanting to add a concern (a transcript file, a metrics counter) can still
- * reach for {@link TurnObserver#observe(org.jwcarman.nessy.api.turn.TurnObserverCustomizer)}
- * directly and fold this factory's behavior in alongside their own, the same composition {@link
- * TurnObserver}'s own javadoc describes.
+ * reach for {@link TurnObserver#observe(TurnObserverCustomizer)} directly and fold this factory's
+ * behavior in alongside their own, the same composition {@link TurnObserver}'s own javadoc
+ * describes.
  */
 public final class ConsoleRenderer {
 

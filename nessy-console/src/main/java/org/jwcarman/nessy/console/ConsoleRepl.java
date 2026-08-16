@@ -72,7 +72,7 @@ public final class ConsoleRepl {
   /**
    * The loop's fixed decor as one value: banner, prompt, exit words, and farewell (S107, alongside
    * {@link Io}). {@code farewell} is nullable — {@code null} means no farewell line (see {@link
-   * Builder#farewell}).
+   * ReplConfig#farewell}).
    */
   record Chrome(String banner, String prompt, Set<String> exitWords, String farewell) {
     Chrome {
@@ -104,8 +104,8 @@ public final class ConsoleRepl {
 
   /**
    * Prints the banner (if any), then loops: prompt, read, exit or tell, until end of input — an
-   * exit word or {@code null} (EOF) both print the farewell (if any, see {@link Builder#farewell})
-   * immediately, before returning.
+   * exit word or {@code null} (EOF) both print the farewell (if any, see {@link
+   * ReplConfig#farewell}) immediately, before returning.
    */
   public void run() {
     printBanner();
@@ -164,10 +164,10 @@ public final class ConsoleRepl {
 
   /**
    * The end-of-turn half of design §9's plan checklist: when a {@link PlanStore} was granted (see
-   * {@link Builder#plan}), reads the current plan for this REPL's own conversation and prints the
-   * checklist only when it is present, non-empty, and different from the last one printed — quiet
-   * turns, and turns where the plan didn't change, print nothing. No store granted means no read at
-   * all.
+   * {@link ReplConfig#plan}), reads the current plan for this REPL's own conversation and prints
+   * the checklist only when it is present, non-empty, and different from the last one printed —
+   * quiet turns, and turns where the plan didn't change, print nothing. No store granted means no
+   * read at all.
    */
   private void renderPlanIfChanged() {
     if (planStore == null) {

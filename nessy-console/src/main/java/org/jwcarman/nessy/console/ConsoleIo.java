@@ -20,6 +20,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import org.jwcarman.nessy.Agent;
 
 /**
  * The process-global stdin reader, shared by every real-console entry point in this module.
@@ -31,7 +32,7 @@ import java.nio.charset.StandardCharsets;
  * ConsoleApprover} reader then sees end-of-stream on the very next read and denies, even though the
  * answer was sitting in the REPL's buffer the whole time.
  *
- * <p>One process, one stdin, one reader: {@link ConsoleRepl.Builder#run()} and {@link
+ * <p>One process, one stdin, one reader: {@link ConsoleRepl#run(Agent, ReplCustomizer)} and {@link
  * ConsoleApprover}'s default constructor both read through this single, lazily-nothing-special,
  * eagerly-constructed instance rather than each wrapping {@link System#in} on their own. Neither
  * public constructor takes an argument here — this is the real-console default both fall back to;
@@ -51,12 +52,13 @@ final class ConsoleIo {
 
   /**
    * A fresh {@link Writer} over the real process stdout — the one place in this module that names
-   * {@link System#out} directly, so {@link ConsoleRepl.Builder#run()} and {@link ConsoleApprover}'s
-   * default constructor both delegate here instead of each wrapping the stream themselves. This is
-   * the adapter boundary a console REPL cannot avoid: the whole point of this library is writing to
-   * the real terminal a human is watching, not logging, so there is no logger to route through here
-   * — a fresh {@link Writer} per call (unlike {@link #stdin()}'s single shared reader) because,
-   * unlike input, two writers over the same output stream do not steal bytes from each other.
+   * {@link System#out} directly, so {@link ConsoleRepl#run(Agent, ReplCustomizer)} and {@link
+   * ConsoleApprover}'s default constructor both delegate here instead of each wrapping the stream
+   * themselves. This is the adapter boundary a console REPL cannot avoid: the whole point of this
+   * library is writing to the real terminal a human is watching, not logging, so there is no logger
+   * to route through here — a fresh {@link Writer} per call (unlike {@link #stdin()}'s single
+   * shared reader) because, unlike input, two writers over the same output stream do not steal
+   * bytes from each other.
    */
   static Writer stdout() {
     return new OutputStreamWriter(System.out, StandardCharsets.UTF_8);

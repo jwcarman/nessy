@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.util.Objects;
+import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.approval.ApprovalRequest;
@@ -46,9 +47,9 @@ public final class ConsoleApprover implements Approver {
 
   /**
    * The real-console constructor: a thin wrap of {@link System#out}, and {@link ConsoleIo#stdin()}
-   * rather than a fresh wrap of {@link System#in} — shared with {@link ConsoleRepl.Builder#run()},
-   * so a mid-turn approval prompt reads from the same buffer the REPL loop does, rather than each
-   * stealing from the other's read of stdin.
+   * rather than a fresh wrap of {@link System#in} — shared with {@link ConsoleRepl#run(Agent,
+   * ReplCustomizer)}, so a mid-turn approval prompt reads from the same buffer the REPL loop does,
+   * rather than each stealing from the other's read of stdin.
    */
   public ConsoleApprover() {
     this(ConsoleIo.stdin(), ConsoleIo.stdout());

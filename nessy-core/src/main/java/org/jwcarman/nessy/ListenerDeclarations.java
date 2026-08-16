@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.event.ToolProgress;
  * <p>{@code listen}/{@code listenAsync} are the primitives — any type, one registration each. The
  * {@code on*}/{@code on*Async} defaults are readability sugar over them, one pair per member of the
  * listenable vocabulary (the four conversation facts plus the harness events), mirroring {@code
- * TurnObserverBuilder}'s per-variant hooks so the whole codebase declares interest the same way:
+ * TurnObserverConfig}'s per-variant hooks so the whole codebase declares interest the same way:
  *
  * <pre>{@code
  * Nessy.harness(h -> h
