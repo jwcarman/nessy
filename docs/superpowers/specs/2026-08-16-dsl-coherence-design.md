@@ -20,6 +20,18 @@ The naming family: `XCustomizer` customizes `XConfig`. Customizers are
 `@FunctionalInterface`s (javadoc anchor, future default methods — the Spring
 `Customizer<T>` precedent).
 
+**Amendment (owner ruling, 2026-08-16 evening): `XConfig` is an INTERFACE.** The
+config type the customizer receives carries the configuration verbs and nothing
+else — the owner's original intent for the Config/Builder split. A package-private
+implementation (the builder, returning itself from every setter) implements the
+interface and carries the construction machinery; the factory hands the impl out
+typed as the interface. The lambda's static type thereby PROVES configuration
+purity: no build(), no assembly accessors, no internals reachable through the
+reference, not even from the same package. Zero call-site churn — lambda bodies
+are unchanged; only type declarations move. Applies to every config in §2's
+family (Harness, Agent<T>, Subagent<T>, Repl, TurnObserver, PipelineMemory,
+ScriptedModelProvider, and the four provider configs).
+
 ## 2. The surfaces
 
 - **Harness:** `Nessy.harness(HarnessCustomizer)` → `Harness`. The provider moves
