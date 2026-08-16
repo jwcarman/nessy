@@ -515,5 +515,39 @@ class AgentConfigPrincipalAndIntentTest {
       assertThat(policy.seen()).hasSize(1);
       assertThat(policy.seen().getFirst().declaredIntent()).isEmpty();
     }
+
+    /**
+     * The sibling of {@link
+     * #a_row_whose_type_no_longer_resolves_reads_as_absent_rather_than_throwing}: there the stored
+     * type name is foreign; here it matches this agent's own configured vocabulary exactly, but the
+     * stored JSON no longer binds into it — as if the vocabulary record had gained a component
+     * since the row was declared. Same fail-closed answer either way: absent, never a thrown
+     * exception (design of record 2026-08-16-authorization §7).
+     */
+    @Test
+    void
+        a_row_whose_type_matches_but_whose_json_no_longer_binds_reads_as_absent_rather_than_throwing() {
+      CapturingPolicy policy = new CapturingPolicy();
+      IntentStore store = IntentStore.inMemory();
+      ToolCall act = new ToolCall("c1", "act", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider = new ScriptedProvider(List.of(toolTurn(act), textTurn("done")));
+
+      var agent =
+          Nessy.harness(h -> h.provider(provider).intentStore(store))
+              .agent(
+                  Nothing.class,
+                  a ->
+                      a.name("scribe")
+                          .model("fake-model")
+                          .intent(RefundIntent.class)
+                          .tools(ToolGrant.grant(new ActTool(), List.of(), policy)));
+      var conversation = agent.converse();
+      store.put(conversation.conversationId(), RefundIntent.class.getName(), "not valid json");
+
+      conversation.tell(new Nothing());
+
+      assertThat(policy.seen()).hasSize(1);
+      assertThat(policy.seen().getFirst().declaredIntent()).isEmpty();
+    }
   }
 }

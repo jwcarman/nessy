@@ -21,6 +21,7 @@ import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.springframework.beans.factory.ObjectProvider;
@@ -44,9 +45,10 @@ import org.springframework.util.StringUtils;
  * <p>Runs after {@link AnthropicProviderAutoConfiguration}, {@link
  * OpenAiProviderAutoConfiguration}, {@link GeminiProviderAutoConfiguration}, and {@link
  * JdbcPersistenceAutoConfiguration} so whichever {@link ModelProvider}, {@link ConversationStore},
- * {@link Parks}, or {@link SubagentLinks} those produce are already in the context by the time
- * {@link #harness} runs. {@link ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means
- * this configuration stays inert until some provider module is present and resolved; {@link
+ * {@link Parks}, {@link SubagentLinks}, or {@link IntentStore} those produce are already in the
+ * context by the time {@link #harness} runs. {@link
+ * ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means this configuration stays inert
+ * until some provider module is present and resolved; {@link
  * ConditionalOnMissingBean @ConditionalOnMissingBean(Harness.class)} means a user-declared {@link
  * Harness} bean always wins outright, this class never runs a second pass over it.
  *
@@ -75,6 +77,7 @@ public class NessyAutoConfiguration {
       ObjectProvider<ConversationStore> store,
       ObjectProvider<Parks> parks,
       ObjectProvider<SubagentLinks> subagentLinks,
+      ObjectProvider<IntentStore> intentStore,
       ObjectProvider<ObservationRegistry> observations,
       ObjectProvider<ObjectMapper> mapper) {
     return Nessy.harness(
@@ -83,6 +86,7 @@ public class NessyAutoConfiguration {
           store.ifAvailable(h::store);
           parks.ifAvailable(h::parks);
           subagentLinks.ifAvailable(h::subagentLinks);
+          intentStore.ifAvailable(h::intentStore);
           observations.ifAvailable(h::observations);
           mapper.ifAvailable(h::mapper);
           if (StringUtils.hasText(properties.defaultModel())) {

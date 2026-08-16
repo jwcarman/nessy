@@ -44,6 +44,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
@@ -174,6 +175,46 @@ class NessyAutoConfigurationTest {
             });
   }
 
+  record RefundIntent(String reason) {}
+
+  /**
+   * F1 (final review): mirrors {@link #a_subagent_links_bean_is_woven_in} exactly, one door over —
+   * before this bean existed, a Boot app with {@code nessy-jdbc} on the classpath and an agent
+   * declaring {@code .intent(...)} got {@code IntentStore.inMemory()} regardless, because nothing
+   * in {@link NessyAutoConfiguration} ever called {@code HarnessConfig.intentStore(...)}. {@code
+   * Harness#intentStore()} is package-private with no public accessor either, so the proof goes
+   * through the same probe technique: a hand-instrumented {@link IntentStore}, standing in for the
+   * woven bean, records whether the {@code declare_intent} tool the harness auto-grants actually
+   * reaches it.
+   */
+  @Test
+  void an_intent_store_bean_is_woven_in() {
+    var probe = new ProbeIntentStore();
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.script(
+            s ->
+                s.toolUse(
+                        "d1",
+                        "declare_intent",
+                        JsonNodeFactory.instance.objectNode().put("reason", "damaged item"))
+                    .endWithToolUse()
+                    .text("done")
+                    .endTurn());
+    runner
+        .withBean("provider", ModelProvider.class, () -> provider)
+        .withBean("mine", IntentStore.class, () -> probe)
+        .run(
+            context -> {
+              Harness harness = context.getBean(Harness.class);
+              Agent<String> agent =
+                  harness.agent(
+                      a -> a.name("scribe").model("probe-model").intent(RefundIntent.class));
+              assertThat(probe.put()).isFalse();
+              agent.converse().tell("investigate");
+              assertThat(probe.put()).isTrue();
+            });
+  }
+
   @Test
   void a_present_observation_registry_does_not_break_harness_assembly() {
     // ObservationRegistry#ifAvailable is a package-private wire-through with no public accessor
@@ -281,6 +322,38 @@ class NessyAutoConfigurationTest {
     @Override
     public void forget(ConversationId child) {
       delegate.forget(child);
+    }
+  }
+
+  /**
+   * Delegates every operation to a fresh {@link IntentStore#inMemory()}, except {@link #put} — the
+   * call {@code declare_intent} makes — which is also recorded in {@link #put()}, the observable
+   * proof {@link #an_intent_store_bean_is_woven_in} reads instead of reflecting into {@link
+   * Harness}'s private field.
+   */
+  private static final class ProbeIntentStore implements IntentStore {
+
+    private final IntentStore delegate = IntentStore.inMemory();
+    private final AtomicBoolean put = new AtomicBoolean();
+
+    boolean put() {
+      return put.get();
+    }
+
+    @Override
+    public Optional<StoredIntent> get(ConversationId id) {
+      return delegate.get(id);
+    }
+
+    @Override
+    public void put(ConversationId id, String type, String json) {
+      put.set(true);
+      delegate.put(id, type, json);
+    }
+
+    @Override
+    public void clear(ConversationId id) {
+      delegate.clear(id);
     }
   }
 

@@ -187,9 +187,7 @@ class OrderDeskSmokeTest {
     // order 4711's own basket (2 items, $300) cleared OrderApprovalPolicy's standard $500 line with
     // no approval request at all — asserted first, before this order's own request could exist, so
     // the later non-vacuous check has something to contrast against.
-    assertThat(APPROVALS)
-        .noneMatch(
-            requested -> requested.conversationId().equals(new ConversationId("order-4711")));
+    assertThat(APPROVALS).isEmpty();
 
     rabbitTemplate.convertAndSend(
         Queues.ORDERS,

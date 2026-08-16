@@ -71,7 +71,7 @@ public interface UsagePolicy<E> {
    * instead of using this factory at all — it pays the assembly cost either way.
    */
   static UsagePolicy<Object> requireApproval() {
-    return (context, effect) -> new PolicyDecision.RequireApproval();
+    return RequireApproval.INSTANCE;
   }
 
   /**
@@ -148,6 +148,27 @@ public interface UsagePolicy<E> {
     @Override
     public PolicyDecision decision() {
       return decision;
+    }
+  }
+
+  /**
+   * The canonical singleton {@link #requireApproval()} returns. A named final class, not a bare
+   * lambda, purely so {@code AuthorizationReport}'s policy story can recognize it by type and print
+   * its own canonical factory name ({@code requireApproval()}) rather than an unreadable synthetic
+   * lambda token — the same motivation {@link Allow} and {@link Deny} already have. Deliberately
+   * does NOT implement {@link Static}: unlike those two, its verdict still needs the tool's
+   * rendered effect and the assembled context handed to the approver (design §9), so it must not
+   * take the chokepoint's rung-0 fast path (see {@link Static}'s own javadoc).
+   */
+  final class RequireApproval implements UsagePolicy<Object> {
+
+    private static final RequireApproval INSTANCE = new RequireApproval();
+
+    private RequireApproval() {}
+
+    @Override
+    public PolicyDecision evaluate(AuthzContext context, Object effect) {
+      return new PolicyDecision.RequireApproval();
     }
   }
 }

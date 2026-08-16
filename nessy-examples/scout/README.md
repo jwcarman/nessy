@@ -7,7 +7,7 @@ Docker, no database, no Spring), that researches public GitHub repositories
 through [DeepWiki](https://deepwiki.com)'s no-auth public MCP server. The
 deliberate beat: one of the three imported tools routes through the console
 approval gate, so a human approves a *remote* server's tool call, reading
-`describe()`'s name-plus-JSON prompt before it runs. The example matrix does
+`effect()`'s name-plus-JSON prompt before it runs. The example matrix does
 not grow beyond this — Scout is the tool-import showcase on the existing
 terminal front door, not a second interactive example.
 

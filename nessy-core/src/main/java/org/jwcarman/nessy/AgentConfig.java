@@ -517,16 +517,20 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
    * {@link #approver} if set, otherwise {@link Approver#allowAll()} — every tool call is granted
    * with no human in the loop. Design §13.1 requires this fallback to announce itself with a
    * prominent warning — unless no approval path can exist in the first place: {@code grants} empty,
-   * or every grant's {@link UsagePolicy} is the canonical {@link UsagePolicy#allow()} singleton,
-   * which never consults the approver at all. A custom policy stays opaque — it might defer to the
-   * approver, so its absence still warns, fail-noisy for the unknown.
+   * or every grant's {@link UsagePolicy} is a canonical {@link UsagePolicy.Static} verdict ({@link
+   * UsagePolicy#allow()} or {@link UsagePolicy#deny(String)}), neither of which ever consults the
+   * approver. This mirrors the chokepoint's own rung-0 test ({@code GatedToolCallExecutor}) and the
+   * report's ({@code AuthorizationReport}) exactly, rather than comparing by identity against
+   * {@code allow()} alone — a deny-only agent has no approval path either, and must stay just as
+   * silent. A custom policy stays opaque — it might defer to the approver, so its absence still
+   * warns, fail-noisy for the unknown.
    */
   Approver resolvedApprover(Map<String, ToolGrant> grants) {
     if (approver != null) {
       return approver;
     }
     boolean noApprovalPathCanExist =
-        grants.values().stream().allMatch(grant -> grant.policy() == UsagePolicy.allow());
+        grants.values().stream().allMatch(grant -> grant.policy() instanceof UsagePolicy.Static);
     if (!noApprovalPathCanExist) {
       LOGGER.warn(
           "no approver configured for this agent: defaulting to Approver.allowAll(), which grants"

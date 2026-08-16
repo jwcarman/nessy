@@ -20,6 +20,7 @@ import java.util.Locale;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.jdbc.JdbcConversationStore;
 import org.jwcarman.nessy.jdbc.JdbcDialect;
+import org.jwcarman.nessy.jdbc.JdbcIntentStore;
 import org.jwcarman.nessy.jdbc.JdbcNotebook;
 import org.jwcarman.nessy.jdbc.JdbcParks;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
@@ -28,6 +29,7 @@ import org.jwcarman.nessy.jdbc.JdbcSubagentLinks;
 import org.jwcarman.nessy.jdbc.JdbcTranscript;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
@@ -50,8 +52,9 @@ import org.springframework.context.annotation.Bean;
  *
  * <p>{@code nessy.jdbc.enabled=false} is the master switch, overriding both signals above. Absent
  * that override, each bean method still yields to a user-declared {@link ConversationStore}, {@link
- * Parks}, {@link Transcript}, {@link Memory}, {@link PlanStore}, or {@link Notebook} — see the
- * individual {@code @ConditionalOnMissingBean} bean methods.
+ * Parks}, {@link Transcript}, {@link Memory}, {@link PlanStore}, {@link Notebook}, {@link
+ * SubagentLinks}, or {@link IntentStore} — see the individual {@code @ConditionalOnMissingBean}
+ * bean methods.
  *
  * <p>{@link org.jwcarman.nessy.autoconfigure.NessyProperties#bootstrapSchema()} chooses between
  * {@code JdbcConversationStore}/{@code JdbcParks}/{@code JdbcTranscript}'s bootstrapping {@code
@@ -198,6 +201,28 @@ public class JdbcPersistenceAutoConfiguration {
     return properties.bootstrapSchema()
         ? JdbcSubagentLinks.create(dataSource, resolveDialect(properties))
         : new JdbcSubagentLinks(dataSource, resolveDialect(properties));
+  }
+
+  /**
+   * The intent facility's own store (design of record 2026-08-16-authorization §7) — flows into
+   * {@link org.jwcarman.nessy.autoconfigure.NessyAutoConfiguration}'s harness the same way {@link
+   * #conversationStore}/{@link #parks}/{@link #subagentLinks} do: before this bean existed, a Boot
+   * app with {@code nessy-jdbc} on the classpath and an agent declaring {@code .intent(...)} got
+   * {@code IntentStore.inMemory()} regardless, the same durability gap final review SF-3 caught for
+   * {@link #subagentLinks} one door earlier — because nothing in this module ever called {@link
+   * org.jwcarman.nessy.HarnessConfig#intentStore}. Mirrors {@link #subagentLinks} exactly: {@link
+   * JdbcIntentStore}, like {@link JdbcSubagentLinks}, has no {@link ObjectMapper}-accepting {@code
+   * create}/constructor overload ({@code nessy_intent} stores its JSON column as an opaque string,
+   * never parsed by an {@code ObjectMapper} here — see {@link JdbcIntentStore}'s own javadoc), so
+   * this bean method does not go through the shared {@link #build} helper, but it DOES honor {@code
+   * nessy.jdbc.dialect} on both branches via its own explicit-dialect constructor.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  IntentStore intentStore(DataSource dataSource, NessyProperties properties) {
+    return properties.bootstrapSchema()
+        ? JdbcIntentStore.create(dataSource, resolveDialect(properties))
+        : new JdbcIntentStore(dataSource, resolveDialect(properties));
   }
 
   private static ObjectMapper resolveMapper(ObjectProvider<ObjectMapper> mapper) {

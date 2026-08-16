@@ -37,7 +37,7 @@ The description the model reads states the whole contract:
 - **An empty `tasks` list is legal and clears the plan** — see below.
 - The tool never parks; it returns immediately with a one-line confirmation the model
   reads in-band: `Plan updated: 4 tasks (1 in progress, 1 done).`
-- `describe(input)` renders the same checklist shown below, for approval prompts — though
+- `effect(input)` renders the same checklist shown below, for approval prompts — though
   the expected grant is `allow()`: a self-bookkeeping tool earns no approval friction.
 - A blank task title is rejected by `Plan`'s compact constructor; the tool surfaces that
   as a failed `ToolResult` rather than throwing out of the loop, so the model can correct

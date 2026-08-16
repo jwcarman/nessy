@@ -79,7 +79,7 @@ try (McpToolbox toolbox =
 around and read without asking. `ask_question` is DeepWiki's own
 AI-in-the-loop tool (it burns DeepWiki's own model budget to answer), so
 it's the one gated behind `requireApproval()`: a human reads
-`describe()`'s name-plus-JSON prompt before it goes out to a remote server.
+`effect()`'s name-plus-JSON prompt before it goes out to a remote server.
 
 Scout's tool names are verified against the live server, not guessed from
 documentation. That's the covenant of importing someone else's toolbox: if

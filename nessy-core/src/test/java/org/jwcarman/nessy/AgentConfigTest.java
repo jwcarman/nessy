@@ -624,6 +624,17 @@ class AgentConfigTest {
     }
 
     @Test
+    void every_grant_using_the_canonical_deny_static_stays_silent_with_no_approver() {
+      FakeProvider provider = new FakeProvider("hi");
+      ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.deny("not today"));
+
+      Nessy.harness(h -> h.provider(provider))
+          .agent(Nothing.class, a -> a.name("scribe").model("fake-model").tools(grant));
+
+      assertThat(warnings()).isEmpty();
+    }
+
+    @Test
     void no_grants_at_all_stays_silent_with_no_approver() {
       FakeProvider provider = new FakeProvider("hi");
 

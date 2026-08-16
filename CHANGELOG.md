@@ -130,15 +130,15 @@ sequence of renames and interim shapes that produced it.
   traversal, deliberately no `converse()`/`tell()`. A gated delegation whose
   child itself parks is fully supported: an approval wait, then the child's
   own execution wait, two waits rather than a wedge.
-- **Storage: seven SPIs, one JDBC implementation.** `ConversationStore`,
-  `Parks`, `Transcript`, `SummaryStore`, `PlanStore`, `Notebook`, and
-  `SubagentLinks` each ship a zero-configuration in-memory default.
-  `nessy-jdbc` implements all seven over a plain `javax.sql.DataSource`,
-  speaking five dialects behind one code path — Postgres, MySQL, MariaDB,
-  SQL Server, and Oracle — detected from the connection metadata, never
-  assumed. `nessy-tck` publishes the contract test for every SPI seam as an
-  abstract JUnit 5 class, run once in-memory and once per vendor against
-  `nessy-jdbc`.
+- **Storage: eight SPIs, one JDBC implementation.** `ConversationStore`,
+  `Parks`, `Transcript`, `SummaryStore`, `PlanStore`, `Notebook`,
+  `SubagentLinks`, and `IntentStore` each ship a zero-configuration in-memory
+  default. `nessy-jdbc` implements all eight over a plain
+  `javax.sql.DataSource`, speaking five dialects behind one code path —
+  Postgres, MySQL, MariaDB, SQL Server, and Oracle — detected from the
+  connection metadata, never assumed. `nessy-tck` publishes the contract test
+  for every SPI seam as an abstract JUnit 5 class, run once in-memory and once
+  per vendor against `nessy-jdbc`.
 - **Time-ordered identifiers.** Conversation and park identifiers are
   UUIDv7, generated via java-uuid-generator — sortable by creation time,
   index-friendly for a durable store.

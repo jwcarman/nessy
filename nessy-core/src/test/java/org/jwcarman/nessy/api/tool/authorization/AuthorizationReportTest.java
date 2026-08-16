@@ -249,6 +249,15 @@ class AuthorizationReportTest {
 
       assertThat(story.effectRendered()).isTrue();
     }
+
+    @Test
+    void require_approval_names_itself_by_its_own_canonical_factory_not_a_synthetic_lambda_token() {
+      ToolGrant grant = ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval());
+
+      GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
+
+      assertThat(story.policy()).isEqualTo("requireApproval()");
+    }
   }
 
   @Nested

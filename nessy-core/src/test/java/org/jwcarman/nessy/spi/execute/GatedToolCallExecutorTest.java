@@ -833,6 +833,25 @@ class GatedToolCallExecutorTest {
         (context, effect) -> new PolicyDecision.Allow();
 
     @Test
+    void
+        arguments_that_cannot_bind_to_the_tool_s_input_type_fail_closed_naming_the_argument_binding_stage() {
+      SpendTool tool = new SpendTool();
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(tool, List.of(), NON_STATIC_ALLOW), approver);
+      var unbindableArgs = JsonNodeFactory.instance.objectNode();
+      unbindableArgs.put("amount", "not-a-number");
+      ToolCall call = new ToolCall("c1", "spend", unbindableArgs);
+
+      Awaited<ConversationEvent> outcome = executor.execute(call, state, observed::add);
+
+      assertThat(approver.requests).isEmpty();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).contains("argument binding or effect failed");
+    }
+
+    @Test
     void a_throwing_effect_fails_closed_naming_the_effect_stage() {
       SpendTool explodingTool = new SpendTool(true);
       RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));

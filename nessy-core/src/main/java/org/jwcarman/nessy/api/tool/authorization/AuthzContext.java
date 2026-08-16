@@ -40,7 +40,10 @@ public interface AuthzContext {
   /** The well-known slot a principal-resolving enricher deposits into. Empty until one does. */
   Key<Object> PRINCIPAL = new Key<>(Object.class, "principal");
 
-  /** The well-known slot {@code spi.intent} deposits the transcript's latest declaration into. */
+  /**
+   * The well-known slot {@code spi.intent} deposits the latest declaration recorded in the
+   * harness's {@code IntentStore} into.
+   */
   Key<Object> DECLARED_INTENT = new Key<>(Object.class, "declaredIntent");
 
   /** The conversation this call belongs to. */
@@ -76,7 +79,7 @@ public interface AuthzContext {
 
   /**
    * The model's latest untrusted claim of intent (design §7) — empty unless {@code spi.intent} is
-   * wired and has a declaration on the transcript.
+   * wired and has a declaration recorded in the harness's {@code IntentStore}.
    */
   default Optional<Object> declaredIntent() {
     return get(DECLARED_INTENT);

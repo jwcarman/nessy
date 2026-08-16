@@ -1,10 +1,10 @@
 # Storage
 
-Restart survival rests on seven storage SPIs — `ConversationStore`, `Parks`,
-`Transcript`, `SummaryStore`, `PlanStore`, `Notebook`, `SubagentLinks` — each with a
-zero-configuration in-memory default and a `nessy-jdbc` implementation behind it. Every
-one dies with the JVM by default; every one survives a restart once backed by a real
-database.
+Restart survival rests on eight storage SPIs — `ConversationStore`, `Parks`,
+`Transcript`, `SummaryStore`, `PlanStore`, `Notebook`, `SubagentLinks`, `IntentStore` —
+each with a zero-configuration in-memory default and a `nessy-jdbc` implementation
+behind it. Every one dies with the JVM by default; every one survives a restart once
+backed by a real database.
 
 | Door | Owns | In-memory default |
 |---|---|---|
@@ -15,6 +15,7 @@ database.
 | `PlanStore` | One conversation's current plan | `PlanStore.inMemory()` |
 | `Notebook` | Durable, named notes about a subject | `Notebook.inMemory()` |
 | `SubagentLinks` | Which parent `ParkToken` a delegated child conversation answers | `SubagentLinks.inMemory()` |
+| `IntentStore` | One conversation's declared intent | `IntentStore.inMemory()` |
 
 ## `ConversationStore`
 
@@ -115,9 +116,28 @@ void save(ConversationId child, ParkToken parentToken);
 void forget(ConversationId child);
 ```
 
+## `IntentStore`
+
+One conversation's declared intent — an app-defined object the model announces through
+the `declare_intent` tool, so an authorization policy can read it back with one keyed
+fetch, never a transcript scan. See [Authorization](authorization.md) for the tool pair
+that writes it and the enricher that reads it back into `AuthzContext`.
+
+```java
+Optional<StoredIntent> get(ConversationId id);
+void put(ConversationId id, String type, String json);
+void clear(ConversationId id);
+```
+
+`put` is last-write-wins, on purpose — no fencing, the same posture `Notebook` and
+`SummaryStore` take. This store is dumb CRUD: it never resolves, validates, or inspects
+`StoredIntent`'s content — reconstituting an object from that JSON and deciding an
+unresolvable or foreign type reads as absent rather than throwing is entirely the reader
+enricher's job, never this store's.
+
 ## `nessy-jdbc`: one code path, five dialects
 
-`nessy-jdbc` implements all seven stores over a plain `javax.sql.DataSource`.
+`nessy-jdbc` implements all eight stores over a plain `javax.sql.DataSource`.
 `JdbcDialect.resolve(DatabaseMetaData)` reads `getDatabaseProductName()` once, at the
 connection each store already borrows to bootstrap its schema, and normalizes it to one
 of `POSTGRES`, `MYSQL`, `MARIADB`, `SQLSERVER`, `ORACLE` — a small, enumerable
@@ -174,7 +194,7 @@ Postgres, not either of them.
 
 ## The TCK: certifying a backend
 
-`nessy-tck` ships seven contract classes, one per SPI seam, each an abstract JUnit 5 test
+`nessy-tck` ships eight contract classes, one per SPI seam, each an abstract JUnit 5 test
 class with exactly one abstract factory method a concrete subclass supplies:
 
 | Contract | Certifies |
@@ -186,6 +206,7 @@ class with exactly one abstract factory method a concrete subclass supplies:
 | `PlanStoreContract` | Save-then-find, wholesale replacement, ordering, empty-save-clears, absence, last-write-wins |
 | `NotebookContract` | Round-trip, index-only headings in name order, upsert replacement, forget and its idempotence, subject isolation, last-write-wins |
 | `SubagentLinksContract` | Round-trip, last-write-wins on a double save, idempotent forget, an absent find |
+| `IntentStoreContract` | Round-trip, last-write-wins on a re-declare, no duplicate row on a repeat put, clear and its idempotence, an absent find, conversation isolation |
 
 ```java
 class InMemoryConversationStoreTest extends ConversationStoreContract {
@@ -200,7 +221,7 @@ class InMemoryConversationStoreTest extends ConversationStoreContract {
 directly and extends the contract classes, supplying its own JUnit engine at test scope.
 A store implementation that passes every contract in the kit honors every invariant the
 loop relies on, whether it ships from this repository or someone else's. `nessy-jdbc`
-runs the same seven contracts a second time, once per vendor, against real
+runs the same eight contracts a second time, once per vendor, against real
 Postgres/MySQL/MariaDB/SQL Server/Oracle containers.
 
 ## Where next

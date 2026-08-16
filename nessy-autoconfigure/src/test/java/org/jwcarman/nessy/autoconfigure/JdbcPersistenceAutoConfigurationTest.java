@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
@@ -55,7 +56,7 @@ class JdbcPersistenceAutoConfigurationTest {
 
   @Test
   void
-      jdbc_on_the_classpath_with_a_datasource_yields_store_parks_transcript_plan_store_notebook_subagent_links_and_memory() {
+      jdbc_on_the_classpath_with_a_datasource_yields_store_parks_transcript_plan_store_notebook_subagent_links_intent_store_and_memory() {
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withBean(ObjectMapper.class, ObjectMapper::new)
@@ -68,6 +69,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Notebook.class);
               assertThat(context).hasSingleBean(SubagentLinks.class);
+              assertThat(context).hasSingleBean(IntentStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -83,6 +85,7 @@ class JdbcPersistenceAutoConfigurationTest {
           assertThat(context).doesNotHaveBean(PlanStore.class);
           assertThat(context).doesNotHaveBean(Notebook.class);
           assertThat(context).doesNotHaveBean(SubagentLinks.class);
+          assertThat(context).doesNotHaveBean(IntentStore.class);
           assertThat(context).doesNotHaveBean(Memory.class);
         });
   }
@@ -100,6 +103,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).doesNotHaveBean(Transcript.class);
               assertThat(context).doesNotHaveBean(PlanStore.class);
               assertThat(context).doesNotHaveBean(Notebook.class);
+              assertThat(context).doesNotHaveBean(IntentStore.class);
               assertThat(context).doesNotHaveBean(Memory.class);
             });
   }
@@ -140,6 +144,18 @@ class JdbcPersistenceAutoConfigurationTest {
         .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
         .withBean("mine", SubagentLinks.class, () -> mine)
         .run(context -> assertThat(context.getBean(SubagentLinks.class)).isSameAs(mine));
+  }
+
+  /** Mirrors {@link #a_user_declared_subagent_links_bean_wins()} exactly. */
+  @Test
+  void a_user_declared_intent_store_bean_wins() {
+    IntentStore mine = IntentStore.inMemory();
+    runner
+        .withBean(DataSource.class, UnusedDataSource::new)
+        .withBean(ObjectMapper.class, ObjectMapper::new)
+        .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
+        .withBean("mine", IntentStore.class, () -> mine)
+        .run(context -> assertThat(context.getBean(IntentStore.class)).isSameAs(mine));
   }
 
   @Test
@@ -188,13 +204,14 @@ class JdbcPersistenceAutoConfigurationTest {
 
   @Test
   void
-      a_missing_object_mapper_bean_still_yields_store_parks_transcript_plan_store_notebook_subagent_links_and_memory() {
+      a_missing_object_mapper_bean_still_yields_store_parks_transcript_plan_store_notebook_subagent_links_intent_store_and_memory() {
     // A non-web Boot app pulls in no Jackson autoconfiguration, so no ObjectMapper bean exists
     // in context at all; JdbcPersistence must fall back to a mapper of its own rather than fail
     // with NoSuchBeanDefinitionException the moment ConversationStore/Parks/Transcript/Memory try
-    // to resolve one. PlanStore, Notebook, and SubagentLinks need no ObjectMapper at all (see
-    // JdbcPlanStore's, JdbcNotebook's, and JdbcSubagentLinks's javadoc), so none of the three is
-    // affected either way, but all still belong in this assertion for completeness.
+    // to resolve one. PlanStore, Notebook, SubagentLinks, and IntentStore need no ObjectMapper at
+    // all (see JdbcPlanStore's, JdbcNotebook's, JdbcSubagentLinks's, and JdbcIntentStore's
+    // javadoc), so none of the four is affected either way, but all still belong in this
+    // assertion for completeness.
     runner
         .withBean(DataSource.class, UnusedDataSource::new)
         .withPropertyValues("nessy.jdbc.bootstrap-schema=false")
@@ -207,6 +224,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Notebook.class);
               assertThat(context).hasSingleBean(SubagentLinks.class);
+              assertThat(context).hasSingleBean(IntentStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }
@@ -234,6 +252,7 @@ class JdbcPersistenceAutoConfigurationTest {
               assertThat(context).hasSingleBean(PlanStore.class);
               assertThat(context).hasSingleBean(Notebook.class);
               assertThat(context).hasSingleBean(SubagentLinks.class);
+              assertThat(context).hasSingleBean(IntentStore.class);
               assertThat(context).hasSingleBean(Memory.class);
             });
   }

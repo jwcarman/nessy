@@ -121,17 +121,30 @@ public final class AuthorizationReport {
 
   /**
    * The canonical statics render as their own factory names ({@code allow()}, {@code
-   * deny("reason")}); any other policy — a rung-1 lambda pinned via {@code UsagePolicy.of}, or a
-   * named class like a threshold policy — reports its own {@code getClass().getSimpleName()}, the
-   * one identity every policy already carries without a new field to declare.
+   * deny("reason")}, {@code requireApproval()}); any other policy — a rung-1 lambda pinned via
+   * {@code UsagePolicy.of}, or a named class like a threshold policy — reports its own {@code
+   * getClass().getSimpleName()}, the one identity every policy already carries without a new field
+   * to declare. {@code UsagePolicy.requireApproval()} is checked by type ahead of that fallback for
+   * the same reason {@link Allow}/{@link UsagePolicy.Deny} are named types rather than bare lambdas
+   * (design of record 2026-08-16-authorization §8): its own {@code getClass().getSimpleName()}
+   * would otherwise print {@code "RequireApproval"}, not the canonical factory call the docs
+   * promise.
    */
   private static String policySummary(UsagePolicy<?> policy) {
     if (policy instanceof UsagePolicy.Static staticPolicy) {
       return switch (staticPolicy.decision()) {
         case PolicyDecision.Allow ignored -> "allow()";
         case PolicyDecision.Deny(String reason) -> "deny(\"" + reason + "\")";
+        // Unreachable: Static is sealed to Allow/Deny (see its own javadoc), and neither's
+        // decision() ever returns RequireApproval — UsagePolicy.requireApproval() deliberately
+        // does not implement Static, so it never reaches this switch at all; it is caught by the
+        // instanceof check just below instead. Kept only so this switch stays exhaustive over
+        // PolicyDecision's three cases without a default arm masking a future one.
         case PolicyDecision.RequireApproval ignored -> "requireApproval()";
       };
+    }
+    if (policy instanceof UsagePolicy.RequireApproval) {
+      return "requireApproval()";
     }
     String simpleName = policy.getClass().getSimpleName();
     return simpleName.isBlank() ? "policy" : simpleName;
