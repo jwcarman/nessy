@@ -18,10 +18,25 @@ package org.jwcarman.nessy.api.message;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
-/** The model asking for a tool to run. Always on an assistant message. */
-public record ToolUseBlock(ToolCall call) implements ContentBlock {
+/**
+ * The model asking for a tool to run. Always on an assistant message.
+ *
+ * <p>{@code signature}: an opaque provider-issued continuity token, stored with the block and
+ * returned verbatim on replay; absent for providers that issue none.
+ *
+ * <p><b>Equality:</b> the signature participates in record equality, deliberately. The block is
+ * constructed once, at stream time, and persisted; at-least-once re-drives replay the SAME stored
+ * value, so signature-in-equals cannot break the transcript's no-stutter dedup or the fold's
+ * idempotency.
+ */
+public record ToolUseBlock(ToolCall call, String signature) implements ContentBlock {
 
   public ToolUseBlock {
     Objects.requireNonNull(call, "call must not be null");
+  }
+
+  /** Convenience for providers that issue no continuity token. */
+  public ToolUseBlock(ToolCall call) {
+    this(call, null);
   }
 }

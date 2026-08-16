@@ -132,7 +132,7 @@ public final class GeminiRequests {
         continue;
       }
       for (ContentBlock block : message.content()) {
-        if (block instanceof ToolUseBlock(ToolCall call)) {
+        if (block instanceof ToolUseBlock(ToolCall call, var _)) {
           names.put(call.id(), call.name());
         }
       }
@@ -201,7 +201,7 @@ public final class GeminiRequests {
   private static Optional<Part> toModelPart(ContentBlock block) {
     return switch (block) {
       case TextBlock(String text) -> Optional.of(Part.fromText(text));
-      case ToolUseBlock(ToolCall call) ->
+      case ToolUseBlock(ToolCall call, var _) ->
           Optional.of(Part.fromFunctionCall(call.name(), argumentsOf(call)));
       case ThinkingBlock _ -> Optional.empty();
       case RedactedThinkingBlock _ -> Optional.empty();

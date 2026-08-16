@@ -165,6 +165,21 @@ class ScriptedModelProviderTest {
   }
 
   @Test
+  void replays_a_signed_tool_use_event() {
+    ObjectNode args = JsonNodeFactory.instance.objectNode();
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .toolUseSigned("c1", "read_file", args, "sig-123")
+            .endWithToolUse()
+            .build();
+
+    assertThat(drain(provider.stream(request())))
+        .containsExactly(
+            new ModelEvent.ToolUseEmitted(new ToolCall("c1", "read_file", args), "sig-123"),
+            new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+  }
+
+  @Test
   void end_turn_with_explicit_usage_is_recorded_on_the_turn_ended_event() {
     Usage usage = new Usage(12, 34, 0);
     ScriptedModelProvider provider =

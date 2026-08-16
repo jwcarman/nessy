@@ -130,6 +130,11 @@ public final class ScriptedModelProvider implements ModelProvider {
       return this;
     }
 
+    public Builder toolUseSigned(String id, String name, ObjectNode arguments, String signature) {
+      current.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments), signature));
+      return this;
+    }
+
     public Builder endTurn() {
       return end(StopReason.END_TURN, Usage.zero());
     }
