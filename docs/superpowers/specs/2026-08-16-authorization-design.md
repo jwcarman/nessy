@@ -70,13 +70,16 @@ can say.
   effect is rendered once per evaluated call and flows to the policy, the approver,
   and the audit record.
 
-## 3. The facts — an accumulating builder, frozen before judgment
+## 3. The facts — an accumulating builder as the RECOMMENDED pattern
 
-The facts travel the chain as a BUILDER (owner ruling): mutable only during chain
-traversal — single-threaded, per-call — so decorator-style links deposit into it as
-they run; it FREEZES into the immutable `AuthFacts` snapshot the policy receives.
-Assembly is impure and accumulative; judgment is pure over a sealed view. Seeded by
-the executor per evaluated call with:
+The contract is only this: links receive the facts and the payload, the payload type
+walks, and the policy judges an immutable snapshot. HOW facts assemble is an opinion,
+not a mandate (owner ruling): nessy's shipped shape is an accumulating BUILDER —
+mutable only during chain traversal, single-threaded, per-call, so decorator-style
+links deposit into it as they run, freezing into the immutable `AuthFacts` snapshot
+the policy receives. Apps that prefer carrying everything in their own payload types
+through pure `Function` links may ignore the facts lane entirely — both idioms are
+first-class. The shipped builder is seeded by the executor per evaluated call with:
 
 - `conversationId()`, `agentName()`, `call()` (the raw ToolCall), `state()` (the
   conversation control block — what today's two-arg policies see).
@@ -92,8 +95,9 @@ the executor per evaluated call with:
 
 Facts are substrate: nominally named so shipped machinery (approval UIs, the audit
 report) can always find and render them, dynamically typed so nessy never dictates
-their shape. The two-lane rule: spine-shaped data walks the PAYLOAD types (§4);
-cross-cutting data deposits into the FACTS builder — each link chooses its lane.
+their shape. The two-lane guidance (recommendation, not rule): spine-shaped data walks the
+PAYLOAD types (§4); cross-cutting data deposits into the FACTS builder — each link
+chooses its lane, and a chain that uses only one lane is perfectly idiomatic.
 
 ## 4. The chain — typed refinement, Stream.map for authorization
 
