@@ -113,13 +113,14 @@ final class NewsroomAgents {
                         ToolGrant.grant(
                             PlanTools.updatePlan(persistence.planStore()), UsagePolicy.allow()),
                         ToolGrant.grant(
-                            NotebookTools.remember(persistence.notebook(), subjectResolver),
+                            NotebookTools.remember(
+                                persistence.notebook(), "writer", subjectResolver),
                             UsagePolicy.allow()),
                         ToolGrant.grant(
-                            NotebookTools.recall(persistence.notebook(), subjectResolver),
+                            NotebookTools.recall(persistence.notebook(), "writer", subjectResolver),
                             UsagePolicy.allow()),
                         ToolGrant.grant(
-                            NotebookTools.forget(persistence.notebook(), subjectResolver),
+                            NotebookTools.forget(persistence.notebook(), "writer", subjectResolver),
                             UsagePolicy.allow()))
                     .memory(
                         Memory.pipeline(
@@ -129,7 +130,7 @@ final class NewsroomAgents {
                                     .transform(PlanTools.transformer(persistence.planStore()))
                                     .transform(
                                         NotebookTools.transformer(
-                                            persistence.notebook(), subjectResolver))))
+                                            persistence.notebook(), "writer", subjectResolver))))
                     .subagent(
                         sub ->
                             sub.name("researcher")
@@ -148,7 +149,9 @@ final class NewsroomAgents {
                                         config ->
                                             config.transform(
                                                 NotebookTools.transformer(
-                                                    persistence.notebook(), subjectResolver))))));
+                                                    persistence.notebook(),
+                                                    "researcher",
+                                                    subjectResolver))))));
 
     return new Built(
         writer, writer.subagent("researcher"), persistence.planStore(), pendingAnswers);

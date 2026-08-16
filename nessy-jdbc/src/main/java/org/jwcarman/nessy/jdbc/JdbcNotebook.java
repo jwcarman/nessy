@@ -60,16 +60,16 @@ public final class JdbcNotebook implements Notebook {
   private static final String SUBJECT_NOT_NULL = "subject must not be null";
 
   private static final String HEADINGS_SQL =
-      "SELECT name, hook FROM nessy_notebook WHERE subject_id = ? ORDER BY name";
+      "SELECT name, hook, source FROM nessy_notebook WHERE subject_id = ? ORDER BY name";
 
   private static final String FIND_SQL =
-      "SELECT hook, body FROM nessy_notebook WHERE subject_id = ? AND name = ?";
+      "SELECT hook, body, source FROM nessy_notebook WHERE subject_id = ? AND name = ?";
 
   private static final String UPDATE_SQL =
-      "UPDATE nessy_notebook SET hook = ?, body = ? WHERE subject_id = ? AND name = ?";
+      "UPDATE nessy_notebook SET hook = ?, body = ?, source = ? WHERE subject_id = ? AND name = ?";
 
   private static final String INSERT_SQL =
-      "INSERT INTO nessy_notebook (subject_id, name, hook, body) VALUES (?, ?, ?, ?)";
+      "INSERT INTO nessy_notebook (subject_id, name, hook, body, source) VALUES (?, ?, ?, ?, ?)";
 
   private static final String DELETE_SQL =
       "DELETE FROM nessy_notebook WHERE subject_id = ? AND name = ?";
@@ -118,7 +118,9 @@ public final class JdbcNotebook implements Notebook {
             ps.setString(1, subject.value());
             try (ResultSet rs = ps.executeQuery()) {
               while (rs.next()) {
-                headings.add(new Heading(rs.getString("name"), rs.getString("hook")));
+                headings.add(
+                    new Heading(
+                        rs.getString("name"), rs.getString("hook"), rs.getString("source")));
               }
             }
           }
@@ -139,7 +141,9 @@ public final class JdbcNotebook implements Notebook {
               if (!rs.next()) {
                 return Optional.empty();
               }
-              return Optional.of(new Entry(name, rs.getString("hook"), rs.getString("body")));
+              return Optional.of(
+                  new Entry(
+                      name, rs.getString("hook"), rs.getString("body"), rs.getString("source")));
             }
           }
         });
@@ -162,8 +166,9 @@ public final class JdbcNotebook implements Notebook {
               ps -> {
                 ps.setString(1, entry.hook());
                 ps.setString(2, entry.body());
-                ps.setString(3, subject.value());
-                ps.setString(4, entry.name());
+                ps.setString(3, entry.source());
+                ps.setString(4, subject.value());
+                ps.setString(5, entry.name());
               };
           int updated = update(connection, UPDATE_SQL, updateBinder);
           if (updated == 0) {
@@ -177,6 +182,7 @@ public final class JdbcNotebook implements Notebook {
                       ps.setString(2, entry.name());
                       ps.setString(3, entry.hook());
                       ps.setString(4, entry.body());
+                      ps.setString(5, entry.source());
                     });
             if (!inserted) {
               // Lost the insert race to a concurrent first-save of the same (subject, name): that

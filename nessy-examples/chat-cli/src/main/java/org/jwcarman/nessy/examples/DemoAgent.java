@@ -77,12 +77,13 @@ public final class DemoAgent {
    * every subsequent turn unconditionally.
    *
    * <p>Alongside the plan, this agent also grants the {@link NotebookTools#remember(Notebook,
-   * Function) remember}, {@link NotebookTools#recall(Notebook, Function) recall}, and {@link
-   * NotebookTools#forget(Notebook, Function) forget} tools over a single, process-lifetime {@link
-   * Notebook} (spec §6): a fixed subject resolver maps every conversation this process ever holds
-   * to the same {@link SubjectId}, so notes made in one chat-cli conversation are remembered in the
-   * next — within this run only, since the notebook is in-memory; a {@code JdbcNotebook} swap is
-   * the only change needed to survive a restart.
+   * String, Function) remember}, {@link NotebookTools#recall(Notebook, String, Function) recall},
+   * and {@link NotebookTools#forget(Notebook, String, Function) forget} tools, each identified as
+   * {@code "chat-cli"}, over a single, process-lifetime {@link Notebook} (spec §6): a fixed subject
+   * resolver maps every conversation this process ever holds to the same {@link SubjectId}, so
+   * notes made in one chat-cli conversation are remembered in the next — within this run only,
+   * since the notebook is in-memory; a {@code JdbcNotebook} swap is the only change needed to
+   * survive a restart.
    *
    * <p>Returns the {@link PlanStore} alongside the agent (rather than the agent alone) so {@code
    * Chat}'s {@code main} can hand the same store to {@code ReplConfig#plan(PlanStore)} — the grant
@@ -106,13 +107,13 @@ public final class DemoAgent {
                             ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
                             ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
                             ToolGrant.grant(
-                                NotebookTools.remember(notebook, subjectResolver),
+                                NotebookTools.remember(notebook, "chat-cli", subjectResolver),
                                 UsagePolicy.allow()),
                             ToolGrant.grant(
-                                NotebookTools.recall(notebook, subjectResolver),
+                                NotebookTools.recall(notebook, "chat-cli", subjectResolver),
                                 UsagePolicy.allow()),
                             ToolGrant.grant(
-                                NotebookTools.forget(notebook, subjectResolver),
+                                NotebookTools.forget(notebook, "chat-cli", subjectResolver),
                                 UsagePolicy.allow()))
                         // Replaces the config's default in-memory pipeline Memory with one over
                         // an explicitly held transcript — same durability class, now with the
@@ -127,7 +128,8 @@ public final class DemoAgent {
                                     config
                                         .transform(PlanTools.transformer(planStore))
                                         .transform(
-                                            NotebookTools.transformer(notebook, subjectResolver))))
+                                            NotebookTools.transformer(
+                                                notebook, "chat-cli", subjectResolver))))
                         .approver(new ConsoleApprover())
                         .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage));
     return new Built(agent, planStore);

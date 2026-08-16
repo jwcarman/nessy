@@ -32,14 +32,19 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.SubjectId;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
@@ -129,11 +134,14 @@ class NewsroomReplSmokeTest {
                     .tools(
                         ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
                         ToolGrant.grant(
-                            NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
+                            NotebookTools.remember(notebook, "writer", subjectResolver),
+                            UsagePolicy.allow()),
                         ToolGrant.grant(
-                            NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
+                            NotebookTools.recall(notebook, "writer", subjectResolver),
+                            UsagePolicy.allow()),
                         ToolGrant.grant(
-                            NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
+                            NotebookTools.forget(notebook, "writer", subjectResolver),
+                            UsagePolicy.allow()))
                     .memory(
                         Memory.pipeline(
                             transcript,
@@ -141,7 +149,8 @@ class NewsroomReplSmokeTest {
                                 config
                                     .transform(PlanTools.transformer(planStore))
                                     .transform(
-                                        NotebookTools.transformer(notebook, subjectResolver))))
+                                        NotebookTools.transformer(
+                                            notebook, "writer", subjectResolver))))
                     .subagent(
                         sub ->
                             sub.name("researcher")
@@ -158,7 +167,28 @@ class NewsroomReplSmokeTest {
                                         config ->
                                             config.transform(
                                                 NotebookTools.transformer(
-                                                    notebook, subjectResolver))))));
+                                                    notebook, "researcher", subjectResolver))))));
+
+    // Newsroom's shared-subject convention (spec §9) also demonstrates per-author protection: the
+    // writer's own remember/forget tools, sharing this notebook with the researcher, may not
+    // touch a note the researcher authored.
+    notebook.save(
+        subject,
+        new Notebook.Entry("editorial-note", "house style", "always use AP style", "researcher"));
+    Tool<NotebookTools.ForgetNote> writerForget =
+        NotebookTools.forget(notebook, "writer", subjectResolver);
+    Awaited<ToolResult> foreignForget =
+        writerForget.execute(
+            new NotebookTools.ForgetNote("editorial-note"),
+            new ToolContext(
+                NewsroomAgents.WRITER_CONVERSATION_ID,
+                new ToolCall(
+                    "forget-cross-author", "forget", JsonNodeFactory.instance.objectNode()),
+                EventEmitter.noop()));
+    ToolResult foreignForgetResult = ((Awaited.Ready<ToolResult>) foreignForget).value();
+    assertThat(foreignForgetResult.isError()).isTrue();
+    assertThat(foreignForgetResult.content()).contains("editorial-note").contains("researcher");
+    assertThat(notebook.find(subject, "editorial-note")).isPresent();
 
     NewsroomAgents.Built built =
         new NewsroomAgents.Built(writer, writer.subagent("researcher"), planStore, pendingAnswers);

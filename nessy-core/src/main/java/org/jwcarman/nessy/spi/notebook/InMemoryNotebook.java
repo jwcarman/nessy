@@ -42,7 +42,7 @@ final class InMemoryNotebook implements Notebook {
       return List.of();
     }
     return entries.values().stream()
-        .map(entry -> new Heading(entry.name(), entry.hook()))
+        .map(entry -> new Heading(entry.name(), entry.hook(), entry.source()))
         .sorted(Comparator.comparing(Heading::name))
         .toList();
   }

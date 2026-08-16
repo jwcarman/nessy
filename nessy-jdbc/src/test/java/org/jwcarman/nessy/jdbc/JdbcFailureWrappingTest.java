@@ -124,7 +124,7 @@ class JdbcFailureWrappingTest {
   void the_notebook_wraps_a_failed_save_naming_itself() {
     JdbcNotebook notebook = new JdbcNotebook(refusing());
     SubjectId subject = new SubjectId("user-42");
-    Entry entry = new Entry("user-taste", "a hook", "a body");
+    Entry entry = new Entry("user-taste", "a hook", "a body", "writer");
 
     assertThatThrownBy(() -> notebook.save(subject, entry))
         .isInstanceOf(IllegalStateException.class)

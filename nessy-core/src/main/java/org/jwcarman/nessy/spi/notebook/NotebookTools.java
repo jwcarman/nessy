@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.notebook;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.Awaited;
@@ -36,6 +37,20 @@ import org.jwcarman.nessy.spi.memory.ContextTransformer;
  * from a conversation to the subject its notes belong to (spec §2) — and every factory has a
  * resolver-less overload that degenerates to a per-conversation notebook: {@code subject = new
  * SubjectId(id.value())}.
+ *
+ * <p>Every factory also takes {@code identity} — the caller's own author identity, an agent name
+ * (or {@code "reflection"} for the critic), supplied once at wiring time. {@link #remember} and
+ * {@link #forget} enforce it: a tool may create a new entry under its own identity, and may update
+ * or delete only an entry whose stored {@link Notebook.Entry#source()} already matches that
+ * identity — a foreign-sourced collision or forget fails with a {@link ToolResult#error} naming the
+ * conflict and the entry's true owner (design of record 2026-08-16 §2). {@link #recall} is read-any
+ * and does not gate on identity, though its factory accepts one too, for wiring parity with its
+ * siblings. {@link #transformer} uses identity only to annotate the rendered index — every heading
+ * whose {@link Notebook.Heading#source()} differs from the caller's own identity is marked {@code
+ * (from <source>)} so the model can tell its own notes from notes another author (an agent, or the
+ * critic) left it. The store itself (an {@link InMemoryNotebook} or a {@code JdbcNotebook})
+ * enforces none of this — it is dumb CRUD over any {@code source} a trusted caller hands it (the
+ * grant principle); only this model-facing layer gates by identity.
  */
 public final class NotebookTools {
 
@@ -44,7 +59,7 @@ public final class NotebookTools {
   /**
    * The zero-configuration resolver: the subject is the conversation itself.
    *
-   * @see #remember(Notebook)
+   * @see #remember(Notebook, String)
    */
   private static SubjectId subjectOf(ConversationId id) {
     return new SubjectId(id.value());
@@ -53,86 +68,107 @@ public final class NotebookTools {
   /**
    * The tool the model calls to save a durable note. Validation failures (a blank name, hook, or
    * body) surface as a failed {@link ToolResult} rather than a thrown exception, so the model can
-   * correct itself. Never parks.
+   * correct itself. A new entry is created under {@code identity}; remembering an existing name
+   * whose {@link Notebook.Entry#source()} is some other identity fails with a {@link
+   * ToolResult#error} naming the conflict and the owning source, rather than silently overwriting
+   * another author's note. Never parks.
    *
    * @param notebook where notes are durably kept
+   * @param identity this tool's own author identity — an agent name, or {@code "reflection"}
    * @param resolver the conversation-to-subject bridge (spec §2)
    */
   public static Tool<RememberNote> remember(
-      Notebook notebook, Function<ConversationId, SubjectId> resolver) {
-    return new RememberNoteTool(notebook, resolver);
+      Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
+    return new RememberNoteTool(notebook, identity, resolver);
   }
 
-  /** {@link #remember(Notebook, Function)} with the zero-configuration resolver. */
-  public static Tool<RememberNote> remember(Notebook notebook) {
-    return remember(notebook, NotebookTools::subjectOf);
+  /** {@link #remember(Notebook, String, Function)} with the zero-configuration resolver. */
+  public static Tool<RememberNote> remember(Notebook notebook, String identity) {
+    return remember(notebook, identity, NotebookTools::subjectOf);
   }
 
   /**
    * The tool the model calls to read a note's full body. An unknown name surfaces as a failed
    * {@link ToolResult} naming the notebook index, so the model self-corrects rather than guessing
-   * again. Never parks.
+   * again. Read-any: unlike {@link #remember} and {@link #forget}, recall never gates on {@code
+   * identity} — it exists on this factory only for wiring parity with its siblings. Never parks.
    *
    * @param notebook where notes are durably kept
+   * @param identity this tool's own author identity, accepted but not enforced (recall is read-any)
    * @param resolver the conversation-to-subject bridge (spec §2)
    */
   public static Tool<RecallNote> recall(
-      Notebook notebook, Function<ConversationId, SubjectId> resolver) {
+      Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
+    Objects.requireNonNull(identity, "identity must not be null");
     return new RecallNoteTool(notebook, resolver);
   }
 
-  /** {@link #recall(Notebook, Function)} with the zero-configuration resolver. */
-  public static Tool<RecallNote> recall(Notebook notebook) {
-    return recall(notebook, NotebookTools::subjectOf);
+  /** {@link #recall(Notebook, String, Function)} with the zero-configuration resolver. */
+  public static Tool<RecallNote> recall(Notebook notebook, String identity) {
+    return recall(notebook, identity, NotebookTools::subjectOf);
   }
 
   /**
    * The tool the model calls to delete a note. Idempotent: forgetting an absent name still confirms
-   * success. Never parks.
+   * success. Forgetting an entry whose {@link Notebook.Entry#source()} is some other identity fails
+   * with a {@link ToolResult#error} naming the conflict and the owning source, rather than letting
+   * one author erase another's note. Never parks.
    *
    * @param notebook where notes are durably kept
+   * @param identity this tool's own author identity — an agent name, or {@code "reflection"}
    * @param resolver the conversation-to-subject bridge (spec §2)
    */
   public static Tool<ForgetNote> forget(
-      Notebook notebook, Function<ConversationId, SubjectId> resolver) {
-    return new ForgetNoteTool(notebook, resolver);
+      Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
+    return new ForgetNoteTool(notebook, identity, resolver);
   }
 
-  /** {@link #forget(Notebook, Function)} with the zero-configuration resolver. */
-  public static Tool<ForgetNote> forget(Notebook notebook) {
-    return forget(notebook, NotebookTools::subjectOf);
+  /** {@link #forget(Notebook, String, Function)} with the zero-configuration resolver. */
+  public static Tool<ForgetNote> forget(Notebook notebook, String identity) {
+    return forget(notebook, identity, NotebookTools::subjectOf);
   }
 
   /**
    * The context-pipeline stage that recalls the subject's notebook index, ambient state at the tail
    * of context. No headings leaves the context unchanged (same instance) — the "if applicable"
-   * rule, same as {@link org.jwcarman.nessy.spi.plan.PlanTools#transformer}.
+   * rule, same as {@link org.jwcarman.nessy.spi.plan.PlanTools#transformer}. Every heading whose
+   * {@link Notebook.Heading#source()} differs from {@code identity} is annotated {@code (from
+   * <source>)} in the rendered index, so the model can tell its own notes from notes another author
+   * left it.
    *
    * @param notebook where notes are durably kept
+   * @param identity this caller's own author identity — an agent name, or {@code "reflection"}
    * @param resolver the conversation-to-subject bridge (spec §2)
    */
   public static ContextTransformer transformer(
-      Notebook notebook, Function<ConversationId, SubjectId> resolver) {
+      Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
+    Objects.requireNonNull(identity, "identity must not be null");
     return (id, context) -> {
       SubjectId subject = resolver.apply(id);
       List<Notebook.Heading> headings = notebook.headings(subject);
       if (headings.isEmpty()) {
         return context;
       }
-      return context.enrich(new TextBlock(render(headings)));
+      return context.enrich(new TextBlock(render(headings, identity)));
     };
   }
 
-  /** {@link #transformer(Notebook, Function)} with the zero-configuration resolver. */
-  public static ContextTransformer transformer(Notebook notebook) {
-    return transformer(notebook, NotebookTools::subjectOf);
+  /** {@link #transformer(Notebook, String, Function)} with the zero-configuration resolver. */
+  public static ContextTransformer transformer(Notebook notebook, String identity) {
+    return transformer(notebook, identity, NotebookTools::subjectOf);
   }
 
-  /** Renders {@code headings} as the notebook index block, byte-exact per spec §4. */
-  private static String render(List<Notebook.Heading> headings) {
+  /**
+   * Renders {@code headings} as the notebook index block, byte-exact per spec §4, annotating each
+   * heading not sourced from {@code identity} with {@code (from <source>)}.
+   */
+  private static String render(List<Notebook.Heading> headings, String identity) {
     StringBuilder rendered = new StringBuilder("<notebook>\n");
     for (Notebook.Heading heading : headings) {
       rendered.append("- ").append(heading.name()).append(" — ").append(heading.hook());
+      if (!identity.equals(heading.source())) {
+        rendered.append(" (from ").append(heading.source()).append(")");
+      }
       rendered.append('\n');
     }
     rendered.append("</notebook>\n");
@@ -167,14 +203,29 @@ public final class NotebookTools {
    */
   public record ForgetNote(String name) {}
 
+  /** Renders the shared foreign-source error: names the note, the verb, and the true owner. */
+  private static String foreignSourceError(String verb, String name, String owner) {
+    return "'"
+        + name
+        + "' belongs to '"
+        + owner
+        + "' — you can only "
+        + verb
+        + " notes you"
+        + " created.";
+  }
+
   /** The {@code remember} tool implementation. */
   private static final class RememberNoteTool implements Tool<RememberNote> {
 
     private final Notebook notebook;
+    private final String identity;
     private final Function<ConversationId, SubjectId> resolver;
 
-    private RememberNoteTool(Notebook notebook, Function<ConversationId, SubjectId> resolver) {
+    private RememberNoteTool(
+        Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
       this.notebook = notebook;
+      this.identity = Objects.requireNonNull(identity, "identity must not be null");
       this.resolver = resolver;
     }
 
@@ -198,11 +249,17 @@ public final class NotebookTools {
     public Awaited<ToolResult> execute(RememberNote input, ToolContext context) {
       Notebook.Entry entry;
       try {
-        entry = new Notebook.Entry(input.name(), input.hook(), input.body());
+        entry = new Notebook.Entry(input.name(), input.hook(), input.body(), identity);
       } catch (IllegalArgumentException | NullPointerException e) {
         return Awaited.ready(ToolResult.error(e.getMessage()));
       }
       SubjectId subject = resolver.apply(context.conversationId());
+      Optional<Notebook.Entry> existing = notebook.find(subject, entry.name());
+      if (existing.isPresent() && !identity.equals(existing.get().source())) {
+        return Awaited.ready(
+            ToolResult.error(
+                foreignSourceError("remember", entry.name(), existing.get().source())));
+      }
       notebook.save(subject, entry);
       return Awaited.ready(ToolResult.ok("Remembered '" + entry.name() + "'."));
     }
@@ -260,10 +317,13 @@ public final class NotebookTools {
   private static final class ForgetNoteTool implements Tool<ForgetNote> {
 
     private final Notebook notebook;
+    private final String identity;
     private final Function<ConversationId, SubjectId> resolver;
 
-    private ForgetNoteTool(Notebook notebook, Function<ConversationId, SubjectId> resolver) {
+    private ForgetNoteTool(
+        Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
       this.notebook = notebook;
+      this.identity = Objects.requireNonNull(identity, "identity must not be null");
       this.resolver = resolver;
     }
 
@@ -291,6 +351,11 @@ public final class NotebookTools {
         return Awaited.ready(ToolResult.error("name must not be blank"));
       }
       SubjectId subject = resolver.apply(context.conversationId());
+      Optional<Notebook.Entry> existing = notebook.find(subject, input.name());
+      if (existing.isPresent() && !identity.equals(existing.get().source())) {
+        return Awaited.ready(
+            ToolResult.error(foreignSourceError("forget", input.name(), existing.get().source())));
+      }
       notebook.forget(subject, input.name());
       return Awaited.ready(ToolResult.ok("Forgotten '" + input.name() + "'."));
     }
