@@ -51,6 +51,7 @@ import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -2057,6 +2058,87 @@ class ConversationLoopTest {
       assertThat(settled).isNotEmpty().hasSize(1);
       assertThat(settled.getFirst())
           .isEqualTo(new ConversationSettled(ID, ConversationStatus.FAILED, "boom", ""));
+    }
+
+    /**
+     * The must-fix from the round-1 review: an attempt that folds no {@code ModelResponded} of its
+     * own — here, a bare re-drive of a conversation already settled — must still publish the real
+     * text, not {@code ""}, by falling back to what {@link Memory} durably holds.
+     */
+    @Test
+    void a_drive_over_an_already_settled_conversation_republishes_the_real_final_text() {
+      List<String> journal = new ArrayList<>();
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
+      RecordingMemory memory = new RecordingMemory(journal);
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  memory,
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  emitter),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
+
+      // No new tell, no new resolution: this second drive folds nothing of its own, yet the
+      // conversation is still COMPLETE, so it re-publishes the same settlement.
+      loop.drive(ID, OBSERVER);
+
+      List<ConversationSettled> settled =
+          emitter.events().stream()
+              .filter(ConversationSettled.class::isInstance)
+              .map(ConversationSettled.class::cast)
+              .toList();
+      assertThat(settled).isNotEmpty().hasSize(2);
+      assertThat(settled.get(1))
+          .isEqualTo(new ConversationSettled(ID, ConversationStatus.COMPLETE, null, "Four."));
+    }
+
+    /**
+     * Proves the concatenation is type-blind (a {@link ThinkingBlock} between two {@link
+     * TextBlock}s contributes nothing) and order-preserving, not just first-block-only.
+     */
+    @Test
+    void the_final_text_concatenates_every_text_block_in_order_and_skips_others() {
+      List<String> journal = new ArrayList<>();
+      Message multiBlockAnswer =
+          Message.assistant(
+              List.of(
+                  new TextBlock("Part one. "),
+                  new ThinkingBlock("secret reasoning", ""),
+                  new TextBlock("Part two.")));
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(
+              journal,
+              new ConversationEvent.ModelResponded(
+                  ID, multiBlockAnswer, StopReason.END_TURN, Usage.zero()));
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  emitter),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
+
+      List<ConversationSettled> settled =
+          emitter.events().stream()
+              .filter(ConversationSettled.class::isInstance)
+              .map(ConversationSettled.class::cast)
+              .toList();
+      assertThat(settled).isNotEmpty().hasSize(1);
+      assertThat(settled.getFirst().finalAssistantText()).isEqualTo("Part one. Part two.");
     }
 
     @Test

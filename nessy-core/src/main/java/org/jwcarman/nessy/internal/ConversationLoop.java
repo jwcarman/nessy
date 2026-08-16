@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -311,7 +312,7 @@ public final class ConversationLoop {
    *
    * @param lastAssistantMessage the most recent {@code ModelResponded} message this attempt folded,
    *     or {@code null} when this attempt folded none — a re-drive that found the conversation
-   *     already settled, say
+   *     already settled, or a first-time settlement reached by a halt during a tool fold, say
    */
   private void publishSettlement(ConversationState finalState, Message lastAssistantMessage) {
     if (finalState.status() == ConversationStatus.COMPLETE
@@ -321,18 +322,38 @@ public final class ConversationLoop {
               finalState.id(),
               finalState.status(),
               finalState.failureReason(),
-              finalAssistantText(lastAssistantMessage)));
+              finalAssistantText(finalState.id(), lastAssistantMessage)));
     }
   }
 
   /**
-   * The concatenated {@link TextBlock} content of {@code message}, in order — the empty string when
-   * {@code message} is {@code null} or carries no {@link TextBlock}.
+   * The fast path first: if this attempt itself folded a {@code ModelResponded}, its message is the
+   * settled conversation's last assistant message by construction, so {@code lastAssistantMessage}
+   * answers the question without touching {@link #memory} at all. Otherwise — a re-drive of an
+   * already-settled conversation, or a first-time settlement a halt reached during a tool fold
+   * without this attempt ever calling the model — this attempt witnessed no assistant message of
+   * its own, so the durable fallback consults {@link #memory}'s own record: {@code remember} always
+   * precedes {@code save} in this loop, so any state durably COMPLETE or FAILED already has its
+   * last assistant message (if any) recorded there. One honest caveat survives either path: a
+   * summarising or rewriting {@code Memory} reports what it retained, not necessarily the model's
+   * original words.
    */
-  private static String finalAssistantText(Message message) {
-    if (message == null) {
-      return "";
+  private String finalAssistantText(ConversationId id, Message lastAssistantMessage) {
+    if (lastAssistantMessage != null) {
+      return concatenatedText(lastAssistantMessage);
     }
+    List<Message> messages = memory.recall(id).messages();
+    for (int i = messages.size() - 1; i >= 0; i--) {
+      Message message = messages.get(i);
+      if (message.role() == Role.ASSISTANT) {
+        return concatenatedText(message);
+      }
+    }
+    return "";
+  }
+
+  /** The concatenated {@link TextBlock} content of {@code message}, in order. */
+  private static String concatenatedText(Message message) {
     StringBuilder text = new StringBuilder();
     for (ContentBlock block : message.content()) {
       if (block instanceof TextBlock(String blockText)) {

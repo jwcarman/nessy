@@ -41,7 +41,12 @@ import org.jwcarman.nessy.api.event.ConversationScoped;
  * @param failureReason why the session failed, or {@code null} when {@code status} is {@code
  *     COMPLETE}
  * @param finalAssistantText the concatenated text blocks of the last {@code ASSISTANT} message in
- *     the settled conversation, in order; the empty string when there is none — never {@code null}
+ *     the settled conversation, in order; the empty string when there is none — never {@code null}.
+ *     Sourced from whichever the settling drive attempt itself folded, when it folded one;
+ *     otherwise from the durable transcript the harness's {@code Memory} holds for the conversation
+ *     (a re-driven replay, or a settlement a termination halt reached without a model call of its
+ *     own) — either way, the same message the transcript durably records as the conversation's last
+ *     assistant turn
  */
 public record ConversationSettled(
     ConversationId conversationId,
