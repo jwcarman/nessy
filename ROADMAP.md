@@ -35,8 +35,6 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
 
 ## Providers
 
-- **Live validation sweep** *(rolling)* — Anthropic, OpenAI, and Gemini are
-  live-validated; Bedrock ships offline-honest pending a credentialed run.
 - **Azure OpenAI** *(spike first)* — likely a base-URL-and-auth story over the
   OpenAI module rather than a new one; the spike decides.
 - **Vertex AI** — Gemini's enterprise door, as a `nessy-model-gemini`
