@@ -103,9 +103,10 @@ grants — not a heavyweight runtime object; a `Harness` holds the shared
 infrastructure and any number of narrowly-scoped agents run inside it. The
 grant principle pushes the same way at the tool level: authority is stated
 per tool, per agent, so a focused agent's blast radius is exactly the tools
-it was handed, not everything the harness knows how to do. `AgentTools.subagent`
-makes the factor literal rather than aspirational: a parent delegates to a
-child agent through an ordinary tool call, and the child is just another
+it was handed, not everything the harness knows how to do. A subagent,
+defined right inside its parent's own `.subagent(...)` call, makes the
+factor literal rather than aspirational: a parent delegates to a child
+agent through an ordinary tool call, and the child is just another
 narrowly-scoped agent with its own grants — not a mode switch inside one
 sprawling agent. See [The Durable Loop](durable-loop.md) and
 [Subagents](subagents.md).
