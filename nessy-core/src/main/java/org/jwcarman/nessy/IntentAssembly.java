@@ -19,6 +19,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
@@ -57,7 +58,29 @@ final class IntentAssembly {
    * ZoneBoundariesTest}).
    */
   static void requireObjectSchema(Class<?> intentType) {
+    requireConcreteType(intentType);
     requireObjectSchemaCaptured(intentType);
+  }
+
+  /**
+   * Rejects an abstract type — a sealed or unsealed interface, or an abstract class — before ever
+   * asking victools to render one. Empirical finding (Task 3b): victools 4.38.0 renders a sealed
+   * interface of records as a bare {@code {"type":"object"}} with no {@code oneOf} and no
+   * properties, so the model gets an empty schema and Jackson cannot reconstruct the abstract type
+   * without {@code @JsonTypeInfo} and subtype-resolver wiring nessy does not do. Accepting that
+   * shape at wiring time and failing at call time is silent non-functionality; nessy fails loudly
+   * here instead, where the developer is standing (design of record 2026-08-16-authorization §7,
+   * amended: polymorphic vocabularies are a roadmap item, not a v1 promise).
+   */
+  private static void requireConcreteType(Class<?> intentType) {
+    if (intentType.isInterface() || Modifier.isAbstract(intentType.getModifiers())) {
+      throw new AgentConfigurationException(
+          "intent vocabulary "
+              + intentType.getName()
+              + " is abstract; victools cannot render a polymorphic schema. Use a concrete record"
+              + " with a discriminator field (for example `record Intent(Kind kind, String"
+              + " orderId, String reason)`).");
+    }
   }
 
   private static <X> void requireObjectSchemaCaptured(Class<X> intentType) {

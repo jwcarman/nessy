@@ -30,9 +30,12 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
  * {@code AgentConfig.intent(Class)}'s own wiring-time gate (design of record
- * 2026-08-16-authorization §7, Task 3b): a vocabulary must render as a JSON OBJECT schema, checked
- * here rather than discovered later as a schema a provider rejects at call time, and the one-field
- * rule makes one-intent-per-agent true by construction.
+ * 2026-08-16-authorization §7, Task 3b): a vocabulary must be a CONCRETE type that renders as a
+ * JSON OBJECT schema, checked here rather than discovered later as a schema a provider rejects at
+ * call time. Abstract types (interfaces, sealed or not, and abstract classes) are rejected too —
+ * victools cannot render a polymorphic schema, so accepting one at wiring time would be silent
+ * non-functionality at call time — and the one-field rule makes one-intent-per-agent true by
+ * construction.
  */
 class AgentConfigIntentVocabularyTest {
 
@@ -81,6 +84,20 @@ class AgentConfigIntentVocabularyTest {
 
   record SealedB(int y) implements SealedVocabulary {}
 
+  interface PlainInterfaceVocabulary {}
+
+  abstract static class AbstractVocabulary {
+    private String reason;
+
+    String reason() {
+      return reason;
+    }
+
+    void reason(String reason) {
+      this.reason = reason;
+    }
+  }
+
   @Nested
   class Rejected_shapes {
 
@@ -128,6 +145,32 @@ class AgentConfigIntentVocabularyTest {
           .isInstanceOf(AgentConfigurationException.class)
           .hasMessageContaining("record");
     }
+
+    @Test
+    void
+        a_sealed_interface_of_records_is_rejected_naming_the_type_and_the_discriminator_fallback() {
+      assertThatThrownBy(() -> builder().intent(SealedVocabulary.class))
+          .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("SealedVocabulary")
+          .hasMessageContaining("abstract")
+          .hasMessageContaining("discriminator");
+    }
+
+    @Test
+    void a_plain_unsealed_interface_is_rejected() {
+      assertThatThrownBy(() -> builder().intent(PlainInterfaceVocabulary.class))
+          .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("PlainInterfaceVocabulary")
+          .hasMessageContaining("abstract");
+    }
+
+    @Test
+    void an_abstract_class_is_rejected() {
+      assertThatThrownBy(() -> builder().intent(AbstractVocabulary.class))
+          .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("AbstractVocabulary")
+          .hasMessageContaining("abstract");
+    }
   }
 
   @Nested
@@ -146,13 +189,6 @@ class AgentConfigIntentVocabularyTest {
 
       assertThat(agent.intent(PlainPojo.class)).isSameAs(agent);
     }
-
-    @Test
-    void a_sealed_interface_of_records_vocabulary_is_accepted() {
-      var agent = builder();
-
-      assertThat(agent.intent(SealedVocabulary.class)).isSameAs(agent);
-    }
   }
 
   @Nested
@@ -162,7 +198,7 @@ class AgentConfigIntentVocabularyTest {
     void a_second_intent_call_is_a_wiring_time_error_naming_the_first_vocabulary() {
       var agent = builder().intent(RefundIntent.class);
 
-      assertThatThrownBy(() -> agent.intent(SealedVocabulary.class))
+      assertThatThrownBy(() -> agent.intent(PlainPojo.class))
           .isInstanceOf(AgentConfigurationException.class)
           .hasMessageContaining("RefundIntent");
     }

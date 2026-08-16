@@ -287,20 +287,26 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
    * from this type plus {@link HarnessConfig#intentStore}'s store — internally, in {@link
    * AgentAssembly}; the caller never learns a second noun.
    *
-   * <p>{@code intentType} must render as a JSON object schema — a record, a POJO, or a sealed
-   * interface of records — checked right here, at wiring time: a tool's parameters must be an
-   * OBJECT schema, so a bare {@code String}, a primitive or its box, an enum, a collection, or an
-   * array is rejected with {@link AgentConfigurationException} naming the offending type and
-   * pointing at wrapping it in a record. One field makes the one-intent-per-agent rule true by
-   * construction: a second call throws the same exception naming the vocabulary already declared,
-   * rather than silently overwriting it.
+   * <p>{@code intentType} must be a CONCRETE type that renders as a JSON object schema — a record
+   * or a POJO — checked right here, at wiring time: a tool's parameters must be an OBJECT schema,
+   * so a bare {@code String}, a primitive or its box, an enum, a collection, or an array is
+   * rejected with {@link AgentConfigurationException} naming the offending type and pointing at
+   * wrapping it in a record. An abstract type — a sealed or unsealed interface, or an abstract
+   * class — is rejected too (amended after an empirical finding, Task 3b): victools renders a
+   * sealed interface of records as a bare, propertyless object schema rather than a {@code oneOf},
+   * so the model would receive an empty schema and Jackson could not reconstruct the abstract type
+   * without polymorphism wiring nessy does not ship in v1 — accepting it at wiring time and failing
+   * only at call time would be silent non-functionality. Use a concrete record with a discriminator
+   * field instead (the exception names the fallback shape). One field makes the
+   * one-intent-per-agent rule true by construction: a second call throws the same exception naming
+   * the vocabulary already declared, rather than silently overwriting it.
    *
    * <p>Unwired: no tools are offered, {@link
    * org.jwcarman.nessy.api.tool.authorization.AuthorizationContext#declaredIntent()} stays empty
    * for every call, and the intent store is never touched.
    *
-   * @throws AgentConfigurationException if {@code intentType} cannot render as an object schema, or
-   *     if this agent already declared one
+   * @throws AgentConfigurationException if {@code intentType} is abstract or otherwise cannot
+   *     render as an object schema, or if this agent already declared one
    */
   public AgentConfig<T> intent(Class<?> intentType) {
     Objects.requireNonNull(intentType, "intentType must not be null");
