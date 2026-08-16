@@ -169,15 +169,14 @@ class SubagentConfigTest {
     @Test
     void a_missing_name_throws_naming_the_field() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(sub -> sub.description("delegates research"));
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(sub -> sub.description("delegates research"))
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("name");
     }
@@ -185,15 +184,14 @@ class SubagentConfigTest {
     @Test
     void a_missing_description_throws_naming_the_field() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(sub -> sub.name("researcher").model("m"));
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(sub -> sub.name("researcher").model("m"))
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("description");
     }
@@ -210,16 +208,15 @@ class SubagentConfigTest {
     @Test
     void a_later_siblings_invalid_config_leaves_no_earlier_sibling_registered() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(sub -> sub.name("helper").description("d").model("m"))
+              .subagent(sub -> sub.name("broken").model("m")); // missing description
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(sub -> sub.name("helper").description("d").model("m"))
-                      .subagent(sub -> sub.name("broken").model("m")) // missing description
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("description");
 
@@ -348,8 +345,9 @@ class SubagentConfigTest {
     void two_top_level_agents_sharing_a_name_is_rejected() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
       harness.agent().name("dup").model("m").build();
+      AgentBuilder<String> duplicate = harness.agent().name("dup").model("m");
 
-      assertThatThrownBy(() -> harness.agent().name("dup").model("m").build())
+      assertThatThrownBy(duplicate::build)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("dup");
     }
@@ -357,15 +355,14 @@ class SubagentConfigTest {
     @Test
     void a_subagent_sharing_its_parents_own_name_is_rejected() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(sub -> sub.name("writer").description("d").model("m"));
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(sub -> sub.name("writer").description("d").model("m"))
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("writer");
     }
@@ -373,16 +370,15 @@ class SubagentConfigTest {
     @Test
     void two_sibling_subagents_sharing_a_name_is_rejected() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(sub -> sub.name("helper").description("d").model("m"))
+              .subagent(sub -> sub.name("helper").description("d2").model("m"));
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(sub -> sub.name("helper").description("d").model("m"))
-                      .subagent(sub -> sub.name("helper").description("d2").model("m"))
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("helper");
     }
@@ -401,16 +397,15 @@ class SubagentConfigTest {
     void
         two_sibling_subagents_sharing_a_name_leaves_neither_registered_and_a_corrected_rebuild_succeeds() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(sub -> sub.name("helper").description("d").model("m"))
+              .subagent(sub -> sub.name("helper").description("d2").model("m"));
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(sub -> sub.name("helper").description("d").model("m"))
-                      .subagent(sub -> sub.name("helper").description("d2").model("m"))
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("helper");
 
@@ -429,20 +424,19 @@ class SubagentConfigTest {
     void a_name_collision_two_levels_deep_is_still_rejected() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
       harness.agent().name("archivist").model("m").build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(
+                  b ->
+                      b.name("b")
+                          .description("d")
+                          .model("m")
+                          .subagent(c -> c.name("archivist").description("d").model("m")));
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(
-                          b ->
-                              b.name("b")
-                                  .description("d")
-                                  .model("m")
-                                  .subagent(c -> c.name("archivist").description("d").model("m")))
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("archivist");
     }
@@ -659,18 +653,16 @@ class SubagentConfigTest {
     @Test
     void a_missing_renderer_on_the_typed_door_fails_loudly_at_build_naming_the_subagent() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();
+      AgentBuilder<String> builder =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .subagent(
+                  ResearchRequest.class,
+                  sub -> sub.name("researcher").description("Delegates research.").model("m"));
 
-      assertThatThrownBy(
-              () ->
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("m")
-                      .subagent(
-                          ResearchRequest.class,
-                          sub ->
-                              sub.name("researcher").description("Delegates research.").model("m"))
-                      .build())
+      assertThatThrownBy(builder::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("renderer")
           .hasMessageContaining("researcher");

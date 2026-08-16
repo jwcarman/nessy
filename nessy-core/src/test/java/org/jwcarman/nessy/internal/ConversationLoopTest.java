@@ -1822,8 +1822,8 @@ class ConversationLoopTest {
               .filter(TurnEvent.ToolCallParked.class::isInstance)
               .map(TurnEvent.ToolCallParked.class::cast)
               .toList();
-      assertThat(parkStamps).isNotEmpty();
       assertThat(parkStamps)
+          .isNotEmpty()
           .containsExactly(
               new TurnEvent.ToolCallParked(c1, approvalToken),
               new TurnEvent.ToolCallParked(c1, executionToken));

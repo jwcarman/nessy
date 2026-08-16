@@ -54,9 +54,18 @@ class ZoneBoundariesTest {
    * Harness.java} joins the set with the unified drive (design 2026-08-12): {@code resume} drives
    * the same {@link org.jwcarman.nessy.internal.ConversationLoop} {@code AgentBuilder} wires
    * through to it, rather than mediating through a {@code spi}-level type that does not exist.
+   * {@code SubagentAssembly.java} joins the set with the sonar sweep's Monster Class split
+   * (2026-08): {@code AgentBuilder}'s own subagent-assembly machinery — the sole root-package user
+   * of {@code org.jwcarman.nessy.internal.subagent.AgentTools} — moved wholesale into its own
+   * collaborator class, carrying that same sanctioned dependency with it.
    */
   private static final Set<String> SANCTIONED_ROOT_TO_INTERNAL_IMPORTS =
-      Set.of("Agent.java", "AgentBuilder.java", "Conversation.java", "Harness.java");
+      Set.of(
+          "Agent.java",
+          "AgentBuilder.java",
+          "Conversation.java",
+          "Harness.java",
+          "SubagentAssembly.java");
 
   /**
    * The only spi types allowed to reach into internal machinery, and why: each is an executor
