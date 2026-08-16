@@ -133,6 +133,28 @@ class JdbcFailureWrappingTest {
         .isSameAs(REFUSED);
   }
 
+  /**
+   * {@link JdbcSubagentLinks#save} follows {@link JdbcSummaryStore#save}'s upsert shape too, the
+   * same shape {@link JdbcNotebook#save} follows (see {@link JdbcSubagentLinks}'s class javadoc) —
+   * no {@code setAutoCommit(false)}/{@code commit}/{@code rollback} of its own, so, as with {@link
+   * #the_notebook_wraps_a_failed_save_naming_itself()} above, there is nothing here for a rollback
+   * to undo. What this pins is the same failure-wrapping contract every door in this module honors:
+   * a connection that refuses outright surfaces from {@link JdbcSubagentLinks#save} as an {@link
+   * IllegalStateException} naming the door, with the original {@link SQLException} as its cause.
+   */
+  @Test
+  void the_subagent_links_wrap_a_failed_save_naming_itself() {
+    JdbcSubagentLinks links = new JdbcSubagentLinks(refusing());
+    ConversationId child = ConversationId.generate();
+    ParkToken parentToken = ParkToken.generate();
+
+    assertThatThrownBy(() -> links.save(child, parentToken))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("subagent links")
+        .cause()
+        .isSameAs(REFUSED);
+  }
+
   @Test
   void the_conversation_store_wraps_a_failed_load_naming_itself() {
     JdbcConversationStore store = new JdbcConversationStore(refusing(), new ObjectMapper());
