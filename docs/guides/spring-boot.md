@@ -25,11 +25,15 @@ Add a provider module (`nessy-model-anthropic`, `nessy-model-openai`, and/or
 over the SDK's own `fromEnv()` resolution. Those properties are overrides,
 not replacements: an explicit `nessy.*` property outranks an ambient
 environment variable, and `fromEnv()` is still called first so nothing else
-the SDK understands is lost. More than one provider jar present and none
-unambiguously keyed (no `nessy.provider`, no single side keyed) fails fast,
-naming the property that resolves it — the same shape [Providers](providers.md)
-describes for `EnvModelProviders.fromEnv()`, expressed as configuration
-instead of environment variables.
+the SDK understands is lost. Two or more `nessy.*.api-key` properties set at
+once with `nessy.provider` unset fails fast, naming the property that
+resolves it — the same shape [Providers](providers.md) describes for
+`EnvModelProviders.fromEnv()`, expressed as configuration instead of
+environment variables. With **no** `nessy.*.api-key` property set at all,
+that fail-fast never fires — no `ModelProvider` bean is created, and the
+application instead dies later on an unrelated missing-bean error. Set
+exactly one `nessy.<provider>.api-key`, or `nessy.provider` plus that
+provider's key.
 
 Every autoconfigured bean here backs off the moment the application declares
 its own: a hand-declared `Harness` suppresses the provider autoconfiguration
@@ -104,7 +108,7 @@ The whole surface is deliberately small — everything more exotic rides
 
 | Property | Default | Meaning |
 |---|---|---|
-| `nessy.provider` | (none) | required only when more than one provider jar is present and unkeyed |
+| `nessy.provider` | (none) | required only when two or more `nessy.*.api-key` properties are set at once |
 | `nessy.anthropic.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |
 | `nessy.openai.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |
 | `nessy.gemini.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |

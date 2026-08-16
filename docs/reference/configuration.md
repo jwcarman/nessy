@@ -15,7 +15,7 @@ autoconfigured — wire it yourself if you use summarizing memory.
 
 | Property | Default | Effect |
 |---|---|---|
-| `nessy.provider` | (unset) | Selects `anthropic`, `openai`, or `gemini` when more than one provider module is on the classpath and none is unambiguously keyed. Required only in that multi-jar, no-key case; an unrecognized value fails startup loudly. |
+| `nessy.provider` | (unset) | Selects `anthropic`, `openai`, or `gemini` when two or more provider modules are on the classpath and each has its own `nessy.*.api-key` set — that combination fails fast, naming the property, unless this names the winner; an unrecognized value also fails startup loudly. With no `nessy.*.api-key` set at all, this fail-fast does not fire — no `ModelProvider` bean is created and the application instead fails later on an unrelated missing-bean error. Set exactly one `nessy.<provider>.api-key`, or this property plus that provider's key. |
 | `nessy.anthropic.api-key` | (unset) | Anthropic credential, layered on top of the SDK's own `fromEnv()` resolution (`ANTHROPIC_AUTH_TOKEN`, profile files, workload identity). An explicit property here always wins over an ambient environment variable. |
 | `nessy.anthropic.base-url` | (unset) | Anthropic API base URL override, same layering as the API key. |
 | `nessy.openai.api-key` | (unset) | OpenAI credential, layered on top of the SDK's own `fromEnv()` resolution the same way. |
