@@ -26,6 +26,12 @@ public static Tool<Delegation> subagent(Agent<String> child, String description,
   prompt displays when an app gates delegation behind
   `UsagePolicy.requireApproval()`.
 
+**v1 restriction:** gate delegation only when the child cannot itself
+park — the loop does not support re-parking an already-parked call, so an
+approval-gated subagent tool whose child then parks would wedge both
+conversations. Approve-the-delegation and child-parks-for-its-own-approval
+are each fine alone; combining them awaits a loop enhancement (banked).
+
 The two-argument overload works only for a child whose own tools never
 park — the moment the child does park, `execute` throws
 `IllegalStateException` naming the missing store, because there is nowhere
@@ -124,6 +130,24 @@ without throwing, so a resume that fails (an unknown token, a
 `WrongAgentException`) leaves the link in place for whatever redelivery
 follows.
 
+Two narrow windows exist around that link, both tiny and both honestly
+undefended rather than silently assumed away:
+
+- A link present but no matching park yet (the gap between `execute`'s own
+  `links.save` and the parent loop registering its own park) makes
+  `completions` throw and rely on at-least-once redelivery to retry once
+  the window has closed.
+- The mirror ordering — the child's park already resolvable before
+  `execute` gets as far as `links.save` — has no such defense. If a
+  resolver (a webhook door, a queue consumer, a second REPL thread) drives
+  the child to settlement inside that gap, `completions` finds no link,
+  takes the silent-no-op arm, and returns; `execute` then saves the link
+  moments later and parks the parent on a settlement that already
+  happened. Nothing will drive that child again — the settlement fact only
+  fires on a drive — so the parent stays parked until a retry or manual
+  wake. The window is tiny and no shipped example can hit it, but it is
+  real.
+
 ## Fresh child per call, continuity via the Notebook
 
 Every delegation opens a new child conversation — the derived id guarantees
@@ -144,8 +168,10 @@ generation.
 ## What v1 deliberately omits
 
 - **No child-delta streaming into the parent.** `AgentTools.subagent` relays
-  one coarse `ToolContext.progress` ping per child turn boundary (so a long
-  delegation never looks frozen), but the child's own text deltas never
+  one coarse `ToolContext.progress` ping per tool call the child requests
+  (an activity approximation, not a per-turn summary — a child turn that
+  calls no tools produces no ping at all), so a long delegation with tool
+  calls in it never looks frozen, but the child's own text deltas never
   reach the parent's observer. Forwarding them is a later polish with real
   design weight — whose turn is it, exactly?
 - **No fan-out coordinator.** The model can already fan out by calling

@@ -45,9 +45,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * {@link JdbcPersistence#create} is the one-call bootstrap a durable {@code AgentBuilder} reaches
- * for; this pins that it actually stands up all four schemas and hands back a working quartet, not
- * just objects that happen to compile together. Requires Docker; tagged {@code container} so the
- * offline default build never needs it.
+ * for; this pins that it actually stands up every schema and hands back a working set, not just
+ * objects that happen to compile together. Requires Docker; tagged {@code container} so the offline
+ * default build never needs it.
  */
 @Testcontainers
 @Tag("container")
@@ -79,14 +79,14 @@ class JdbcPersistenceTest {
         Statement statement = connection.createStatement()) {
       statement.execute(
           "TRUNCATE nessy_conversation, nessy_inbox, nessy_parks, nessy_transcript,"
-              + " nessy_summary");
+              + " nessy_summary, nessy_subagent_links");
     } catch (SQLException e) {
       throw new IllegalStateException("failed to truncate tables between tests", e);
     }
   }
 
   @Test
-  void create_bootstraps_every_schema_and_returns_a_working_quartet() {
+  void create_bootstraps_every_schema_and_returns_a_working_set() {
     JdbcPersistence persistence = JdbcPersistence.create(dataSource, mapper);
     ConversationId id = ConversationId.generate();
 
@@ -106,6 +106,11 @@ class JdbcPersistenceTest {
     persistence.summaries().save(id, summary);
 
     assertThat(persistence.summaries().find(id)).contains(summary);
+
+    ConversationId childId = ConversationId.generate();
+    persistence.subagentLinks().save(childId, token);
+
+    assertThat(persistence.subagentLinks().find(childId)).contains(token);
   }
 
   /**

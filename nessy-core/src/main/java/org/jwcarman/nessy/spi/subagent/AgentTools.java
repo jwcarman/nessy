@@ -111,9 +111,20 @@ public final class AgentTools {
    * minted it". Three cases, in order:
    *
    * <ul>
-   *   <li>{@code links.find} is empty — either this child never delegated a park (it settled in one
-   *       shot with nothing to wake), or a prior delivery already {@link SubagentLinks#forget} it.
-   *       Either way, a silent no-op — this is what makes a duplicate settlement idempotent.
+   *   <li>{@code links.find} is empty — three cases, not two, and only two of them are the harmless
+   *       idempotency this makes possible: this child never delegated a park (it settled in one
+   *       shot with nothing to wake); a prior delivery already {@link SubagentLinks#forget} it (a
+   *       genuine duplicate settlement); or the mirror race to the one documented below — the
+   *       child's settlement won the gap between {@link Tool#execute}'s own {@code
+   *       child.conversation(childId).tell(...)} returning {@link RunOutcome.Parked} and that same
+   *       {@code execute}'s later {@link SubagentLinks#save}, so this delivery finds nothing on
+   *       file yet and takes this same silent-no-op arm. That third case is <strong>not</strong>
+   *       idempotent no-op: {@code execute} still saves the link and parks the parent a moment
+   *       later, on a child that has already settled — nothing will ever drive that child again
+   *       (the settlement fact only fires on a drive), so the parent stays parked until a retry or
+   *       manual wake finds it. The window is narrow and undefended on purpose (the honest inverse
+   *       ordering — save the link before telling — trades this for a worse failure on the
+   *       sync-completion path, see {@link Tool#execute}), not unnoticed.
    *   <li>{@code links.find} is present but {@code parks.find} is empty — this is
    *       <strong>not</strong> "nobody is waiting any more": {@link Parks} never deletes an entry
    *       once registered (see {@link Parks}'s own javadoc), so an absent park can only mean the

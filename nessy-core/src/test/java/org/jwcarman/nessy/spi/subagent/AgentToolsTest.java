@@ -616,6 +616,60 @@ class AgentToolsTest {
     }
 
     /**
+     * Spec §4 names this arm explicitly ("{@code deny}-shaped failure text on child failure"): a
+     * {@link ConversationStatus#FAILED} settlement for a linked child resumes the parent with a
+     * {@link ToolResult#error} carrying the settlement's own {@code failureReason} — not the
+     * generic already-failed text {@link Tool#execute}'s own replay short-circuit uses, since this
+     * is a fresh, first-time settlement, off the real {@code RunOutcome}, not a redelivery. The
+     * link is forgotten afterward, same as the {@code COMPLETE} arm.
+     */
+    @Test
+    void a_failed_settlement_resumes_the_parent_with_a_tool_error_carrying_the_reason() {
+      ToolCall call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider writerProvider =
+          new ScriptedProvider()
+              .turn(new ModelEvent.ToolUseEmitted(call), endWithToolUse())
+              .turn(new ModelEvent.TextChunk("noted the failure"), endTurn());
+      ParkingApprover writerApprover = new ParkingApprover();
+      Parks parks = Parks.inMemory();
+      Harness harness = Nessy.harness(writerProvider).parks(parks).build();
+      Agent<String> writer =
+          harness
+              .agent()
+              .name("writer")
+              .model("m")
+              .tools(ToolGrant.grant(new EchoTool(), UsagePolicy.requireApproval()))
+              .approver(writerApprover)
+              .build();
+      CallbackRouter router = new CallbackRouter();
+      router.register(writer);
+      RunOutcome parentOutcome = writer.converse().tell("echo hi");
+      ConversationId parentId = parentOutcome.state().id();
+      ParkToken parentToken = writerApprover.token();
+      SubagentLinks links = SubagentLinks.inMemory();
+      ConversationId childId = ConversationId.generate();
+      links.save(childId, parentToken);
+      var consumer = AgentTools.completions(links, parks, router);
+      ConversationSettled event =
+          new ConversationSettled(
+              childId, ConversationStatus.FAILED, "the child agent crashed", "");
+
+      consumer.accept(event);
+
+      assertThat(writer.snapshot(parentId).status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(links.find(childId)).isEmpty();
+      List<ToolResultBlock> parentResults =
+          writerProvider.requests().getLast().context().messages().stream()
+              .flatMap(message -> message.content().stream())
+              .filter(ToolResultBlock.class::isInstance)
+              .map(ToolResultBlock.class::cast)
+              .toList();
+      assertThat(parentResults).isNotEmpty();
+      assertThat(parentResults.getFirst().isError()).isTrue();
+      assertThat(parentResults.getFirst().content()).isEqualTo("the child agent crashed");
+    }
+
+    /**
      * {@code completions} does not catch or wrap whatever {@code Agent.resume} throws (documented,
      * not swallowed): here the routing name {@code parks.find} reports for the parent token does
      * not match the resuming agent's own name, so {@link WrongAgentException} surfaces uncaught —

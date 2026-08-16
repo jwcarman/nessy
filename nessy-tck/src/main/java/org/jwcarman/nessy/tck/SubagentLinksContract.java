@@ -76,7 +76,11 @@ public abstract class SubagentLinksContract {
 
   @Test
   public void forgetting_a_child_never_saved_is_a_quiet_no_op() {
-    links().forget(ConversationId.generate());
+    ConversationId child = ConversationId.generate();
+
+    links().forget(child);
+
+    assertThat(links().find(child)).isEmpty();
   }
 
   @Test

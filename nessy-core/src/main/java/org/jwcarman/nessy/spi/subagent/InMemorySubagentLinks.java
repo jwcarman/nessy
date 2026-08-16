@@ -32,6 +32,7 @@ final class InMemorySubagentLinks implements SubagentLinks {
 
   @Override
   public Optional<ParkToken> find(ConversationId child) {
+    Objects.requireNonNull(child, "child must not be null");
     return Optional.ofNullable(links.get(child));
   }
 

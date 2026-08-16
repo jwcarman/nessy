@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.conversation.SubjectId;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
-import org.jwcarman.nessy.jdbc.JdbcSubagentLinks;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.notebook.NotebookTools;
@@ -88,7 +87,7 @@ final class NewsroomAgents {
   static Built agentsFor(ModelProvider provider, String model, DataSource dataSource) {
     ObjectMapper mapper = new ObjectMapper();
     JdbcPersistence persistence = JdbcPersistence.create(dataSource, mapper);
-    SubagentLinks links = JdbcSubagentLinks.create(dataSource);
+    SubagentLinks links = persistence.subagentLinks();
     CallbackRouter router = new CallbackRouter();
     PendingAnswers pendingAnswers = new PendingAnswers();
     Function<ConversationId, SubjectId> subjectResolver = id -> SUBJECT;
