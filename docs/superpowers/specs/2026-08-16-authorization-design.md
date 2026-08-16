@@ -173,6 +173,25 @@ public interface Enricher<E> {
   vocabulary IS the tool's schema: an enum or sealed class boxes the model into a
   strict vocabulary at parse time; `String.class` permits open-ended intent.
 - **Lifetime: until re-declared or cleared**, scoped to the conversation.
+- **Wired as one object — `IntentSupport<V>` (amended after owner review):** the
+  declare tool, the clear tool, and the reading enricher are only ever correct
+  together, parameterized by the SAME vocabulary and the SAME store, so they are
+  constructed together: `IntentSupport.of(Class<V> vocabulary, IntentStore store)`
+  yields `declareTool()`, `clearTool()`, `enricher()`, and the typed read
+  `Optional<V> declaredIn(AuthorizationContext)`. Mis-wiring a vocabulary against a
+  foreign reader stops being expressible. `V` binds at construction, so the one
+  unavoidable downcast lives inside framework code instead of at every policy call
+  site — no class tokens in app code.
+  - Storage stays the single blessed slot (`INTENT_KEY`, a `Key<Object>`), so
+    vocabulary-blind readers (the §8 report, audit rendering, "was anything
+    declared?") keep working; `AuthorizationContext.declaredIntent(Class<T>)`
+    remains as the escape hatch for apps that skip the support object and run their
+    own key discipline. The support is the opinion; the raw slot is the seam.
+  - RULE: at most one `IntentSupport` per agent — the store row is
+    one-intent-per-conversation LWW, so two vocabularies on one agent would
+    overwrite each other. A read whose stored type does not match `V` returns
+    empty (fail closed), never a ClassCastException; likewise an unresolvable
+    stored type after a class rename.
 - **Backed by its own tiny store (amended after owner review — the plan-store
   pattern, not transcript scanning):** `IntentStore` — `(conversation_id) → the
   declared intent (serialized, with its type)` — LWW on declare, delete on clear;
