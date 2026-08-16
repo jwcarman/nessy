@@ -12,7 +12,7 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- MariaDB -- see schema.sql's header. No jsonb column here -- `varchar`/`text` are native and
+-- MariaDB — see schema.sql's header. No jsonb column here -- `varchar`/`text` are native and
 -- need no width decision beyond the ones chosen below.
 
 CREATE TABLE IF NOT EXISTS nessy_notebook (

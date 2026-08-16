@@ -12,7 +12,7 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- MySQL -- see schema.sql's header for the verified-version and type-mapping notes. No jsonb
+-- MySQL — see schema.sql's header for the verified-version and type-mapping notes. No jsonb
 -- column here, so no cast concerns -- `varchar`/`text` are native on MySQL and need no width
 -- decision beyond the ones chosen below.
 

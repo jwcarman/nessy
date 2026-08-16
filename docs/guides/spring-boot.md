@@ -41,9 +41,9 @@ provider.
 ## Persistence
 
 Add `nessy-jdbc` next to a `DataSource` bean, and a JDBC-backed
-`ConversationStore`, `Parks`, `Transcript`, `Memory`, and `PlanStore` are all
-autoconfigured — five beans, covering four of the five components
-[Durable Persistence](durable-persistence.md) wires by hand with
+`ConversationStore`, `Parks`, `Transcript`, `Memory`, `PlanStore`, and
+`Notebook` are all autoconfigured — six beans, covering five of the six
+components [Durable Persistence](durable-persistence.md) wires by hand with
 `JdbcPersistence.create` (`Memory` is synthesized from the autoconfigured
 `Transcript` bean, the same way `JdbcPersistence#memory()` synthesizes it).
 `nessy.jdbc.enabled` is the master switch;
@@ -128,7 +128,7 @@ can key off named listeners rather than parsing prose.
 
 ## Where next
 
-- [Durable Persistence](durable-persistence.md) — the five components
+- [Durable Persistence](durable-persistence.md) — the six components
   `JdbcPersistence.create` wires by hand, `SummaryStore` included.
 - [Observability](observability.md) — the `ObservationRegistry` bean
   `nessy-autoconfigure` picks up automatically, no wiring required.

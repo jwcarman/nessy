@@ -120,7 +120,7 @@ public final class JdbcNotebook implements Notebook {
               }
             }
           }
-          return headings;
+          return List.copyOf(headings);
         });
   }
 

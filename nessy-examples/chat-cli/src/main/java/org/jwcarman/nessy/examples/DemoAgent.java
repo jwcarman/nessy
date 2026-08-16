@@ -76,18 +76,13 @@ public final class DemoAgent {
    * maintains its own plan through {@code update_plan}, and the context pipeline recalls it into
    * every subsequent turn unconditionally.
    *
-   * <p>Alongside the plan, this agent also grants the {@link
-   * org.jwcarman.nessy.spi.notebook.NotebookTools#remember(org.jwcarman.nessy.spi.notebook.Notebook,
-   * java.util.function.Function) remember}, {@link
-   * org.jwcarman.nessy.spi.notebook.NotebookTools#recall(org.jwcarman.nessy.spi.notebook.Notebook,
-   * java.util.function.Function) recall}, and {@link
-   * org.jwcarman.nessy.spi.notebook.NotebookTools#forget(org.jwcarman.nessy.spi.notebook.Notebook,
-   * java.util.function.Function) forget} tools over a single, process-lifetime {@link
-   * org.jwcarman.nessy.spi.notebook.Notebook} (spec §6): a fixed subject resolver maps every
-   * conversation this process ever holds to the same {@link
-   * org.jwcarman.nessy.api.conversation.SubjectId}, so notes made in one chat-cli conversation are
-   * remembered in the next — within this run only, since the notebook is in-memory; a {@code
-   * JdbcNotebook} swap is the only change needed to survive a restart.
+   * <p>Alongside the plan, this agent also grants the {@link NotebookTools#remember(Notebook,
+   * Function) remember}, {@link NotebookTools#recall(Notebook, Function) recall}, and {@link
+   * NotebookTools#forget(Notebook, Function) forget} tools over a single, process-lifetime {@link
+   * Notebook} (spec §6): a fixed subject resolver maps every conversation this process ever holds
+   * to the same {@link SubjectId}, so notes made in one chat-cli conversation are remembered in the
+   * next — within this run only, since the notebook is in-memory; a {@code JdbcNotebook} swap is
+   * the only change needed to survive a restart.
    *
    * <p>Returns the {@link PlanStore} alongside the agent (rather than the agent alone) so {@code
    * Chat}'s {@code main} can hand the same store to {@code ConsoleRepl.Builder#plan(PlanStore)} —

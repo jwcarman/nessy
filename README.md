@@ -817,7 +817,7 @@ Three honest notes on the shape of this coverage:
   and has always exercised the `container`-tagged suites — Postgres,
   RabbitMQ — with `-Dnessy.excludedGroups=live`. `nessy-tool-mcp`'s own MCP
   fixtures carry no `container` tag at all and run in every build, container
-  or not. The full TCK-run-five-times matrix (all four `nessy-tck` contracts
+  or not. The full TCK-run-five-times matrix (all six `nessy-tck` contracts
   against real MySQL, MariaDB, SQL Server, and Oracle containers, each plus a
   dialect-resolution pin proving `JdbcDialect.resolve` picks the right enum
   from that vendor's own live `DatabaseMetaData` — MariaDB's being the

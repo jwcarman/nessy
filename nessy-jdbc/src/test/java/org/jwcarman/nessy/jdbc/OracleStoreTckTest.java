@@ -55,9 +55,9 @@ import org.testcontainers.oracle.OracleContainer;
 /**
  * The full TCK, all six contracts, run against a real Oracle — plus the dialect-resolution pin
  * (design §6). One container for the whole class (nested contracts share it, each truncating its
- * own table between tests) rather than four, the same efficiency trade the vendor matrix needs five
+ * own table between tests) rather than six, the same efficiency trade the vendor matrix needs five
  * times over — most valuable here, where Oracle is the matrix's heavyweight: its image pull and
- * container start dwarf the other four vendors combined, so paying that cost once rather than four
+ * container start dwarf the other four vendors combined, so paying that cost once rather than six
  * times over is not an optimization, it's the difference between a runnable local sweep and one
  * nobody bothers to run. Requires Docker; tagged {@code container} so the offline default build
  * never needs it.

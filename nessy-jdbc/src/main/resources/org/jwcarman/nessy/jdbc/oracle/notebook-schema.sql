@@ -12,7 +12,7 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Oracle -- see schema.sql's header.
+-- Oracle — see schema.sql's header.
 
 CREATE TABLE IF NOT EXISTS nessy_notebook (
   subject_id varchar2(255)  NOT NULL,

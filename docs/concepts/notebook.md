@@ -44,9 +44,10 @@ say — and the same notes follow that person across every conversation they sta
 
 ## The three verbs
 
-`remember`, `recall`, and `forget` are the tools granted to the model; `remember` and
-`forget` never park, and `recall`'s failures come back as errors the model can act on
-rather than exceptions that escape the loop.
+`remember`, `recall`, and `forget` are the tools granted to the model. None of the three
+ever parks, and none of the three lets a validation failure escape the loop as a thrown
+exception — a null or blank name, hook, or body, or a `recall` of an unknown name, comes
+back as a failed `ToolResult` the model can read and act on.
 
 **`remember`** saves an entry — `name`, `hook`, `body`, all required and non-blank —
 under `(subject, name)`. Saving an existing name **replaces** that note: `remember` is an
@@ -151,6 +152,13 @@ exactly where the previous attempt at it would have.
     JDBC one by its database's collation. The two only agree because `remember`'s expected
     names are kebab-case and lowercase, which every collation in play orders identically;
     the notebook doesn't otherwise promise cross-backend index order for arbitrary names.
+
+!!! warning "JDBC backends cap `name` and `hook` at column width"
+    `nessy_notebook` declares `name varchar(255)` and `hook varchar(1024)` — the spec parks
+    size policy as an application concern, not the notebook's, so an oversized `name` or
+    `hook` fails the `save` outright on a strict database, while `Notebook.inMemory()` takes
+    the same call without complaint. Keep names and hooks within those widths if the same
+    conversation might run against either backend.
 
 Unlike the plan facility, there's no clear-the-whole-thing operation here, so the
 empty-vs-absent ambiguity that `PlanStore.save(Plan.empty())` raises doesn't have an

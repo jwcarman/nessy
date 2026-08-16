@@ -6,12 +6,13 @@ and a pipeline `Memory` over `Transcript.inMemory()`. `nessy-jdbc` replaces
 all of that with a real database, over one `javax.sql.DataSource`, with no
 change to how an agent is built or told things.
 
-## Bootstrapping all five doors at once
+## Bootstrapping all six doors at once
 
 `JdbcPersistence.create` is the one-call version: it resolves the dialect
-once, from one borrowed connection, then bootstraps and hands back all five
+once, from one borrowed connection, then bootstraps and hands back all six
 JDBC-backed components that need a database — a `JdbcConversationStore`, a
-`JdbcParks`, a `JdbcTranscript`, a `JdbcSummaryStore`, and a `JdbcPlanStore`:
+`JdbcParks`, a `JdbcTranscript`, a `JdbcSummaryStore`, a `JdbcPlanStore`, and a
+`JdbcNotebook`:
 
 ```java
 JdbcPersistence persistence = JdbcPersistence.create(dataSource, objectMapper);
@@ -74,7 +75,7 @@ five it supports — never a silent fallback to Postgres syntax.
 per-vendor guard where a dialect lacks that syntax) once at startup, safe to
 repeat across every process that starts up against the same database. The
 constructor form (`new JdbcConversationStore(dataSource, objectMapper,
-dialect)`, and the equivalent on each of the other four classes) skips DDL
+dialect)`, and the equivalent on each of the other five classes) skips DDL
 entirely, for a datasource another process already bootstrapped.
 
 !!! warning "Write-once inserts are unified, not varied per vendor"
@@ -97,17 +98,17 @@ Three doors carry the whole story:
   message log — the same pipeline over `Transcript.inMemory()` dies with the
   JVM.
 
-`SummaryStore` and `PlanStore` ride along the same way: durable once backed
-by `nessy-jdbc`, in-memory (and gone at restart) otherwise. See
-[Storage](../concepts/storage.md) for the full picture of all five doors and
+`SummaryStore`, `PlanStore`, and `Notebook` ride along the same way: durable
+once backed by `nessy-jdbc`, in-memory (and gone at restart) otherwise. See
+[Storage](../concepts/storage.md) for the full picture of all six doors and
 what each one owns.
 
 ## In a Spring Boot application
 
 The wiring above is optional there: add `nessy-spring-boot-starter` and
 `nessy-jdbc` next to a `DataSource` bean, and the store, parks, transcript,
-memory, and plan store are all autoconfigured — the application declares one
-bean, the agent. `SummaryStore` is the exception: nothing in
+memory, plan store, and notebook are all autoconfigured — the application
+declares one bean, the agent. `SummaryStore` is the exception: nothing in
 `nessy-autoconfigure` builds one, so a summarizing pipeline still needs an
 application-declared `Memory` bean over a hand-built
 `JdbcSummaryStore.create(dataSource)`. See [Spring Boot](spring-boot.md).
@@ -120,7 +121,7 @@ above start out excluded. `./mvnw test -Dnessy.excludedGroups=live`
 un-excludes the whole `container` tier at once — not just Postgres: it adds
 Postgres's own test classes *and* one class per vendor (`MySqlStoreTckTest`,
 `MariaDbStoreTckTest`, `SqlServerStoreTckTest`, `OracleStoreTckTest`), each
-running all five `nessy-tck` contracts against a real Testcontainers
+running all six `nessy-tck` contracts against a real Testcontainers
 instance for that vendor plus a dialect-resolution pin — the full
 five-vendor matrix, needing a Docker daemon. The four vendor classes also
 carry `@Tag("vendor")` alongside `@Tag("container")`: CI runs with
@@ -133,7 +134,7 @@ tier on top of everything else.
 
 ## Where next
 
-- [Storage](../concepts/storage.md) — the five SPIs `nessy-jdbc` implements,
+- [Storage](../concepts/storage.md) — the six SPIs `nessy-jdbc` implements,
   and the TCK contracts a backend has to pass.
 - [Spring Boot](spring-boot.md) — most of the same doors, autoconfigured
   from a `DataSource` bean (`SummaryStore` excepted).
