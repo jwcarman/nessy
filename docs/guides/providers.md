@@ -290,7 +290,11 @@ ModelProvider provider =
     OpenAiModelProvider.builder().apiKey(key).baseUrl("https://integrate.api.nvidia.com/v1").build();
 ```
 
-**Ollama** (local, no key required — any non-empty string works):
+**Ollama** (local, no key required — any non-empty string works; validated
+2026-08-16 with `qwen3.6` through chat-cli: text, an approval-gated tool
+round trip, and notebook writes. Honest performance note: on the same
+Apple-Silicon machine and model family, LM Studio's MLX engine was notably
+faster than Ollama's GGUF serving — both work, one waits):
 
 ```java
 ModelProvider provider =

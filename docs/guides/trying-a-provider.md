@@ -148,7 +148,9 @@ $ OPENAI_API_KEY=lm-studio OPENAI_BASE_URL=http://127.0.0.1:1234/v1 \
     path and fails. See [Providers](providers.md#anthropic-compatible-endpoints)
     for the full explanation.
 
-**Ollama** — documented shape, **not yet validated** through this gauntlet:
+**Ollama** (validated 2026-08-16 — `qwen3.6` through the full gauntlet;
+expect slower tokens than LM Studio on Apple Silicon, whose MLX engine
+outpaces Ollama's GGUF serving for the same model family):
 
 ```console
 $ OPENAI_API_KEY=ollama OPENAI_BASE_URL=http://localhost:11434/v1 \
