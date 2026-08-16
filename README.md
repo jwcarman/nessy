@@ -189,6 +189,7 @@ framework. The docs site page teaches the whole story; this is just the map.
 | Parks and callbacks — conversations that pause and resume across processes | [Parks and Callbacks](https://jwcarman.github.io/nessy/concepts/parks-and-callbacks/) |
 | Memory and the context pipeline — what a model call actually sees | [Memory and the Pipeline](https://jwcarman.github.io/nessy/concepts/memory-and-the-pipeline/) |
 | Planning — a model-maintained task list, recalled every turn | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
+| The notebook — model-gated memory: an always-present index, bodies on demand | [Notebook](https://jwcarman.github.io/nessy/concepts/notebook/) |
 | Storage and JDBC dialects — five vendors, one code path | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
 | MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
 | Console apps — a terminal REPL for any `Agent<String>` in one line | [Console Apps](https://jwcarman.github.io/nessy/guides/console-apps/) |
