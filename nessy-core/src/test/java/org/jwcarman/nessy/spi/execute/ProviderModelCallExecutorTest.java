@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -103,7 +104,22 @@ class ProviderModelCallExecutorTest {
     assertThat(observed).contains(new TurnEvent.ToolCallRequested(call));
     ConversationEvent.ModelResponded fact =
         (ConversationEvent.ModelResponded) ((Awaited.Ready<ConversationEvent>) outcome).value();
-    assertThat(fact.message().content()).hasSize(1); // the tool-use block rides the message
+    assertThat(fact.message().content()).containsExactly(new ToolUseBlock(call));
+  }
+
+  @Test
+  void a_signed_tool_use_event_lands_in_the_folded_message_with_its_signature() {
+    ToolCall call = new ToolCall("call-1", "search", JsonNodeFactory.instance.objectNode());
+    ProviderModelCallExecutor executor =
+        executorStreaming(
+            new ModelEvent.ToolUseEmitted(call, "sig-123"),
+            new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
+
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    ConversationEvent.ModelResponded fact =
+        (ConversationEvent.ModelResponded) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.message().content()).containsExactly(new ToolUseBlock(call, "sig-123"));
   }
 
   @Test

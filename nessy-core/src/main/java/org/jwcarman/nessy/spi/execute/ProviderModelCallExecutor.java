@@ -117,9 +117,9 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
             observer.on(new TurnEvent.RedactedThinking(data));
             blocks.add(new RedactedThinkingBlock(data));
           }
-          case ModelEvent.ToolUseEmitted(var call) -> {
+          case ModelEvent.ToolUseEmitted(var call, var signature) -> {
             observer.on(new TurnEvent.ToolCallRequested(call));
-            blocks.add(new ToolUseBlock(call));
+            blocks.add(new ToolUseBlock(call, signature));
           }
           case ModelEvent.TurnEnded(var reason, var usage) -> {
             LoopObservations.recordUsage(modelCall, usage);

@@ -25,7 +25,9 @@ import com.google.genai.types.FunctionCall;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +71,23 @@ class GeminiStreamTest {
     var functionCallPart =
         Part.builder()
             .functionCall(FunctionCall.builder().id(id).name(name).args(args).build())
+            .build();
+    return GenerateContentResponse.builder()
+        .candidates(
+            List.of(
+                Candidate.builder()
+                    .content(
+                        Content.builder().role("model").parts(List.of(functionCallPart)).build())
+                    .build()))
+        .build();
+  }
+
+  private static GenerateContentResponse functionCallChunkWithSignature(
+      String id, String name, Map<String, Object> args, byte[] thoughtSignature) {
+    var functionCallPart =
+        Part.builder()
+            .functionCall(FunctionCall.builder().id(id).name(name).args(args).build())
+            .thoughtSignature(thoughtSignature)
             .build();
     return GenerateContentResponse.builder()
         .candidates(
@@ -332,6 +351,40 @@ class GeminiStreamTest {
       assertThatThrownBy(() -> stream.forEach(event -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("no name");
+    }
+  }
+
+  @Nested
+  class ThoughtSignatures {
+
+    @Test
+    void
+        a_function_call_part_carrying_a_thought_signature_emits_an_event_with_the_encoded_signature() {
+      byte[] rawSignature = "opaque-continuity-token".getBytes(StandardCharsets.UTF_8);
+      var chunks =
+          List.of(
+              functionCallChunkWithSignature(
+                  "call-1", "get_weather", Map.of("location", "NYC"), rawSignature),
+              finishChunk("STOP"));
+
+      var modelEvents = drain(chunks);
+
+      var toolUseEmitted = (ModelEvent.ToolUseEmitted) modelEvents.get(0);
+      assertThat(toolUseEmitted.signature())
+          .isEqualTo(Base64.getEncoder().encodeToString(rawSignature));
+    }
+
+    @Test
+    void a_function_call_part_with_no_thought_signature_emits_an_event_with_no_signature() {
+      var chunks =
+          List.of(
+              functionCallChunk("call-1", "get_weather", Map.of("location", "NYC")),
+              finishChunk("STOP"));
+
+      var modelEvents = drain(chunks);
+
+      var toolUseEmitted = (ModelEvent.ToolUseEmitted) modelEvents.get(0);
+      assertThat(toolUseEmitted.signature()).isNull();
     }
   }
 

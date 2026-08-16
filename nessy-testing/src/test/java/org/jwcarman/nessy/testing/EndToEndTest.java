@@ -34,11 +34,14 @@ import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -210,6 +213,40 @@ class EndToEndTest {
     assertThat(agent.contextFor(conversation.conversationId()).messages().getLast().content())
         .containsExactly(
             new ThinkingBlock("Let me think.", "sig-abc"), new TextBlock("The answer is 4."));
+  }
+
+  /**
+   * Spec §5's reason {@code toolUseSigned} exists: drive a signed tool call through a real turn —
+   * fold, store, and the rebuilt context handed to the model on the next request — and confirm the
+   * signature is still attached at the far end, not just at the scripted source. A future hydrator
+   * that rebuilds an assistant message via {@code new ToolUseBlock(call)} (dropping the signature)
+   * would fail this test.
+   */
+  @Test
+  void a_signed_tool_call_carries_its_signature_all_the_way_into_the_next_request() {
+    ToolCall call = new ToolCall("c1", "add", addArgs(2, 2));
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .toolUseSigned("c1", "add", addArgs(2, 2), "sig-123")
+            .endWithToolUse()
+            .text("The answer is 4.")
+            .endTurn()
+            .build();
+    Agent<String> agent =
+        Nessy.harness(provider)
+            .build()
+            .agent()
+            .name("end-to-end")
+            .model("fake-model")
+            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+            .build();
+
+    agent.converse().tell("what is 2+2?");
+
+    assertThat(provider.requests()).hasSizeGreaterThanOrEqualTo(2);
+    assertThat(provider.requests().get(1).context().messages())
+        .flatExtracting(Message::content)
+        .contains(new ToolUseBlock(call, "sig-123"));
   }
 
   @Test

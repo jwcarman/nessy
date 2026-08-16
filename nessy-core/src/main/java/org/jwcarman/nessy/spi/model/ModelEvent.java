@@ -50,8 +50,19 @@ public sealed interface ModelEvent {
     }
   }
 
-  /** Emitted once the provider has assembled a complete tool call. */
-  record ToolUseEmitted(ToolCall call) implements ModelEvent {}
+  /**
+   * Emitted once the provider has assembled a complete tool call.
+   *
+   * <p>{@code signature}: an opaque provider-issued continuity token, stored with the call and
+   * returned verbatim on replay; absent for providers that issue none.
+   */
+  record ToolUseEmitted(ToolCall call, String signature) implements ModelEvent {
+
+    /** Convenience for providers that issue no continuity token. */
+    public ToolUseEmitted(ToolCall call) {
+      this(call, null);
+    }
+  }
 
   record TurnEnded(StopReason reason, Usage usage) implements ModelEvent {
 

@@ -31,6 +31,13 @@ ModelProvider provider = GeminiModelProvider.builder().apiKey(apiKey).build();
   Completions does — each `functionCall` part arrives already complete — so no id-keyed
   accumulation is needed; an id is minted deterministically (`gemini-call-<n>`) only when the SDK
   omits one.
+- Tool-call continuity: a `functionCall` part's `thoughtSignature` — Gemini's opaque continuity
+  token — is base64-encoded into `ToolUseEmitted.signature`/`ToolUseBlock.signature` when present.
+  On replay, `GeminiRequests` decodes a stored signature back onto the rebuilt part's
+  `thoughtSignature`; a block with no signature (a history that predates this capture, or one
+  authored by another provider) gets Google's documented `skip_thought_signature_validator`
+  sentinel instead, so the replay stays legal at the cost of degraded reasoning continuity for
+  that one call. See `GeminiRequests.SKIP_THOUGHT_SIGNATURE_VALIDATOR`'s javadoc.
 - `finishReason` has no dedicated "the model called a tool" value (a tool-calling turn still
   reports `STOP`), so the stream tracks whether any function call was seen and reports
   `StopReason.TOOL_USE` in that case regardless of the wire's own `finishReason`.
@@ -84,3 +91,14 @@ request/response mapping is grounded in the SDK's own source (`FunctionCall`, `F
 and is covered by the offline mapping tests above, but the live round-trip is unvalidated until
 someone runs it with a real key: `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl
 nessy-model-gemini`.
+
+Tool-call replay now carries real `thoughtSignature` bytes captured from the stream, and
+pre-existing histories that carry no signature degrade gracefully via Google's own sanctioned
+skip-validation sentinel rather than failing the call outright — both paths are covered offline
+(`GeminiStreamTest$ThoughtSignatures`, `GeminiRequestsTest$ToolCallSignatures`). This is still an
+offline-only claim: it changes what the mapping does, not the live-validation status above, which
+only changes once the owner runs the live suite with a real key. Note for that live run: replayed
+function-call parts now carry a `thoughtSignature` field unconditionally, including against
+`gemini-2.5-*` models that previously received none — whether those models tolerate the added
+field (rather than the 3.x-only signing behavior the sentinel doc describes) is itself unverified
+offline and worth confirming on the first live run against a 2.5 model.

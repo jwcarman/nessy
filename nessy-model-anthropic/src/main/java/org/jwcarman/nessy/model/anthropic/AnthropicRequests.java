@@ -189,7 +189,7 @@ public final class AnthropicRequests {
           Optional.of(
               ContentBlockParam.ofRedactedThinking(
                   RedactedThinkingBlockParam.builder().data(data).build()));
-      case ToolUseBlock(ToolCall call) ->
+      case ToolUseBlock(ToolCall call, _) ->
           Optional.of(
               ContentBlockParam.ofToolUse(
                   ToolUseBlockParam.builder()

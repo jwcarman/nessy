@@ -141,13 +141,21 @@ Capabilities in v1: text and tool calls, including parallel tool calls in
 one turn, plus usage reporting. Thinking output is not yet mapped — Gemini's
 `thought`-flagged parts are dropped rather than translated.
 
+Tool calls carry real continuity: the stream captures each function call's
+`thoughtSignature` and the request builder replays it verbatim on the next
+turn. A history with no stored signature — one predating this capture, or
+authored by another provider in a mixed setup — replays with Google's own
+documented skip-validation sentinel instead of failing the call, at the cost
+of degraded reasoning continuity for that one call only.
+
 !!! warning "Not yet live-validated"
-    The Gemini mapping is covered by offline unit tests against the SDK's
-    own response types, but the live suite — a real conversation and tool
-    round trip against the Gemini Developer API — has not been run against a
-    real key as of this writing. Run it yourself before depending on this
-    path in production: `GEMINI_API_KEY=... ./mvnw test
-    -Dnessy.excludedGroups= -pl nessy-model-gemini`.
+    The Gemini mapping, including the signature capture/replay above, is
+    covered by offline unit tests against the SDK's own response types, but
+    the live suite — a real conversation and tool round trip against the
+    Gemini Developer API — has not been run against a real key as of this
+    writing. Run it yourself before depending on this path in production:
+    `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl
+    nessy-model-gemini`.
 
 ## The OpenAI-compatible universe
 
