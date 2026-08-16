@@ -169,3 +169,15 @@ raw mode, no cursor addressing; transcript-flow rendering only).
 Consumers: scout wires it as its showcase (multi-step research with a
 visible plan — see the scout design's own amendment); chat-cli adds the
 one-liner since it already holds the store.
+
+## 10. Amendment (2026-08-15): the farewell line
+
+`ConsoleRepl.Builder.farewell(String)` — optional, at most once, null
+rejected — names a line `run()` prints (dim-styled per §2's covenant, plain
+when styling is disabled) the instant the loop ends, exit word or EOF alike,
+before `run()` returns; unset, the loop ends exactly as before. Scout also
+calls `System.exit(0)` right after its try-with-resources block closes
+`McpToolbox`: the MCP transport's `HttpClient` carries a non-daemon selector
+thread that outlives `close()`, so without the explicit exit the process
+lingers seconds after a clean run — the farewell prints instantly either way,
+this only shortens what came after.

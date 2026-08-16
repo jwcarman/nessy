@@ -92,8 +92,14 @@ public final class Scout {
                   + "), reading via DeepWiki. Type exit or quit to leave.")
           .prompt("you> ")
           .plan(built.planStore())
+          .farewell("goodbye.")
           .run();
     }
+    // McpToolbox.close() has already run above (try-with-resources), and the REPL is done — but
+    // HttpClientStreamableHttpTransport rides java.net.http.HttpClient, whose selector thread is
+    // non-daemon and outlives close(). Exiting here is honest cleanup of a JDK thread we don't
+    // own, not a workaround for state we failed to release.
+    System.exit(0);
   }
 
   /**

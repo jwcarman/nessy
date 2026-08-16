@@ -59,6 +59,7 @@ public final class Chat {
                 + " plan.")
         .prompt("you> ")
         .plan(built.planStore())
+        .farewell("goodbye.")
         .run();
   }
 }
