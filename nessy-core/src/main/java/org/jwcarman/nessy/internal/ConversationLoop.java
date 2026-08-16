@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.ConversationSettled;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
@@ -40,6 +41,7 @@ import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
@@ -194,6 +196,13 @@ public final class ConversationLoop {
     // whole driveOnce attempt, however many closure points it passes through (applyParked, or the
     // attempt's own settled return below) — see the CAS use at each site.
     AtomicBoolean endingNarrated = new AtomicBoolean(false);
+    // Attempt-scoped, like endingNarrated: the most recent ModelResponded message any fold in
+    // this attempt has folded, read back by publishSettlement once the attempt lands on COMPLETE
+    // or FAILED. Not sourced from Memory (design's tellings are the wire-context's own
+    // jurisdiction,
+    // bound by Context's pairing invariant, which a mid-turn or crash-recovered attempt can easily
+    // not satisfy yet) — this is the loop's own, narrower answer to "what did the model last say."
+    AtomicReference<Message> lastAssistantMessage = new AtomicReference<>();
     boolean settled = false;
     try {
       // 1. Notes: fold every Told entry, in order (facts minted here, one per entry). The entry's
@@ -202,7 +211,12 @@ public final class ConversationLoop {
       for (InboxEntry entry : loaded.inbox()) {
         if (entry instanceof InboxEntry.Told(String entryId, List<ContentBlock> content)) {
           drained.add(entryId);
-          fold(progress, new ConversationEvent.AgentTold(id, content), drained, observer);
+          fold(
+              progress,
+              new ConversationEvent.AgentTold(id, content),
+              drained,
+              observer,
+              lastAssistantMessage);
         }
       }
 
@@ -233,14 +247,20 @@ public final class ConversationLoop {
           }
           ConversationEvent fact =
               resumeParkedCall(park.get(), resolution, progress.get(), observer);
-          FoldOutcome folded = fold(progress, fact, drained, observer);
+          FoldOutcome folded = fold(progress, fact, drained, observer, lastAssistantMessage);
           drained.add(entryId);
-          runCycle(progress, new ArrayDeque<>(folded.effects()), drained, observer, endingNarrated);
+          runCycle(
+              progress,
+              new ArrayDeque<>(folded.effects()),
+              drained,
+              observer,
+              endingNarrated,
+              lastAssistantMessage);
         }
       }
 
       // 3. The continuation pointer: do what status says until quiescent or parked.
-      continueByStatus(progress, drained, observer, endingNarrated);
+      continueByStatus(progress, drained, observer, endingNarrated, lastAssistantMessage);
 
       if (!drained.isEmpty()) {
         save(progress, drained);
@@ -260,6 +280,7 @@ public final class ConversationLoop {
       if (endingNarrated.compareAndSet(false, true)) {
         observer.on(new TurnEvent.TurnEnded(finalState.status(), finalState.failureReason()));
       }
+      publishSettlement(finalState, lastAssistantMessage.get());
       return outcomeOf(finalState);
     } finally {
       if (!settled) {
@@ -282,6 +303,46 @@ public final class ConversationLoop {
   }
 
   /**
+   * The wake-up signal (design's subagent generation): published, never folded, exactly when a
+   * drive's own settlement lands on {@code COMPLETE} or {@code FAILED} — never on {@code PARKED}, a
+   * pause rather than a settlement. Fires every time {@code driveOnce} exits on one of those two
+   * statuses, including a no-op re-drive of an already-settled conversation, which is what makes
+   * this fact at-least-once rather than exactly-once (see {@link ConversationSettled}'s javadoc).
+   *
+   * @param lastAssistantMessage the most recent {@code ModelResponded} message this attempt folded,
+   *     or {@code null} when this attempt folded none — a re-drive that found the conversation
+   *     already settled, say
+   */
+  private void publishSettlement(ConversationState finalState, Message lastAssistantMessage) {
+    if (finalState.status() == ConversationStatus.COMPLETE
+        || finalState.status() == ConversationStatus.FAILED) {
+      emitter.emit(
+          new ConversationSettled(
+              finalState.id(),
+              finalState.status(),
+              finalState.failureReason(),
+              finalAssistantText(lastAssistantMessage)));
+    }
+  }
+
+  /**
+   * The concatenated {@link TextBlock} content of {@code message}, in order — the empty string when
+   * {@code message} is {@code null} or carries no {@link TextBlock}.
+   */
+  private static String finalAssistantText(Message message) {
+    if (message == null) {
+      return "";
+    }
+    StringBuilder text = new StringBuilder();
+    for (ContentBlock block : message.content()) {
+      if (block instanceof TextBlock(String blockText)) {
+        text.append(blockText);
+      }
+    }
+    return text.toString();
+  }
+
+  /**
    * Advances {@code progress} by whatever its current status calls for, re-entrant from a crash at
    * any point in a turn: quiescent with unread notes opens one; a crashed or continued model call
    * is re-performed; crashed tool debt is re-performed (at-least-once — parked calls are not among
@@ -291,27 +352,35 @@ public final class ConversationLoop {
       AtomicReference<ConversationState> progress,
       List<String> drained,
       TurnObserver observer,
-      AtomicBoolean endingNarrated) {
+      AtomicBoolean endingNarrated,
+      AtomicReference<Message> lastAssistantMessage) {
     ConversationState state = progress.get();
     if (state.isQuiescent() && !state.told().isEmpty()) {
       Step opened = state.openTurn();
       progress.set(opened.state());
       remember(opened.state().id(), opened.remember());
       save(progress, drained);
-      runCycle(progress, new ArrayDeque<>(opened.effects()), drained, observer, endingNarrated);
+      runCycle(
+          progress,
+          new ArrayDeque<>(opened.effects()),
+          drained,
+          observer,
+          endingNarrated,
+          lastAssistantMessage);
     } else if (state.status() == ConversationStatus.AWAITING_MODEL) {
       runCycle(
           progress,
           new ArrayDeque<>(List.of(Effect.callModel())),
           drained,
           observer,
-          endingNarrated);
+          endingNarrated,
+          lastAssistantMessage);
     } else if (state.status() == ConversationStatus.EXECUTING_TOOL) {
       Deque<Effect> queue = new ArrayDeque<>();
       for (ToolCall call : state.pendingCalls()) {
         queue.addLast(new Effect.ExecuteTool(call));
       }
-      runCycle(progress, queue, drained, observer, endingNarrated);
+      runCycle(progress, queue, drained, observer, endingNarrated, lastAssistantMessage);
     }
   }
 
@@ -331,13 +400,14 @@ public final class ConversationLoop {
       Deque<Effect> queue,
       List<String> drained,
       TurnObserver observer,
-      AtomicBoolean endingNarrated) {
+      AtomicBoolean endingNarrated,
+      AtomicReference<Message> lastAssistantMessage) {
     while (!queue.isEmpty()) {
       Effect effect = queue.pollFirst();
       PerformOutcome outcome = perform(effect, progress.get(), observer);
       switch (outcome) {
         case PerformOutcome.Settled(ConversationEvent fact) -> {
-          FoldOutcome folded = fold(progress, fact, drained, observer);
+          FoldOutcome folded = fold(progress, fact, drained, observer, lastAssistantMessage);
           if (folded.halted()) {
             return;
           }
@@ -353,13 +423,20 @@ public final class ConversationLoop {
    * The per-fact ordering law, unchanged: fold, consult the termination policy, remember the fold's
    * births, emit the fact, save (draining {@code drained}, which is cleared after). A halt discards
    * the fold's own effects and applies {@code halted(reason)} in the same beat, remembering both
-   * the fold's own birth and the closure's abandoned-work flush before saving.
+   * the fold's own birth and the closure's abandoned-work flush before saving. {@code
+   * lastAssistantMessage} is updated here too, alongside {@code narrateAssistantSaid} — the same
+   * fact that narrates {@link TurnEvent.AssistantSaid} is the one {@link #publishSettlement} later
+   * reads its final text from.
    */
   private FoldOutcome fold(
       AtomicReference<ConversationState> progress,
       ConversationEvent fact,
       List<String> drained,
-      TurnObserver observer) {
+      TurnObserver observer,
+      AtomicReference<Message> lastAssistantMessage) {
+    if (fact instanceof ConversationEvent.ModelResponded responded) {
+      lastAssistantMessage.set(responded.message());
+    }
     Step step = progress.get().fold(fact);
     ConversationState folded = step.state();
     Optional<String> halt = termination.shouldHalt(folded);

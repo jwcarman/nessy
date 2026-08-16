@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.ConversationSettled;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
@@ -513,14 +514,20 @@ class ConversationLoopTest {
   private static final class RecordingEmitter implements EventEmitter {
 
     private final List<String> journal;
+    private final List<Object> events = new ArrayList<>();
 
     RecordingEmitter(List<String> journal) {
       this.journal = journal;
     }
 
+    List<Object> events() {
+      return events;
+    }
+
     @Override
     public void emit(Object event) {
       journal.add("emit:" + event.getClass().getSimpleName());
+      events.add(event);
     }
   }
 
@@ -1985,6 +1992,99 @@ class ConversationLoopTest {
       assertThat(outcome.state().status()).isEqualTo(ConversationStatus.FAILED);
       assertThat(outcome.state().failureReason()).isEqualTo("boom");
       assertThat(model.calls()).isEqualTo(1);
+    }
+  }
+
+  /** The emission contract for {@link ConversationSettled}, the loop's wake-up signal. */
+  @Nested
+  class Conversation_settled {
+
+    @Test
+    void a_clean_scripted_turn_publishes_one_settled_fact_with_the_assistants_text() {
+      List<String> journal = new ArrayList<>();
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, plainAnswer("Four."));
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  emitter),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
+
+      List<ConversationSettled> settled =
+          emitter.events().stream()
+              .filter(ConversationSettled.class::isInstance)
+              .map(ConversationSettled.class::cast)
+              .toList();
+      assertThat(settled).isNotEmpty().hasSize(1);
+      assertThat(settled.getFirst())
+          .isEqualTo(new ConversationSettled(ID, ConversationStatus.COMPLETE, null, "Four."));
+    }
+
+    @Test
+    void a_failed_model_call_publishes_a_settled_fact_with_the_failure_reason() {
+      List<String> journal = new ArrayList<>();
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, new ConversationEvent.ModelCallFailed(ID, "boom"));
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, new ScriptedToolCallExecutor(journal)),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  emitter),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "what is 2+2?"), OBSERVER);
+
+      List<ConversationSettled> settled =
+          emitter.events().stream()
+              .filter(ConversationSettled.class::isInstance)
+              .map(ConversationSettled.class::cast)
+              .toList();
+      assertThat(settled).isNotEmpty().hasSize(1);
+      assertThat(settled.getFirst())
+          .isEqualTo(new ConversationSettled(ID, ConversationStatus.FAILED, "boom", ""));
+    }
+
+    @Test
+    void a_parked_drive_publishes_no_settled_fact() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "search");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.parksWhen("c1");
+      RecordingEmitter emitter = new RecordingEmitter(journal);
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  new RecordingStore(journal),
+                  Parks.inMemory(),
+                  emitter),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+
+      RunOutcome outcome = loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
+
+      assertThat(outcome.state().status()).isEqualTo(ConversationStatus.PARKED);
+      assertThat(emitter.events()).isNotEmpty();
+      assertThat(emitter.events().stream().noneMatch(ConversationSettled.class::isInstance))
+          .isTrue();
     }
   }
 
