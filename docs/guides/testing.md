@@ -137,6 +137,8 @@ for that module's full tier breakdown.
 
 ## Where next
 
+- [Trying a Provider](trying-a-provider.md) — the live complement to this
+  guide: a two-minute chat-cli gauntlet against a real provider.
 - [Getting Started](getting-started.md) — the real five-minute example this
   guide's script stands in for.
 - [The Durable Loop](../concepts/durable-loop.md) — the fold, `Awaited`, and

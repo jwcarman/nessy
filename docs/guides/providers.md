@@ -364,6 +364,8 @@ ambiguous-classpath failure mode.
 
 ## Where next
 
+- [Trying a Provider](trying-a-provider.md) — the two-minute live smoke test
+  for any provider path above.
 - [Getting Started](getting-started.md) — the smallest agent, provider swap
   included.
 - [Spring Boot](spring-boot.md) — the same provider selection, driven by
