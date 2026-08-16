@@ -87,22 +87,70 @@ smallest honest evolution of the current seam); migrate every in-repo policy usa
   sees deposited keys).
 - [ ] Full verify; standing javadoc rule; commit.
 
-### Task 3: The feeders — principal seam + spi.intent
+### Task 3a: The intent store (the eighth store)
 
-**Files:** `AgentConfig.principal(Function<ConversationId, ?>)` (resolver seam,
-impure-allowed, fail-closed → context slot); new `spi/intent/` module:
-`IntentTools.declare(vocabulary)` (+ clear verb — one tool with clearing value or a
-second tool, your call, reported), vocabulary-as-schema (enum/sealed → strict;
-String.class → open), transcript-derived latest-wins feeding
-`context.declaredIntent()`.
+**Files:** new `nessy-core/.../spi/intent/IntentStore.java` + `InMemoryIntentStore.java`
+(+ package-info); `nessy-jdbc/.../JdbcIntentStore.java` + the five vendor
+`intent-schema.sql` files (follow the existing schema files' conventions exactly);
+`JdbcPersistence` aggregate gains the slot; `HarnessConfig.intentStore(...)` +
+package-private impl (in-memory default, inherited by agents — every other store's
+precedent); `nessy-tck/.../IntentStoreContract.java` (all cases `@Test public`).
+
+**Interfaces (Produces):** `IntentStore` — `void put(ConversationId, String type, String json)`,
+`Optional<StoredIntent> get(ConversationId)`, `void clear(ConversationId)` (exact member
+names the implementer's judgment; the ROW is `(conversation_id) → (type, json)`, LWW on
+put). Type name is stored ALONGSIDE the JSON because reconstituting an Object requires it.
 
 **Steps:**
-- [ ] Principal: resolver wired at agent build; typed recovery tests (hit/miss/absent);
-  resolver throw → the call's authorization fails closed (test).
-- [ ] Intent: vocabulary schema pinned (enum case: model cannot declare off-vocabulary
-  — parse rejects); lifetime tests (declare → decide sees it → redeclare → clear);
-  replay reads the transcript (a rebuilt context sees the same intent); unwired →
-  absent slot, zero ceremony.
+- [ ] Failing tests first: put/get round-trip; put twice = LWW (no duplicate rows);
+  clear removes; get on absent conversation = empty; concurrent put on one conversation
+  does not throw (follow the notebook store's race-recovery upsert pattern).
+- [ ] JDBC: five schemas, contract certification. Docker is likely up — run at least
+  Postgres locally; report which vendors ran.
+- [ ] Full verify; standing javadoc rule; commit.
+
+### Task 3b: The feeders — principal seam + intent
+
+**Files:** `AgentConfig.principal(Function<ConversationId, ?>)` (resolver seam,
+impure-allowed, fail-closed → context slot); `AgentConfig.intent(Class<?> intentType)`
++ the internal assembly in `AgentAssembly`; new `spi/intent/` tool + enricher internals
+(package-private where possible — see the surface rule below).
+
+**SPEC AMENDMENTS THIS TASK MUST FOLLOW (spec §7, amended 2026-08-16 — read it, it
+supersedes any older description of intent):**
+- Public surface is TWO methods total: `AgentConfig.intent(Class<?>)` and
+  `HarnessConfig.intentStore(...)`. `IntentSupport` was proposed and WITHDRAWN — do not
+  reintroduce a companion object. The build assembles declare tool + clear tool +
+  reader enricher internally.
+- TWO tools: `declare_intent` (input type IS the vocabulary) and `clear_intent` (no
+  input). No clearing member inside the vocabulary.
+- The vocabulary MUST be a structured type — record, POJO, or sealed interface of
+  records. `intent(...)` REJECTS at wiring time any type that cannot render as an object
+  schema (String, primitives and boxes, ENUMS, collections, arrays), with a message
+  naming the type and saying to wrap it in a record. Bare `String` and bare enum
+  vocabularies were both ruled out: a tool's parameters must be an OBJECT schema.
+- The reader is an internal enricher doing ONE keyed store fetch per evaluated call —
+  never a transcript scan. Rung-0 grants assemble no context, so it does not run there.
+- Storage is the single blessed `INTENT_KEY` (`Key<Object>`); policies read
+  `context.declaredIntent(Class<T>)`.
+- Reads FAIL CLOSED: stored intent of a different vocabulary, or a type that no longer
+  resolves after a class rename, reads as ABSENT — never a ClassCastException, never an
+  allow.
+
+**Steps:**
+- [ ] FIRST, empirically: confirm how victools renders a sealed interface of records
+  (expect `oneOf`) and that the repo's providers accept that schema. If it does not
+  render cleanly, fall back to a flat record with a discriminator field and REPORT the
+  finding — do not silently ship a schema providers reject.
+- [ ] Principal: resolver wired at agent build; typed recovery tests (hit / wrong type /
+  absent); resolver throw → that call's authorization fails closed (test).
+- [ ] Intent wiring-time validation: each rejected kind (String, int, boxed, enum, List,
+  array) has a test asserting the exception names the type; a record, a POJO, and a
+  sealed interface of records each accepted.
+- [ ] Intent behavior: declare → a later call's policy sees it → redeclare replaces →
+  clear removes; a second `intent(...)` call on one agent is a wiring-time error;
+  unwired agent → absent slot, no tools offered, store never touched (spy the store);
+  foreign-vocabulary and unresolvable-type reads return empty rather than throwing.
 - [ ] Full verify; standing javadoc rule; commit.
 
 ### Task 4: The report, the living example, the docs
