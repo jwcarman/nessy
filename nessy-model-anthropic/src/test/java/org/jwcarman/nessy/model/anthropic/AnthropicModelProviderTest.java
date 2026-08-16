@@ -278,6 +278,17 @@ class AnthropicModelProviderTest {
     }
   }
 
+  @Nested
+  class Name {
+
+    @Test
+    void reports_anthropic() {
+      AnthropicModelProvider provider = AnthropicModelProvider.builder().apiKey("sk-test").build();
+
+      assertThat(provider.name()).isEqualTo("Anthropic");
+    }
+  }
+
   /**
    * Classifies every exception type in the anthropic-java SDK's {@code com.anthropic.errors}
    * hierarchy (2.52.0) against {@link AnthropicModelProvider#RETRYABLE}.

@@ -19,17 +19,21 @@ harness underneath it for free.
 
 ## Provider selection
 
-Add a provider module (`nessy-model-anthropic` and/or `nessy-model-openai`)
-and a `ModelProvider` bean is autoconfigured from `nessy.provider` and
-`nessy.{anthropic,openai}.*` properties, layered over the SDK's own
-`fromEnv()` resolution. Those properties are overrides, not replacements: an
-explicit `nessy.*` property outranks an ambient environment variable, and
-`fromEnv()` is still called first so nothing else the SDK understands is
-lost. Both provider jars present and neither disambiguated (no
-`nessy.provider`, no single side keyed) fails fast, naming the property that
+Add a provider module (`nessy-model-anthropic`, `nessy-model-openai`, and/or
+`nessy-model-gemini`) and a `ModelProvider` bean is autoconfigured from
+`nessy.provider` and `nessy.{anthropic,openai,gemini}.*` properties, layered
+over the SDK's own `fromEnv()` resolution. Those properties are overrides,
+not replacements: an explicit `nessy.*` property outranks an ambient
+environment variable, and `fromEnv()` is still called first so nothing else
+the SDK understands is lost. Two or more `nessy.*.api-key` properties set at
+once with `nessy.provider` unset fails fast, naming the property that
 resolves it — the same shape [Providers](providers.md) describes for
 `EnvModelProviders.fromEnv()`, expressed as configuration instead of
-environment variables.
+environment variables. With **no** `nessy.*.api-key` property set at all,
+that fail-fast never fires — no `ModelProvider` bean is created, and the
+application instead dies later on an unrelated missing-bean error. Set
+exactly one `nessy.<provider>.api-key`, or `nessy.provider` plus that
+provider's key.
 
 Every autoconfigured bean here backs off the moment the application declares
 its own: a hand-declared `Harness` suppresses the provider autoconfiguration
@@ -104,9 +108,10 @@ The whole surface is deliberately small — everything more exotic rides
 
 | Property | Default | Meaning |
 |---|---|---|
-| `nessy.provider` | (none) | required only when both provider jars are present |
+| `nessy.provider` | (none) | required only when two or more `nessy.*.api-key` properties are set at once |
 | `nessy.anthropic.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |
 | `nessy.openai.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |
+| `nessy.gemini.api-key` / `base-url` | SDK env | provider credentials, layered over `fromEnv()` |
 | `nessy.default-model` | (none) | harness-level default model, optional |
 | `nessy.jdbc.enabled` | `true` | JDBC wiring master switch |
 | `nessy.jdbc.bootstrap-schema` | `true` | run the idempotent DDL at startup |

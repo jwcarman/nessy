@@ -113,6 +113,11 @@ public final class OpenAiModelProvider implements ModelProvider {
     return CAPABILITIES;
   }
 
+  @Override
+  public String name() {
+    return "OpenAI";
+  }
+
   /** Assembles an {@link OpenAiModelProvider}. */
   public static final class Builder {
 

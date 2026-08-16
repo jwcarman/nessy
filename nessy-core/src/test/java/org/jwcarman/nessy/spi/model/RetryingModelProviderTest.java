@@ -63,6 +63,11 @@ class RetryingModelProviderTest {
     public Set<Capability> capabilities() {
       return Set.of(Capability.THINKING);
     }
+
+    @Override
+    public String name() {
+      return "Flaky";
+    }
   }
 
   static final class RecordingSleeper implements Sleeper {
@@ -135,6 +140,17 @@ class RetryingModelProviderTest {
             e -> true);
 
     assertThat(provider.capabilities()).containsExactly(Capability.THINKING);
+  }
+
+  @Test
+  void name_delegates_to_the_wrapped_provider() {
+    ModelProvider provider =
+        RetryingModelProvider.wrap(
+            new FlakyProvider(0, new IllegalStateException("unused")),
+            RetryPolicy.defaults(),
+            e -> true);
+
+    assertThat(provider.name()).isEqualTo("Flaky");
   }
 
   @Test

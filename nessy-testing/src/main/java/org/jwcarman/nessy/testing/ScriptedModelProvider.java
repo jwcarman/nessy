@@ -90,6 +90,11 @@ public final class ScriptedModelProvider implements ModelProvider {
     return Set.of();
   }
 
+  @Override
+  public String name() {
+    return "Scripted";
+  }
+
   /** A snapshot of every request this provider was handed, oldest first. */
   public synchronized List<ModelRequest> requests() {
     return List.copyOf(requests);

@@ -15,11 +15,13 @@ autoconfigured — wire it yourself if you use summarizing memory.
 
 | Property | Default | Effect |
 |---|---|---|
-| `nessy.provider` | (unset) | Selects `anthropic` or `openai` when *both* provider modules are on the classpath and neither is unambiguously keyed. Required only in that two-jar, no-key case; an unrecognized value fails startup loudly. |
+| `nessy.provider` | (unset) | Selects `anthropic`, `openai`, or `gemini` when two or more provider modules are on the classpath and each has its own `nessy.*.api-key` set — that combination fails fast, naming the property, unless this names the winner; an unrecognized value also fails startup loudly. With no `nessy.*.api-key` set at all, this fail-fast does not fire — no `ModelProvider` bean is created and the application instead fails later on an unrelated missing-bean error. Set exactly one `nessy.<provider>.api-key`, or this property plus that provider's key. |
 | `nessy.anthropic.api-key` | (unset) | Anthropic credential, layered on top of the SDK's own `fromEnv()` resolution (`ANTHROPIC_AUTH_TOKEN`, profile files, workload identity). An explicit property here always wins over an ambient environment variable. |
 | `nessy.anthropic.base-url` | (unset) | Anthropic API base URL override, same layering as the API key. |
 | `nessy.openai.api-key` | (unset) | OpenAI credential, layered on top of the SDK's own `fromEnv()` resolution the same way. |
 | `nessy.openai.base-url` | (unset) | OpenAI API base URL override, same layering as the API key. |
+| `nessy.gemini.api-key` | (unset) | Gemini credential, layered on top of `GeminiModelProvider.Builder#fromEnv()`'s own resolution of `GEMINI_API_KEY` then `GOOGLE_API_KEY`. An explicit property here always wins over either ambient environment variable. |
+| `nessy.gemini.base-url` | (unset) | Gemini API base URL override, same layering as the API key. |
 | `nessy.default-model` | (unset) | Seeds `HarnessBuilder#defaultModel(String)`. Only applied when the property has text; otherwise every agent must name a model with `.model(...)` or building the agent fails. |
 | `nessy.jdbc.enabled` | `true` | Master switch for the JDBC persistence autoconfiguration. Read straight from the environment by a `@ConditionalOnProperty` before any `@ConfigurationProperties` bean exists — setting it to `false` disables `ConversationStore`, `Parks`, `Transcript`, `Memory`, `PlanStore`, and `Notebook` autoconfiguration even when a `DataSource` and `nessy-jdbc` are both present. |
 | `nessy.jdbc.bootstrap-schema` | `true` | Whether each JDBC door runs its idempotent `CREATE TABLE IF NOT EXISTS` DDL once at startup. Set to `false` for a datasource whose schema another process already bootstrapped — the doors then use their bare constructors and open no DDL connection at all. |
@@ -37,10 +39,11 @@ autoconfigured — wire it yourself if you use summarizing memory.
 
 `NessyAutoConfiguration` — the class that builds the `Harness` bean itself —
 is annotated `@AutoConfiguration(after = {AnthropicProviderAutoConfiguration.class,
-OpenAiProviderAutoConfiguration.class, JdbcPersistenceAutoConfiguration.class})`,
-so it always composes last: whichever `ModelProvider`, `ConversationStore`,
-and `Parks` beans the provider and JDBC autoconfigurations produced are
-already in context by the time it runs.
+OpenAiProviderAutoConfiguration.class, GeminiProviderAutoConfiguration.class,
+JdbcPersistenceAutoConfiguration.class})`, so it always composes last:
+whichever `ModelProvider`, `ConversationStore`, and `Parks` beans the
+provider and JDBC autoconfigurations produced are already in context by the
+time it runs.
 
 ## Where next
 

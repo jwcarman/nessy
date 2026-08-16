@@ -39,11 +39,12 @@ import org.springframework.util.StringUtils;
  * particular agent's own shape — and nothing in this module ever builds one: {@link
  * Harness#agent()} is always the application's own call, never Boot's.
  *
- * <p>Runs after {@link AnthropicProviderAutoConfiguration}, {@link OpenAiProviderAutoConfiguration}
- * and {@link JdbcPersistenceAutoConfiguration} so whichever {@link ModelProvider}, {@link
- * ConversationStore}, or {@link Parks} those produce are already in the context by the time {@link
- * #harness} runs. {@link ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means this
- * configuration stays inert until some provider module is present and resolved; {@link
+ * <p>Runs after {@link AnthropicProviderAutoConfiguration}, {@link
+ * OpenAiProviderAutoConfiguration}, {@link GeminiProviderAutoConfiguration}, and {@link
+ * JdbcPersistenceAutoConfiguration} so whichever {@link ModelProvider}, {@link ConversationStore},
+ * or {@link Parks} those produce are already in the context by the time {@link #harness} runs.
+ * {@link ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means this configuration stays
+ * inert until some provider module is present and resolved; {@link
  * ConditionalOnMissingBean @ConditionalOnMissingBean(Harness.class)} means a user-declared {@link
  * Harness} bean always wins outright, this class never runs a second pass over it.
  *
@@ -56,6 +57,7 @@ import org.springframework.util.StringUtils;
     after = {
       AnthropicProviderAutoConfiguration.class,
       OpenAiProviderAutoConfiguration.class,
+      GeminiProviderAutoConfiguration.class,
       JdbcPersistenceAutoConfiguration.class
     })
 @ConditionalOnBean(ModelProvider.class)

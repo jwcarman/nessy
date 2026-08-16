@@ -60,6 +60,7 @@
     <module>nessy-tck</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
+    <module>nessy-model-gemini</module>
     <module>nessy-model-env</module>
     <module>nessy-jdbc</module>
     <module>nessy-tool-mcp</module>
@@ -74,6 +75,10 @@
     <maven.compiler.release>25</maven.compiler.release>
     <anthropic.version>2.53.0</anthropic.version>
     <openai.version>4.50.0</openai.version>
+    <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
+         release as of this module's creation (2026-08-15); see java-genai's GitHub
+         releases for newer lines. -->
+    <google-genai.version>1.66.0</google-genai.version>
     <jackson.version>2.22.0</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
@@ -202,6 +207,11 @@
         <groupId>com.openai</groupId>
         <artifactId>openai-java</artifactId>
         <version>${openai.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.genai</groupId>
+        <artifactId>google-genai</artifactId>
+        <version>${google-genai.version}</version>
       </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson.core</groupId>

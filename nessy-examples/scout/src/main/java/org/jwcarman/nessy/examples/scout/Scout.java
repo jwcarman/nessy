@@ -25,10 +25,9 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.ConsoleRepl;
-import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
+import org.jwcarman.nessy.model.env.EnvModelProviders.Selection;
 import org.jwcarman.nessy.spi.memory.Memory;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.plan.PlanTools;
 import org.jwcarman.nessy.spi.transcript.Transcript;
@@ -48,8 +47,6 @@ import org.jwcarman.nessy.tool.mcp.McpToolbox;
  */
 public final class Scout {
 
-  private static final String ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
-  private static final String OPENAI_MODEL = "gpt-4o-mini";
   private static final String DEEPWIKI_URL = "https://mcp.deepwiki.com/mcp";
 
   static final String SYSTEM_PROMPT =
@@ -65,30 +62,28 @@ public final class Scout {
   private Scout() {}
 
   public static void main(String[] args) {
-    ModelProvider provider;
+    Selection selection;
     try {
-      provider = EnvModelProviders.fromEnv();
+      selection = EnvModelProviders.select();
     } catch (IllegalStateException e) {
       IO.println(e.getMessage());
       System.exit(1);
       return;
     }
-    boolean anthropic = provider instanceof AnthropicModelProvider;
-    String model = anthropic ? ANTHROPIC_MODEL : OPENAI_MODEL;
-    Harness harness = Nessy.harness(provider).build();
+    Harness harness = Nessy.harness(selection.provider()).build();
     ObjectMapper mapper = new ObjectMapper();
 
     try (McpToolbox toolbox =
         McpToolbox.connect(
             HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper)) {
-      Built built = scout(harness, toolbox, model, new ConsoleApprover());
+      Built built = scout(harness, toolbox, selection.model(), new ConsoleApprover());
 
       ConsoleRepl.of(built.agent())
           .banner(
               "Scout ("
-                  + (anthropic ? "Anthropic" : "OpenAI")
+                  + selection.providerName()
                   + ", "
-                  + model
+                  + selection.model()
                   + "), reading via DeepWiki. Type exit or quit to leave.")
           .prompt("you> ")
           .plan(built.planStore())

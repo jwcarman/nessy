@@ -87,3 +87,17 @@ honestly), BOM entry, starter passthrough. The configuration reference page gain
 - Gemini thinking-part mapping and Vertex AI auth (API-key Developer API only in v1).
 - A Grok-specific module (the base-url story IS the Grok story).
 - Anthropic-compatible endpoints for third parties (same idea, different day).
+
+## 7. Amendment (owner-session, 2026-08-15): the base-url env override + LM Studio facts
+
+- §3 grows one affordance: `OPENAI_BASE_URL` — when set alongside `OPENAI_API_KEY` (any
+  value works for local runtimes; "lm-studio" by convention), `EnvModelProviders` builds the
+  OpenAI provider against that base URL. Local runtimes and OpenRouter become zero-code env
+  citizens, exactly like Grok.
+- Live-validated facts for §5's docs (see `.superpowers/lmstudio-validation.md`, main
+  checkout, 2026-08-15): LM Studio serves BOTH dialects — OpenAI-compatible at base
+  `http://127.0.0.1:1234/v1` and Anthropic-compatible at bare origin
+  `http://127.0.0.1:1234` (the Anthropic SDK appends `/v1/messages` itself — document the
+  asymmetry). Text turns AND tool round-trips validated through both nessy providers against
+  `google/gemma-4-e4b`. The providers guide gains an Anthropic-compatible note beside the
+  OpenAI universe section, stated as validated fact with the date.

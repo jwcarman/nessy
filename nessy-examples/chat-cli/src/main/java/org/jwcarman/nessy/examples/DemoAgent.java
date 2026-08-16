@@ -40,7 +40,7 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
  * The one agent definition {@code Chat}'s single main drives, whichever provider {@link
- * org.jwcarman.nessy.model.env.EnvModelProviders#fromEnv()} hands it.
+ * org.jwcarman.nessy.model.env.EnvModelProviders#select()} hands it.
  *
  * <p>Pattern demonstrated: two watching surfaces, not one narrating the same fact twice. {@link
  * org.jwcarman.nessy.console.ConsoleRepl}'s default renderer narrates one turn <em>live</em> —

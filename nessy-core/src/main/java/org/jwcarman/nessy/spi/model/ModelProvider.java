@@ -30,4 +30,17 @@ public interface ModelProvider {
 
   /** What this provider can actually do. See {@link Capability}. */
   Set<Capability> capabilities();
+
+  /**
+   * Who this provider is, for banners and logs — never used for model selection.
+   *
+   * <p>Direct-wired applications (one provider module, constructed explicitly) read this.
+   * Env-driven applications built on {@code EnvModelProviders.select()} should prefer that method's
+   * {@code Selection.providerName()} instead: it names the environment's own choice (e.g. {@code
+   * "xai"} for an xAI key), where this default falls back to the concrete class name, which for xAI
+   * is the shared {@code OpenAiModelProvider} class — not the vendor the key named.
+   */
+  default String name() {
+    return getClass().getSimpleName();
+  }
 }

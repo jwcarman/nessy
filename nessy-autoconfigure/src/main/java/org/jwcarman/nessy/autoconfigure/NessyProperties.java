@@ -33,7 +33,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "nessy")
 public record NessyProperties(
-    String provider, Anthropic anthropic, OpenAi openai, String defaultModel, Jdbc jdbc) {
+    String provider,
+    Anthropic anthropic,
+    OpenAi openai,
+    Gemini gemini,
+    String defaultModel,
+    Jdbc jdbc) {
 
   /**
    * Whether the JDBC store should bootstrap its own schema. Defaults to {@code true} when unset.
@@ -47,6 +52,9 @@ public record NessyProperties(
 
   /** {@code nessy.openai.*} — credentials for {@code OpenAiModelProvider}. */
   public record OpenAi(String apiKey, String baseUrl) {}
+
+  /** {@code nessy.gemini.*} — credentials for {@code GeminiModelProvider}. */
+  public record Gemini(String apiKey, String baseUrl) {}
 
   /**
    * {@code nessy.jdbc.*} — persistence toggles consumed by the persistence autoconfiguration.
