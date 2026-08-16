@@ -42,6 +42,8 @@ import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.internal.subagent.AgentTools;
+import org.jwcarman.nessy.internal.subagent.CallbackRouter;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
@@ -54,8 +56,6 @@ import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.notebook.NotebookTools;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.plan.PlanTools;
-import org.jwcarman.nessy.spi.subagent.AgentTools;
-import org.jwcarman.nessy.spi.subagent.CallbackRouter;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 

@@ -27,14 +27,14 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.SubjectId;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.internal.subagent.AgentTools;
+import org.jwcarman.nessy.internal.subagent.CallbackRouter;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.notebook.NotebookTools;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.plan.PlanTools;
-import org.jwcarman.nessy.spi.subagent.AgentTools;
-import org.jwcarman.nessy.spi.subagent.CallbackRouter;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 
 /**

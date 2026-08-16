@@ -63,22 +63,42 @@ public final class Agent<I> {
   private final ListenerRegistry events;
   private final ConversationStore store;
   private final Parks parks;
+  private final Map<String, Agent<String>> subagents;
   private final Memory memory;
   private final InputRenderer<I> renderer;
+
+  /**
+   * The two coordination pieces a subagent's doors need — {@link Parks}, for the ordinary callback
+   * doors every agent has, and this agent's own direct children, keyed by name, for {@link
+   * #subagent(String)} — bundled together (java:S107: an eighth constructor parameter otherwise).
+   * Grandchildren are not carried here: {@link Subagent#subagent(String)} reaches them by asking
+   * the child's own {@link Agent#subagent(String)} in turn, so each agent only ever needs to
+   * remember its own direct children.
+   */
+  record Coordination(Parks parks, Map<String, Agent<String>> subagents) {
+
+    Coordination {
+      Objects.requireNonNull(parks, "parks must not be null");
+      Objects.requireNonNull(subagents, "subagents must not be null");
+      subagents = Map.copyOf(subagents);
+    }
+  }
 
   Agent(
       String name,
       ConversationLoop loop,
       ListenerRegistry events,
       ConversationStore store,
-      Parks parks,
+      Coordination coordination,
       Memory memory,
       InputRenderer<I> renderer) {
     this.name = Objects.requireNonNull(name, "name must not be null");
     this.loop = Objects.requireNonNull(loop, "loop must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
-    this.parks = Objects.requireNonNull(parks, "parks must not be null");
+    Objects.requireNonNull(coordination, "coordination must not be null");
+    this.parks = coordination.parks();
+    this.subagents = coordination.subagents();
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
   }
@@ -86,6 +106,27 @@ public final class Agent<I> {
   /** This agent's required, durable identity (design §3) — the stamp its parks carry. */
   public String name() {
     return name;
+  }
+
+  /**
+   * This agent's own direct child, named {@code name}, as a narrow {@link Subagent} doors handle
+   * (design of record 2026-08-16 §0, ruling 3) — {@code approve}/{@code deny}/{@code resume}/{@code
+   * snapshot} against the child, and further traversal via {@link Subagent#subagent(String)} for a
+   * grandchild. Only this agent's own directly-declared children are reachable here; a deeper
+   * descendant is reached by chaining, one door at a time, exactly matching the lexical nesting
+   * {@link AgentBuilder#subagent(java.util.function.Consumer)} and {@link
+   * SubagentConfig#subagent(java.util.function.Consumer)} built the tree with.
+   *
+   * @throws IllegalArgumentException if this agent has no subagent named {@code name}
+   */
+  public Subagent subagent(String name) {
+    Objects.requireNonNull(name, "name must not be null");
+    Agent<String> child = subagents.get(name);
+    if (child == null) {
+      throw new IllegalArgumentException(
+          "agent '" + this.name + "' has no subagent named '" + name + "'");
+    }
+    return new Subagent(child);
   }
 
   /** Opens a fresh conversation. */
@@ -327,10 +368,19 @@ public final class Agent<I> {
             () -> new ConversationSnapshot(ConversationStatus.IDLE, List.of(), Context.empty()));
   }
 
+  /**
+   * A {@code StaleStateException}-retried park, or a call that has parked more than once (design of
+   * record 2026-08-16 §4: an approval wait followed by its own execution wait), can legitimately
+   * register more than one token for the same call id — every one of them resolves that same
+   * outstanding call, so the collision must not crash the page rebuild. {@code toMap}'s merge
+   * function picks a winner with no ordering contract over {@link Parks#forConversation}'s own
+   * return (it is a plain {@code List}, not sorted by registration time), so for a reparked call
+   * the token this method reports is <strong>unspecified</strong> — any of that call's outstanding
+   * tokens may come back. That is harmless for what a card is for: every door that accepts a {@link
+   * ParkToken} verifies it against {@link Parks#find} at the moment it is used, so whichever token
+   * this method happens to report still resolves the same call when it is presented back.
+   */
   private List<ParkedCall> cards(ConversationId id, ConversationStore.Loaded loaded) {
-    // A StaleStateException-retried park can legitimately register two tokens for the same call
-    // (orphan tolerance); either resolves the same outstanding call, so the first registered card
-    // wins rather than the collision crashing the page rebuild.
     Map<String, Park> byCallId =
         parks.forConversation(id).stream()
             .collect(

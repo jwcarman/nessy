@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.subagent;
+package org.jwcarman.nessy.internal.subagent;
 
 import java.util.List;
 import java.util.Objects;
@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 
 /**
  * Turns an {@link Agent} into an ordinary {@link Tool}: a subagent call is a tool call whose work

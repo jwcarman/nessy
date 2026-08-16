@@ -20,9 +20,11 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.message.InputRenderer;
+import org.jwcarman.nessy.internal.subagent.CallbackRouter;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 
 /**
  * The application's infrastructure, assembled once and shared by every agent it builds — inert
@@ -56,10 +58,26 @@ public final class Harness {
   private final ConversationStore store;
   private final boolean storeSet;
   private final Parks parks;
+  private final SubagentLinks subagentLinks;
   private final ObservationRegistry observations;
   private final ObjectMapper mapper;
   private final String defaultModel;
   private final ListenerRegistry registry;
+
+  /**
+   * Every agent and subagent this harness has ever built, registered the moment {@link
+   * AgentBuilder#build()} finishes assembling it (subagents strictly before the parent whose build
+   * triggered them) — {@link #subagents()}'s own duplicate-name rejection (design of record
+   * 2026-08-16 §2) is what turns a name collision anywhere in the harness's whole delegation tree
+   * into an {@link IllegalArgumentException} at build time. Also the delivery address {@link
+   * org.jwcarman.nessy.internal.subagent.AgentTools#completions}'s wake-up listener resolves a
+   * settled child's parent against, by the name {@link
+   * org.jwcarman.nessy.spi.conversation.Parks.Park#agentName()} carries — the v1 {@code
+   * CallbackRouter} role, now internal to this harness rather than an application-assembled piece.
+   * One fresh instance per harness, never configurable — there is nothing an application could
+   * usefully seed it with ahead of the agents that populate it.
+   */
+  private final CallbackRouter subagentRegistry = new CallbackRouter();
 
   /**
    * The session store and whether {@link HarnessBuilder#store(ConversationStore)} was ever called
@@ -69,10 +87,23 @@ public final class Harness {
    */
   record StoreSelection(ConversationStore store, boolean storeSet) {}
 
+  /**
+   * The two coordination stores every subagent shares from the harness's store family (design of
+   * record 2026-08-16 §3) — bundled together (java:S107) since neither is meaningful without the
+   * other once subagent construction internalizes both.
+   */
+  record CoordinationStores(Parks parks, SubagentLinks subagentLinks) {
+
+    CoordinationStores {
+      Objects.requireNonNull(parks, "parks must not be null");
+      Objects.requireNonNull(subagentLinks, "subagentLinks must not be null");
+    }
+  }
+
   Harness(
       ModelProvider provider,
       StoreSelection storeSelection,
-      Parks parks,
+      CoordinationStores coordinationStores,
       ObservationRegistry observations,
       ObjectMapper mapper,
       String defaultModel,
@@ -80,7 +111,8 @@ public final class Harness {
     this.provider = provider;
     this.store = storeSelection.store();
     this.storeSet = storeSelection.storeSet();
-    this.parks = parks;
+    this.parks = coordinationStores.parks();
+    this.subagentLinks = coordinationStores.subagentLinks();
     this.observations = observations;
     this.mapper = mapper;
     this.defaultModel = defaultModel;
@@ -126,6 +158,24 @@ public final class Harness {
 
   Parks parks() {
     return parks;
+  }
+
+  /**
+   * The subagent links store every subagent this harness builds shares (design of record 2026-08-16
+   * §3) — the correlation {@link org.jwcarman.nessy.internal.subagent.AgentTools} uses to remember
+   * which parent {@link org.jwcarman.nessy.api.ParkToken} a child conversation answers.
+   */
+  SubagentLinks subagentLinks() {
+    return subagentLinks;
+  }
+
+  /**
+   * The internal name registry: every agent and subagent this harness has built, and the door
+   * {@link org.jwcarman.nessy.internal.subagent.AgentTools#completions}'s wake-up listener resumes
+   * a settled child's parent through.
+   */
+  CallbackRouter subagents() {
+    return subagentRegistry;
   }
 
   ObservationRegistry observations() {

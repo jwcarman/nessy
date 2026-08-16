@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.jwcarman.nessy.api.ConversationSettled;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.event.ListenerRegistration;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.ConversationLoop;
+import org.jwcarman.nessy.internal.subagent.AgentTools;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
@@ -70,6 +72,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   /** {@code ""} — no system prompt. */
   private static final String DEFAULT_SYSTEM_PROMPT = "";
 
+  private final Harness harness;
   private final ModelProvider provider;
   private final ConversationStore store;
   private final boolean storeSet;
@@ -79,6 +82,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   private final String defaultModel;
   private final ListenerRegistry seededRegistry;
   private final List<ListenerRegistration> registrations = new ArrayList<>();
+  private final List<SubagentConfig> subagentConfigs = new ArrayList<>();
 
   private String name;
   private String model;
@@ -107,6 +111,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
   AgentBuilder(Harness harness, Class<I> vocabulary, InputRenderer<I> defaultRenderer) {
     Objects.requireNonNull(vocabulary, "vocabulary must not be null");
     this.renderer = Objects.requireNonNull(defaultRenderer, "defaultRenderer must not be null");
+    this.harness = harness;
     this.provider = harness.provider();
     this.store = harness.store();
     this.storeSet = harness.storeSet();
@@ -277,6 +282,32 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     return this;
   }
 
+  /**
+   * Declares a subagent (design of record 2026-08-16 §0, ruling 1): {@code config} describes a
+   * child agent — {@link SubagentConfig#name} and {@link SubagentConfig#description} required,
+   * everything else trimmed to prompt/model/tools/memory/termination/policy — and this builder does
+   * the rest at {@link #build()}: the child is constructed from this agent's own harness
+   * (inheriting its provider, stores, approver, observations, and harness-seeded listeners), a
+   * delegation tool naming the child is granted on this agent (described by {@link
+   * SubagentConfig#description}, at {@link SubagentConfig#policy}, default {@link
+   * UsagePolicy#allow()}), the completions wiring that wakes this agent once the child settles is
+   * arranged internally, and both agents are registered in the harness's own internal name registry
+   * — a name already taken anywhere in the harness's whole delegation tree throws {@link
+   * IllegalArgumentException} at {@link #build()}.
+   *
+   * <p>{@code config} may itself declare {@link SubagentConfig#subagent(Consumer)}, nesting a
+   * grandchild the same way: the delegation tree is exactly the lexical nesting of these lambdas,
+   * so a cycle is unrepresentable — a child is always defined inside its parent and can never refer
+   * back to it.
+   */
+  public AgentBuilder<I> subagent(Consumer<SubagentConfig> config) {
+    Objects.requireNonNull(config, "config must not be null");
+    SubagentConfig subagentConfig = new SubagentConfig();
+    config.accept(subagentConfig);
+    subagentConfigs.add(subagentConfig);
+    return this;
+  }
+
   public Agent<I> build() {
     if (name == null) {
       throw new AgentConfigurationException(
@@ -299,6 +330,7 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
             Optional.ofNullable(capabilities).orElseGet(this::defaultCapabilities),
             contextWindow);
     ListenerRegistry events = seededRegistry.extendedWith(registrations);
+    Map<String, Agent<String>> childrenByName = buildSubagents();
     ToolRegistry resolvedTools = Optional.ofNullable(tools).orElseGet(this::defaultTools);
     Map<String, ToolGrant> resolvedGrants =
         Optional.ofNullable(explicitGrants).orElseGet(this::defaultGrants);
@@ -328,7 +360,101 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
                 events),
             observations,
             name);
-    return new Agent<>(name, loop, events, store, parks, resolvedMemory, renderer);
+    Agent<I> agent =
+        new Agent<>(
+            name,
+            loop,
+            events,
+            store,
+            new Agent.Coordination(parks, childrenByName),
+            resolvedMemory,
+            renderer);
+    harness.subagents().register(agent);
+    return agent;
+  }
+
+  /**
+   * Builds every subagent {@link #subagent(Consumer)} declared, in declaration order: each becomes
+   * a real child {@link Agent}, granted to this builder as a delegation tool ({@link #tools} is
+   * called once more here, merging any delegation grants after whatever this builder's own {@link
+   * #tools(ToolGrant...)} already declared — last write wins on a name collision, the same rule
+   * {@link #tools(ToolGrant...)} already has), and returns this agent's own direct children, keyed
+   * by name, for {@link Agent.Coordination}. Empty when no subagent was ever declared — {@link
+   * #tools} is left untouched in that case, so a plain agent's grant set is unaffected.
+   */
+  private Map<String, Agent<String>> buildSubagents() {
+    if (subagentConfigs.isEmpty()) {
+      return Map.of();
+    }
+    Map<String, Agent<String>> childrenByName = new LinkedHashMap<>();
+    List<ToolGrant> delegationGrants = new ArrayList<>();
+    for (SubagentConfig config : subagentConfigs) {
+      Agent<String> child = buildChild(config);
+      childrenByName.put(config.name(), child);
+      delegationGrants.add(
+          ToolGrant.grant(
+              AgentTools.subagent(child, config.description(), harness.subagentLinks()),
+              Optional.ofNullable(config.policy()).orElseGet(UsagePolicy::allow)));
+    }
+    List<ToolGrant> combined = new ArrayList<>();
+    if (explicitGrants != null) {
+      combined.addAll(explicitGrants.values());
+    }
+    combined.addAll(delegationGrants);
+    tools(combined.toArray(new ToolGrant[0]));
+    return childrenByName;
+  }
+
+  /**
+   * One subagent, built as an ordinary {@code String}-vocabulary {@link Agent} from this builder's
+   * own harness (the same construction path {@link Harness#agent()} uses — the "String door", which
+   * neither requires nor consults a renderer, unlike {@link Harness#agent(Class)}'s "typed door"):
+   * inherits the harness's provider, stores, approver, observations, and harness-seeded listeners;
+   * owns its own name, prompt, model, tool grants, memory, and termination policy (design of record
+   * 2026-08-16 §3). {@code config}'s own nested {@link SubagentConfig#subagent(Consumer)} calls
+   * recurse through this same builder's own {@link #subagentConfigs}, so a grandchild is built and
+   * registered before this child is.
+   *
+   * <p>The completions listener that wakes the built agent's own parent once a further descendant
+   * settles is registered here, synchronously, before {@link #build()} runs — the same sync
+   * semantics {@code AgentTools.completions}'s own javadoc requires.
+   *
+   * @throws IllegalStateException if {@code config} is missing its required name or description
+   */
+  private Agent<String> buildChild(SubagentConfig config) {
+    config.validate();
+    AgentBuilder<String> childBuilder =
+        new AgentBuilder<>(harness, String.class, InputRenderer.text());
+    childBuilder.name(config.name());
+    if (config.model() != null) {
+      childBuilder.model(config.model());
+    }
+    if (config.systemPrompt() != null) {
+      childBuilder.systemPrompt(config.systemPrompt());
+    }
+    if (config.maxTokens() != null) {
+      childBuilder.maxTokens(config.maxTokens());
+    }
+    if (config.memory() != null) {
+      childBuilder.memory(config.memory());
+    }
+    if (config.termination() != null) {
+      childBuilder.termination(config.termination());
+    }
+    if (approver != null) {
+      // Not a SubagentConfig knob (design of record 2026-08-16 §3: the approver is inherited by
+      // construction, never owned by a subagent) — copied forward from whatever this builder's own
+      // approver is, cascading down through every further nesting level the same way.
+      childBuilder.approver(approver);
+    }
+    if (!config.grants().isEmpty()) {
+      childBuilder.tools(config.grants().toArray(new ToolGrant[0]));
+    }
+    childBuilder.subagentConfigs.addAll(config.subagents());
+    childBuilder.listen(
+        ConversationSettled.class,
+        AgentTools.completions(harness.subagentLinks(), harness.parks(), harness.subagents()));
+    return childBuilder.build();
   }
 
   /** {@link #DEFAULT_MAX_TOKENS}. */

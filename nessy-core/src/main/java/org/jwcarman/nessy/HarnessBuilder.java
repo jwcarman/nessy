@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,7 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
   private ConversationStore store;
   private boolean storeSet;
   private Parks parks;
+  private SubagentLinks subagentLinks;
   private ObservationRegistry observations;
   private ObjectMapper mapper;
   private String defaultModel;
@@ -66,6 +68,16 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
    */
   public HarnessBuilder parks(Parks parks) {
     this.parks = Objects.requireNonNull(parks, "parks must not be null");
+    return this;
+  }
+
+  /**
+   * Where subagent parent-child correlations live, so a settled child's completion can find its way
+   * back to the parent's own park (design of record 2026-08-16 §3). Default: {@link
+   * SubagentLinks#inMemory()}.
+   */
+  public HarnessBuilder subagentLinks(SubagentLinks subagentLinks) {
+    this.subagentLinks = Objects.requireNonNull(subagentLinks, "subagentLinks must not be null");
     return this;
   }
 
@@ -133,7 +145,9 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
         provider,
         new Harness.StoreSelection(
             Optional.ofNullable(store).orElseGet(this::defaultStore), storeSet),
-        Optional.ofNullable(parks).orElseGet(this::defaultParks),
+        new Harness.CoordinationStores(
+            Optional.ofNullable(parks).orElseGet(this::defaultParks),
+            Optional.ofNullable(subagentLinks).orElseGet(this::defaultSubagentLinks)),
         Optional.ofNullable(observations).orElseGet(this::defaultObservations),
         Optional.ofNullable(mapper).orElseGet(this::defaultMapper),
         defaultModel,
@@ -161,6 +175,17 @@ public final class HarnessBuilder implements ListenerDeclarations<HarnessBuilder
               + " JdbcParks.create(...)) for any deployment that needs parks to survive a restart");
     }
     return Parks.inMemory();
+  }
+
+  /**
+   * {@link SubagentLinks#inMemory()} — subagent links kept only for the process's lifetime. Unlike
+   * {@link #defaultParks()} and {@link AgentBuilder}'s own memory-defaulting guard, this stays
+   * silent even with an explicitly configured {@link #store}: a harness with no subagents never
+   * touches this store at all, so warning unconditionally here would fire for every durable-store
+   * harness whether or not it ever declares a single {@code .subagent(...)}.
+   */
+  private SubagentLinks defaultSubagentLinks() {
+    return SubagentLinks.inMemory();
   }
 
   /** {@link ObservationRegistry#NOOP} — no metrics or traces emitted. */
