@@ -407,6 +407,52 @@ class AgentConfigPrincipalAndIntentTest {
       assertThat(policy.seen().getFirst().declaredIntent()).isEmpty();
       assertThat(store.getCount()).isZero();
     }
+
+    @Test
+    void a_rung_zero_static_grant_on_a_wired_agent_never_touches_the_intent_store() {
+      CountingIntentStore store = new CountingIntentStore();
+      ToolCall staticCall = new ToolCall("c1", "act", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider(List.of(toolTurn(staticCall), textTurn("done")));
+
+      var agent =
+          Nessy.harness(h -> h.provider(provider).intentStore(store))
+              .agent(
+                  Nothing.class,
+                  a ->
+                      a.name("scribe")
+                          .model("fake-model")
+                          .intent(RefundIntent.class)
+                          .tools(ToolGrant.grant(new ActTool(), List.of(), UsagePolicy.allow())));
+
+      agent.converse().tell(new Nothing());
+
+      assertThat(store.getCount()).isZero();
+    }
+
+    @Test
+    void a_rung_one_grant_on_the_same_wired_agent_does_touch_the_intent_store() {
+      CountingIntentStore store = new CountingIntentStore();
+      CapturingPolicy dynamicPolicy = new CapturingPolicy();
+      ToolCall dynamicCall = new ToolCall("c1", "act", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider(List.of(toolTurn(dynamicCall), textTurn("done")));
+
+      var agent =
+          Nessy.harness(h -> h.provider(provider).intentStore(store))
+              .agent(
+                  Nothing.class,
+                  a ->
+                      a.name("scribe")
+                          .model("fake-model")
+                          .intent(RefundIntent.class)
+                          .tools(ToolGrant.grant(new ActTool(), List.of(), dynamicPolicy)));
+
+      agent.converse().tell(new Nothing());
+
+      assertThat(dynamicPolicy.seen()).hasSize(1);
+      assertThat(store.getCount()).isEqualTo(1);
+    }
   }
 
   record OtherVocabulary(String note) {}

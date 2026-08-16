@@ -110,9 +110,10 @@ class AgentConfigIntentVocabularyTest {
     }
 
     @Test
-    void a_primitive_int_vocabulary_is_rejected() {
+    void a_primitive_int_vocabulary_is_rejected_naming_the_type() {
       assertThatThrownBy(() -> builder().intent(int.class))
           .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("int")
           .hasMessageContaining("record");
     }
 
@@ -133,16 +134,18 @@ class AgentConfigIntentVocabularyTest {
     }
 
     @Test
-    void a_list_vocabulary_is_rejected() {
+    void a_list_vocabulary_is_rejected_naming_the_type() {
       assertThatThrownBy(() -> builder().intent(List.class))
           .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("List")
           .hasMessageContaining("record");
     }
 
     @Test
-    void an_array_vocabulary_is_rejected() {
+    void an_array_vocabulary_is_rejected_naming_the_type() {
       assertThatThrownBy(() -> builder().intent(String[].class))
           .isInstanceOf(AgentConfigurationException.class)
+          .hasMessageContaining("String")
           .hasMessageContaining("record");
     }
 
