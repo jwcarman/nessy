@@ -176,8 +176,18 @@ public interface Enricher<E> {
   intent is withdrawn).** A tool's parameters render as an OBJECT schema, so a bare
   `String` — and equally a bare enum, the spec's own earlier example — renders a naked
   string schema that is not a valid parameter object for OpenAI or Anthropic. The
-  vocabulary is therefore a record, a POJO, or a sealed interface of records; an enum
-  is how you box a FIELD inside one, never the vocabulary itself. Open-ended intent
+  vocabulary is therefore a record or a POJO; an enum is how you box a FIELD inside
+  one, never the vocabulary itself.
+  - **Sealed interfaces of records are REJECTED in v1 (amended after empirical
+    finding, Task 3b):** victools 4.38.0 renders a sealed interface as a bare
+    `{"type":"object"}` — no `oneOf`, no properties — so the model receives an empty
+    schema and Jackson cannot reconstruct the abstract type without `@JsonTypeInfo`
+    and subtype-resolver wiring nessy does not do. Accepting it at wiring time and
+    failing at call time is silent non-functionality; nessy does not ship advertised
+    paths that do not work. The wiring gate therefore rejects abstract types
+    (interfaces, abstract classes) with a message naming the flat-record-with-
+    discriminator fallback. Polymorphic vocabularies return when the schema
+    machinery earns them — a roadmap item, not a v1 promise. Open-ended intent
   means declaring your own shape (`record OpenIntent(String what, String why)`) —
   which is better than a free string anyway, because the fields carry the questions.
   `intent(...)` REJECTS at wiring time any type that cannot render as an object schema
