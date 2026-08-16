@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spi.execute;
 
 import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
@@ -32,6 +33,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -40,6 +42,7 @@ import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.memory.PipelineMemory;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -150,7 +153,54 @@ class ProviderModelCallExecutorTest {
 
     ConversationEvent.ModelCallFailed fact =
         (ConversationEvent.ModelCallFailed) ((Awaited.Ready<ConversationEvent>) outcome).value();
-    assertThat(fact.reason()).contains("too long");
+    // Pinned exactly, not by substring (S3): the general arm's "<Class>: <message>" shape would
+    // also satisfy a "contains", making this assertion unable to fail if the overflow arm's own
+    // distinct reason text were ever lost.
+    assertThat(fact.reason()).isEqualTo("too long");
+  }
+
+  @Test
+  void context_overflow_marks_the_observation_as_errored() {
+    TestObservationRegistry observations = TestObservationRegistry.create();
+    ProviderModelCallExecutor executor =
+        new ProviderModelCallExecutor(
+            overflowingProvider(), settings(), ToolRegistry.of(), memory, observations);
+
+    executor.execute(state, observed::add);
+
+    assertThat(observations).hasObservationWithNameEqualTo("nessy.model.call").that().hasError();
+  }
+
+  @Test
+  void a_runtime_exception_during_recall_becomes_the_failure_fact_not_an_exception() {
+    ProviderModelCallExecutor executor =
+        new ProviderModelCallExecutor(
+            recordingProvider(new ArrayList<>()),
+            settings(),
+            ToolRegistry.of(),
+            throwingMemory(new RuntimeException("summarizing hydrator's own call failed")),
+            ObservationRegistry.NOOP);
+
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    ConversationEvent.ModelCallFailed fact =
+        (ConversationEvent.ModelCallFailed) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.reason())
+        .contains("RuntimeException")
+        .contains("summarizing hydrator's own call failed");
+  }
+
+  @Test
+  void an_observer_exception_propagates_and_is_not_folded_as_a_model_call_failure() {
+    ProviderModelCallExecutor executor = executorStreaming(new ModelEvent.TextChunk("hi"));
+    TurnObserver throwingOnDelta =
+        event -> {
+          throw new IllegalStateException("observer blew up");
+        };
+
+    assertThatThrownBy(() -> executor.execute(state, throwingOnDelta))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("observer blew up");
   }
 
   @Test
@@ -309,6 +359,20 @@ class ProviderModelCallExecutorTest {
       @Override
       public Set<Capability> capabilities() {
         return Set.of();
+      }
+    };
+  }
+
+  private static Memory throwingMemory(RuntimeException failure) {
+    return new Memory() {
+      @Override
+      public void remember(ConversationId id, Message message) {
+        // unused by execute(): recall is the only call this fake needs to answer.
+      }
+
+      @Override
+      public Context recall(ConversationId id) {
+        throw failure;
       }
     };
   }
