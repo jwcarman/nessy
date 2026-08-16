@@ -75,9 +75,8 @@ public class GeminiProviderAutoConfiguration {
    * OpenAiProviderAutoConfiguration#invalidProviderModelProvider} already cover every classpath
    * where either of those modules is present; this bean fills the one gap that leaves — a
    * Gemini-only classpath — gated on both their absence so no two of the three ever match at once
-   * and race a duplicate bean definition. Unlike its two siblings' pinned wording (see {@link
-   * InvalidProviderCondition}'s javadoc), this message is new and lists all three recognized
-   * values.
+   * and race a duplicate bean definition. All three sibling beans' messages list the same three
+   * recognized values.
    */
   @Bean
   @ConditionalOnMissingBean({ModelProvider.class, Harness.class})

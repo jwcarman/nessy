@@ -107,10 +107,6 @@ public class AnthropicProviderAutoConfiguration {
    * GeminiProviderAutoConfiguration#invalidProviderModelProvider} each cover the remaining gap
    * their own module leaves — an Anthropic-absent classpath — without racing a duplicate bean
    * definition against this one when Anthropic is present.
-   *
-   * <p>The message below still reads "expected anthropic or openai" rather than also naming Gemini
-   * — see {@link InvalidProviderCondition}'s javadoc for why that literal string is left exactly as
-   * it was before Gemini existed.
    */
   @Bean
   @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
@@ -120,7 +116,7 @@ public class AnthropicProviderAutoConfiguration {
         "nessy.provider="
             + properties.provider()
             + " is not a recognized value; expected"
-            + " anthropic or openai");
+            + " anthropic, openai, or gemini");
   }
 
   /**

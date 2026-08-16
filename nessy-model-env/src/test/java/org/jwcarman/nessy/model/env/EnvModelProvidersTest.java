@@ -465,5 +465,32 @@ class EnvModelProvidersTest {
       assertThat(selection.providerName()).isEqualTo("openai");
       assertThat(selection.model()).isEqualTo("gpt-5-nano");
     }
+
+    @Test
+    void rejects_a_null_provider() {
+      assertThatThrownBy(() -> new EnvModelProviders.Selection(null, "anthropic", "a-model"))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("provider must not be null");
+    }
+
+    @Test
+    void rejects_a_null_provider_name() {
+      ModelProvider provider =
+          AnthropicModelProvider.builder().apiKey("fake-anthropic-key").build();
+
+      assertThatThrownBy(() -> new EnvModelProviders.Selection(provider, null, "a-model"))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("providerName must not be null");
+    }
+
+    @Test
+    void rejects_a_null_model() {
+      ModelProvider provider =
+          AnthropicModelProvider.builder().apiKey("fake-anthropic-key").build();
+
+      assertThatThrownBy(() -> new EnvModelProviders.Selection(provider, "anthropic", null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("model must not be null");
+    }
   }
 }

@@ -130,8 +130,8 @@ class ProviderAutoConfigurationTest {
               assertThat(context).hasFailed();
               assertThat(context.getStartupFailure())
                   .hasRootCauseMessage(
-                      "nessy.provider=anthorpic is not a recognized value; expected anthropic or"
-                          + " openai");
+                      "nessy.provider=anthorpic is not a recognized value; expected anthropic,"
+                          + " openai, or gemini");
             });
   }
 
@@ -145,8 +145,8 @@ class ProviderAutoConfigurationTest {
               assertThat(context).hasFailed();
               assertThat(context.getStartupFailure())
                   .hasRootCauseMessage(
-                      "nessy.provider=anthorpic is not a recognized value; expected anthropic or"
-                          + " openai");
+                      "nessy.provider=anthorpic is not a recognized value; expected anthropic,"
+                          + " openai, or gemini");
             });
   }
 
@@ -160,8 +160,8 @@ class ProviderAutoConfigurationTest {
               assertThat(context).hasFailed();
               assertThat(context.getStartupFailure())
                   .hasRootCauseMessage(
-                      "nessy.provider=anthorpic is not a recognized value; expected anthropic or"
-                          + " openai");
+                      "nessy.provider=anthorpic is not a recognized value; expected anthropic,"
+                          + " openai, or gemini");
             });
   }
 

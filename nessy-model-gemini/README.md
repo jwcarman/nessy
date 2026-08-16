@@ -37,6 +37,12 @@ ModelProvider provider = GeminiModelProvider.builder().apiKey(apiKey).build();
 - Usage: `promptTokenCount`/`candidatesTokenCount`/`cachedContentTokenCount`, honestly zeroed via
   `Usage.zero()` for anything the SDK doesn't expose — never invented.
 
+## Retries
+
+Unlike `nessy-model-anthropic` and `nessy-model-openai`, this module ships no `RETRYABLE`
+predicate for `RetryingModelProvider.of` yet — it arrives once real Gemini failure modes have been
+observed live, rather than guessed at from the SDK's exception hierarchy alone.
+
 ## Capabilities
 
 v1 advertises `PARALLEL_TOOL_CALLS`: the request mapping already sends several `functionCall`

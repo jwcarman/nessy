@@ -107,7 +107,7 @@ public class OpenAiProviderAutoConfiguration {
         "nessy.provider="
             + properties.provider()
             + " is not a recognized value; expected"
-            + " anthropic or openai");
+            + " anthropic, openai, or gemini");
   }
 
   /**

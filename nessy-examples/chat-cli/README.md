@@ -7,10 +7,12 @@ streaming renderer, and the spinner all come from the library now; this
 module supplies only the agent and the banner.
 
 Switching providers means switching the environment variable, not the
-command line: `Chat` calls `EnvModelProviders.fromEnv()`
-(`nessy-model-env`), which picks Anthropic or OpenAI by which API key is
-set. There is no more `-Dexec.mainClass` juggling between two mains — one
-main, one run command, either provider:
+command line: `Chat` calls `EnvModelProviders.select()` (`nessy-model-env`),
+which picks Anthropic, OpenAI, Gemini, or xAI by which API key is set, and
+hands back the provider alongside its name and model — the banner prints
+both, straight from that `Selection`, not re-derived here. There is no more
+`-Dexec.mainClass` juggling between parallel mains — one main, one run
+command, any of the four:
 
 ## Run it
 
@@ -22,12 +24,23 @@ ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:jav
 OPENAI_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
 ```
 
-The pom pins `exec.mainClass` to `org.jwcarman.nessy.examples.Chat`, so
-neither run needs `-Dexec.mainClass` on the command line — the provider
-choice moved to which API key is set, not which main you run. Set both keys
-and `NESSY_PROVIDER=openai` (or `anthropic`) to be explicit about the tie;
-leave it unset with both keys present and the demo defaults to Anthropic,
-noisily, on one `WARN` log line.
+```bash
+GEMINI_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+```bash
+XAI_API_KEY=… ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
+The pom pins `exec.mainClass` to `org.jwcarman.nessy.examples.Chat`, so no
+run needs `-Dexec.mainClass` on the command line — the provider choice moved
+to which API key is set, not which main you run. Set `NESSY_MODEL` to name a
+specific model instead of the small, cheap per-provider default; set more
+than one key alongside `NESSY_PROVIDER=<name>` to be explicit about the tie.
+Local runtimes, gateways, and every other recipe (LM Studio, OpenRouter,
+Grok's `grok` alias, the tiebreak's own fallback order) are covered in
+[`docs/guides/providers.md`](../../docs/guides/providers.md) rather than
+repeated here.
 
 The `-am` flag also builds this module's reactor dependencies — the first
 run compiles that whole upstream chain and takes noticeably longer; every
@@ -42,7 +55,7 @@ stand up beyond the JVM itself.
 `AnthropicChat` and `OpenAiChat` used to exist as two parallel mains,
 differing only in which provider module they imported — a needlessly
 literal way to teach "you can point this at either provider." Collapsing to
-one main and letting `fromEnv()` make the choice is strictly better
+one main and letting `select()` make the choice is strictly better
 teaching, so that's what shipped; the two-main contrast survives here in
 prose, not in two copies of the same loop.
 

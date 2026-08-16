@@ -98,7 +98,8 @@ tell `select()` which model name is right for it. The same applies to
 OpenRouter and LM Studio models reached the same way. Without `NESSY_MODEL`,
 `select()` falls back to a small, cheap default for the chosen provider
 (Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-2.5-flash`, or
-a current Grok default for xAI).
+`grok-4.6` for xAI — read from docs.x.ai on 2026-08-15; not exercised against
+the live API).
 
 `nessy-examples/chat-cli`'s `Chat` main is this in practice: one main, no
 `if` branch for which provider module to import, because `select()` already

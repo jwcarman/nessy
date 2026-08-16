@@ -275,5 +275,12 @@ public final class EnvModelProviders {
    * so a caller — a demo's banner, an application's logging — can show what was picked without
    * re-deriving it via {@code instanceof}.
    */
-  public record Selection(ModelProvider provider, String providerName, String model) {}
+  public record Selection(ModelProvider provider, String providerName, String model) {
+
+    public Selection {
+      Objects.requireNonNull(provider, "provider must not be null");
+      Objects.requireNonNull(providerName, "providerName must not be null");
+      Objects.requireNonNull(model, "model must not be null");
+    }
+  }
 }

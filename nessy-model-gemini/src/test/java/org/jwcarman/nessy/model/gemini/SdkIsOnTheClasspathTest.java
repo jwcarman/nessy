@@ -24,6 +24,10 @@ class SdkIsOnTheClasspathTest {
 
   @Test
   void sdk_is_on_the_classpath() {
-    assertThat(Client.builder()).isNotNull();
+    // A bare builder().isNotNull() is tautological — Client.builder() always returns a
+    // non-null Builder whether or not the SDK is really wired up. Building a real client
+    // instead exercises java-genai's actual construction path, which fails loudly if the
+    // dependency (or one of its transitives) is missing.
+    assertThat(Client.builder().apiKey("x").build()).isNotNull();
   }
 }

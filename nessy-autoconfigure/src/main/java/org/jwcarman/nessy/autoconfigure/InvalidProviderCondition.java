@@ -37,16 +37,6 @@ import org.springframework.util.StringUtils;
  * {@code NoSuchBeanDefinitionException} that never mentions {@code nessy.provider} at all. This
  * condition closes that gap by matching the typo itself, so the bean it guards can fail fast and
  * name both the property and the bad value.
- *
- * <p>The exception messages thrown by {@link
- * AnthropicProviderAutoConfiguration#invalidProviderModelProvider} and {@link
- * OpenAiProviderAutoConfiguration#invalidProviderModelProvider} still read "expected anthropic or
- * openai" verbatim — those two beans predate Gemini and their literal wording is pinned by existing
- * tests, so it is left as-is rather than edited to also list {@code gemini} (which would be a
- * behavior-preserving edit only for scenarios those tests don't exercise, but the literal string is
- * exactly what {@code hasRootCauseMessage} asserts). {@link
- * GeminiProviderAutoConfiguration#invalidProviderModelProvider} — new in this class, owning only
- * the classpath-has-neither-Anthropic-nor-OpenAI case — lists all three.
  */
 final class InvalidProviderCondition extends SpringBootCondition {
 

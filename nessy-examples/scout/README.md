@@ -14,8 +14,10 @@ terminal front door, not a second interactive example.
 The REPL loop, the streaming renderer, the spinner, and `ConsoleApprover`
 all come from [`nessy-console`](../../nessy-console/README.md) now — Scout's
 own `main` supplies only the toolbox, the grants, and the banner; the
-provider is `EnvModelProviders.fromEnv()` (`nessy-model-env`), the same
-switch-by-key posture `chat-cli` uses.
+provider comes from `EnvModelProviders.select()` (`nessy-model-env`), the
+same switch-by-key posture `chat-cli` uses — one of Anthropic, OpenAI,
+Gemini, or xAI, by which API key is set, with the banner printing the
+provider name and model `select()` chose.
 
 ## The grants
 
@@ -41,9 +43,14 @@ ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/scout -am compile exec:java
 
 Scout's pom pins `exec.mainClass` to `org.jwcarman.nessy.examples.scout.Scout`,
 the same way `hello`'s and `chat-cli`'s do — the bare command above works with
-no `-Dexec.mainClass` on the command line. Either provider key works the same
-way `chat-cli`'s does — `OPENAI_API_KEY=…` in place of `ANTHROPIC_API_KEY=…`
-runs Scout against OpenAI instead, no other change.
+no `-Dexec.mainClass` on the command line. Any of the four provider keys works
+the same way `chat-cli`'s does — `OPENAI_API_KEY=…`, `GEMINI_API_KEY=…`, or
+`XAI_API_KEY=…` in place of `ANTHROPIC_API_KEY=…` runs Scout against that
+provider instead, no other change. Set `NESSY_MODEL` to name a specific model
+instead of the chosen provider's small, cheap default; every other recipe
+(local runtimes, gateways, the multi-key tiebreak) lives in
+[`docs/guides/providers.md`](../../docs/guides/providers.md) rather than
+repeated here.
 
 The `-am` flag also builds this module's reactor dependencies (`nessy-core`,
 `nessy-console`, `nessy-model-env`, `nessy-tool-mcp`) — the first run
