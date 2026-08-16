@@ -38,7 +38,7 @@ stages an application chooses and orders itself — clamp, redact, elide,
 append. Nothing about window shape happens implicitly inside the loop. See
 [Memory and the Pipeline](memory-and-the-pipeline.md).
 
-## 4. Tools are structured outputs
+## 4. Tools are just structured outputs
 
 A tool's input is a plain record (`Tool<Add>` over `record Add(int left, int
 right)`), and the model's call is that record, parsed and validated against
@@ -87,7 +87,7 @@ max-model-calls wallet guard, in `nessy-core` today) bounds a runaway loop
 the same way — no dedicated site page yet, so check its Javadoc directly.
 See [The Durable Loop](durable-loop.md) and [Triggers](../guides/triggers.md).
 
-## 9. Compact errors into context
+## 9. Compact errors into context window
 
 A failed tool call doesn't throw out of the loop — it returns a `ToolResult`
 the model reads in-band, the same channel a successful result uses, so the
@@ -106,7 +106,7 @@ per tool, per agent, so a focused agent's blast radius is exactly the tools
 it was handed, not everything the harness knows how to do. See
 [The Durable Loop](durable-loop.md).
 
-## 11. Trigger from anywhere
+## 11. Trigger from anywhere, meet users where they are
 
 `agent.converse().tell(...)` looks the same whether the caller is a person at
 a keyboard, a browser request, a cron firing, or a message landing on a

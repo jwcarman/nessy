@@ -204,9 +204,9 @@ in `nessy-core` today; see the Javadoc until they get a home on the site.
 
 ## Examples
 
-`nessy-examples` is a family of seven runnable apps — a CLI, an MCP toolbox
-import, a Spring Boot chat app with HITL, a scheduled agent, a queue-driven
-agent, and a durable-parks HTTP dispatcher. See the
+`nessy-examples` is a family of seven runnable apps — a hello-world starter, a
+CLI, an MCP toolbox import, a Spring Boot chat app with HITL, a scheduled
+agent, a queue-driven agent, and a durable-parks HTTP dispatcher. See the
 [Examples](https://jwcarman.github.io/nessy/examples/) page on the docs site
 for the full tour and run commands.
 
