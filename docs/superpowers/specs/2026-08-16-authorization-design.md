@@ -168,10 +168,21 @@ public interface Enricher<E> {
 
 `spi.intent`, the plan/notebook pattern applied to authority:
 
-- `IntentTools.declare(vocabulary)` yields the `declare_intent` tool (plus a clear
-  verb — one tool with a clearing value or a second tool, settled at planning). The
-  vocabulary IS the tool's schema: an enum or sealed class boxes the model into a
-  strict vocabulary at parse time; `String.class` permits open-ended intent.
+- Two tools: `declare_intent`, whose input type IS the vocabulary, and `clear_intent`,
+  which takes no input. (Ruled at planning: a clearing MEMBER inside the vocabulary
+  was rejected — it would force every app's type to carry a "disregard me" constant
+  and make the store's delete path depend on a blessed member.)
+- **The vocabulary must be a STRUCTURED type (owner ruling — open-ended `String`
+  intent is withdrawn).** A tool's parameters render as an OBJECT schema, so a bare
+  `String` — and equally a bare enum, the spec's own earlier example — renders a naked
+  string schema that is not a valid parameter object for OpenAI or Anthropic. The
+  vocabulary is therefore a record, a POJO, or a sealed interface of records; an enum
+  is how you box a FIELD inside one, never the vocabulary itself. Open-ended intent
+  means declaring your own shape (`record OpenIntent(String what, String why)`) —
+  which is better than a free string anyway, because the fields carry the questions.
+  `intent(...)` REJECTS at wiring time any type that cannot render as an object schema
+  (String, primitives and their boxes, enums, collections, arrays), with a message
+  naming the offending type and telling the caller to wrap it in a record.
 - **Lifetime: until re-declared or cleared**, scoped to the conversation.
 - **Wired by one field on the agent (amended after owner review — IntentSupport is
   WITHDRAWN):** `AgentConfig<I>.intent(Class<?> intentType)` is the whole public
