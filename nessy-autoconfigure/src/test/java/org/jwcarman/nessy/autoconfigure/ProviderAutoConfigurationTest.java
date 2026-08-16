@@ -77,7 +77,7 @@ class ProviderAutoConfigurationTest {
 
   @Test
   void a_user_declared_provider_bean_always_wins() {
-    var scripted = ScriptedModelProvider.builder().text("hi").endTurn().build();
+    var scripted = ScriptedModelProvider.script(s -> s.text("hi").endTurn());
     runner
         .withPropertyValues("nessy.anthropic.api-key=test-key")
         .withBean("mine", ModelProvider.class, () -> scripted)
@@ -103,8 +103,7 @@ class ProviderAutoConfigurationTest {
   @Test
   void a_user_declared_harness_bean_stops_either_provider_from_ever_being_built() {
     Harness harness =
-        Nessy.harness(
-            h -> h.provider(ScriptedModelProvider.builder().text("hi").endTurn().build()));
+        Nessy.harness(h -> h.provider(ScriptedModelProvider.script(s -> s.text("hi").endTurn())));
     runner
         .withBean("mine", Harness.class, () -> harness)
         .run(
@@ -229,8 +228,7 @@ class ProviderAutoConfigurationTest {
     @Test
     void a_user_declared_harness_bean_stops_gemini_from_ever_being_built_too() {
       Harness harness =
-          Nessy.harness(
-              h -> h.provider(ScriptedModelProvider.builder().text("hi").endTurn().build()));
+          Nessy.harness(h -> h.provider(ScriptedModelProvider.script(s -> s.text("hi").endTurn())));
       runner
           .withBean("mine", Harness.class, () -> harness)
           .withPropertyValues("nessy.gemini.api-key=test-key")

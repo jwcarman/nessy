@@ -419,7 +419,7 @@ class AgentConfigTest {
               a ->
                   a.name("scribe")
                       .model("fake-model")
-                      .memory(Memory.pipeline(Transcript.inMemory()).build()));
+                      .memory(Memory.pipeline(Transcript.inMemory())));
 
       assertThat(warnings()).isEmpty();
     }
@@ -442,7 +442,7 @@ class AgentConfigTest {
               a ->
                   a.name("scribe")
                       .model("fake-model")
-                      .memory(Memory.pipeline(Transcript.inMemory()).build()));
+                      .memory(Memory.pipeline(Transcript.inMemory())));
 
       assertThat(warnings()).isEmpty();
     }
@@ -507,13 +507,13 @@ class AgentConfigTest {
                       // both share this same logger, and a store configured with no memory
                       // declared would otherwise warn twice (once per agent this harness builds)
                       // and pollute this assertion.
-                      .memory(Memory.pipeline(Transcript.inMemory()).build())
+                      .memory(Memory.pipeline(Transcript.inMemory()))
                       .subagent(
                           sub ->
                               sub.name("researcher")
                                   .description("delegates research")
                                   .model("fake-model")
-                                  .memory(Memory.pipeline(Transcript.inMemory()).build())));
+                                  .memory(Memory.pipeline(Transcript.inMemory()))));
 
       assertThat(warnings()).hasSize(1);
       ILoggingEvent event = warnings().getFirst();
@@ -535,13 +535,13 @@ class AgentConfigTest {
               a ->
                   a.name("writer")
                       .model("fake-model")
-                      .memory(Memory.pipeline(Transcript.inMemory()).build())
+                      .memory(Memory.pipeline(Transcript.inMemory()))
                       .subagent(
                           sub ->
                               sub.name("researcher")
                                   .description("delegates research")
                                   .model("fake-model")
-                                  .memory(Memory.pipeline(Transcript.inMemory()).build())));
+                                  .memory(Memory.pipeline(Transcript.inMemory()))));
 
       assertThat(warnings()).isEmpty();
     }
@@ -555,7 +555,7 @@ class AgentConfigTest {
               a ->
                   a.name("writer")
                       .model("fake-model")
-                      .memory(Memory.pipeline(Transcript.inMemory()).build()));
+                      .memory(Memory.pipeline(Transcript.inMemory())));
 
       assertThat(warnings()).isEmpty();
     }

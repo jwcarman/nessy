@@ -66,12 +66,15 @@ class ScoutTest {
                 return DeepWikiTestServer.okResult("should never be reached");
               })) {
         ScriptedModelProvider provider =
-            ScriptedModelProvider.builder()
-                .toolUse("c1", DeepWikiTestServer.READ_WIKI_STRUCTURE, repoArgs("jwcarman/nessy"))
-                .endWithToolUse()
-                .text("Here's the structure.")
-                .endTurn()
-                .build();
+            ScriptedModelProvider.script(
+                s ->
+                    s.toolUse(
+                            "c1",
+                            DeepWikiTestServer.READ_WIKI_STRUCTURE,
+                            repoArgs("jwcarman/nessy"))
+                        .endWithToolUse()
+                        .text("Here's the structure.")
+                        .endTurn());
         Harness harness = Nessy.harness(h -> h.provider(provider));
         // A denying approver, on purpose: an allow()-granted tool must run regardless of what
         // the approver would have said, which is the other half of proving the gate actually
@@ -105,15 +108,15 @@ class ScoutTest {
                 return DeepWikiTestServer.okResult("should never be reached");
               })) {
         ScriptedModelProvider provider =
-            ScriptedModelProvider.builder()
-                .toolUse(
-                    "c1",
-                    DeepWikiTestServer.ASK_QUESTION,
-                    questionArgs("jwcarman/nessy", "how does the reducer work?"))
-                .endWithToolUse()
-                .text("I wasn't allowed to ask.")
-                .endTurn()
-                .build();
+            ScriptedModelProvider.script(
+                s ->
+                    s.toolUse(
+                            "c1",
+                            DeepWikiTestServer.ASK_QUESTION,
+                            questionArgs("jwcarman/nessy", "how does the reducer work?"))
+                        .endWithToolUse()
+                        .text("I wasn't allowed to ask.")
+                        .endTurn());
         Harness harness = Nessy.harness(h -> h.provider(provider));
         Agent<String> agent =
             Scout.scout(
@@ -147,15 +150,15 @@ class ScoutTest {
                 return DeepWikiTestServer.okResult("the reducer lives in one method for locality");
               })) {
         ScriptedModelProvider provider =
-            ScriptedModelProvider.builder()
-                .toolUse(
-                    "c1",
-                    DeepWikiTestServer.ASK_QUESTION,
-                    questionArgs("jwcarman/nessy", "how does the reducer work?"))
-                .endWithToolUse()
-                .text("Here's what DeepWiki said.")
-                .endTurn()
-                .build();
+            ScriptedModelProvider.script(
+                s ->
+                    s.toolUse(
+                            "c1",
+                            DeepWikiTestServer.ASK_QUESTION,
+                            questionArgs("jwcarman/nessy", "how does the reducer work?"))
+                        .endWithToolUse()
+                        .text("Here's what DeepWiki said.")
+                        .endTurn());
         Harness harness = Nessy.harness(h -> h.provider(provider));
         // The demo's headline beat: approving the gate actually lets the call through to the
         // remote server, and its answer flows back into context — the mirror image of the

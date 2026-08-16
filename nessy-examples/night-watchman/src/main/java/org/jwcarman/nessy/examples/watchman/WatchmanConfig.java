@@ -29,9 +29,10 @@ import org.springframework.context.annotation.Configuration;
  * The nessy wiring — one bean, the agent (spec §5). {@code Harness} and {@code ModelProvider}
  * arrive from the starter's autoconfiguration over the in-memory defaults; identity is declared
  * here: the standing orders, the two always-allowed tools (no human in this loop, nothing parks),
- * and the {@link Memory#pipeline(Transcript)} bound over an in-memory {@link Transcript}, its
- * {@link org.jwcarman.nessy.spi.memory.PipelineMemory.Builder#keepRecent(int) keepRecent} stage
- * carrying the window.
+ * and the {@link Memory#pipeline(Transcript,
+ * org.jwcarman.nessy.spi.memory.PipelineMemoryCustomizer)} bound over an in-memory {@link
+ * Transcript}, its {@link org.jwcarman.nessy.spi.memory.PipelineMemoryConfig#keepRecent(int)
+ * keepRecent} stage carrying the window.
  */
 @Configuration
 public class WatchmanConfig {
@@ -52,7 +53,7 @@ public class WatchmanConfig {
             a.name("night-watchman")
                 .model("claude-sonnet-4-5")
                 .systemPrompt(SYSTEM_PROMPT)
-                .memory(Memory.pipeline(Transcript.inMemory()).keepRecent(window).build())
+                .memory(Memory.pipeline(Transcript.inMemory(), config -> config.keepRecent(window)))
                 .tools(
                     ToolGrant.grant(new CheckVitalsTool(engineRoom), UsagePolicy.allow()),
                     ToolGrant.grant(new RaiseAlarmTool(), UsagePolicy.allow())));

@@ -59,7 +59,7 @@ class PipelineMemoryTest {
     // pinned to agree with it.
     ConversationId id = ConversationId.generate();
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory pipeline = Memory.pipeline(transcript).build();
+    PipelineMemory pipeline = Memory.pipeline(transcript);
     Message first = Message.user("one");
     Message second = Message.user("two");
     Message third = Message.user("three");
@@ -74,7 +74,7 @@ class PipelineMemoryTest {
   @Test
   void recalls_nothing_for_a_conversation_never_told_anything() {
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory memory = Memory.pipeline(transcript).build();
+    PipelineMemory memory = Memory.pipeline(transcript);
 
     Context recalled = memory.recall(ConversationId.generate());
 
@@ -84,7 +84,7 @@ class PipelineMemoryTest {
   @Test
   void keeps_conversations_apart() {
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory memory = Memory.pipeline(transcript).build();
+    PipelineMemory memory = Memory.pipeline(transcript);
     ConversationId one = ConversationId.generate();
     ConversationId other = ConversationId.generate();
 
@@ -101,7 +101,7 @@ class PipelineMemoryTest {
     // persisting state re-tells the same message. remember is idempotent — the transcript's own
     // no-stutter rule, not reimplemented here.
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory memory = Memory.pipeline(transcript).build();
+    PipelineMemory memory = Memory.pipeline(transcript);
     ConversationId id = ConversationId.generate();
     Message toldFirst = Message.user("once only, please");
     Message toldAgain = Message.user("once only, please");
@@ -115,7 +115,7 @@ class PipelineMemoryTest {
   @Test
   void recall_returns_an_immutable_snapshot() {
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory memory = Memory.pipeline(transcript).build();
+    PipelineMemory memory = Memory.pipeline(transcript);
     ConversationId id = ConversationId.generate();
     Message first = Message.user("first");
     memory.remember(id, first);
@@ -134,7 +134,7 @@ class PipelineMemoryTest {
     // Narrowly targeted trimming: once the batched results message lands, the tool-use message is
     // no longer trailing and no longer open, so it must survive recall along with its answer.
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory memory = Memory.pipeline(transcript).build();
+    PipelineMemory memory = Memory.pipeline(transcript);
     ConversationId id = ConversationId.generate();
     Message userTurn = Message.user("issue a coupon, please");
     Message answeredToolUse =
@@ -158,8 +158,8 @@ class PipelineMemoryTest {
     // The seam is the storage, the memory is the policy: two PipelineMemory instances wrapping
     // the same Transcript are two windows on one log, not two logs.
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory memory = Memory.pipeline(transcript).build();
-    PipelineMemory other = Memory.pipeline(transcript).build();
+    PipelineMemory memory = Memory.pipeline(transcript);
+    PipelineMemory other = Memory.pipeline(transcript);
     ConversationId id = ConversationId.generate();
     Message first = Message.user("told through the first instance");
     Message second = Message.user("told through the second instance");
@@ -175,7 +175,7 @@ class PipelineMemoryTest {
   void remember_appends_to_the_transcript() {
     ConversationId id = ConversationId.generate();
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory memory = Memory.pipeline(transcript).build();
+    PipelineMemory memory = Memory.pipeline(transcript);
     Message message = Message.user("hello");
 
     memory.remember(id, message);
@@ -203,11 +203,10 @@ class PipelineMemoryTest {
         (conversationId, context) ->
             context.enrich(new TextBlock("stage3-saw-size-" + context.messages().size()));
     PipelineMemory memory =
-        Memory.pipeline(transcript)
-            .transform(appendStage1)
-            .transform(mutateStage2)
-            .transform(appendStage3)
-            .build();
+        Memory.pipeline(
+            transcript,
+            config ->
+                config.transform(appendStage1).transform(mutateStage2).transform(appendStage3));
 
     Context recalled = memory.recall(id);
 
@@ -225,7 +224,7 @@ class PipelineMemoryTest {
     Message only = Message.user("unchanged");
     transcript.append(id, only);
     ContextTransformer identity = (conversationId, context) -> context;
-    PipelineMemory memory = Memory.pipeline(transcript).transform(identity).build();
+    PipelineMemory memory = Memory.pipeline(transcript, config -> config.transform(identity));
 
     Context recalled = memory.recall(id);
 
@@ -244,7 +243,7 @@ class PipelineMemoryTest {
     ContextTransformer appendAmendment =
         (conversationId, context) -> context.enrich(new TextBlock("amendment"));
     PipelineMemory memory =
-        Memory.pipeline(transcript).keepRecent(2).transform(appendAmendment).build();
+        Memory.pipeline(transcript, config -> config.keepRecent(2).transform(appendAmendment));
 
     Context recalled = memory.recall(id);
 
@@ -261,7 +260,7 @@ class PipelineMemoryTest {
         (conversationId, context) -> {
           throw new IllegalStateException("boom");
         };
-    PipelineMemory memory = Memory.pipeline(transcript).transform(throwing).build();
+    PipelineMemory memory = Memory.pipeline(transcript, config -> config.transform(throwing));
 
     assertThatThrownBy(() -> memory.recall(id)).isInstanceOf(IllegalStateException.class);
   }
@@ -271,7 +270,7 @@ class PipelineMemoryTest {
     ConversationId id = ConversationId.generate();
     Transcript transcript = Transcript.inMemory();
     CapturingHydrator hydrator = new CapturingHydrator();
-    PipelineMemory memory = Memory.pipeline(transcript).hydrator(hydrator).build();
+    PipelineMemory memory = Memory.pipeline(transcript, config -> config.hydrator(hydrator));
 
     memory.recall(id);
 
@@ -281,22 +280,23 @@ class PipelineMemoryTest {
   @Test
   void one_hydration_strategy_per_pipeline() {
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory.Builder builder = Memory.pipeline(transcript).hydrator(ContextHydrator.full());
+    PipelineMemoryConfig config = new PipelineMemoryConfig(transcript);
+    config.hydrator(ContextHydrator.full());
     ContextHydrator second = ContextHydrator.full();
 
-    assertThatThrownBy(() -> builder.hydrator(second)).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> config.hydrator(second)).isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void keep_recent_rejects_a_window_below_one() {
     Transcript transcript = Transcript.inMemory();
-    PipelineMemory.Builder zeroBuilder = Memory.pipeline(transcript);
-    PipelineMemory.Builder negativeBuilder = Memory.pipeline(transcript);
+    PipelineMemoryConfig zeroConfig = new PipelineMemoryConfig(transcript);
+    PipelineMemoryConfig negativeConfig = new PipelineMemoryConfig(transcript);
 
-    assertThatThrownBy(() -> zeroBuilder.keepRecent(0))
+    assertThatThrownBy(() -> zeroConfig.keepRecent(0))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("window must be at least 1");
-    assertThatThrownBy(() -> negativeBuilder.keepRecent(-1))
+    assertThatThrownBy(() -> negativeConfig.keepRecent(-1))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("window must be at least 1");
   }

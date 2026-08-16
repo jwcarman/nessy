@@ -85,9 +85,9 @@ class ContextHydratorTest {
       SummaryStore summaries = SummaryStore.inMemory();
       RecordingTextModelProvider provider = new RecordingTextModelProvider("folded so far");
       PipelineMemory memory =
-          Memory.pipeline(transcript)
-              .summarizing(summaries, provider, "model", "summarize", 3)
-              .build();
+          Memory.pipeline(
+              transcript,
+              config -> config.summarizing(summaries, provider, "model", "summarize", 3));
       memory.remember(id, Message.user("one"));
       memory.remember(id, Message.user("two"));
       memory.remember(id, Message.user("three"));

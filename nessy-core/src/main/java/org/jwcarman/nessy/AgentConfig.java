@@ -481,6 +481,6 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
               + " though this harness's store was explicitly configured — a conversation persisted"
               + " there will not carry its transcript across restarts; name .memory(...) to match");
     }
-    return Memory.pipeline(Transcript.inMemory()).build();
+    return Memory.pipeline(Transcript.inMemory());
   }
 }

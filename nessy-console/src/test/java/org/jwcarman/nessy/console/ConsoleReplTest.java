@@ -63,11 +63,14 @@ class ConsoleReplTest {
   }
 
   private static Agent<String> agent_saying(String... replies) {
-    ScriptedModelProvider.Builder builder = ScriptedModelProvider.builder();
-    for (String reply : replies) {
-      builder.text(reply).endTurn();
-    }
-    Harness harness = Nessy.harness(h -> h.provider(builder.build()));
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.script(
+            s -> {
+              for (String reply : replies) {
+                s.text(reply).endTurn();
+              }
+            });
+    Harness harness = Nessy.harness(h -> h.provider(provider));
     return harness.agent(a -> a.name("repl-test").model("fake-model").systemPrompt("test"));
   }
 
@@ -234,7 +237,7 @@ class ConsoleReplTest {
       // can save it from spinning forever.
       Harness harness =
           Nessy.harness(
-              h -> h.provider(ScriptedModelProvider.builder().text("unreached").endTurn().build()));
+              h -> h.provider(ScriptedModelProvider.script(s -> s.text("unreached").endTurn())));
       Agent<String> agent =
           harness.agent(
               a ->
@@ -300,14 +303,14 @@ class ConsoleReplTest {
   }
 
   @Nested
-  class The_exitOn_builder {
+  class The_exitOn_config {
 
     @Test
     void rejects_zero_words_as_a_loop_with_no_way_out() {
       Agent<String> agent = agent_saying();
-      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+      ReplConfig config = new ReplConfig(agent);
 
-      assertThatThrownBy(builder::exitOn)
+      assertThatThrownBy(config::exitOn)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("at least one exit word");
     }
@@ -315,11 +318,11 @@ class ConsoleReplTest {
     @Test
     void deduplicates_repeated_words_instead_of_throwing() {
       Agent<String> agent = agent_saying();
-      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+      ReplConfig config = new ReplConfig(agent);
 
       // Set.copyOf semantics, not Set.of's throw-on-duplicate: naming the same exit word twice
       // is a caller typo, not a reason to blow up the whole configuration.
-      assertThatCode(() -> builder.exitOn("exit", "exit")).doesNotThrowAnyException();
+      assertThatCode(() -> config.exitOn("exit", "exit")).doesNotThrowAnyException();
     }
   }
 
@@ -330,12 +333,12 @@ class ConsoleReplTest {
     void the_approver_reads_the_same_stream_the_repl_itself_reads() {
       Ansi.overrideEnabled(false);
       ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .toolUse("c1", "ping", JsonNodeFactory.instance.objectNode())
-              .endWithToolUse()
-              .text("pong received")
-              .endTurn()
-              .build();
+          ScriptedModelProvider.script(
+              s ->
+                  s.toolUse("c1", "ping", JsonNodeFactory.instance.objectNode())
+                      .endWithToolUse()
+                      .text("pong received")
+                      .endTurn());
       Harness harness = Nessy.harness(h -> h.provider(provider));
       StringWriter writer = new StringWriter();
       // One BufferedReader, one combined script: "hi" is the REPL's own read, "y" is the
@@ -540,23 +543,23 @@ class ConsoleReplTest {
   }
 
   @Nested
-  class The_plan_builder_verb {
+  class The_plan_config_verb {
 
     @Test
     void rejects_a_null_store() {
       Agent<String> agent = agent_saying();
-      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+      ReplConfig config = new ReplConfig(agent);
 
-      assertThatThrownBy(() -> builder.plan(null)).isInstanceOf(NullPointerException.class);
+      assertThatThrownBy(() -> config.plan(null)).isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void rejects_a_second_call() {
       Agent<String> agent = agent_saying();
-      ConsoleRepl.Builder builder = ConsoleRepl.of(agent).plan(PlanStore.inMemory());
+      ReplConfig config = new ReplConfig(agent).plan(PlanStore.inMemory());
       PlanStore second = PlanStore.inMemory();
 
-      assertThatThrownBy(() -> builder.plan(second)).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> config.plan(second)).isInstanceOf(IllegalStateException.class);
     }
   }
 
@@ -638,22 +641,22 @@ class ConsoleReplTest {
   }
 
   @Nested
-  class The_farewell_builder_verb {
+  class The_farewell_config_verb {
 
     @Test
     void rejects_a_null_farewell() {
       Agent<String> agent = agent_saying();
-      ConsoleRepl.Builder builder = ConsoleRepl.of(agent);
+      ReplConfig config = new ReplConfig(agent);
 
-      assertThatThrownBy(() -> builder.farewell(null)).isInstanceOf(NullPointerException.class);
+      assertThatThrownBy(() -> config.farewell(null)).isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void rejects_a_second_call() {
       Agent<String> agent = agent_saying();
-      ConsoleRepl.Builder builder = ConsoleRepl.of(agent).farewell("goodbye.");
+      ReplConfig config = new ReplConfig(agent).farewell("goodbye.");
 
-      assertThatThrownBy(() -> builder.farewell("bye again."))
+      assertThatThrownBy(() -> config.farewell("bye again."))
           .isInstanceOf(IllegalStateException.class);
     }
   }

@@ -70,12 +70,8 @@ class McpToolboxEndToEndTest {
       arguments.put("message", "hi there");
 
       ScriptedModelProvider provider =
-          ScriptedModelProvider.builder()
-              .toolUse("c1", "echo", arguments)
-              .endWithToolUse()
-              .text("Done.")
-              .endTurn()
-              .build();
+          ScriptedModelProvider.script(
+              s -> s.toolUse("c1", "echo", arguments).endWithToolUse().text("Done.").endTurn());
 
       Agent<String> agent =
           Nessy.harness(h -> h.provider(provider))

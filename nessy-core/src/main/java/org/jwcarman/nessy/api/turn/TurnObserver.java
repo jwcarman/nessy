@@ -31,7 +31,7 @@ import org.slf4j.Logger;
  *
  * <p>Implement directly (a lambda) when one concern covers every event; extend {@link
  * TurnObserverAdapter} to override per-variant hooks and ignore the rest; or compose one from
- * per-variant lambdas via {@link #builder()}.
+ * per-variant lambdas via {@link #observe(TurnObserverCustomizer)}.
  *
  * <p>Throw semantics are asymmetric by design: a throwing observer aborts the call it narrates on
  * the model path, attributed to the caller's own {@code tell} — the observer is the caller's code,
@@ -56,10 +56,16 @@ public interface TurnObserver {
   }
 
   /**
-   * A builder composing an observer from per-variant consumers; see {@link TurnObserverBuilder}.
+   * Composes an observer from per-variant consumers: {@code customizer} fills in a live {@link
+   * TurnObserverConfig}, then this factory turns it into the finished {@link TurnObserver}. No
+   * public {@code build()} survives here; the factory is the only place a {@link
+   * TurnObserverConfig} ever turns into a {@link TurnObserver} (design of record 2026-08-16 §1).
    */
-  static TurnObserverBuilder builder() {
-    return new TurnObserverBuilder();
+  static TurnObserver observe(TurnObserverCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    TurnObserverConfig config = new TurnObserverConfig();
+    customizer.customize(config);
+    return config.build();
   }
 
   /**
@@ -67,10 +73,10 @@ public interface TurnObserver {
    * message's text blocks joined, skipped when blank), a line each for a tool requested, completed,
    * or parked (the parked line carries the token), and the segment's {@link TurnEvent.TurnEnded}
    * line at {@code INFO}, with the failure reason repeated at {@code WARN} when the status is
-   * {@code FAILED}. Built on {@link #builder()} — this factory's own dogfood, and the collapse
-   * target for what every example used to hand-roll (see {@code night-watchman}'s {@code Watchman}
-   * and {@code order-desk}'s {@code OrderDesk}; {@code dispatcher} now calls this factory directly
-   * at its own call sites, with no wrapper class of its own).
+   * {@code FAILED}. Built on {@link #observe(TurnObserverCustomizer)} — this factory's own dogfood,
+   * and the collapse target for what every example used to hand-roll (see {@code night-watchman}'s
+   * {@code Watchman} and {@code order-desk}'s {@code OrderDesk}; {@code dispatcher} now calls this
+   * factory directly at its own call sites, with no wrapper class of its own).
    *
    * @param logger the slf4j {@code Logger} every line is written to
    * @param prefix the log-line tag — an incident id, an order id, a conversation label
@@ -92,38 +98,38 @@ public interface TurnObserver {
   static TurnObserver logging(Logger logger, Supplier<String> prefix) {
     Objects.requireNonNull(logger, "logger must not be null");
     Objects.requireNonNull(prefix, "prefix must not be null");
-    return builder()
-        .onAssistantSaid(
-            said -> {
-              String text = joinedText(said.message());
-              if (!text.isBlank()) {
-                logger.info("{} says: {}", prefix.get(), text);
-              }
-            })
-        .onToolCallRequested(
-            requested -> logger.info("{} tool: {}", prefix.get(), requested.call().name()))
-        .onToolCallCompleted(
-            completed ->
-                logger.info(
-                    "{} tool completed: {} (error={})",
-                    prefix.get(),
-                    completed.call().name(),
-                    completed.result().isError()))
-        .onToolCallParked(
-            parked ->
-                logger.info(
-                    "{} parked: tool={} token={}",
-                    prefix.get(),
-                    parked.call().name(),
-                    parked.token().value()))
-        .onTurnEnded(
-            ended -> {
-              logger.info("{} ends: {}", prefix.get(), ended.status());
-              if (ended.status() == ConversationStatus.FAILED) {
-                logger.warn("{} failed: {}", prefix.get(), ended.failureReason());
-              }
-            })
-        .build();
+    return observe(
+        o ->
+            o.onAssistantSaid(
+                    said -> {
+                      String text = joinedText(said.message());
+                      if (!text.isBlank()) {
+                        logger.info("{} says: {}", prefix.get(), text);
+                      }
+                    })
+                .onToolCallRequested(
+                    requested -> logger.info("{} tool: {}", prefix.get(), requested.call().name()))
+                .onToolCallCompleted(
+                    completed ->
+                        logger.info(
+                            "{} tool completed: {} (error={})",
+                            prefix.get(),
+                            completed.call().name(),
+                            completed.result().isError()))
+                .onToolCallParked(
+                    parked ->
+                        logger.info(
+                            "{} parked: tool={} token={}",
+                            prefix.get(),
+                            parked.call().name(),
+                            parked.token().value()))
+                .onTurnEnded(
+                    ended -> {
+                      logger.info("{} ends: {}", prefix.get(), ended.status());
+                      if (ended.status() == ConversationStatus.FAILED) {
+                        logger.warn("{} failed: {}", prefix.get(), ended.failureReason());
+                      }
+                    }));
   }
 
   /** The message's {@link TextBlock} content, concatenated in order — no separator, no filler. */

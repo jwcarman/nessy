@@ -19,9 +19,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.io.Writer;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,22 +30,23 @@ import org.jwcarman.nessy.spi.plan.PlanStore;
 
 /**
  * The loop every REPL example hand-rolled three times over: read a line, tell the agent, render
- * deltas, prompt again (design §3). One conversation per {@link #run()} — the exact shape {@code
- * AnthropicChat}, {@code OpenAiChat}, and {@code Scout} shared before this module existed.
+ * deltas, prompt again (design §3). One conversation per {@link #run(Agent, ReplCustomizer)} — the
+ * exact shape {@code AnthropicChat}, {@code OpenAiChat}, and {@code Scout} shared before this
+ * module existed.
  *
  * <pre>{@code
- * ConsoleRepl.of(agent)
- *     .banner("scout — ask about any public GitHub repo")
- *     .prompt("you> ")
- *     .exitOn("exit", "quit")
- *     .run();
+ * ConsoleRepl.run(
+ *     agent,
+ *     r -> r.banner("scout — ask about any public GitHub repo")
+ *         .prompt("you> ")
+ *         .exitOn("exit", "quit"));
  * }</pre>
  *
  * <p>Every decision the loop makes — banner, prompt, exit words, blank-line reprompt, the spinner's
  * erase-on-first-event handoff to the renderer — lives here, against a plain {@link
  * BufferedReader}/{@link Writer} pair, so it is exercised headless in this module's own tests with
- * no real console anywhere in the picture. {@link Builder#run()} is the only place a real console
- * enters: a thin wrap of {@link System#in} and {@link System#out}.
+ * no real console anywhere in the picture. {@link ReplConfig#run()} is the only place a real
+ * console enters: a thin wrap of {@link System#in} and {@link System#out}.
  */
 public final class ConsoleRepl {
 
@@ -218,110 +216,16 @@ public final class ConsoleRepl {
     }
   }
 
-  /** Starts a {@link Builder} for {@code agent}. */
-  public static Builder of(Agent<String> agent) {
-    return new Builder(agent);
-  }
-
-  /** Collects the loop's configuration; {@link #run()} is the public, real-console entry point. */
-  public static final class Builder {
-
-    private static final List<String> DEFAULT_EXIT_WORDS = List.of("exit", "quit");
-
-    private final Agent<String> agent;
-    private String banner = "";
-    private String prompt = "> ";
-    private Set<String> exitWords = new LinkedHashSet<>(DEFAULT_EXIT_WORDS);
-    private TurnObserver renderer;
-    private PlanStore planStore;
-    private String farewell;
-
-    private Builder(Agent<String> agent) {
-      this.agent = Objects.requireNonNull(agent, "agent must not be null");
-    }
-
-    /** The line printed once, before the first prompt. Empty (the default) prints nothing. */
-    public Builder banner(String banner) {
-      this.banner = Objects.requireNonNull(banner, "banner must not be null");
-      return this;
-    }
-
-    /** The line printed before every read. Defaults to {@code "> "}. */
-    public Builder prompt(String prompt) {
-      this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
-      return this;
-    }
-
-    /**
-     * The words (after trimming) that end the loop. Defaults to {@code "exit"}, {@code "quit"}.
-     * Duplicate words are silently deduplicated ({@link Set#copyOf}, not {@link Set#of}'s
-     * throw-on-duplicate) — the caller is naming a set, not proving one is already distinct.
-     *
-     * @throws IllegalArgumentException if {@code words} is empty — a loop with no way out is a
-     *     trap, not a valid configuration
-     */
-    public Builder exitOn(String... words) {
-      Objects.requireNonNull(words, "words must not be null");
-      if (words.length == 0) {
-        throw new IllegalArgumentException("at least one exit word is required");
-      }
-      this.exitWords = Set.copyOf(Arrays.asList(words));
-      return this;
-    }
-
-    /** Overrides the default {@link ConsoleRenderer} wholesale. */
-    public Builder renderer(TurnObserver renderer) {
-      this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
-      return this;
-    }
-
-    /**
-     * Opts into the plan checklist (design §9): the app that granted the model {@code update_plan}
-     * hands the same {@code store} here, and the REPL prints the checklist at the end of every turn
-     * whose plan changed. Mirrors the grant principle — the console never guesses a plan facility
-     * exists.
-     *
-     * @throws IllegalStateException if called a second time
-     */
-    public Builder plan(PlanStore store) {
-      Objects.requireNonNull(store, "store must not be null");
-      if (this.planStore != null) {
-        throw new IllegalStateException("plan(PlanStore) was already called");
-      }
-      this.planStore = store;
-      return this;
-    }
-
-    /**
-     * The line printed the instant the loop ends — an exit word or end of input — before {@link
-     * #run()} returns: dim-styled when styling is enabled, plain text otherwise (see {@link
-     * Ansi#dim}). Optional; unset means the loop ends silently, exactly the old behavior.
-     *
-     * @throws IllegalStateException if called a second time
-     */
-    public Builder farewell(String farewell) {
-      Objects.requireNonNull(farewell, "farewell must not be null");
-      if (this.farewell != null) {
-        throw new IllegalStateException("farewell(String) was already called");
-      }
-      this.farewell = farewell;
-      return this;
-    }
-
-    /**
-     * The real-console entry point: a thin adapter over {@link System#in}/{@link System#out}. The
-     * reader is {@link ConsoleIo#stdin()}, not a fresh wrap of {@link System#in} — shared with
-     * {@link ConsoleApprover}'s own default constructor, so a mid-turn approval prompt reads from
-     * the same buffer this loop does, rather than each stealing from the other's read of stdin.
-     */
-    public void run() {
-      new ConsoleRepl(
-              agent,
-              new Chrome(banner, prompt, exitWords, farewell),
-              renderer,
-              new Io(ConsoleIo.stdin(), ConsoleIo.stdout()),
-              planStore)
-          .run();
-    }
+  /**
+   * Runs the loop against a real console: {@code customizer} fills in a live {@link ReplConfig},
+   * then this factory hands it the real {@link System#in}/{@link System#out} pair and runs it. No
+   * public {@code build()} survives here; the factory is the only place a {@link ReplConfig} ever
+   * turns into a running loop (design of record 2026-08-16 §1).
+   */
+  public static void run(Agent<String> agent, ReplCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    ReplConfig config = new ReplConfig(agent);
+    customizer.customize(config);
+    config.run();
   }
 }

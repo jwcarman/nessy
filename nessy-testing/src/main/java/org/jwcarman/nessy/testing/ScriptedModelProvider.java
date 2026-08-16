@@ -15,14 +15,11 @@
  */
 package org.jwcarman.nessy.testing;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
-import org.jwcarman.nessy.api.StopReason;
-import org.jwcarman.nessy.api.conversation.Usage;
-import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -46,12 +43,22 @@ public final class ScriptedModelProvider implements ModelProvider {
   private final List<ModelRequest> requests = new ArrayList<>();
   private int nextTurn;
 
-  private ScriptedModelProvider(List<List<ModelEvent>> turns) {
+  ScriptedModelProvider(List<List<ModelEvent>> turns) {
     this.turns = List.copyOf(turns);
   }
 
-  public static Builder builder() {
-    return new Builder();
+  /**
+   * Scripts a {@link ScriptedModelProvider}: {@code customizer} fills in a live {@link
+   * ScriptedModelProviderConfig}, then this factory turns it into the finished provider. No public
+   * {@code build()} survives here; the factory is the only place a {@link
+   * ScriptedModelProviderConfig} ever turns into a {@link ScriptedModelProvider} (design of record
+   * 2026-08-16 §1).
+   */
+  public static ScriptedModelProvider script(ScriptedModelProviderCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    ScriptedModelProviderConfig config = new ScriptedModelProviderConfig();
+    customizer.customize(config);
+    return config.build();
   }
 
   @Override
@@ -98,68 +105,5 @@ public final class ScriptedModelProvider implements ModelProvider {
   /** A snapshot of every request this provider was handed, oldest first. */
   public synchronized List<ModelRequest> requests() {
     return List.copyOf(requests);
-  }
-
-  public static final class Builder {
-
-    private final List<List<ModelEvent>> turns = new ArrayList<>();
-    private List<ModelEvent> current = new ArrayList<>();
-
-    public Builder text(String text) {
-      current.add(new ModelEvent.TextChunk(text));
-      return this;
-    }
-
-    public Builder thinking(String text) {
-      current.add(new ModelEvent.ThinkingChunk(text));
-      return this;
-    }
-
-    public Builder thinkingSigned(String signature) {
-      current.add(new ModelEvent.ThinkingSigned(signature));
-      return this;
-    }
-
-    public Builder redactedThinking(String data) {
-      current.add(new ModelEvent.RedactedThinkingEmitted(data));
-      return this;
-    }
-
-    public Builder toolUse(String id, String name, ObjectNode arguments) {
-      current.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments)));
-      return this;
-    }
-
-    public Builder toolUseSigned(String id, String name, ObjectNode arguments, String signature) {
-      current.add(new ModelEvent.ToolUseEmitted(new ToolCall(id, name, arguments), signature));
-      return this;
-    }
-
-    public Builder endTurn() {
-      return end(StopReason.END_TURN, Usage.zero());
-    }
-
-    public Builder endTurn(Usage usage) {
-      return end(StopReason.END_TURN, usage);
-    }
-
-    public Builder endWithToolUse() {
-      return end(StopReason.TOOL_USE, Usage.zero());
-    }
-
-    private Builder end(StopReason reason, Usage usage) {
-      current.add(new ModelEvent.TurnEnded(reason, usage));
-      turns.add(List.copyOf(current));
-      current = new ArrayList<>();
-      return this;
-    }
-
-    public ScriptedModelProvider build() {
-      if (!current.isEmpty()) {
-        throw new IllegalStateException(
-            "last turn was never ended: call endTurn() or endWithToolUse()");
-      }
-      return new ScriptedModelProvider(turns);
-    }
   }
 }

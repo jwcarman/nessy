@@ -85,9 +85,9 @@ public final class DemoAgent {
    * the only change needed to survive a restart.
    *
    * <p>Returns the {@link PlanStore} alongside the agent (rather than the agent alone) so {@code
-   * Chat}'s {@code main} can hand the same store to {@code ConsoleRepl.Builder#plan(PlanStore)} —
-   * the grant principle applied to the console's own opt-in: the store the model writes through
-   * {@code update_plan} is the exact store the REPL reads back to render the checklist.
+   * Chat}'s {@code main} can hand the same store to {@code ReplConfig#plan(PlanStore)} — the grant
+   * principle applied to the console's own opt-in: the store the model writes through {@code
+   * update_plan} is the exact store the REPL reads back to render the checklist.
    */
   public static Built agentFor(ModelProvider provider, String model) {
     PlanStore planStore = PlanStore.inMemory();
@@ -121,10 +121,13 @@ public final class DemoAgent {
                         // at the tail, so the notebook index ends up closer to the model's next
                         // turn than the plan checklist does.
                         .memory(
-                            Memory.pipeline(transcript)
-                                .transform(PlanTools.transformer(planStore))
-                                .transform(NotebookTools.transformer(notebook, subjectResolver))
-                                .build())
+                            Memory.pipeline(
+                                transcript,
+                                config ->
+                                    config
+                                        .transform(PlanTools.transformer(planStore))
+                                        .transform(
+                                            NotebookTools.transformer(notebook, subjectResolver))))
                         .approver(new ConsoleApprover())
                         .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage));
     return new Built(agent, planStore);

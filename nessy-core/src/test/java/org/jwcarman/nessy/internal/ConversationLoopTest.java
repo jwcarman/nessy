@@ -519,7 +519,7 @@ class ConversationLoopTest {
   private static final class RecordingMemory implements Memory {
 
     private final List<String> journal;
-    private final Memory delegate = Memory.pipeline(Transcript.inMemory()).build();
+    private final Memory delegate = Memory.pipeline(Transcript.inMemory());
     private final List<Message> remembered = new ArrayList<>();
 
     RecordingMemory(List<String> journal) {
@@ -551,7 +551,7 @@ class ConversationLoopTest {
    */
   private static final class ThrowOnNthRememberMemory implements Memory {
 
-    private final Memory delegate = Memory.pipeline(Transcript.inMemory()).build();
+    private final Memory delegate = Memory.pipeline(Transcript.inMemory());
     private final List<Message> remembered = new ArrayList<>();
     private final int throwOnCall;
     private final RuntimeException exception;

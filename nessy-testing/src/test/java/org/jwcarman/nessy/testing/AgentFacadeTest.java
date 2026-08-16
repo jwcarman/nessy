@@ -84,12 +84,12 @@ class AgentFacadeTest {
   @Test
   void the_five_minute_path_is_five_lines() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUse("c1", "add", addArgs(2, 2))
-            .endWithToolUse()
-            .text("The answer is 4.")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(
+            s ->
+                s.toolUse("c1", "add", addArgs(2, 2))
+                    .endWithToolUse()
+                    .text("The answer is 4.")
+                    .endTurn());
 
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider))
@@ -108,12 +108,7 @@ class AgentFacadeTest {
   @Test
   void conversations_carry_their_session_across_tells() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .text("Hello!")
-            .endTurn()
-            .text("Still here.")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(s -> s.text("Hello!").endTurn().text("Still here.").endTurn());
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("facade").model("fake-model"));
 
@@ -134,12 +129,12 @@ class AgentFacadeTest {
   @Test
   void a_grant_line_declares_capability_and_authority_together() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUse("c1", "add", addArgs(2, 2))
-            .endWithToolUse()
-            .text("The answer is 4.")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(
+            s ->
+                s.toolUse("c1", "add", addArgs(2, 2))
+                    .endWithToolUse()
+                    .text("The answer is 4.")
+                    .endTurn());
     Harness harness = Nessy.harness(h -> h.provider(provider));
     Agent<String> agent =
         harness.agent(
@@ -161,14 +156,14 @@ class AgentFacadeTest {
   @Test
   void contextFor_shows_exactly_what_a_call_would_see() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUse("c1", "add", addArgs(2, 2))
-            .endWithToolUse()
-            .text("4")
-            .endTurn()
-            .text("Sure, still here.")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(
+            s ->
+                s.toolUse("c1", "add", addArgs(2, 2))
+                    .endWithToolUse()
+                    .text("4")
+                    .endTurn()
+                    .text("Sure, still here.")
+                    .endTurn());
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider))
             .agent(
@@ -192,7 +187,7 @@ class AgentFacadeTest {
 
   @Test
   void contextFor_rejects_an_unknown_conversation() {
-    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hi").endTurn());
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("facade").model("fake-model"));
 
@@ -205,7 +200,7 @@ class AgentFacadeTest {
 
   @Test
   void a_declared_context_window_is_wired_through_the_builder() {
-    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hi").endTurn());
 
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider))
@@ -257,7 +252,7 @@ class AgentFacadeTest {
   @Test
   void a_custom_memory_is_wired_through_the_builder() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hi there.").endTurn().build();
+        ScriptedModelProvider.script(s -> s.text("Hi there.").endTurn());
     Message marker = Message.user("seeded-by-custom-memory");
     SeededMemory memory = new SeededMemory(Context.of(List.of(marker)));
 
@@ -276,7 +271,7 @@ class AgentFacadeTest {
 
   @Test
   void a_declared_listener_sees_every_conversation_the_agent_runs() {
-    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hi").endTurn());
     RecordingSubscriber recorder = new RecordingSubscriber();
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider))
@@ -289,7 +284,7 @@ class AgentFacadeTest {
 
   @Test
   void a_missing_model_is_rejected_at_build_time() {
-    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hi").endTurn());
     Harness harness = Nessy.harness(h -> h.provider(provider));
 
     assertThatThrownBy(() -> harness.agent(a -> a.name("facade")))
@@ -299,7 +294,7 @@ class AgentFacadeTest {
 
   @Test
   void a_null_memory_is_rejected() {
-    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hi").endTurn());
     Harness harness = Nessy.harness(h -> h.provider(provider));
 
     assertThatThrownBy(() -> harness.agent(a -> a.name("facade").model("fake-model").memory(null)))
@@ -310,11 +305,8 @@ class AgentFacadeTest {
   @Test
   void assistant_text_excludes_thinking_prose() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .thinking("Let me think.")
-            .text("The answer is 4.")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(
+            s -> s.thinking("Let me think.").text("The answer is 4.").endTurn());
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("facade").model("fake-model"));
     TextObserver observer = new TextObserver();
@@ -327,12 +319,7 @@ class AgentFacadeTest {
   @Test
   void a_conversation_resumes_by_session_id_with_its_history() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .text("Hello!")
-            .endTurn()
-            .text("Still here.")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(s -> s.text("Hello!").endTurn().text("Still here.").endTurn());
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("facade").model("fake-model"));
 
@@ -349,7 +336,7 @@ class AgentFacadeTest {
 
   @Test
   void failure_reason_surfaces_through_the_outcome() {
-    ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hi").endTurn());
     Agent<String> agent =
         Nessy.harness(h -> h.provider(provider))
             .agent(
@@ -379,7 +366,7 @@ class AgentFacadeTest {
   @Test
   void everything_centers_on_a_conversation() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("The answer is 4.").endTurn().build();
+        ScriptedModelProvider.script(s -> s.text("The answer is 4.").endTurn());
     List<String> order = new ArrayList<>();
     List<ConversationEvent> seenByHarness = new ArrayList<>();
     List<ConversationEvent> seenByAgent = new ArrayList<>();
@@ -456,7 +443,7 @@ class AgentFacadeTest {
     @Test
     void a_typed_agent_speaks_its_vocabulary() {
       ScriptedModelProvider provider =
-          ScriptedModelProvider.builder().text("On it.").endTurn().build();
+          ScriptedModelProvider.script(s -> s.text("On it.").endTurn());
       Harness harness = Nessy.harness(h -> h.provider(provider));
       Agent<SupportInput> support =
           harness.agent(
@@ -476,7 +463,7 @@ class AgentFacadeTest {
       // Wire-bytes proof: a String agent's tell produces exactly the one TextBlock send(String)
       // always produced — typing the front door changes nothing about what a String agent puts
       // on the wire.
-      ScriptedModelProvider provider = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+      ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hi").endTurn());
       Agent<String> agent =
           Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("facade").model("fake-model"));
 
@@ -492,8 +479,7 @@ class AgentFacadeTest {
     void the_default_json_renderer_tags_and_serializes() {
       // No explicit .renderer(...): a typed vocabulary defaults to the tagged-JSON renderer over
       // the harness's own mapper.
-      ScriptedModelProvider provider =
-          ScriptedModelProvider.builder().text("ack").endTurn().build();
+      ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("ack").endTurn());
       Harness harness = Nessy.harness(h -> h.provider(provider));
       Agent<Ping> agent = harness.agent(Ping.class, a -> a.name("facade").model("fake-model"));
 
@@ -509,7 +495,7 @@ class AgentFacadeTest {
     @Test
     void a_broken_renderer_fails_at_the_front_door() {
       ScriptedModelProvider provider =
-          ScriptedModelProvider.builder().text("never reached").endTurn().build();
+          ScriptedModelProvider.script(s -> s.text("never reached").endTurn());
       ConversationStore store = ConversationStore.inMemory();
       Harness harness = Nessy.harness(h -> h.provider(provider).store(store));
       InputRenderer<String> throwing =
@@ -529,7 +515,7 @@ class AgentFacadeTest {
     @Test
     void a_renderer_that_produces_no_blocks_also_fails_at_the_front_door() {
       ScriptedModelProvider provider =
-          ScriptedModelProvider.builder().text("never reached").endTurn().build();
+          ScriptedModelProvider.script(s -> s.text("never reached").endTurn());
       ConversationStore store = ConversationStore.inMemory();
       Harness harness = Nessy.harness(h -> h.provider(provider).store(store));
       InputRenderer<String> empty = input -> List.of();

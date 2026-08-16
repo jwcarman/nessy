@@ -19,15 +19,16 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Builds a {@link TurnObserver} from per-variant consumers — the composition-friendly rung between
- * a bare lambda (one concern, every event) and extending {@link TurnObserverAdapter} (a subclass
- * that overrides hooks):
+ * What {@link TurnObserver#observe(TurnObserverCustomizer)} hands a customizer: a CONFIG, not a
+ * builder (design of record 2026-08-16 §1) — fluent setters, no public {@code build()} — composing
+ * a {@link TurnObserver} from per-variant consumers. The composition-friendly rung between a bare
+ * lambda (one concern, every event) and extending {@link TurnObserverAdapter} (a subclass that
+ * overrides hooks):
  *
  * <pre>{@code
- * var observer = TurnObserver.builder()
+ * var observer = TurnObserver.observe(o -> o
  *     .onTextDelta(delta -> terminal.print(delta.text()))
- *     .onToolCallCompleted(done -> statusBar.flash(done.call().name()))
- *     .build();
+ *     .onToolCallCompleted(done -> statusBar.flash(done.call().name())));
  * }</pre>
  *
  * <p>Registering the same variant twice <em>chains</em> ({@link Consumer#andThen}) rather than
@@ -35,7 +36,7 @@ import java.util.function.Consumer;
  * events, in registration order. Variants never registered stay silent. Dispatch is inherited from
  * {@link TurnObserverAdapter}, so there is exactly one switch over the grammar in this package.
  */
-public final class TurnObserverBuilder {
+public final class TurnObserverConfig {
 
   private Consumer<TurnEvent.TextDelta> onTextDelta = event -> {};
   private Consumer<TurnEvent.ThinkingDelta> onThinkingDelta = event -> {};
@@ -48,60 +49,65 @@ public final class TurnObserverBuilder {
   private Consumer<TurnEvent.AssistantSaid> onAssistantSaid = event -> {};
   private Consumer<TurnEvent.TurnEnded> onTurnEnded = event -> {};
 
-  TurnObserverBuilder() {}
+  TurnObserverConfig() {}
 
-  public TurnObserverBuilder onTextDelta(Consumer<TurnEvent.TextDelta> consumer) {
+  public TurnObserverConfig onTextDelta(Consumer<TurnEvent.TextDelta> consumer) {
     onTextDelta = onTextDelta.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onThinkingDelta(Consumer<TurnEvent.ThinkingDelta> consumer) {
+  public TurnObserverConfig onThinkingDelta(Consumer<TurnEvent.ThinkingDelta> consumer) {
     onThinkingDelta = onThinkingDelta.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onRedactedThinking(Consumer<TurnEvent.RedactedThinking> consumer) {
+  public TurnObserverConfig onRedactedThinking(Consumer<TurnEvent.RedactedThinking> consumer) {
     onRedactedThinking = onRedactedThinking.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onToolCallRequested(Consumer<TurnEvent.ToolCallRequested> consumer) {
+  public TurnObserverConfig onToolCallRequested(Consumer<TurnEvent.ToolCallRequested> consumer) {
     onToolCallRequested = onToolCallRequested.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onToolCallDecided(Consumer<TurnEvent.ToolCallDecided> consumer) {
+  public TurnObserverConfig onToolCallDecided(Consumer<TurnEvent.ToolCallDecided> consumer) {
     onToolCallDecided = onToolCallDecided.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onToolCallCompleted(Consumer<TurnEvent.ToolCallCompleted> consumer) {
+  public TurnObserverConfig onToolCallCompleted(Consumer<TurnEvent.ToolCallCompleted> consumer) {
     onToolCallCompleted = onToolCallCompleted.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onToolCallProgressed(Consumer<TurnEvent.ToolCallProgressed> consumer) {
+  public TurnObserverConfig onToolCallProgressed(Consumer<TurnEvent.ToolCallProgressed> consumer) {
     onToolCallProgressed = onToolCallProgressed.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onToolCallParked(Consumer<TurnEvent.ToolCallParked> consumer) {
+  public TurnObserverConfig onToolCallParked(Consumer<TurnEvent.ToolCallParked> consumer) {
     onToolCallParked = onToolCallParked.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onAssistantSaid(Consumer<TurnEvent.AssistantSaid> consumer) {
+  public TurnObserverConfig onAssistantSaid(Consumer<TurnEvent.AssistantSaid> consumer) {
     onAssistantSaid = onAssistantSaid.andThen(require(consumer));
     return this;
   }
 
-  public TurnObserverBuilder onTurnEnded(Consumer<TurnEvent.TurnEnded> consumer) {
+  public TurnObserverConfig onTurnEnded(Consumer<TurnEvent.TurnEnded> consumer) {
     onTurnEnded = onTurnEnded.andThen(require(consumer));
     return this;
   }
 
-  /** The assembled observer; the builder may keep being used and rebuilt without affecting it. */
-  public TurnObserver build() {
+  /**
+   * Turns this config into the {@link TurnObserver} it describes — the factory's own step, never a
+   * public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
+   * TurnObserver#observe(TurnObserverCustomizer)}, once {@code customize} has returned. This config
+   * may keep being used and rebuilt afterward without affecting an already-built observer.
+   */
+  TurnObserver build() {
     Consumer<TurnEvent.TextDelta> text = onTextDelta;
     Consumer<TurnEvent.ThinkingDelta> thinking = onThinkingDelta;
     Consumer<TurnEvent.RedactedThinking> redacted = onRedactedThinking;

@@ -121,11 +121,14 @@ final class NewsroomAgents {
                             NotebookTools.forget(persistence.notebook(), subjectResolver),
                             UsagePolicy.allow()))
                     .memory(
-                        Memory.pipeline(persistence.transcript())
-                            .transform(PlanTools.transformer(persistence.planStore()))
-                            .transform(
-                                NotebookTools.transformer(persistence.notebook(), subjectResolver))
-                            .build())
+                        Memory.pipeline(
+                            persistence.transcript(),
+                            config ->
+                                config
+                                    .transform(PlanTools.transformer(persistence.planStore()))
+                                    .transform(
+                                        NotebookTools.transformer(
+                                            persistence.notebook(), subjectResolver))))
                     .subagent(
                         sub ->
                             sub.name("researcher")
@@ -139,11 +142,12 @@ final class NewsroomAgents {
                                         new AskQuestionTool(pendingAnswers),
                                         UsagePolicy.requireApproval()))
                                 .memory(
-                                    Memory.pipeline(persistence.transcript())
-                                        .transform(
-                                            NotebookTools.transformer(
-                                                persistence.notebook(), subjectResolver))
-                                        .build())));
+                                    Memory.pipeline(
+                                        persistence.transcript(),
+                                        config ->
+                                            config.transform(
+                                                NotebookTools.transformer(
+                                                    persistence.notebook(), subjectResolver))))));
 
     return new Built(
         writer, writer.subagent("researcher"), persistence.planStore(), pendingAnswers);

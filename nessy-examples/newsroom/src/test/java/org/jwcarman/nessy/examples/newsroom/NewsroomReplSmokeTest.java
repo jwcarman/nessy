@@ -135,10 +135,13 @@ class NewsroomReplSmokeTest {
                         ToolGrant.grant(
                             NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
                     .memory(
-                        Memory.pipeline(transcript)
-                            .transform(PlanTools.transformer(planStore))
-                            .transform(NotebookTools.transformer(notebook, subjectResolver))
-                            .build())
+                        Memory.pipeline(
+                            transcript,
+                            config ->
+                                config
+                                    .transform(PlanTools.transformer(planStore))
+                                    .transform(
+                                        NotebookTools.transformer(notebook, subjectResolver))))
                     .subagent(
                         sub ->
                             sub.name("researcher")
@@ -150,10 +153,12 @@ class NewsroomReplSmokeTest {
                                         new AskQuestionTool(pendingAnswers),
                                         UsagePolicy.requireApproval()))
                                 .memory(
-                                    Memory.pipeline(transcript)
-                                        .transform(
-                                            NotebookTools.transformer(notebook, subjectResolver))
-                                        .build())));
+                                    Memory.pipeline(
+                                        transcript,
+                                        config ->
+                                            config.transform(
+                                                NotebookTools.transformer(
+                                                    notebook, subjectResolver))))));
 
     NewsroomAgents.Built built =
         new NewsroomAgents.Built(writer, writer.subagent("researcher"), planStore, pendingAnswers);

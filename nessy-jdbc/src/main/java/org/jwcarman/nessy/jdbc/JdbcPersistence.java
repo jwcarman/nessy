@@ -98,6 +98,6 @@ public record JdbcPersistence(
 
   /** The durable {@link Memory}: verbatim retention over this pair's own {@link #transcript()}. */
   public Memory memory() {
-    return Memory.pipeline(transcript).build();
+    return Memory.pipeline(transcript);
   }
 }

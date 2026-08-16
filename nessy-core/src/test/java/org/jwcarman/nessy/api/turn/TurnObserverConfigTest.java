@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
-class TurnObserverBuilderTest {
+class TurnObserverConfigTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
@@ -56,18 +56,21 @@ class TurnObserverBuilderTest {
   void every_registered_consumer_hears_exactly_its_own_variant() {
     List<String> heard = new ArrayList<>();
     TurnObserver observer =
-        TurnObserver.builder()
-            .onTextDelta(delta -> heard.add("text:" + delta.text()))
-            .onThinkingDelta(delta -> heard.add("thinking:" + delta.text()))
-            .onRedactedThinking(redacted -> heard.add("redacted:" + redacted.data()))
-            .onToolCallRequested(requested -> heard.add("requested:" + requested.call().name()))
-            .onToolCallDecided(decided -> heard.add("decided:" + decided.call().name()))
-            .onToolCallCompleted(completed -> heard.add("completed:" + completed.call().name()))
-            .onToolCallProgressed(progressed -> heard.add("progressed:" + progressed.message()))
-            .onToolCallParked(parked -> heard.add("parked:" + parked.token().value()))
-            .onAssistantSaid(said -> heard.add("said:" + said.message().content().size()))
-            .onTurnEnded(ended -> heard.add("ended:" + ended.status()))
-            .build();
+        TurnObserver.observe(
+            o ->
+                o.onTextDelta(delta -> heard.add("text:" + delta.text()))
+                    .onThinkingDelta(delta -> heard.add("thinking:" + delta.text()))
+                    .onRedactedThinking(redacted -> heard.add("redacted:" + redacted.data()))
+                    .onToolCallRequested(
+                        requested -> heard.add("requested:" + requested.call().name()))
+                    .onToolCallDecided(decided -> heard.add("decided:" + decided.call().name()))
+                    .onToolCallCompleted(
+                        completed -> heard.add("completed:" + completed.call().name()))
+                    .onToolCallProgressed(
+                        progressed -> heard.add("progressed:" + progressed.message()))
+                    .onToolCallParked(parked -> heard.add("parked:" + parked.token().value()))
+                    .onAssistantSaid(said -> heard.add("said:" + said.message().content().size()))
+                    .onTurnEnded(ended -> heard.add("ended:" + ended.status())));
 
     oneOfEveryVariant().forEach(observer::on);
 
@@ -89,7 +92,7 @@ class TurnObserverBuilderTest {
   void unregistered_variants_stay_silent() {
     List<String> heard = new ArrayList<>();
     TurnObserver textOnly =
-        TurnObserver.builder().onTextDelta(delta -> heard.add(delta.text())).build();
+        TurnObserver.observe(o -> o.onTextDelta(delta -> heard.add(delta.text())));
 
     oneOfEveryVariant().forEach(textOnly::on);
 
@@ -100,10 +103,10 @@ class TurnObserverBuilderTest {
   void registering_a_variant_twice_chains_in_registration_order() {
     List<String> heard = new ArrayList<>();
     TurnObserver observer =
-        TurnObserver.builder()
-            .onTextDelta(delta -> heard.add("first:" + delta.text()))
-            .onTextDelta(delta -> heard.add("second:" + delta.text()))
-            .build();
+        TurnObserver.observe(
+            o ->
+                o.onTextDelta(delta -> heard.add("first:" + delta.text()))
+                    .onTextDelta(delta -> heard.add("second:" + delta.text())));
 
     observer.on(new TurnEvent.TextDelta("prose"));
 
@@ -113,10 +116,10 @@ class TurnObserverBuilderTest {
   @Test
   void an_observer_already_built_is_unaffected_by_later_registrations() {
     List<String> heard = new ArrayList<>();
-    TurnObserverBuilder builder =
-        TurnObserver.builder().onTextDelta(delta -> heard.add("early:" + delta.text()));
-    TurnObserver early = builder.build();
-    builder.onTextDelta(delta -> heard.add("late:" + delta.text()));
+    TurnObserverConfig config = new TurnObserverConfig();
+    config.onTextDelta(delta -> heard.add("early:" + delta.text()));
+    TurnObserver early = config.build();
+    config.onTextDelta(delta -> heard.add("late:" + delta.text()));
 
     early.on(new TurnEvent.TextDelta("prose"));
 
@@ -125,14 +128,14 @@ class TurnObserverBuilderTest {
 
   @Test
   void a_null_consumer_is_rejected() {
-    TurnObserverBuilder builder = TurnObserver.builder();
+    TurnObserverConfig config = new TurnObserverConfig();
 
-    assertThatThrownBy(() -> builder.onTextDelta(null)).isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> config.onTextDelta(null)).isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_builder_with_nothing_registered_builds_the_absent_audience() {
-    TurnObserver indifferent = TurnObserver.builder().build();
+    TurnObserver indifferent = TurnObserver.observe(o -> {});
 
     oneOfEveryVariant().forEach(indifferent::on);
 

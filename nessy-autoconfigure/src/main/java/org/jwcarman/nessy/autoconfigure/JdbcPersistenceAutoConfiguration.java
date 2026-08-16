@@ -173,7 +173,7 @@ public class JdbcPersistenceAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   Memory memory(Transcript transcript) {
-    return Memory.pipeline(transcript).build();
+    return Memory.pipeline(transcript);
   }
 
   /**

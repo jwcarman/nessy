@@ -123,9 +123,11 @@ class NewsroomGatedDelegationProofTest {
                     .model("test-model")
                     .approver(Approver.parkAll())
                     .memory(
-                        Memory.pipeline(transcript)
-                            .transform(NotebookTools.transformer(notebook, subjectResolver))
-                            .build())
+                        Memory.pipeline(
+                            transcript,
+                            config ->
+                                config.transform(
+                                    NotebookTools.transformer(notebook, subjectResolver))))
                     .subagent(
                         sub ->
                             sub.name("researcher")
@@ -138,10 +140,12 @@ class NewsroomGatedDelegationProofTest {
                                         new AskQuestionTool(pendingAnswers),
                                         UsagePolicy.requireApproval()))
                                 .memory(
-                                    Memory.pipeline(transcript)
-                                        .transform(
-                                            NotebookTools.transformer(notebook, subjectResolver))
-                                        .build())));
+                                    Memory.pipeline(
+                                        transcript,
+                                        config ->
+                                            config.transform(
+                                                NotebookTools.transformer(
+                                                    notebook, subjectResolver))))));
     Subagent researcher = writer.subagent("researcher");
 
     RunOutcome delegationParked = writer.converse().tell("write about octopuses");

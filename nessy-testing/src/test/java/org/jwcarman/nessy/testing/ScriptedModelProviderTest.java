@@ -56,8 +56,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void replays_a_single_text_turn() {
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
 
     List<ModelEvent> events = drain(provider.stream(request()));
 
@@ -71,12 +70,8 @@ class ScriptedModelProviderTest {
   void replays_turns_in_order() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUse("c1", "read_file", args)
-            .endWithToolUse()
-            .text("Done")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(
+            s -> s.toolUse("c1", "read_file", args).endWithToolUse().text("Done").endTurn());
 
     assertThat(drain(provider.stream(request()))).hasSize(2);
     assertThat(drain(provider.stream(request())))
@@ -87,8 +82,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void records_every_request_it_received() {
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
 
     provider.stream(request()).close();
 
@@ -98,8 +92,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void iterating_the_same_stream_twice_is_a_loud_failure() {
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
 
     try (ModelStream stream = provider.stream(request())) {
       stream.iterator();
@@ -112,7 +105,7 @@ class ScriptedModelProviderTest {
   @Test
   void requests_is_a_snapshot_rather_than_a_live_view() {
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn().text("Again").endTurn().build();
+        ScriptedModelProvider.script(s -> s.text("Hello").endTurn().text("Again").endTurn());
     provider.stream(request()).close();
     List<ModelRequest> snapshot = provider.requests();
 
@@ -124,8 +117,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void running_out_of_script_is_a_loud_failure() {
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
     provider.stream(request()).close();
     ModelRequest exhaustedRequest = request();
 
@@ -136,9 +128,7 @@ class ScriptedModelProviderTest {
 
   @Test
   void building_with_an_unended_turn_is_a_loud_failure() {
-    ScriptedModelProvider.Builder builder = ScriptedModelProvider.builder().text("Hello");
-
-    assertThatThrownBy(builder::build)
+    assertThatThrownBy(() -> ScriptedModelProvider.script(s -> s.text("Hello")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("last turn was never ended");
   }
@@ -147,13 +137,13 @@ class ScriptedModelProviderTest {
   void replays_thinking_and_tool_use_events_in_a_single_turn() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .thinking("pondering")
-            .thinkingSigned("sig-123")
-            .redactedThinking("opaque-data")
-            .toolUse("c1", "read_file", args)
-            .endWithToolUse()
-            .build();
+        ScriptedModelProvider.script(
+            s ->
+                s.thinking("pondering")
+                    .thinkingSigned("sig-123")
+                    .redactedThinking("opaque-data")
+                    .toolUse("c1", "read_file", args)
+                    .endWithToolUse());
 
     assertThat(drain(provider.stream(request())))
         .containsExactly(
@@ -168,10 +158,8 @@ class ScriptedModelProviderTest {
   void replays_a_signed_tool_use_event() {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUseSigned("c1", "read_file", args, "sig-123")
-            .endWithToolUse()
-            .build();
+        ScriptedModelProvider.script(
+            s -> s.toolUseSigned("c1", "read_file", args, "sig-123").endWithToolUse());
 
     assertThat(drain(provider.stream(request())))
         .containsExactly(
@@ -183,7 +171,7 @@ class ScriptedModelProviderTest {
   void end_turn_with_explicit_usage_is_recorded_on_the_turn_ended_event() {
     Usage usage = new Usage(12, 34, 0);
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn(usage).build();
+        ScriptedModelProvider.script(s -> s.text("Hello").endTurn(usage));
 
     assertThat(drain(provider.stream(request())))
         .containsExactly(
@@ -193,16 +181,14 @@ class ScriptedModelProviderTest {
 
   @Test
   void capabilities_are_empty() {
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
 
     assertThat(provider.capabilities()).isEmpty();
   }
 
   @Test
   void reports_scripted_as_its_name() {
-    ScriptedModelProvider provider =
-        ScriptedModelProvider.builder().text("Hello").endTurn().build();
+    ScriptedModelProvider provider = ScriptedModelProvider.script(s -> s.text("Hello").endTurn());
 
     assertThat(provider.name()).isEqualTo("Scripted");
   }

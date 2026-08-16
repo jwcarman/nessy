@@ -139,12 +139,13 @@ class NessyAutoConfigurationTest {
   void a_subagent_links_bean_is_woven_in() {
     var probe = new ProbeSubagentLinks();
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUse("d1", "researcher", JsonNodeFactory.instance.objectNode().put("task", "go"))
-            .endWithToolUse()
-            .toolUse("ask-1", "ask_question", JsonNodeFactory.instance.objectNode())
-            .endWithToolUse()
-            .build();
+        ScriptedModelProvider.script(
+            s ->
+                s.toolUse(
+                        "d1", "researcher", JsonNodeFactory.instance.objectNode().put("task", "go"))
+                    .endWithToolUse()
+                    .toolUse("ask-1", "ask_question", JsonNodeFactory.instance.objectNode())
+                    .endWithToolUse());
     ParkingApprover approver = new ParkingApprover();
     runner
         .withBean("provider", ModelProvider.class, () -> provider)
@@ -212,8 +213,7 @@ class NessyAutoConfigurationTest {
   @Test
   void a_user_declared_harness_wins() {
     Harness mine =
-        Nessy.harness(
-            h -> h.provider(ScriptedModelProvider.builder().text("hi").endTurn().build()));
+        Nessy.harness(h -> h.provider(ScriptedModelProvider.script(s -> s.text("hi").endTurn())));
     runner
         .withBean("mine", Harness.class, () -> mine)
         .run(context -> assertThat(context.getBean(Harness.class)).isSameAs(mine));
