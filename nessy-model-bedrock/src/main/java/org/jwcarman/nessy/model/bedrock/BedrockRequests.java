@@ -37,7 +37,6 @@ import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamReques
 import software.amazon.awssdk.services.bedrockruntime.model.InferenceConfiguration;
 import software.amazon.awssdk.services.bedrockruntime.model.SystemContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.Tool;
-import software.amazon.awssdk.services.bedrockruntime.model.ToolConfiguration;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolInputSchema;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolResultContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolResultStatus;
@@ -82,8 +81,7 @@ public final class BedrockRequests {
     var builder =
         ConverseStreamRequest.builder()
             .modelId(request.model())
-            .inferenceConfig(
-                InferenceConfiguration.builder().maxTokens(request.maxTokens()).build());
+            .inferenceConfig(b -> b.maxTokens(request.maxTokens()));
 
     if (!request.systemPrompt().isBlank()) {
       builder.system(SystemContentBlock.fromText(request.systemPrompt()));
@@ -97,9 +95,7 @@ public final class BedrockRequests {
 
     if (!request.tools().isEmpty()) {
       builder.toolConfig(
-          ToolConfiguration.builder()
-              .tools(request.tools().stream().map(BedrockRequests::toTool).toList())
-              .build());
+          b -> b.tools(request.tools().stream().map(BedrockRequests::toTool).toList()));
     }
 
     return builder.build();
@@ -177,9 +173,9 @@ public final class BedrockRequests {
                       .content(ToolResultContentBlock.fromText(content))
                       .status(isError ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS)
                       .build()));
-      case ThinkingBlock ignored -> Optional.empty();
-      case RedactedThinkingBlock ignored -> Optional.empty();
-      case ImageBlock ignored ->
+      case ThinkingBlock _ -> Optional.empty();
+      case RedactedThinkingBlock _ -> Optional.empty();
+      case ImageBlock _ ->
           throw new IllegalArgumentException("unsupported content block: " + block);
     };
   }

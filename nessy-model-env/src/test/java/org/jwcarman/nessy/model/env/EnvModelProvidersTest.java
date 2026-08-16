@@ -483,7 +483,7 @@ class EnvModelProvidersTest {
         // ambiguity WARN), not whether the subsequent SDK build succeeded.
         try {
           EnvModelProviders.fromEnv(env);
-        } catch (IllegalStateException ignored) {
+        } catch (IllegalStateException _) {
           // Expected on a machine with no AWS_REGION/AWS_DEFAULT_REGION set; irrelevant here.
         }
         assertThat(appender.list).isEmpty();
