@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.spi.subagent;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayDeque;
@@ -27,7 +26,11 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Nessy;
+import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.StopReason;
+import org.jwcarman.nessy.api.ToolResolution;
+import org.jwcarman.nessy.api.UnknownParkTokenException;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -84,15 +87,6 @@ class CallbackRouterTest {
   class Registering {
 
     @Test
-    void a_registered_agent_routes_back_by_its_own_name() {
-      Agent<String> agent = agentNamed("keeper");
-
-      router.register(agent);
-
-      assertThat(router.route("keeper")).isSameAs(agent);
-    }
-
-    @Test
     void registering_a_second_agent_under_a_name_already_taken_throws() {
       Agent<String> first = agentNamed("keeper");
       Agent<String> second = agentNamed("keeper");
@@ -105,11 +99,27 @@ class CallbackRouterTest {
   }
 
   @Nested
-  class Routing {
+  class Resuming {
 
     @Test
-    void routing_a_name_no_agent_was_ever_registered_under_throws_naming_it() {
-      assertThatThrownBy(() -> router.route("nobody"))
+    void resuming_a_registered_agent_delegates_to_its_own_resume_door() {
+      Agent<String> agent = agentNamed("keeper");
+      router.register(agent);
+      ParkToken unknownToken = ParkToken.generate();
+
+      assertThatThrownBy(
+              () ->
+                  router.resume(
+                      "keeper", unknownToken, new ToolResolution.Decided(Decision.allow())))
+          .isInstanceOf(UnknownParkTokenException.class);
+    }
+
+    @Test
+    void resuming_a_name_no_agent_was_ever_registered_under_throws_naming_it() {
+      ParkToken token = ParkToken.generate();
+
+      assertThatThrownBy(
+              () -> router.resume("nobody", token, new ToolResolution.Decided(Decision.allow())))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("nobody");
     }

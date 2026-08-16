@@ -28,24 +28,26 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
  */
 final class InMemorySubagentLinks implements SubagentLinks {
 
+  private static final String CHILD_NOT_NULL = "child must not be null";
+
   private final Map<ConversationId, ParkToken> links = new ConcurrentHashMap<>();
 
   @Override
   public Optional<ParkToken> find(ConversationId child) {
-    Objects.requireNonNull(child, "child must not be null");
+    Objects.requireNonNull(child, CHILD_NOT_NULL);
     return Optional.ofNullable(links.get(child));
   }
 
   @Override
   public void save(ConversationId child, ParkToken parentToken) {
-    Objects.requireNonNull(child, "child must not be null");
+    Objects.requireNonNull(child, CHILD_NOT_NULL);
     Objects.requireNonNull(parentToken, "parentToken must not be null");
     links.put(child, parentToken);
   }
 
   @Override
   public void forget(ConversationId child) {
-    Objects.requireNonNull(child, "child must not be null");
+    Objects.requireNonNull(child, CHILD_NOT_NULL);
     links.remove(child);
   }
 }

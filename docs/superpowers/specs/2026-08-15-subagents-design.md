@@ -100,6 +100,10 @@ At-least-once discipline: the listener may fire more than once for one completio
 on an already-resolved token is the doors' existing no-op/`WrongAgentException` surface —
 document, don't invent.
 
+**Post-merge sweep amendment (2026-08-16, S1452):** `CallbackRouter`'s public surface settled
+as `register(Agent)` plus `resume(agentName, token, resolution)` — the wildcard-returning
+`route(name): Agent<?>` never ships, since no caller needed anything from it beyond resuming.
+
 ## 5. SubagentLinks (spi.subagent)
 
 ```java

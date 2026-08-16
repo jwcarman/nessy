@@ -177,9 +177,10 @@ class NewsroomReplSmokeTest {
     repl.run();
 
     String transcriptText = output.toString();
-    assertThat(transcriptText).contains("which octopus fact do you want?");
-    assertThat(transcriptText).contains("story filed: octopuses have three hearts");
-    assertThat(transcriptText).contains("goodbye.");
+    assertThat(transcriptText)
+        .contains("which octopus fact do you want?")
+        .contains("story filed: octopuses have three hearts")
+        .contains("goodbye.");
     assertThat(writer.snapshot(NewsroomAgents.WRITER_CONVERSATION_ID).status())
         .isEqualTo(ConversationStatus.COMPLETE);
     assertThat(

@@ -74,8 +74,9 @@ router.register(researcher);
 ```
 
 `CallbackRouter` is a small name-keyed registry — `register(Agent)` and
-`route(name)` — so the completions listener can find the live agent
-instance a child's settlement should resume. Register a listener
+`resume(name, token, resolution)` — so the completions listener can resume
+the live agent instance a child's settlement is meant for without ever
+handing back the wildcard-typed `Agent<?>` itself. Register a listener
 synchronously (`listen`, never `listenAsync`): a subagent's settlement is
 exactly the kind of fact an at-least-once transport must be able to retry,
 and a swallowed failure here would leave the parent parked forever with
@@ -125,10 +126,10 @@ fact. The `completions` listener looks up the parent token in
 `SubagentLinks`, reads the routing name off the parent's own park stamp
 (`Parks.Park#agentName()` — never off `SubagentLinks`, so there is exactly
 one place that name can go stale), and resumes the parent through
-`router.route(name)`. The link is forgotten only after that resume returns
-without throwing, so a resume that fails (an unknown token, a
-`WrongAgentException`) leaves the link in place for whatever redelivery
-follows.
+`router.resume(name, token, resolution)`. The link is forgotten only after
+that resume returns without throwing, so a resume that fails (an unknown
+token, a `WrongAgentException`) leaves the link in place for whatever
+redelivery follows.
 
 Two narrow windows exist around that link, both tiny and both honestly
 undefended rather than silently assumed away:
