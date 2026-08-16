@@ -70,13 +70,13 @@ can say.
   is rendered once per evaluated call and flows to the policy, the approver, and the
   audit record.
 
-## 3. AuthorizationContext — non-generic, immutable, a typed-key bag over core facts
+## 3. AuthzContext — non-generic, immutable, a typed-key bag over core facts
 
 One concrete context type across the entire system — deliberately NOT generic, so
 enrichers written against it compose into any grant:
 
 ```java
-public interface AuthorizationContext {
+public interface AuthzContext {
   ConversationId conversationId();
   String agentName();
   ToolCall call();                    // the raw call: tool name + parsed arguments
@@ -88,7 +88,7 @@ public interface AuthorizationContext {
   <T> Optional<T> declaredIntent(Class<T> type);
 
   <T> Optional<T> get(Key<T> key);    // anything enrichers deposited
-  <T> AuthorizationContext with(Key<T> key, T value);  // functional extension
+  <T> AuthzContext with(Key<T> key, T value);  // functional extension
 }
 ```
 
@@ -112,7 +112,7 @@ answer.)
 ```java
 @FunctionalInterface
 public interface Enricher<E> {
-  AuthorizationContext enrich(AuthorizationContext context, E effect);
+  AuthzContext enrich(AuthzContext context, E effect);
 }
 ```
 
@@ -133,7 +133,7 @@ public interface Enricher<E> {
 
 ## 5. UsagePolicy<E> — generics, variance, unchanged soul
 
-- `UsagePolicy<E>` with `PolicyDecision evaluate(AuthorizationContext context, E effect)`;
+- `UsagePolicy<E>` with `PolicyDecision evaluate(AuthzContext context, E effect)`;
   pure, any-thread, fail-closed — the existing contract, better fed.
 - `allow()` and `deny(reason)` are canonical `UsagePolicy<Object>` singletons (the
   emptyList pattern); every accepting site takes `UsagePolicy<? super E>`, so they

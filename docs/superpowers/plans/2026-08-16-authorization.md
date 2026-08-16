@@ -10,7 +10,7 @@ law guaranteeing rung-0 grants pay nothing and feel nothing.
 
 **Architecture:** Four fronts, strictly ordered. (1) The effect: `describe`→`effect`
 rename with `Object` return + the `EffectfulTool<I, E>` tier. (2) The heart:
-non-generic `AuthorizationContext`, `UsagePolicy<E>` with variance + canonical
+non-generic `AuthzContext`, `UsagePolicy<E>` with variance + canonical
 singletons + identity-skip, `Enricher<E>` ordered per grant, fail-closed staging in
 the executor's chokepoint, approver parity. (3) The substrate feeders: agent-level
 principal resolver + the `spi.intent` bolt-on. (4) The report + a living example +
@@ -62,7 +62,7 @@ compiler finds them); approval-prompt rendering sites switch to
 ### Task 2: The heart — context, policy, enrichers, chokepoint (HIGH RISK)
 
 **Files:** new `api/tool/authorization/` (or beside UsagePolicy — follow zone
-conventions): `AuthorizationContext.java` (interface + package-private impl),
+conventions): `AuthzContext.java` (interface + package-private impl),
 `Key.java`, `Enricher.java`; reshape `UsagePolicy.java` (generic `<E>`, two-arg
 evaluate, canonical `UsagePolicy<Object>` singletons, `of(...)` rung-1 factory);
 `ToolGrant.java` (ordered enrichers + typed overloads welding E);
@@ -73,7 +73,7 @@ smallest honest evolution of the current seam); migrate every in-repo policy usa
 
 **Interfaces (Produces):** exactly spec §3/§4/§5's signatures — including
 `Enricher<? super E>` and `UsagePolicy<? super E>` acceptance everywhere, and
-`AuthorizationContext.with(Key<T>, T)` functional extension.
+`AuthzContext.with(Key<T>, T)` functional extension.
 
 **Steps:**
 - [ ] Failing tests first, then the reshape: the ladder-law spy proof (rung 0);
