@@ -117,7 +117,7 @@ void forget(ConversationId child);
 
 ## `nessy-jdbc`: one code path, five dialects
 
-`nessy-jdbc` implements this whole quintet over a plain `javax.sql.DataSource`.
+`nessy-jdbc` implements all seven stores over a plain `javax.sql.DataSource`.
 `JdbcDialect.resolve(DatabaseMetaData)` reads `getDatabaseProductName()` once, at the
 connection each store already borrows to bootstrap its schema, and normalizes it to one
 of `POSTGRES`, `MYSQL`, `MARIADB`, `SQLSERVER`, `ORACLE` — a small, enumerable
