@@ -19,7 +19,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -28,8 +30,17 @@ import org.jwcarman.nessy.api.ConversationSettled;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.conversation.SubjectId;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Context;
+import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.Role;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
+import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -49,12 +60,42 @@ import org.slf4j.LoggerFactory;
  * {@code true}. {@code PARKED} is never published as a {@link ConversationSettled} in the first
  * place (see that record's javadoc), so this consumer never sees one.
  *
+ * <p><b>The side call renders to plain text, not raw messages:</b> the settled transcript's {@link
+ * Message}s are never replayed verbatim into the critic's {@link ModelRequest} — that request
+ * declares no tools, and a transcript carrying a {@link ToolUseBlock}/{@link ToolResultBlock} pair
+ * (or a signed {@link ThinkingBlock}) is illegal history for a tools-less call on at least one
+ * major provider (Anthropic 400s it), which would silently kill reflection for exactly the
+ * tool-using-and-failed case this feature exists for. Instead {@link #renderTranscript} folds the
+ * whole transcript into one role-labeled prose block — a tool call and its result collapse to one
+ * line, thinking is omitted — sent as a single user message: the critic wants something to
+ * critique, not a resumable conversation.
+ *
+ * <p><b>Runs inside the settling drive:</b> this consumer is registered as a synchronous listener
+ * ({@link org.jwcarman.nessy.HarnessConfig#listen}), so a {@code FAILED} {@code tell} does not
+ * return to its caller until the critic's model call (and the notebook writes it triggers) has
+ * finished — reflection's token spend and latency are on the critical path of the conversation that
+ * triggered it. An app that cannot afford that latency wires the critic through {@link
+ * org.jwcarman.nessy.HarnessConfig#listenAsync(Class, Consumer)} instead, at a cost: the critique
+ * then runs on its own virtual thread, off the drive that returned, and a short-lived process (a
+ * CLI invocation, a Lambda) can exit before that thread finishes — no lesson lands at all,
+ * silently, which a purely synchronous critic never risks. A transcript long enough to exceed the
+ * critic model's own context window is not truncated here; the provider's own error surfaces as any
+ * other model-call failure this critic catches — logged at {@code WARN}, no lesson written.
+ *
  * <p><b>Never throws:</b> every failure this critic can suffer on its own account — a resolver that
  * throws, a model call that errors, a response that fails to parse, a notebook write that conflicts
  * — is caught in {@link #accept}, logged at {@code WARN} naming the conversation, and dropped. The
  * settling drive this listener rides on must never see an exception out of reflection (design of
  * record §3: "a conversation failed over its own homework is worse" than a lost lesson) — the
  * opposite of the completions listener's throw-for-retry, deliberately.
+ *
+ * <p><b>{@code "reflection"} and the {@code lesson:} prefix are conventions, not enforced
+ * boundaries:</b> {@code NotebookTools}' authorship gate matches on the identity string alone
+ * (design of record 2026-08-16 §2, the grant principle) — an app that wires an ordinary agent's
+ * {@code NotebookTools} with the identity {@code "reflection"} gains the very same mutate rights
+ * over every lesson this critic writes as the critic itself. Nothing here reserves that identity or
+ * the {@code lesson:} name prefix; keeping them out of an app's own agent wiring is a convention
+ * this feature relies on, not one it guards against.
  */
 final class ReflectionCritic implements Consumer<ConversationSettled> {
 
@@ -117,17 +158,25 @@ final class ReflectionCritic implements Consumer<ConversationSettled> {
     }
   }
 
-  /** The one side model call: the settled transcript plus its outcome in, raw text out. */
+  /**
+   * The one side model call: the settled transcript, rendered to plain text, plus its outcome, sent
+   * as a single {@code USER} message — never the raw {@link Message} list (see this class's own
+   * javadoc for why). No tools are declared on this request; the critic reviews, it doesn't act.
+   */
   private String critique(ConversationId id, ConversationSettled settled) {
     List<Message> transcriptMessages =
         TranscriptTrim.withoutOpenTail(
             transcript.all(id).stream().map(Transcript.Entry::message).toList());
-    List<Message> messages = new ArrayList<>(transcriptMessages.size() + 1);
-    messages.addAll(transcriptMessages);
-    messages.add(Message.user(outcomeLine(settled)));
+    String userMessage = renderTranscript(transcriptMessages) + outcomeLine(settled);
     ModelRequest request =
         new ModelRequest(
-            Context.of(messages), prompt, model, MAX_TOKENS, List.of(), Set.of(), null);
+            Context.of(List.of(Message.user(userMessage))),
+            prompt,
+            model,
+            MAX_TOKENS,
+            List.of(),
+            Set.of(),
+            null);
     StringBuilder text = new StringBuilder();
     try (ModelStream stream = provider.stream(request)) {
       for (ModelEvent event : stream) {
@@ -139,10 +188,77 @@ final class ReflectionCritic implements Consumer<ConversationSettled> {
     return text.toString();
   }
 
+  /**
+   * Folds {@code messages} into role-labeled prose, one line per block: a {@link TextBlock} becomes
+   * {@code "User: ..."} or {@code "Assistant: ..."}; a {@link ToolUseBlock} becomes {@code
+   * "Assistant: called <name>(<arguments>) → <result>"}, its matching {@link ToolResultBlock}
+   * (found by {@link ToolCall#id()}, wherever in the transcript it landed) folded into the same
+   * line rather than rendered as its own turn; {@link ThinkingBlock}, {@link
+   * RedactedThinkingBlock}, and {@link ImageBlock} carry nothing a text critique can use and are
+   * silently omitted. The critic wants a conversation to critique, not a resumable one.
+   */
+  static String renderTranscript(List<Message> messages) {
+    Map<String, ToolResultBlock> resultsByCallId = new LinkedHashMap<>();
+    for (Message message : messages) {
+      for (ContentBlock block : message.content()) {
+        if (block instanceof ToolResultBlock result) {
+          resultsByCallId.put(result.toolUseId(), result);
+        }
+      }
+    }
+    StringBuilder rendered = new StringBuilder();
+    for (Message message : messages) {
+      String role = message.role() == Role.USER ? "User" : "Assistant";
+      for (ContentBlock block : message.content()) {
+        switch (block) {
+          case TextBlock(String text) -> {
+            if (!text.isBlank()) {
+              rendered.append(role).append(": ").append(text).append('\n');
+            }
+          }
+          case ToolUseBlock toolUse ->
+              rendered
+                  .append(role)
+                  .append(": ")
+                  .append(renderToolUse(toolUse, resultsByCallId))
+                  .append('\n');
+          case ToolResultBlock ignored -> {
+            // Folded into its call's line above, not rendered as its own turn.
+          }
+          case ThinkingBlock ignored -> {
+            // The model's visible reasoning carries nothing a text critique needs.
+          }
+          case RedactedThinkingBlock ignored -> {
+            // Opaque to everyone but the provider that issued it.
+          }
+          case ImageBlock ignored -> {
+            // No textual content to fold into a prose critique.
+          }
+        }
+      }
+    }
+    return rendered.toString();
+  }
+
+  private static String renderToolUse(
+      ToolUseBlock toolUse, Map<String, ToolResultBlock> resultsByCallId) {
+    ToolCall call = toolUse.call();
+    ToolResultBlock result = resultsByCallId.get(call.id());
+    String outcome =
+        result == null
+            ? "(no result recorded)"
+            : (result.isError() ? "error: " : "") + result.content();
+    return "called " + call.name() + "(" + call.arguments() + ") → " + outcome;
+  }
+
   private static String outcomeLine(ConversationSettled settled) {
-    return settled.status() == ConversationStatus.FAILED
-        ? "This conversation FAILED. Reason: " + settled.failureReason()
-        : "This conversation COMPLETED successfully.";
+    if (settled.status() != ConversationStatus.FAILED) {
+      return "This conversation COMPLETED successfully.";
+    }
+    String reason = settled.failureReason();
+    return reason == null
+        ? "This conversation FAILED."
+        : "This conversation FAILED. Reason: " + reason;
   }
 
   /**

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.notebook;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
@@ -567,6 +568,48 @@ class NotebookToolsTest {
       Context transformed = transformer.transform(conversationId, original);
 
       assertThat(transformed).isNotSameAs(original);
+    }
+  }
+
+  @Nested
+  class Identity_validation {
+
+    private final Notebook notebook = Notebook.inMemory();
+
+    @Test
+    void remember_rejects_a_blank_identity() {
+      assertThatThrownBy(() -> NotebookTools.remember(notebook, "   ", id -> new SubjectId("s")))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void recall_rejects_a_blank_identity() {
+      assertThatThrownBy(() -> NotebookTools.recall(notebook, "   ", id -> new SubjectId("s")))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void forget_rejects_a_blank_identity() {
+      assertThatThrownBy(() -> NotebookTools.forget(notebook, "   ", id -> new SubjectId("s")))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void transformer_rejects_a_blank_identity() {
+      assertThatThrownBy(() -> NotebookTools.transformer(notebook, "   ", id -> new SubjectId("s")))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void the_resolver_less_overload_rejects_a_blank_identity_too() {
+      assertThatThrownBy(() -> NotebookTools.remember(notebook, "   "))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void remember_rejects_a_null_identity() {
+      assertThatThrownBy(() -> NotebookTools.remember(notebook, null, id -> new SubjectId("s")))
+          .isInstanceOf(NullPointerException.class);
     }
   }
 

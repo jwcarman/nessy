@@ -17,7 +17,13 @@ store and no new injection machinery.
 The **generation** half is `spi.reflection`: `Reflection.critic(...)` builds a
 listener for `ConversationSettled` that reviews the settled transcript, calls
 a model to distill it, and saves 0..n entries into the subject's `Notebook`
-with `source = "reflection"`.
+with `source = "reflection"`. The critic's own model call is deliberately not
+a replay of the transcript's raw messages: it renders the whole thing to
+role-labeled plain text first (a tool call and its result fold into one line;
+thinking is omitted) and sends that as a single message, tools undeclared —
+the critic wants prose to critique, not a resumable conversation, and a
+tool-bearing history on a tools-less call is illegal history for at least one
+major provider.
 
 ## The authorship invariant
 
@@ -50,6 +56,11 @@ can tell its own notes from a lesson it was handed.
 `PARKED` conversations never publish a `ConversationSettled` in the first
 place, so the critic never sees one.
 
+Subagent conversations settle too, and each one reflects under the same
+rules as a top-level conversation: a failed child's own critique is its own
+token spend, distinct from — and in addition to — anything a failed parent
+triggers.
+
 !!! warning "Lesson names are deterministic, and last write wins"
     `ConversationSettled` is at-least-once. The critic derives each lesson's
     name from the conversation id (`lesson:<conversation-id>`, then `-2`,
@@ -60,6 +71,37 @@ place, so the critic never sees one.
     does mean a critic that changes its mind between two deliveries of the
     same settlement leaves whichever write lands last, exactly like any other
     notebook `save`.
+
+    This LWW-by-name replacement is honest about the name it overwrites, not
+    about the ones it doesn't: if an earlier delivery's critique produced
+    three lessons (`lesson:<id>`, `-2`, `-3`) and a later delivery for the
+    very same settlement produces only one, the later write replaces
+    `lesson:<id>` but leaves `-2` and `-3` behind as orphans — nothing
+    deletes a name the newer critique simply didn't mention. A critic whose
+    output length varies between deliveries of the same settlement can leave
+    stale extras in the notebook, not just a stale body.
+
+## Runs on the settling drive
+
+`Reflection.critic(...)` is meant to be wired through `HarnessConfig#listen`
+— a synchronous listener — so the critic's model call, and the notebook
+writes it triggers, complete before the `tell` that settled `FAILED`
+returns to its caller. Reflection's latency and token spend are on that
+call's critical path by design: the drive that just failed is the one
+that pays for its own postmortem.
+
+An app that cannot afford that latency can wire the same critic through
+`HarnessConfig#listenAsync` instead: the critique then runs on its own
+virtual thread, off the drive that already returned. That escape hatch
+has its own cost — a short-lived process (a CLI invocation, a Lambda
+handler) can exit before that thread finishes, and the lesson never lands
+at all, with nothing at the call site to say so. A synchronous critic
+never has that failure mode; it trades it for the latency instead.
+
+A transcript long enough to exceed the critic model's own context window
+isn't trimmed or chunked here — the provider's own error surfaces exactly
+like any other model-call failure the critic catches: logged at `WARN`,
+no lesson written for that settlement.
 
 ## Best-effort, on purpose
 

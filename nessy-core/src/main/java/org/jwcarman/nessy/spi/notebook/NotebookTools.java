@@ -51,6 +51,14 @@ import org.jwcarman.nessy.spi.memory.ContextTransformer;
  * critic) left it. The store itself (an {@link InMemoryNotebook} or a {@code JdbcNotebook})
  * enforces none of this — it is dumb CRUD over any {@code source} a trusted caller hands it (the
  * grant principle); only this model-facing layer gates by identity.
+ *
+ * <p>The authorship check is check-then-act, not atomic with the {@link Notebook#save}/{@link
+ * Notebook#forget} it guards: the store beneath it keeps no lock of its own (the grant principle
+ * again — a dumb store, not a coordinating one), so two concurrent mutations racing the same {@code
+ * (subject, name)} under different identities can both pass the check before either writes and then
+ * interleave at the store. The guard is advisory under real concurrency, not a mutual-exclusion
+ * lock; it is honest about who owns a name once the dust settles, not a guarantee that a race never
+ * happens.
  */
 public final class NotebookTools {
 
@@ -63,6 +71,19 @@ public final class NotebookTools {
    */
   private static SubjectId subjectOf(ConversationId id) {
     return new SubjectId(id.value());
+  }
+
+  /**
+   * The one identity check every factory below shares: null and blank are both rejected, matching
+   * {@link Notebook.Entry}'s own blank rejection on {@code source} — an identity too degenerate to
+   * be a meaningful author name is refused at wiring time rather than silently becoming one.
+   */
+  private static String requireIdentity(String identity) {
+    Objects.requireNonNull(identity, "identity must not be null");
+    if (identity.isBlank()) {
+      throw new IllegalArgumentException("identity must not be blank");
+    }
+    return identity;
   }
 
   /**
@@ -79,7 +100,7 @@ public final class NotebookTools {
    */
   public static Tool<RememberNote> remember(
       Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
-    return new RememberNoteTool(notebook, identity, resolver);
+    return new RememberNoteTool(notebook, requireIdentity(identity), resolver);
   }
 
   /** {@link #remember(Notebook, String, Function)} with the zero-configuration resolver. */
@@ -99,7 +120,7 @@ public final class NotebookTools {
    */
   public static Tool<RecallNote> recall(
       Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
-    Objects.requireNonNull(identity, "identity must not be null");
+    requireIdentity(identity);
     return new RecallNoteTool(notebook, resolver);
   }
 
@@ -120,7 +141,7 @@ public final class NotebookTools {
    */
   public static Tool<ForgetNote> forget(
       Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
-    return new ForgetNoteTool(notebook, identity, resolver);
+    return new ForgetNoteTool(notebook, requireIdentity(identity), resolver);
   }
 
   /** {@link #forget(Notebook, String, Function)} with the zero-configuration resolver. */
@@ -142,7 +163,7 @@ public final class NotebookTools {
    */
   public static ContextTransformer transformer(
       Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver) {
-    Objects.requireNonNull(identity, "identity must not be null");
+    requireIdentity(identity);
     return (id, context) -> {
       SubjectId subject = resolver.apply(id);
       List<Notebook.Heading> headings = notebook.headings(subject);

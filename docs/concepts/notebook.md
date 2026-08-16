@@ -30,10 +30,12 @@ general identity vocabulary, opaque to nessy exactly the same way, the app ownin
 meaning of the string it puts in.
 
 The bridge from a conversation to its subject is an app-supplied resolver,
-`Function<ConversationId, SubjectId>`, and every `NotebookTools` factory takes one:
+`Function<ConversationId, SubjectId>`, and every `NotebookTools` factory takes one, alongside the
+caller's own author `identity` (see [Authorship](#authorship) below):
 
 ```java
-public static Tool<RememberNote> remember(Notebook notebook, Function<ConversationId, SubjectId> resolver);
+public static Tool<RememberNote> remember(
+    Notebook notebook, String identity, Function<ConversationId, SubjectId> resolver);
 ```
 
 Every factory also has a resolver-less overload. Its convenience default maps subject to
@@ -98,7 +100,7 @@ writer's notes are protected from any other identity's `remember` or
 
 ## The injected index
 
-`NotebookTools.transformer(notebook, resolver)` is a `ContextTransformer`: it looks up the
+`NotebookTools.transformer(notebook, identity, resolver)` is a `ContextTransformer`: it looks up the
 subject's headings; none, and it returns the context unchanged — the same "if applicable"
 rule the plan facility follows, so a conversation whose subject has never remembered
 anything never sees the block. Otherwise it appends exactly one block via `Context.enrich`,
@@ -145,17 +147,26 @@ Agent<String> agent =
                 .model("claude-sonnet-4-5")
                 .tools(
                     ToolGrant.grant(
-                        NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
+                        NotebookTools.remember(notebook, "assistant", subjectResolver),
+                        UsagePolicy.allow()),
                     ToolGrant.grant(
-                        NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
+                        NotebookTools.recall(notebook, "assistant", subjectResolver),
+                        UsagePolicy.allow()),
                     ToolGrant.grant(
-                        NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
+                        NotebookTools.forget(notebook, "assistant", subjectResolver),
+                        UsagePolicy.allow()))
                 .memory(
                     Memory.pipeline(
                         transcript,
                         config ->
-                            config.transform(NotebookTools.transformer(notebook, subjectResolver)))));
+                            config.transform(
+                                NotebookTools.transformer(
+                                    notebook, "assistant", subjectResolver)))));
 ```
+
+`"assistant"` here is this agent's own author identity — every entry it writes through `remember`
+carries that `source`, and it may only update or delete entries already sourced from it (see
+[Authorship](#authorship)).
 
 The expected posture for all three tools is `allow()`: a self-bookkeeping tool, like the
 plan's `update_plan`, earns no approval friction. If the pipeline also carries the plan
