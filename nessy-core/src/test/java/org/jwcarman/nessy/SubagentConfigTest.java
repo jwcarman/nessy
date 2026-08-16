@@ -387,6 +387,44 @@ class SubagentConfigTest {
           .hasMessageContaining("helper");
     }
 
+    /**
+     * Final review SF-5: unlike {@code
+     * a_later_siblings_invalid_config_leaves_no_earlier_sibling_registered} (a config-validation
+     * failure, caught entirely up front before anything builds), a duplicate NAME is only
+     * detectable at registration time — deep inside the second "helper"'s own {@code build()} —
+     * after the FIRST "helper" has already built and registered itself successfully. Without a
+     * rollback, that first "helper" would stay in the harness's internal registry forever, and a
+     * corrected rebuild would collide on it instead of the actual mistake. Proved the same way: a
+     * second, independent build reusing the name "helper" must succeed.
+     */
+    @Test
+    void
+        two_sibling_subagents_sharing_a_name_leaves_neither_registered_and_a_corrected_rebuild_succeeds() {
+      Harness harness = Nessy.harness(NEVER_CALLED).build();
+
+      assertThatThrownBy(
+              () ->
+                  harness
+                      .agent()
+                      .name("writer")
+                      .model("m")
+                      .subagent(sub -> sub.name("helper").description("d").model("m"))
+                      .subagent(sub -> sub.name("helper").description("d2").model("m"))
+                      .build())
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("helper");
+
+      Agent<String> retry =
+          harness
+              .agent()
+              .name("writer-2")
+              .model("m")
+              .subagent(sub -> sub.name("helper").description("d").model("m"))
+              .build();
+
+      assertThat(retry.subagent("helper").name()).isEqualTo("helper");
+    }
+
     @Test
     void a_name_collision_two_levels_deep_is_still_rejected() {
       Harness harness = Nessy.harness(NEVER_CALLED).build();

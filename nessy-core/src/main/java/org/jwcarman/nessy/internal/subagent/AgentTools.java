@@ -349,8 +349,9 @@ public final class AgentTools {
         throw new IllegalStateException(
             "the child parked, but no SubagentLinks store was configured for '"
                 + child.name()
-                + "' — pass one to AgentTools.subagent(child, description, links) so the parent's"
-                + " own park can be correlated back to the child's eventual settlement");
+                + "' — call .subagentLinks(...) on the harness (e.g."
+                + " JdbcPersistence.subagentLinks()) so the parent's own park can be correlated back"
+                + " to the child's eventual settlement");
       }
     }
 
@@ -417,6 +418,22 @@ public final class AgentTools {
     @Override
     public Class<T> inputType() {
       return inputType;
+    }
+
+    /**
+     * Unlike {@link SubagentTool#describe}, which unwraps {@link Delegation#task()} because it
+     * knows its own input is always that one degenerate shape, this door's {@code T} is an
+     * arbitrary application record with no field this class can assume the name or meaning of — so
+     * {@link Tool}'s own default (the record's {@code toString()}) is the best available without
+     * more information, and an explicit override says so rather than leaving the divergence from
+     * {@link SubagentTool}'s own override invisible (final review N-2). An application whose typed
+     * input reads poorly as a bare {@code toString()} in an approval prompt should override {@code
+     * describe} on its own record's {@link Tool} usage — this generic wrapper cannot do better on
+     * its behalf.
+     */
+    @Override
+    public String describe(T input) {
+      return String.valueOf(input);
     }
 
     /** See {@link SubagentTool#execute} — identical recipe, generalized off {@code T}. */
@@ -489,9 +506,9 @@ public final class AgentTools {
         throw new IllegalStateException(
             "the child parked, but no SubagentLinks store was configured for '"
                 + child.name()
-                + "' — pass one to AgentTools.subagentTyped(child, inputType, description, links) so"
-                + " the parent's own park can be correlated back to the child's eventual"
-                + " settlement");
+                + "' — call .subagentLinks(...) on the harness (e.g."
+                + " JdbcPersistence.subagentLinks()) so the parent's own park can be correlated back"
+                + " to the child's eventual settlement");
       }
     }
 

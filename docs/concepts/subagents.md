@@ -51,6 +51,20 @@ defined inside its parent and can never refer back to it. A name already
 taken anywhere in the whole tree — a sibling, an ancestor, an unrelated
 top-level agent — is rejected at `build()`.
 
+**Every agent and subagent a harness ever builds is registered under its
+name for the harness's own lifetime, permanently.** Building the same
+name twice from one harness — deliberately (a redeployed agent bean, a
+retried startup) or by accident — throws `IllegalArgumentException`; there
+is no unregister door and no expiry. A harness that builds agents
+per-request rather than once at startup will eventually collide on names
+for exactly this reason, so build once and keep the `Agent`/`Harness`
+around rather than rebuilding on every call. A failed `build()` does clean
+up after itself, though: if a multi-child declaration fails partway
+through — most concretely, two siblings sharing a name — every child that
+build attempt had already registered is unregistered before the exception
+reaches the caller, so a corrected retry never collides with the attempt
+that failed.
+
 ## Two doors: a task string, or a typed record
 
 `.subagent(SubagentCustomizer<String>)` is the degenerate door: the

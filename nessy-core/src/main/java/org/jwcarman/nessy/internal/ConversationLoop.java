@@ -20,9 +20,11 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Awaited;
@@ -208,6 +210,15 @@ public final class ConversationLoop {
                     new ConversationStore.Loaded(ConversationState.newConversation(id), List.of()));
     AtomicReference<ConversationState> progress = new AtomicReference<>(loaded.state());
     List<String> drained = new ArrayList<>();
+    // Attempt-scoped, like endingNarrated and lastAssistantMessage below — deliberately NOT a
+    // lifetime or cross-attempt count against Parks (design §4's own classifyRepark javadoc: call
+    // ids legally recur across turns, so "how many parks has this call id ever had" is never the
+    // right question). What IS safe to ask, and cheap: has THIS attempt already accepted one
+    // fresh-token repark for this call? A second Resolved entry for the same call landing in this
+    // same loaded inbox (the shape an at-least-once redelivery takes when it lands atop a survivor
+    // from an interrupted earlier attempt — SF-1, final review) must not mint a second execution
+    // wait beside the first, still-outstanding one.
+    Set<String> repartedThisAttempt = new HashSet<>();
     // Attempt-scoped, not call-scoped: exactly one TurnEnded must reach the observer for this
     // whole driveOnce attempt, however many closure points it passes through (applyParked, or the
     // attempt's own settled return below) — see the CAS use at each site.
@@ -266,7 +277,8 @@ public final class ConversationLoop {
             continue;
           }
           ResumeOutcome resumed =
-              resumeParkedCall(park.get(), resolution, progress.get(), observer);
+              resumeParkedCall(
+                  park.get(), resolution, progress.get(), observer, repartedThisAttempt);
           switch (resumed) {
             case ResumeOutcome.Settled(ConversationEvent fact) -> {
               FoldOutcome folded = fold(progress, fact, drained, observer, lastAssistantMessage);
@@ -577,20 +589,24 @@ public final class ConversationLoop {
    * is already outstanding under, or the one-outstanding violation — classified by {@link
    * #classifyRepark}, which also sees {@code resolution} since the executor contract (design §4,
    * traced against {@code GatedToolCallExecutor.resume}) only ever reparks in answer to a {@code
-   * Decided} resolution — a {@code Completed} one settles or fails, never parks again.
+   * Decided} resolution — a {@code Completed} one settles or fails, never parks again. {@code
+   * repartedThisAttempt} is this {@code driveOnce} attempt's own bookkeeping (see its declaration),
+   * threaded through so {@link #classifyRepark} can tell this call's first legitimate repark from a
+   * second one arriving in the same attempt.
    */
   private ResumeOutcome resumeParkedCall(
       ToolCall parkedCall,
       ToolResolution resolution,
       ConversationState state,
-      TurnObserver observer) {
+      TurnObserver observer,
+      Set<String> repartedThisAttempt) {
     Awaited<ConversationEvent> outcome =
         executors.toolCall().resume(parkedCall, resolution, state, observer);
     return switch (outcome) {
       case Awaited.Ready<ConversationEvent>(ConversationEvent value) ->
           new ResumeOutcome.Settled(value);
       case Awaited.Parked<ConversationEvent>(ParkToken token) ->
-          classifyRepark(state.id(), parkedCall, token, resolution);
+          classifyRepark(state.id(), parkedCall, token, resolution, repartedThisAttempt);
     };
   }
 
@@ -608,16 +624,29 @@ public final class ConversationLoop {
    * registered to anything else — a sibling call, a foreign conversation — is never a replay of
    * this call's wait, whatever it looks like; folding it as one would silently let one Parks entry
    * answer two different calls, the quieter and more dangerous mistake, so it falls straight
-   * through to the violation below instead. A never-seen token is legitimate exactly when {@code
-   * resolution} is {@link ToolResolution.Decided} — the approval answer transitioning the call into
-   * its own execution wait, the only shape the executor contract ever reparks in response to,
-   * regardless of how many prior episodes this call id has lived through. Anything else reaching
-   * here — a never-seen token minted in answer to a {@link ToolResolution.Completed}, which the
-   * executor contract says should settle or fail, never park — is refused loud rather than silently
-   * accepted, the same way v1 refused every repark.
+   * through to the violation below instead.
+   *
+   * <p>A never-seen token is legitimate only for the repark that immediately follows THIS {@code
+   * driveOnce} attempt's own drained {@link ToolResolution.Decided} resolution for this call — the
+   * approval answer transitioning the call into its own execution wait, the only shape the executor
+   * contract ever reparks in response to (final review SF-1). {@code repartedThisAttempt.add(id)}
+   * returns {@code true} exactly once per call per attempt, so a SECOND never-seen token for the
+   * same call within the same attempt — the shape a redelivered resolution takes when it lands
+   * beside a survivor from an interrupted earlier attempt (a non-idempotent parking tool mints a
+   * fresh token on every invocation, unlike the subagent tool's own snapshot short-circuit) — falls
+   * through to the violation instead of silently registering a second, orphaning execution wait.
+   * Deliberately attempt-scoped, not a lifetime check: it never consults {@link #parks} history, so
+   * a call id recurring across turns (above) is never at risk of colliding with itself here.
+   * Anything else reaching here — a never-seen token minted in answer to a {@link
+   * ToolResolution.Completed}, which the executor contract says should settle or fail, never park —
+   * is refused loud rather than silently accepted, the same way v1 refused every repark.
    */
   private ResumeOutcome classifyRepark(
-      ConversationId id, ToolCall call, ParkToken token, ToolResolution resolution) {
+      ConversationId id,
+      ToolCall call,
+      ParkToken token,
+      ToolResolution resolution,
+      Set<String> repartedThisAttempt) {
     Optional<Parks.Park> existing = parks.find(token);
     if (existing.isPresent()) {
       Parks.Park found = existing.get();
@@ -626,7 +655,7 @@ public final class ConversationLoop {
       }
       throw oneOutstandingParkViolation(call.id());
     }
-    if (resolution instanceof ToolResolution.Decided) {
+    if (resolution instanceof ToolResolution.Decided && repartedThisAttempt.add(call.id())) {
       return new ResumeOutcome.Reparked(call, token);
     }
     throw oneOutstandingParkViolation(call.id());

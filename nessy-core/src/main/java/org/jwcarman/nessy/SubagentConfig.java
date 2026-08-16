@@ -69,7 +69,14 @@ public final class SubagentConfig<T> {
   private final List<SubagentConfig<String>> stringSubagents = new ArrayList<>();
   private final List<TypedSubagentDeclaration<?>> typedSubagents = new ArrayList<>();
 
-  /** This subagent's required identity — the durable stamp its own parks carry. */
+  /**
+   * This subagent's required identity — the durable stamp its own parks carry. Unlike {@link
+   * AgentBuilder#name(String)}, which rejects a blank name at the setter, this deliberately accepts
+   * anything (including {@code null}) here and defers the check to {@link #validate()}: {@link
+   * #description()} is required too, and the pinned contract (design of record 2026-08-16, brief
+   * "Task 2") is that {@code build()} reports whichever field is missing, not the setter that
+   * happened to run first (final review N-4).
+   */
   public SubagentConfig<T> name(String name) {
     this.name = name;
     return this;
@@ -77,22 +84,33 @@ public final class SubagentConfig<T> {
 
   /**
    * Required — becomes the delegation tool's own {@link
-   * org.jwcarman.nessy.api.tool.Tool#description()}.
+   * org.jwcarman.nessy.api.tool.Tool#description()}. Same deferred-validation contract as {@link
+   * #name(String)}: checked at {@link #validate()}, not here.
    */
   public SubagentConfig<T> description(String description) {
     this.description = description;
     return this;
   }
 
-  /** Wins over the harness's own default model, exactly like {@link AgentBuilder#model(String)}. */
+  /**
+   * Wins over the harness's own default model, exactly like {@link AgentBuilder#model(String)} —
+   * including that class's own null-tolerance: {@code null} (or never calling this setter at all)
+   * means "no override," resolved later against the harness's default the identical way.
+   */
   public SubagentConfig<T> model(String model) {
     this.model = model;
     return this;
   }
 
-  /** The system prompt sent with every one of this subagent's model calls. */
+  /**
+   * The system prompt sent with every one of this subagent's model calls. Required non-null,
+   * matching {@link AgentBuilder#systemPrompt(String)}'s own contract exactly (final review N-4) —
+   * unlike {@link #model(String)}, whose {@code null} is meaningful ("no override"), this
+   * subagent's own prompt is either declared or left unset by never calling this setter at all; an
+   * explicit {@code null} argument is never a legitimate way to spell "unset."
+   */
   public SubagentConfig<T> systemPrompt(String systemPrompt) {
-    this.systemPrompt = systemPrompt;
+    this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
     return this;
   }
 
@@ -236,11 +254,18 @@ public final class SubagentConfig<T> {
     return renderer;
   }
 
+  /**
+   * A defensive copy (final review N-5), matching the habit the rest of this seam keeps ({@link
+   * #grants()} is copied; {@link Agent.Coordination} copies its own map) — package-private today,
+   * so nothing outside this file could mutate the live list regardless, but a snapshot costs
+   * nothing here and keeps that invariant true if this ever stops being package-private-only.
+   */
   List<SubagentConfig<String>> stringSubagents() {
-    return stringSubagents;
+    return List.copyOf(stringSubagents);
   }
 
+  /** See {@link #stringSubagents()} — the same defensive-copy reasoning, for the typed door. */
   List<TypedSubagentDeclaration<?>> typedSubagents() {
-    return typedSubagents;
+    return List.copyOf(typedSubagents);
   }
 }

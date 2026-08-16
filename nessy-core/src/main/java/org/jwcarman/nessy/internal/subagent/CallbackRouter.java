@@ -55,6 +55,20 @@ public final class CallbackRouter {
   }
 
   /**
+   * Removes whatever is registered under {@code name}, if anything — idempotent, silent on a name
+   * that was never registered (or already removed). Exists for exactly one caller: {@code
+   * AgentBuilder}'s own rollback on a failed build (final review SF-5) — a subagent tree built
+   * left-to-right registers each child as its own {@code build()} completes, so a later sibling's
+   * failure (most concretely, a duplicate name colliding with an earlier one) must not leave the
+   * earlier, successfully-built siblings sitting in this registry forever; a corrected rebuild
+   * would then collide on THEM instead of the name that actually needs fixing.
+   */
+  public void unregister(String name) {
+    Objects.requireNonNull(name, "name must not be null");
+    agents.remove(name);
+  }
+
+  /**
    * Looks up the agent registered under {@code agentName} — the same name a park's own stamp
    * carries — and resumes its park with {@code resolution}.
    *

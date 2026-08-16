@@ -120,6 +120,9 @@ class AgentToolsTest {
 
   record AskInput(String question) {}
 
+  /** The typed door's own wire shape (design of record 2026-08-16 §0.5, final review SF-4). */
+  record ResearchRequest(String question, int depth) {}
+
   /** A tool that always succeeds once invoked — the gate is what parks, not the tool itself. */
   private static final class AskQuestionTool implements Tool<AskInput> {
 
@@ -444,6 +447,218 @@ class AgentToolsTest {
       assertThatThrownBy(() -> tool.execute(input, context))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("SubagentLinks");
+    }
+  }
+
+  /**
+   * Final review SF-4: {@link AgentTools.TypedSubagentTool} duplicates {@link
+   * AgentTools.SubagentTool}'s entire execute/settle/park recipe (verbatim except {@code T} riding
+   * straight through instead of unwrapping {@link AgentTools.Delegation#task()}), but before this
+   * class only the fresh-tell happy path was ever driven for the typed copy — its {@code PARKED}
+   * replay arm, {@link AgentTools#subagentTyped}'s own {@code freshPark}, {@code existingPark}, and
+   * {@code requireLinks} had zero coverage. This nested class mirrors {@link Parking} exactly, one
+   * test each, over {@link ResearchRequest} instead of the degenerate {@link AgentTools.Delegation}
+   * wrapper — the riskiest lines on the branch, since drift between the two copies would land here
+   * first and go unnoticed without a suite that exercises both.
+   */
+  @Nested
+  class Typed_door_parking {
+
+    @Test
+    void a_typed_parked_child_mints_a_parent_token_and_saves_the_link() {
+      ToolCall childCall =
+          new ToolCall("c1", "ask_question", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
+      ParkingApprover approver = new ParkingApprover();
+      Agent<ResearchRequest> child =
+          Nessy.harness(provider)
+              .build()
+              .agent(ResearchRequest.class)
+              .name("researcher")
+              .model("m")
+              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+      SubagentLinks links = SubagentLinks.inMemory();
+      Tool<ResearchRequest> tool =
+          AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", links);
+      ConversationId parentId = ConversationId.generate();
+      ToolCall call = new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode());
+      ConversationId expectedChildId = new ConversationId(parentId.value() + "/" + call.id());
+
+      Awaited<ToolResult> awaited =
+          tool.execute(new ResearchRequest("ask around", 1), contextFor(parentId, call));
+
+      assertThat(awaited).isInstanceOf(Awaited.Parked.class);
+      ParkToken parentToken = ((Awaited.Parked<ToolResult>) awaited).token();
+      assertThat(parentToken).isNotEqualTo(approver.token());
+      assertThat(links.find(expectedChildId)).contains(parentToken);
+    }
+
+    /**
+     * Mirrors {@link Parking#re_executing_a_parked_delegation_returns_the_same_parent_token}: a
+     * redelivered {@code execute} against a still-parked typed child must return the exact same
+     * parent token already on file, not mint a fresh one. Only a single {@code ScriptedProvider}
+     * turn is queued: the second {@code execute} must never re-tell the child at all.
+     */
+    @Test
+    void re_executing_a_typed_parked_delegation_returns_the_same_parent_token() {
+      ToolCall childCall =
+          new ToolCall("c1", "ask_question", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
+      ParkingApprover approver = new ParkingApprover();
+      Agent<ResearchRequest> child =
+          Nessy.harness(provider)
+              .build()
+              .agent(ResearchRequest.class)
+              .name("researcher")
+              .model("m")
+              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+      SubagentLinks links = SubagentLinks.inMemory();
+      Tool<ResearchRequest> tool =
+          AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", links);
+      ConversationId parentId = ConversationId.generate();
+      ToolCall call = new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode());
+      ToolContext context = contextFor(parentId, call);
+      ConversationId expectedChildId = new ConversationId(parentId.value() + "/" + call.id());
+      ResearchRequest input = new ResearchRequest("ask around", 1);
+
+      Awaited<ToolResult> first = tool.execute(input, context);
+      Awaited<ToolResult> second = tool.execute(input, context);
+
+      assertThat(first).isInstanceOf(Awaited.Parked.class);
+      assertThat(second).isInstanceOf(Awaited.Parked.class);
+      ParkToken firstToken = ((Awaited.Parked<ToolResult>) first).token();
+      ParkToken secondToken = ((Awaited.Parked<ToolResult>) second).token();
+      assertThat(secondToken).isEqualTo(firstToken);
+      assertThat(links.find(expectedChildId)).contains(firstToken);
+    }
+
+    @Test
+    void a_typed_parked_child_with_no_links_store_throws_naming_the_missing_store() {
+      ToolCall childCall =
+          new ToolCall("c1", "ask_question", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
+      ParkingApprover approver = new ParkingApprover();
+      Agent<ResearchRequest> child =
+          Nessy.harness(provider)
+              .build()
+              .agent(ResearchRequest.class)
+              .name("researcher")
+              .model("m")
+              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+      Tool<ResearchRequest> tool =
+          AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", null);
+      ToolContext context =
+          contextFor(
+              ConversationId.generate(),
+              new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode()));
+      ResearchRequest input = new ResearchRequest("ask around", 1);
+
+      assertThatThrownBy(() -> tool.execute(input, context))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("SubagentLinks");
+    }
+  }
+
+  /**
+   * Final review SF-4: mirrors {@link Settlement_results} and {@link Child_conversation_identity}
+   * over {@link ResearchRequest} instead of {@link AgentTools.Delegation} — the typed door's own
+   * COMPLETE/FAILED replay arms and snapshot short-circuit idempotency.
+   */
+  @Nested
+  class Typed_door_settlement {
+
+    @Test
+    void a_typed_completed_child_answers_with_its_final_assistant_text() {
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.TextChunk("the answer is 42"), endTurn());
+      Agent<ResearchRequest> child =
+          Nessy.harness(provider)
+              .build()
+              .agent(ResearchRequest.class)
+              .name("researcher")
+              .model("m")
+              .build();
+      Tool<ResearchRequest> tool =
+          AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", null);
+      ToolCall call = new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode());
+      ToolContext context = contextFor(ConversationId.generate(), call);
+
+      Awaited<ToolResult> awaited =
+          tool.execute(new ResearchRequest("what is the answer", 1), context);
+
+      assertThat(awaited).isInstanceOf(Awaited.Ready.class);
+      ToolResult result = ((Awaited.Ready<ToolResult>) awaited).value();
+      assertThat(result.isError()).isFalse();
+      assertThat(result.content()).isEqualTo("the answer is 42");
+    }
+
+    @Test
+    void a_typed_failed_child_answers_with_its_failure_reason() {
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.TextChunk("no"), refused());
+      Agent<ResearchRequest> child =
+          Nessy.harness(provider)
+              .build()
+              .agent(ResearchRequest.class)
+              .name("researcher")
+              .model("m")
+              .build();
+      Tool<ResearchRequest> tool =
+          AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", null);
+      ToolCall call = new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode());
+      ToolContext context = contextFor(ConversationId.generate(), call);
+
+      Awaited<ToolResult> awaited =
+          tool.execute(new ResearchRequest("do something unsafe", 1), context);
+
+      assertThat(awaited).isInstanceOf(Awaited.Ready.class);
+      ToolResult result = ((Awaited.Ready<ToolResult>) awaited).value();
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).containsIgnoringCase("refusal");
+    }
+
+    /**
+     * Mirrors {@link Child_conversation_identity}: only a single {@code ScriptedProvider} turn is
+     * queued, so if the typed tool regressed to re-telling on replay, the second {@code execute}
+     * would exhaust the script and throw.
+     */
+    @Test
+    void two_typed_executes_with_the_same_call_id_run_the_child_exactly_once() {
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.TextChunk("the answer"), endTurn());
+      Agent<ResearchRequest> child =
+          Nessy.harness(provider)
+              .build()
+              .agent(ResearchRequest.class)
+              .name("researcher")
+              .model("m")
+              .build();
+      Tool<ResearchRequest> tool =
+          AgentTools.subagentTyped(
+              child, ResearchRequest.class, "delegates research", SubagentLinks.inMemory());
+      ConversationId parentId = ConversationId.generate();
+      ToolCall call = new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode());
+      ToolContext context = contextFor(parentId, call);
+      ConversationId expectedChildId = new ConversationId(parentId.value() + "/" + call.id());
+      ResearchRequest input = new ResearchRequest("investigate", 1);
+
+      Awaited<ToolResult> first = tool.execute(input, context);
+      Awaited<ToolResult> second = tool.execute(input, context);
+
+      assertThat(first).isInstanceOf(Awaited.Ready.class);
+      assertThat(second).isInstanceOf(Awaited.Ready.class);
+      assertThat(((Awaited.Ready<ToolResult>) first).value().content()).isEqualTo("the answer");
+      assertThat(((Awaited.Ready<ToolResult>) second).value().content()).isEqualTo("the answer");
+      assertThat(child.contextFor(expectedChildId).messages()).hasSize(2);
     }
   }
 

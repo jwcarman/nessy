@@ -172,10 +172,20 @@ public final class Agent<I> {
    *
    * <p>The registry entry survives resolution (design §5) — it is the durable record that this
    * token once named this wait, not a single-use claim — so a redelivered resume (every real
-   * transport is at-least-once) translates the token again, appends another {@code Resolved} entry,
-   * and the fold's own is-this-call-still-outstanding check drains it quietly rather than replaying
-   * the call: the drive simply reads whatever the first delivery already produced. Either way,
-   * appending always succeeds.
+   * transport is at-least-once) translates the token again and appends another {@code Resolved}
+   * entry. Once the call has fully settled — folded to {@code COMPLETE}/{@code FAILED}, or already
+   * drained by an earlier delivery of this exact resolution — the fold's own
+   * is-this-call-still-outstanding check drains the redelivery quietly rather than replaying the
+   * call: the drive simply reads whatever the first delivery already produced. That quiet-drain
+   * promise is narrower since design §4's repark fix, though: a call that reparked for its own
+   * execution wait (permission, then work) is still outstanding, under a NEW token — a redelivered
+   * resume of the original, already-answered token routes straight back through the parked
+   * executor's own {@code resume} and re-invokes the tool, exactly as a fresh call would. That is
+   * safe only for a tool that makes itself idempotent (the subagent tool's own snapshot
+   * short-circuit, for instance) — not a general promise this door makes — and the loop's own
+   * one-outstanding-park guard is what catches a non-idempotent tool minting a second, orphaning
+   * token from that replay rather than letting it silently succeed. Either way, appending always
+   * succeeds.
    *
    * <p>That quiet-drain protection is serial, not concurrent: it is the fold picking a winner among
    * entries already appended, so it only shields a resume that arrives after an earlier one has
@@ -384,9 +394,16 @@ public final class Agent<I> {
    * function picks a winner with no ordering contract over {@link Parks#forConversation}'s own
    * return (it is a plain {@code List}, not sorted by registration time), so for a reparked call
    * the token this method reports is <strong>unspecified</strong> — any of that call's outstanding
-   * tokens may come back. That is harmless for what a card is for: every door that accepts a {@link
-   * ParkToken} verifies it against {@link Parks#find} at the moment it is used, so whichever token
-   * this method happens to report still resolves the same call when it is presented back.
+   * tokens may come back. That is harmless for {@code approve}/{@code deny} against the current
+   * wait: every door verifies the token against {@link Parks#find} at the moment it is used, so
+   * whichever token this method happens to report still routes to the same call when presented
+   * back. It is not harmless in every sense, though: a reported token that turns out to be the
+   * call's older, already-answered wait (its approval wait, say, rather than its live execution
+   * wait) re-invokes the parked executor's own {@code resume} exactly as a fresh resolution would
+   * (design §4's repark fix narrows the quiet-drain promise {@link #resume}'s own javadoc
+   * documents), rather than doing nothing new — safe for an idempotent tool, a live re-run for
+   * anything else. A caller building a UI atop this card should not assume presenting it back is
+   * always a no-op replay.
    */
   private List<ParkedCall> cards(ConversationId id, ConversationStore.Loaded loaded) {
     Map<String, Park> byCallId =

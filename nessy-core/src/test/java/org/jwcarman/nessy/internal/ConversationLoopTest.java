@@ -2058,6 +2058,61 @@ class ConversationLoopTest {
       assertThat(secondTurn.state().parkedCalls()).isEmpty();
       assertThat(tools.resumeCalls()).isEqualTo(4);
     }
+
+    /**
+     * Final review SF-1: a non-idempotent parking tool — unlike the subagent tool's own snapshot
+     * short-circuit, one that mints a genuinely fresh {@link ParkToken} on every {@code resume}
+     * call rather than replaying its own prior answer — exposes the crash-then-redelivery shape
+     * spec §4's violation arm exists for. The timeline: {@code c1} parks for approval, is approved,
+     * and reparks for its own execution wait under a fresh token B (the ordinary, legitimate
+     * transition) — but the resolution that drove that transition is redelivered (every real
+     * transport is at-least-once) before the earlier delivery's own drain landed, so BOTH the
+     * surviving original and the redelivered duplicate {@code Decided} resolutions sit in the inbox
+     * together and both reach the parked executor's {@code resume} within the same {@code
+     * driveOnce} attempt. The non-idempotent tool mints a second fresh token C for the redelivered
+     * one — a park with a new token while B is still outstanding — which the guard must refuse
+     * loud, not silently register as a second, orphaning execution wait.
+     */
+    @Test
+    void a_non_idempotent_tools_second_fresh_token_within_one_attempt_is_refused_loud() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "delegate");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.parksWhen("c1");
+      ParkToken executionTokenB = ParkToken.generate();
+      ParkToken executionTokenC = ParkToken.generate();
+      tools.resumeYields("c1", Awaited.parked(executionTokenB));
+      tools.resumeYields("c1", Awaited.parked(executionTokenC));
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate x"), OBSERVER);
+
+      // The surviving original, plus the redelivered duplicate — both undrained, both reaching
+      // this same drive() attempt, exactly the shape an interrupted earlier attempt's own crash
+      // window leaves behind.
+      store.append(ID, InboxEntry.resolved("c1", new ToolResolution.Decided(Decision.allow())));
+      store.append(ID, InboxEntry.resolved("c1", new ToolResolution.Decided(Decision.allow())));
+
+      assertThatThrownBy(() -> loop.drive(ID, OBSERVER))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("c1")
+          .hasMessageContaining("outstanding");
+
+      // B (the first, legitimate repark) registered; C never did — the violation fired before
+      // applyParked ever saw it.
+      assertThat(tools.resumeCalls()).isEqualTo(2);
+    }
   }
 
   @Nested

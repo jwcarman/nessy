@@ -445,16 +445,27 @@ public final class AgentBuilder<I> implements ListenerDeclarations<AgentBuilder<
     }
     Map<String, Agent<?>> childrenByName = new LinkedHashMap<>();
     List<ToolGrant> delegationGrants = new ArrayList<>();
-    for (SubagentConfig<String> config : stringSubagentConfigs) {
-      Agent<String> child = buildStringChild(config);
-      childrenByName.put(config.name(), child);
-      delegationGrants.add(
-          ToolGrant.grant(
-              AgentTools.subagent(child, config.description(), harness.subagentLinks()),
-              Optional.ofNullable(config.policy()).orElseGet(UsagePolicy::allow)));
-    }
-    for (TypedSubagentDeclaration<?> declaration : typedSubagentConfigs) {
-      delegationGrants.add(buildTypedGrant(declaration, childrenByName));
+    try {
+      for (SubagentConfig<String> config : stringSubagentConfigs) {
+        Agent<String> child = buildStringChild(config);
+        childrenByName.put(config.name(), child);
+        delegationGrants.add(
+            ToolGrant.grant(
+                AgentTools.subagent(child, config.description(), harness.subagentLinks()),
+                Optional.ofNullable(config.policy()).orElseGet(UsagePolicy::allow)));
+      }
+      for (TypedSubagentDeclaration<?> declaration : typedSubagentConfigs) {
+        delegationGrants.add(buildTypedGrant(declaration, childrenByName));
+      }
+    } catch (RuntimeException buildFailure) {
+      // SF-5: registration-time duplicates (or any other failure) can strike partway through a
+      // multi-child declaration, after earlier siblings already registered themselves inside
+      // their own build(). Every sibling THIS loop directly registered — recursively cleaned of
+      // its own subtree already, if that sibling's own nested build() hit this same catch — must
+      // be unregistered before the throw reaches the caller, or a corrected rebuild collides on
+      // one of them instead of the name that actually needs fixing.
+      childrenByName.keySet().forEach(harness.subagents()::unregister);
+      throw buildFailure;
     }
     List<ToolGrant> combined = new ArrayList<>();
     if (explicitGrants != null) {

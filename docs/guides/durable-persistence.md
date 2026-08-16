@@ -6,13 +6,13 @@ and a pipeline `Memory` over `Transcript.inMemory()`. `nessy-jdbc` replaces
 all of that with a real database, over one `javax.sql.DataSource`, with no
 change to how an agent is built or told things.
 
-## Bootstrapping all six doors at once
+## Bootstrapping all seven doors at once
 
 `JdbcPersistence.create` is the one-call version: it resolves the dialect
-once, from one borrowed connection, then bootstraps and hands back all six
+once, from one borrowed connection, then bootstraps and hands back all seven
 JDBC-backed components that need a database — a `JdbcConversationStore`, a
-`JdbcParks`, a `JdbcTranscript`, a `JdbcSummaryStore`, a `JdbcPlanStore`, and a
-`JdbcNotebook`:
+`JdbcParks`, a `JdbcTranscript`, a `JdbcSummaryStore`, a `JdbcPlanStore`, a
+`JdbcNotebook`, and a `JdbcSubagentLinks`:
 
 ```java
 JdbcPersistence persistence = JdbcPersistence.create(dataSource, objectMapper);
@@ -21,6 +21,7 @@ Harness harness =
     Nessy.harness(anthropic)
         .store(persistence.store())
         .parks(persistence.parks())
+        .subagentLinks(persistence.subagentLinks())
         .build();
 
 Agent<String> agent =
@@ -34,11 +35,17 @@ Agent<String> agent =
 
 `persistence.memory()` is `Memory.pipeline(persistence.transcript()).build()`
 — the durable `Memory`, verbatim retention over the same transcript
-`JdbcPersistence` just bootstrapped. `JdbcPersistence` exists purely for
-convenience: the six schemas are always stood up together in practice, but
-nothing couples them beyond that — each component also works fine
-constructed on its own, via its own `create(dataSource, objectMapper)` (or
-`create(dataSource, objectMapper, dialect)` to bypass resolution).
+`JdbcPersistence` just bootstrapped. `.subagentLinks(...)` matters only for a
+harness with at least one `.subagent(...)` declared — the correlation a
+settled child's completion wakes its parent's own park against — but wiring
+it here costs nothing even when unused, and skipping it is the exact
+durability gap `AgentBuilder`'s own agent-level warning exists to catch
+(store configured, subagent declared, links left on the in-memory default).
+`JdbcPersistence` exists purely for convenience: the seven schemas are always
+stood up together in practice, but nothing couples them beyond that — each
+component also works fine constructed on its own, via its own
+`create(dataSource, objectMapper)` (or `create(dataSource, objectMapper,
+dialect)` to bypass resolution).
 
 `JdbcPersistence`'s `summaries` and `planStore` back the summarizing-memory
 and planning facilities respectively; an agent that doesn't use either still
@@ -75,7 +82,7 @@ five it supports — never a silent fallback to Postgres syntax.
 per-vendor guard where a dialect lacks that syntax) once at startup, safe to
 repeat across every process that starts up against the same database. The
 constructor form (`new JdbcConversationStore(dataSource, objectMapper,
-dialect)`, and the equivalent on each of the other five classes) skips DDL
+dialect)`, and the equivalent on each of the other six classes) skips DDL
 entirely, for a datasource another process already bootstrapped.
 
 !!! warning "Write-once inserts are unified, not varied per vendor"
@@ -98,17 +105,18 @@ Three doors carry the whole story:
   message log — the same pipeline over `Transcript.inMemory()` dies with the
   JVM.
 
-`SummaryStore`, `PlanStore`, and `Notebook` ride along the same way: durable
-once backed by `nessy-jdbc`, in-memory (and gone at restart) otherwise. See
-[Storage](../concepts/storage.md) for the full picture of all six doors and
-what each one owns.
+`SummaryStore`, `PlanStore`, `Notebook`, and `SubagentLinks` ride along the
+same way: durable once backed by `nessy-jdbc`, in-memory (and gone at
+restart) otherwise. See [Storage](../concepts/storage.md) for the full
+picture of all seven doors and what each one owns.
 
 ## In a Spring Boot application
 
 The wiring above is optional there: add `nessy-spring-boot-starter` and
 `nessy-jdbc` next to a `DataSource` bean, and the store, parks, transcript,
-memory, plan store, and notebook are all autoconfigured — the application
-declares one bean, the agent. `SummaryStore` is the exception: nothing in
+memory, plan store, notebook, and subagent links are all autoconfigured —
+the application declares one bean, the agent. `SummaryStore` is the
+exception: nothing in
 `nessy-autoconfigure` builds one, so a summarizing pipeline still needs an
 application-declared `Memory` bean over a hand-built
 `JdbcSummaryStore.create(dataSource)`. See [Spring Boot](spring-boot.md).
@@ -121,7 +129,7 @@ above start out excluded. `./mvnw test -Dnessy.excludedGroups=live`
 un-excludes the whole `container` tier at once — not just Postgres: it adds
 Postgres's own test classes *and* one class per vendor (`MySqlStoreTckTest`,
 `MariaDbStoreTckTest`, `SqlServerStoreTckTest`, `OracleStoreTckTest`), each
-running all six `nessy-tck` contracts against a real Testcontainers
+running all seven `nessy-tck` contracts against a real Testcontainers
 instance for that vendor plus a dialect-resolution pin — the full
 five-vendor matrix, needing a Docker daemon. The four vendor classes also
 carry `@Tag("vendor")` alongside `@Tag("container")`: CI runs with
@@ -134,7 +142,7 @@ tier on top of everything else.
 
 ## Where next
 
-- [Storage](../concepts/storage.md) — the six SPIs `nessy-jdbc` implements,
+- [Storage](../concepts/storage.md) — the seven SPIs `nessy-jdbc` implements,
   and the TCK contracts a backend has to pass.
 - [Spring Boot](spring-boot.md) — most of the same doors, autoconfigured
   from a `DataSource` bean (`SummaryStore` excepted).
