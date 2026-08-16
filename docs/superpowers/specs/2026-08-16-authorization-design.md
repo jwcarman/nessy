@@ -173,9 +173,16 @@ public interface Enricher<E> {
   vocabulary IS the tool's schema: an enum or sealed class boxes the model into a
   strict vocabulary at parse time; `String.class` permits open-ended intent.
 - **Lifetime: until re-declared or cleared**, scoped to the conversation.
-- **Derived from the transcript** — the declaration is a tool call, already durably
-  recorded; the machinery reads the latest declaration back. No new store; replayed
-  decisions see what the original saw.
+- **Backed by its own tiny store (amended after owner review — the plan-store
+  pattern, not transcript scanning):** `IntentStore` — `(conversation_id) → the
+  declared intent (serialized, with its type)` — LWW on declare, delete on clear;
+  in-memory default + `JdbcIntentStore` + TCK contract, the eighth store. The
+  declare tool WRITES it; the intent reader FETCHES one row per decision (O(1),
+  never a transcript scan). Replay-idempotent by the familiar argument: a
+  re-executed declaration rewrites the identical value. The earlier
+  transcript-derivation idea is REJECTED: linear scan cost on the authorization hot
+  path, and a coupling to transcript completeness that retention policies (and
+  transcript-less deployments) would silently break.
 - Wired → `context.declaredIntent()` is present; unwired → absent, zero ceremony. The
   claim is untrusted by definition; its sharpest use is cross-examination against the
   effect ("declared read-only; this effect writes") — a policy or enricher move nessy
