@@ -253,9 +253,8 @@ public final class ConversationLoop {
       //    note's fold, resuming a call can throw before ever reaching a fold or a park closure —
       //    the one-outstanding-park violation, below — so the entry's id joins `drained` only once
       //    resumeParkedCall and whatever it triggers have both succeeded; a throw between them must
-      //    leave the entry on the inbox for a future retry to find, not destroy the only copy of
-      // the
-      //    resolution that arrived.
+      //    leave the entry on the inbox for a future retry to find, not destroy the only copy
+      //    of the resolution that arrived.
       for (InboxEntry entry : loaded.inbox()) {
         if (entry instanceof InboxEntry.Resolved(String entryId, String callId, var resolution)) {
           Optional<ToolCall> park =
