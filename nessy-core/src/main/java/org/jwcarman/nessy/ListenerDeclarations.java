@@ -21,7 +21,7 @@ import org.jwcarman.nessy.api.event.ApprovalRequested;
 import org.jwcarman.nessy.api.event.ToolProgress;
 
 /**
- * The listener-declaring half of a builder, with sugar per event type.
+ * The listener-declaring half of a config, with sugar per event type.
  *
  * <p>{@code listen}/{@code listenAsync} are the primitives — any type, one registration each. The
  * {@code on*}/{@code on*Async} defaults are readability sugar over them, one pair per member of the
@@ -38,7 +38,7 @@ import org.jwcarman.nessy.api.event.ToolProgress;
  * <p>The async sugar uses the log-and-continue error default; an async listener that needs its own
  * error handler declares through {@code listenAsync(Class, Consumer, Consumer)} directly.
  *
- * @param <S> the builder's own type, so sugar calls stay fluent
+ * @param <S> the config's own type, so sugar calls stay fluent
  */
 public interface ListenerDeclarations<S> {
 

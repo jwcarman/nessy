@@ -181,15 +181,16 @@ public class JdbcPersistenceAutoConfiguration {
    * {@link org.jwcarman.nessy.autoconfigure.NessyAutoConfiguration}'s harness the same way {@link
    * #conversationStore}/{@link #parks} do (final review SF-3: before this bean existed, a Boot app
    * with {@code nessy-jdbc} on the classpath and a {@code .subagent(...)} declared got {@code
-   * SubagentLinks.inMemory()} regardless — the exact durability gap {@code AgentBuilder}'s own
-   * agent-level WARN describes — because nothing in this module ever called {@code
-   * HarnessBuilder.subagentLinks(...)}). {@link JdbcSubagentLinks}, unlike {@link
-   * #conversationStore}/{@link #parks}/{@link #transcript}, has no {@link ObjectMapper}-accepting
-   * {@code create}/constructor overload ({@code nessy_subagent_links} carries no JSON column — a
-   * child conversation id and a parent token, both plain strings), so this bean method does not go
-   * through the shared {@link #build} helper; unlike {@link #planStore}/{@link #notebook}, though,
-   * {@link JdbcSubagentLinks} DOES offer an explicit-dialect constructor, so the non-bootstrap
-   * branch here honors {@code nessy.jdbc.dialect} the same way the bootstrap branch does.
+   * SubagentLinks.inMemory()} regardless — the exact durability gap {@link
+   * org.jwcarman.nessy.AgentConfig}'s own agent-level WARN describes — because nothing in this
+   * module ever called {@link org.jwcarman.nessy.HarnessConfig#subagentLinks}). {@link
+   * JdbcSubagentLinks}, unlike {@link #conversationStore}/{@link #parks}/{@link #transcript}, has
+   * no {@link ObjectMapper}-accepting {@code create}/constructor overload ({@code
+   * nessy_subagent_links} carries no JSON column — a child conversation id and a parent token, both
+   * plain strings), so this bean method does not go through the shared {@link #build} helper;
+   * unlike {@link #planStore}/{@link #notebook}, though, {@link JdbcSubagentLinks} DOES offer an
+   * explicit-dialect constructor, so the non-bootstrap branch here honors {@code
+   * nessy.jdbc.dialect} the same way the bootstrap branch does.
    */
   @Bean
   @ConditionalOnMissingBean

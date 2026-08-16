@@ -262,6 +262,46 @@ class AnthropicModelProviderTest {
     }
   }
 
+  /**
+   * Drives the two public static factories directly — {@link AnthropicModelProvider#create} and
+   * {@link AnthropicModelProvider#fromEnv} — rather than the package-private {@link
+   * AnthropicProviderConfig} the {@link Configuration} tests above reach into. Spec §5 requires
+   * {@code fromEnv()} equal {@code create(config -> config.fromEnv())} in behavior; this pins that
+   * offline by driving both through the same unset-environment failure and comparing messages.
+   */
+  @Nested
+  class PublicStaticFactories {
+
+    @Test
+    void create_rejects_a_null_customizer() {
+      assertThatThrownBy(() -> AnthropicModelProvider.create(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("customizer must not be null");
+    }
+
+    @Test
+    void from_env_fails_the_same_way_create_with_a_from_env_customizer_does() {
+      assumeTrue(
+          System.getenv("ANTHROPIC_API_KEY") == null
+              && System.getenv("ANTHROPIC_AUTH_TOKEN") == null,
+          "ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is set in this shell");
+
+      assertThatThrownBy(AnthropicModelProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("ANTHROPIC_API_KEY");
+      assertThatThrownBy(() -> AnthropicModelProvider.create(AnthropicProviderConfig::fromEnv))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("ANTHROPIC_API_KEY");
+    }
+
+    @Test
+    void create_reaches_the_real_construction_path_offline() {
+      AnthropicModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey("sk-test"));
+
+      assertThat(provider).isNotNull();
+    }
+  }
+
   @Nested
   class Capabilities {
 

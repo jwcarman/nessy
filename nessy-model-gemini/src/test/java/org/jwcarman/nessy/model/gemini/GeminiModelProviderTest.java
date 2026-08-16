@@ -133,6 +133,46 @@ class GeminiModelProviderTest {
     }
   }
 
+  /**
+   * Drives the two public static factories directly — {@link GeminiModelProvider#create} and {@link
+   * GeminiModelProvider#fromEnv} — rather than the package-private {@link GeminiProviderConfig} the
+   * {@link Configuration} tests above reach into. Spec §5 requires {@code fromEnv()} equal {@code
+   * create(config -> config.fromEnv())} in behavior; this pins that offline by driving both through
+   * the same unset-environment failure and comparing messages.
+   */
+  @Nested
+  class PublicStaticFactories {
+
+    @Test
+    void create_rejects_a_null_customizer() {
+      assertThatThrownBy(() -> GeminiModelProvider.create(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("customizer must not be null");
+    }
+
+    @Test
+    void from_env_fails_the_same_way_create_with_a_from_env_customizer_does() {
+      assumeTrue(System.getenv("GEMINI_API_KEY") == null, "GEMINI_API_KEY is set in this shell");
+      assumeTrue(System.getenv("GOOGLE_API_KEY") == null, "GOOGLE_API_KEY is set in this shell");
+
+      assertThatThrownBy(GeminiModelProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("GEMINI_API_KEY")
+          .hasMessageContaining("GOOGLE_API_KEY");
+      assertThatThrownBy(() -> GeminiModelProvider.create(GeminiProviderConfig::fromEnv))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("GEMINI_API_KEY")
+          .hasMessageContaining("GOOGLE_API_KEY");
+    }
+
+    @Test
+    void create_reaches_the_real_construction_path_offline() {
+      var provider = GeminiModelProvider.create(c -> c.apiKey("test-key"));
+
+      assertThat(provider).isNotNull();
+    }
+  }
+
   @Nested
   class Capabilities {
 

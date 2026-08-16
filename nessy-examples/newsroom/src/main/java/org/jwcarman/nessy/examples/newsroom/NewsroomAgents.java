@@ -42,12 +42,13 @@ import org.jwcarman.nessy.spi.plan.PlanTools;
  * wires the links store from the harness's own store family, and registers the completion wiring
  * internally.
  *
- * <p>The writer's {@link Approver#parkAll()} is declared once, on the writer's own builder, and
- * cascades down to {@code researcher} by construction (design of record 2026-08-16 §3: the approver
- * is inherited, not a {@link org.jwcarman.nessy.SubagentConfig} knob) — it is what makes {@link
- * AskQuestionTool}, the researcher's one gated tool, park unconditionally rather than warn its way
- * to {@link Approver#allowAll()}. Because a subagent call is an ordinary tool call, the writer's
- * own delegation call parks right alongside it — the child-parks-therefore-parent-parks chain the
+ * <p>The writer's {@link Approver#parkAll()} is declared once, on the writer's own {@link
+ * org.jwcarman.nessy.AgentConfig}, and cascades down to {@code researcher} by construction (design
+ * of record 2026-08-16 §3: the approver is inherited, not a {@link
+ * org.jwcarman.nessy.SubagentConfig} knob) — it is what makes {@link AskQuestionTool}, the
+ * researcher's one gated tool, park unconditionally rather than warn its way to {@link
+ * Approver#allowAll()}. Because a subagent call is an ordinary tool call, the writer's own
+ * delegation call parks right alongside it — the child-parks-therefore-parent-parks chain the
  * module demonstrates.
  *
  * <p>Fan-out here is sequential, not parallel (spec §9): the writer waits on one {@code researcher}

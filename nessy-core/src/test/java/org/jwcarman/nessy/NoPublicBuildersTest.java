@@ -24,15 +24,17 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
  * The dsl-coherence law (design of record 2026-08-16 §1, §5): a factory method takes a named
  * customizer, hands it a config with fluent setters and NO {@code build()} method, and returns the
  * finished thing — nothing half-built is representable, and no public {@code build()} survives
- * anywhere. This pins that law by scanning source text for the two banned declaration shapes — a
- * public {@code build()} and a public static {@code builder()} — the same source-scanning technique
- * {@link ZoneBoundariesTest} uses in place of a withdrawn {@code module-info.java}.
+ * anywhere. This pins that law by scanning source text for the banned declaration shapes — a public
+ * {@code build(...)}, a public static {@code builder(...)}, and their implicitly-public
+ * interface-member equivalents — the same source-scanning technique {@link ZoneBoundariesTest} uses
+ * in place of a withdrawn {@code module-info.java}.
  *
  * <p><b>Coverage:</b> every sibling module, reached by relative path from this one, that ships
  * {@code src/main/java} and is part of the public nessy surface: {@code nessy-core} (this module),
@@ -44,13 +46,34 @@ import org.junit.jupiter.api.Test;
  * public class; {@code nessy-examples} is demo code with its own nested reactor, not a published
  * module. None of those three are scanned.
  *
- * <p>A method declaration only matches when the line itself, once stripped, starts with {@code
- * public}; SDK builder call sites (e.g. {@code AnthropicOkHttpClient.builder()}) and javadoc prose
- * (e.g. {@code "no public {@code build()} survives"}) never start a line that way, so neither is a
- * candidate false positive here. Package-private internals are invisible to the scan by
- * construction: this test only considers files whose top-level type is itself declared public, and
- * no exemption was needed for any file the scan reached — Tasks 1 through 3 already converted every
- * nessy-owned builder to a package-private {@code build()} reached only from its sibling factory.
+ * <p><b>What the technique actually catches, precisely:</b>
+ *
+ * <ul>
+ *   <li>A public (optionally static, optionally generic) {@code build(...)} or a public static
+ *       {@code builder(...)} declared on a public top-level class or record, any arity, as long as
+ *       the whole signature up to the opening parenthesis fits on one source line.
+ *   <li>The same two shapes declared <em>without</em> the {@code public} keyword — an abstract
+ *       method ({@code Foo build();}), a default method ({@code default Foo build() { ... }}), or a
+ *       static method ({@code static Foo builder() { ... }}) — but only inside a file whose
+ *       top-level type is itself a public {@code interface}, where the JLS makes such members
+ *       public whether or not the modifier is written.
+ * </ul>
+ *
+ * <p>A method declaration only matches when the line itself, once stripped, starts with the
+ * expected keyword ({@code public}, or inside an interface file, anything that is not itself {@code
+ * public}/{@code private}/{@code static} for the bare-{@code build} case); a call site reached
+ * through a dot (e.g. {@code AnthropicOkHttpClient.builder()}, {@code realBuilder.build()}, {@code
+ * return config.build();}) never satisfies that anchor and is excluded by construction, not by a
+ * name-based guess — {@link #The_pattern_positive_control} proves both directions with fixture
+ * source text.
+ *
+ * <p><b>Known blind spot, honestly stated:</b> a signature whose {@code public}/{@code static}
+ * keyword, return type, or method name is wrapped onto its own line by a formatter is invisible to
+ * this line-anchored scan; the codebase's actual zero-arg {@code build()}/{@code builder()}
+ * signatures are short enough that google-java-format never wraps them, so this has not mattered in
+ * practice, but it is not a technique-level guarantee. Package-private internals in ordinary
+ * classes are excluded by the top-level-public-type gate, not by any assumption about what a
+ * package-private method happens to be named.
  */
 class NoPublicBuildersTest {
 
@@ -74,11 +97,40 @@ class NoPublicBuildersTest {
           "^public\\s+(?:abstract\\s+|final\\s+|sealed\\s+|non-sealed\\s+)*"
               + "(?:class|interface|record|enum|@interface)\\b");
 
-  private static final Pattern PUBLIC_BUILD_METHOD =
-      Pattern.compile("^public\\s+(?:static\\s+)?(?:<[^>]+>\\s+)?\\S.*\\bbuild\\s*\\(\\s*\\)");
+  private static final Pattern PUBLIC_INTERFACE_DECLARATION =
+      Pattern.compile("^public\\s+(?:sealed\\s+|non-sealed\\s+)*interface\\b");
 
+  /** A public (optionally static, optionally generic) {@code build(...)}, any arity. */
+  private static final Pattern PUBLIC_BUILD_METHOD =
+      Pattern.compile("^public\\s+(?:static\\s+)?(?:<[^>]+>\\s+)?\\S.*\\bbuild\\s*\\(");
+
+  /** A public static (optionally generic) {@code builder(...)}. */
   private static final Pattern PUBLIC_STATIC_BUILDER_METHOD =
-      Pattern.compile("^public\\s+static\\s+(?:<[^>]+>\\s+)?\\S.*\\bbuilder\\s*\\(\\s*\\)");
+      Pattern.compile("^public\\s+static\\s+(?:<[^>]+>\\s+)?\\S.*\\bbuilder\\s*\\(");
+
+  /**
+   * An interface member named {@code build} written without an explicit {@code public} — an
+   * abstract declaration ({@code Foo build();}) or a default method ({@code default Foo build()
+   * {}}) — which the JLS makes public regardless. Excludes lines starting with {@code public}
+   * (already caught above), {@code private} (Java 9+ private interface methods are genuinely not
+   * public), or {@code static} (covered by the builder-only static pattern below, not this one).
+   * The negative lookbehind on the dot keeps a call site like {@code return x.build();} from
+   * matching: no abstract or default declaration ever names its own method through a receiver.
+   */
+  private static final Pattern INTERFACE_IMPLICIT_INSTANCE_BUILD_METHOD =
+      Pattern.compile(
+          "^(?!public\\b)(?!private\\b)(?!static\\b)(?:<[^>]+>\\s+)?\\S.*(?<!\\.)\\bbuild\\s*\\("
+              + "[^)]*\\)\\s*[;{]\\s*$");
+
+  /**
+   * An interface static factory named {@code builder} written without an explicit {@code public} —
+   * {@code static Foo builder() { ... }} — which the JLS makes public regardless. A static
+   * interface method always carries a body, so this only matches the {@code {}-terminated} form.
+   */
+  private static final Pattern INTERFACE_IMPLICIT_STATIC_BUILDER_METHOD =
+      Pattern.compile(
+          "^(?!public\\b)(?!private\\b)static\\s+(?:<[^>]+>\\s+)?\\S.*(?<!\\.)\\bbuilder\\s*\\("
+              + "[^)]*\\)\\s*\\{\\s*$");
 
   @Test
   void no_public_class_in_a_scanned_module_exposes_a_public_build_or_builder_method() {
@@ -86,10 +138,7 @@ class NoPublicBuildersTest {
     assertThat(files).isNotEmpty();
 
     List<String> violations =
-        files.stream()
-            .filter(JavaFile::declaresAPublicType)
-            .flatMap(file -> file.bannedMethodSignatures().stream())
-            .toList();
+        files.stream().flatMap(file -> file.bannedMethodSignatures().stream()).toList();
 
     assertThat(violations)
         .as(
@@ -129,7 +178,9 @@ class NoPublicBuildersTest {
 
   /**
    * One source file's owning module, path (relative to that module's {@code src/main/java}), and
-   * text.
+   * text. {@code module}/{@code relativePath} may be a synthetic label rather than a real on-disk
+   * location — {@link The_pattern_positive_control} builds fixture instances directly to prove the
+   * two banned shapes, including their interface-implicit forms, are actually caught.
    */
   private record JavaFile(String module, String relativePath, String content) {
 
@@ -140,16 +191,249 @@ class NoPublicBuildersTest {
           .anyMatch(line -> PUBLIC_TYPE_DECLARATION.matcher(line).find());
     }
 
+    boolean declaresAPublicInterface() {
+      return content
+          .lines()
+          .map(String::strip)
+          .anyMatch(line -> PUBLIC_INTERFACE_DECLARATION.matcher(line).find());
+    }
+
     List<String> bannedMethodSignatures() {
+      if (!declaresAPublicType()) {
+        return List.of();
+      }
+      boolean isPublicInterface = declaresAPublicInterface();
       return content
           .lines()
           .map(String::strip)
           .filter(
               line ->
                   PUBLIC_BUILD_METHOD.matcher(line).find()
-                      || PUBLIC_STATIC_BUILDER_METHOD.matcher(line).find())
+                      || PUBLIC_STATIC_BUILDER_METHOD.matcher(line).find()
+                      || (isPublicInterface
+                          && (INTERFACE_IMPLICIT_INSTANCE_BUILD_METHOD.matcher(line).find()
+                              || INTERFACE_IMPLICIT_STATIC_BUILDER_METHOD.matcher(line).find())))
           .map(line -> "%s/%s: %s".formatted(module, relativePath, line))
           .toList();
+    }
+  }
+
+  /**
+   * S1/S2 (final review, dsl-coherence): without this, the only proof the two regexes above are
+   * correct was a manual redness experiment recorded in a task ledger — if a pattern silently
+   * stopped matching, the architecture test would report zero violations forever. These fixtures
+   * plant every shape the law bans, including the interface-implicit and multi-arity forms, and
+   * assert the scanner still names them; a broken pattern now fails this suite, not just a one-time
+   * manual check.
+   */
+  @Nested
+  class The_pattern_positive_control {
+
+    @Test
+    void a_public_instance_build_method_on_a_class_is_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureConfig.java",
+              """
+              public final class FixtureConfig {
+
+                public FixtureConfig build() {
+                  return this;
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures())
+          .containsExactly("fixture/FixtureConfig.java: public FixtureConfig build() {");
+    }
+
+    @Test
+    void a_public_static_builder_method_on_a_class_is_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureConfig.java",
+              """
+              public final class FixtureConfig {
+
+                public static FixtureConfig builder() {
+                  return new FixtureConfig();
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures())
+          .containsExactly("fixture/FixtureConfig.java: public static FixtureConfig builder() {");
+    }
+
+    @Test
+    void a_public_build_method_that_takes_arguments_is_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureConfig.java",
+              """
+              public final class FixtureConfig {
+
+                public FixtureConfig build(String extra) {
+                  return this;
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures())
+          .containsExactly(
+              "fixture/FixtureConfig.java: public FixtureConfig build(String extra) {");
+    }
+
+    @Test
+    void an_implicitly_public_abstract_build_method_on_an_interface_is_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureBuilder.java",
+              """
+              public interface FixtureBuilder {
+
+                FixtureBuilder build();
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures())
+          .containsExactly("fixture/FixtureBuilder.java: FixtureBuilder build();");
+    }
+
+    @Test
+    void an_implicitly_public_abstract_build_method_with_arguments_on_an_interface_is_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureBuilder.java",
+              """
+              public interface FixtureBuilder {
+
+                FixtureBuilder build(String extra);
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures())
+          .containsExactly("fixture/FixtureBuilder.java: FixtureBuilder build(String extra);");
+    }
+
+    @Test
+    void an_implicitly_public_default_build_method_on_an_interface_is_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureBuilder.java",
+              """
+              public interface FixtureBuilder {
+
+                default FixtureBuilder build() {
+                  return this;
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures())
+          .containsExactly("fixture/FixtureBuilder.java: default FixtureBuilder build() {");
+    }
+
+    @Test
+    void an_implicitly_public_static_builder_method_on_an_interface_is_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureBuilder.java",
+              """
+              public interface FixtureBuilder {
+
+                static FixtureBuilder builder() {
+                  return null;
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures())
+          .containsExactly("fixture/FixtureBuilder.java: static FixtureBuilder builder() {");
+    }
+
+    @Test
+    void an_sdk_builder_call_site_is_not_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureAnthropicLike.java",
+              """
+              public final class FixtureAnthropicLike {
+
+                private FixtureAnthropicLike() {
+                  var clientBuilder = AnthropicOkHttpClient.builder().apiKey(apiKey);
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures()).isEmpty();
+    }
+
+    @Test
+    void a_package_private_build_call_site_through_a_config_receiver_is_not_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureFactory.java",
+              """
+              public final class FixtureFactory {
+
+                public static FixtureConfig create() {
+                  return config.build();
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures()).isEmpty();
+    }
+
+    @Test
+    void a_package_private_build_method_on_a_non_public_class_is_not_flagged() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureInternal.java",
+              """
+              final class FixtureInternal {
+
+                static FixtureInternal build(FixtureConfig config) {
+                  return new FixtureInternal();
+                }
+
+                FixtureInternal build() {
+                  return this;
+                }
+              }
+              """);
+
+      assertThat(fixture.declaresAPublicType()).isFalse();
+      assertThat(fixture.bannedMethodSignatures()).isEmpty();
+    }
+
+    @Test
+    void a_bare_build_call_inside_a_default_method_body_is_not_mistaken_for_a_declaration() {
+      var fixture =
+          new JavaFile(
+              "fixture",
+              "FixtureBuilder.java",
+              """
+              public interface FixtureBuilder {
+
+                default FixtureBuilder buildViaDelegate() {
+                  return realBuilder.build();
+                }
+              }
+              """);
+
+      assertThat(fixture.bannedMethodSignatures()).isEmpty();
     }
   }
 }

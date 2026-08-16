@@ -23,11 +23,11 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
- * The three doors a durable {@code AgentBuilder} actually needs, plus the summary shelf a
- * summarizing {@code ContextHydrator} reaches for, the plan facility's own store, the notebook
- * facility's own store, and the subagent facility's own link registry, all over one database — any
- * of the five {@link JdbcDialect} knows (design §2) — bootstrapped in one call: a {@link
- * JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, a {@link
+ * The three doors a durable {@link org.jwcarman.nessy.AgentConfig} actually needs, plus the summary
+ * shelf a summarizing {@code ContextHydrator} reaches for, the plan facility's own store, the
+ * notebook facility's own store, and the subagent facility's own link registry, all over one
+ * database — any of the five {@link JdbcDialect} knows (design §2) — bootstrapped in one call: a
+ * {@link JdbcConversationStore}, a {@link JdbcParks} registry, a {@link JdbcTranscript}, a {@link
  * JdbcSummaryStore}, a {@link JdbcPlanStore}, a {@link JdbcNotebook}, and a {@link
  * JdbcSubagentLinks}. {@link #create} exists because those seven schemas are always stood up
  * together in practice — nothing here couples them beyond that convenience; each component still

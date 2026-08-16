@@ -247,6 +247,43 @@ class OpenAiModelProviderTest {
     }
   }
 
+  /**
+   * Drives the two public static factories directly — {@link OpenAiModelProvider#create} and {@link
+   * OpenAiModelProvider#fromEnv} — rather than the package-private {@link OpenAiProviderConfig} the
+   * {@link Configuration} tests above reach into. Spec §5 requires {@code fromEnv()} equal {@code
+   * create(config -> config.fromEnv())} in behavior; this pins that offline by driving both through
+   * the same unset-environment failure and comparing messages.
+   */
+  @Nested
+  class PublicStaticFactories {
+
+    @Test
+    void create_rejects_a_null_customizer() {
+      assertThatThrownBy(() -> OpenAiModelProvider.create(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("customizer must not be null");
+    }
+
+    @Test
+    void from_env_fails_the_same_way_create_with_a_from_env_customizer_does() {
+      assumeTrue(System.getenv("OPENAI_API_KEY") == null, "OPENAI_API_KEY is set in this shell");
+
+      assertThatThrownBy(OpenAiModelProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("OPENAI_API_KEY");
+      assertThatThrownBy(() -> OpenAiModelProvider.create(OpenAiProviderConfig::fromEnv))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("OPENAI_API_KEY");
+    }
+
+    @Test
+    void create_reaches_the_real_construction_path_offline() {
+      OpenAiModelProvider provider = OpenAiModelProvider.create(c -> c.apiKey("sk-test"));
+
+      assertThat(provider).isNotNull();
+    }
+  }
+
   @Nested
   class Capabilities {
 

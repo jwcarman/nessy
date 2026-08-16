@@ -138,6 +138,49 @@ class BedrockModelProviderTest {
     }
   }
 
+  /**
+   * Drives the two public static factories directly — {@link BedrockModelProvider#create} and
+   * {@link BedrockModelProvider#fromEnv} — rather than the package-private {@link
+   * BedrockProviderConfig} the {@link Configuration} tests above reach into. Before this class,
+   * {@code fromEnv()} had zero offline coverage at all — only {@code @Tag("live")} and a
+   * condition-gated Boot bean exercised it. Spec §5 requires {@code fromEnv()} equal {@code
+   * create(config -> config.fromEnv())} in behavior; this pins that offline by driving both through
+   * the same unset-region failure and comparing messages.
+   */
+  @Nested
+  class PublicStaticFactories {
+
+    @Test
+    void create_rejects_a_null_customizer() {
+      assertThatThrownBy(() -> BedrockModelProvider.create(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("customizer must not be null");
+    }
+
+    @Test
+    void from_env_fails_the_same_way_create_with_a_from_env_customizer_does() {
+      assumeTrue(System.getenv("AWS_REGION") == null, "AWS_REGION is set in this shell");
+      assumeTrue(
+          System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
+
+      assertThatThrownBy(BedrockModelProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("AWS_REGION")
+          .hasMessageContaining("AWS_DEFAULT_REGION");
+      assertThatThrownBy(() -> BedrockModelProvider.create(BedrockProviderConfig::fromEnv))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("AWS_REGION")
+          .hasMessageContaining("AWS_DEFAULT_REGION");
+    }
+
+    @Test
+    void create_reaches_the_real_construction_path_offline() {
+      try (var provider = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1))) {
+        assertThat(provider.name()).isEqualTo("Bedrock");
+      }
+    }
+  }
+
   @Nested
   class Capabilities {
 

@@ -47,14 +47,14 @@ public final class OpenAiProviderConfig {
    * OPENAI_WEBHOOK_SECRET}, {@code OPENAI_ADMIN_KEY}, {@code OPENAI_CUSTOM_HEADERS}, and the {@code
    * AZURE_OPENAI_KEY} Azure-credential path.
    *
-   * <p>Only a flag is set here; nothing is read yet. {@link #build()} applies it by calling the
+   * <p>Only a flag is set here; nothing is read yet. {@code build()} applies it by calling the
    * SDK's {@code fromEnv()} first, then layering any explicit {@link #apiKey(String)} / {@link
    * #baseUrl(String)} / {@link #organization(String)} set on <em>this</em> config on top — an
    * explicit override always wins over an ambient environment value.
    *
-   * @throws IllegalStateException at {@link #build()} time if neither an explicit key nor {@value
+   * @throws IllegalStateException at {@code build()} time if neither an explicit key nor {@value
    *     #API_KEY_ENV_VAR} is available. (Azure's {@code AZURE_OPENAI_KEY} credential path is not
-   *     checked here and is trusted entirely to the SDK's own resolution — see {@link #build()}.)
+   *     checked here and is trusted entirely to the SDK's own resolution — see {@code build()}.)
    */
   public OpenAiProviderConfig fromEnv() {
     this.useEnv = true;

@@ -45,7 +45,7 @@ import org.jwcarman.nessy.spi.plan.PlanStore;
  * <p>Every decision the loop makes — banner, prompt, exit words, blank-line reprompt, the spinner's
  * erase-on-first-event handoff to the renderer — lives here, against a plain {@link
  * BufferedReader}/{@link Writer} pair, so it is exercised headless in this module's own tests with
- * no real console anywhere in the picture. {@link ReplConfig#run()} is the only place a real
+ * no real console anywhere in the picture. {@code ReplConfig.run()} is the only place a real
  * console enters: a thin wrap of {@link System#in} and {@link System#out}.
  */
 public final class ConsoleRepl {
