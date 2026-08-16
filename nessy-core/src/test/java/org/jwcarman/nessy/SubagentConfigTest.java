@@ -199,11 +199,11 @@ class SubagentConfigTest {
     /**
      * N2: partial registration must not survive a failed build. Every declared config, at every
      * depth, is validated before any of them is built or registered (see {@code
-     * AgentBuilder.buildSubagents}'s own up-front pass) — so a later sibling's bad config never
-     * leaves an earlier, perfectly valid sibling sitting in the harness's own internal registry
-     * when the throw reaches the caller. Proved here by reusing "helper" on a second, independent
-     * build attempt: if the first attempt had left "helper" registered, this would collide instead
-     * of succeeding.
+     * SubagentAssembly.build()}'s own up-front pass) — so a later sibling's bad config never leaves
+     * an earlier, perfectly valid sibling sitting in the harness's own internal registry when the
+     * throw reaches the caller. Proved here by reusing "helper" on a second, independent build
+     * attempt: if the first attempt had left "helper" registered, this would collide instead of
+     * succeeding.
      */
     @Test
     void a_later_siblings_invalid_config_leaves_no_earlier_sibling_registered() {
