@@ -70,9 +70,13 @@ can say.
   effect is rendered once per evaluated call and flows to the policy, the approver,
   and the audit record.
 
-## 3. The facts — substrate every link can read
+## 3. The facts — an accumulating builder, frozen before judgment
 
-`AuthFacts`, immutable, assembled by the executor per evaluated call:
+The facts travel the chain as a BUILDER (owner ruling): mutable only during chain
+traversal — single-threaded, per-call — so decorator-style links deposit into it as
+they run; it FREEZES into the immutable `AuthFacts` snapshot the policy receives.
+Assembly is impure and accumulative; judgment is pure over a sealed view. Seeded by
+the executor per evaluated call with:
 
 - `conversationId()`, `agentName()`, `call()` (the raw ToolCall), `state()` (the
   conversation control block — what today's two-arg policies see).
@@ -82,9 +86,14 @@ can say.
   the intent module when wired (§5), absent otherwise. Nominal slot, app-typed value,
   same recovery pattern as the principal.
 
+- `put(Key<T>, T)` / `get(Key<T>)` → typed-key deposits and recovery — the open
+  half: any link may contribute any fact under an app-defined key; the principal and
+  intent slots are simply pre-seeded well-known keys in the same mechanism.
+
 Facts are substrate: nominally named so shipped machinery (approval UIs, the audit
 report) can always find and render them, dynamically typed so nessy never dictates
-their shape.
+their shape. The two-lane rule: spine-shaped data walks the PAYLOAD types (§4);
+cross-cutting data deposits into the FACTS builder — each link chooses its lane.
 
 ## 4. The chain — typed refinement, Stream.map for authorization
 
@@ -97,10 +106,16 @@ ToolGrant.grant(transferTool,                              // EffectfulTool<Tran
         .policy(scored -> scored.risk() > 700 ? deny("risk too high") : allow()));
 ```
 
-- A link is `BiFunction<AuthFacts, C, T>` (the facts ride alongside; only the payload
-  type walks — a plain `Function<C, T>` lifts trivially). `transform` returns the
-  chain retyped at `<T>`; the next link must accept `T` or compilation fails; the
-  terminal `policy(...)` accepts `UsagePolicy<? super T>`.
+- Two link flavors, one pass-through object:
+  - `transform(name, (facts, payload) -> nextPayload)` — the payload lane: returns
+    the chain retyped at `<T>`; the next link must accept `T` or compilation fails;
+    the terminal `policy(...)` accepts `UsagePolicy<? super T>`.
+  - `enrich(name, facts -> { facts.put(KEY, ...); })` — the decorator lane: deposits
+    into the facts builder, payload type unchanged. Because an enrich never touches
+    `E`, org decorator libraries compose into ANY grant's chain regardless of its
+    effect type — the reuse story for per-grant chains.
+  - Both receive the same accumulating facts builder; a plain `Function<C, T>` lifts
+    into a transform trivially.
 - Links MAY do I/O (assessors consult risk services, budget counters, IdPs). Links
   are the impure gathering stage; the policy stays pure.
 - **Fail closed, everywhere**: a throwing link, a throwing `effect`, or a throwing
