@@ -40,6 +40,8 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The default {@code CallModel} performance: recall from Memory, stream from the provider, merge
@@ -50,9 +52,15 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * <p>Stream consumption runs inside one {@code nessy.model.call} observation: opened before the
  * provider is asked to stream, marked {@link Observation#error(Throwable)} on an unexpected {@link
  * RuntimeException}, stopped in a {@code finally} regardless of outcome, and tagged with the
- * settled usage the instant {@link ModelEvent.TurnEnded} arrives.
+ * settled usage the instant {@link ModelEvent.TurnEnded} arrives. Any {@code RuntimeException} the
+ * provider call or stream consumption raises — a context overflow, an HTTP error, a socket reset, a
+ * broken stream protocol, whatever a provider SDK decides to throw — yields a {@code
+ * ModelCallFailed} fact instead of propagating: there is no allowlist and no marker interface, so
+ * no provider failure can leave a conversation stuck at {@code AWAITING_MODEL}.
  */
 public final class ProviderModelCallExecutor implements ModelCallExecutor {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ProviderModelCallExecutor.class);
 
   private final ModelProvider provider;
   private final ModelSettings config;
@@ -88,6 +96,13 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
               null);
     } catch (ContextOverflowException e) {
       return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
+    } catch (RuntimeException e) {
+      // Hydration is provider-domain too (spec §4.5): a summarizing hydrator's own compaction call
+      // can throw exactly like the main call — fold it the same way instead of leaking out of
+      // execute() and leaving the conversation stuck at AWAITING_MODEL.
+      LOGGER.error("model call failed", e);
+      String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
+      return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), reason));
     }
     return stream(state, request, observer);
   }
@@ -105,20 +120,20 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       for (ModelEvent event : stream) {
         switch (event) {
           case ModelEvent.TextChunk(String text) -> {
-            observer.on(new TurnEvent.TextDelta(text));
+            narrate(observer, new TurnEvent.TextDelta(text));
             mergeText(blocks, text);
           }
           case ModelEvent.ThinkingChunk(String text) -> {
-            observer.on(new TurnEvent.ThinkingDelta(text));
+            narrate(observer, new TurnEvent.ThinkingDelta(text));
             mergeThinking(blocks, text);
           }
           case ModelEvent.ThinkingSigned(String signature) -> sign(blocks, signature);
           case ModelEvent.RedactedThinkingEmitted(String data) -> {
-            observer.on(new TurnEvent.RedactedThinking(data));
+            narrate(observer, new TurnEvent.RedactedThinking(data));
             blocks.add(new RedactedThinkingBlock(data));
           }
           case ModelEvent.ToolUseEmitted(var call, var signature) -> {
-            observer.on(new TurnEvent.ToolCallRequested(call));
+            narrate(observer, new TurnEvent.ToolCallRequested(call));
             blocks.add(new ToolUseBlock(call, signature));
           }
           case ModelEvent.TurnEnded(var reason, var usage) -> {
@@ -131,10 +146,26 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       }
       throw new IllegalStateException("model stream ended without a TurnEnded event");
     } catch (ContextOverflowException e) {
-      return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
-    } catch (RuntimeException e) {
+      // Same telemetry as the general arm below (spec §4.5 arm parity): only the reason text stays
+      // distinct, pinned by test.
       modelCall.error(e);
-      throw e;
+      LOGGER.error("model call failed", e);
+      return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
+    } catch (ObserverNarrationFailed e) {
+      // Caller-domain, not provider-domain (spec §4.5): the observer is the caller's own code, so
+      // its exception is the caller's exception — propagate unwrapped, never fold it as a
+      // model-call
+      // fate. Distinguished by call site (this wrapper), not by exception class: not the forbidden
+      // allowlist.
+      throw e.cause();
+    } catch (RuntimeException e) {
+      // Everything else the provider call or stream consumption can throw — a 403, a socket reset,
+      // whatever a provider SDK decides to raise — folds to ModelCallFailed instead of leaking out
+      // of execute() and leaving the conversation stuck at AWAITING_MODEL.
+      modelCall.error(e);
+      LOGGER.error("model call failed", e);
+      String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
+      return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), reason));
     } finally {
       modelCall.stop();
     }
@@ -167,6 +198,38 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
   private static void sign(List<ContentBlock> blocks, String signature) {
     if (!blocks.isEmpty() && blocks.getLast() instanceof ThinkingBlock(String text, _)) {
       blocks.set(blocks.size() - 1, new ThinkingBlock(text, signature));
+    }
+  }
+
+  /**
+   * Narrates one event to {@code observer}, marking a throw from the observer's own code as {@link
+   * ObserverNarrationFailed} so the surrounding catch chain can tell it apart from a provider
+   * failure by call site (spec §4.5) — the sanctioned mechanism, not the forbidden allowlist.
+   */
+  private static void narrate(TurnObserver observer, TurnEvent event) {
+    try {
+      observer.on(event);
+    } catch (RuntimeException e) {
+      throw new ObserverNarrationFailed(e);
+    }
+  }
+
+  /**
+   * Marks a {@link RuntimeException} thrown by {@link TurnObserver#on} — caller-domain, per {@link
+   * TurnObserver}'s published throw contract — so it can be unwrapped and rethrown instead of
+   * folded as a provider-domain {@code ModelCallFailed}.
+   */
+  private static final class ObserverNarrationFailed extends RuntimeException {
+
+    private final RuntimeException cause;
+
+    ObserverNarrationFailed(RuntimeException cause) {
+      super(cause);
+      this.cause = cause;
+    }
+
+    RuntimeException cause() {
+      return cause;
     }
   }
 }

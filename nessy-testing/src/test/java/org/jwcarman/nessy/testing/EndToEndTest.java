@@ -49,6 +49,9 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.model.Capability;
+import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.model.ModelStream;
 
 class EndToEndTest {
 
@@ -362,6 +365,67 @@ class EndToEndTest {
           .filteredOn(TurnEvent.TextDelta.class::isInstance)
           .isNotEmpty()
           .allSatisfy(event -> assertThat(((TurnEvent.TextDelta) event).text()).isNotEmpty());
+    }
+  }
+
+  @Nested
+  class A_failed_model_call {
+
+    /**
+     * The live-trace regression: a provider whose first call throws an unchecked exception (an xAI
+     * 403 in production) must not leak that exception out of {@code tell} and leave the
+     * conversation stuck at {@code AWAITING_MODEL}. It folds to a {@code FAILED} fact instead, and
+     * — because {@code FAILED} is quiescent — a later {@code tell} on the same conversation
+     * recovers cleanly: no {@code ClassCastException}, no zombie turn.
+     */
+    @Test
+    void a_runtime_exception_from_the_provider_fails_the_conversation_and_a_later_tell_recovers() {
+      ScriptedModelProvider scripted = ScriptedModelProvider.builder().text("Hi").endTurn().build();
+      FailFirstThenDelegate provider =
+          new FailFirstThenDelegate(scripted, new RuntimeException("403: no credits"));
+      Agent<String> agent =
+          Nessy.harness(provider).build().agent().name("end-to-end").model("fake-model").build();
+      Conversation<String> conversation = agent.converse();
+
+      RunOutcome first = conversation.tell("hello");
+
+      assertThat(RunOutcomes.failed(first)).isTrue();
+      assertThat(RunOutcomes.failureReason(first))
+          .hasValueSatisfying(
+              reason ->
+                  assertThat(reason).contains("RuntimeException").contains("403: no credits"));
+
+      RunOutcome second = conversation.tell("hello again");
+
+      assertThat(RunOutcomes.failed(second)).isFalse();
+      assertThat(second.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+    }
+
+    /** A provider that throws on its first call, then delegates every later call to a script. */
+    private static final class FailFirstThenDelegate implements ModelProvider {
+
+      private final ModelProvider delegate;
+      private final RuntimeException firstCallFailure;
+      private boolean calledOnce;
+
+      FailFirstThenDelegate(ModelProvider delegate, RuntimeException firstCallFailure) {
+        this.delegate = delegate;
+        this.firstCallFailure = firstCallFailure;
+      }
+
+      @Override
+      public ModelStream stream(ModelRequest request) {
+        if (!calledOnce) {
+          calledOnce = true;
+          throw firstCallFailure;
+        }
+        return delegate.stream(request);
+      }
+
+      @Override
+      public Set<Capability> capabilities() {
+        return delegate.capabilities();
+      }
     }
   }
 }

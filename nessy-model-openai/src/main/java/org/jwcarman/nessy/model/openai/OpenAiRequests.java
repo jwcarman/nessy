@@ -99,19 +99,28 @@ public final class OpenAiRequests {
   }
 
   /**
-   * A {@code USER}-role {@link Message} is, by grammar construction, either an actual user turn
-   * (text and/or images) or a batch of tool results — never both. Tool results have no home inside
-   * a Chat Completions user message; each becomes its own {@code tool}-role message.
+   * A {@code USER}-role {@link Message} may legally mix {@link ToolResultBlock}s with other blocks
+   * — the reducer's told-notes flush builds exactly that shape. Every {@link ToolResultBlock}
+   * becomes its own {@code tool}-role message, placed FIRST: OpenAI requires tool-role messages to
+   * appear directly after the assistant {@code tool_calls} message they answer. Any remaining,
+   * non-tool-result blocks follow as one {@code user}-role message via {@link #toUserMessageParam},
+   * preserving their original relative order; if none remain, no user message is emitted.
    */
   private static List<ChatCompletionMessageParam> toUserRoleMessageParams(
       List<ContentBlock> content) {
-    if (content.stream().anyMatch(ToolResultBlock.class::isInstance)) {
-      return content.stream()
-          .map(ToolResultBlock.class::cast)
-          .map(OpenAiRequests::toToolMessageParam)
-          .toList();
+    var toolMessages =
+        content.stream()
+            .filter(ToolResultBlock.class::isInstance)
+            .map(ToolResultBlock.class::cast)
+            .map(OpenAiRequests::toToolMessageParam)
+            .toList();
+    var remainder = content.stream().filter(block -> !(block instanceof ToolResultBlock)).toList();
+    if (remainder.isEmpty()) {
+      return toolMessages;
     }
-    return List.of(ChatCompletionMessageParam.ofUser(toUserMessageParam(content)));
+    var messages = new ArrayList<ChatCompletionMessageParam>(toolMessages);
+    messages.add(ChatCompletionMessageParam.ofUser(toUserMessageParam(remainder)));
+    return messages;
   }
 
   private static ChatCompletionUserMessageParam toUserMessageParam(List<ContentBlock> content) {

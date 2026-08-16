@@ -23,8 +23,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -346,6 +351,77 @@ class OpenAiRequestsTest {
       assertThat(messages).hasSize(4);
       assertThat(messages.get(2).asTool().toolCallId()).isEqualTo("call-1");
       assertThat(messages.get(3).asTool().toolCallId()).isEqualTo("call-2");
+    }
+  }
+
+  @Nested
+  class MixedToolResultsAndOtherBlocks {
+
+    @Test
+    void a_tool_result_followed_by_text_becomes_a_tool_message_then_a_user_message() {
+      var toolUse = new ToolUseBlock(new ToolCall("c1", "noop", MAPPER.createObjectNode()));
+      var result = new ToolResultBlock("c1", "13", false);
+      var text = new TextBlock("try again");
+      var params =
+          OpenAiRequests.toParams(
+              request(
+                  List.of(
+                      Message.assistant(List.of(toolUse)), Message.user(List.of(result, text)))));
+
+      var messages = params.messages();
+      assertThat(messages).hasSize(4);
+      assertThat(messages.get(2).isTool()).isTrue();
+      assertThat(messages.get(2).asTool().toolCallId()).isEqualTo("c1");
+      assertThat(messages.get(3).isUser()).isTrue();
+      assertThat(messages.get(3).asUser().content().asText()).isEqualTo("try again");
+    }
+
+    @Test
+    void two_tool_results_and_a_text_block_become_two_tool_messages_then_one_user_message() {
+      var firstUse = new ToolUseBlock(new ToolCall("c1", "noop", MAPPER.createObjectNode()));
+      var secondUse = new ToolUseBlock(new ToolCall("c2", "noop", MAPPER.createObjectNode()));
+      var first = new ToolResultBlock("c1", "13", false);
+      var second = new ToolResultBlock("c2", "7", false);
+      var text = new TextBlock("try again");
+      var params =
+          OpenAiRequests.toParams(
+              request(
+                  List.of(
+                      Message.assistant(List.of(firstUse, secondUse)),
+                      Message.user(List.of(first, second, text)))));
+
+      var messages = params.messages();
+      assertThat(messages).hasSize(5);
+      assertThat(messages.get(2).asTool().toolCallId()).isEqualTo("c1");
+      assertThat(messages.get(3).asTool().toolCallId()).isEqualTo("c2");
+      assertThat(messages.get(4).isUser()).isTrue();
+      assertThat(messages.get(4).asUser().content().asText()).isEqualTo("try again");
+    }
+
+    static Stream<Arguments> pure_content_messages() {
+      return Stream.of(
+          Arguments.of(List.of(new ToolResultBlock("c1", "ok", false)), true),
+          Arguments.of(List.of(new TextBlock("hello there")), false));
+    }
+
+    @ParameterizedTest
+    @MethodSource("pure_content_messages")
+    void a_pure_content_message_is_pinned_unchanged(
+        List<ContentBlock> content, boolean expectToolMessage) {
+      List<Message> requestMessages =
+          expectToolMessage
+              ? List.of(
+                  Message.assistant(
+                      List.of(
+                          new ToolUseBlock(new ToolCall("c1", "noop", MAPPER.createObjectNode())))),
+                  Message.user(content))
+              : List.of(Message.user(content));
+      var params = OpenAiRequests.toParams(request(requestMessages));
+
+      var paramMessages = params.messages();
+      var last = paramMessages.get(paramMessages.size() - 1);
+      assertThat(last.isTool()).isEqualTo(expectToolMessage);
+      assertThat(last.isUser()).isEqualTo(!expectToolMessage);
     }
   }
 
