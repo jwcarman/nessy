@@ -46,11 +46,40 @@ sequence of renames and interim shapes that produced it.
   wait followed by the tool's own execution wait), each on a fresh token, at
   most one of each outstanding at a time.
 - **Tools and grants.** `Tool<I>` is a name, a description, an `inputType()`
-  whose JSON Schema the model sees without being hand-written, and an
-  `execute(I, ToolContext)`. `ToolGrant.grant(Tool<?>, UsagePolicy)` is the
-  one way a tool reaches an agent — `UsagePolicy.allow()` or
-  `.requireApproval()` — so a tool's authority is stated at the grant line,
-  not buried in the tool's own code.
+  whose JSON Schema the model sees without being hand-written, an
+  `effect(I input)` statement of what the call will do, and an
+  `execute(I, ToolContext)`. `ToolGrant.grant(...)` is the one way a tool
+  reaches an agent, so a tool's authority is stated at the grant line, not
+  buried in the tool's own code.
+- **Authorization: a ladder from a static verdict to a typed, enriched
+  decision.** `UsagePolicy<E>.evaluate(AuthzContext, E)` is the tool call
+  executor's one authority chokepoint, consulted before the tool runs and
+  before the approver is ever asked; the decision vocabulary is always the
+  same sealed three, `Allow`, `Deny(reason)`, `RequireApproval`. Rigor rises
+  in rungs, and a grant that never climbs past one costs nothing for the
+  rungs above it: rung 0 is `UsagePolicy.allow()`/`.deny(reason)` —
+  canonical statics that skip effect rendering, context assembly, and every
+  enricher entirely; rung 1 is a lambda reading `AuthzContext.call()`/
+  `.state()`; rung 2 welds a tool's typed `EffectfulTool<I, E>` effect to
+  its policy at compile time via `ToolGrant.grant(tool, List.of(), policy)`;
+  rung 3 runs an ordered `Enricher<? super E>` list — `(context, effect) ->
+  context`, the same shape as a policy's own `(context, effect) ->
+  decision`, said twice — depositing assessments (a principal exchange, a
+  risk score, a quota read; I/O welcome) before the policy judges. A
+  throwing effect, enricher, policy, or principal resolver each denies that
+  one call closed, naming the stage that broke, never an escaped exception
+  and never an allow. `spi.intent`'s `declare_intent`/`clear_intent` tools
+  and `AgentConfig.intent(Class<?>)` let a model state an untrusted claim of
+  what it's about to do, read back via `AuthzContext.declaredIntent()`; the
+  vocabulary is an ordinary tool input type nessy validates no further than
+  null and a repeat-call guard, catching a bad fit only at the same
+  fail-closed call time every tool call already gets.
+  `AgentConfig.principal(Function<ConversationId, ?>)` feeds
+  `AuthzContext.principal()`, an agent-level resolver seam over any
+  principal shape — nessy defines the slot, never the type. `Agent#
+  authorizationReport()` renders every grant's own story — effect type,
+  enricher names in order, policy identity — read straight from the wiring,
+  so it can never drift from what actually runs.
 - **Approval and the `Approver` seam.** `Approver.allowAll()`,
   `.denyAll(reason)`, and `.parkAll()` cover the common cases; a custom
   `Approver` decides per `ApprovalRequest` and may itself park, deferring

@@ -19,19 +19,23 @@ class AddTool implements Tool<Add> {
 }
 ```
 
-`Tool<T>` also carries `describe(T input)`, whose default is the input record's
+`Tool<T>` also carries `effect(T input)`, whose default is the input record's
 `toString()` — usable, but it reads like `Greet[name=Ada]`. Override it for anything an
 approver will actually read: a prompt you skim is a prompt you approve without reading.
+`effect` is also where the authority story below begins — see
+[Authorization](authorization.md).
 
 ## The grant principle
 
-A tool carries **zero authority** on its own. `ToolGrant.grant(tool, policy)` is the only
+A tool carries **zero authority** on its own. `ToolGrant.grant(...)` is the only
 way to attach a tool to an agent — there is no `tools(Tool...)` overload, because no
 policy can be derived for a bare tool:
 
 ```java
-public record ToolGrant(Tool<?> tool, UsagePolicy policy) {
-  public static ToolGrant grant(Tool<?> tool, UsagePolicy policy) { ... }
+public record ToolGrant(Tool<?> tool, UsagePolicy<?> policy, List<Enricher<?>> enrichers) {
+  public static ToolGrant grant(Tool<?> tool, UsagePolicy<Object> policy) { ... }
+  public static <I, E> ToolGrant grant(
+      EffectfulTool<I, E> tool, List<? extends Enricher<? super E>> enrichers, UsagePolicy<? super E> policy) { ... }
 }
 ```
 
@@ -49,23 +53,32 @@ The pairing — which tool, and the authority to call it — is stated together,
 per tool. This is the security statement of the harness, structurally: it does not
 compile without a policy.
 
-## `UsagePolicy`: the authority half
+## The authority half: `UsagePolicy` and the ladder
 
-`UsagePolicy#evaluate(ToolCall, ConversationState)` is consulted exactly once per call,
-at the tool call executor's one authority chokepoint — before the tool ever runs and
-before the approver is ever asked. The model has no say in the outcome; it only ever
-sees the result.
+`UsagePolicy<E>.evaluate(AuthzContext, E)` is consulted exactly once per call, at the
+tool call executor's one authority chokepoint — before the tool ever runs and before
+the approver is ever asked. The model has no say in the outcome; it only ever sees the
+result. `evaluate` must be pure: no I/O, no mutation, nothing beyond a function of its
+two arguments. The executor treats an escaping `RuntimeException` as a `Deny` — a
+broken policy fails closed rather than becoming an allow.
 
-- `UsagePolicy.allow()` — every call proceeds; the approver is never consulted. Always
-  the same canonical instance, which is what lets the agent factory tell "no
-  approval path can exist here" from an opaque custom policy that might.
-- `UsagePolicy.deny(reason)` — every call is refused, with the same reason each time.
-- `UsagePolicy.requireApproval()` — every call defers to the agent's `Approver`.
+The two-argument shape above (`ToolCall`/`ConversationState`) is gone; `AuthzContext`
+replaced it, and rigor beyond it is a ladder, not a cliff — each rung adds exactly one
+concept, and a grant that never climbs past rung 0 pays nothing for the rungs above it:
 
-`evaluate` must be pure: no I/O, no mutation, nothing beyond a function of its two
-arguments. The executor may call it from any thread and treats an escaping
-`RuntimeException` as a deny — a broken policy fails closed rather than becoming an
-allow.
+- **Rung 0** — `UsagePolicy.allow()`, `.deny(reason)`, `.requireApproval()`: the
+  canonical statics. `allow()`/`deny(reason)` skip effect rendering, context assembly,
+  and every enricher entirely — the fast path this page's example above already uses.
+- **Rung 1** — a lambda reading `context.call()`/`context.state()` for
+  call- or conversation-shaped rules ("business hours only").
+- **Rung 2** — a typed effect: the tool implements `EffectfulTool<I, E>`, and the grant
+  welds `E` to the policy at compile time.
+- **Rung 3** — enrichers: an ordered `Enricher<? super E>` list deposits assessments
+  into the context before the policy judges.
+
+The full ladder, the enricher/policy symmetry, the order-desk example, intent, the
+principal seam, and the self-documenting report all live on their own page:
+[Authorization](authorization.md).
 
 !!! note "Durable re-drives execute at-least-once"
     A tool's `execute` javadoc says it plainly: a tool that cannot be safely re-run makes
@@ -118,6 +131,8 @@ afterward fails loud rather than swallowing the closed session.
 
 ## Where next
 
+- [Authorization](authorization.md) — the full ladder, enrichers, intent, the principal
+  seam, and the self-documenting report.
 - [The Durable Loop](durable-loop.md) — why at-least-once execution shapes every `Tool`.
 - [Parks and Callbacks](parks-and-callbacks.md) — what a tool does when `execute` must
   outlive the process.

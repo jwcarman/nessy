@@ -198,6 +198,7 @@ framework. The docs site page teaches the whole story; this is just the map.
 |---|---|
 | The durable loop — a pure fold, effects, at-least-once replay | [The Durable Loop](https://jwcarman.github.io/nessy/concepts/durable-loop/) |
 | Tools and grants — structured calls, per-tool authority | [Tools and Grants](https://jwcarman.github.io/nessy/concepts/tools-and-grants/) |
+| Authorization — a ladder from a static verdict to typed effects, enrichers, and intent, with a self-documenting report | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
 | Parks and callbacks — conversations that pause and resume across processes | [Parks and Callbacks](https://jwcarman.github.io/nessy/concepts/parks-and-callbacks/) |
 | Memory and the context pipeline — what a model call actually sees | [Memory and the Pipeline](https://jwcarman.github.io/nessy/concepts/memory-and-the-pipeline/) |
 | Planning — a model-maintained task list, recalled every turn | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |

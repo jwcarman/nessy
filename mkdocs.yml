@@ -78,6 +78,7 @@ nav:
   - Concepts:
       - The Durable Loop: concepts/durable-loop.md
       - Tools and Grants: concepts/tools-and-grants.md
+      - Authorization: concepts/authorization.md
       - Parks and Callbacks: concepts/parks-and-callbacks.md
       - Memory and the Pipeline: concepts/memory-and-the-pipeline.md
       - Planning: concepts/planning.md
