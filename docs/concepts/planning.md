@@ -166,4 +166,4 @@ that step 4 might otherwise get lost while it's grinding on step 2 — not by de
   seams `PlanTools.transformer` is built on.
 - [Tools and Grants](tools-and-grants.md) — the grant principle `PlanTools.updatePlan` is
   itself an instance of.
-- [Storage](storage.md) — `PlanStore`, one of the five durable doors, and its JDBC backing.
+- [Storage](storage.md) — `PlanStore`, one of the six durable doors, and its JDBC backing.

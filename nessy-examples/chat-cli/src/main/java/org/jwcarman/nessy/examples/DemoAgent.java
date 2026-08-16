@@ -17,10 +17,13 @@ package org.jwcarman.nessy.examples;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.function.Function;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ConversationEvent;
+import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.SubjectId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -29,6 +32,8 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.notebook.Notebook;
+import org.jwcarman.nessy.spi.notebook.NotebookTools;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.plan.PlanTools;
 import org.jwcarman.nessy.spi.transcript.Transcript;
@@ -60,7 +65,8 @@ public final class DemoAgent {
 
   private static final String SYSTEM_PROMPT =
       "You are Nessy's demo assistant. You can add numbers and tell the current time. Be brief."
-          + " For multi-step requests, maintain a task list with update_plan.";
+          + " For multi-step requests, maintain a task list with update_plan. When the user tells"
+          + " you something worth keeping, remember it.";
 
   private DemoAgent() {}
 
@@ -70,6 +76,14 @@ public final class DemoAgent {
    * maintains its own plan through {@code update_plan}, and the context pipeline recalls it into
    * every subsequent turn unconditionally.
    *
+   * <p>Alongside the plan, this agent also grants the {@link NotebookTools#remember(Notebook,
+   * Function) remember}, {@link NotebookTools#recall(Notebook, Function) recall}, and {@link
+   * NotebookTools#forget(Notebook, Function) forget} tools over a single, process-lifetime {@link
+   * Notebook} (spec §6): a fixed subject resolver maps every conversation this process ever holds
+   * to the same {@link SubjectId}, so notes made in one chat-cli conversation are remembered in the
+   * next — within this run only, since the notebook is in-memory; a {@code JdbcNotebook} swap is
+   * the only change needed to survive a restart.
+   *
    * <p>Returns the {@link PlanStore} alongside the agent (rather than the agent alone) so {@code
    * Chat}'s {@code main} can hand the same store to {@code ConsoleRepl.Builder#plan(PlanStore)} —
    * the grant principle applied to the console's own opt-in: the store the model writes through
@@ -77,6 +91,8 @@ public final class DemoAgent {
    */
   public static Built agentFor(ModelProvider provider, String model) {
     PlanStore planStore = PlanStore.inMemory();
+    Notebook notebook = Notebook.inMemory();
+    Function<ConversationId, SubjectId> subjectResolver = id -> new SubjectId("chat-cli-user");
     Transcript transcript = Transcript.inMemory();
     Agent<String> agent =
         Nessy.harness(provider)
@@ -88,11 +104,23 @@ public final class DemoAgent {
             .tools(
                 ToolGrant.grant(new AddTool(), UsagePolicy.allow()),
                 ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval()),
-                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
+                ToolGrant.grant(
+                    NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
+                ToolGrant.grant(
+                    NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
+                ToolGrant.grant(
+                    NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
             // Replaces the builder's default in-memory pipeline Memory with one over an
-            // explicitly held transcript — same durability class, now with the plan riding
-            // recall (spec §7).
-            .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
+            // explicitly held transcript — same durability class, now with the plan and the
+            // notebook index riding recall (spec §6). The notebook transformer is registered
+            // after the plan transformer: enrich appends at the tail, so the notebook index
+            // ends up closer to the model's next turn than the plan checklist does.
+            .memory(
+                Memory.pipeline(transcript)
+                    .transform(PlanTools.transformer(planStore))
+                    .transform(NotebookTools.transformer(notebook, subjectResolver))
+                    .build())
             .approver(new ConsoleApprover())
             .listen(ConversationEvent.ModelResponded.class, DemoAgent::announceUsage)
             .build();

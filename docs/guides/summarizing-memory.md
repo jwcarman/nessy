@@ -109,5 +109,5 @@ the starter's autoconfigured plain-pipeline `Memory`.
   chain.
 - [Storage](../concepts/storage.md) — `SummaryStore` and `Transcript`, the
   two durable doors this hydrator reads and writes.
-- [Spring Boot](spring-boot.md) — the five autoconfigured persistence beans,
+- [Spring Boot](spring-boot.md) — the six autoconfigured persistence beans,
   and why `SummaryStore` isn't one of them.

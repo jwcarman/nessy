@@ -34,9 +34,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.SummaryStore;
+import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.jwcarman.nessy.tck.ConversationStoreContract;
+import org.jwcarman.nessy.tck.NotebookContract;
 import org.jwcarman.nessy.tck.ParksContract;
 import org.jwcarman.nessy.tck.PlanStoreContract;
 import org.jwcarman.nessy.tck.SummaryStoreContract;
@@ -46,9 +48,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * The full TCK, all four contracts, run against a real MariaDB — plus the dialect-resolution pin
+ * The full TCK, all six contracts, run against a real MariaDB — plus the dialect-resolution pin
  * (design §6). One container for the whole class (nested contracts share it, each truncating its
- * own table between tests) rather than four, the same efficiency trade the vendor matrix needs five
+ * own table between tests) rather than six, the same efficiency trade the vendor matrix needs five
  * times over. Requires Docker; tagged {@code container} so the offline default build never needs
  * it.
  *
@@ -176,6 +178,23 @@ class MariaDbStoreTckTest {
     @Override
     protected PlanStore plans() {
       return plans;
+    }
+  }
+
+  @Nested
+  class Notebook_contract extends NotebookContract {
+
+    private Notebook notebook;
+
+    @BeforeEach
+    void a_fresh_notebook_over_an_empty_table() {
+      notebook = JdbcNotebook.create(dataSource);
+      truncate("nessy_notebook");
+    }
+
+    @Override
+    protected Notebook notebook() {
+      return notebook;
     }
   }
 

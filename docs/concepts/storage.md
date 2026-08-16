@@ -1,7 +1,7 @@
 # Storage
 
-Restart survival rests on five storage SPIs — `ConversationStore`, `Parks`,
-`Transcript`, `SummaryStore`, `PlanStore` — each with a zero-configuration
+Restart survival rests on six storage SPIs — `ConversationStore`, `Parks`,
+`Transcript`, `SummaryStore`, `PlanStore`, `Notebook` — each with a zero-configuration
 in-memory default and a `nessy-jdbc` implementation behind it. Every one dies
 with the JVM by default; every one survives a restart once backed by a real
 database.
@@ -13,6 +13,7 @@ database.
 | `Parks` | The registry translating a `ParkToken` back to a conversation and call | `Parks.inMemory()` |
 | `SummaryStore` | One conversation's folded prefix (the summarizing hydrator's watermark) | `SummaryStore.inMemory()` |
 | `PlanStore` | One conversation's current plan | `PlanStore.inMemory()` |
+| `Notebook` | Durable, named notes about a subject | `Notebook.inMemory()` |
 
 ## `ConversationStore`
 
@@ -159,7 +160,7 @@ Postgres, not either of them.
 
 ## The TCK: certifying a backend
 
-`nessy-tck` ships five contract classes, one per SPI seam, each an abstract JUnit 5 test
+`nessy-tck` ships six contract classes, one per SPI seam, each an abstract JUnit 5 test
 class with exactly one abstract factory method a concrete subclass supplies:
 
 | Contract | Certifies |
@@ -169,6 +170,7 @@ class with exactly one abstract factory method a concrete subclass supplies:
 | `TranscriptContract` | Append-only ordering, the last-row read, paging |
 | `SummaryStoreContract` | The summary watermark's save/load |
 | `PlanStoreContract` | Save-then-find, wholesale replacement, ordering, empty-save-clears, absence, last-write-wins |
+| `NotebookContract` | Round-trip, index-only headings in name order, upsert replacement, forget and its idempotence, subject isolation, last-write-wins |
 
 ```java
 class InMemoryConversationStoreTest extends ConversationStoreContract {
@@ -183,7 +185,7 @@ class InMemoryConversationStoreTest extends ConversationStoreContract {
 directly and extends the contract classes, supplying its own JUnit engine at test scope.
 A store implementation that passes every contract in the kit honors every invariant the
 loop relies on, whether it ships from this repository or someone else's. `nessy-jdbc`
-runs the same five contracts a second time, once per vendor, against real
+runs the same six contracts a second time, once per vendor, against real
 Postgres/MySQL/MariaDB/SQL Server/Oracle containers.
 
 ## Where next

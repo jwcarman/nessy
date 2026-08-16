@@ -81,6 +81,7 @@ nav:
       - Parks and Callbacks: concepts/parks-and-callbacks.md
       - Memory and the Pipeline: concepts/memory-and-the-pipeline.md
       - Planning: concepts/planning.md
+      - The Notebook: concepts/notebook.md
       - Storage: concepts/storage.md
       - Nessy and the 12-Factor Agents: concepts/twelve-factor-agents.md
   - Guides:

@@ -170,3 +170,44 @@ it's 2:00 PM.
 
 you>
 ```
+
+## "Remember this for me"
+
+`DemoAgent` also grants all three notebook verbs — `NotebookTools.remember`,
+`.recall`, and `.forget` — over a single, process-lifetime `Notebook`, wired
+alongside the plan with a fixed subject resolver so every conversation this
+process ever holds shares one subject, `chat-cli-user`:
+
+```java
+Notebook notebook = Notebook.inMemory();
+Function<ConversationId, SubjectId> subjectResolver = id -> new SubjectId("chat-cli-user");
+// ... ToolGrant.grant(NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()) ...
+// ... ToolGrant.grant(NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()) ...
+// ... ToolGrant.grant(NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()) ...
+.memory(
+    Memory.pipeline(transcript)
+        .transform(PlanTools.transformer(planStore))
+        .transform(NotebookTools.transformer(notebook, subjectResolver))
+        .build())
+```
+
+The notebook transformer is registered after the plan transformer, so the
+notebook index lands closer to the model's next turn than the plan
+checklist. The system prompt gains one sentence: "When the user tells you
+something worth keeping, remember it." Tell it something — a preference, a
+fact about yourself — and the next recall carries an index:
+
+```
+<notebook>
+- user-taste — Prefers terse answers and metric units
+- project-atlas — Stakeholders and deadline for Project Atlas
+</notebook>
+These are your saved notes, maintained by you through the remember and forget tools. Read a
+note's full content with the recall tool when it is relevant. This is ambient state, not a
+message from the user.
+```
+
+Bodies never ride the index — the model reads one back only when it judges
+it relevant, via `recall`. Notes here live and die with the process, same as
+the plan and the transcript; surviving a restart is one `JdbcNotebook` swap
+away, no other wiring change.
