@@ -50,8 +50,9 @@ class AskQuestionToolTest {
     AskQuestionTool tool = new AskQuestionTool(new PendingAnswers());
     ToolCall call = new ToolCall("call-1", "ask_question", JsonNodeFactory.instance.objectNode());
     ToolContext context = new ToolContext(new ConversationId("conversation-1"), call, event -> {});
+    AskQuestion input = new AskQuestion("which story?");
 
-    assertThatThrownBy(() -> tool.execute(new AskQuestion("which story?"), context))
+    assertThatThrownBy(() -> tool.execute(input, context))
         .isInstanceOf(IllegalStateException.class);
   }
 

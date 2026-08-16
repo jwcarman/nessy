@@ -23,6 +23,7 @@ import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Conversation;
@@ -123,8 +124,20 @@ final class NewsroomRepl {
     }
   }
 
+  /**
+   * The same render-and-continue discipline {@code ConsoleRepl.tell} uses (nessy-console): a raw
+   * {@link RuntimeException} out of {@link Conversation#tell} — a provider/network blip — prints
+   * one error line and lets the loop reprompt, rather than crashing the whole session over a single
+   * bad turn.
+   */
   private void tell(String line) {
-    writerConversation.tell(line, ConsoleRenderer.observer(out));
+    try {
+      writerConversation.tell(line, ConsoleRenderer.observer(out));
+    } catch (RuntimeException e) {
+      String reason = Objects.requireNonNullElse(e.getMessage(), e.getClass().getName());
+      write("\n! " + reason + "\n");
+      return;
+    }
     driveApprovalLoop();
     printWriterAnswer();
     renderPlanIfChanged();
