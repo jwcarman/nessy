@@ -174,12 +174,23 @@ public final class Subagent {
   re-verified textually against the new code).
 - [ ] Full verify; license + spotless; commit.
 
-### Task 4: Docs rewrite (docs-writer dispatch)
+### Task 4: Docs rewrite + changelog cleanup (docs-writer dispatch)
 
 **Files:**
 - Rewrite: `docs/concepts/subagents.md` around the spec §1 single code block; update
   `docs/examples/index.md`, newsroom references, and any page mentioning
   AgentTools/CallbackRouter as public API (grep the docs tree).
+- Rewrite: `CHANGELOG.md` (owner ruling, 2026-08-16) — the file's own header already
+  states the policy ("describes the framework's current shape, once, in its final
+  vocabulary") and its 1,150+ lines violate it. Rewrite the `[Unreleased]` section as
+  a first-release feature list: one entry per capability as it exists on the branch
+  (post-v2 vocabulary — SubagentConfig, no AgentTools/CallbackRouter, repeatable
+  parking), grouped by Keep-a-Changelog sections, NO development history, NO renames,
+  NO interim shapes, NO "changed/fixed relative to an earlier unreleased shape"
+  entries. Every claim verified against shipped source — the old file contains stale
+  rationale lines (e.g. a wire-forbids-consecutive-user-messages claim reviewers have
+  mistakenly cited as authority); none may survive. Keep the header + not-yet-released
+  preamble.
 
 **Steps:**
 - [ ] Truth discipline: every claim against the shipped v2 source; the re-park
