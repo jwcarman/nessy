@@ -70,6 +70,27 @@ parts; pure-text and pure-results messages pinned unchanged in both. The mixed
 message in tests is built directly (`Message.user(...)`/`Message.toolResults(...)`)
 — no need to manufacture the zombie state once Bug A is closed.
 
+## 4.5 Final-review amendments (ratified rulings)
+
+- **Failure domains, not exception classes.** The no-allowlist rule separates
+  *provider-domain* failures (the call, stream iteration, hydration's own provider
+  calls — all fold as `ModelCallFailed`) from *caller-domain* failures (a
+  `TurnObserver` that throws during narration — propagates, per `TurnObserver`'s
+  published contract). The distinction is drawn by call site, not by exception
+  class: an internal wrapper around observer invocations is the sanctioned
+  mechanism and is not the forbidden allowlist.
+- **Consecutive USER messages are legal — grammar and wire.** Recovery after a
+  failed call leaves `user(A), user(B)` in history; plan/notebook enrichment has
+  produced the same shape on every planned Anthropic turn since the feature
+  shipped, live-proven in Scout. The CHANGELOG's old "the wire forbids consecutive
+  user messages" rationale describes a constraint today's APIs no longer impose.
+  The shape is pinned by test, not "fixed."
+- **Hydration failures fold too.** `execute`'s recall path (e.g. a summarizing
+  hydrator's compaction call) is provider-domain: its `RuntimeException`s fold,
+  with the `ContextOverflowException` arm keeping its distinct reason first.
+- **Arm parity.** The overflow arm marks the observation errored and logs at
+  ERROR exactly like the general arm; its distinct reason text is pinned by test.
+
 ## 5. Out of scope
 
 - Reducer flush shape (`toolFinished`/`halted`) — explicitly kept as is.
