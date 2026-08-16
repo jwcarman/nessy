@@ -66,7 +66,7 @@ class SearchNotesToolTest {
     Awaited<ToolResult> awaited = tool.execute(input, context);
     return switch (awaited) {
       case Awaited.Ready<ToolResult> ready -> ready.value();
-      case Awaited.Parked<ToolResult> parked ->
+      case Awaited.Parked<ToolResult> _ ->
           throw new AssertionError("search_notes should never park");
     };
   }

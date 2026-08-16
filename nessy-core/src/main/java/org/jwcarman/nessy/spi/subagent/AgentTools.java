@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -176,7 +177,7 @@ public final class AgentTools {
           event.status() == ConversationStatus.COMPLETE
               ? ToolResult.ok(event.finalAssistantText())
               : ToolResult.error(event.failureReason());
-      router.route(park.get().agentName()).resume(token, new ToolResolution.Completed(result));
+      router.resume(park.get().agentName(), token, new ToolResolution.Completed(result));
       links.forget(childId);
     };
   }
@@ -279,14 +280,14 @@ public final class AgentTools {
         ConversationId childId, Delegation input, ToolContext context) {
       TurnObserver progressRelay =
           event -> {
-            if (event instanceof TurnEvent.ToolCallRequested requested) {
-              context.progress(child.name() + ": " + requested.call().name());
+            if (event instanceof TurnEvent.ToolCallRequested(ToolCall call)) {
+              context.progress(child.name() + ": " + call.name());
             }
           };
       RunOutcome outcome = child.conversation(childId).tell(input.task(), progressRelay);
       return switch (outcome) {
         case RunOutcome.Parked _ -> freshPark(childId);
-        case RunOutcome.Completed completed -> settled(childId, completed.state());
+        case RunOutcome.Completed(ConversationState state) -> settled(childId, state);
       };
     }
 

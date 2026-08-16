@@ -19,13 +19,22 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.Agent;
+import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.RunOutcome;
+import org.jwcarman.nessy.api.ToolResolution;
 
 /**
  * A name-keyed registry of {@link Agent}s, so a subagent callback can find the parent agent to
- * route the child's answer through. Keyed by {@link Agent#name()} — the same durable wire contract
+ * resume the child's answer through. Keyed by {@link Agent#name()} — the same durable wire contract
  * a park's own stamp carries (see {@link org.jwcarman.nessy.api.WrongAgentException}): a callback
  * names the agent it is meant for, and this router is where that name resolves back to a live
  * instance.
+ *
+ * <p>The only door callers need is {@link #resume}: it looks the agent up by name and delegates
+ * straight to its own {@link Agent#resume(ParkToken, ToolResolution)}. There is deliberately no
+ * public door that hands back the {@code Agent<?>} itself — a wildcard-typed return offers nothing
+ * a caller could safely do with it beyond resuming, so that's the only thing this router lets you
+ * do (java:S1452).
  */
 public final class CallbackRouter {
 
@@ -47,11 +56,13 @@ public final class CallbackRouter {
 
   /**
    * Looks up the agent registered under {@code agentName} — the same name a park's own stamp
-   * carries.
+   * carries — and resumes its park with {@code resolution}.
    *
    * @throws IllegalArgumentException if no agent with that name is registered
+   * @throws org.jwcarman.nessy.api.WrongAgentException if {@code token} was not minted by that
+   *     agent (surfaces uncaught from {@link Agent#resume(ParkToken, ToolResolution)})
    */
-  public Agent<?> route(String agentName) {
+  public RunOutcome resume(String agentName, ParkToken token, ToolResolution resolution) {
     Objects.requireNonNull(agentName, "agentName must not be null");
     Agent<?> agent = agents.get(agentName);
     if (agent == null) {
@@ -61,6 +72,6 @@ public final class CallbackRouter {
               + "' is registered — an agent's name is a durable wire contract; register it before"
               + " routing callbacks to it");
     }
-    return agent;
+    return agent.resume(token, resolution);
   }
 }
