@@ -211,9 +211,13 @@ public interface Enricher<E> {
     and nothing else. No ordering hazard against `.grant(...)`: policy lambdas run
     per call, not at wiring.
   - Policies read the blessed accessor `context.declaredIntent(Class<T>)`; storage
-    stays the single `INTENT_KEY` (`Key<Object>`) so vocabulary-blind readers (the §8
+    stays the single `DECLARED_INTENT` (`Key<Object>`) so vocabulary-blind readers (the §8
     report, audit rendering) keep working, and app-defined keys remain the seam for
     anyone running their own intent discipline.
+  - Implementation note (as built): the declare/clear tools and the reader enricher
+    are package-private in `org.jwcarman.nessy` (`IntentAssembly`), NOT under
+    `spi/intent/` — deliberate, so `Tool` stays the only sanctioned api→internal
+    crossing. `spi/intent/` holds the store only.
   - Reads FAIL CLOSED: a stored intent of a different vocabulary, or one whose class
     no longer resolves after a rename, reads as ABSENT — never a ClassCastException,
     never an allow. The deny-teaches-protocol path handles it.
