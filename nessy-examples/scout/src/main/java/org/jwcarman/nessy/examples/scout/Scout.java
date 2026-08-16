@@ -39,7 +39,7 @@ import org.jwcarman.nessy.tool.mcp.McpToolbox;
  * an imported toolbox granted tool-by-tool. Two of its three tools are ungated ({@code
  * read_wiki_structure}, {@code read_wiki_contents}); the third, {@code ask_question}, routes every
  * call through the console approval gate, the deliberate beat: a human approves a <em>remote</em>
- * server's tool call, reading {@code describe()}'s name-plus-JSON prompt before it runs.
+ * server's tool call, reading {@code effect()}'s name-plus-JSON prompt before it runs.
  *
  * <p>The DeepWiki tool names are verified against the live server, not guessed — see the module
  * README for how and when. A drifted name fails loud at {@link McpToolbox#tool(String)}, right at

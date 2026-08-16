@@ -62,9 +62,9 @@ class AskQuestionToolTest {
   }
 
   @Test
-  void describe_renders_the_question_itself_for_the_approval_prompt() {
+  void effect_renders_the_question_itself_for_the_approval_prompt() {
     AskQuestionTool tool = new AskQuestionTool(new PendingAnswers());
 
-    assertThat(tool.describe(new AskQuestion("which story?"))).isEqualTo("which story?");
+    assertThat(tool.effect(new AskQuestion("which story?"))).isEqualTo("which story?");
   }
 }

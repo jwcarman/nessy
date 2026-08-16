@@ -40,16 +40,16 @@ public final class ToolInvoker {
     return invokeCaptured(tool, call, context);
   }
 
-  public String describe(Tool<?> tool, ToolCall call) {
-    return describeCaptured(tool, call);
+  public Object effect(Tool<?> tool, ToolCall call) {
+    return effectCaptured(tool, call);
   }
 
   private <T> Awaited<ToolResult> invokeCaptured(Tool<T> tool, ToolCall call, ToolContext context) {
     return tool.execute(bind(tool, call), context);
   }
 
-  private <T> String describeCaptured(Tool<T> tool, ToolCall call) {
-    return tool.describe(bind(tool, call));
+  private <T> Object effectCaptured(Tool<T> tool, ToolCall call) {
+    return tool.effect(bind(tool, call));
   }
 
   private <T> T bind(Tool<T> tool, ToolCall call) {

@@ -83,7 +83,7 @@ final class McpTool implements Tool<JsonNode> {
    * The tool name plus compact single-line JSON of the arguments — an approval prompt you can skim.
    */
   @Override
-  public String describe(JsonNode input) {
+  public String effect(JsonNode input) {
     return name() + " " + input;
   }
 

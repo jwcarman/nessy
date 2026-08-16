@@ -154,7 +154,7 @@ class PlanToolsTest {
     }
 
     @Test
-    void describe_renders_the_full_checklist_with_wrapper_and_framing_sentence() {
+    void effect_renders_the_full_checklist_with_wrapper_and_framing_sentence() {
       PlanStore store = PlanStore.inMemory();
       Tool<PlanTools.UpdatePlan> tool = PlanTools.updatePlan(store);
       PlanTools.UpdatePlan input =
@@ -164,7 +164,7 @@ class PlanToolsTest {
                   new PlanTools.PlannedTask("Summarize the disputes", Plan.Status.IN_PROGRESS),
                   new PlanTools.PlannedTask("Draft the refund email", Plan.Status.DONE)));
 
-      String described = tool.describe(input);
+      Object described = tool.effect(input);
 
       assertThat(described)
           .isEqualTo(

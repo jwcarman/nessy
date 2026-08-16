@@ -69,7 +69,7 @@ final class SearchNotesTool implements Tool<SearchNotesTool.SearchNotes> {
   }
 
   @Override
-  public String describe(SearchNotes input) {
+  public String effect(SearchNotes input) {
     return "search_notes(" + input.topic() + ")";
   }
 

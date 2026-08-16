@@ -42,12 +42,17 @@ public interface Tool<T> {
   Class<T> inputType();
 
   /**
-   * What this call looks like to a human, in the approval prompt.
+   * States what executing this call will do: "execute this call with these arguments, and this is
+   * what will happen." The tool is the trusted, developer-authored speaker of this statement — it
+   * is rendered once per evaluated call and flows to the approval prompt, the authorization policy,
+   * and the audit record alike.
    *
    * <p>The default is the record's {@code toString}, which is usable but reads like {@code
-   * Greet[name=Ada]}. Override it: a prompt you skim is a prompt you approve without reading.
+   * Greet[name=Ada]}. Override it: a prompt you skim is a prompt you approve without reading. A
+   * {@code String} is a perfectly valid effect statement — this is the untyped tier; {@link
+   * EffectfulTool} welds a specific effect type {@code E} through to the policy at compile time.
    */
-  default String describe(T input) {
+  default Object effect(T input) {
     return String.valueOf(input);
   }
 

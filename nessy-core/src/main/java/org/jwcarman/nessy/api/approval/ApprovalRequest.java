@@ -22,8 +22,8 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 /**
  * The question put to a human.
  *
- * @param description the tool's own rendering of the call, from {@code Tool.describe} — this is
- *     what a person actually reads
+ * @param description the tool's own rendering of the call, from {@code Tool.effect} — this is what
+ *     a person actually reads
  */
 public record ApprovalRequest(ConversationId conversationId, ToolCall call, String description) {
 

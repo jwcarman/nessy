@@ -75,7 +75,7 @@ class EndToEndTest {
     }
 
     @Override
-    public String describe(Add input) {
+    public String effect(Add input) {
       return "add(" + input.left() + ", " + input.right() + ")";
     }
 

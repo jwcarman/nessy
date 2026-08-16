@@ -391,7 +391,7 @@ class ConsoleReplTest {
       }
 
       @Override
-      public String describe(PingInput input) {
+      public String effect(PingInput input) {
         return "ping";
       }
 

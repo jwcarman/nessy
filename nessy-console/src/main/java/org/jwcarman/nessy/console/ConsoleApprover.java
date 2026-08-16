@@ -28,7 +28,7 @@ import org.jwcarman.nessy.api.approval.Approver;
 
 /**
  * The safety gate, worked by a human at the keyboard (design §4): prints the tool's own {@code
- * describe(...)} line — highlighted bold-yellow, the security beat that should pop — and reads y/n.
+ * effect(...)} line — highlighted bold-yellow, the security beat that should pop — and reads y/n.
  * Garbage input reprompts rather than being read as a denial; only {@code y}/{@code n}
  * (case-insensitive, whitespace-trimmed) settle the question. End of input (an unattended pipe, a
  * closed terminal) is read as a denial, the same conservative default {@code y}/{@code n} garbage

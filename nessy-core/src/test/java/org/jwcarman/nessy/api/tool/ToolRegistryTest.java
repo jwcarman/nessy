@@ -50,7 +50,7 @@ class ToolRegistryTest {
     }
 
     @Override
-    public String describe(Greet input) {
+    public String effect(Greet input) {
       return "greet(" + input.name() + ")";
     }
 
@@ -169,10 +169,10 @@ class ToolRegistryTest {
     }
 
     @Test
-    void describe_renders_the_call_for_a_human() {
+    void effect_renders_the_call_for_a_human() {
       Tool<?> tool = registry.find("greet").orElseThrow();
 
-      assertThat(invoker.describe(tool, greetCall("Ada"))).isEqualTo("greet(Ada)");
+      assertThat(invoker.effect(tool, greetCall("Ada"))).isEqualTo("greet(Ada)");
     }
   }
 }

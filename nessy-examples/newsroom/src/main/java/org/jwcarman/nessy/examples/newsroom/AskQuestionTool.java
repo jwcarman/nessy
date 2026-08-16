@@ -69,7 +69,7 @@ final class AskQuestionTool implements Tool<AskQuestionTool.AskQuestion> {
   }
 
   @Override
-  public String describe(AskQuestion input) {
+  public String effect(AskQuestion input) {
     return input.question();
   }
 

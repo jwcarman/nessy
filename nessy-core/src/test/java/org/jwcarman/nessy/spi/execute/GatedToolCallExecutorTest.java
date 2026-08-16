@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.event.ApprovalRequested;
 import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.event.ToolProgress;
+import org.jwcarman.nessy.api.tool.EffectfulTool;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -360,6 +361,64 @@ class GatedToolCallExecutorTest {
       Awaited<ConversationEvent> outcome = executor.execute(echoCall("hi"), state, observed::add);
 
       assertThat(outcome).isEqualTo(Awaited.parked(token));
+    }
+  }
+
+  @Nested
+  class TypedEffectRendering {
+
+    record TransferInput(String from, String to, int amountCents) {}
+
+    record TransferEffect(String from, String to, int amountCents) {}
+
+    /** An {@link EffectfulTool} whose effect is a record, not a String. */
+    static final class TransferTool implements EffectfulTool<TransferInput, TransferEffect> {
+
+      @Override
+      public String name() {
+        return "transfer";
+      }
+
+      @Override
+      public String description() {
+        return "Transfers money between accounts";
+      }
+
+      @Override
+      public Class<TransferInput> inputType() {
+        return TransferInput.class;
+      }
+
+      @Override
+      public TransferEffect effect(TransferInput input) {
+        return new TransferEffect(input.from(), input.to(), input.amountCents());
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(TransferInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok("transferred"));
+      }
+    }
+
+    private static ToolCall transferCall() {
+      var args = JsonNodeFactory.instance.objectNode();
+      args.put("from", "acct-1");
+      args.put("to", "acct-2");
+      args.put("amountCents", 500);
+      return new ToolCall("c1", "transfer", args);
+    }
+
+    @Test
+    void the_approval_prompt_renders_the_record_effects_own_tostring() {
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(ToolGrant.grant(new TransferTool(), UsagePolicy.requireApproval()), approver);
+      TransferEffect expected = new TransferEffect("acct-1", "acct-2", 500);
+
+      executor.execute(transferCall(), state, observed::add);
+
+      assertThat(approver.requests).hasSize(1);
+      assertThat(approver.requests.get(0).description()).isEqualTo(expected.toString());
     }
   }
 

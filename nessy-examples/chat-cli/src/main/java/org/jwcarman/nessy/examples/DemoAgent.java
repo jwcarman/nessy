@@ -194,7 +194,7 @@ public final class DemoAgent {
     }
 
     @Override
-    public String describe(Add input) {
+    public String effect(Add input) {
       return input.left() + " + " + input.right();
     }
 
@@ -227,7 +227,7 @@ public final class DemoAgent {
     }
 
     @Override
-    public String describe(Now input) {
+    public String effect(Now input) {
       return "read the current time";
     }
 

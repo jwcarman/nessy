@@ -73,7 +73,7 @@ public final class PlanTools {
 
   /**
    * Renders {@code tasks} as the checklist block, byte-exact per spec §3.4. Works from the wire
-   * shape rather than {@link Plan} so a {@code describe} preview never has to construct — and
+   * shape rather than {@link Plan} so an {@code effect} preview never has to construct — and
    * validate — a {@link Plan} just to render one.
    */
   private static String renderChecklist(List<PlannedTask> tasks) {
@@ -147,7 +147,7 @@ public final class PlanTools {
     }
 
     @Override
-    public String describe(UpdatePlan input) {
+    public String effect(UpdatePlan input) {
       return renderChecklist(input.tasks());
     }
 

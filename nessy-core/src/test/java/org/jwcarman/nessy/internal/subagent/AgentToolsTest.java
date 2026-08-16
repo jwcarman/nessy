@@ -241,14 +241,14 @@ class AgentToolsTest {
     }
 
     @Test
-    void describe_shows_the_task_text() {
+    void effect_shows_the_task_text() {
       Agent<String> child =
           Nessy.harness(h -> h.provider(new ScriptedProvider()))
               .agent(a -> a.name("researcher").model("m"));
 
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
 
-      assertThat(tool.describe(new AgentTools.Delegation("look into the outage")))
+      assertThat(tool.effect(new AgentTools.Delegation("look into the outage")))
           .isEqualTo("look into the outage");
     }
   }

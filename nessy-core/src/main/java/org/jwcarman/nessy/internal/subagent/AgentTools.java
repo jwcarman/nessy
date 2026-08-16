@@ -233,7 +233,7 @@ public final class AgentTools {
     }
 
     @Override
-    public String describe(Delegation input) {
+    public String effect(Delegation input) {
       return input.task();
     }
 
@@ -421,18 +421,18 @@ public final class AgentTools {
     }
 
     /**
-     * Unlike {@link SubagentTool#describe}, which unwraps {@link Delegation#task()} because it
-     * knows its own input is always that one degenerate shape, this door's {@code T} is an
-     * arbitrary application record with no field this class can assume the name or meaning of — so
-     * {@link Tool}'s own default (the record's {@code toString()}) is the best available without
-     * more information, and an explicit override says so rather than leaving the divergence from
-     * {@link SubagentTool}'s own override invisible (final review N-2). An application whose typed
-     * input reads poorly as a bare {@code toString()} in an approval prompt should override {@code
-     * describe} on its own record's {@link Tool} usage — this generic wrapper cannot do better on
-     * its behalf.
+     * Unlike {@link SubagentTool#effect}, which unwraps {@link Delegation#task()} because it knows
+     * its own input is always that one degenerate shape, this door's {@code T} is an arbitrary
+     * application record with no field this class can assume the name or meaning of — so {@link
+     * Tool}'s own default (the record's {@code toString()}) is the best available without more
+     * information, and an explicit override says so rather than leaving the divergence from {@link
+     * SubagentTool}'s own override invisible (final review N-2). An application whose typed input
+     * reads poorly as a bare {@code toString()} in an approval prompt should override {@code
+     * effect} on its own record's {@link Tool} usage — this generic wrapper cannot do better on its
+     * behalf.
      */
     @Override
-    public String describe(T input) {
+    public String effect(T input) {
       return String.valueOf(input);
     }
 

@@ -204,7 +204,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
    */
   private String describeForApproval(Tool<?> tool, ToolCall call) {
     try {
-      return invoker.describe(tool, call);
+      return String.valueOf(invoker.effect(tool, call));
     } catch (RuntimeException _) {
       return call.name() + "(" + call.arguments() + ")";
     }
