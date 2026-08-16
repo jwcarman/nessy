@@ -268,11 +268,10 @@ ModelProvider provider =
 `XAI_API_KEY` is a first-class `EnvModelProviders` citizen — set it alone
 and `fromEnv()` wires Grok with no other code, as shown above.
 
-**OpenRouter** (validated 2026-08-16 — `openai/gpt-4o-mini` and the free
-open-weight `nvidia/nemotron-3.5-lightning-30b-a3b` through chat-cli, each
-covering text, an approval-gated tool round trip, and a notebook write;
-note OpenRouter model ids are vendor-prefixed slugs, so set `NESSY_MODEL`,
-and cached-token counts may read zero since usage passthrough varies by
+**OpenRouter** (validated 2026-08-16 — `openai/gpt-4o-mini` through chat-cli:
+text, an approval-gated tool round trip, and a notebook write; note
+OpenRouter model ids are vendor-prefixed slugs, so set `NESSY_MODEL`, and
+cached-token counts may read zero since usage passthrough varies by
 upstream model):
 
 ```java
