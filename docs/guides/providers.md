@@ -1,6 +1,6 @@
 # Providers
 
-`Nessy.harness(provider)` takes any `ModelProvider`. Four native modules ship
+`Nessy.harness(h -> h.provider(provider))` takes any `ModelProvider`. Four native modules ship
 today — `nessy-model-anthropic`, `nessy-model-openai`, `nessy-model-gemini`,
 and `nessy-model-bedrock` — and a fifth, `nessy-model-env`, picks between
 them from the environment so an application can switch providers by
@@ -14,36 +14,44 @@ the ConverseStream bridge.
 
 ## Building one directly
 
-Each provider module builds a `ModelProvider` the same way:
+Each provider module builds a `ModelProvider` the same way — a static
+`create(ProviderCustomizer)` factory over a config, not a builder:
 
 ```java
-ModelProvider provider = AnthropicModelProvider.builder().apiKey(key).build();
+ModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey(key));
 ```
 
 ```java
-ModelProvider provider = OpenAiModelProvider.builder().apiKey(key).build();
+ModelProvider provider = OpenAiModelProvider.create(c -> c.apiKey(key));
 ```
 
 ```java
-ModelProvider provider = GeminiModelProvider.builder().apiKey(key).build();
+ModelProvider provider = GeminiModelProvider.create(c -> c.apiKey(key));
 ```
 
 ```java
-ModelProvider provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build();
+ModelProvider provider = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1));
 ```
 
-`.fromEnv()` on any of the four builders delegates to that provider's own
-seam-integrity read of the environment — for Anthropic and OpenAI this
-resolves to the underlying SDK's own environment resolution
-(`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and the rest of what each SDK
-understands); for Gemini, `.fromEnv()` reads `GEMINI_API_KEY` then
-`GOOGLE_API_KEY` itself, rather than delegating to the SDK's own resolution;
-for Bedrock, `.fromEnv()` uses the AWS SDK's own default credentials chain
-(env vars, shared profile files, container/instance metadata) and resolves
-the region by reading `AWS_REGION` then, if unset, `AWS_DEFAULT_REGION`
-itself — see [Bedrock](#bedrock) below. Reach for the builder directly
-whenever one of those matters; `nessy-model-env`, below, only ever reads the
-API key (and, for Bedrock, never reads a key at all).
+Each also ships a `fromEnv()` static — the blessed one-call shape,
+equivalent to `create(config -> config.fromEnv())` — that delegates to that
+provider's own seam-integrity read of the environment:
+
+```java
+ModelProvider provider = AnthropicModelProvider.fromEnv();
+```
+
+For Anthropic and OpenAI this resolves to the underlying SDK's own
+environment resolution (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
+the rest of what each SDK understands); for Gemini, `fromEnv()` reads
+`GEMINI_API_KEY` then `GOOGLE_API_KEY` itself, rather than delegating to the
+SDK's own resolution; for Bedrock, `fromEnv()` uses the AWS SDK's own
+default credentials chain (env vars, shared profile files, container/instance
+metadata) and resolves the region by reading `AWS_REGION` then, if unset,
+`AWS_DEFAULT_REGION` itself — see [Bedrock](#bedrock) below. Reach for
+`create(...)` directly whenever one of those matters; `nessy-model-env`,
+below, only ever reads the API key (and, for Bedrock, never reads a key at
+all).
 
 ## Switching by environment variable
 
@@ -142,14 +150,14 @@ Gemini Developer API via a plain API key (Vertex AI auth is out of scope for
 v1):
 
 ```java
-ModelProvider provider = GeminiModelProvider.builder().apiKey(key).build();
+ModelProvider provider = GeminiModelProvider.create(c -> c.apiKey(key));
 ```
 
 ```java
-ModelProvider provider = GeminiModelProvider.builder().fromEnv().build();
+ModelProvider provider = GeminiModelProvider.fromEnv();
 ```
 
-`.fromEnv()` reads `GEMINI_API_KEY`, then — if unset — `GOOGLE_API_KEY`,
+`fromEnv()` reads `GEMINI_API_KEY`, then — if unset — `GOOGLE_API_KEY`,
 Google's own documented pair, in that order. `.baseUrl(String)` overrides
 the endpoint for proxies, gateways, or Gemini-compatible services. Model
 names are the Gemini Developer API's own, e.g. `gemini-3.6-flash` or
@@ -184,21 +192,21 @@ model-agnostic on the wire (`InvokeModel*`'s per-model JSON bodies are out
 of scope, deliberately: they re-fragment exactly what Converse unified):
 
 ```java
-ModelProvider provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build();
+ModelProvider provider = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1));
 ```
 
 ```java
-ModelProvider provider = BedrockModelProvider.builder().fromEnv().build();
+ModelProvider provider = BedrockModelProvider.fromEnv();
 ```
 
-`.fromEnv()` uses the AWS SDK's own default credentials provider chain —
+`fromEnv()` uses the AWS SDK's own default credentials provider chain —
 env vars, shared profile/credentials files, container/instance metadata —
 the AWS idiom of ambient credentials, the same reason there is no
-`.apiKey(...)` on this builder at all. Only the **region** is resolved
+`.apiKey(...)` on this config at all. Only the **region** is resolved
 directly rather than delegated to the SDK's own region chain: `AWS_REGION`
 first, then `AWS_DEFAULT_REGION` if that is unset — Amazon's own documented
 pair. An explicit `.region(...)` set alongside `.fromEnv()` still wins;
-neither variable set fails fast at `.build()` with an
+neither variable set fails fast the instant the customizer returns, with an
 `IllegalStateException` naming both. `.credentialsProvider(AwsCredentialsProvider)`
 overrides the credentials chain outright, and `.client(BedrockRuntimeAsyncClient)`
 is the escape hatch for a fully preconfigured async SDK client.
@@ -262,7 +270,7 @@ OpenAI-compatible):
 
 ```java
 ModelProvider provider =
-    OpenAiModelProvider.builder().apiKey(key).baseUrl("https://api.x.ai/v1").build();
+    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://api.x.ai/v1"));
 ```
 
 `XAI_API_KEY` is a first-class `EnvModelProviders` citizen — set it alone
@@ -276,7 +284,7 @@ upstream model):
 
 ```java
 ModelProvider provider =
-    OpenAiModelProvider.builder().apiKey(key).baseUrl("https://openrouter.ai/api/v1").build();
+    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://openrouter.ai/api/v1"));
 ```
 
 **Groq** (validated 2026-08-16 — the chip company with the LPU inference
@@ -290,7 +298,7 @@ their logs; just retry):
 
 ```java
 ModelProvider provider =
-    OpenAiModelProvider.builder().apiKey(key).baseUrl("https://api.groq.com/openai/v1").build();
+    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://api.groq.com/openai/v1"));
 ```
 
 **NVIDIA NIM** (validated 2026-08-16 — the free open-weight
@@ -301,7 +309,7 @@ build.nvidia.com, model ids are NVIDIA's catalog ids):
 
 ```java
 ModelProvider provider =
-    OpenAiModelProvider.builder().apiKey(key).baseUrl("https://integrate.api.nvidia.com/v1").build();
+    OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://integrate.api.nvidia.com/v1"));
 ```
 
 **Ollama** (local, no key required — any non-empty string works; validated
@@ -312,7 +320,7 @@ faster than Ollama's GGUF serving — both work, one waits):
 
 ```java
 ModelProvider provider =
-    OpenAiModelProvider.builder().apiKey("ollama").baseUrl("http://localhost:11434/v1").build();
+    OpenAiModelProvider.create(c -> c.apiKey("ollama").baseUrl("http://localhost:11434/v1"));
 ```
 
 **LM Studio** (local; validated 2026-08-15 against two models —
@@ -321,7 +329,7 @@ and a tool-call round trip, on LM Studio's OpenAI-compatible endpoint):
 
 ```java
 ModelProvider provider =
-    OpenAiModelProvider.builder().apiKey("lm-studio").baseUrl("http://127.0.0.1:1234/v1").build();
+    OpenAiModelProvider.create(c -> c.apiKey("lm-studio").baseUrl("http://127.0.0.1:1234/v1"));
 ```
 
 Note the `/v1` suffix on the base URL — the OpenAI SDK does not append it
@@ -339,7 +347,7 @@ was validated against it the same date, same two models, same coverage
 
 ```java
 ModelProvider provider =
-    AnthropicModelProvider.builder().apiKey("lm-studio").baseUrl("http://127.0.0.1:1234").build();
+    AnthropicModelProvider.create(c -> c.apiKey("lm-studio").baseUrl("http://127.0.0.1:1234"));
 ```
 
 !!! warning "The base URL is not symmetric with the OpenAI path"

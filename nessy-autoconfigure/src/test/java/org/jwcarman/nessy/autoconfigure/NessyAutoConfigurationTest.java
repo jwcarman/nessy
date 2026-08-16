@@ -92,7 +92,7 @@ class NessyAutoConfigurationTest {
             context -> {
               assertThat(context).hasSingleBean(Harness.class);
               Harness harness = context.getBean(Harness.class);
-              Agent<String> agent = harness.agent().name("probe").model("probe-model").build();
+              Agent<String> agent = harness.agent(a -> a.name("probe").model("probe-model"));
               assertThat(probe.loaded()).isFalse();
               agent.snapshot(ConversationId.generate());
               assertThat(probe.loaded()).isTrue();
@@ -115,7 +115,7 @@ class NessyAutoConfigurationTest {
         .run(
             context -> {
               Harness harness = context.getBean(Harness.class);
-              Agent<String> agent = harness.agent().name("probe").model("probe-model").build();
+              Agent<String> agent = harness.agent(a -> a.name("probe").model("probe-model"));
               assertThat(agent.peek(token)).isPresent();
               assertThat(agent.peek(token).orElseThrow().token()).isEqualTo(token);
             });
@@ -125,7 +125,7 @@ class NessyAutoConfigurationTest {
    * Final review SF-3: before this bean existed, a Boot app with {@code nessy-jdbc} on the
    * classpath and a {@code .subagent(...)} declared got {@code SubagentLinks.inMemory()} regardless
    * of what {@code JdbcPersistenceAutoConfiguration} produced, because nothing in {@link
-   * NessyAutoConfiguration} ever called {@code HarnessBuilder.subagentLinks(...)}. {@code
+   * NessyAutoConfiguration} ever called {@code HarnessConfig.subagentLinks(...)}. {@code
    * Harness#subagentLinks()} is package-private, and — unlike {@link Parks}, which {@link
    * Agent#peek} reads directly — no public {@link Agent}/{@link org.jwcarman.nessy.Subagent} door
    * reads a {@link SubagentLinks} bean at all; it is purely {@code AgentTools}' own internal
@@ -139,12 +139,13 @@ class NessyAutoConfigurationTest {
   void a_subagent_links_bean_is_woven_in() {
     var probe = new ProbeSubagentLinks();
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUse("d1", "researcher", JsonNodeFactory.instance.objectNode().put("task", "go"))
-            .endWithToolUse()
-            .toolUse("ask-1", "ask_question", JsonNodeFactory.instance.objectNode())
-            .endWithToolUse()
-            .build();
+        ScriptedModelProvider.script(
+            s ->
+                s.toolUse(
+                        "d1", "researcher", JsonNodeFactory.instance.objectNode().put("task", "go"))
+                    .endWithToolUse()
+                    .toolUse("ask-1", "ask_question", JsonNodeFactory.instance.objectNode())
+                    .endWithToolUse());
     ParkingApprover approver = new ParkingApprover();
     runner
         .withBean("provider", ModelProvider.class, () -> provider)
@@ -153,20 +154,20 @@ class NessyAutoConfigurationTest {
             context -> {
               Harness harness = context.getBean(Harness.class);
               Agent<String> writer =
-                  harness
-                      .agent()
-                      .name("writer")
-                      .model("probe-model")
-                      .approver(approver)
-                      .subagent(
-                          sub ->
-                              sub.name("researcher")
-                                  .description("delegates research")
-                                  .model("probe-model")
-                                  .tools(
-                                      ToolGrant.grant(
-                                          new AskQuestionTool(), UsagePolicy.requireApproval())))
-                      .build();
+                  harness.agent(
+                      a ->
+                          a.name("writer")
+                              .model("probe-model")
+                              .approver(approver)
+                              .subagent(
+                                  sub ->
+                                      sub.name("researcher")
+                                          .description("delegates research")
+                                          .model("probe-model")
+                                          .tools(
+                                              ToolGrant.grant(
+                                                  new AskQuestionTool(),
+                                                  UsagePolicy.requireApproval()))));
               assertThat(probe.saved()).isFalse();
               writer.converse().tell("investigate");
               assertThat(probe.saved()).isTrue();
@@ -189,30 +190,30 @@ class NessyAutoConfigurationTest {
   @Test
   void nessy_default_model_reaches_the_harness() {
     // Harness#defaultModel() is package-private and Harness exposes no public accessor for it, so
-    // the proof has to go through behavior instead of a getter: AgentBuilder#build() requires a
-    // model from somewhere (an explicit agent().model(...) call or the harness's own
+    // the proof has to go through behavior instead of a getter: the agent factory requires a
+    // model from somewhere (an explicit agent(a -> a.model(...)) call or the harness's own
     // defaultModel), throwing AgentConfigurationException otherwise. The negative case first —
-    // no nessy.default-model, agent().build() fails — establishes that this really is the
-    // discriminating signal, not something build() would succeed at regardless.
+    // no nessy.default-model, agent(a -> a.name(...)) fails — establishes that this really is the
+    // discriminating signal, not something the factory would succeed at regardless.
     runner.run(
         context -> {
           Harness bare = context.getBean(Harness.class);
-          var modelless = bare.agent().name("probe");
-          assertThatThrownBy(modelless::build).isInstanceOf(AgentConfigurationException.class);
+          assertThatThrownBy(() -> bare.agent(a -> a.name("probe")))
+              .isInstanceOf(AgentConfigurationException.class);
         });
     runner
         .withPropertyValues("nessy.default-model=claude-haiku")
         .run(
             context -> {
               Harness harness = context.getBean(Harness.class);
-              assertThat(harness.agent().name("probe").build()).isNotNull();
+              assertThat(harness.agent(a -> a.name("probe"))).isNotNull();
             });
   }
 
   @Test
   void a_user_declared_harness_wins() {
     Harness mine =
-        Nessy.harness(ScriptedModelProvider.builder().text("hi").endTurn().build()).build();
+        Nessy.harness(h -> h.provider(ScriptedModelProvider.script(s -> s.text("hi").endTurn())));
     runner
         .withBean("mine", Harness.class, () -> mine)
         .run(context -> assertThat(context.getBean(Harness.class)).isSameAs(mine));

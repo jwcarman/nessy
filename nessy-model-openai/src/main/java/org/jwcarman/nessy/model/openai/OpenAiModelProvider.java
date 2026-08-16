@@ -16,11 +16,11 @@
 package org.jwcarman.nessy.model.openai;
 
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.errors.InternalServerException;
 import com.openai.errors.OpenAIIoException;
 import com.openai.errors.OpenAIRetryableException;
 import com.openai.errors.RateLimitException;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import org.jwcarman.nessy.spi.model.Capability;
@@ -94,12 +94,31 @@ public final class OpenAiModelProvider implements ModelProvider {
 
   private final OpenAIClient client;
 
-  private OpenAiModelProvider(OpenAIClient client) {
+  OpenAiModelProvider(OpenAIClient client) {
     this.client = client;
   }
 
-  public static Builder builder() {
-    return new Builder();
+  /**
+   * The blessed one-call shape: equivalent to {@code create(OpenAiProviderConfig::fromEnv)}.
+   * Delegates credential and configuration resolution to the SDK's own environment table — see
+   * {@link OpenAiProviderConfig#fromEnv()}.
+   */
+  public static OpenAiModelProvider fromEnv() {
+    return create(OpenAiProviderConfig::fromEnv);
+  }
+
+  /**
+   * Builds an {@link OpenAiModelProvider} from a live {@link OpenAiProviderConfig}: {@code
+   * customizer} fills it in, then this factory validates its required field and constructs the
+   * finished provider. No public {@code build()} survives here; the factory is the only place an
+   * {@link OpenAiProviderConfig} ever turns into an {@link OpenAiModelProvider} (design of record
+   * 2026-08-16 §1).
+   */
+  public static OpenAiModelProvider create(OpenAiProviderCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    OpenAiProviderConfig config = new OpenAiProviderConfig();
+    customizer.customize(config);
+    return config.build();
   }
 
   @Override
@@ -116,139 +135,5 @@ public final class OpenAiModelProvider implements ModelProvider {
   @Override
   public String name() {
     return "OpenAI";
-  }
-
-  /** Assembles an {@link OpenAiModelProvider}. */
-  public static final class Builder {
-
-    private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
-
-    private String apiKey;
-    private String baseUrl;
-    private String organization;
-    private OpenAIClient client;
-    private boolean useEnv;
-
-    private Builder() {}
-
-    public Builder apiKey(String apiKey) {
-      this.apiKey = apiKey;
-      return this;
-    }
-
-    /**
-     * Delegates credential and configuration resolution to the SDK's own {@link
-     * OpenAIOkHttpClient.Builder#fromEnv()} rather than reading {@value #API_KEY_ENV_VAR}
-     * ourselves, so every environment source the SDK understands is honored — not just the API key:
-     * {@code OPENAI_ORG_ID}, {@code OPENAI_PROJECT_ID}, {@code OPENAI_BASE_URL}, {@code
-     * OPENAI_WEBHOOK_SECRET}, {@code OPENAI_ADMIN_KEY}, {@code OPENAI_CUSTOM_HEADERS}, and the
-     * {@code AZURE_OPENAI_KEY} Azure-credential path.
-     *
-     * <p>Only a flag is set here; nothing is read yet. {@link #build()} applies it by calling the
-     * SDK's {@code fromEnv()} first, then layering any explicit {@link #apiKey(String)} / {@link
-     * #baseUrl(String)} / {@link #organization(String)} set on <em>this</em> builder on top — an
-     * explicit override always wins over an ambient environment value.
-     *
-     * @throws IllegalStateException at {@link #build()} time if neither an explicit key nor {@value
-     *     #API_KEY_ENV_VAR} is available. (Azure's {@code AZURE_OPENAI_KEY} credential path is not
-     *     checked here and is trusted entirely to the SDK's own resolution — see {@link #build()}.)
-     */
-    public Builder fromEnv() {
-      this.useEnv = true;
-      return this;
-    }
-
-    /**
-     * Overrides the API base URL — the breadth feature that lets this provider talk to any
-     * OpenAI-compatible endpoint, not just OpenAI itself: OpenRouter ({@code
-     * https://openrouter.ai/api/v1}), a local Ollama server ({@code http://localhost:11434/v1}), or
-     * a proxy/gateway.
-     */
-    public Builder baseUrl(String baseUrl) {
-      this.baseUrl = baseUrl;
-      return this;
-    }
-
-    /** The {@code OpenAI-Organization} header value, for accounts that belong to multiple orgs. */
-    public Builder organization(String organization) {
-      this.organization = organization;
-      return this;
-    }
-
-    /**
-     * Escape hatch: supply a fully preconfigured SDK client instead of {@code apiKey}/{@code
-     * baseUrl}/{@code organization}.
-     */
-    public Builder client(OpenAIClient client) {
-      this.client = client;
-      return this;
-    }
-
-    public OpenAiModelProvider build() {
-      if (client != null) {
-        return new OpenAiModelProvider(client);
-      }
-      if (useEnv) {
-        return new OpenAiModelProvider(buildFromEnv());
-      }
-      if (apiKey == null || apiKey.isBlank()) {
-        throw new IllegalStateException(
-            "an API key is required: call apiKey(...) or fromEnv(), or provide a preconfigured"
-                + " client via client(...)");
-      }
-      var clientBuilder = OpenAIOkHttpClient.builder().apiKey(apiKey);
-      if (baseUrl != null) {
-        clientBuilder.baseUrl(baseUrl);
-      }
-      if (organization != null) {
-        clientBuilder.organization(organization);
-      }
-      return new OpenAiModelProvider(clientBuilder.build());
-    }
-
-    /**
-     * Builds through the SDK's own {@code fromEnv()}, with this builder's explicit {@code apiKey} /
-     * {@code baseUrl} / {@code organization} (if set) layered on top afterward so they win over
-     * whatever the environment supplied.
-     *
-     * <p>Unlike the Anthropic SDK (which defers a missing-credential failure to the first real
-     * request), this SDK's own {@code ClientOptions.Builder.build()} already fails fast: it
-     * resolves an {@code effectiveCredential()} synchronously and throws {@code
-     * IllegalStateException} immediately when no credential source (API key, workload identity, or
-     * admin key) is configured. {@value #API_KEY_ENV_VAR} is still checked directly here, ahead of
-     * calling the SDK, so that common "nothing is configured" case produces our own friendly,
-     * consistently shaped message naming the variable and the {@code apiKey(...)}/{@code
-     * client(...)} alternatives — the same shape as the {@code apiKey}-only path above — rather
-     * than the SDK's generic credential-source message. Any other failure the SDK does raise while
-     * resolving (e.g. both {@value #API_KEY_ENV_VAR} and {@code AZURE_OPENAI_KEY} set at once) is
-     * caught and rethrown in that same friendly shape.
-     */
-    private OpenAIClient buildFromEnv() {
-      if (apiKey == null && System.getenv(API_KEY_ENV_VAR) == null) {
-        throw missingEnvCredentials();
-      }
-      try {
-        var sdkBuilder = OpenAIOkHttpClient.builder().fromEnv();
-        if (apiKey != null) {
-          sdkBuilder.apiKey(apiKey);
-        }
-        if (baseUrl != null) {
-          sdkBuilder.baseUrl(baseUrl);
-        }
-        if (organization != null) {
-          sdkBuilder.organization(organization);
-        }
-        return sdkBuilder.build();
-      } catch (RuntimeException e) {
-        throw new IllegalStateException("could not resolve credentials from the environment", e);
-      }
-    }
-
-    private static IllegalStateException missingEnvCredentials() {
-      var message =
-          API_KEY_ENV_VAR
-              + " environment variable is not set; call apiKey(...) or client(...) instead";
-      return new IllegalStateException(message);
-    }
   }
 }

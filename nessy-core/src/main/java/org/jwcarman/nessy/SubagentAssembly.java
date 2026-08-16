@@ -27,30 +27,30 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.internal.subagent.AgentTools;
 
 /**
- * The subagent-assembly machinery split out of {@link AgentBuilder} (final review's Monster Class
+ * The subagent-assembly machinery split out of {@link AgentConfig} (final review's Monster Class
  * finding, java:S6539): every {@code .subagent(...)} declaration {@code owner} collects, and the
- * up-front-validate-then-build-then-register machinery {@link AgentBuilder#build()} runs over them
- * at build time (design of record 2026-08-16 §0/§3). One instance is owned per {@link
- * AgentBuilder}, package-private, reaching back into {@code owner}'s own public builder surface
+ * up-front-validate-then-build-then-register machinery {@link AgentConfig#build()} runs over them
+ * at build time (design of record 2026-08-16 §0/§3). One instance is owned per {@link AgentConfig},
+ * package-private, reaching back into {@code owner}'s own public config surface
  * (name/model/tools/listen/approver/...) to configure each child — nothing here is a public API of
  * its own.
  */
 final class SubagentAssembly {
 
-  private final AgentBuilder<?> owner;
+  private final AgentConfig<?> owner;
   private final List<SubagentConfig<String>> stringConfigs = new ArrayList<>();
   private final List<TypedSubagentDeclaration<?>> typedConfigs = new ArrayList<>();
 
-  SubagentAssembly(AgentBuilder<?> owner) {
+  SubagentAssembly(AgentConfig<?> owner) {
     this.owner = owner;
   }
 
-  /** Declares one string-door child, in {@link AgentBuilder#subagent(SubagentCustomizer)}. */
+  /** Declares one string-door child, in {@link AgentConfig#subagent(SubagentCustomizer)}. */
   void declareString(SubagentConfig<String> config) {
     stringConfigs.add(config);
   }
 
-  /** Declares one typed-door child, in {@link AgentBuilder#subagent(Class, SubagentCustomizer)}. */
+  /** Declares one typed-door child, in {@link AgentConfig#subagent(Class, SubagentCustomizer)}. */
   void declareTyped(TypedSubagentDeclaration<?> declaration) {
     typedConfigs.add(declaration);
   }
@@ -68,13 +68,13 @@ final class SubagentAssembly {
   /**
    * Builds every declared subagent — string-door declarations first, then typed-door declarations,
    * in each door's own declaration order: each becomes a real child {@link Agent}, granted to
-   * {@code owner} as a delegation tool ({@link AgentBuilder#tools(ToolGrant...)} is called once
-   * more here, merging any delegation grants after whatever {@code owner}'s own {@link
-   * AgentBuilder#tools(ToolGrant...)} already declared — last write wins on a name collision, the
-   * same rule {@link AgentBuilder#tools(ToolGrant...)} already has), and returns {@code owner}'s
-   * own direct children, keyed by name, for {@link Agent.Coordination}. Empty when no subagent was
-   * ever declared — {@code owner}'s tools are left untouched in that case, so a plain agent's grant
-   * set is unaffected.
+   * {@code owner} as a delegation tool ({@link AgentConfig#tools(ToolGrant...)} is called once more
+   * here, merging any delegation grants after whatever {@code owner}'s own {@link
+   * AgentConfig#tools(ToolGrant...)} already declared — last write wins on a name collision, the
+   * same rule {@link AgentConfig#tools(ToolGrant...)} already has), and returns {@code owner}'s own
+   * direct children, keyed by name, for {@link Agent.Coordination}. Empty when no subagent was ever
+   * declared — {@code owner}'s tools are left untouched in that case, so a plain agent's grant set
+   * is unaffected.
    *
    * <p>Every declared config, at every depth, is validated <em>before</em> any of them is built or
    * registered: a later sibling's missing name/description/renderer must never leave an earlier
@@ -143,7 +143,7 @@ final class SubagentAssembly {
 
   /**
    * {@link #validateTree(SubagentConfig)} plus the typed door's own extra requirement: {@link
-   * SubagentConfig#renderer} must be set, or {@link AgentBuilder#build()} fails loudly naming the
+   * SubagentConfig#renderer} must be set, or {@link AgentConfig#build()} fails loudly naming the
    * missing renderer and the declaration's own {@code inputType} — no silent render-as-JSON default
    * (design of record 2026-08-16 §0.5).
    */
@@ -163,21 +163,21 @@ final class SubagentAssembly {
 
   /**
    * One string-door subagent, built as an ordinary {@code String}-vocabulary {@link Agent} from
-   * {@code harness} (the same construction path {@link Harness#agent()} uses — the "String door",
-   * which neither requires nor consults a renderer, unlike the typed door): inherits the harness's
-   * provider, stores, approver, observations, and harness-seeded listeners; owns its own name,
-   * prompt, model, tool grants, memory, and termination policy (design of record 2026-08-16 §3).
-   * {@code config}'s own nested declarations recurse through this same method / {@link
-   * #buildTypedChild}, so a grandchild is built and registered before this child is.
+   * {@code harness} (the same construction path {@link Harness#agent(AgentCustomizer)} uses — the
+   * "String door", which neither requires nor consults a renderer, unlike the typed door): inherits
+   * the harness's provider, stores, approver, observations, and harness-seeded listeners; owns its
+   * own name, prompt, model, tool grants, memory, and termination policy (design of record
+   * 2026-08-16 §3). {@code config}'s own nested declarations recurse through this same method /
+   * {@link #buildTypedChild}, so a grandchild is built and registered before this child is.
    *
    * <p>The completions listener that wakes the built agent's own parent once a further descendant
-   * settles is registered here, synchronously, before {@link AgentBuilder#build()} runs — the same
+   * settles is registered here, synchronously, before {@link AgentConfig#build()} runs — the same
    * sync semantics {@code AgentTools.completions}'s own javadoc requires. {@code config} was
    * already validated by {@link #build()}'s own up-front pass.
    */
   private Agent<String> buildStringChild(Harness harness, SubagentConfig<String> config) {
-    AgentBuilder<String> childBuilder =
-        new AgentBuilder<>(harness, String.class, InputRenderer.text());
+    AgentConfig<String> childBuilder =
+        new AgentConfig<>(harness, String.class, InputRenderer.text());
     configureChild(childBuilder, config);
     return childBuilder.build();
   }
@@ -191,8 +191,8 @@ final class SubagentAssembly {
    */
   private <T> Agent<T> buildTypedChild(Harness harness, TypedSubagentDeclaration<T> declaration) {
     SubagentConfig<T> config = declaration.config();
-    AgentBuilder<T> childBuilder =
-        new AgentBuilder<>(harness, declaration.inputType(), config.renderer());
+    AgentConfig<T> childBuilder =
+        new AgentConfig<>(harness, declaration.inputType(), config.renderer());
     configureChild(childBuilder, config);
     return childBuilder.build();
   }
@@ -218,7 +218,7 @@ final class SubagentAssembly {
    * doors), and the synchronous completions listener that wakes this builder's own parent once this
    * child (or one of its own descendants) settles.
    */
-  private <T> void configureChild(AgentBuilder<T> childBuilder, SubagentConfig<T> config) {
+  private <T> void configureChild(AgentConfig<T> childBuilder, SubagentConfig<T> config) {
     childBuilder.name(config.name());
     if (config.model() != null) {
       childBuilder.model(config.model());

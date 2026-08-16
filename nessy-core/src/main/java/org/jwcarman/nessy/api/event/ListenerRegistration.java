@@ -20,7 +20,7 @@ import java.util.function.Consumer;
 
 /**
  * One build-time listener registration — what {@code listen}/{@code listenAsync} on {@code
- * HarnessBuilder}/{@code AgentBuilder} each capture — frozen into a {@link ListenerRegistry} at
+ * HarnessConfig}/{@code AgentConfig} each capture — frozen into a {@link ListenerRegistry} at
  * {@code build()} (design §17: "Prepare is a build-time phase").
  *
  * <p>{@link #sync} registrations propagate whatever they throw: the veto is the throw, exactly as

@@ -58,7 +58,7 @@ class ProviderModelCallExecutorTest {
 
   private final ConversationId id = ConversationId.generate();
   private final ConversationState state = ConversationState.newConversation(id);
-  private final PipelineMemory memory = Memory.pipeline(Transcript.inMemory()).build();
+  private final PipelineMemory memory = Memory.pipeline(Transcript.inMemory());
   private final List<TurnEvent> observed = new ArrayList<>();
 
   @Test

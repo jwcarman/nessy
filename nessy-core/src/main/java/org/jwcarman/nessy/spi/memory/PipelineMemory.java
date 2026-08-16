@@ -15,13 +15,10 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 
 /**
@@ -32,9 +29,9 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
  * Transcript} (idempotency stays the transcript's own no-stutter rule), whatever hydration chooses
  * to re-read.
  *
- * <p><b>The degenerate floor.</b> {@code Memory.pipeline(transcript).build()} — no hydrator named,
- * no stages — hydrates with {@link ContextHydrator#full()} and transforms nothing: the whole
- * history, every time. Every addition to the chain from there is strictly opt-in.
+ * <p><b>The degenerate floor.</b> {@code Memory.pipeline(transcript)} — no hydrator named, no
+ * stages — hydrates with {@link ContextHydrator#full()} and transforms nothing: the whole history,
+ * every time. Every addition to the chain from there is strictly opt-in.
  *
  * <p><b>Retention stays delegated.</b> The kernel knows only {@code Memory} — {@code
  * remember}/{@code recall} is the whole retention contract, and nothing in the loop or the api
@@ -50,8 +47,7 @@ public final class PipelineMemory implements Memory {
   private final ContextHydrator hydrator;
   private final List<ContextTransformer> stages;
 
-  private PipelineMemory(
-      Transcript transcript, ContextHydrator hydrator, List<ContextTransformer> stages) {
+  PipelineMemory(Transcript transcript, ContextHydrator hydrator, List<ContextTransformer> stages) {
     this.transcript = transcript;
     this.hydrator = hydrator;
     this.stages = List.copyOf(stages);
@@ -69,79 +65,5 @@ public final class PipelineMemory implements Memory {
       context = stage.transform(id, context);
     }
     return context;
-  }
-
-  /**
-   * Assembles a {@link PipelineMemory}: names a hydration strategy (default {@link
-   * ContextHydrator#full()}) and an ordered list of {@link ContextTransformer} stages, every one of
-   * them required — optional behavior arrives pre-wrapped via {@link
-   * ContextTransformer#optional(ContextTransformer)}.
-   */
-  public static final class Builder {
-
-    private final Transcript transcript;
-    private ContextHydrator hydrator;
-    private final List<ContextTransformer> stages = new ArrayList<>();
-
-    Builder(Transcript transcript) {
-      this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
-    }
-
-    /**
-     * Sets the hydration strategy. Setting a hydrator twice — by this verb or by {@link
-     * #summarizing}, in either order — is an {@link IllegalStateException}: one hydration strategy
-     * per pipeline.
-     */
-    public Builder hydrator(ContextHydrator hydrator) {
-      Objects.requireNonNull(hydrator, "hydrator must not be null");
-      if (this.hydrator != null) {
-        throw new IllegalStateException("one hydration strategy per pipeline");
-      }
-      this.hydrator = hydrator;
-      return this;
-    }
-
-    /**
-     * Sugar for {@code hydrator(ContextHydrator.summarizing(summaries, provider, model, prompt,
-     * tailThreshold))}; parameters mirror {@link ContextHydrator#summarizing} exactly.
-     */
-    public Builder summarizing(
-        SummaryStore summaries,
-        ModelProvider provider,
-        String model,
-        String prompt,
-        int tailThreshold) {
-      return hydrator(
-          ContextHydrator.summarizing(summaries, provider, model, prompt, tailThreshold));
-    }
-
-    /**
-     * Registers the pair-safe trim ({@link Context#keepRecent(int)}) as a required stage at its
-     * call position.
-     *
-     * @throws IllegalArgumentException if {@code n} is less than 1
-     */
-    public Builder keepRecent(int n) {
-      if (n < 1) {
-        throw new IllegalArgumentException("window must be at least 1");
-      }
-      stages.add((id, context) -> context.keepRecent(n));
-      return this;
-    }
-
-    /** Registers {@code stage} as a required stage, appended after any already registered. */
-    public Builder transform(ContextTransformer stage) {
-      stages.add(Objects.requireNonNull(stage, "stage must not be null"));
-      return this;
-    }
-
-    /**
-     * Builds the {@link PipelineMemory}: {@code remember} appends to the transcript, {@code recall}
-     * runs the named (or defaulted) hydrator, then folds the stage list in registration order.
-     */
-    public PipelineMemory build() {
-      return new PipelineMemory(
-          transcript, hydrator != null ? hydrator : ContextHydrator.full(), stages);
-    }
   }
 }

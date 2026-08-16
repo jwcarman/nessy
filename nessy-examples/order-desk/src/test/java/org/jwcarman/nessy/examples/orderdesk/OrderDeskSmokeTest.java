@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
-import org.jwcarman.nessy.HarnessBuilder;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
@@ -218,10 +217,11 @@ class OrderDeskSmokeTest {
     @Bean
     Harness harness(
         ScriptedOrderDeskProvider provider, ObjectProvider<ObservationRegistry> observations) {
-      HarnessBuilder builder =
-          Nessy.harness(provider).onToolProgress(PROGRESS::add).onToolFinished(FINISHED::add);
-      observations.ifAvailable(builder::observations);
-      return builder.build();
+      return Nessy.harness(
+          h -> {
+            h.provider(provider).onToolProgress(PROGRESS::add).onToolFinished(FINISHED::add);
+            observations.ifAvailable(h::observations);
+          });
     }
   }
 

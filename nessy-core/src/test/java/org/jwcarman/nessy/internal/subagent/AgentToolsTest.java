@@ -210,12 +210,8 @@ class AgentToolsTest {
     @Test
     void name_is_the_childs_own_name() {
       Agent<String> child =
-          Nessy.harness(new ScriptedProvider())
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(new ScriptedProvider()))
+              .agent(a -> a.name("researcher").model("m"));
 
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
 
@@ -225,12 +221,8 @@ class AgentToolsTest {
     @Test
     void description_is_the_one_given() {
       Agent<String> child =
-          Nessy.harness(new ScriptedProvider())
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(new ScriptedProvider()))
+              .agent(a -> a.name("researcher").model("m"));
 
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
 
@@ -240,12 +232,8 @@ class AgentToolsTest {
     @Test
     void input_type_is_delegation() {
       Agent<String> child =
-          Nessy.harness(new ScriptedProvider())
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(new ScriptedProvider()))
+              .agent(a -> a.name("researcher").model("m"));
 
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
 
@@ -255,12 +243,8 @@ class AgentToolsTest {
     @Test
     void describe_shows_the_task_text() {
       Agent<String> child =
-          Nessy.harness(new ScriptedProvider())
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(new ScriptedProvider()))
+              .agent(a -> a.name("researcher").model("m"));
 
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
 
@@ -285,7 +269,7 @@ class AgentToolsTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("the answer"), endTurn());
       Agent<String> child =
-          Nessy.harness(provider).build().agent().name("researcher").model("m").build();
+          Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("researcher").model("m"));
       Tool<AgentTools.Delegation> tool =
           AgentTools.subagent(child, "delegates research", SubagentLinks.inMemory());
       ConversationId parentId = ConversationId.generate();
@@ -312,7 +296,7 @@ class AgentToolsTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("the answer is 42"), endTurn());
       Agent<String> child =
-          Nessy.harness(provider).build().agent().name("researcher").model("m").build();
+          Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("researcher").model("m"));
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
       ToolCall call = new ToolCall("call-1", "researcher", taskArguments("what is the answer"));
       ToolContext context = contextFor(ConversationId.generate(), call);
@@ -331,7 +315,7 @@ class AgentToolsTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("no"), refused());
       Agent<String> child =
-          Nessy.harness(provider).build().agent().name("researcher").model("m").build();
+          Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("researcher").model("m"));
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
       ToolCall call = new ToolCall("call-1", "researcher", taskArguments("do something unsafe"));
       ToolContext context = contextFor(ConversationId.generate(), call);
@@ -357,14 +341,14 @@ class AgentToolsTest {
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
       Agent<String> child =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("researcher")
+                          .model("m")
+                          .tools(
+                              ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       SubagentLinks links = SubagentLinks.inMemory();
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research", links);
       ConversationId parentId = ConversationId.generate();
@@ -395,14 +379,14 @@ class AgentToolsTest {
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
       Agent<String> child =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("researcher")
+                          .model("m")
+                          .tools(
+                              ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       SubagentLinks links = SubagentLinks.inMemory();
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research", links);
       ConversationId parentId = ConversationId.generate();
@@ -430,14 +414,14 @@ class AgentToolsTest {
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
       Agent<String> child =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("researcher")
+                          .model("m")
+                          .tools(
+                              ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
       ToolContext context =
           contextFor(
@@ -472,14 +456,15 @@ class AgentToolsTest {
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
       Agent<ResearchRequest> child =
-          Nessy.harness(provider)
-              .build()
-              .agent(ResearchRequest.class)
-              .name("researcher")
-              .model("m")
-              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  ResearchRequest.class,
+                  a ->
+                      a.name("researcher")
+                          .model("m")
+                          .tools(
+                              ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       SubagentLinks links = SubagentLinks.inMemory();
       Tool<ResearchRequest> tool =
           AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", links);
@@ -510,14 +495,15 @@ class AgentToolsTest {
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
       Agent<ResearchRequest> child =
-          Nessy.harness(provider)
-              .build()
-              .agent(ResearchRequest.class)
-              .name("researcher")
-              .model("m")
-              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  ResearchRequest.class,
+                  a ->
+                      a.name("researcher")
+                          .model("m")
+                          .tools(
+                              ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       SubagentLinks links = SubagentLinks.inMemory();
       Tool<ResearchRequest> tool =
           AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", links);
@@ -546,14 +532,15 @@ class AgentToolsTest {
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
       ParkingApprover approver = new ParkingApprover();
       Agent<ResearchRequest> child =
-          Nessy.harness(provider)
-              .build()
-              .agent(ResearchRequest.class)
-              .name("researcher")
-              .model("m")
-              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  ResearchRequest.class,
+                  a ->
+                      a.name("researcher")
+                          .model("m")
+                          .tools(
+                              ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
       Tool<ResearchRequest> tool =
           AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", null);
       ToolContext context =
@@ -581,12 +568,8 @@ class AgentToolsTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("the answer is 42"), endTurn());
       Agent<ResearchRequest> child =
-          Nessy.harness(provider)
-              .build()
-              .agent(ResearchRequest.class)
-              .name("researcher")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(ResearchRequest.class, a -> a.name("researcher").model("m"));
       Tool<ResearchRequest> tool =
           AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", null);
       ToolCall call = new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode());
@@ -606,12 +589,8 @@ class AgentToolsTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("no"), refused());
       Agent<ResearchRequest> child =
-          Nessy.harness(provider)
-              .build()
-              .agent(ResearchRequest.class)
-              .name("researcher")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(ResearchRequest.class, a -> a.name("researcher").model("m"));
       Tool<ResearchRequest> tool =
           AgentTools.subagentTyped(child, ResearchRequest.class, "delegates research", null);
       ToolCall call = new ToolCall("call-1", "researcher", JsonNodeFactory.instance.objectNode());
@@ -636,12 +615,8 @@ class AgentToolsTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("the answer"), endTurn());
       Agent<ResearchRequest> child =
-          Nessy.harness(provider)
-              .build()
-              .agent(ResearchRequest.class)
-              .name("researcher")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(ResearchRequest.class, a -> a.name("researcher").model("m"));
       Tool<ResearchRequest> tool =
           AgentTools.subagentTyped(
               child, ResearchRequest.class, "delegates research", SubagentLinks.inMemory());
@@ -673,13 +648,12 @@ class AgentToolsTest {
               .turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse())
               .turn(new ModelEvent.TextChunk("done"), endTurn());
       Agent<String> child =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("researcher")
-              .model("m")
-              .tools(ToolGrant.grant(new EchoTool(), UsagePolicy.allow()))
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("researcher")
+                          .model("m")
+                          .tools(ToolGrant.grant(new EchoTool(), UsagePolicy.allow())));
       Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research");
       List<ToolProgress> heard = new ArrayList<>();
       ToolCall call = new ToolCall("call-1", "researcher", taskArguments("echo hi"));
@@ -767,15 +741,19 @@ class AgentToolsTest {
       Parks parentParks = Parks.inMemory();
       CallbackRouter router = new CallbackRouter();
       Agent<String> child =
-          Nessy.harness(childProvider)
-              .listen(ConversationSettled.class, AgentTools.completions(links, parentParks, router))
-              .build()
-              .agent()
-              .name("researcher")
-              .model("child-model")
-              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
-              .approver(childApprover)
-              .build();
+          Nessy.harness(
+                  h ->
+                      h.provider(childProvider)
+                          .listen(
+                              ConversationSettled.class,
+                              AgentTools.completions(links, parentParks, router)))
+              .agent(
+                  a ->
+                      a.name("researcher")
+                          .model("child-model")
+                          .tools(
+                              ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+                          .approver(childApprover));
       Tool<AgentTools.Delegation> delegation =
           AgentTools.subagent(child, "delegates research", links);
       ToolCall delegationCall =
@@ -784,14 +762,13 @@ class AgentToolsTest {
           new ScriptedProvider()
               .turn(new ModelEvent.ToolUseEmitted(delegationCall), endWithToolUse())
               .turn(new ModelEvent.TextChunk("wrapped up"), endTurn());
-      Harness parentHarness = Nessy.harness(parentProvider).parks(parentParks).build();
+      Harness parentHarness = Nessy.harness(h -> h.provider(parentProvider).parks(parentParks));
       Agent<String> writer =
-          parentHarness
-              .agent()
-              .name("writer")
-              .model("parent-model")
-              .tools(ToolGrant.grant(delegation, UsagePolicy.allow()))
-              .build();
+          parentHarness.agent(
+              a ->
+                  a.name("writer")
+                      .model("parent-model")
+                      .tools(ToolGrant.grant(delegation, UsagePolicy.allow())));
       router.register(writer);
 
       RunOutcome parentOutcome = writer.converse().tell("investigate the topic");
@@ -848,15 +825,14 @@ class AgentToolsTest {
               .turn(new ModelEvent.TextChunk("noted the failure"), endTurn());
       ParkingApprover writerApprover = new ParkingApprover();
       Parks parks = Parks.inMemory();
-      Harness harness = Nessy.harness(writerProvider).parks(parks).build();
+      Harness harness = Nessy.harness(h -> h.provider(writerProvider).parks(parks));
       Agent<String> writer =
-          harness
-              .agent()
-              .name("writer")
-              .model("m")
-              .tools(ToolGrant.grant(new EchoTool(), UsagePolicy.requireApproval()))
-              .approver(writerApprover)
-              .build();
+          harness.agent(
+              a ->
+                  a.name("writer")
+                      .model("m")
+                      .tools(ToolGrant.grant(new EchoTool(), UsagePolicy.requireApproval()))
+                      .approver(writerApprover));
       CallbackRouter router = new CallbackRouter();
       router.register(writer);
       RunOutcome parentOutcome = writer.converse().tell("echo hi");
@@ -899,16 +875,15 @@ class AgentToolsTest {
           new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(call), endWithToolUse());
       ParkingApprover writerApprover = new ParkingApprover();
       Parks sharedParks = Parks.inMemory();
-      Harness harness = Nessy.harness(writerProvider).parks(sharedParks).build();
+      Harness harness = Nessy.harness(h -> h.provider(writerProvider).parks(sharedParks));
       Agent<String> writer =
-          harness
-              .agent()
-              .name("writer")
-              .model("m")
-              .tools(ToolGrant.grant(new EchoTool(), UsagePolicy.requireApproval()))
-              .approver(writerApprover)
-              .build();
-      Agent<String> researcher = harness.agent().name("researcher").model("m").build();
+          harness.agent(
+              a ->
+                  a.name("writer")
+                      .model("m")
+                      .tools(ToolGrant.grant(new EchoTool(), UsagePolicy.requireApproval()))
+                      .approver(writerApprover));
+      Agent<String> researcher = harness.agent(a -> a.name("researcher").model("m"));
       CallbackRouter router = new CallbackRouter();
       router.register(writer);
       router.register(researcher);

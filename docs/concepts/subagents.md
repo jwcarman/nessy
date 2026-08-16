@@ -9,22 +9,26 @@ with its own identity, prompt, grants, and memory.
 
 ## Defining a subagent
 
-A subagent is defined inside its parent's own builder, not assembled and
+A subagent is defined inside its parent's own config, not assembled and
 wired up separately:
 
 ```java
-Agent<String> writer = harness.agent()
-    .name("writer")
-    .model(MODEL)
-    .systemPrompt(WRITER_PROMPT)
-    .subagent(sub -> sub
-        .name("researcher")
-        .description("Delegate research questions to a focused researcher.")
-        .model(MODEL)
-        .systemPrompt(RESEARCHER_PROMPT)
-        .tools(ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
-               ToolGrant.grant(new AskQuestionTool(pending), UsagePolicy.requireApproval())))
-    .build();
+Agent<String> writer =
+    harness.agent(
+        a ->
+            a.name("writer")
+                .model(MODEL)
+                .systemPrompt(WRITER_PROMPT)
+                .subagent(
+                    sub ->
+                        sub.name("researcher")
+                            .description("Delegate research questions to a focused researcher.")
+                            .model(MODEL)
+                            .systemPrompt(RESEARCHER_PROMPT)
+                            .tools(
+                                ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
+                                ToolGrant.grant(
+                                    new AskQuestionTool(pending), UsagePolicy.requireApproval()))));
 ```
 
 Building the writer builds the researcher: a delegation tool named after the
@@ -33,12 +37,12 @@ child's parent token is wired from the harness's own store family, and the
 listener that wakes the parent once the child settles is registered
 internally. Nothing here needs manual assembly.
 
-`AgentBuilder#subagent` hands the lambda a `SubagentConfig<T>` — a config,
-not a builder. It has fluent setters and no `build()`: the parent's own
-builder is the only thing that ever turns it into an `Agent`. `name` and
+`AgentConfig#subagent` hands the lambda a `SubagentConfig<T>` — a config,
+not a builder. It has fluent setters and no public `build()`: the parent's own
+config is the only thing that ever turns it into an `Agent`. `name` and
 `description` are required (`description` becomes the delegation tool's own
 description — what the parent's model reads to decide whether to delegate);
-`build()` throws `IllegalStateException` naming whichever is missing.
+the factory throws `IllegalStateException` naming whichever is missing.
 Everything else trims to `model`, `systemPrompt`, `maxTokens`, `tools`,
 `memory`, `termination`, and `policy` (the delegation tool's own usage
 policy, default `UsagePolicy.allow()`).

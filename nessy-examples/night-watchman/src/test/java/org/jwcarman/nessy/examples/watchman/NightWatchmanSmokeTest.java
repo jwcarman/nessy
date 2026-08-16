@@ -30,7 +30,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
-import org.jwcarman.nessy.HarnessBuilder;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.api.ConversationEvent;
 import org.jwcarman.nessy.api.StopReason;
@@ -117,10 +116,11 @@ class NightWatchmanSmokeTest {
 
     @Bean
     Harness harness(ObjectProvider<ObservationRegistry> observations) {
-      HarnessBuilder builder =
-          Nessy.harness(new ScriptedWatchProvider()).onToolFinished(FINISHED::add);
-      observations.ifAvailable(builder::observations);
-      return builder.build();
+      return Nessy.harness(
+          h -> {
+            h.provider(new ScriptedWatchProvider()).onToolFinished(FINISHED::add);
+            observations.ifAvailable(h::observations);
+          });
     }
   }
 

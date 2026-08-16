@@ -43,14 +43,13 @@ public class ChatWebConfig {
 
   @Bean
   Agent<String> agent(Harness harness, Memory memory) {
-    return harness
-        .agent()
-        .name("chat-web")
-        .model("claude-sonnet-4-5")
-        .systemPrompt(SYSTEM_PROMPT)
-        .memory(memory)
-        .tools(ToolGrant.grant(new IssueCouponTool(), UsagePolicy.requireApproval()))
-        .approver(Approver.parkAll())
-        .build();
+    return harness.agent(
+        a ->
+            a.name("chat-web")
+                .model("claude-sonnet-4-5")
+                .systemPrompt(SYSTEM_PROMPT)
+                .memory(memory)
+                .tools(ToolGrant.grant(new IssueCouponTool(), UsagePolicy.requireApproval()))
+                .approver(Approver.parkAll()));
   }
 }

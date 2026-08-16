@@ -14,13 +14,12 @@ blanket "trust this server":
 ```java
 try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
   Agent<String> agent =
-      harness
-          .agent()
-          .name("researcher")
-          .tools(
-              ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
-              ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
-          .build();
+      harness.agent(
+          a ->
+              a.name("researcher")
+                  .tools(
+                      ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
+                      ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval())));
 }
 ```
 
@@ -28,7 +27,7 @@ try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
 tool the server actually advertised — rather than handing back `null` for
 a typo. `toolbox.tools()` returns every tool the server advertised, in
 `tools/list` order, for callers that want to grant the whole set (still
-one `ToolGrant` per tool — `AgentBuilder#tools` has no bulk-grant form,
+one `ToolGrant` per tool — `AgentConfig#tools` has no bulk-grant form,
 because a tool carries zero authority content on its own; every
 attachment states its policy or does not compile). Two servers make two
 toolboxes and two namespaces: a name collision between them is the
@@ -112,7 +111,7 @@ real, in-process MCP server — no Docker, no key, no network, default
 build. Discovery, schema fidelity, execution (including the `isError`
 and non-text-degradation paths), and closed-toolbox behavior are all
 proven against that real server. An end-to-end test grants an `McpTool`
-through a real `AgentBuilder` and drives it via a scripted model
+through a real `AgentConfig` and drives it via a scripted model
 provider and the actual `ToolInvoker`/`GatedToolCallExecutor` path — the
 zero-kernel claim (the kernel needed no changes at all to run an
 MCP-backed tool) proven, not merely asserted.

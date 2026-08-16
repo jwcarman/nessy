@@ -70,7 +70,7 @@ public final class Scout {
       System.exit(1);
       return;
     }
-    Harness harness = Nessy.harness(selection.provider()).build();
+    Harness harness = Nessy.harness(h -> h.provider(selection.provider()));
     ObjectMapper mapper = new ObjectMapper();
 
     try (McpToolbox toolbox =
@@ -78,17 +78,18 @@ public final class Scout {
             HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper)) {
       Built built = scout(harness, toolbox, selection.model(), new ConsoleApprover());
 
-      ConsoleRepl.of(built.agent())
-          .banner(
-              "Scout ("
-                  + selection.providerName()
-                  + ", "
-                  + selection.model()
-                  + "), reading via DeepWiki. Type exit or quit to leave.")
-          .prompt("you> ")
-          .plan(built.planStore())
-          .farewell("goodbye.")
-          .run();
+      ConsoleRepl.run(
+          built.agent(),
+          r ->
+              r.banner(
+                      "Scout ("
+                          + selection.providerName()
+                          + ", "
+                          + selection.model()
+                          + "), reading via DeepWiki. Type exit or quit to leave.")
+                  .prompt("you> ")
+                  .plan(built.planStore())
+                  .farewell("goodbye."));
     }
     // McpToolbox.close() has already run above (try-with-resources), and the REPL is done — but
     // HttpClientStreamableHttpTransport rides java.net.http.HttpClient, whose selector thread is
@@ -106,27 +107,30 @@ public final class Scout {
    * grant table — the thing under test — is identical either way.
    *
    * <p>Returns the {@link PlanStore} alongside the agent (rather than the agent alone) so {@link
-   * #main} can hand the same store to {@code ConsoleRepl.Builder#plan(PlanStore)} — the grant
-   * principle applied to the console's own opt-in: the store the model writes through {@code
-   * update_plan} is the exact store the REPL reads back to render the checklist.
+   * #main} can hand the same store to {@code ReplConfig#plan(PlanStore)} — the grant principle
+   * applied to the console's own opt-in: the store the model writes through {@code update_plan} is
+   * the exact store the REPL reads back to render the checklist.
    */
   static Built scout(Harness harness, McpToolbox toolbox, String model, Approver approver) {
     PlanStore planStore = PlanStore.inMemory();
     Transcript transcript = Transcript.inMemory();
     Agent<String> agent =
-        harness
-            .agent()
-            .name("scout")
-            .model(model)
-            .systemPrompt(SYSTEM_PROMPT)
-            .tools(
-                ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-                ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-                ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()),
-                ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
-            .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
-            .approver(approver)
-            .build();
+        harness.agent(
+            a ->
+                a.name("scout")
+                    .model(model)
+                    .systemPrompt(SYSTEM_PROMPT)
+                    .tools(
+                        ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
+                        ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
+                        ToolGrant.grant(
+                            toolbox.tool("ask_question"), UsagePolicy.requireApproval()),
+                        ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+                    .memory(
+                        Memory.pipeline(
+                            transcript,
+                            config -> config.transform(PlanTools.transformer(planStore))))
+                    .approver(approver));
     return new Built(agent, planStore);
   }
 

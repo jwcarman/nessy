@@ -55,7 +55,7 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * {@code AgentBuilder.subagent(SubagentCustomizer)} / {@code SubagentConfig} — the build-time
+ * {@code AgentConfig.subagent(SubagentCustomizer)} / {@code SubagentConfig} — the build-time
  * construction surface (design of record 2026-08-16 §0-§3): required fields, the delegation tool
  * grant it produces, the harness's own internal name registry rejecting a collision anywhere in the
  * whole delegation tree, and the lexical A→B→C nesting settling bottom-up.
@@ -168,10 +168,9 @@ class SubagentConfigTest {
 
     @Test
     void a_missing_name_throws_naming_the_field() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(sub -> sub.description("delegates research"));
@@ -183,10 +182,9 @@ class SubagentConfigTest {
 
     @Test
     void a_missing_description_throws_naming_the_field() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(sub -> sub.name("researcher").model("m"));
@@ -207,10 +205,9 @@ class SubagentConfigTest {
      */
     @Test
     void a_later_siblings_invalid_config_leaves_no_earlier_sibling_registered() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(sub -> sub.name("helper").description("d").model("m"))
@@ -221,12 +218,11 @@ class SubagentConfigTest {
           .hasMessageContaining("description");
 
       Agent<String> retry =
-          harness
-              .agent()
-              .name("writer-2")
-              .model("m")
-              .subagent(sub -> sub.name("helper").description("d").model("m"))
-              .build();
+          harness.agent(
+              a ->
+                  a.name("writer-2")
+                      .model("m")
+                      .subagent(sub -> sub.name("helper").description("d").model("m")));
 
       assertThat(retry.subagent("helper").name()).isEqualTo("helper");
     }
@@ -240,17 +236,16 @@ class SubagentConfigTest {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("ok"), endTurn());
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .subagent(
-                  sub ->
-                      sub.name("researcher")
-                          .description("Delegates research questions.")
-                          .model("m"))
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
+                          .model("m")
+                          .subagent(
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("Delegates research questions.")
+                                      .model("m")));
 
       writer.converse().tell("go");
 
@@ -282,14 +277,17 @@ class SubagentConfigTest {
               .turn(new ModelEvent.TextChunk("researcher's own reply"), endTurn())
               .turn(new ModelEvent.TextChunk("writer wraps up"), endTurn());
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .approver(Approver.denyAll("writer never approves anything"))
-              .subagent(sub -> sub.name("researcher").description("Delegates research.").model("m"))
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
+                          .model("m")
+                          .approver(Approver.denyAll("writer never approves anything"))
+                          .subagent(
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("Delegates research.")
+                                      .model("m")));
 
       RunOutcome outcome = writer.converse().tell("investigate");
 
@@ -315,19 +313,18 @@ class SubagentConfigTest {
                   endWithToolUse());
       ParkingApprover writerApprover = new ParkingApprover();
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .approver(writerApprover)
-              .subagent(
-                  sub ->
-                      sub.name("researcher")
-                          .description("Delegates research.")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
                           .model("m")
-                          .policy(UsagePolicy.requireApproval()))
-              .build();
+                          .approver(writerApprover)
+                          .subagent(
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("Delegates research.")
+                                      .model("m")
+                                      .policy(UsagePolicy.requireApproval())));
 
       RunOutcome outcome = writer.converse().tell("investigate");
 
@@ -343,9 +340,10 @@ class SubagentConfigTest {
 
     @Test
     void two_top_level_agents_sharing_a_name_is_rejected() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      harness.agent().name("dup").model("m").build();
-      AgentBuilder<String> duplicate = harness.agent().name("dup").model("m");
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      harness.agent(a -> a.name("dup").model("m"));
+      AgentConfig<String> duplicate =
+          new AgentConfig<>(harness, String.class, InputRenderer.text()).name("dup").model("m");
 
       assertThatThrownBy(duplicate::build)
           .isInstanceOf(IllegalArgumentException.class)
@@ -354,10 +352,9 @@ class SubagentConfigTest {
 
     @Test
     void a_subagent_sharing_its_parents_own_name_is_rejected() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(sub -> sub.name("writer").description("d").model("m"));
@@ -369,10 +366,9 @@ class SubagentConfigTest {
 
     @Test
     void two_sibling_subagents_sharing_a_name_is_rejected() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(sub -> sub.name("helper").description("d").model("m"))
@@ -396,10 +392,9 @@ class SubagentConfigTest {
     @Test
     void
         two_sibling_subagents_sharing_a_name_leaves_neither_registered_and_a_corrected_rebuild_succeeds() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(sub -> sub.name("helper").description("d").model("m"))
@@ -410,23 +405,21 @@ class SubagentConfigTest {
           .hasMessageContaining("helper");
 
       Agent<String> retry =
-          harness
-              .agent()
-              .name("writer-2")
-              .model("m")
-              .subagent(sub -> sub.name("helper").description("d").model("m"))
-              .build();
+          harness.agent(
+              a ->
+                  a.name("writer-2")
+                      .model("m")
+                      .subagent(sub -> sub.name("helper").description("d").model("m")));
 
       assertThat(retry.subagent("helper").name()).isEqualTo("helper");
     }
 
     @Test
     void a_name_collision_two_levels_deep_is_still_rejected() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      harness.agent().name("archivist").model("m").build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      harness.agent(a -> a.name("archivist").model("m"));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(
@@ -473,27 +466,26 @@ class SubagentConfigTest {
               .turn(new ModelEvent.TextChunk("A wraps everything up"), endTurn()); // A turn 2
       ParkingApprover approver = new ParkingApprover();
       Agent<String> a =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("a")
-              .model("m")
-              .approver(approver)
-              .subagent(
-                  b ->
-                      b.name("b")
-                          .description("delegates to b")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  top ->
+                      top.name("a")
                           .model("m")
+                          .approver(approver)
                           .subagent(
-                              c ->
-                                  c.name("c")
-                                      .description("delegates to c")
+                              b ->
+                                  b.name("b")
+                                      .description("delegates to b")
                                       .model("m")
-                                      .tools(
-                                          ToolGrant.grant(
-                                              new AskQuestionTool(),
-                                              UsagePolicy.requireApproval()))))
-              .build();
+                                      .subagent(
+                                          c ->
+                                              c.name("c")
+                                                  .description("delegates to c")
+                                                  .model("m")
+                                                  .tools(
+                                                      ToolGrant.grant(
+                                                          new AskQuestionTool(),
+                                                          UsagePolicy.requireApproval())))));
 
       RunOutcome outcome = a.converse().tell("start");
 
@@ -534,19 +526,18 @@ class SubagentConfigTest {
     void the_delegation_tools_schema_is_the_records_own_victools_schema() {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("ok"), endTurn());
-      Nessy.harness(provider)
-          .build()
-          .agent()
-          .name("writer")
-          .model("m")
-          .subagent(
-              ResearchRequest.class,
-              sub ->
-                  sub.name("researcher")
-                      .description("Delegates a structured research request.")
+      Nessy.harness(h -> h.provider(provider))
+          .agent(
+              a ->
+                  a.name("writer")
                       .model("m")
-                      .renderer(researchRequestRenderer()))
-          .build()
+                      .subagent(
+                          ResearchRequest.class,
+                          sub ->
+                              sub.name("researcher")
+                                  .description("Delegates a structured research request.")
+                                  .model("m")
+                                  .renderer(researchRequestRenderer())))
           .converse()
           .tell("go");
 
@@ -575,13 +566,14 @@ class SubagentConfigTest {
     void the_string_doors_delegation_tool_keeps_v1s_wire_shape_byte_for_byte() {
       ScriptedProvider provider =
           new ScriptedProvider().turn(new ModelEvent.TextChunk("ok"), endTurn());
-      Nessy.harness(provider)
-          .build()
-          .agent()
-          .name("writer")
-          .model("m")
-          .subagent(sub -> sub.name("researcher").description("Delegates research.").model("m"))
-          .build()
+      Nessy.harness(h -> h.provider(provider))
+          .agent(
+              a ->
+                  a.name("writer")
+                      .model("m")
+                      .subagent(
+                          sub ->
+                              sub.name("researcher").description("Delegates research.").model("m")))
           .converse()
           .tell("go");
 
@@ -618,19 +610,18 @@ class SubagentConfigTest {
               .turn(new ModelEvent.TextChunk("the researcher's answer"), endTurn())
               .turn(new ModelEvent.TextChunk("writer wraps up"), endTurn());
       Agent<String> writer =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("writer")
-              .model("m")
-              .subagent(
-                  ResearchRequest.class,
-                  sub ->
-                      sub.name("researcher")
-                          .description("Delegates a structured research request.")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("writer")
                           .model("m")
-                          .renderer(researchRequestRenderer()))
-              .build();
+                          .subagent(
+                              ResearchRequest.class,
+                              sub ->
+                                  sub.name("researcher")
+                                      .description("Delegates a structured research request.")
+                                      .model("m")
+                                      .renderer(researchRequestRenderer())));
 
       RunOutcome outcome = writer.converse().tell("investigate");
       ConversationId parentId = outcome.state().id();
@@ -652,10 +643,9 @@ class SubagentConfigTest {
      */
     @Test
     void a_missing_renderer_on_the_typed_door_fails_loudly_at_build_naming_the_subagent() {
-      Harness harness = Nessy.harness(NEVER_CALLED).build();
-      AgentBuilder<String> builder =
-          harness
-              .agent()
+      Harness harness = Nessy.harness(h -> h.provider(NEVER_CALLED));
+      AgentConfig<String> builder =
+          new AgentConfig<>(harness, String.class, InputRenderer.text())
               .name("writer")
               .model("m")
               .subagent(
@@ -688,24 +678,23 @@ class SubagentConfigTest {
               .turn(new ModelEvent.TextChunk("B relays C's answer"), endTurn())
               .turn(new ModelEvent.TextChunk("A wraps everything up"), endTurn());
       Agent<String> a =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("a")
-              .model("m")
-              .subagent(
-                  b ->
-                      b.name("b")
-                          .description("delegates to b")
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  top ->
+                      top.name("a")
                           .model("m")
                           .subagent(
-                              ResearchRequest.class,
-                              c ->
-                                  c.name("c")
-                                      .description("delegates to c")
+                              b ->
+                                  b.name("b")
+                                      .description("delegates to b")
                                       .model("m")
-                                      .renderer(researchRequestRenderer())))
-              .build();
+                                      .subagent(
+                                          ResearchRequest.class,
+                                          c ->
+                                              c.name("c")
+                                                  .description("delegates to c")
+                                                  .model("m")
+                                                  .renderer(researchRequestRenderer()))));
 
       RunOutcome outcome = a.converse().tell("start");
 

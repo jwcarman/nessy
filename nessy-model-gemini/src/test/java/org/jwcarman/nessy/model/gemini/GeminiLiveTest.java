@@ -90,13 +90,8 @@ class GeminiLiveTest {
     assumeKeyPresent();
 
     Agent<String> agent =
-        Nessy.harness(GeminiModelProvider.builder().fromEnv().build())
-            .build()
-            .agent()
-            .name("gemini-live")
-            .model(MODEL)
-            .maxTokens(64)
-            .build();
+        Nessy.harness(h -> h.provider(GeminiModelProvider.fromEnv()))
+            .agent(a -> a.name("gemini-live").model(MODEL).maxTokens(64));
 
     TextObserver observer = new TextObserver();
     RunOutcome outcome = agent.converse().tell("Reply with exactly: pong", observer);
@@ -110,14 +105,13 @@ class GeminiLiveTest {
     assumeKeyPresent();
 
     Agent<String> agent =
-        Nessy.harness(GeminiModelProvider.builder().fromEnv().build())
-            .build()
-            .agent()
-            .name("gemini-live")
-            .model(MODEL)
-            .maxTokens(256)
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+        Nessy.harness(h -> h.provider(GeminiModelProvider.fromEnv()))
+            .agent(
+                a ->
+                    a.name("gemini-live")
+                        .model(MODEL)
+                        .maxTokens(256)
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
     Conversation<String> conversation = agent.converse();
     TextObserver observer = new TextObserver();

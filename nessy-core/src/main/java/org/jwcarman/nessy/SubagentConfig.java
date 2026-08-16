@@ -27,14 +27,14 @@ import org.jwcarman.nessy.spi.memory.Memory;
 
 /**
  * What an application writes to describe a subagent, handed to {@link
- * AgentBuilder#subagent(SubagentCustomizer)} / {@link AgentBuilder#subagent(Class,
+ * AgentConfig#subagent(SubagentCustomizer)} / {@link AgentConfig#subagent(Class,
  * SubagentCustomizer)}: a CONFIG, not a builder (design of record 2026-08-16 §0 owner ruling) —
  * fluent setters, no {@code build()}. Only the parent's own builder is ever allowed to turn this
  * into an {@link Agent}; nothing here is half-buildable on its own, because there is nothing here
  * that builds at all.
  *
  * <p>{@link #name} and {@link #description} are required — {@code build()} on the enclosing {@link
- * AgentBuilder} throws {@link IllegalStateException} naming whichever is missing. Everything else
+ * AgentConfig} throws {@link IllegalStateException} naming whichever is missing. Everything else
  * this class exposes trims to prompt/model/tools/memory/termination/policy/renderer; everything the
  * parent agent's own harness already owns — provider, stores, approver, observations,
  * harness-seeded listeners — is inherited by construction and is not overridable here (design of
@@ -71,7 +71,7 @@ public final class SubagentConfig<T> {
 
   /**
    * This subagent's required identity — the durable stamp its own parks carry. Unlike {@link
-   * AgentBuilder#name(String)}, which rejects a blank name at the setter, this deliberately accepts
+   * AgentConfig#name(String)}, which rejects a blank name at the setter, this deliberately accepts
    * anything (including {@code null}) here and defers the check to {@link #validate()}: {@link
    * #description()} is required too, and the pinned contract (design of record 2026-08-16, brief
    * "Task 2") is that {@code build()} reports whichever field is missing, not the setter that
@@ -93,7 +93,7 @@ public final class SubagentConfig<T> {
   }
 
   /**
-   * Wins over the harness's own default model, exactly like {@link AgentBuilder#model(String)} —
+   * Wins over the harness's own default model, exactly like {@link AgentConfig#model(String)} —
    * including that class's own null-tolerance: {@code null} (or never calling this setter at all)
    * means "no override," resolved later against the harness's default the identical way.
    */
@@ -104,7 +104,7 @@ public final class SubagentConfig<T> {
 
   /**
    * The system prompt sent with every one of this subagent's model calls. Required non-null,
-   * matching {@link AgentBuilder#systemPrompt(String)}'s own contract exactly (final review N-4) —
+   * matching {@link AgentConfig#systemPrompt(String)}'s own contract exactly (final review N-4) —
    * unlike {@link #model(String)}, whose {@code null} is meaningful ("no override"), this
    * subagent's own prompt is either declared or left unset by never calling this setter at all; an
    * explicit {@code null} argument is never a legitimate way to spell "unset."
@@ -156,7 +156,7 @@ public final class SubagentConfig<T> {
   }
 
   /**
-   * REQUIRED on the typed door — {@link AgentBuilder#subagent(Class, SubagentCustomizer)} fails
+   * REQUIRED on the typed door — {@link AgentConfig#subagent(Class, SubagentCustomizer)} fails
    * loudly, naming this field, if it is never called; forbidden-to-matter on the degenerate {@code
    * String} door (design of record 2026-08-16 §0.5), which never reads it even if set, since the
    * wire shape there is always the v1 {@code Delegation(String task)} wrapper, not {@code T}
@@ -170,7 +170,7 @@ public final class SubagentConfig<T> {
   /**
    * Nests a degenerate {@code String}-vocabulary child inside this subagent, so the delegation tree
    * can go A→B→C: this subagent's own builder grants a delegation tool to whatever {@code
-   * customizer} describes, exactly the way {@link AgentBuilder#subagent(SubagentCustomizer)} does
+   * customizer} describes, exactly the way {@link AgentConfig#subagent(SubagentCustomizer)} does
    * for the top-level agent.
    */
   public SubagentConfig<T> subagent(SubagentCustomizer<String> customizer) {
@@ -184,7 +184,7 @@ public final class SubagentConfig<T> {
   /**
    * Nests a typed child inside this subagent (design of record 2026-08-16 §0.5): {@code inputType}
    * becomes the nested delegation tool's own wire shape, exactly the way {@link
-   * AgentBuilder#subagent(Class, SubagentCustomizer)} does for the top-level agent.
+   * AgentConfig#subagent(Class, SubagentCustomizer)} does for the top-level agent.
    */
   public <X> SubagentConfig<T> subagent(Class<X> inputType, SubagentCustomizer<X> customizer) {
     Objects.requireNonNull(inputType, "inputType must not be null");
@@ -197,7 +197,7 @@ public final class SubagentConfig<T> {
 
   /**
    * Throws {@link IllegalStateException} naming whichever required field is missing — run by the
-   * enclosing {@link AgentBuilder#build()} before this config is turned into an {@link Agent}. The
+   * enclosing {@link AgentConfig#build()} before this config is turned into an {@link Agent}. The
    * typed door's own required-renderer check is a separate, later step (it is not a property of the
    * config alone, but of which door built it).
    */

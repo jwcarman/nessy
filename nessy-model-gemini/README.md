@@ -5,16 +5,25 @@ SDK, talking to the Gemini Developer API via a plain API key — the same family
 `nessy-model-anthropic` and `nessy-model-openai`, built the same way.
 
 ```java
-ModelProvider provider = GeminiModelProvider.builder().apiKey(apiKey).build();
+ModelProvider provider = GeminiModelProvider.create(c -> c.apiKey(apiKey));
+```
+
+or, for the common no-argument case:
+
+```java
+ModelProvider provider = GeminiModelProvider.fromEnv();
 ```
 
 ## Credentials
 
+`GeminiModelProvider.create(GeminiProviderCustomizer)` hands the customizer a
+`GeminiProviderConfig` with fluent setters:
+
 - `.apiKey(String)` — explicit key, the usual path.
 - `.fromEnv()` — reads `GEMINI_API_KEY`, then `GOOGLE_API_KEY` (Google's own documented pair, in
   that order) itself, rather than delegating to the SDK's own environment resolution. An explicit
-  `.apiKey(...)` set alongside `.fromEnv()` still wins. Neither variable set fails fast at
-  `.build()` with an `IllegalStateException` naming both.
+  `.apiKey(...)` set alongside `.fromEnv()` still wins. Neither variable set fails fast when the
+  provider is built, with an `IllegalStateException` naming both.
 - `.client(Client)` — escape hatch: supply a fully preconfigured java-genai `Client` instead.
 - `.baseUrl(String)` — for proxies, gateways, or Gemini-compatible endpoints.
 

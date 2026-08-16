@@ -20,7 +20,7 @@ import java.util.function.Consumer;
 
 /**
  * The virtual-thread machinery behind asynchronous listener delivery ({@code
- * AgentBuilder#listenAsync}).
+ * AgentConfig#listenAsync}).
  *
  * <p>Package-private and stateful (a counter), so it lives in its own class rather than on any of
  * the listener interfaces — interface fields are implicitly {@code public static final}, which

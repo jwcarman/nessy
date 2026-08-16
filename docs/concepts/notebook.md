@@ -110,19 +110,22 @@ Function<ConversationId, SubjectId> subjectResolver = id -> new SubjectId("chat-
 Transcript transcript = Transcript.inMemory();
 
 Agent<String> agent =
-    harness
-        .agent()
-        .name("assistant")
-        .model("claude-sonnet-4-5")
-        .tools(
-            ToolGrant.grant(NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
-            ToolGrant.grant(NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
-            ToolGrant.grant(NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
-        .memory(
-            Memory.pipeline(transcript)
-                .transform(NotebookTools.transformer(notebook, subjectResolver))
-                .build())
-        .build();
+    harness.agent(
+        a ->
+            a.name("assistant")
+                .model("claude-sonnet-4-5")
+                .tools(
+                    ToolGrant.grant(
+                        NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
+                    ToolGrant.grant(
+                        NotebookTools.recall(notebook, subjectResolver), UsagePolicy.allow()),
+                    ToolGrant.grant(
+                        NotebookTools.forget(notebook, subjectResolver), UsagePolicy.allow()))
+                .memory(
+                    Memory.pipeline(
+                        transcript,
+                        config ->
+                            config.transform(NotebookTools.transformer(notebook, subjectResolver)))));
 ```
 
 The expected posture for all three tools is `allow()`: a self-bookkeeping tool, like the

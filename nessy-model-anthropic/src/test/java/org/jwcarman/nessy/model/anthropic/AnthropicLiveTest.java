@@ -80,13 +80,8 @@ class AnthropicLiveTest {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
-            .build()
-            .agent()
-            .name("anthropic-live")
-            .model(MODEL)
-            .maxTokens(64)
-            .build();
+        Nessy.harness(h -> h.provider(AnthropicModelProvider.fromEnv()))
+            .agent(a -> a.name("anthropic-live").model(MODEL).maxTokens(64));
 
     TextObserver observer = new TextObserver();
     RunOutcome outcome = agent.converse().tell("Reply with exactly: pong", observer);
@@ -100,14 +95,13 @@ class AnthropicLiveTest {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY not set");
 
     Agent<String> agent =
-        Nessy.harness(AnthropicModelProvider.builder().fromEnv().build())
-            .build()
-            .agent()
-            .name("anthropic-live")
-            .model(MODEL)
-            .maxTokens(256)
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+        Nessy.harness(h -> h.provider(AnthropicModelProvider.fromEnv()))
+            .agent(
+                a ->
+                    a.name("anthropic-live")
+                        .model(MODEL)
+                        .maxTokens(256)
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
     Conversation<String> conversation = agent.converse();
     TextObserver observer = new TextObserver();
@@ -128,14 +122,16 @@ class AnthropicLiveTest {
     // Extended thinking requires headroom above its budget: a small budget keeps this cheap
     // while still leaving room for maxTokens to exceed it, per AnthropicRequests' contract.
     Agent<String> agent =
-        Nessy.harness(AnthropicModelProvider.builder().fromEnv().thinkingBudget(1024).build())
-            .build()
-            .agent()
-            .name("anthropic-live")
-            .model(MODEL)
-            .maxTokens(2048)
-            .capabilities(Set.of(Capability.THINKING))
-            .build();
+        Nessy.harness(
+                h ->
+                    h.provider(
+                        AnthropicModelProvider.create(c -> c.fromEnv().thinkingBudget(1024))))
+            .agent(
+                a ->
+                    a.name("anthropic-live")
+                        .model(MODEL)
+                        .maxTokens(2048)
+                        .capabilities(Set.of(Capability.THINKING)));
 
     Conversation<String> conversation = agent.converse();
     conversation.tell("What is 2+2? Think it through briefly.");

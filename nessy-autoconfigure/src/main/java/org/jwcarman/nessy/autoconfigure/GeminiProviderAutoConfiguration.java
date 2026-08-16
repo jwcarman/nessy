@@ -17,6 +17,7 @@ package org.jwcarman.nessy.autoconfigure;
 
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.model.gemini.GeminiModelProvider;
+import org.jwcarman.nessy.model.gemini.GeminiProviderConfig;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionMessage;
@@ -98,23 +99,25 @@ public class GeminiProviderAutoConfiguration {
   /**
    * {@code nessy.gemini.api-key} / {@code nessy.gemini.base-url} are overrides layered on top of
    * the SDK's own environment resolution, not replacements for it: {@link
-   * GeminiModelProvider.Builder#fromEnv()} is always called first (it only sets a flag — nothing is
-   * read until {@code build()}), so the ambient {@code GEMINI_API_KEY} / {@code GOOGLE_API_KEY}
+   * GeminiProviderConfig#fromEnv()} is always called first (it only sets a flag — nothing is read
+   * until the provider is built), so the ambient {@code GEMINI_API_KEY} / {@code GOOGLE_API_KEY}
    * environment variables are still honored when a property here is absent, and an explicit
    * property always wins when present.
    */
   static ModelProvider buildGeminiProvider(NessyProperties properties) {
     var gemini = properties.gemini();
-    var builder = GeminiModelProvider.builder().fromEnv();
     var apiKey = gemini == null ? null : gemini.apiKey();
-    if (StringUtils.hasText(apiKey)) {
-      builder.apiKey(apiKey);
-    }
     var baseUrl = gemini == null ? null : gemini.baseUrl();
-    if (StringUtils.hasText(baseUrl)) {
-      builder.baseUrl(baseUrl);
-    }
-    return builder.build();
+    return GeminiModelProvider.create(
+        config -> {
+          config.fromEnv();
+          if (StringUtils.hasText(apiKey)) {
+            config.apiKey(apiKey);
+          }
+          if (StringUtils.hasText(baseUrl)) {
+            config.baseUrl(baseUrl);
+          }
+        });
   }
 
   /**

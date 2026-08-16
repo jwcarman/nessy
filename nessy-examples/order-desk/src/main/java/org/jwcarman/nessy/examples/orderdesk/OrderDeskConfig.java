@@ -58,16 +58,16 @@ public class OrderDeskConfig {
 
   @Bean
   Agent<OrderEvent> agent(Harness harness, Memory memory, RabbitTemplate rabbit) {
-    return harness
-        .agent(OrderEvent.class)
-        .name("order-desk")
-        .model("claude-sonnet-4-5")
-        .systemPrompt(ORDER_DESK_ORDERS)
-        .memory(memory)
-        .renderer(ORDER_EVENT_RENDERER)
-        .tools(ToolGrant.grant(new RequestFulfillmentTool(rabbit), UsagePolicy.allow()))
-        .onToolProgressAsync(progress -> LOGGER.info("tool progress: {}", progress))
-        .build();
+    return harness.agent(
+        OrderEvent.class,
+        a ->
+            a.name("order-desk")
+                .model("claude-sonnet-4-5")
+                .systemPrompt(ORDER_DESK_ORDERS)
+                .memory(memory)
+                .renderer(ORDER_EVENT_RENDERER)
+                .tools(ToolGrant.grant(new RequestFulfillmentTool(rabbit), UsagePolicy.allow()))
+                .onToolProgressAsync(progress -> LOGGER.info("tool progress: {}", progress)));
   }
 
   // The root README's recommended idiom (spec §5): a sealed switch, one arm per OrderEvent

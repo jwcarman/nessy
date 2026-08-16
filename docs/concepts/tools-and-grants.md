@@ -37,13 +37,12 @@ public record ToolGrant(Tool<?> tool, UsagePolicy policy) {
 
 ```java
 Agent<String> agent =
-    harness
-        .agent()
-        .name("guardian")
-        .model("claude-sonnet-4-5")
-        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-        .approver(Approver.denyAll("would fail if ever asked"))
-        .build();
+    harness.agent(
+        a ->
+            a.name("guardian")
+                .model("claude-sonnet-4-5")
+                .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
+                .approver(Approver.denyAll("would fail if ever asked")));
 ```
 
 The pairing — which tool, and the authority to call it — is stated together, per agent,
@@ -58,7 +57,7 @@ before the approver is ever asked. The model has no say in the outcome; it only 
 sees the result.
 
 - `UsagePolicy.allow()` — every call proceeds; the approver is never consulted. Always
-  the same canonical instance, which is what lets `AgentBuilder#build()` tell "no
+  the same canonical instance, which is what lets the agent factory tell "no
   approval path can exist here" from an opaque custom policy that might.
 - `UsagePolicy.deny(reason)` — every call is refused, with the same reason each time.
 - `UsagePolicy.requireApproval()` — every call defers to the agent's `Approver`.
@@ -85,13 +84,12 @@ server":
 ```java
 try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
   Agent<String> agent =
-      harness
-          .agent()
-          .name("researcher")
-          .tools(
-              ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
-              ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
-          .build();
+      harness.agent(
+          a ->
+              a.name("researcher")
+                  .tools(
+                      ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
+                      ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval())));
 }
 ```
 

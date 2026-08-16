@@ -23,9 +23,12 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
+import org.jwcarman.nessy.model.anthropic.AnthropicProviderConfig;
 import org.jwcarman.nessy.model.bedrock.BedrockModelProvider;
 import org.jwcarman.nessy.model.gemini.GeminiModelProvider;
+import org.jwcarman.nessy.model.gemini.GeminiProviderConfig;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
+import org.jwcarman.nessy.model.openai.OpenAiProviderConfig;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,16 +60,15 @@ import org.slf4j.LoggerFactory;
  * is not among those present) falls back to the first present key in the table's row order above —
  * i.e. Anthropic first, then OpenAI, then Gemini, then xAI — logging one WARN naming the default.
  * None present fails fast, naming every variable checked. Each provider is built the same way its
- * own module builds one from an explicit key — {@code Provider.builder().apiKey(key).build()} —
- * mirroring {@link AnthropicModelProvider.Builder#apiKey(String)}, {@link
- * OpenAiModelProvider.Builder#apiKey(String)}, and {@link
- * GeminiModelProvider.Builder#apiKey(String)} exactly, rather than each provider's own {@code
- * fromEnv()}, so the choice this class makes from the map handed to it is the choice that is built
- * — not a second, independent read of the real environment underneath it. {@value
- * #OPENAI_BASE_URL_ENV_VAR} is the one exception: it is layered onto the OpenAI provider via {@link
- * OpenAiModelProvider.Builder#baseUrl(String)} when {@value #OPENAI_API_KEY_ENV_VAR} is the chosen
- * path, exactly as the OpenAI SDK's own {@code fromEnv()} would honor it — the xAI path never reads
- * it, since xAI's base URL is fixed.
+ * own module builds one from an explicit key — {@code Provider.create(c -> c.apiKey(key))} —
+ * mirroring {@link AnthropicProviderConfig#apiKey(String)}, {@link
+ * OpenAiProviderConfig#apiKey(String)}, and {@link GeminiProviderConfig#apiKey(String)} exactly,
+ * rather than each provider's own {@code fromEnv()}, so the choice this class makes from the map
+ * handed to it is the choice that is built — not a second, independent read of the real environment
+ * underneath it. {@value #OPENAI_BASE_URL_ENV_VAR} is the one exception: it is layered onto the
+ * OpenAI provider via {@link OpenAiProviderConfig#baseUrl(String)} when {@value
+ * #OPENAI_API_KEY_ENV_VAR} is the chosen path, exactly as the OpenAI SDK's own {@code fromEnv()}
+ * would honor it — the xAI path never reads it, since xAI's base URL is fixed.
  *
  * <p><strong>{@link BedrockModelProvider} is explicit-selection-only</strong> (bedrock-provider
  * design §4): it joins the {@value #NESSY_PROVIDER_ENV_VAR} vocabulary as {@value #BEDROCK_CHOICE},
@@ -77,10 +79,10 @@ import org.slf4j.LoggerFactory;
  * silently hijack every laptop with a stray AWS profile into talking to Bedrock. Setting {@value
  * #NESSY_PROVIDER_ENV_VAR}{@code =bedrock} is therefore the only way to choose it, checked before
  * any keyed candidate is even computed; it wins outright regardless of which API keys happen to be
- * set alongside it. The provider itself is then built via {@link
- * BedrockModelProvider.Builder#fromEnv()} — the AWS SDK's own default credentials chain plus {@code
- * AWS_REGION}/{@code AWS_DEFAULT_REGION} — so an explicit choice with no region configured fails
- * fast from {@link BedrockModelProvider.Builder#build()} itself, naming both variables.
+ * set alongside it. The provider itself is then built via {@link BedrockModelProvider#fromEnv()} —
+ * the AWS SDK's own default credentials chain plus {@code AWS_REGION}/{@code AWS_DEFAULT_REGION} —
+ * so an explicit choice with no region configured fails fast from that call itself, naming both
+ * variables.
  */
 public final class EnvModelProviders {
 
@@ -191,7 +193,7 @@ public final class EnvModelProviders {
    * #NESSY_PROVIDER_ENV_VAR} — the sole selection signal (class javadoc): no key of Bedrock's own
    * is ever consulted. Package-private so the selection decision itself — the branch on which the
    * whole explicit-only ruling rests — is directly, deterministically testable without needing
-   * {@link BedrockModelProvider.Builder#fromEnv()} to actually succeed, which depends on {@code
+   * {@link BedrockModelProvider#fromEnv()} to actually succeed, which depends on {@code
    * AWS_REGION}/{@code AWS_DEFAULT_REGION} being set in the real process environment and so varies
    * machine to machine.
    */
@@ -241,7 +243,7 @@ public final class EnvModelProviders {
 
   /**
    * {@value #GEMINI_API_KEY_ENV_VAR} first, then {@value #GOOGLE_API_KEY_ENV_VAR} — Google's own
-   * documented pair, in that order — mirroring {@link GeminiModelProvider.Builder#fromEnv()}.
+   * documented pair, in that order — mirroring {@link GeminiProviderConfig#fromEnv()}.
    */
   private static String geminiKey(Map<String, String> env) {
     var key = env.get(GEMINI_API_KEY_ENV_VAR);
@@ -301,7 +303,7 @@ public final class EnvModelProviders {
   }
 
   private static ModelProvider anthropic(String apiKey) {
-    return AnthropicModelProvider.builder().apiKey(apiKey).build();
+    return AnthropicModelProvider.create(c -> c.apiKey(apiKey));
   }
 
   /**
@@ -312,32 +314,34 @@ public final class EnvModelProviders {
    * any non-empty string; convention is {@code "lm-studio"}).
    */
   private static ModelProvider openai(String apiKey, Map<String, String> env) {
-    var builder = OpenAiModelProvider.builder().apiKey(apiKey);
     var baseUrl = env.get(OPENAI_BASE_URL_ENV_VAR);
-    if (baseUrl != null) {
-      builder.baseUrl(baseUrl);
-    }
-    return builder.build();
+    return OpenAiModelProvider.create(
+        c -> {
+          c.apiKey(apiKey);
+          if (baseUrl != null) {
+            c.baseUrl(baseUrl);
+          }
+        });
   }
 
   private static ModelProvider gemini(String apiKey) {
-    return GeminiModelProvider.builder().apiKey(apiKey).build();
+    return GeminiModelProvider.create(c -> c.apiKey(apiKey));
   }
 
   /**
    * Grok as a first-class env citizen with zero new provider code: OpenAI wire protocol, xAI's URL.
    */
   private static ModelProvider xai(String apiKey) {
-    return OpenAiModelProvider.builder().apiKey(apiKey).baseUrl(XAI_BASE_URL).build();
+    return OpenAiModelProvider.create(c -> c.apiKey(apiKey).baseUrl(XAI_BASE_URL));
   }
 
   /**
-   * Explicit-only (class javadoc): no key of any kind is read here. {@code fromEnv()} resolves the
-   * AWS SDK's own default credentials chain and {@code AWS_REGION}/{@code AWS_DEFAULT_REGION}
-   * itself, at {@code build()} time.
+   * Explicit-only (class javadoc): no key of any kind is read here. {@link
+   * BedrockModelProvider#fromEnv()} resolves the AWS SDK's own default credentials chain and {@code
+   * AWS_REGION}/{@code AWS_DEFAULT_REGION} itself.
    */
   private static ModelProvider bedrock() {
-    return BedrockModelProvider.builder().fromEnv().build();
+    return BedrockModelProvider.fromEnv();
   }
 
   /**

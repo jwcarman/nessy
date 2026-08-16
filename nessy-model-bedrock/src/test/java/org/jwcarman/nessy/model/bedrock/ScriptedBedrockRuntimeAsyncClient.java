@@ -26,11 +26,11 @@ import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRespon
 /**
  * A hand-rolled {@link BedrockRuntimeAsyncClient} test double, driven entirely offline: {@code
  * converseStream} is the only method the real SDK exercises through {@link
- * BedrockModelProvider.Builder#wrap} (every other {@code BedrockRuntimeAsyncClient} operation is a
- * default method that this double never overrides and this module never calls), so overriding it —
- * plus the two abstract lifecycle methods {@code serviceName()}/{@code close()} — is the entire
- * seam needed to pin the async-to-blocking bridge's behavior without a network call, a real Netty
- * transport, or a mocking library.
+ * BedrockProviderConfig#wrap} (every other {@code BedrockRuntimeAsyncClient} operation is a default
+ * method that this double never overrides and this module never calls), so overriding it — plus the
+ * two abstract lifecycle methods {@code serviceName()}/{@code close()} — is the entire seam needed
+ * to pin the async-to-blocking bridge's behavior without a network call, a real Netty transport, or
+ * a mocking library.
  *
  * <p>Events are delivered to the response handler via {@link SdkPublisher#fromIterable(Iterable)} —
  * a real, synchronous, backpressure-satisfying {@code Publisher} the AWS SDK itself ships for
@@ -109,7 +109,7 @@ final class ScriptedBedrockRuntimeAsyncClient implements BedrockRuntimeAsyncClie
   /**
    * Whether {@link #close()} has been called — the close-ownership rider's observable seam: {@link
    * BedrockModelProvider#close()} must call this only for an internally built client, never for one
-   * supplied through {@link BedrockModelProvider.Builder#client(BedrockRuntimeAsyncClient)}.
+   * supplied through {@link BedrockProviderConfig#client(BedrockRuntimeAsyncClient)}.
    */
   boolean isClosed() {
     return closed;

@@ -81,7 +81,8 @@ class ConversationTest {
   @Test
   void conversationId_reports_the_id_this_conversation_was_opened_or_resumed_with() {
     Agent<String> agent =
-        Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
+        Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+            .agent(a -> a.name("clerk").model("m"));
 
     Conversation<String> conversation = agent.converse();
 
@@ -94,7 +95,8 @@ class ConversationTest {
     @Test
     void the_observer_watches_only_this_calls_turn_synchronously() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("clerk").model("m"));
       Conversation<String> conversation = agent.converse();
       List<TurnEvent> observed = new ArrayList<>();
 
@@ -109,7 +111,8 @@ class ConversationTest {
     @Test
     void a_null_observer_is_rejected() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("clerk").model("m"));
       Conversation<String> conversation = agent.converse();
 
       assertThatThrownBy(() -> conversation.tell("hi", null))
@@ -120,7 +123,8 @@ class ConversationTest {
     @Test
     void a_throwing_observer_propagates_and_aborts_the_call() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("clerk").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("clerk").model("m"));
       Conversation<String> conversation = agent.converse();
 
       assertThatThrownBy(
@@ -142,13 +146,8 @@ class ConversationTest {
     void an_empty_block_list_fails_tell_before_the_loop_ever_sees_it() {
       InputRenderer<String> emptyRenderer = input -> List.of();
       Agent<String> agent =
-          Nessy.harness(new FakeProvider())
-              .build()
-              .agent()
-              .name("clerk")
-              .model("m")
-              .renderer(emptyRenderer)
-              .build();
+          Nessy.harness(h -> h.provider(new FakeProvider()))
+              .agent(a -> a.name("clerk").model("m").renderer(emptyRenderer));
 
       Conversation<String> conversation = agent.converse();
 
@@ -161,13 +160,8 @@ class ConversationTest {
     void a_null_block_list_fails_tell_with_an_observer_before_the_loop_ever_sees_it() {
       InputRenderer<String> nullRenderer = input -> null;
       Agent<String> agent =
-          Nessy.harness(new FakeProvider())
-              .build()
-              .agent()
-              .name("clerk")
-              .model("m")
-              .renderer(nullRenderer)
-              .build();
+          Nessy.harness(h -> h.provider(new FakeProvider()))
+              .agent(a -> a.name("clerk").model("m").renderer(nullRenderer));
       Conversation<String> conversation = agent.converse();
 
       assertThatThrownBy(() -> conversation.tell("hi", e -> {}))

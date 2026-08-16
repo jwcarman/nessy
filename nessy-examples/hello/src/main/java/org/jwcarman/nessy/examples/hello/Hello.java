@@ -55,21 +55,16 @@ public final class Hello {
     // makes the no-key, no-network promise true. A real ModelProvider would need credentials and a
     // live call; this one plays back a script, so the example runs the same way on every machine.
     ScriptedModelProvider provider =
-        ScriptedModelProvider.builder()
-            .toolUse("c1", "add", args)
-            .endWithToolUse()
-            .text("The answer is 4.")
-            .endTurn()
-            .build();
+        ScriptedModelProvider.script(
+            s -> s.toolUse("c1", "add", args).endWithToolUse().text("The answer is 4.").endTurn());
 
     Agent<String> agent =
-        Nessy.harness(provider)
-            .build()
-            .agent()
-            .name("hello")
-            .model("fake-model")
-            .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-            .build();
+        Nessy.harness(h -> h.provider(provider))
+            .agent(
+                a ->
+                    a.name("hello")
+                        .model("fake-model")
+                        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
     StringBuilder text = new StringBuilder();
     RunOutcome outcome =
@@ -77,7 +72,7 @@ public final class Hello {
             .converse()
             .tell(
                 "what is 2+2?",
-                TurnObserver.builder().onTextDelta(delta -> text.append(delta.text())).build());
+                TurnObserver.observe(o -> o.onTextDelta(delta -> text.append(delta.text()))));
 
     return text + " (" + outcome.state().status() + ")";
   }

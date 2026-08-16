@@ -27,9 +27,9 @@ import java.util.List;
  * {@code final} classes, and the {@code ResponseStream} they return can only be constructed through
  * a real {@code ApiResponse} plus a reflection-resolved converter method — none of it
  * offline-constructible. This package-private interface is the thin seam that sidesteps all of
- * that: production code ({@link GeminiModelProvider.Builder}) wraps the real SDK call behind it;
- * tests implement it directly with a hand-rolled fake that returns a {@link GeminiStream} built
- * from plain SDK response fixtures — no mocking library, no SDK internals touched.
+ * that: production code ({@link GeminiProviderConfig}) wraps the real SDK call behind it; tests
+ * implement it directly with a hand-rolled fake that returns a {@link GeminiStream} built from
+ * plain SDK response fixtures — no mocking library, no SDK internals touched.
  */
 interface GeminiClient {
 

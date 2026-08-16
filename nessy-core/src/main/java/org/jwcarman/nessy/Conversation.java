@@ -84,7 +84,7 @@ public final class Conversation<I> {
    * This conversation's one dynamic listening level (design §17): in-memory, per-handle,
    * non-durable, and already scoped to {@link #conversationId()} — nothing subscribed through the
    * result ever sees another conversation's traffic. Reach for a build-time {@code
-   * AgentBuilder#listen}/{@code listenAsync} declaration instead when a listener needs to watch
+   * AgentConfig#listen}/{@code listenAsync} declaration instead when a listener needs to watch
    * every conversation this agent ever runs, not just this one.
    */
   public ConversationEvents events() {

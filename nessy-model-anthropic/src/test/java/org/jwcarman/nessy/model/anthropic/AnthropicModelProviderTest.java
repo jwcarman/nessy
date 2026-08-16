@@ -117,7 +117,7 @@ class AnthropicModelProviderTest {
     void delegates_to_the_sdk_client_and_wraps_the_result_in_an_anthropic_stream() {
       var capturedParams = new MessageCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
-      var provider = AnthropicModelProvider.builder().client(client).build();
+      var provider = new AnthropicProviderConfig().client(client).build();
       var request =
           new ModelRequest(
               Context.of(List.of()), "sys", "claude-sonnet", 1024, List.of(), Set.of(), null);
@@ -133,7 +133,7 @@ class AnthropicModelProviderTest {
     void a_thinking_request_carries_the_configured_budget_through_to_the_sdk_params() {
       var capturedParams = new MessageCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
-      var provider = AnthropicModelProvider.builder().client(client).thinkingBudget(777).build();
+      var provider = new AnthropicProviderConfig().client(client).thinkingBudget(777).build();
       var request =
           new ModelRequest(
               Context.of(List.of()),
@@ -153,13 +153,13 @@ class AnthropicModelProviderTest {
   }
 
   @Nested
-  class Builder {
+  class Configuration {
 
     @Test
     void rejects_build_with_neither_a_key_nor_a_client() {
-      var builder = AnthropicModelProvider.builder();
+      var config = new AnthropicProviderConfig();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
@@ -177,9 +177,9 @@ class AnthropicModelProviderTest {
               && System.getenv("ANTHROPIC_AUTH_TOKEN") == null,
           "ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is set in this shell");
 
-      var builder = AnthropicModelProvider.builder().fromEnv();
+      var config = new AnthropicProviderConfig().fromEnv();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("ANTHROPIC_API_KEY");
     }
@@ -195,7 +195,7 @@ class AnthropicModelProviderTest {
       // by AnthropicLiveTest, whose a_real_conversation_answers test builds exclusively via
       // fromEnv().
       AnthropicModelProvider provider =
-          AnthropicModelProvider.builder()
+          new AnthropicProviderConfig()
               .fromEnv()
               .apiKey("sk-explicit-wins")
               .baseUrl("https://example.invalid")
@@ -210,14 +210,14 @@ class AnthropicModelProviderTest {
       // _environment above: that test always sets baseUrl too, which never exercises
       // buildFromEnv()'s baseUrl == null branch. This one leaves it unset.
       AnthropicModelProvider provider =
-          AnthropicModelProvider.builder().fromEnv().apiKey("sk-explicit-only").build();
+          new AnthropicProviderConfig().fromEnv().apiKey("sk-explicit-only").build();
 
       assertThat(provider).isNotNull();
     }
 
     @Test
     void an_api_key_alone_is_enough_to_build() {
-      AnthropicModelProvider provider = AnthropicModelProvider.builder().apiKey("sk-test").build();
+      AnthropicModelProvider provider = new AnthropicProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider).isNotNull();
     }
@@ -226,7 +226,7 @@ class AnthropicModelProviderTest {
     void a_preconfigured_client_bypasses_the_key_requirement() {
       AnthropicClient client = AnthropicOkHttpClient.builder().apiKey("sk-test").build();
 
-      AnthropicModelProvider provider = AnthropicModelProvider.builder().client(client).build();
+      AnthropicModelProvider provider = new AnthropicProviderConfig().client(client).build();
 
       assertThat(provider).isNotNull();
     }
@@ -234,7 +234,7 @@ class AnthropicModelProviderTest {
     @Test
     void a_base_url_is_accepted_without_error() {
       AnthropicModelProvider provider =
-          AnthropicModelProvider.builder()
+          new AnthropicProviderConfig()
               .apiKey("sk-test")
               .baseUrl("https://example.invalid")
               .build();
@@ -245,20 +245,60 @@ class AnthropicModelProviderTest {
     @Test
     void a_thinking_budget_is_accepted_without_error() {
       AnthropicModelProvider provider =
-          AnthropicModelProvider.builder().apiKey("sk-test").thinkingBudget(1024).build();
+          new AnthropicProviderConfig().apiKey("sk-test").thinkingBudget(1024).build();
 
       assertThat(provider).isNotNull();
     }
 
     @Test
     void a_blank_api_key_is_rejected_the_same_as_a_missing_one() {
-      var builder = AnthropicModelProvider.builder().apiKey("   ");
+      var config = new AnthropicProviderConfig().apiKey("   ");
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
           .hasMessageContaining("client");
+    }
+  }
+
+  /**
+   * Drives the two public static factories directly — {@link AnthropicModelProvider#create} and
+   * {@link AnthropicModelProvider#fromEnv} — rather than the package-private {@link
+   * AnthropicProviderConfig} the {@link Configuration} tests above reach into. Spec §5 requires
+   * {@code fromEnv()} equal {@code create(config -> config.fromEnv())} in behavior; this pins that
+   * offline by driving both through the same unset-environment failure and comparing messages.
+   */
+  @Nested
+  class PublicStaticFactories {
+
+    @Test
+    void create_rejects_a_null_customizer() {
+      assertThatThrownBy(() -> AnthropicModelProvider.create(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("customizer must not be null");
+    }
+
+    @Test
+    void from_env_fails_the_same_way_create_with_a_from_env_customizer_does() {
+      assumeTrue(
+          System.getenv("ANTHROPIC_API_KEY") == null
+              && System.getenv("ANTHROPIC_AUTH_TOKEN") == null,
+          "ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is set in this shell");
+
+      assertThatThrownBy(AnthropicModelProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("ANTHROPIC_API_KEY");
+      assertThatThrownBy(() -> AnthropicModelProvider.create(AnthropicProviderConfig::fromEnv))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("ANTHROPIC_API_KEY");
+    }
+
+    @Test
+    void create_reaches_the_real_construction_path_offline() {
+      AnthropicModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey("sk-test"));
+
+      assertThat(provider).isNotNull();
     }
   }
 
@@ -267,7 +307,7 @@ class AnthropicModelProviderTest {
 
     @Test
     void advertise_thinking_caching_parallel_tools_and_images() {
-      AnthropicModelProvider provider = AnthropicModelProvider.builder().apiKey("sk-test").build();
+      AnthropicModelProvider provider = new AnthropicProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider.capabilities())
           .containsExactlyInAnyOrder(
@@ -283,7 +323,7 @@ class AnthropicModelProviderTest {
 
     @Test
     void reports_anthropic() {
-      AnthropicModelProvider provider = AnthropicModelProvider.builder().apiKey("sk-test").build();
+      AnthropicModelProvider provider = new AnthropicProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider.name()).isEqualTo("Anthropic");
     }

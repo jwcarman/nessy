@@ -10,14 +10,17 @@ on top of it.
 
 ```java
 Memory memory =
-    Memory.pipeline(transcript)
-        .summarizing(summaries, provider, "claude-haiku-4-5-20251001",
-            "Summarize this conversation.", 20)
-        .build();
+    Memory.pipeline(
+        transcript,
+        config ->
+            config.summarizing(
+                summaries, provider, "claude-haiku-4-5-20251001",
+                "Summarize this conversation.", 20));
 ```
 
 `.summarizing(SummaryStore, ModelProvider, String model, String prompt, int
-tailThreshold)` is sugar for `hydrator(ContextHydrator.summarizing(...))` —
+tailThreshold)`, on the `PipelineMemoryConfig` a customizer receives, is
+sugar for `hydrator(ContextHydrator.summarizing(...))` —
 the parameters mirror each other exactly. Setting a hydrator twice, by this
 verb or `hydrator(...)`, in either order, is an `IllegalStateException`: one
 hydration strategy per pipeline.
@@ -92,10 +95,12 @@ An application that wants a summarizing pipeline builds its own
 @Bean
 Memory memory(Transcript transcript, DataSource dataSource, ModelProvider provider) {
     SummaryStore summaries = JdbcSummaryStore.create(dataSource);
-    return Memory.pipeline(transcript)
-        .summarizing(summaries, provider, "claude-haiku-4-5-20251001",
-            "Summarize this conversation.", 20)
-        .build();
+    return Memory.pipeline(
+        transcript,
+        config ->
+            config.summarizing(
+                summaries, provider, "claude-haiku-4-5-20251001",
+                "Summarize this conversation.", 20));
 }
 ```
 

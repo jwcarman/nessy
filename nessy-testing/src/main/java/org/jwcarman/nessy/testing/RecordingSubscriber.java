@@ -22,8 +22,9 @@ import java.util.function.Consumer;
 
 /**
  * Captures everything handed to it, so tests can assert on it. Wire it up as a declared listener —
- * {@code .listen(Object.class, recorder)} on a {@code HarnessBuilder}/{@code AgentBuilder} — or as
- * a conversation-local subscription via {@code Conversation#events()}.
+ * {@code .listen(Object.class, recorder)} on a {@link org.jwcarman.nessy.HarnessConfig}/{@link
+ * org.jwcarman.nessy.AgentConfig} — or as a conversation-local subscription via {@code
+ * Conversation#events()}.
  */
 public final class RecordingSubscriber implements Consumer<Object> {
 

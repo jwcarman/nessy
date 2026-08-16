@@ -17,11 +17,10 @@ package org.jwcarman.nessy;
 
 /**
  * The DSL-idiom name (design of record 2026-08-16 §0, ruling 1) for what {@link
- * AgentBuilder#subagent} and {@link SubagentConfig#subagent} hand a lambda: a {@link
- * SubagentConfig} to fill in. A named functional interface rather than a bare {@code
- * Consumer<SubagentConfig<T>>} — the subagent-declaration vocabulary reads as its own idiom,
- * matching every other named customizer in this codebase rather than borrowing {@code
- * java.util.function}'s generic shape.
+ * AgentConfig#subagent} and {@link SubagentConfig#subagent} hand a lambda: a {@link SubagentConfig}
+ * to fill in. A named functional interface rather than a bare {@code Consumer<SubagentConfig<T>>} —
+ * the subagent-declaration vocabulary reads as its own idiom, matching every other named customizer
+ * in this codebase rather than borrowing {@code java.util.function}'s generic shape.
  *
  * @param <T> the input vocabulary the customized subagent's delegation tool carries — {@code
  *     String} on the degenerate door, an application-owned record on the typed door

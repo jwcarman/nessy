@@ -18,7 +18,7 @@ the example family demonstrates, one app per shape.
 
 `chat-cli`'s `Chat` main drives `ConsoleRepl`, which reads a line, tells the
 agent, and renders deltas as they stream. See [Console Apps](console-apps.md)
-for the full builder chain — this is the trigger every other example's
+for the full `ReplCustomizer` — this is the trigger every other example's
 README compares itself against, since it's the shape most guides start from.
 
 ## Web

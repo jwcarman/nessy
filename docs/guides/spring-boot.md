@@ -11,9 +11,9 @@ Substrate arrives by autoconfiguration; identity stays yours. A `Harness` is
 infrastructure — the model provider, session store, observation registry,
 object mapper, a seeded default model — so it's exactly what
 `NessyAutoConfiguration` assembles from whatever beans the classpath and
-configuration produced. An `AgentBuilder` is identity: model, system prompt,
+configuration produced. An `AgentConfig` is identity: model, system prompt,
 tools, policies, a particular agent's own shape. Nothing in this module ever
-builds one. `Harness#agent()` is always the application's own call, never
+builds one. `Harness#agent(AgentCustomizer)` is always the application's own call, never
 Boot's — an application declares one bean, the agent, and gets a durable
 harness underneath it for free.
 
@@ -42,7 +42,7 @@ never builds its bean by classpath presence or by any key — only
 `nessy.provider=bedrock`, set explicitly, wires it (bedrock-provider design
 §4: ambient AWS credentials are common enough that letting them win, or even
 enter an ambiguity count, would silently hijack unrelated deployments). Once
-selected, the provider is built via `BedrockModelProvider.builder().fromEnv().build()`
+selected, the provider is built via `BedrockModelProvider.fromEnv()`
 — the AWS SDK's own default credentials chain, plus `AWS_REGION` /
 `AWS_DEFAULT_REGION` for the region — so an explicit choice with neither
 region variable set fails startup, naming both.
@@ -79,9 +79,11 @@ and wires it in by hand, past what the starter gives you:
 @Bean
 Memory memory(Transcript transcript, DataSource dataSource, ModelProvider provider) {
     SummaryStore summaries = JdbcSummaryStore.create(dataSource);
-    return Memory.pipeline(transcript)
-        .summarizing(summaries, provider, "claude-haiku-4-5-20251001", "Summarize this conversation.", 20)
-        .build();
+    return Memory.pipeline(
+        transcript,
+        config ->
+            config.summarizing(
+                summaries, provider, "claude-haiku-4-5-20251001", "Summarize this conversation.", 20));
 }
 ```
 
@@ -100,16 +102,15 @@ and, when `nessy-jdbc` is present, the autoconfigured `Memory`:
 ```java
 @Bean
 Agent<String> agent(Harness harness, Memory memory) {
-    return harness
-        .agent()
-        .name("assistant")
-        .model("claude-sonnet-4-5")
-        .memory(memory)
-        .build();
+    return harness.agent(
+        a ->
+            a.name("assistant")
+                .model("claude-sonnet-4-5")
+                .memory(memory));
 }
 ```
 
-Nothing about `AgentBuilder` changes in a Spring Boot application — tools,
+Nothing about `AgentConfig` changes in a Spring Boot application — tools,
 grants, and policies are declared exactly the way [Getting
 Started](getting-started.md) declares them.
 

@@ -62,7 +62,7 @@ Bounding recall used to mean a bespoke `Memory` implementation; now it's one
 stage, wired straight into the agent bean:
 
 ```java
-.memory(Memory.pipeline(Transcript.inMemory()).keepRecent(window).build())
+.memory(Memory.pipeline(Transcript.inMemory(), config -> config.keepRecent(window)))
 ```
 
 `Memory.pipeline(transcript)` builds a `PipelineMemory`: retention is whole —

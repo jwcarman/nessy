@@ -10,14 +10,14 @@ The whole nessy wiring an application writes itself — one bean in `ChatWebConf
 
 ```java
 @Bean Agent<String> agent(Harness harness, Memory memory) {
-  return harness.agent()
-      .name("chat-web")
-      .model("claude-sonnet-4-5")
-      .systemPrompt("You are the demo shop's helpful assistant. Use your tool when a coupon is warranted.")
-      .memory(memory)
-      .tools(ToolGrant.grant(new IssueCouponTool(), UsagePolicy.requireApproval()))
-      .approver(Approver.parkAll())
-      .build();
+  return harness.agent(
+      a ->
+          a.name("chat-web")
+              .model("claude-sonnet-4-5")
+              .systemPrompt("You are the demo shop's helpful assistant. Use your tool when a coupon is warranted.")
+              .memory(memory)
+              .tools(ToolGrant.grant(new IssueCouponTool(), UsagePolicy.requireApproval()))
+              .approver(Approver.parkAll()));
 }
 ```
 

@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spi.memory;
 
+import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -54,22 +55,33 @@ public interface Memory {
   Context recall(ConversationId id);
 
   /**
-   * The documented front door for composing transcript-backed memory: hydrate, then run an ordered
-   * list of {@link ContextTransformer} stages. {@code transcript} is the one required ingredient —
-   * {@code remember} always appends to it, whatever hydration chooses to re-read. A bounded window
-   * over the whole history is one stage among the rest: {@link
-   * PipelineMemory.Builder#keepRecent(int)} registers the pair-safe trim ({@link
-   * Context#keepRecent(int)}) at its call position — the one composition surface for retention, not
-   * a second one beside it.
-   *
-   * <p>The degenerate case is the floor, not a special case: {@code Memory.pipeline(transcript)
-   * .build()} — no hydrator named, no stages — hydrates with {@link ContextHydrator#full()} and
-   * transforms nothing, the whole history every time. Every addition to the chain from there is
-   * strictly opt-in.
+   * The documented front door for composing transcript-backed memory over the degenerate floor: no
+   * hydrator named, no stages, hydrates with {@link ContextHydrator#full()} and transforms nothing
+   * — the whole history, every time. Sugar for {@code pipeline(transcript, memory -> {})}.
    *
    * @param transcript the log {@code remember} appends to and the default hydrator reads whole
    */
-  static PipelineMemory.Builder pipeline(Transcript transcript) {
-    return new PipelineMemory.Builder(transcript);
+  static PipelineMemory pipeline(Transcript transcript) {
+    return pipeline(transcript, memory -> {});
+  }
+
+  /**
+   * Composes transcript-backed memory: hydrate, then run an ordered list of {@link
+   * ContextTransformer} stages. {@code customizer} fills in a live {@link PipelineMemoryConfig},
+   * then this factory turns it into the finished {@link PipelineMemory} — no public {@code build()}
+   * survives here (design of record 2026-08-16 §1). {@code transcript} is the one required
+   * ingredient — {@code remember} always appends to it, whatever hydration chooses to re-read. A
+   * bounded window over the whole history is one stage among the rest: {@link
+   * PipelineMemoryConfig#keepRecent(int)} registers the pair-safe trim ({@link
+   * Context#keepRecent(int)}) at its call position — the one composition surface for retention, not
+   * a second one beside it.
+   *
+   * @param transcript the log {@code remember} appends to and the default hydrator reads whole
+   */
+  static PipelineMemory pipeline(Transcript transcript, PipelineMemoryCustomizer customizer) {
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    PipelineMemoryConfig config = new PipelineMemoryConfig(transcript);
+    customizer.customize(config);
+    return config.build();
   }
 }

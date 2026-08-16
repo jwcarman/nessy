@@ -49,7 +49,7 @@ import org.jwcarman.nessy.spi.memory.Memory;
  *
  * <p>There is no agent-wide dynamic subscription any more (design §17): a listener that must watch
  * every conversation this agent ever runs is declared once, at build time, via {@code
- * AgentBuilder#listen}/{@code listenAsync}; the only thing left to attach at runtime is one
+ * AgentConfig#listen}/{@code listenAsync}; the only thing left to attach at runtime is one
  * conversation's own traffic, through {@link Conversation#events()}.
  *
  * @param <I> the input vocabulary a {@code tell} to one of this agent's conversations may carry
@@ -120,7 +120,7 @@ public final class Agent<I> {
    * snapshot} against the child, and further traversal via {@link Subagent#subagent(String)} for a
    * grandchild. Only this agent's own directly-declared children are reachable here; a deeper
    * descendant is reached by chaining, one door at a time, exactly matching the lexical nesting
-   * {@link AgentBuilder#subagent(SubagentCustomizer)} and {@link
+   * {@link AgentConfig#subagent(SubagentCustomizer)} and {@link
    * SubagentConfig#subagent(SubagentCustomizer)} built the tree with — either the degenerate {@code
    * String} door or the typed door (design of record 2026-08-16 §0.5); the handle is the same
    * either way.

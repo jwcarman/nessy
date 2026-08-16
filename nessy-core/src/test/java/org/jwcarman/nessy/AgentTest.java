@@ -102,12 +102,8 @@ class AgentTest {
     @Test
     void resume_reopens_the_same_conversation_id_a_prior_converse_produced() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("first", "second"))
-              .build()
-              .agent()
-              .name("courier")
-              .model("m")
-              .build();
+          Nessy.harness(h -> h.provider(new FakeProvider("first", "second")))
+              .agent(a -> a.name("courier").model("m"));
       ConversationId id = agent.converse().tell("first").state().id();
       TextObserver observer = new TextObserver();
 
@@ -124,7 +120,8 @@ class AgentTest {
     @Test
     void an_unknown_conversation_id_is_rejected() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("courier").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("courier").model("m"));
 
       var unknownId = new ConversationId("never-stored");
 
@@ -136,7 +133,8 @@ class AgentTest {
     @Test
     void a_stored_conversation_yields_the_same_assembly_a_live_call_would_see() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("courier").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("courier").model("m"));
       Conversation<String> conversation = agent.converse();
       conversation.tell("hi");
 
@@ -153,7 +151,8 @@ class AgentTest {
     @Test
     void snapshot_of_an_unknown_conversation_is_idle_and_empty() {
       Agent<String> agent =
-          Nessy.harness(new FakeProvider("hi")).build().agent().name("courier").model("m").build();
+          Nessy.harness(h -> h.provider(new FakeProvider("hi")))
+              .agent(a -> a.name("courier").model("m"));
 
       ConversationSnapshot snap = agent.snapshot(new ConversationId("never-seen"));
 
@@ -172,14 +171,13 @@ class AgentTest {
                   new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("courier")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("courier")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
 
       RunOutcome parked = agent.converse().tell("search for x");
       ConversationId id = parked.state().id();
@@ -212,15 +210,14 @@ class AgentTest {
                   new ModelEvent.TextChunk("done"),
                   new ModelEvent.TurnEnded(StopReason.END_TURN, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
-      Harness harness = Nessy.harness(provider).build();
+      Harness harness = Nessy.harness(h -> h.provider(provider));
       Agent<String> agent =
-          harness
-              .agent()
-              .name("courier")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          harness.agent(
+              a ->
+                  a.name("courier")
+                      .model("fake-model")
+                      .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                      .approver(approver));
       ConversationId id = agent.converse().tell("search for x").state().id();
       assertThat(agent.snapshot(id).parkedCalls()).hasSize(1);
 
@@ -248,14 +245,13 @@ class AgentTest {
                   new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("courier")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("courier")
+                          .model("fake-model")
+                          .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                          .approver(approver));
 
       ConversationId id = agent.converse().tell("search twice").state().id();
 
@@ -285,15 +281,14 @@ class AgentTest {
                   new ModelEvent.TurnEnded(StopReason.TOOL_USE, Usage.zero()));
       ParkingApprover approver = new ParkingApprover();
       Parks parks = Parks.inMemory();
-      Harness harness = Nessy.harness(provider).parks(parks).build();
+      Harness harness = Nessy.harness(h -> h.provider(provider).parks(parks));
       Agent<String> agent =
-          harness
-              .agent()
-              .name("courier")
-              .model("fake-model")
-              .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-              .approver(approver)
-              .build();
+          harness.agent(
+              a ->
+                  a.name("courier")
+                      .model("fake-model")
+                      .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                      .approver(approver));
 
       ConversationId id = agent.converse().tell("search for x").state().id();
       parks.park(new Parks.Park(id, ParkToken.generate(), call, "courier"));

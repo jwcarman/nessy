@@ -95,13 +95,14 @@ PlanStore planStore = PlanStore.inMemory();
 Transcript transcript = Transcript.inMemory();
 
 Agent<String> agent =
-    harness
-        .agent()
-        .name("assistant")
-        .model("claude-sonnet-4-5")
-        .tools(ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
-        .memory(Memory.pipeline(transcript).transform(PlanTools.transformer(planStore)).build())
-        .build();
+    harness.agent(
+        a ->
+            a.name("assistant")
+                .model("claude-sonnet-4-5")
+                .tools(ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()))
+                .memory(
+                    Memory.pipeline(
+                        transcript, config -> config.transform(PlanTools.transformer(planStore)))));
 ```
 
 Three lines beyond whatever an agent already has: the grant, the transcript-backed
@@ -118,7 +119,7 @@ the same rows the first one did.
 
 ## The console checklist
 
-`nessy-console`'s `ConsoleRepl.Builder#plan(PlanStore)` hands the REPL the same
+`nessy-console`'s `ReplConfig#plan(PlanStore)` hands the REPL the same
 `PlanStore` an agent's memory pipeline reads, so the checklist prints in the terminal
 itself — not just recalled into the model's own context — at most once per turn, after
 that turn's own output, once `conversation.tell` has returned, right before the next
@@ -146,7 +147,7 @@ you>
 
 `chat-cli` and `scout` (`nessy-examples`) both demonstrate the pattern end to end —
 `Scout#scout` grants `PlanTools.updatePlan(store)` beside its DeepWiki tool grants, and
-`Scout#main` hands the same store to `ConsoleRepl.Builder#plan`, since scout's own
+`Scout#main` hands the same store to `ReplConfig#plan`, since scout's own
 research task is genuinely multi-step (map the wiki, read sections, ask a targeted
 question) — the exact long-horizon shape the plan facility fixes.
 

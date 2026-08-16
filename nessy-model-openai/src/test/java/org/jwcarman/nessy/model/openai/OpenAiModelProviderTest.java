@@ -127,7 +127,7 @@ class OpenAiModelProviderTest {
     void delegates_to_the_sdk_client_and_wraps_the_result_in_an_openai_stream() {
       var capturedParams = new ChatCompletionCreateParams[1];
       var client = fakeClient(capturedParams, emptyStreamResponse());
-      var provider = OpenAiModelProvider.builder().client(client).build();
+      var provider = new OpenAiProviderConfig().client(client).build();
       var request =
           new ModelRequest(Context.of(List.of()), "sys", "gpt-4o", 1024, List.of(), Set.of(), null);
 
@@ -140,13 +140,13 @@ class OpenAiModelProviderTest {
   }
 
   @Nested
-  class Builder {
+  class Configuration {
 
     @Test
     void rejects_build_with_neither_a_key_nor_a_client() {
-      var builder = OpenAiModelProvider.builder();
+      var config = new OpenAiProviderConfig();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
@@ -161,9 +161,9 @@ class OpenAiModelProviderTest {
       // configured — moves to build() accordingly.
       assumeTrue(System.getenv("OPENAI_API_KEY") == null, "OPENAI_API_KEY is set in this shell");
 
-      var builder = OpenAiModelProvider.builder().fromEnv();
+      var config = new OpenAiProviderConfig().fromEnv();
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("OPENAI_API_KEY");
     }
@@ -178,7 +178,7 @@ class OpenAiModelProviderTest {
       // exercised live by OpenAiLiveTest, whose a_real_conversation_answers test builds exclusively
       // via fromEnv().
       OpenAiModelProvider provider =
-          OpenAiModelProvider.builder()
+          new OpenAiProviderConfig()
               .fromEnv()
               .apiKey("sk-explicit-wins")
               .baseUrl("https://example.invalid")
@@ -195,16 +195,16 @@ class OpenAiModelProviderTest {
       // exercises buildFromEnv()'s baseUrl == null / organization == null branches. This one
       // leaves both unset.
       OpenAiModelProvider provider =
-          OpenAiModelProvider.builder().fromEnv().apiKey("sk-explicit-only").build();
+          new OpenAiProviderConfig().fromEnv().apiKey("sk-explicit-only").build();
 
       assertThat(provider).isNotNull();
     }
 
     @Test
     void a_blank_api_key_is_rejected_the_same_as_a_missing_one() {
-      var builder = OpenAiModelProvider.builder().apiKey("   ");
+      var config = new OpenAiProviderConfig().apiKey("   ");
 
-      assertThatThrownBy(builder::build)
+      assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey")
           .hasMessageContaining("fromEnv")
@@ -213,7 +213,7 @@ class OpenAiModelProviderTest {
 
     @Test
     void an_api_key_alone_is_enough_to_build() {
-      OpenAiModelProvider provider = OpenAiModelProvider.builder().apiKey("sk-test").build();
+      OpenAiModelProvider provider = new OpenAiProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider).isNotNull();
     }
@@ -222,7 +222,7 @@ class OpenAiModelProviderTest {
     void a_preconfigured_client_bypasses_the_key_requirement() {
       OpenAIClient client = OpenAIOkHttpClient.builder().apiKey("sk-test").build();
 
-      OpenAiModelProvider provider = OpenAiModelProvider.builder().client(client).build();
+      OpenAiModelProvider provider = new OpenAiProviderConfig().client(client).build();
 
       assertThat(provider).isNotNull();
     }
@@ -230,7 +230,7 @@ class OpenAiModelProviderTest {
     @Test
     void a_base_url_is_accepted_without_error() {
       OpenAiModelProvider provider =
-          OpenAiModelProvider.builder()
+          new OpenAiProviderConfig()
               .apiKey("sk-test")
               .baseUrl("https://openrouter.ai/api/v1")
               .build();
@@ -241,7 +241,44 @@ class OpenAiModelProviderTest {
     @Test
     void an_organization_is_accepted_without_error() {
       OpenAiModelProvider provider =
-          OpenAiModelProvider.builder().apiKey("sk-test").organization("org-123").build();
+          new OpenAiProviderConfig().apiKey("sk-test").organization("org-123").build();
+
+      assertThat(provider).isNotNull();
+    }
+  }
+
+  /**
+   * Drives the two public static factories directly — {@link OpenAiModelProvider#create} and {@link
+   * OpenAiModelProvider#fromEnv} — rather than the package-private {@link OpenAiProviderConfig} the
+   * {@link Configuration} tests above reach into. Spec §5 requires {@code fromEnv()} equal {@code
+   * create(config -> config.fromEnv())} in behavior; this pins that offline by driving both through
+   * the same unset-environment failure and comparing messages.
+   */
+  @Nested
+  class PublicStaticFactories {
+
+    @Test
+    void create_rejects_a_null_customizer() {
+      assertThatThrownBy(() -> OpenAiModelProvider.create(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("customizer must not be null");
+    }
+
+    @Test
+    void from_env_fails_the_same_way_create_with_a_from_env_customizer_does() {
+      assumeTrue(System.getenv("OPENAI_API_KEY") == null, "OPENAI_API_KEY is set in this shell");
+
+      assertThatThrownBy(OpenAiModelProvider::fromEnv)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("OPENAI_API_KEY");
+      assertThatThrownBy(() -> OpenAiModelProvider.create(OpenAiProviderConfig::fromEnv))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("OPENAI_API_KEY");
+    }
+
+    @Test
+    void create_reaches_the_real_construction_path_offline() {
+      OpenAiModelProvider provider = OpenAiModelProvider.create(c -> c.apiKey("sk-test"));
 
       assertThat(provider).isNotNull();
     }
@@ -252,7 +289,7 @@ class OpenAiModelProviderTest {
 
     @Test
     void advertise_parallel_tool_calls_and_image_input_but_not_thinking_or_caching() {
-      OpenAiModelProvider provider = OpenAiModelProvider.builder().apiKey("sk-test").build();
+      OpenAiModelProvider provider = new OpenAiProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider.capabilities())
           .containsExactlyInAnyOrder(Capability.PARALLEL_TOOL_CALLS, Capability.IMAGE_INPUT);
@@ -265,7 +302,7 @@ class OpenAiModelProviderTest {
     @Test
     void reports_openai_even_when_wired_to_a_compatible_endpoint_such_as_xai() {
       OpenAiModelProvider provider =
-          OpenAiModelProvider.builder().apiKey("sk-test").baseUrl("https://api.x.ai/v1").build();
+          new OpenAiProviderConfig().apiKey("sk-test").baseUrl("https://api.x.ai/v1").build();
 
       assertThat(provider.name()).isEqualTo("OpenAI");
     }

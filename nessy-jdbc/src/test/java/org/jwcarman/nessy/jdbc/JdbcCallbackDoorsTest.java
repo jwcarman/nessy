@@ -208,15 +208,14 @@ class JdbcCallbackDoorsTest {
     ParkingApprover approver = new ParkingApprover();
     ConversationStore store = JdbcConversationStore.create(dataSource, mapper);
     Parks parks = JdbcParks.create(dataSource, mapper);
-    Harness harness = Nessy.harness(provider).store(store).parks(parks).build();
+    Harness harness = Nessy.harness(h -> h.provider(provider).store(store).parks(parks));
     Agent<String> agentA =
-        harness
-            .agent()
-            .name("agent-a")
-            .model("model-a")
-            .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
-            .approver(approver)
-            .build();
+        harness.agent(
+            a ->
+                a.name("agent-a")
+                    .model("model-a")
+                    .tools(ToolGrant.grant(new SearchTool(), UsagePolicy.requireApproval()))
+                    .approver(approver));
 
     RunOutcome parked = agentA.converse().tell("search for a");
     ConversationId conversationId = parked.state().id();
@@ -228,8 +227,9 @@ class JdbcCallbackDoorsTest {
     ConversationStore restartedStore = JdbcConversationStore.create(dataSource, mapper);
     Parks restartedParks = JdbcParks.create(dataSource, mapper);
     Harness restartedHarness =
-        Nessy.harness(new ScriptedProvider()).store(restartedStore).parks(restartedParks).build();
-    Agent<String> agentB = restartedHarness.agent().name("agent-b").model("model-b").build();
+        Nessy.harness(
+            h -> h.provider(new ScriptedProvider()).store(restartedStore).parks(restartedParks));
+    Agent<String> agentB = restartedHarness.agent(a -> a.name("agent-b").model("model-b"));
     ToolResolution.Decided decided = new ToolResolution.Decided(Decision.allow());
 
     assertThatThrownBy(() -> agentB.resume(token, decided))

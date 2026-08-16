@@ -17,6 +17,7 @@ package org.jwcarman.nessy;
 
 import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -52,11 +53,11 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@code HarnessBuilder}'s own setters — {@link HarnessBuilder#observations}, {@link
- * HarnessBuilder#mapper}, and its two {@code listenAsync} overloads — isolated from the
+ * {@code HarnessConfig}'s own setters — {@link HarnessConfig#observations}, {@link
+ * HarnessConfig#mapper}, and its two {@code listenAsync} overloads — isolated from the
  * model-resolution and declared-{@code listen} stories {@code HarnessTest} already covers.
  */
-class HarnessBuilderTest {
+class HarnessConfigTest {
 
   record Greeting(String text) {}
 
@@ -106,13 +107,8 @@ class HarnessBuilderTest {
     TestObservationRegistry observations = TestObservationRegistry.create();
     FakeProvider provider = new FakeProvider("hi");
     Agent<String> agent =
-        Nessy.harness(provider)
-            .observations(observations)
-            .build()
-            .agent()
-            .name("sentinel")
-            .model("fake-model")
-            .build();
+        Nessy.harness(h -> h.provider(provider).observations(observations))
+            .agent(a -> a.name("sentinel").model("fake-model"));
 
     agent.converse().tell("hi");
 
@@ -128,13 +124,8 @@ class HarnessBuilderTest {
     ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     FakeProvider provider = new FakeProvider("hi");
     Agent<Greeting> agent =
-        Nessy.harness(provider)
-            .mapper(mapper)
-            .build()
-            .agent(Greeting.class)
-            .name("sentinel")
-            .model("fake-model")
-            .build();
+        Nessy.harness(h -> h.provider(provider).mapper(mapper))
+            .agent(Greeting.class, a -> a.name("sentinel").model("fake-model"));
 
     agent.converse().tell(new Greeting("hi"));
 
@@ -148,6 +139,50 @@ class HarnessBuilderTest {
   }
 
   @Nested
+  class Required_provider {
+
+    /**
+     * Before this generation, omitting the provider was a compile error — {@code
+     * Nessy.harness(ModelProvider)} demanded it by signature. Now a customizer can simply never
+     * call {@link HarnessConfig#provider}, so {@link HarnessConfig#build()}'s own {@code
+     * requireNonNull} is the only thing standing between a bare customizer and a harness with no
+     * provider at all; this pins that it actually fires, naming the field, and never silently
+     * defaults or drifts.
+     */
+    @Test
+    void a_customizer_that_never_calls_provider_fails_naming_the_field() {
+      assertThatThrownBy(() -> Nessy.harness(h -> {}))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("provider");
+    }
+
+    @Test
+    void a_null_harness_customizer_is_rejected() {
+      assertThatThrownBy(() -> Nessy.harness(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("customizer");
+    }
+
+    @Test
+    void a_null_agent_customizer_is_rejected_on_the_string_door() {
+      Harness harness = Nessy.harness(h -> h.provider(new FakeProvider("hi")));
+
+      assertThatThrownBy(() -> harness.agent(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("customizer");
+    }
+
+    @Test
+    void a_null_agent_customizer_is_rejected_on_the_typed_door() {
+      Harness harness = Nessy.harness(h -> h.provider(new FakeProvider("hi")));
+
+      assertThatThrownBy(() -> harness.agent(Greeting.class, null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("customizer");
+    }
+  }
+
+  @Nested
   class Harness_level_listenAsync {
 
     @Test
@@ -157,21 +192,19 @@ class HarnessBuilderTest {
       CountDownLatch errorHandled = new CountDownLatch(1);
       List<Throwable> errors = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .listenAsync(
-                  ConversationEvent.class,
-                  e -> {
-                    throw new IllegalStateException("harness async listener blew up");
-                  },
-                  t -> {
-                    errors.add(t);
-                    errorHandled.countDown();
-                  })
-              .build()
-              .agent()
-              .name("sentinel")
-              .model("fake-model")
-              .build();
+          Nessy.harness(
+                  h ->
+                      h.provider(provider)
+                          .listenAsync(
+                              ConversationEvent.class,
+                              e -> {
+                                throw new IllegalStateException("harness async listener blew up");
+                              },
+                              t -> {
+                                errors.add(t);
+                                errorHandled.countDown();
+                              }))
+              .agent(a -> a.name("sentinel").model("fake-model"));
 
       RunOutcome reply = agent.converse().tell("hi");
 
@@ -187,13 +220,12 @@ class HarnessBuilderTest {
       CountDownLatch handled = new CountDownLatch(1);
       List<Throwable> errors = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .listenAsync(ConversationEvent.class, e -> handled.countDown(), errors::add)
-              .build()
-              .agent()
-              .name("sentinel")
-              .model("fake-model")
-              .build();
+          Nessy.harness(
+                  h ->
+                      h.provider(provider)
+                          .listenAsync(
+                              ConversationEvent.class, e -> handled.countDown(), errors::add))
+              .agent(a -> a.name("sentinel").model("fake-model"));
 
       agent.converse().tell("hi");
 
@@ -207,18 +239,16 @@ class HarnessBuilderTest {
       FakeProvider provider = new FakeProvider("hi");
       CountDownLatch handled = new CountDownLatch(1);
       Agent<String> agent =
-          Nessy.harness(provider)
-              .listenAsync(
-                  ConversationEvent.class,
-                  e -> {
-                    handled.countDown();
-                    throw new IllegalStateException("harness async listener blew up");
-                  })
-              .build()
-              .agent()
-              .name("sentinel")
-              .model("fake-model")
-              .build();
+          Nessy.harness(
+                  h ->
+                      h.provider(provider)
+                          .listenAsync(
+                              ConversationEvent.class,
+                              e -> {
+                                handled.countDown();
+                                throw new IllegalStateException("harness async listener blew up");
+                              }))
+              .agent(a -> a.name("sentinel").model("fake-model"));
 
       RunOutcome reply = agent.converse().tell("hi");
 
@@ -236,7 +266,7 @@ class HarnessBuilderTest {
 
     @BeforeEach
     void wires_a_capturing_appender_onto_the_harness_builder_logger() {
-      logger = (Logger) LoggerFactory.getLogger(HarnessBuilder.class);
+      logger = (Logger) LoggerFactory.getLogger(HarnessConfig.class);
       originalLevel = logger.getLevel();
       logger.setLevel(Level.WARN);
       appender = new ListAppender<>();
@@ -264,7 +294,7 @@ class HarnessBuilderTest {
     void parks_defaulted_with_an_explicitly_configured_store_warns_about_the_downgrade() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).store(ConversationStore.inMemory()).build();
+      Nessy.harness(h -> h.provider(provider).store(ConversationStore.inMemory()));
 
       assertThat(warnings()).hasSize(1);
       ILoggingEvent event = warnings().getFirst();
@@ -276,7 +306,7 @@ class HarnessBuilderTest {
     void both_defaulted_stays_silent() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).build();
+      Nessy.harness(h -> h.provider(provider));
 
       assertThat(warnings()).isEmpty();
     }
@@ -285,7 +315,8 @@ class HarnessBuilderTest {
     void an_explicitly_configured_parks_stays_silent_even_with_a_configured_store() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).store(ConversationStore.inMemory()).parks(Parks.inMemory()).build();
+      Nessy.harness(
+          h -> h.provider(provider).store(ConversationStore.inMemory()).parks(Parks.inMemory()));
 
       assertThat(warnings()).isEmpty();
     }
@@ -294,7 +325,7 @@ class HarnessBuilderTest {
     void an_explicitly_configured_parks_stays_silent_with_a_defaulted_store() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).parks(Parks.inMemory()).build();
+      Nessy.harness(h -> h.provider(provider).parks(Parks.inMemory()));
 
       assertThat(warnings()).isEmpty();
     }

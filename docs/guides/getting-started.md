@@ -29,16 +29,15 @@ class AddTool implements Tool<Add> {
     }
 }
 
-AnthropicModelProvider provider = AnthropicModelProvider.builder().fromEnv().build();
+AnthropicModelProvider provider = AnthropicModelProvider.fromEnv();
 
 Agent<String> agent =
-    Nessy.harness(provider)
-        .build()
-        .agent()
-        .name("adder")
-        .model("claude-haiku-4-5-20251001")
-        .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))
-        .build();
+    Nessy.harness(h -> h.provider(provider))
+        .agent(
+            a ->
+                a.name("adder")
+                    .model("claude-haiku-4-5-20251001")
+                    .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
 
 StringBuilder text = new StringBuilder();
 RunOutcome outcome =
@@ -46,7 +45,7 @@ RunOutcome outcome =
         .converse()
         .tell(
             "what is 2+2?",
-            TurnObserver.builder().onTextDelta(delta -> text.append(delta.text())).build());
+            TurnObserver.observe(o -> o.onTextDelta(delta -> text.append(delta.text()))));
 
 System.out.println(text + " (" + outcome.state().status() + ")");
 // The answer is 4. (COMPLETE)
@@ -65,14 +64,14 @@ A few things worth naming:
   capability story: a tool the model can see is one this call explicitly
   granted, with a policy (`allow()` here; `requireApproval()` gates it
   instead) — see [Tools and Grants](../concepts/tools-and-grants.md).
-- `Memory` isn't set here, so the builder's default applies: an in-memory
+- `Memory` isn't set here, so the config's default applies: an in-memory
   pipeline over the transcript. It disappears when the process does — see
   [Durable Persistence](durable-persistence.md) for the version that
   doesn't.
 - `agent.converse().tell(...)` returns a `RunOutcome`, either `Completed` or
   `Parked`.
 
-`OPENAI_API_KEY` and `OpenAiModelProvider.builder().fromEnv().build()` swap
+`OPENAI_API_KEY` and `OpenAiModelProvider.fromEnv()` swap
 providers with no other change to this shape; `EnvModelProviders.fromEnv()`
 (from `nessy-model-env`) picks whichever key is set for you — see
 [Providers](providers.md).

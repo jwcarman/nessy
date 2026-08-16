@@ -17,6 +17,7 @@ package org.jwcarman.nessy.autoconfigure;
 
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
+import org.jwcarman.nessy.model.openai.OpenAiProviderConfig;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionMessage;
@@ -114,27 +115,28 @@ public class OpenAiProviderAutoConfiguration {
   /**
    * {@code nessy.openai.api-key} / {@code nessy.openai.base-url} are overrides layered on top of
    * the SDK's own environment resolution, not replacements for it: {@link
-   * OpenAiModelProvider.Builder#fromEnv()} is always called first (it only sets a flag — nothing is
-   * read until {@code build()}), so every ambient source the SDK understands ({@code
+   * OpenAiProviderConfig#fromEnv()} is always called first (it only sets a flag — nothing is read
+   * until the provider is built), so every ambient source the SDK understands ({@code
    * OPENAI_ORG_ID}, {@code OPENAI_PROJECT_ID}, {@code OPENAI_BASE_URL}, {@code
    * OPENAI_WEBHOOK_SECRET}, {@code OPENAI_ADMIN_KEY}, {@code OPENAI_CUSTOM_HEADERS}, the {@code
    * AZURE_OPENAI_KEY} Azure-credential path) is still honored when a property here is absent, and
-   * an explicit property always wins when present. {@link OpenAiModelProvider.Builder#build()} does
-   * not throw in a keyless environment as long as an explicit {@code apiKey} was layered on, per
-   * {@code fromEnv()}'s own javadoc.
+   * an explicit property always wins when present. Building does not throw in a keyless environment
+   * as long as an explicit {@code apiKey} was layered on, per {@code fromEnv()}'s own javadoc.
    */
   static ModelProvider buildOpenAiProvider(NessyProperties properties) {
     var openai = properties.openai();
-    var builder = OpenAiModelProvider.builder().fromEnv();
     var apiKey = openai == null ? null : openai.apiKey();
-    if (StringUtils.hasText(apiKey)) {
-      builder.apiKey(apiKey);
-    }
     var baseUrl = openai == null ? null : openai.baseUrl();
-    if (StringUtils.hasText(baseUrl)) {
-      builder.baseUrl(baseUrl);
-    }
-    return builder.build();
+    return OpenAiModelProvider.create(
+        config -> {
+          config.fromEnv();
+          if (StringUtils.hasText(apiKey)) {
+            config.apiKey(apiKey);
+          }
+          if (StringUtils.hasText(baseUrl)) {
+            config.baseUrl(baseUrl);
+          }
+        });
   }
 
   /**

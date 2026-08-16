@@ -28,7 +28,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * writes itself — this module builds no controller, no endpoint, no route. Identity (which
  * conversations, which URLs, which request/response shapes) stays the application's own call,
  * exactly as {@link org.jwcarman.nessy.autoconfigure.NessyAutoConfiguration}'s razor keeps a {@code
- * Harness} substrate and an {@code AgentBuilder} identity apart.
+ * Harness} substrate and an {@link org.jwcarman.nessy.AgentConfig} identity apart.
  *
  * <p><strong>Ruling:</strong> {@link ContextSnapshotFactory} is also gated on, alongside {@link
  * SseEmitter}, deliberately. {@code io.micrometer:context-propagation} is an optional dependency —

@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.event.Subscription;
+import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -44,13 +45,13 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
 
 /**
- * Pins the two-builder split: a {@link Harness} is infrastructure, once per application, disjoint
- * from {@link AgentBuilder}'s identity (design §17's razor); {@link Harness#agent()} grants an
- * {@link AgentBuilder} that infrastructure, ready for identity. Also pins declared listening's
- * seeding order, veto semantics, the {@link AgentConfigurationException} model-resolution chain,
- * and (design of record amendment, 2026-08-14) that {@code Harness} itself carries no mutable state
- * at all — the callback doors that used to live here now live on {@link Agent}, pinned in {@code
- * AgentDoorsTest}.
+ * Pins the two-config split: a {@link Harness} is infrastructure, once per application, disjoint
+ * from {@link AgentConfig}'s identity (design §17's razor); {@link Harness#agent(AgentCustomizer)}
+ * grants an {@link AgentConfig} that infrastructure, ready for identity. Also pins declared
+ * listening's seeding order, veto semantics, the {@link AgentConfigurationException}
+ * model-resolution chain, and (design of record amendment, 2026-08-14) that {@code Harness} itself
+ * carries no mutable state at all — the callback doors that used to live here now live on {@link
+ * Agent}, pinned in {@code AgentDoorsTest}.
  */
 class HarnessTest {
 
@@ -106,10 +107,11 @@ class HarnessTest {
     ConversationStore store = ConversationStore.inMemory();
     List<ConversationEvent> observed = new ArrayList<>();
     Harness harness =
-        Nessy.harness(provider).store(store).listen(ConversationEvent.class, observed::add).build();
+        Nessy.harness(
+            h -> h.provider(provider).store(store).listen(ConversationEvent.class, observed::add));
 
-    Agent<String> agentA = harness.agent().name("agent-a").model("model-a").build();
-    Agent<String> agentB = harness.agent().name("agent-b").model("model-b").build();
+    Agent<String> agentA = harness.agent(a -> a.name("agent-a").model("model-a"));
+    Agent<String> agentB = harness.agent(a -> a.name("agent-b").model("model-b"));
     ConversationId conversationA = agentA.converse().tell("hello").state().id();
     ConversationId conversationB = agentB.converse().tell("hello").state().id();
 
@@ -124,7 +126,7 @@ class HarnessTest {
     FakeProvider provider = new FakeProvider("The answer is 4.");
 
     Agent<String> agent =
-        Nessy.harness(provider).build().agent().name("keeper").model("fake-model").build();
+        Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("keeper").model("fake-model"));
     TextObserver observer = new TextObserver();
     RunOutcome reply = agent.converse().tell("what is 2+2?", observer);
 
@@ -161,13 +163,8 @@ class HarnessTest {
     void the_agents_own_model_wins_over_the_harness_default() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider)
-              .defaultModel("harness-default")
-              .build()
-              .agent()
-              .name("keeper")
-              .model("agent-model")
-              .build();
+          Nessy.harness(h -> h.provider(provider).defaultModel("harness-default"))
+              .agent(a -> a.name("keeper").model("agent-model"));
 
       agent.converse().tell("hi");
 
@@ -178,12 +175,8 @@ class HarnessTest {
     void the_harness_default_model_is_used_when_the_agent_declares_none() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider)
-              .defaultModel("harness-default")
-              .build()
-              .agent()
-              .name("keeper")
-              .build();
+          Nessy.harness(h -> h.provider(provider).defaultModel("harness-default"))
+              .agent(a -> a.name("keeper"));
 
       agent.converse().tell("hi");
 
@@ -193,7 +186,10 @@ class HarnessTest {
     @Test
     void neither_model_declared_throws_a_named_AgentConfigurationException() {
       FakeProvider provider = new FakeProvider("hi");
-      AgentBuilder<String> agentBuilder = Nessy.harness(provider).build().agent().name("keeper");
+      AgentConfig<String> agentBuilder =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(provider)), String.class, InputRenderer.text())
+              .name("keeper");
 
       assertThatThrownBy(agentBuilder::build)
           .isInstanceOf(AgentConfigurationException.class)
@@ -210,16 +206,17 @@ class HarnessTest {
       FakeProvider provider = new FakeProvider("hi");
       List<String> order = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .listen(ConversationEvent.class, e -> order.add("harness-1"))
-              .listen(ConversationEvent.class, e -> order.add("harness-2"))
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .listen(ConversationEvent.class, e -> order.add("agent-1"))
-              .listen(ConversationEvent.class, e -> order.add("agent-2"))
-              .build();
+          Nessy.harness(
+                  h ->
+                      h.provider(provider)
+                          .listen(ConversationEvent.class, e -> order.add("harness-1"))
+                          .listen(ConversationEvent.class, e -> order.add("harness-2")))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .listen(ConversationEvent.class, e -> order.add("agent-1"))
+                          .listen(ConversationEvent.class, e -> order.add("agent-2")));
 
       agent.converse().tell("hi");
 
@@ -231,18 +228,17 @@ class HarnessTest {
       FakeProvider provider = new FakeProvider("hi");
       List<String> reached = new ArrayList<>();
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .listen(
-                  ConversationEvent.class,
-                  e -> {
-                    throw new IllegalStateException("listener blew up");
-                  })
-              .listen(ConversationEvent.class, e -> reached.add("never"))
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .listen(
+                              ConversationEvent.class,
+                              e -> {
+                                throw new IllegalStateException("listener blew up");
+                              })
+                          .listen(ConversationEvent.class, e -> reached.add("never")));
       Conversation<String> conversation = agent.converse();
 
       assertThatThrownBy(() -> conversation.tell("hi"))
@@ -256,19 +252,18 @@ class HarnessTest {
       FakeProvider provider = new FakeProvider("hi");
       CountDownLatch handled = new CountDownLatch(1);
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("keeper")
-              .model("fake-model")
-              .listenAsync(
-                  ConversationEvent.class,
-                  e -> {
-                    handled.countDown();
-                    throw new IllegalStateException("async listener blew up");
-                  },
-                  t -> {})
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("keeper")
+                          .model("fake-model")
+                          .listenAsync(
+                              ConversationEvent.class,
+                              e -> {
+                                handled.countDown();
+                                throw new IllegalStateException("async listener blew up");
+                              },
+                              t -> {}));
 
       RunOutcome reply = agent.converse().tell("hi");
 
@@ -285,7 +280,7 @@ class HarnessTest {
     void a_conversation_local_subscription_attaches_and_detaches() {
       FakeProvider provider = new FakeProvider("hi", "there");
       Agent<String> agent =
-          Nessy.harness(provider).build().agent().name("keeper").model("fake-model").build();
+          Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("keeper").model("fake-model"));
       Conversation<String> chat = agent.converse();
       List<ConversationEvent> observed = new ArrayList<>();
 
@@ -303,7 +298,7 @@ class HarnessTest {
     void a_conversation_local_subscription_never_sees_another_conversations_events() {
       FakeProvider provider = new FakeProvider("hi", "there");
       Agent<String> agent =
-          Nessy.harness(provider).build().agent().name("keeper").model("fake-model").build();
+          Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("keeper").model("fake-model"));
       Conversation<String> chatA = agent.converse();
       Conversation<String> chatB = agent.converse();
       List<ConversationEvent> observedByA = new ArrayList<>();

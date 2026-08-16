@@ -46,6 +46,7 @@ import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.TerminationPolicy;
 import org.jwcarman.nessy.api.conversation.Usage;
+import org.jwcarman.nessy.api.message.InputRenderer;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -65,11 +66,11 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@code AgentBuilder}'s own validation and configuration wiring: every setter actually reaches the
+ * {@code AgentConfig}'s own validation and configuration wiring: every setter actually reaches the
  * {@link org.jwcarman.nessy.internal.ConversationLoop} it configures, isolated from the full build
  * path {@code HarnessTest} exercises for the model-resolution and declared-listening stories.
  */
-class AgentBuilderTest {
+class AgentConfigTest {
 
   private static final ModelProvider NEVER_CALLED =
       new ModelProvider() {
@@ -155,7 +156,10 @@ class AgentBuilderTest {
     @Test
     void a_null_grants_array_is_rejected() {
       ToolGrant[] grants = null;
-      var agent = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+      var agent =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text())
+              .name("scribe");
 
       assertThatThrownBy(() -> agent.tools(grants))
           .isInstanceOf(NullPointerException.class)
@@ -165,7 +169,10 @@ class AgentBuilderTest {
     @Test
     void a_null_element_in_the_grants_array_is_rejected() {
       ToolGrant present = ToolGrant.grant(new NoOpTool(), UsagePolicy.allow());
-      var agent = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+      var agent =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text())
+              .name("scribe");
 
       assertThatThrownBy(() -> agent.tools(present, null))
           .isInstanceOf(NullPointerException.class)
@@ -176,13 +183,8 @@ class AgentBuilderTest {
     void an_empty_grants_array_registers_no_tools() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("scribe")
-              .model("fake-model")
-              .tools()
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(a -> a.name("scribe").model("fake-model").tools());
       TextObserver observer = new TextObserver();
 
       agent.converse().tell("hi", observer);
@@ -198,15 +200,14 @@ class AgentBuilderTest {
     void the_system_prompt_max_tokens_and_capabilities_all_reach_the_request() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("scribe")
-              .model("fake-model")
-              .systemPrompt("be terse")
-              .maxTokens(777)
-              .capabilities(Set.of(Capability.PROMPT_CACHING))
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("scribe")
+                          .model("fake-model")
+                          .systemPrompt("be terse")
+                          .maxTokens(777)
+                          .capabilities(Set.of(Capability.PROMPT_CACHING)));
 
       agent.converse().tell("hi");
 
@@ -220,13 +221,8 @@ class AgentBuilderTest {
     void a_blank_model_falls_back_to_the_harness_default_exactly_like_no_model_at_all() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider)
-              .defaultModel("harness-default")
-              .build()
-              .agent()
-              .name("scribe")
-              .model("  ")
-              .build();
+          Nessy.harness(h -> h.provider(provider).defaultModel("harness-default"))
+              .agent(a -> a.name("scribe").model("  "));
 
       agent.converse().tell("hi");
 
@@ -280,14 +276,10 @@ class AgentBuilderTest {
           };
       ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.requireApproval());
       Agent<Nothing> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent(Nothing.class)
-              .name("scribe")
-              .model("fake-model")
-              .approver(recording)
-              .tools(grant)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  Nothing.class,
+                  a -> a.name("scribe").model("fake-model").approver(recording).tools(grant));
 
       agent.converse().tell(new Nothing());
 
@@ -304,13 +296,8 @@ class AgentBuilderTest {
             return Optional.empty();
           };
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("scribe")
-              .model("fake-model")
-              .termination(recording)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(a -> a.name("scribe").model("fake-model").termination(recording));
 
       agent.converse().tell("hi");
 
@@ -321,14 +308,9 @@ class AgentBuilderTest {
     void a_declared_context_window_reaches_model_settings_without_throwing() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("scribe")
-              .model("fake-model")
-              .contextWindow(9_000)
-              .maxTokens(1_000)
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a -> a.name("scribe").model("fake-model").contextWindow(9_000).maxTokens(1_000));
 
       RunOutcome reply = agent.converse().tell("hi");
 
@@ -341,18 +323,17 @@ class AgentBuilderTest {
       FakeProvider provider = new FakeProvider("hi");
       CountDownLatch handled = new CountDownLatch(1);
       Agent<String> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent()
-              .name("scribe")
-              .model("fake-model")
-              .listenAsync(
-                  ConversationEvent.class,
-                  e -> {
-                    handled.countDown();
-                    throw new IllegalStateException("async listener blew up");
-                  })
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  a ->
+                      a.name("scribe")
+                          .model("fake-model")
+                          .listenAsync(
+                              ConversationEvent.class,
+                              e -> {
+                                handled.countDown();
+                                throw new IllegalStateException("async listener blew up");
+                              }));
 
       RunOutcome reply = agent.converse().tell("hi");
 
@@ -364,13 +345,13 @@ class AgentBuilderTest {
     void the_renderer_override_replaces_the_vocabulary_driven_default() {
       FakeProvider provider = new FakeProvider("hi");
       Agent<Nothing> agent =
-          Nessy.harness(provider)
-              .build()
-              .agent(Nothing.class)
-              .name("scribe")
-              .model("fake-model")
-              .renderer(input -> List.of(new TextBlock("custom-render")))
-              .build();
+          Nessy.harness(h -> h.provider(provider))
+              .agent(
+                  Nothing.class,
+                  a ->
+                      a.name("scribe")
+                          .model("fake-model")
+                          .renderer(input -> List.of(new TextBlock("custom-render"))));
 
       agent.converse().tell(new Nothing());
 
@@ -389,7 +370,7 @@ class AgentBuilderTest {
 
     @BeforeEach
     void wires_a_capturing_appender_onto_the_agent_builder_logger() {
-      logger = (Logger) LoggerFactory.getLogger(AgentBuilder.class);
+      logger = (Logger) LoggerFactory.getLogger(AgentConfig.class);
       originalLevel = logger.getLevel();
       logger.setLevel(Level.WARN);
       appender = new ListAppender<>();
@@ -417,13 +398,8 @@ class AgentBuilderTest {
     void memory_defaulted_with_an_explicitly_configured_store_warns_about_the_downgrade() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider)
-          .store(ConversationStore.inMemory())
-          .build()
-          .agent()
-          .name("scribe")
-          .model("fake-model")
-          .build();
+      Nessy.harness(h -> h.provider(provider).store(ConversationStore.inMemory()))
+          .agent(a -> a.name("scribe").model("fake-model"));
 
       assertThat(warnings()).hasSize(1);
       ILoggingEvent event = warnings().getFirst();
@@ -438,14 +414,12 @@ class AgentBuilderTest {
     void an_explicitly_declared_memory_stays_silent_even_with_a_configured_store() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider)
-          .store(ConversationStore.inMemory())
-          .build()
-          .agent()
-          .name("scribe")
-          .model("fake-model")
-          .memory(Memory.pipeline(Transcript.inMemory()).build())
-          .build();
+      Nessy.harness(h -> h.provider(provider).store(ConversationStore.inMemory()))
+          .agent(
+              a ->
+                  a.name("scribe")
+                      .model("fake-model")
+                      .memory(Memory.pipeline(Transcript.inMemory())));
 
       assertThat(warnings()).isEmpty();
     }
@@ -454,7 +428,7 @@ class AgentBuilderTest {
     void a_defaulted_store_alongside_defaulted_memory_stays_silent() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).build().agent().name("scribe").model("fake-model").build();
+      Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("scribe").model("fake-model"));
 
       assertThat(warnings()).isEmpty();
     }
@@ -463,13 +437,12 @@ class AgentBuilderTest {
     void an_explicitly_declared_memory_stays_silent_even_with_a_defaulted_store() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider)
-          .build()
-          .agent()
-          .name("scribe")
-          .model("fake-model")
-          .memory(Memory.pipeline(Transcript.inMemory()).build())
-          .build();
+      Nessy.harness(h -> h.provider(provider))
+          .agent(
+              a ->
+                  a.name("scribe")
+                      .model("fake-model")
+                      .memory(Memory.pipeline(Transcript.inMemory())));
 
       assertThat(warnings()).isEmpty();
     }
@@ -480,10 +453,10 @@ class AgentBuilderTest {
    * SubagentAssembly.build()} logs when a subagent is declared against a harness whose own store
    * was explicitly configured but whose {@code subagentLinks} was left on the in-memory default —
    * the durability gap where a child settling after a restart leaves its parent parked forever with
-   * nothing logged anywhere. Distinct from {@link HarnessBuilderTest.Parks_downgrade_warning}: that
-   * one fires from {@code HarnessBuilder} whenever a durable store is configured, regardless of
-   * subagents; this one fires from {@code AgentBuilder} only when a subagent is actually declared —
-   * {@code AgentBuilder.build()} is the only place both facts (a durable store, and at least one
+   * nothing logged anywhere. Distinct from {@link HarnessConfigTest.Parks_downgrade_warning}: that
+   * one fires from {@code HarnessConfig} whenever a durable store is configured, regardless of
+   * subagents; this one fires from {@code AgentConfig} only when a subagent is actually declared —
+   * {@code AgentConfig.build()} is the only place both facts (a durable store, and at least one
    * {@code .subagent(...)}) are known together.
    */
   @Nested
@@ -495,7 +468,7 @@ class AgentBuilderTest {
 
     @BeforeEach
     void wires_a_capturing_appender_onto_the_agent_builder_logger() {
-      logger = (Logger) LoggerFactory.getLogger(AgentBuilder.class);
+      logger = (Logger) LoggerFactory.getLogger(AgentConfig.class);
       originalLevel = logger.getLevel();
       logger.setLevel(Level.WARN);
       appender = new ListAppender<>();
@@ -524,24 +497,23 @@ class AgentBuilderTest {
         a_subagent_declared_against_a_configured_store_with_defaulted_links_warns_about_the_downgrade() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider)
-          .store(ConversationStore.inMemory())
-          .build()
-          .agent()
-          .name("writer")
-          .model("fake-model")
-          // Explicit memory on both agents, isolating this guard from AgentBuilder's own
-          // unrelated memory-downgrade warning (Memory_downgrade_warning above) — both share this
-          // same logger, and a store configured with no memory declared would otherwise warn twice
-          // (once per agent this harness builds) and pollute this assertion.
-          .memory(Memory.pipeline(Transcript.inMemory()).build())
-          .subagent(
-              sub ->
-                  sub.name("researcher")
-                      .description("delegates research")
+      Nessy.harness(h -> h.provider(provider).store(ConversationStore.inMemory()))
+          .agent(
+              a ->
+                  a.name("writer")
                       .model("fake-model")
-                      .memory(Memory.pipeline(Transcript.inMemory()).build()))
-          .build();
+                      // Explicit memory on both agents, isolating this guard from AgentConfig's
+                      // own unrelated memory-downgrade warning (Memory_downgrade_warning above) —
+                      // both share this same logger, and a store configured with no memory
+                      // declared would otherwise warn twice (once per agent this harness builds)
+                      // and pollute this assertion.
+                      .memory(Memory.pipeline(Transcript.inMemory()))
+                      .subagent(
+                          sub ->
+                              sub.name("researcher")
+                                  .description("delegates research")
+                                  .model("fake-model")
+                                  .memory(Memory.pipeline(Transcript.inMemory()))));
 
       assertThat(warnings()).hasSize(1);
       ILoggingEvent event = warnings().getFirst();
@@ -554,21 +526,22 @@ class AgentBuilderTest {
         an_explicitly_configured_subagent_links_store_stays_silent_even_with_a_configured_store_and_a_subagent() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider)
-          .store(ConversationStore.inMemory())
-          .subagentLinks(SubagentLinks.inMemory())
-          .build()
-          .agent()
-          .name("writer")
-          .model("fake-model")
-          .memory(Memory.pipeline(Transcript.inMemory()).build())
-          .subagent(
-              sub ->
-                  sub.name("researcher")
-                      .description("delegates research")
+      Nessy.harness(
+              h ->
+                  h.provider(provider)
+                      .store(ConversationStore.inMemory())
+                      .subagentLinks(SubagentLinks.inMemory()))
+          .agent(
+              a ->
+                  a.name("writer")
                       .model("fake-model")
-                      .memory(Memory.pipeline(Transcript.inMemory()).build()))
-          .build();
+                      .memory(Memory.pipeline(Transcript.inMemory()))
+                      .subagent(
+                          sub ->
+                              sub.name("researcher")
+                                  .description("delegates research")
+                                  .model("fake-model")
+                                  .memory(Memory.pipeline(Transcript.inMemory()))));
 
       assertThat(warnings()).isEmpty();
     }
@@ -577,14 +550,12 @@ class AgentBuilderTest {
     void no_subagent_declared_stays_silent_even_with_a_configured_store_and_defaulted_links() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider)
-          .store(ConversationStore.inMemory())
-          .build()
-          .agent()
-          .name("writer")
-          .model("fake-model")
-          .memory(Memory.pipeline(Transcript.inMemory()).build())
-          .build();
+      Nessy.harness(h -> h.provider(provider).store(ConversationStore.inMemory()))
+          .agent(
+              a ->
+                  a.name("writer")
+                      .model("fake-model")
+                      .memory(Memory.pipeline(Transcript.inMemory())));
 
       assertThat(warnings()).isEmpty();
     }
@@ -593,14 +564,16 @@ class AgentBuilderTest {
     void a_subagent_declared_against_a_defaulted_store_stays_silent() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider)
-          .build()
-          .agent()
-          .name("writer")
-          .model("fake-model")
-          .subagent(
-              sub -> sub.name("researcher").description("delegates research").model("fake-model"))
-          .build();
+      Nessy.harness(h -> h.provider(provider))
+          .agent(
+              a ->
+                  a.name("writer")
+                      .model("fake-model")
+                      .subagent(
+                          sub ->
+                              sub.name("researcher")
+                                  .description("delegates research")
+                                  .model("fake-model")));
 
       assertThat(warnings()).isEmpty();
     }
@@ -615,7 +588,7 @@ class AgentBuilderTest {
 
     @BeforeEach
     void wires_a_capturing_appender_onto_the_agent_builder_logger() {
-      logger = (Logger) LoggerFactory.getLogger(AgentBuilder.class);
+      logger = (Logger) LoggerFactory.getLogger(AgentConfig.class);
       originalLevel = logger.getLevel();
       logger.setLevel(Level.WARN);
       appender = new ListAppender<>();
@@ -644,13 +617,8 @@ class AgentBuilderTest {
       FakeProvider provider = new FakeProvider("hi");
       ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.allow());
 
-      Nessy.harness(provider)
-          .build()
-          .agent(Nothing.class)
-          .name("scribe")
-          .model("fake-model")
-          .tools(grant)
-          .build();
+      Nessy.harness(h -> h.provider(provider))
+          .agent(Nothing.class, a -> a.name("scribe").model("fake-model").tools(grant));
 
       assertThat(warnings()).isEmpty();
     }
@@ -659,7 +627,7 @@ class AgentBuilderTest {
     void no_grants_at_all_stays_silent_with_no_approver() {
       FakeProvider provider = new FakeProvider("hi");
 
-      Nessy.harness(provider).build().agent().name("scribe").model("fake-model").build();
+      Nessy.harness(h -> h.provider(provider)).agent(a -> a.name("scribe").model("fake-model"));
 
       assertThat(warnings()).isEmpty();
     }
@@ -669,13 +637,8 @@ class AgentBuilderTest {
       FakeProvider provider = new FakeProvider("hi");
       ToolGrant grant = ToolGrant.grant(new NoOpTool(), UsagePolicy.requireApproval());
 
-      Nessy.harness(provider)
-          .build()
-          .agent(Nothing.class)
-          .name("scribe")
-          .model("fake-model")
-          .tools(grant)
-          .build();
+      Nessy.harness(h -> h.provider(provider))
+          .agent(Nothing.class, a -> a.name("scribe").model("fake-model").tools(grant));
 
       assertThat(warnings()).hasSize(1);
       assertThat(warnings().getFirst().getLevel()).isEqualTo(Level.WARN);
@@ -693,14 +656,10 @@ class AgentBuilderTest {
             }
           };
 
-      Nessy.harness(provider)
-          .build()
-          .agent(Nothing.class)
-          .name("scribe")
-          .model("fake-model")
-          .tools(grant)
-          .approver(approver)
-          .build();
+      Nessy.harness(h -> h.provider(provider))
+          .agent(
+              Nothing.class,
+              a -> a.name("scribe").model("fake-model").tools(grant).approver(approver));
 
       assertThat(warnings()).isEmpty();
     }
@@ -711,7 +670,10 @@ class AgentBuilderTest {
 
     @Test
     void neither_model_declared_names_both_ways_to_supply_one() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+      var builder =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text())
+              .name("scribe");
 
       assertThatThrownBy(builder::build)
           .isInstanceOf(AgentConfigurationException.class)
@@ -725,7 +687,10 @@ class AgentBuilderTest {
 
     @Test
     void build_without_a_name_refuses_with_the_covenant() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent().model("fake-model");
+      var builder =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text())
+              .model("fake-model");
 
       assertThatThrownBy(builder::build)
           .isInstanceOf(AgentConfigurationException.class)
@@ -736,7 +701,9 @@ class AgentBuilderTest {
 
     @Test
     void a_blank_name_is_rejected_at_the_setter_with_the_covenant() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent();
+      var builder =
+          new AgentConfig<>(
+              Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text());
 
       assertThatThrownBy(() -> builder.name("   "))
           .isInstanceOf(AgentConfigurationException.class)
@@ -747,7 +714,9 @@ class AgentBuilderTest {
 
     @Test
     void a_null_name_is_rejected_at_the_setter_with_the_covenant_the_same_way_as_blank() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent();
+      var builder =
+          new AgentConfig<>(
+              Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text());
 
       assertThatThrownBy(() -> builder.name(null))
           .isInstanceOf(AgentConfigurationException.class)
@@ -762,7 +731,10 @@ class AgentBuilderTest {
 
     @Test
     void a_null_approver_is_rejected() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+      var builder =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text())
+              .name("scribe");
 
       assertThatThrownBy(() -> builder.approver(null))
           .isInstanceOf(NullPointerException.class)
@@ -771,7 +743,10 @@ class AgentBuilderTest {
 
     @Test
     void a_null_termination_policy_is_rejected() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+      var builder =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text())
+              .name("scribe");
 
       assertThatThrownBy(() -> builder.termination(null))
           .isInstanceOf(NullPointerException.class)
@@ -780,7 +755,10 @@ class AgentBuilderTest {
 
     @Test
     void a_null_system_prompt_is_rejected() {
-      var builder = Nessy.harness(NEVER_CALLED).build().agent().name("scribe");
+      var builder =
+          new AgentConfig<>(
+                  Nessy.harness(h -> h.provider(NEVER_CALLED)), String.class, InputRenderer.text())
+              .name("scribe");
 
       assertThatThrownBy(() -> builder.systemPrompt(null))
           .isInstanceOf(NullPointerException.class)

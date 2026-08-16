@@ -269,11 +269,12 @@ class DispatcherSmokeTest {
         ConversationStore store,
         Parks parks,
         ObjectProvider<ObservationRegistry> observations) {
-      return Nessy.harness(provider)
-          .store(store)
-          .parks(parks)
-          .observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP))
-          .build();
+      return Nessy.harness(
+          h ->
+              h.provider(provider)
+                  .store(store)
+                  .parks(parks)
+                  .observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP)));
     }
   }
 

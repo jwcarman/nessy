@@ -1,3 +1,4 @@
+--
 -- Copyright © 2026 James Carman
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 -- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
+--
 
 -- MariaDB, verified against the mariadb:11.4 image (the vendor TCK matrix in the test tree
 -- pins the same image tag). Unlike MySQL, MariaDB accepts CREATE INDEX IF NOT EXISTS directly —

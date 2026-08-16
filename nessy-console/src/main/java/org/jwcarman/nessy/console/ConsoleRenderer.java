@@ -23,21 +23,24 @@ import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.api.turn.TurnObserverCustomizer;
 import org.jwcarman.nessy.spi.plan.Plan;
 
 /**
- * The default look: composed on {@link TurnObserver#builder()} — this module's own dogfood of the
- * same composition point {@code night-watchman}'s {@code Watchman} and {@code order-desk}'s {@code
- * OrderDesk} dogfooded before it. Assistant prose streams plain, thinking streams dim-italic, tool
- * activity gets one dim {@code ⚙ tool:} line per requested/completed/parked event (the parked line
- * carries the park token), and a failed turn ending gets one red line with its reason. A quiescent
- * ending ({@code COMPLETE}, {@code IDLE}, or {@code PARKED}) renders nothing here — {@link
- * ConsoleRepl} already leaves a blank line after every told turn.
+ * The default look: composed on {@link TurnObserver#observe(TurnObserverCustomizer)} — this
+ * module's own dogfood of the same composition point {@code night-watchman}'s {@code Watchman} and
+ * {@code order-desk}'s {@code OrderDesk} dogfooded before it. Assistant prose streams plain,
+ * thinking streams dim-italic, tool activity gets one dim {@code ⚙ tool:} line per
+ * requested/completed/parked event (the parked line carries the park token), and a failed turn
+ * ending gets one red line with its reason. A quiescent ending ({@code COMPLETE}, {@code IDLE}, or
+ * {@code PARKED}) renders nothing here — {@link ConsoleRepl} already leaves a blank line after
+ * every told turn.
  *
  * <p>Exposed as a factory rather than a class so it composes: {@code ConsoleRepl}'s default is this
  * observer; a caller wanting to add a concern (a transcript file, a metrics counter) can still
- * reach for {@link TurnObserver#builder()} directly and fold this factory's behavior in alongside
- * their own, the same composition {@link TurnObserver}'s own javadoc describes.
+ * reach for {@link TurnObserver#observe(TurnObserverCustomizer)} directly and fold this factory's
+ * behavior in alongside their own, the same composition {@link TurnObserver}'s own javadoc
+ * describes.
  */
 public final class ConsoleRenderer {
 
@@ -48,15 +51,16 @@ public final class ConsoleRenderer {
   /** Builds the default observer, writing every styled line to {@code writer}. */
   public static TurnObserver observer(Writer writer) {
     Objects.requireNonNull(writer, "writer must not be null");
-    return TurnObserver.builder()
-        .onTextDelta(delta -> write(writer, delta.text()))
-        .onThinkingDelta(delta -> write(writer, Ansi.dim(Ansi.italic(delta.text()))))
-        .onToolCallRequested(requested -> toolLine(writer, requested.call(), "requested"))
-        .onToolCallCompleted(completed -> toolLine(writer, completed.call(), "completed"))
-        .onToolCallParked(
-            parked -> toolLine(writer, parked.call(), "parked (" + parked.token().value() + ")"))
-        .onTurnEnded(ended -> turnEnded(writer, ended))
-        .build();
+    return TurnObserver.observe(
+        o ->
+            o.onTextDelta(delta -> write(writer, delta.text()))
+                .onThinkingDelta(delta -> write(writer, Ansi.dim(Ansi.italic(delta.text()))))
+                .onToolCallRequested(requested -> toolLine(writer, requested.call(), "requested"))
+                .onToolCallCompleted(completed -> toolLine(writer, completed.call(), "completed"))
+                .onToolCallParked(
+                    parked ->
+                        toolLine(writer, parked.call(), "parked (" + parked.token().value() + ")"))
+                .onTurnEnded(ended -> turnEnded(writer, ended)));
   }
 
   /**

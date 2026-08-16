@@ -114,33 +114,38 @@ class NewsroomGatedDelegationProofTest {
     Function<ConversationId, SubjectId> subjectResolver = id -> subject;
 
     Harness harness =
-        Nessy.harness(provider).store(store).parks(parks).subagentLinks(links).build();
+        Nessy.harness(h -> h.provider(provider).store(store).parks(parks).subagentLinks(links));
 
     Agent<String> writer =
-        harness
-            .agent()
-            .name("writer")
-            .model("test-model")
-            .approver(Approver.parkAll())
-            .memory(
-                Memory.pipeline(transcript)
-                    .transform(NotebookTools.transformer(notebook, subjectResolver))
-                    .build())
-            .subagent(
-                sub ->
-                    sub.name("researcher")
-                        .description("Delegates research to the researcher.")
-                        .model("test-model")
-                        .policy(UsagePolicy.requireApproval())
-                        .tools(
-                            ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
-                            ToolGrant.grant(
-                                new AskQuestionTool(pendingAnswers), UsagePolicy.requireApproval()))
-                        .memory(
-                            Memory.pipeline(transcript)
-                                .transform(NotebookTools.transformer(notebook, subjectResolver))
-                                .build()))
-            .build();
+        harness.agent(
+            a ->
+                a.name("writer")
+                    .model("test-model")
+                    .approver(Approver.parkAll())
+                    .memory(
+                        Memory.pipeline(
+                            transcript,
+                            config ->
+                                config.transform(
+                                    NotebookTools.transformer(notebook, subjectResolver))))
+                    .subagent(
+                        sub ->
+                            sub.name("researcher")
+                                .description("Delegates research to the researcher.")
+                                .model("test-model")
+                                .policy(UsagePolicy.requireApproval())
+                                .tools(
+                                    ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
+                                    ToolGrant.grant(
+                                        new AskQuestionTool(pendingAnswers),
+                                        UsagePolicy.requireApproval()))
+                                .memory(
+                                    Memory.pipeline(
+                                        transcript,
+                                        config ->
+                                            config.transform(
+                                                NotebookTools.transformer(
+                                                    notebook, subjectResolver))))));
     Subagent researcher = writer.subagent("researcher");
 
     RunOutcome delegationParked = writer.converse().tell("write about octopuses");

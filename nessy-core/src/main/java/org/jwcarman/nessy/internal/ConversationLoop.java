@@ -112,7 +112,7 @@ public final class ConversationLoop {
    * The five collaborators an agent's own identity picks — its model/tool executors, its memory,
    * its termination policy, the durable store, the parks registry — bundled into one parameter
    * (java:S107: a ninth constructor parameter otherwise) because every one of them travels
-   * together, assembled once by {@link org.jwcarman.nessy.AgentBuilder#build()} and never varied
+   * together, assembled once by {@code org.jwcarman.nessy.AgentAssembly} and never varied
    * independently thereafter.
    */
   public record Collaborators(

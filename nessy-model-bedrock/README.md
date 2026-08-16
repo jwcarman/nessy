@@ -5,10 +5,19 @@ Bedrock's Converse/ConverseStream API — the same family as `nessy-model-anthro
 `nessy-model-openai`, and `nessy-model-gemini`, built the same way.
 
 ```java
-ModelProvider provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build();
+ModelProvider provider = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1));
+```
+
+or, for the common no-argument case:
+
+```java
+ModelProvider provider = BedrockModelProvider.fromEnv();
 ```
 
 ## Credentials
+
+`BedrockModelProvider.create(BedrockProviderCustomizer)` hands the customizer a
+`BedrockProviderConfig` with fluent setters:
 
 - `.region(Region)` — required unless `.client(...)` or `.fromEnv()` supplies one. Bedrock has no
   region default the way the API-key providers have no endpoint default.
@@ -17,15 +26,15 @@ ModelProvider provider = BedrockModelProvider.builder().region(Region.US_EAST_1)
   config/credentials files, container/instance metadata, …), but resolves the **region** itself by
   reading `AWS_REGION` then, if that is unset, `AWS_DEFAULT_REGION` — Amazon's own documented pair
   — rather than delegating to the SDK's own default region provider chain. An explicit
-  `.region(...)` set alongside `.fromEnv()` still wins. Neither variable set fails fast at
-  `.build()` with an `IllegalStateException` naming both.
+  `.region(...)` set alongside `.fromEnv()` still wins. Neither variable set fails fast when the
+  provider is built, with an `IllegalStateException` naming both.
 - `.client(BedrockRuntimeAsyncClient)` — escape hatch: supply a fully preconfigured async SDK
   client instead of `region`/`credentialsProvider`.
 
 Credentials themselves are **not** re-resolved by hand the way the Gemini/OpenAI API-key path is:
 `.fromEnv()` (and the no-`.credentialsProvider(...)` default on the plain `.region(...)` path)
 delegates entirely to `DefaultCredentialsProvider.create()`, trusting the AWS SDK's own resolution
-of every credential source it understands. Only the region is read directly, so `.build()` fails
+of every credential source it understands. Only the region is read directly, so building fails
 with a friendly, named-variable message instead of the SDK's own less-specific error.
 
 ## Mapping
@@ -77,7 +86,7 @@ synchronous, pull-shaped streaming entry point — the AWS SDK for Java v2 strea
 only through `BedrockRuntimeAsyncClient`, whose `converseStream(request, responseHandler)` is
 push-based: the SDK invokes the response handler's visitor callbacks on its own threads and
 completes a `CompletableFuture<Void>` when the stream ends. `ModelStream`, like every other
-provider module here, is a blocking `Iterable`. `BedrockModelProvider.Builder.wrap` bridges the
+provider module here, is a blocking `Iterable`. `BedrockProviderConfig.wrap` bridges the
 two: a visitor pushes every raw `ConverseStreamOutput` (plus a completion or failure sentinel) onto
 a `BlockingQueue`, and a small `Iterator` pulls from that same queue on the caller's thread. This
 bridge is production-only glue — `BedrockClient` is the seam that isolates it: `BedrockStream`

@@ -6,19 +6,21 @@ read a line, tell the agent, render deltas, prompt again — byte-identical
 `nessy-core` alone, and console-chat with any `Agent<String>` is one line.
 
 ```java
-ConsoleRepl.of(agent)
-    .banner("scout — ask about any public GitHub repo")
-    .prompt("you> ")            // default "> "
-    .exitOn("exit", "quit")     // the defaults
-    .run();
+ConsoleRepl.run(
+    agent,
+    r ->
+        r.banner("scout — ask about any public GitHub repo")
+            .prompt("you> ")            // default "> "
+            .exitOn("exit", "quit"));   // the defaults
 ```
 
-`of(Agent<String>)` opens one conversation and drives it for the life of
-`run()` — the exact shape every hand-rolled REPL in this family shared before
-this module existed. `run()` prints the banner (if any), then loops: print
-the prompt, read a line, an exit word ends the loop, a blank line reprompts
-without telling the agent, anything else is told with the default renderer
-watching. `.renderer(TurnObserver)` overrides that default wholesale; the
+`run(Agent<String>, ReplCustomizer)` opens one conversation and drives it for
+the life of the loop — the exact shape every hand-rolled REPL in this family
+shared before this module existed. The loop prints the banner (if any), then
+loops: print the prompt, read a line, an exit word ends the loop, a blank
+line reprompts without telling the agent, anything else is told with the
+default renderer watching. `.renderer(TurnObserver)` overrides that default
+wholesale; the
 default itself is exposed as `ConsoleRenderer.observer(Writer)` so a caller
 can fold its behavior into a composed observer of their own rather than
 choosing between "the whole look" and "none of it."
@@ -105,7 +107,7 @@ merely an invisible frame: a piped consumer never sees a stray `\r`.
 
 ## The renderer as a `TurnObserver`
 
-`ConsoleRenderer.observer(Writer)` is built on `TurnObserver.builder()` —
+`ConsoleRenderer.observer(Writer)` is built on `TurnObserver.observe(TurnObserverCustomizer)` —
 this module's own dogfood of the same composition point `night-watchman`'s
 `Watchman` and `order-desk`'s `OrderDesk` dogfooded before it. Reach for it
 directly (rather than `ConsoleRepl`'s default) when an application wants the

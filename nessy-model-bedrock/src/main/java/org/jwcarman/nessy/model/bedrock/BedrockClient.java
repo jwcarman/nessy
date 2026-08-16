@@ -27,10 +27,10 @@ import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamReques
  * ConverseStreamResponseHandler} and the SDK invokes its visitor callbacks on its own threads as
  * events arrive, completing a {@code CompletableFuture<Void>} when the stream ends. {@link
  * ModelStream}, by contrast, is a blocking {@code Iterable} — the shape every other provider module
- * in this harness already fits. Production code ({@link BedrockModelProvider.Builder}) bridges the
- * two: it registers a visitor that pushes each raw {@code ConverseStreamOutput} onto a blocking
- * queue and hands back a pull-shaped {@code Iterable} that {@link BedrockStream} can iterate
- * exactly like {@code GeminiStream} iterates a plain {@code List} of SDK response chunks.
+ * in this harness already fits. Production code ({@link BedrockProviderConfig}) bridges the two: it
+ * registers a visitor that pushes each raw {@code ConverseStreamOutput} onto a blocking queue and
+ * hands back a pull-shaped {@code Iterable} that {@link BedrockStream} can iterate exactly like
+ * {@code GeminiStream} iterates a plain {@code List} of SDK response chunks.
  *
  * <p>This package-private interface is the thin seam that isolates that bridging from the rest of
  * the module: tests implement it directly with a hand-rolled fake that returns a {@link
