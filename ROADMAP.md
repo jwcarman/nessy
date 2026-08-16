@@ -1,5 +1,13 @@
 # Roadmap
 
+**The aim:** Nessy should be the framework an enterprise trusts to run agentic
+workflows in production — opinionated enough that the safe path is the default
+path, open enough that every policy a governed organization must impose has a
+seam to live in, and honest enough that enforcement belongs to the harness, not
+to convention. Durability, auditability, and human authority over agents are
+the substrate, not features. Every roadmap item below is judged against that
+aim; so is every gap.
+
 Where Nessy is headed, by theme. No dates — items ship when they're ready, in
 roughly the order listed within each theme. Everything here is subject to
 change until it lands; the [changelog](CHANGELOG.md) records what actually
@@ -55,6 +63,31 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
   transport is currently re-told rather than deduplicated (resolutions already
   drain quietly); an optional idempotency key on `tell` closes the gap the
   twelve-factor page's factor 11 discloses.
+
+## Safety & governance
+
+The lens above exposes this theme as the roadmap's thinnest — the substrate
+(durable execution, full transcripts, per-tool grants, human approval gates)
+shipped early, but *policy* is still per-tool and binary. These close the gap:
+
+- **Guardrail policy engine** — interception seams at all four boundaries
+  (pre-model, post-model, pre-tool, post-tool) with policy-as-data: argument
+  constraints ("this tool, but never above this amount"), content screens,
+  deny-with-reason compacted into context so the model corrects course;
+  provider-native hooks (Bedrock Guardrails) ride the same seam.
+- **Principals & identity propagation** — who a conversation acts *for*, as a
+  first-class concept: per-principal grants and quotas, on-behalf-of identity
+  reaching tools, tenancy built on the `SubjectId` foundation.
+- **Park lifecycle governance** — timeouts, expiry, and escalation policies
+  for waits; nothing sleeps forever without a policy saying so.
+- **Audit surface** — approvals, denials, and overrides as a first-class
+  queryable record (the raw material already exists in parks and the inbox);
+  retention policies and redaction hooks at the storage seams.
+- **Budgets beyond the conversation** — org- and principal-level spend
+  quotas layered above the per-conversation `TerminationPolicy`.
+- **Eval gates** — behavioral regression suites over scripted and recorded
+  trajectories, so an agent change ships with evidence; feeds on the
+  observability theme's trajectory records.
 
 ## Observability
 
