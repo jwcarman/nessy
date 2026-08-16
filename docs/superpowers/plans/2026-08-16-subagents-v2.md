@@ -83,7 +83,9 @@ authority: `2026-08-15-subagents-design.md`).
 
 **Files:**
 - Create: `nessy-core/src/main/java/org/jwcarman/nessy/SubagentConfig.java` (public,
-  final; fluent setters returning this; NO build method)
+  final, GENERIC `SubagentConfig<T>`; fluent setters returning this; NO build method)
+- Create: `nessy-core/src/main/java/org/jwcarman/nessy/SubagentCustomizer.java`
+  (`@FunctionalInterface`, `void customize(SubagentConfig<T> subagent)`)
 - Create: `nessy-core/src/main/java/org/jwcarman/nessy/Subagent.java` (the doors
   handle)
 - Modify: `nessy-core/src/main/java/org/jwcarman/nessy/AgentBuilder.java`
@@ -99,18 +101,24 @@ authority: `2026-08-15-subagents-design.md`).
 
 **Interfaces (Produces):**
 ```java
-public final class SubagentConfig {
-  public SubagentConfig name(String name);                 // required
-  public SubagentConfig description(String description);   // required — the delegation tool's description
-  public SubagentConfig model(String model);
-  public SubagentConfig systemPrompt(String systemPrompt);
-  public SubagentConfig maxTokens(int maxTokens);
-  public SubagentConfig tools(ToolGrant... grants);
-  public SubagentConfig memory(Memory memory);
-  public SubagentConfig termination(TerminationPolicy termination);
-  public SubagentConfig policy(UsagePolicy policy);        // the DELEGATION tool's policy; default allow
+@FunctionalInterface
+public interface SubagentCustomizer<T> { void customize(SubagentConfig<T> subagent); }
+
+public final class SubagentConfig<T> {
+  public SubagentConfig<T> name(String name);                 // required
+  public SubagentConfig<T> description(String description);   // required — the delegation tool's description
+  public SubagentConfig<T> model(String model);
+  public SubagentConfig<T> systemPrompt(String systemPrompt);
+  public SubagentConfig<T> maxTokens(int maxTokens);
+  public SubagentConfig<T> tools(ToolGrant... grants);
+  public SubagentConfig<T> memory(Memory memory);
+  public SubagentConfig<T> termination(TerminationPolicy termination);
+  public SubagentConfig<T> policy(UsagePolicy policy);        // the DELEGATION tool's policy; default allow
+  public SubagentConfig<T> renderer(InputRenderer<T> renderer); // REQUIRED on the typed door; forbidden-to-matter on the String door
 }
-public AgentBuilder<I> subagent(Consumer<SubagentConfig> config);  // on AgentBuilder
+// on AgentBuilder — both doors (spec §0.5):
+public AgentBuilder<I> subagent(SubagentCustomizer<String> customizer);            // degenerate: Delegation(String task) wire shape, child Agent<String>, no renderer
+public <T> AgentBuilder<I> subagent(Class<T> inputType, SubagentCustomizer<T> customizer); // typed: T is the tool schema; renderer required, build fails loudly without it
 public Subagent subagent(String name);                              // on Agent; unknown -> IllegalArgumentException naming parent + child
 public final class Subagent {
   public String name();
@@ -133,8 +141,13 @@ public final class Subagent {
   Missing name/description → IllegalStateException at parent build naming the field.
 - [ ] The internal machinery carries v1 semantics verbatim — the migrated behavioral
   suite is the proof; assertions must not weaken.
-- [ ] Lexical nesting: a `SubagentConfig` also exposes
-  `subagent(Consumer<SubagentConfig>)` so trees express A→B→C; add the offline
+- [ ] Typed-door coverage: a record input (e.g. `record ResearchRequest(String question, int depth)`)
+  → the delegation tool's schema is the record's victools schema (pin shape); the
+  invoker-parsed T reaches the child through the required renderer; missing renderer →
+  loud build failure naming it; the String door keeps the v1 `Delegation` wire shape
+  byte-for-byte (pin).
+- [ ] Lexical nesting: a `SubagentConfig` also exposes both `subagent(...)` doors so
+  trees express A→B→C; add the offline
   end-to-end nested wake-chain test (C settles → wakes B; B settles → wakes A).
 - [ ] The handle: doors delegate to the child agent internally; no converse/tell
   exists on `Subagent` (API shape is the test); traversal + unknown-name errors tested.
