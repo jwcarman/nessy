@@ -168,14 +168,55 @@ public interface Enricher<E> {
 
 `spi.intent`, the plan/notebook pattern applied to authority:
 
-- `IntentTools.declare(vocabulary)` yields the `declare_intent` tool (plus a clear
-  verb — one tool with a clearing value or a second tool, settled at planning). The
-  vocabulary IS the tool's schema: an enum or sealed class boxes the model into a
-  strict vocabulary at parse time; `String.class` permits open-ended intent.
+- Two tools: `declare_intent`, whose input type IS the vocabulary, and `clear_intent`,
+  which takes no input. (Ruled at planning: a clearing MEMBER inside the vocabulary
+  was rejected — it would force every app's type to carry a "disregard me" constant
+  and make the store's delete path depend on a blessed member.)
+- **The vocabulary must be a STRUCTURED type (owner ruling — open-ended `String`
+  intent is withdrawn).** A tool's parameters render as an OBJECT schema, so a bare
+  `String` — and equally a bare enum, the spec's own earlier example — renders a naked
+  string schema that is not a valid parameter object for OpenAI or Anthropic. The
+  vocabulary is therefore a record, a POJO, or a sealed interface of records; an enum
+  is how you box a FIELD inside one, never the vocabulary itself. Open-ended intent
+  means declaring your own shape (`record OpenIntent(String what, String why)`) —
+  which is better than a free string anyway, because the fields carry the questions.
+  `intent(...)` REJECTS at wiring time any type that cannot render as an object schema
+  (String, primitives and their boxes, enums, collections, arrays), with a message
+  naming the offending type and telling the caller to wrap it in a record.
 - **Lifetime: until re-declared or cleared**, scoped to the conversation.
-- **Derived from the transcript** — the declaration is a tool call, already durably
-  recorded; the machinery reads the latest declaration back. No new store; replayed
-  decisions see what the original saw.
+- **Wired by one field on the agent (amended after owner review — IntentSupport is
+  WITHDRAWN):** `AgentConfig<I>.intent(Class<?> intentType)` is the whole public
+  surface. The build assembles the declare tool, the clear tool, and the reading
+  enricher internally from that type plus the harness's store; the user never learns
+  a second noun. The withdrawn `IntentSupport<V>` failed on its own signature —
+  `AgentConfig<I>` is parameterized on the AGENT'S input type, so `V` could only ever
+  be a method-level type variable appearing in one argument and nowhere in the return:
+  decoration, not typing. It would have bought `support.declaredIn(ctx)` over
+  `context.declaredIntent(RefundIntent.class)` — one class token, written where the
+  vocabulary is already known — at the price of a permanent public type at 0.1.0.
+  - One field makes the one-intent-per-agent rule true by construction (a second
+    call is a wiring-time error, not a runtime row overwrite).
+  - `HarnessConfig.intentStore(...)` follows every other store (in-memory default,
+    inherited by agents), so the shipped example reads `.intent(RefundIntent.class)`
+    and nothing else. No ordering hazard against `.grant(...)`: policy lambdas run
+    per call, not at wiring.
+  - Policies read the blessed accessor `context.declaredIntent(Class<T>)`; storage
+    stays the single `INTENT_KEY` (`Key<Object>`) so vocabulary-blind readers (the §8
+    report, audit rendering) keep working, and app-defined keys remain the seam for
+    anyone running their own intent discipline.
+  - Reads FAIL CLOSED: a stored intent of a different vocabulary, or one whose class
+    no longer resolves after a rename, reads as ABSENT — never a ClassCastException,
+    never an allow. The deny-teaches-protocol path handles it.
+- **Backed by its own tiny store (amended after owner review — the plan-store
+  pattern, not transcript scanning):** `IntentStore` — `(conversation_id) → the
+  declared intent (serialized, with its type)` — LWW on declare, delete on clear;
+  in-memory default + `JdbcIntentStore` + TCK contract, the eighth store. The
+  declare tool WRITES it; the intent reader FETCHES one row per decision (O(1),
+  never a transcript scan). Replay-idempotent by the familiar argument: a
+  re-executed declaration rewrites the identical value. The earlier
+  transcript-derivation idea is REJECTED: linear scan cost on the authorization hot
+  path, and a coupling to transcript completeness that retention policies (and
+  transcript-less deployments) would silently break.
 - Wired → `context.declaredIntent()` is present; unwired → absent, zero ceremony. The
   claim is untrusted by definition; its sharpest use is cross-examination against the
   effect ("declared read-only; this effect writes") — a policy or enricher move nessy
