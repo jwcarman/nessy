@@ -17,12 +17,29 @@ package org.jwcarman.nessy.autoconfigure;
 
 /**
  * Property keys and provider class names shared by {@link AnthropicProviderAutoConfiguration},
- * {@link OpenAiProviderAutoConfiguration}, and {@link GeminiProviderAutoConfiguration}'s selection
- * conditions.
+ * {@link OpenAiProviderAutoConfiguration}, {@link GeminiProviderAutoConfiguration}, and {@link
+ * BedrockProviderAutoConfiguration}'s selection conditions.
  *
- * <p>Hoisted into one place so the three autoconfigurations' mirrored selection logic can never
+ * <p>Hoisted into one place so the four autoconfigurations' mirrored selection logic can never
  * desync on a literal — a typo in a copy-pasted string constant would otherwise fail silently on
  * one side only.
+ *
+ * <p>Neither {@code BEDROCK_KEY_PROPERTY} nor {@code BEDROCK_PROVIDER_CLASS_NAME} exists here, and
+ * deliberately so: Bedrock is explicit-selection-only (bedrock-provider design §4) — it is never
+ * "keyed" the way the other three are, so it never participates in {@link
+ * AnthropicProviderAutoConfiguration.AmbiguousProviderCondition}'s keyed count; and its classpath
+ * presence must never influence any <em>other</em> provider's selection condition either — not even
+ * the "sole module present" fallback each of {@link
+ * AnthropicProviderAutoConfiguration.AnthropicIsTheChoiceCondition}, {@link
+ * OpenAiProviderAutoConfiguration.OpenAiIsTheChoiceCondition}, and {@link
+ * GeminiProviderAutoConfiguration.GeminiIsTheChoiceCondition} run, which deliberately checks only
+ * for each other, not for Bedrock. A classpath with Gemini and Bedrock both present, neither
+ * Anthropic nor OpenAI, and no explicit {@code nessy.provider} still lets Gemini's own fallback
+ * treat itself as the sole present module — correctly, since Bedrock can never contest that
+ * decision (explicit-only selection means it never auto-wins anything). {@link
+ * BedrockProviderAutoConfiguration} needs no string-name self-check either: its own
+ * {@code @ConditionalOnClass(BedrockModelProvider.class)} uses the class literal directly, the same
+ * as every sibling does for its own class.
  */
 final class ProviderProperties {
 

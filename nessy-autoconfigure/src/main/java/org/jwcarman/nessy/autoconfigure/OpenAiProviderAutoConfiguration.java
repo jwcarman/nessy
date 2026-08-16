@@ -89,14 +89,15 @@ public class OpenAiProviderAutoConfiguration {
   }
 
   /**
-   * {@code nessy.provider} names something other than {@code anthropic}, {@code openai}, or {@code
-   * gemini} — most likely a typo. {@link
+   * {@code nessy.provider} names something other than {@code anthropic}, {@code openai}, {@code
+   * gemini}, or {@code bedrock} — most likely a typo. {@link
    * AnthropicProviderAutoConfiguration#invalidProviderModelProvider} already covers every case
    * where {@code nessy-model-anthropic} is on the classpath; this bean fills the gap that leaves —
    * an Anthropic-absent classpath — gated on Anthropic's absence so the two never both match and
    * race a duplicate bean definition. {@link
-   * GeminiProviderAutoConfiguration#invalidProviderModelProvider} fills the narrower remaining gap,
-   * an OpenAI-and-Anthropic-absent classpath, the same way.
+   * GeminiProviderAutoConfiguration#invalidProviderModelProvider} and {@link
+   * BedrockProviderAutoConfiguration#invalidProviderModelProvider} fill the narrower remaining gaps
+   * the same way.
    */
   @Bean
   @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
@@ -107,7 +108,7 @@ public class OpenAiProviderAutoConfiguration {
         "nessy.provider="
             + properties.provider()
             + " is not a recognized value; expected"
-            + " anthropic, openai, or gemini");
+            + " anthropic, openai, gemini, or bedrock");
   }
 
   /**

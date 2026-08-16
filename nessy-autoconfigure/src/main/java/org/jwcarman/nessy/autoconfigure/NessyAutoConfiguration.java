@@ -58,6 +58,7 @@ import org.springframework.util.StringUtils;
       AnthropicProviderAutoConfiguration.class,
       OpenAiProviderAutoConfiguration.class,
       GeminiProviderAutoConfiguration.class,
+      BedrockProviderAutoConfiguration.class,
       JdbcPersistenceAutoConfiguration.class
     })
 @ConditionalOnBean(ModelProvider.class)

@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
+import org.jwcarman.nessy.model.bedrock.BedrockModelProvider;
 import org.jwcarman.nessy.model.gemini.GeminiModelProvider;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
@@ -66,6 +67,20 @@ import org.slf4j.LoggerFactory;
  * OpenAiModelProvider.Builder#baseUrl(String)} when {@value #OPENAI_API_KEY_ENV_VAR} is the chosen
  * path, exactly as the OpenAI SDK's own {@code fromEnv()} would honor it — the xAI path never reads
  * it, since xAI's base URL is fixed.
+ *
+ * <p><strong>{@link BedrockModelProvider} is explicit-selection-only</strong> (bedrock-provider
+ * design §4): it joins the {@value #NESSY_PROVIDER_ENV_VAR} vocabulary as {@value #BEDROCK_CHOICE},
+ * but is never chosen by key presence — there is no {@code BEDROCK_*} pseudo-key, and Bedrock never
+ * enters the table above, the candidate list, the ambiguity count, or the which-key tiebreak.
+ * Ambient AWS credentials (env vars, shared profile files, container/instance metadata) are common
+ * enough on ordinary machines that letting them win, or even participate in resolving a tie, would
+ * silently hijack every laptop with a stray AWS profile into talking to Bedrock. Setting {@value
+ * #NESSY_PROVIDER_ENV_VAR}{@code =bedrock} is therefore the only way to choose it, checked before
+ * any keyed candidate is even computed; it wins outright regardless of which API keys happen to be
+ * set alongside it. The provider itself is then built via {@link
+ * BedrockModelProvider.Builder#fromEnv()} — the AWS SDK's own default credentials chain plus {@code
+ * AWS_REGION}/{@code AWS_DEFAULT_REGION} — so an explicit choice with no region configured fails
+ * fast from {@link BedrockModelProvider.Builder#build()} itself, naming both variables.
  */
 public final class EnvModelProviders {
 
@@ -89,6 +104,11 @@ public final class EnvModelProviders {
   private static final String XAI_ALIAS = "grok";
   private static final String XAI_BASE_URL = "https://api.x.ai/v1";
 
+  /**
+   * The {@value #NESSY_PROVIDER_ENV_VAR} vocabulary token for Bedrock — explicit-only, see above.
+   */
+  static final String BEDROCK_CHOICE = "bedrock";
+
   /** Small/cheap defaults, one per provider — the model each demo used to hardcode itself. */
   private static final String ANTHROPIC_DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 
@@ -106,6 +126,14 @@ public final class EnvModelProviders {
    * grok-4.3}, the dated {@code grok-4.20-*} variants, and {@code grok-build-0.1}.
    */
   private static final String XAI_DEFAULT_MODEL = "grok-4.6";
+
+  /**
+   * Bedrock's {@code us} cross-region inference profile id for Claude Haiku 4.5 — docs-verified
+   * (Anthropic's own Amazon Bedrock documentation, confirmed 2026-08-16), not live-verified; see
+   * {@code nessy-model-bedrock}'s README for the live-run command. Override with {@code
+   * NESSY_MODEL} for any other Bedrock-hosted model (Claude, Nova, Llama, Mistral, …).
+   */
+  static final String BEDROCK_DEFAULT_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
   private EnvModelProviders() {}
 
@@ -130,7 +158,7 @@ public final class EnvModelProviders {
    * through {@link OpenAiModelProvider}'s base-url override. Otherwise the chosen provider's own
    * default constant applies: {@value #ANTHROPIC_DEFAULT_MODEL} for Anthropic, {@value
    * #OPENAI_DEFAULT_MODEL} for OpenAI, {@value #GEMINI_DEFAULT_MODEL} for Gemini, {@value
-   * #XAI_DEFAULT_MODEL} for xAI.
+   * #XAI_DEFAULT_MODEL} for xAI, {@value #BEDROCK_DEFAULT_MODEL} for Bedrock.
    */
   public static Selection select() {
     return select(System.getenv());
@@ -139,6 +167,12 @@ public final class EnvModelProviders {
   /** The offline seam: chooses a {@link Selection} from {@code env} rather than the real one. */
   static Selection select(Map<String, String> env) {
     Objects.requireNonNull(env, "env must not be null");
+    // Bedrock is explicit-selection-only (class javadoc): checked before any keyed candidate is
+    // even computed, so it never enters the candidate list, the ambiguity count, or the
+    // which-key tiebreak, and wins outright regardless of which API keys happen to be present.
+    if (isBedrockChosen(env)) {
+      return new Selection(bedrock(), BEDROCK_CHOICE, bedrockModel(env));
+    }
     List<Candidate> candidates = presentCandidates(env);
     if (candidates.isEmpty()) {
       throw missingCredentials();
@@ -150,6 +184,31 @@ public final class EnvModelProviders {
     var override = env.get(NESSY_MODEL_ENV_VAR);
     var model = override != null && !override.isBlank() ? override : chosen.defaultModel();
     return new Selection(chosen.provider().get(), chosen.name(), model);
+  }
+
+  /**
+   * Whether {@code env} explicitly names {@value #BEDROCK_CHOICE} via {@value
+   * #NESSY_PROVIDER_ENV_VAR} — the sole selection signal (class javadoc): no key of Bedrock's own
+   * is ever consulted. Package-private so the selection decision itself — the branch on which the
+   * whole explicit-only ruling rests — is directly, deterministically testable without needing
+   * {@link BedrockModelProvider.Builder#fromEnv()} to actually succeed, which depends on {@code
+   * AWS_REGION}/{@code AWS_DEFAULT_REGION} being set in the real process environment and so varies
+   * machine to machine.
+   */
+  static boolean isBedrockChosen(Map<String, String> env) {
+    return BEDROCK_CHOICE.equals(normalize(env.get(NESSY_PROVIDER_ENV_VAR)));
+  }
+
+  /**
+   * The model an explicit Bedrock choice resolves to: {@value #NESSY_MODEL_ENV_VAR} wins when set
+   * and non-blank, exactly as it does for every keyed provider; otherwise {@value
+   * #BEDROCK_DEFAULT_MODEL} applies. Package-private, alongside {@link #isBedrockChosen}, so both
+   * halves of what {@code select(env)} would report for Bedrock — that it was chosen, and which
+   * model — are pinned without ever constructing a {@link BedrockModelProvider}.
+   */
+  static String bedrockModel(Map<String, String> env) {
+    var override = env.get(NESSY_MODEL_ENV_VAR);
+    return override != null && !override.isBlank() ? override : BEDROCK_DEFAULT_MODEL;
   }
 
   /**
@@ -233,7 +292,12 @@ public final class EnvModelProviders {
             + XAI_API_KEY_ENV_VAR
             + " (and optionally "
             + NESSY_PROVIDER_ENV_VAR
-            + " to break a tie if more than one is set)");
+            + " to break a tie if more than one is set) — or set "
+            + NESSY_PROVIDER_ENV_VAR
+            + "="
+            + BEDROCK_CHOICE
+            + " for Amazon Bedrock, which needs no key here at all (it uses the AWS SDK's own"
+            + " default credentials chain)");
   }
 
   private static ModelProvider anthropic(String apiKey) {
@@ -268,6 +332,15 @@ public final class EnvModelProviders {
   }
 
   /**
+   * Explicit-only (class javadoc): no key of any kind is read here. {@code fromEnv()} resolves the
+   * AWS SDK's own default credentials chain and {@code AWS_REGION}/{@code AWS_DEFAULT_REGION}
+   * itself, at {@code build()} time.
+   */
+  private static ModelProvider bedrock() {
+    return BedrockModelProvider.builder().fromEnv().build();
+  }
+
+  /**
    * One present, keyed provider — {@code name} is one of the lowercase tiebreak vocabulary tokens;
    * {@code defaultModel} is what {@link #select(Map)} uses when {@value #NESSY_MODEL_ENV_VAR} is
    * unset or blank.
@@ -276,9 +349,10 @@ public final class EnvModelProviders {
 
   /**
    * What {@link #select()}/{@link #select(Map)} chose: the built {@code provider}, its lowercase
-   * name ({@code "anthropic"}/{@code "openai"}/{@code "gemini"}/{@code "xai"} — the same tiebreak
-   * vocabulary {@value #NESSY_PROVIDER_ENV_VAR} accepts), and the {@code model} that goes with it,
-   * so a caller — a demo's banner, an application's logging — can show what was picked without
+   * name ({@code "anthropic"}/{@code "openai"}/{@code "gemini"}/{@code "xai"}/{@code "bedrock"} —
+   * the same {@value #NESSY_PROVIDER_ENV_VAR} vocabulary, though {@code "bedrock"} only ever
+   * arrives here via explicit selection, never a tiebreak), and the {@code model} that goes with
+   * it, so a caller — a demo's banner, an application's logging — can show what was picked without
    * re-deriving it via {@code instanceof}.
    */
   public record Selection(ModelProvider provider, String providerName, String model) {

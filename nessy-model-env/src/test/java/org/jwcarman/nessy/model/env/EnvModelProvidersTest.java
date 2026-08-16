@@ -179,6 +179,14 @@ class EnvModelProvidersTest {
           .hasMessageContaining("GOOGLE_API_KEY")
           .hasMessageContaining("XAI_API_KEY");
     }
+
+    @Test
+    void names_bedrock_as_the_explicit_only_alternative_that_needs_no_key() {
+      assertThatThrownBy(() -> EnvModelProviders.fromEnv(Map.of()))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("NESSY_PROVIDER")
+          .hasMessageContaining("bedrock");
+    }
   }
 
   @Nested
@@ -375,6 +383,114 @@ class EnvModelProvidersTest {
 
       assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
       assertThat(appender.list).isEmpty();
+    }
+  }
+
+  /**
+   * Bedrock joins the {@code NESSY_PROVIDER} vocabulary as explicit-selection-only (design §4): no
+   * key of its own, never a candidate, never part of the ambiguity count or the which-key tiebreak.
+   * {@code EnvModelProviders} builds the provider itself via {@code
+   * BedrockModelProvider.Builder#fromEnv()} once chosen, which depends on {@code AWS_REGION}/{@code
+   * AWS_DEFAULT_REGION} being set in the real process environment — a fact that varies machine to
+   * machine, including CI runners and any developer box with AWS configured. An earlier version of
+   * this suite proved the selection guarantee by asserting on that build's own missing-region
+   * failure message, which meant the guarantee went untested (silently skipped via {@code
+   * assumeTrue}) on precisely the AWS-configured machines the explicit-only ruling exists to defend
+   * — a final-review finding (S3). These tests instead pin the selection decision directly through
+   * {@link EnvModelProviders#isBedrockChosen(Map)} and {@link EnvModelProviders#bedrockModel(Map)}
+   * — the two package-private facts {@code select(env)}/{@code fromEnv(env)} branch on before ever
+   * touching {@code fromEnv().build()} — so every assertion below runs, and means the same thing,
+   * on every machine unconditionally.
+   */
+  @Nested
+  class Explicit_bedrock_selection {
+
+    @Test
+    void wins_outright_even_with_other_keys_present_and_needs_no_key_of_its_own() {
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "OPENAI_API_KEY", "fake-openai-key",
+              "NESSY_PROVIDER", "bedrock");
+
+      assertThat(EnvModelProviders.isBedrockChosen(env)).isTrue();
+    }
+
+    @Test
+    void is_reachable_with_zero_api_keys_present_at_all() {
+      assertThat(EnvModelProviders.isBedrockChosen(Map.of("NESSY_PROVIDER", "bedrock"))).isTrue();
+    }
+
+    @Test
+    void is_read_case_insensitively_like_every_other_nessy_provider_value() {
+      assertThat(EnvModelProviders.isBedrockChosen(Map.of("NESSY_PROVIDER", "BEDROCK"))).isTrue();
+    }
+
+    @Test
+    void is_not_chosen_when_nessy_provider_names_something_else() {
+      assertThat(EnvModelProviders.isBedrockChosen(Map.of("NESSY_PROVIDER", "anthropic")))
+          .isFalse();
+    }
+
+    @Test
+    void resolves_the_pinned_default_model_when_nessy_model_is_unset() {
+      // The exact literal, not just the BEDROCK_DEFAULT_MODEL constant reflexively — this is the
+      // dated, docs-verified string three separate docs quote (S1: it was previously asserted
+      // nowhere at all).
+      assertThat(EnvModelProviders.bedrockModel(Map.of("NESSY_PROVIDER", "bedrock")))
+          .isEqualTo("us.anthropic.claude-haiku-4-5-20251001-v1:0");
+    }
+
+    @Test
+    void nessy_model_override_wins_over_the_pinned_default() {
+      Map<String, String> env =
+          Map.of(
+              "NESSY_PROVIDER", "bedrock",
+              "NESSY_MODEL", "us.anthropic.claude-opus-4-1-20260805-v1:0");
+
+      assertThat(EnvModelProviders.bedrockModel(env))
+          .isEqualTo("us.anthropic.claude-opus-4-1-20260805-v1:0");
+    }
+
+    @Test
+    void a_blank_nessy_model_is_ignored_in_favor_of_the_pinned_default() {
+      Map<String, String> env = Map.of("NESSY_PROVIDER", "bedrock", "NESSY_MODEL", "   ");
+
+      assertThat(EnvModelProviders.bedrockModel(env))
+          .isEqualTo("us.anthropic.claude-haiku-4-5-20251001-v1:0");
+    }
+
+    @Test
+    void never_logs_an_ambiguity_warning_even_though_multiple_keys_are_present() {
+      var logger = (Logger) LoggerFactory.getLogger(EnvModelProviders.class);
+      var originalLevel = logger.getLevel();
+      logger.setLevel(Level.WARN);
+      var appender = new ListAppender<ILoggingEvent>();
+      appender.start();
+      logger.addAppender(appender);
+      try {
+        Map<String, String> env =
+            Map.of(
+                "ANTHROPIC_API_KEY", "k1",
+                "OPENAI_API_KEY", "k2",
+                "GEMINI_API_KEY", "k3",
+                "XAI_API_KEY", "k4",
+                "NESSY_PROVIDER", "bedrock");
+
+        // fromEnv() may or may not throw here depending on whether this machine happens to have
+        // AWS_REGION configured — either way is fine and neither is asserted; what this test
+        // proves is that the explicit choice bypassed the tiebreak machinery entirely (no
+        // ambiguity WARN), not whether the subsequent SDK build succeeded.
+        try {
+          EnvModelProviders.fromEnv(env);
+        } catch (IllegalStateException ignored) {
+          // Expected on a machine with no AWS_REGION/AWS_DEFAULT_REGION set; irrelevant here.
+        }
+        assertThat(appender.list).isEmpty();
+      } finally {
+        logger.detachAppender(appender);
+        logger.setLevel(originalLevel);
+      }
     }
   }
 

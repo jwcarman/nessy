@@ -23,15 +23,16 @@ import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.util.StringUtils;
 
 /**
- * Matches when {@code nessy.provider} is set to something other than the three recognized values,
- * {@code anthropic}, {@code openai}, or {@code gemini} — a typo (e.g. {@code anthorpic}) that no
- * provider autoconfiguration's own selection condition recognizes.
+ * Matches when {@code nessy.provider} is set to something other than the four recognized values,
+ * {@code anthropic}, {@code openai}, {@code gemini}, or {@code bedrock} — a typo (e.g. {@code
+ * anthorpic}) that no provider autoconfiguration's own selection condition recognizes.
  *
  * <p>Without this, an unrecognized value silently satisfies nothing: {@link
  * AnthropicProviderAutoConfiguration.AnthropicIsTheChoiceCondition}, {@link
- * OpenAiProviderAutoConfiguration.OpenAiIsTheChoiceCondition}, and {@link
- * GeminiProviderAutoConfiguration.GeminiIsTheChoiceCondition} all {@code noMatch} (the value isn't
- * their name), and {@link AnthropicProviderAutoConfiguration.AmbiguousProviderCondition} also
+ * OpenAiProviderAutoConfiguration.OpenAiIsTheChoiceCondition}, {@link
+ * GeminiProviderAutoConfiguration.GeminiIsTheChoiceCondition}, and {@link
+ * BedrockProviderAutoConfiguration.BedrockIsTheChoiceCondition} all {@code noMatch} (the value
+ * isn't their name), and {@link AnthropicProviderAutoConfiguration.AmbiguousProviderCondition} also
  * {@code noMatch}s (it requires the property to be entirely unset) — so no {@code ModelProvider}
  * bean is built, no {@code Harness} follows, and the application fails much later with a bare
  * {@code NoSuchBeanDefinitionException} that never mentions {@code nessy.provider} at all. This
@@ -48,7 +49,10 @@ final class InvalidProviderCondition extends SpringBootCondition {
     if (!StringUtils.hasText(provider)) {
       return ConditionOutcome.noMatch(message.because("nessy.provider is unset"));
     }
-    if ("anthropic".equals(provider) || "openai".equals(provider) || "gemini".equals(provider)) {
+    if ("anthropic".equals(provider)
+        || "openai".equals(provider)
+        || "gemini".equals(provider)
+        || "bedrock".equals(provider)) {
       return ConditionOutcome.noMatch(
           message.because("nessy.provider=" + provider + " is recognized"));
     }

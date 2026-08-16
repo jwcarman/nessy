@@ -138,8 +138,14 @@ actually needs:
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-model-gemini</artifactId>
   </dependency>
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-model-bedrock</artifactId>
+  </dependency>
 
-  <!-- Optional: all three providers non-optionally, switched by which API key is set. -->
+  <!-- Optional: all four providers non-optionally, switched by which API key is set (Bedrock is
+       the one exception: it has no key of its own and is only ever chosen explicitly, via
+       NESSY_PROVIDER=bedrock). -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-model-env</artifactId>

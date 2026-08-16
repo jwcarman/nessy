@@ -61,6 +61,7 @@
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
     <module>nessy-model-gemini</module>
+    <module>nessy-model-bedrock</module>
     <module>nessy-model-env</module>
     <module>nessy-jdbc</module>
     <module>nessy-tool-mcp</module>
@@ -79,6 +80,12 @@
          release as of this module's creation (2026-08-15); see java-genai's GitHub
          releases for newer lines. -->
     <google-genai.version>1.66.0</google-genai.version>
+    <!-- AWS SDK for Java v2 (bedrockruntime, Converse/ConverseStream). Managed via the SDK's
+         own BOM (like micrometer/testcontainers below) rather than a single artifact version,
+         since bedrockruntime pulls sibling AWS modules (regions, auth, sdk-core, netty-nio-client)
+         that must resolve to one consistent line. Newest stable line on Maven Central as of this
+         module's creation (2026-08-16). -->
+    <awssdk.version>2.46.7</awssdk.version>
     <jackson.version>2.22.0</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
@@ -178,6 +185,13 @@
         <groupId>org.testcontainers</groupId>
         <artifactId>testcontainers-bom</artifactId>
         <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>${awssdk.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
