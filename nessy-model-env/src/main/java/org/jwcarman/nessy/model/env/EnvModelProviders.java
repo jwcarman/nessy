@@ -196,13 +196,15 @@ public final class EnvModelProviders {
       return explicit.get();
     }
     var fallback = candidates.get(0);
-    LOGGER.warn(
-        "multiple model-provider API keys are set ({}); defaulting to {} (set {}={} to choose"
-            + " explicitly)",
-        candidates.stream().map(Candidate::name).collect(Collectors.joining(", ")),
-        fallback.name(),
-        NESSY_PROVIDER_ENV_VAR,
-        fallback.name());
+    if (LOGGER.isWarnEnabled()) {
+      LOGGER.warn(
+          "multiple model-provider API keys are set ({}); defaulting to {} (set {}={} to choose"
+              + " explicitly)",
+          candidates.stream().map(Candidate::name).collect(Collectors.joining(", ")),
+          fallback.name(),
+          NESSY_PROVIDER_ENV_VAR,
+          fallback.name());
+    }
     return fallback;
   }
 

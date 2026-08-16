@@ -32,6 +32,8 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -350,23 +352,10 @@ class GeminiStreamTest {
           .isEqualTo(StopReason.MAX_TOKENS);
     }
 
-    @Test
-    void safety_maps_to_refusal() {
-      var modelEvents = drain(List.of(finishChunk("SAFETY")));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.REFUSAL);
-    }
-
-    @Test
-    void recitation_maps_to_refusal() {
-      var modelEvents = drain(List.of(finishChunk("RECITATION")));
-      assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
-          .isEqualTo(StopReason.REFUSAL);
-    }
-
-    @Test
-    void prohibited_content_maps_to_refusal() {
-      var modelEvents = drain(List.of(finishChunk("PROHIBITED_CONTENT")));
+    @ParameterizedTest
+    @ValueSource(strings = {"SAFETY", "RECITATION", "PROHIBITED_CONTENT"})
+    void safety_recitation_and_prohibited_content_all_map_to_refusal(String finishReason) {
+      var modelEvents = drain(List.of(finishChunk(finishReason)));
       assertThat(((ModelEvent.TurnEnded) modelEvents.get(0)).reason())
           .isEqualTo(StopReason.REFUSAL);
     }

@@ -203,8 +203,8 @@ public final class GeminiRequests {
       case TextBlock(String text) -> Optional.of(Part.fromText(text));
       case ToolUseBlock(ToolCall call) ->
           Optional.of(Part.fromFunctionCall(call.name(), argumentsOf(call)));
-      case ThinkingBlock ignored -> Optional.empty();
-      case RedactedThinkingBlock ignored -> Optional.empty();
+      case ThinkingBlock _ -> Optional.empty();
+      case RedactedThinkingBlock _ -> Optional.empty();
       default ->
           throw new IllegalArgumentException(
               "unsupported content block in an assistant message: " + block);
