@@ -269,7 +269,7 @@ ModelProvider provider =
 and `fromEnv()` wires Grok with no other code, as shown above.
 
 **OpenRouter** (validated 2026-08-16 — `openai/gpt-4o-mini` through chat-cli,
-text and an approval-gated tool round trip; note OpenRouter model ids are
+text, an approval-gated tool round trip, and a notebook write; note OpenRouter model ids are
 vendor-prefixed slugs, so set `NESSY_MODEL`, and cached-token counts may read
 zero since usage passthrough varies by upstream model):
 
