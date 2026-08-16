@@ -17,7 +17,6 @@ package org.jwcarman.nessy.spi.execute;
 
 import static io.micrometer.observation.tck.TestObservationRegistryAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.micrometer.observation.ObservationRegistry;
@@ -260,11 +259,16 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
-  void a_stream_that_ends_without_turn_ended_throws() {
+  void a_stream_that_ends_without_turn_ended_becomes_the_failure_fact_not_an_exception() {
     ProviderModelCallExecutor executor = executorStreaming(new ModelEvent.TextChunk("hi"));
 
-    assertThatThrownBy(() -> executor.execute(state, observed::add))
-        .isInstanceOf(IllegalStateException.class);
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    ConversationEvent.ModelCallFailed fact =
+        (ConversationEvent.ModelCallFailed) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.reason())
+        .contains("IllegalStateException")
+        .contains("model stream ended without a TurnEnded event");
   }
 
   @Test
@@ -278,8 +282,7 @@ class ProviderModelCallExecutorTest {
             memory,
             observations);
 
-    assertThatThrownBy(() -> executor.execute(state, observed::add))
-        .isInstanceOf(IllegalStateException.class);
+    executor.execute(state, observed::add);
 
     assertThat(observations).hasObservationWithNameEqualTo("nessy.model.call").that().hasError();
   }

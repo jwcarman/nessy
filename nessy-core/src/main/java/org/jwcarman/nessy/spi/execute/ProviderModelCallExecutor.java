@@ -52,7 +52,11 @@ import org.slf4j.LoggerFactory;
  * <p>Stream consumption runs inside one {@code nessy.model.call} observation: opened before the
  * provider is asked to stream, marked {@link Observation#error(Throwable)} on an unexpected {@link
  * RuntimeException}, stopped in a {@code finally} regardless of outcome, and tagged with the
- * settled usage the instant {@link ModelEvent.TurnEnded} arrives.
+ * settled usage the instant {@link ModelEvent.TurnEnded} arrives. Any {@code RuntimeException} the
+ * provider call or stream consumption raises — a context overflow, an HTTP error, a socket reset, a
+ * broken stream protocol, whatever a provider SDK decides to throw — yields a {@code
+ * ModelCallFailed} fact instead of propagating: there is no allowlist and no marker interface, so
+ * no provider failure can leave a conversation stuck at {@code AWAITING_MODEL}.
  */
 public final class ProviderModelCallExecutor implements ModelCallExecutor {
 
@@ -136,11 +140,6 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       throw new IllegalStateException("model stream ended without a TurnEnded event");
     } catch (ContextOverflowException e) {
       return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
-    } catch (IllegalStateException e) {
-      // Our own protocol invariant broke, not the provider's call: a bug to surface loudly, not a
-      // fate to fold quietly.
-      modelCall.error(e);
-      throw e;
     } catch (RuntimeException e) {
       // Everything else the provider call or stream consumption can throw — a 403, a socket reset,
       // whatever a provider SDK decides to raise — folds to ModelCallFailed instead of leaking out

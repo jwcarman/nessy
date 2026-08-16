@@ -83,11 +83,12 @@ public sealed interface ConversationEvent extends ConversationScoped {
   }
 
   /**
-   * The model call failed in a way re-performing cannot fix — canonically, the context outgrew the
-   * window. There is no party left in the dialogue to show this to (the model is the party that
-   * failed), so it is fate, not data: the fold answers it with {@code FAILED}. Transient failures
-   * (socket resets, retries exhausted) are exceptions, not facts — status still points at the work
-   * and re-driving is the recovery.
+   * The model call failed — canonically, the context outgrew the window, but also any other {@code
+   * RuntimeException} the provider call or stream consumption raised (an HTTP error, a socket
+   * reset, a broken stream protocol). There is no party left in the dialogue to show this to (the
+   * model is the party that failed), so it is fate, not data: the fold answers it with {@code
+   * FAILED}. A later {@code tell} on the same conversation is the recovery — {@code FAILED} is
+   * quiescent — not an automatic retry of the failed call.
    */
   record ModelCallFailed(ConversationId conversationId, String reason)
       implements ConversationEvent {

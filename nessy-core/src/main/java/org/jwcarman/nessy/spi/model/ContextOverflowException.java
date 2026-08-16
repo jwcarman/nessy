@@ -18,8 +18,10 @@ package org.jwcarman.nessy.spi.model;
 /**
  * The request cannot fit the model's context window — a conversation-shaped, permanent rejection.
  * Providers throw this (in place of their raw 400) when the wire says the prompt is too long; the
- * model-call executor converts it into the {@code ModelCallFailed} fact. Every other provider
- * failure stays an ordinary exception: transient, re-drivable, telemetry's business.
+ * model-call executor converts it into the {@code ModelCallFailed} fact with this exception's own
+ * message as the reason. Every other provider failure — any other {@code RuntimeException} the
+ * provider call or stream consumption raises — folds to the same fact too, carrying the exception's
+ * class name and message instead.
  */
 public class ContextOverflowException extends RuntimeException {
 
