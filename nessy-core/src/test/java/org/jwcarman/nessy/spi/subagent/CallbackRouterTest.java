@@ -192,20 +192,18 @@ class CallbackRouterTest {
       Agent<String> agent = agentNamed("keeper");
       router.register(agent);
       ParkToken unknownToken = ParkToken.generate();
+      ToolResolution allow = new ToolResolution.Decided(Decision.allow());
 
-      assertThatThrownBy(
-              () ->
-                  router.resume(
-                      "keeper", unknownToken, new ToolResolution.Decided(Decision.allow())))
+      assertThatThrownBy(() -> router.resume("keeper", unknownToken, allow))
           .isInstanceOf(UnknownParkTokenException.class);
     }
 
     @Test
     void resuming_a_name_no_agent_was_ever_registered_under_throws_naming_it() {
       ParkToken token = ParkToken.generate();
+      ToolResolution allow = new ToolResolution.Decided(Decision.allow());
 
-      assertThatThrownBy(
-              () -> router.resume("nobody", token, new ToolResolution.Decided(Decision.allow())))
+      assertThatThrownBy(() -> router.resume("nobody", token, allow))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("nobody");
     }
