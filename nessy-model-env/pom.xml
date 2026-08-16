@@ -29,15 +29,15 @@
 
   <artifactId>nessy-model-env</artifactId>
   <name>Nessy Model Env</name>
-  <description>The provider follows the key: one fromEnv() that picks Anthropic or OpenAI by which API key is set, over both provider modules non-optionally.</description>
+  <description>The provider follows the key: one fromEnv() that picks Anthropic, OpenAI, Gemini, or xAI (OpenAI-compatible) by which API key is set, over all provider modules non-optionally.</description>
 
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-core</artifactId>
     </dependency>
-    <!-- Non-optional, on purpose: this module's whole point is that both providers ride the
-         classpath so either key just works, with no per-provider dependency choice left to the
+    <!-- Non-optional, on purpose: this module's whole point is that every provider rides the
+         classpath so any key just works, with no per-provider dependency choice left to the
          consumer. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
@@ -47,6 +47,11 @@
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-openai</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-gemini</artifactId>
       <version>${project.version}</version>
     </dependency>
   </dependencies>

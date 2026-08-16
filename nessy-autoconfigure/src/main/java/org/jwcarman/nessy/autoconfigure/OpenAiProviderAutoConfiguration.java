@@ -29,6 +29,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.context.annotation.Conditional;
+import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
@@ -36,12 +37,16 @@ import org.springframework.util.StringUtils;
 /**
  * Wires an OpenAI-backed {@link ModelProvider} when {@code nessy-model-openai} is on the classpath.
  *
- * <p>The ambiguous-classpath / fail-fast case is owned by {@link
- * AnthropicProviderAutoConfiguration#ambiguousModelProvider()} — declaring it here too would race a
- * duplicate {@link ModelProvider} bean definition against that one whenever both provider modules
- * are present. This configuration only needs to recognize when it is unambiguously OpenAI's turn to
- * build the bean: it is the only provider module present, it is explicitly selected via {@code
- * nessy.provider=openai}, or it is the only one of the two configured with an API key.
+ * <p>The Anthropic-present ambiguous-classpath / fail-fast cases are owned by {@link
+ * AnthropicProviderAutoConfiguration#ambiguousModelProvider(Environment)} and {@link
+ * AnthropicProviderAutoConfiguration#ambiguousModelProviderWithoutOpenAi(Environment)} — declaring
+ * them here too would race a duplicate {@link ModelProvider} bean definition against those whenever
+ * Anthropic is also present. This configuration owns the one ambiguous case Anthropic's own class
+ * cannot see — OpenAI and Gemini both present and keyed, Anthropic absent from the classpath
+ * entirely — via {@link #ambiguousModelProviderWithoutAnthropic(Environment)}, plus recognizing
+ * when it is unambiguously OpenAI's turn to build the bean itself: it is the only provider module
+ * present, it is explicitly selected via {@code nessy.provider=openai}, or it is the only present
+ * one configured with an API key.
  *
  * <p>The bean here also backs off when a {@link Harness} bean is already present
  * ({@code @ConditionalOnMissingBean({ModelProvider.class, Harness.class})} — any listed type
@@ -65,11 +70,33 @@ public class OpenAiProviderAutoConfiguration {
   }
 
   /**
-   * {@code nessy.provider} names something other than {@code anthropic} or {@code openai} — most
-   * likely a typo. {@link AnthropicProviderAutoConfiguration#invalidProviderModelProvider} already
-   * covers every case where {@code nessy-model-anthropic} is on the classpath (single-jar or
-   * both-jars); this bean fills the one gap that leaves — an OpenAI-only classpath — gated on
-   * Anthropic's absence so the two never both match and race a duplicate bean definition.
+   * OpenAI and Gemini are both present and keyed, and Anthropic is absent from the classpath
+   * entirely — the one ambiguous combination {@link AnthropicProviderAutoConfiguration} cannot see,
+   * since that whole class is gated on Anthropic's presence. Reuses {@link
+   * AnthropicProviderAutoConfiguration.AmbiguousProviderCondition} and {@link
+   * AnthropicProviderAutoConfiguration#ambiguousProviderMessage(Environment)} directly rather than
+   * duplicating either — both are already classpath-aware and provider-agnostic, so there is
+   * nothing OpenAI-specific to add.
+   */
+  @Bean
+  @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
+  @ConditionalOnMissingClass(ProviderProperties.ANTHROPIC_PROVIDER_CLASS_NAME)
+  @ConditionalOnClass(name = ProviderProperties.GEMINI_PROVIDER_CLASS_NAME)
+  @Conditional(AnthropicProviderAutoConfiguration.AmbiguousProviderCondition.class)
+  ModelProvider ambiguousModelProviderWithoutAnthropic(Environment environment) {
+    throw new IllegalStateException(
+        AnthropicProviderAutoConfiguration.ambiguousProviderMessage(environment));
+  }
+
+  /**
+   * {@code nessy.provider} names something other than {@code anthropic}, {@code openai}, or {@code
+   * gemini} — most likely a typo. {@link
+   * AnthropicProviderAutoConfiguration#invalidProviderModelProvider} already covers every case
+   * where {@code nessy-model-anthropic} is on the classpath; this bean fills the gap that leaves —
+   * an Anthropic-absent classpath — gated on Anthropic's absence so the two never both match and
+   * race a duplicate bean definition. {@link
+   * GeminiProviderAutoConfiguration#invalidProviderModelProvider} fills the narrower remaining gap,
+   * an OpenAI-and-Anthropic-absent classpath, the same way.
    */
   @Bean
   @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
@@ -114,13 +141,13 @@ public class OpenAiProviderAutoConfiguration {
    *
    * <p><strong>Precedence ruling:</strong> an explicit {@code nessy.*} property is a deliberate
    * nessy-level choice and outranks an ambient SDK environment variable, which is a weaker,
-   * incidental signal. Concretely: if only {@code nessy.openai.api-key} is set (and {@code
-   * nessy.anthropic.api-key} is not), OpenAI wins even when {@code ANTHROPIC_API_KEY} happens to be
-   * present in the environment too — this configuration only inspects the {@code nessy.*} keys, so
-   * an env-var-only Anthropic never counts as "keyed" here. "Ambiguous" (see {@link
-   * AnthropicProviderAutoConfiguration#ambiguousModelProvider()}) means neither side is explicitly
-   * keyed via a {@code nessy.*} property, not that neither side could ultimately build — that
-   * distinction is deliberate, not an oversight.
+   * incidental signal. Concretely: if only {@code nessy.openai.api-key} is set (and neither {@code
+   * nessy.anthropic.api-key} nor {@code nessy.gemini.api-key} is), OpenAI wins even when {@code
+   * ANTHROPIC_API_KEY} happens to be present in the environment too — this configuration only
+   * inspects the {@code nessy.*} keys, so an env-var-only Anthropic never counts as "keyed" here.
+   * "Ambiguous" (see {@link AnthropicProviderAutoConfiguration.AmbiguousProviderCondition}) means
+   * more than one present provider is explicitly keyed via a {@code nessy.*} property, not that the
+   * others could ultimately build — that distinction is deliberate, not an oversight.
    */
   static final class OpenAiIsTheChoiceCondition extends SpringBootCondition {
 
@@ -136,20 +163,26 @@ public class OpenAiProviderAutoConfiguration {
       if (StringUtils.hasText(provider)) {
         return ConditionOutcome.noMatch(message.because("nessy.provider=" + provider));
       }
+      var classLoader = context.getClassLoader();
       var anthropicPresent =
-          ClassUtils.isPresent(
-              ProviderProperties.ANTHROPIC_PROVIDER_CLASS_NAME, context.getClassLoader());
-      if (!anthropicPresent) {
+          ClassUtils.isPresent(ProviderProperties.ANTHROPIC_PROVIDER_CLASS_NAME, classLoader);
+      var geminiPresent =
+          ClassUtils.isPresent(ProviderProperties.GEMINI_PROVIDER_CLASS_NAME, classLoader);
+      if (!anthropicPresent && !geminiPresent) {
         return ConditionOutcome.match(message.because("the only model-provider module present"));
       }
-      var anthropicKeyed = environment.containsProperty(ProviderProperties.ANTHROPIC_KEY_PROPERTY);
       var openaiKeyed = environment.containsProperty(ProviderProperties.OPENAI_KEY_PROPERTY);
-      if (openaiKeyed && !anthropicKeyed) {
+      var otherKeyed =
+          (anthropicPresent
+                  && environment.containsProperty(ProviderProperties.ANTHROPIC_KEY_PROPERTY))
+              || (geminiPresent
+                  && environment.containsProperty(ProviderProperties.GEMINI_KEY_PROPERTY));
+      if (openaiKeyed && !otherKeyed) {
         return ConditionOutcome.match(
             message.because("only " + ProviderProperties.OPENAI_KEY_PROPERTY + " is set"));
       }
       return ConditionOutcome.noMatch(
-          message.because("both provider modules are present and unresolved"));
+          message.because("multiple provider modules are present and unresolved"));
     }
   }
 }

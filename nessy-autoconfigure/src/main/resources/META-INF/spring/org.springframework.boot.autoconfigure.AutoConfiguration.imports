@@ -1,5 +1,6 @@
 org.jwcarman.nessy.autoconfigure.AnthropicProviderAutoConfiguration
 org.jwcarman.nessy.autoconfigure.OpenAiProviderAutoConfiguration
+org.jwcarman.nessy.autoconfigure.GeminiProviderAutoConfiguration
 org.jwcarman.nessy.autoconfigure.JdbcPersistenceAutoConfiguration
 org.jwcarman.nessy.autoconfigure.NessyAutoConfiguration
 org.jwcarman.nessy.autoconfigure.web.NessyWebAutoConfiguration

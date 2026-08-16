@@ -78,6 +78,12 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-gemini</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-jdbc</artifactId>
       <version>${project.version}</version>
       <optional>true</optional>

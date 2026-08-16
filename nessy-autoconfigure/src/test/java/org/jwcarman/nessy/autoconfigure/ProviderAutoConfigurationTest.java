@@ -17,10 +17,12 @@ package org.jwcarman.nessy.autoconfigure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
+import org.jwcarman.nessy.model.gemini.GeminiModelProvider;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
@@ -161,5 +163,166 @@ class ProviderAutoConfigurationTest {
                       "nessy.provider=anthorpic is not a recognized value; expected anthropic or"
                           + " openai");
             });
+  }
+
+  /**
+   * The three-way cases the provider-expansion design adds: {@link GeminiProviderAutoConfiguration}
+   * registered alongside its two siblings, and every new ambiguity combination Gemini's presence
+   * makes possible.
+   */
+  @Nested
+  class Three_provider_scenarios {
+
+    private final ApplicationContextRunner runner =
+        new ApplicationContextRunner()
+            .withConfiguration(
+                AutoConfigurations.of(
+                    AnthropicProviderAutoConfiguration.class,
+                    OpenAiProviderAutoConfiguration.class,
+                    GeminiProviderAutoConfiguration.class));
+
+    @Test
+    void gemini_keyed_alone_yields_a_gemini_provider_even_with_all_three_jars_present() {
+      runner
+          .withPropertyValues("nessy.gemini.api-key=test-key")
+          .run(
+              context -> {
+                assertThat(context).hasSingleBean(ModelProvider.class);
+                assertThat(context)
+                    .getBean(ModelProvider.class)
+                    .isInstanceOf(GeminiModelProvider.class);
+              });
+    }
+
+    @Test
+    void nessy_provider_property_selects_gemini_among_three_present_jars() {
+      runner
+          .withPropertyValues(
+              "nessy.provider=gemini",
+              "nessy.anthropic.api-key=k",
+              "nessy.openai.api-key=k",
+              "nessy.gemini.api-key=k")
+          .run(
+              context ->
+                  assertThat(context.getBean(ModelProvider.class))
+                      .isInstanceOf(GeminiModelProvider.class));
+    }
+
+    @Test
+    void gemini_absent_means_no_gemini_bean() {
+      runner
+          .withClassLoader(new FilteredClassLoader(GeminiModelProvider.class))
+          .withPropertyValues("nessy.openai.api-key=test-key")
+          .run(
+              context -> {
+                assertThat(context).hasSingleBean(ModelProvider.class);
+                assertThat(context)
+                    .getBean(ModelProvider.class)
+                    .isInstanceOf(OpenAiModelProvider.class);
+              });
+    }
+
+    @Test
+    void a_user_declared_harness_bean_stops_gemini_from_ever_being_built_too() {
+      Harness harness =
+          Nessy.harness(ScriptedModelProvider.builder().text("hi").endTurn().build()).build();
+      runner
+          .withBean("mine", Harness.class, () -> harness)
+          .withPropertyValues("nessy.gemini.api-key=test-key")
+          .run(
+              context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).doesNotHaveBean(ModelProvider.class);
+              });
+    }
+
+    @Test
+    void anthropic_and_gemini_ambiguous_with_openai_absent_fails_fast_naming_both() {
+      runner
+          .withClassLoader(new FilteredClassLoader(OpenAiModelProvider.class))
+          .withPropertyValues("nessy.anthropic.api-key=k", "nessy.gemini.api-key=k")
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseMessage(
+                        "two model-provider modules are on the classpath; set"
+                            + " nessy.provider=anthropic|gemini");
+              });
+    }
+
+    @Test
+    void openai_and_gemini_ambiguous_with_anthropic_absent_fails_fast_naming_both() {
+      runner
+          .withClassLoader(new FilteredClassLoader(AnthropicModelProvider.class))
+          .withPropertyValues("nessy.openai.api-key=k", "nessy.gemini.api-key=k")
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseMessage(
+                        "two model-provider modules are on the classpath; set"
+                            + " nessy.provider=openai|gemini");
+              });
+    }
+
+    @Test
+    void all_three_keyed_fails_fast_naming_all_three() {
+      runner
+          .withPropertyValues(
+              "nessy.anthropic.api-key=k", "nessy.openai.api-key=k", "nessy.gemini.api-key=k")
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseMessage(
+                        "three model-provider modules are on the classpath; set"
+                            + " nessy.provider=anthropic|openai|gemini");
+              });
+    }
+
+    @Test
+    void nessy_provider_property_still_resolves_a_three_way_ambiguity() {
+      runner
+          .withPropertyValues(
+              "nessy.provider=gemini",
+              "nessy.anthropic.api-key=k",
+              "nessy.openai.api-key=k",
+              "nessy.gemini.api-key=k")
+          .run(
+              context ->
+                  assertThat(context.getBean(ModelProvider.class))
+                      .isInstanceOf(GeminiModelProvider.class));
+    }
+
+    @Test
+    void an_unrecognized_provider_value_fails_fast_with_only_the_gemini_jar_present() {
+      runner
+          .withClassLoader(
+              new FilteredClassLoader(AnthropicModelProvider.class, OpenAiModelProvider.class))
+          .withPropertyValues("nessy.provider=anthorpic")
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseMessage(
+                        "nessy.provider=anthorpic is not a recognized value; expected anthropic,"
+                            + " openai, or gemini");
+              });
+    }
+
+    @Test
+    void gemini_is_a_recognized_provider_value_not_an_invalid_one() {
+      // Guards against a regression where InvalidProviderCondition's "recognized" list forgets
+      // gemini: if it did, this would fail fast instead of building a GeminiModelProvider.
+      runner
+          .withPropertyValues("nessy.provider=gemini", "nessy.gemini.api-key=k")
+          .run(
+              context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context.getBean(ModelProvider.class))
+                    .isInstanceOf(GeminiModelProvider.class);
+              });
+    }
   }
 }

@@ -15,9 +15,15 @@
  */
 package org.jwcarman.nessy.model.env;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.jwcarman.nessy.model.anthropic.AnthropicModelProvider;
+import org.jwcarman.nessy.model.gemini.GeminiModelProvider;
 import org.jwcarman.nessy.model.openai.OpenAiModelProvider;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.slf4j.Logger;
@@ -29,16 +35,37 @@ import org.slf4j.LoggerFactory;
  * environment, so an application built against this module switches providers by switching an
  * environment variable rather than its code.
  *
- * <p>{@value #ANTHROPIC_API_KEY_ENV_VAR} present alone chooses Anthropic; {@value
- * #OPENAI_API_KEY_ENV_VAR} present alone chooses OpenAI; both present is broken by {@value
- * #NESSY_PROVIDER_ENV_VAR} ({@code anthropic}/{@code openai}), defaulting to Anthropic with a
- * one-line warning logged when that variable is unset or unrecognized; neither present fails fast,
- * naming exactly the three variables checked. Each provider is built the same way its own module
- * builds one from an explicit key — {@code Provider.builder().apiKey(key).build()} — mirroring
- * {@link AnthropicModelProvider.Builder#apiKey(String)} and {@link
- * OpenAiModelProvider.Builder#apiKey(String)} exactly, rather than each provider's own {@code
+ * <p><strong>Precedence table</strong> (provider-expansion design §3, §7):
+ *
+ * <table>
+ *   <caption>Which key wins</caption>
+ *   <tr><th>Env var(s)</th><th>Provider built</th></tr>
+ *   <tr><td>{@value #ANTHROPIC_API_KEY_ENV_VAR}</td><td>{@link AnthropicModelProvider}</td></tr>
+ *   <tr><td>{@value #OPENAI_API_KEY_ENV_VAR} (plus {@value #OPENAI_BASE_URL_ENV_VAR} if set)</td>
+ *       <td>{@link OpenAiModelProvider}</td></tr>
+ *   <tr><td>{@value #GEMINI_API_KEY_ENV_VAR}, then {@value #GOOGLE_API_KEY_ENV_VAR}</td>
+ *       <td>{@link GeminiModelProvider}</td></tr>
+ *   <tr><td>{@value #XAI_API_KEY_ENV_VAR}</td>
+ *       <td>{@link OpenAiModelProvider} with {@code baseUrl("https://api.x.ai/v1")}</td></tr>
+ * </table>
+ *
+ * <p>Exactly one key present chooses that provider outright. Two or more present is broken by
+ * {@value #NESSY_PROVIDER_ENV_VAR} ({@code anthropic}/{@code openai}/{@code gemini}/{@code xai},
+ * alias {@code grok} for {@code xai}), read case-insensitively: naming one of the keys actually
+ * present chooses it silently; naming anything else (unset, unrecognized, or a provider whose key
+ * is not among those present) falls back to the first present key in the table's row order above —
+ * i.e. Anthropic first, then OpenAI, then Gemini, then xAI — logging one WARN naming the default.
+ * None present fails fast, naming every variable checked. Each provider is built the same way its
+ * own module builds one from an explicit key — {@code Provider.builder().apiKey(key).build()} —
+ * mirroring {@link AnthropicModelProvider.Builder#apiKey(String)}, {@link
+ * OpenAiModelProvider.Builder#apiKey(String)}, and {@link
+ * GeminiModelProvider.Builder#apiKey(String)} exactly, rather than each provider's own {@code
  * fromEnv()}, so the choice this class makes from the map handed to it is the choice that is built
- * — not a second, independent read of the real environment underneath it.
+ * — not a second, independent read of the real environment underneath it. {@value
+ * #OPENAI_BASE_URL_ENV_VAR} is the one exception: it is layered onto the OpenAI provider via {@link
+ * OpenAiModelProvider.Builder#baseUrl(String)} when {@value #OPENAI_API_KEY_ENV_VAR} is the chosen
+ * path, exactly as the OpenAI SDK's own {@code fromEnv()} would honor it — the xAI path never reads
+ * it, since xAI's base URL is fixed.
  */
 public final class EnvModelProviders {
 
@@ -46,10 +73,18 @@ public final class EnvModelProviders {
 
   static final String ANTHROPIC_API_KEY_ENV_VAR = "ANTHROPIC_API_KEY";
   static final String OPENAI_API_KEY_ENV_VAR = "OPENAI_API_KEY";
+  static final String OPENAI_BASE_URL_ENV_VAR = "OPENAI_BASE_URL";
+  static final String GEMINI_API_KEY_ENV_VAR = "GEMINI_API_KEY";
+  static final String GOOGLE_API_KEY_ENV_VAR = "GOOGLE_API_KEY";
+  static final String XAI_API_KEY_ENV_VAR = "XAI_API_KEY";
   static final String NESSY_PROVIDER_ENV_VAR = "NESSY_PROVIDER";
 
-  private static final String OPENAI_CHOICE = "openai";
   private static final String ANTHROPIC_CHOICE = "anthropic";
+  private static final String OPENAI_CHOICE = "openai";
+  private static final String GEMINI_CHOICE = "gemini";
+  private static final String XAI_CHOICE = "xai";
+  private static final String XAI_ALIAS = "grok";
+  private static final String XAI_BASE_URL = "https://api.x.ai/v1";
 
   private EnvModelProviders() {}
 
@@ -61,47 +96,129 @@ public final class EnvModelProviders {
   /** The offline seam: chooses a provider from {@code env} rather than the real environment. */
   static ModelProvider fromEnv(Map<String, String> env) {
     Objects.requireNonNull(env, "env must not be null");
-    String anthropicKey = env.get(ANTHROPIC_API_KEY_ENV_VAR);
-    String openAiKey = env.get(OPENAI_API_KEY_ENV_VAR);
-    if (anthropicKey != null && openAiKey != null) {
-      return tiebreak(env.get(NESSY_PROVIDER_ENV_VAR), anthropicKey, openAiKey);
+    List<Candidate> candidates = presentCandidates(env);
+    if (candidates.isEmpty()) {
+      throw missingCredentials();
     }
-    if (anthropicKey != null) {
-      return anthropic(anthropicKey);
+    if (candidates.size() == 1) {
+      return candidates.get(0).provider().get();
     }
-    if (openAiKey != null) {
-      return openai(openAiKey);
-    }
-    throw new IllegalStateException(
-        "no model provider credentials found: set "
-            + ANTHROPIC_API_KEY_ENV_VAR
-            + " or "
-            + OPENAI_API_KEY_ENV_VAR
-            + " (and optionally "
-            + NESSY_PROVIDER_ENV_VAR
-            + " to break a tie if both are set)");
+    return tiebreak(env.get(NESSY_PROVIDER_ENV_VAR), candidates);
   }
 
-  private static ModelProvider tiebreak(String preference, String anthropicKey, String openAiKey) {
-    if (OPENAI_CHOICE.equalsIgnoreCase(preference)) {
-      return openai(openAiKey);
+  /**
+   * Every key present in {@code env}, in the precedence order documented on the class: Anthropic,
+   * OpenAI, Gemini, xAI. That order also doubles as the tiebreak default order — the first entry
+   * here is the one {@link #tiebreak} falls back to when the preference does not resolve.
+   */
+  private static List<Candidate> presentCandidates(Map<String, String> env) {
+    var candidates = new ArrayList<Candidate>();
+    var anthropicKey = env.get(ANTHROPIC_API_KEY_ENV_VAR);
+    if (anthropicKey != null) {
+      candidates.add(new Candidate(ANTHROPIC_CHOICE, () -> anthropic(anthropicKey)));
     }
-    if (!ANTHROPIC_CHOICE.equalsIgnoreCase(preference)) {
-      LOGGER.warn(
-          "both {} and {} are set; defaulting to Anthropic (set {}=openai to choose OpenAI"
-              + " instead)",
-          ANTHROPIC_API_KEY_ENV_VAR,
-          OPENAI_API_KEY_ENV_VAR,
-          NESSY_PROVIDER_ENV_VAR);
+    var openAiKey = env.get(OPENAI_API_KEY_ENV_VAR);
+    if (openAiKey != null) {
+      candidates.add(new Candidate(OPENAI_CHOICE, () -> openai(openAiKey, env)));
     }
-    return anthropic(anthropicKey);
+    var geminiKey = geminiKey(env);
+    if (geminiKey != null) {
+      candidates.add(new Candidate(GEMINI_CHOICE, () -> gemini(geminiKey)));
+    }
+    var xaiKey = env.get(XAI_API_KEY_ENV_VAR);
+    if (xaiKey != null) {
+      candidates.add(new Candidate(XAI_CHOICE, () -> xai(xaiKey)));
+    }
+    return candidates;
+  }
+
+  /**
+   * {@value #GEMINI_API_KEY_ENV_VAR} first, then {@value #GOOGLE_API_KEY_ENV_VAR} — Google's own
+   * documented pair, in that order — mirroring {@link GeminiModelProvider.Builder#fromEnv()}.
+   */
+  private static String geminiKey(Map<String, String> env) {
+    var key = env.get(GEMINI_API_KEY_ENV_VAR);
+    return key != null ? key : env.get(GOOGLE_API_KEY_ENV_VAR);
+  }
+
+  private static ModelProvider tiebreak(String preference, List<Candidate> candidates) {
+    var normalized = normalize(preference);
+    var explicit = candidates.stream().filter(c -> c.name().equals(normalized)).findFirst();
+    if (explicit.isPresent()) {
+      return explicit.get().provider().get();
+    }
+    var fallback = candidates.get(0);
+    LOGGER.warn(
+        "multiple model-provider API keys are set ({}); defaulting to {} (set {}={} to choose"
+            + " explicitly)",
+        candidates.stream().map(Candidate::name).collect(Collectors.joining(", ")),
+        fallback.name(),
+        NESSY_PROVIDER_ENV_VAR,
+        fallback.name());
+    return fallback.provider().get();
+  }
+
+  /**
+   * Lowercases the preference and resolves the {@value #XAI_ALIAS} alias to {@value #XAI_CHOICE}.
+   */
+  private static String normalize(String preference) {
+    if (preference == null) {
+      return null;
+    }
+    var lower = preference.toLowerCase(Locale.ROOT);
+    return XAI_ALIAS.equals(lower) ? XAI_CHOICE : lower;
+  }
+
+  private static IllegalStateException missingCredentials() {
+    return new IllegalStateException(
+        "no model provider credentials found: set "
+            + ANTHROPIC_API_KEY_ENV_VAR
+            + ", "
+            + OPENAI_API_KEY_ENV_VAR
+            + ", "
+            + GEMINI_API_KEY_ENV_VAR
+            + " (or "
+            + GOOGLE_API_KEY_ENV_VAR
+            + "), or "
+            + XAI_API_KEY_ENV_VAR
+            + " (and optionally "
+            + NESSY_PROVIDER_ENV_VAR
+            + " to break a tie if more than one is set)");
   }
 
   private static ModelProvider anthropic(String apiKey) {
     return AnthropicModelProvider.builder().apiKey(apiKey).build();
   }
 
-  private static ModelProvider openai(String apiKey) {
-    return OpenAiModelProvider.builder().apiKey(apiKey).build();
+  /**
+   * {@value #OPENAI_BASE_URL_ENV_VAR} is layered on when present — the provider-expansion design's
+   * §7 amendment: local runtimes (LM Studio, Ollama) and gateways (OpenRouter, Gemini's own
+   * OpenAI-compat endpoint) become zero-code env citizens the same way xAI is, by pointing this one
+   * variable at them alongside any {@value #OPENAI_API_KEY_ENV_VAR} value (local runtimes accept
+   * any non-empty string; convention is {@code "lm-studio"}).
+   */
+  private static ModelProvider openai(String apiKey, Map<String, String> env) {
+    var builder = OpenAiModelProvider.builder().apiKey(apiKey);
+    var baseUrl = env.get(OPENAI_BASE_URL_ENV_VAR);
+    if (baseUrl != null) {
+      builder.baseUrl(baseUrl);
+    }
+    return builder.build();
   }
+
+  private static ModelProvider gemini(String apiKey) {
+    return GeminiModelProvider.builder().apiKey(apiKey).build();
+  }
+
+  /**
+   * Grok as a first-class env citizen with zero new provider code: OpenAI wire protocol, xAI's URL.
+   */
+  private static ModelProvider xai(String apiKey) {
+    return OpenAiModelProvider.builder().apiKey(apiKey).baseUrl(XAI_BASE_URL).build();
+  }
+
+  /**
+   * One present, keyed provider — {@code name} is one of the lowercase tiebreak vocabulary tokens.
+   */
+  private record Candidate(String name, Supplier<ModelProvider> provider) {}
 }

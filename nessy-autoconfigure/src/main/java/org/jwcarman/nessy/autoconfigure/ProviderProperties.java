@@ -16,10 +16,11 @@
 package org.jwcarman.nessy.autoconfigure;
 
 /**
- * Property keys and provider class names shared by {@link AnthropicProviderAutoConfiguration} and
- * {@link OpenAiProviderAutoConfiguration}'s selection conditions.
+ * Property keys and provider class names shared by {@link AnthropicProviderAutoConfiguration},
+ * {@link OpenAiProviderAutoConfiguration}, and {@link GeminiProviderAutoConfiguration}'s selection
+ * conditions.
  *
- * <p>Hoisted into one place so the two autoconfigurations' mirrored selection logic can never
+ * <p>Hoisted into one place so the three autoconfigurations' mirrored selection logic can never
  * desync on a literal — a typo in a copy-pasted string constant would otherwise fail silently on
  * one side only.
  */
@@ -28,10 +29,13 @@ final class ProviderProperties {
   static final String PROVIDER_PROPERTY = "nessy.provider";
   static final String ANTHROPIC_KEY_PROPERTY = "nessy.anthropic.api-key";
   static final String OPENAI_KEY_PROPERTY = "nessy.openai.api-key";
+  static final String GEMINI_KEY_PROPERTY = "nessy.gemini.api-key";
   static final String ANTHROPIC_PROVIDER_CLASS_NAME =
       "org.jwcarman.nessy.model.anthropic.AnthropicModelProvider";
   static final String OPENAI_PROVIDER_CLASS_NAME =
       "org.jwcarman.nessy.model.openai.OpenAiModelProvider";
+  static final String GEMINI_PROVIDER_CLASS_NAME =
+      "org.jwcarman.nessy.model.gemini.GeminiModelProvider";
 
   private ProviderProperties() {}
 }
