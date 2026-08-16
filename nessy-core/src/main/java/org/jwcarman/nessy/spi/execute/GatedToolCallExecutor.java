@@ -227,7 +227,14 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
     try {
       effect = invoker.effect(grant.tool(), call);
     } catch (RuntimeException e) {
-      return new Evaluation(new PolicyDecision.Deny("effect failed: " + describe(e)), null, null);
+      return new Evaluation(
+          new PolicyDecision.Deny("argument binding or effect failed: " + describe(e)), null, null);
+    }
+    if (effect == null) {
+      return new Evaluation(
+          new PolicyDecision.Deny("argument binding or effect failed: tool rendered no effect"),
+          null,
+          null);
     }
     AuthorizationContext context = AuthorizationContext.of(state.id(), agentName, call, state);
     for (Enricher<?> enricher : grant.enrichers()) {

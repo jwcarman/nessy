@@ -885,6 +885,79 @@ class GatedToolCallExecutorTest {
       assertThat(result.isError()).isTrue();
       assertThat(result.content()).contains("policy").contains("policy blew up");
     }
+
+    /** An {@link EffectfulTool} whose {@link #effect} renders nothing at all. */
+    static final class NullEffectTool implements EffectfulTool<SpendInput, SpendEffect> {
+
+      @Override
+      public String name() {
+        return "spend";
+      }
+
+      @Override
+      public String description() {
+        return "Spends money";
+      }
+
+      @Override
+      public Class<SpendInput> inputType() {
+        return SpendInput.class;
+      }
+
+      @Override
+      public SpendEffect effect(SpendInput input) {
+        return null;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(SpendInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok("spent:" + input.amount()));
+      }
+    }
+
+    @Test
+    void
+        a_null_rendered_effect_fails_closed_naming_the_effect_stage_instead_of_reaching_the_approver() {
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+      GatedToolCallExecutor executor =
+          executorFor(
+              ToolGrant.grant(new NullEffectTool(), List.of(), UsagePolicy.requireApproval()),
+              approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(approver.requests).isEmpty();
+      ToolResult result = resultOf(outcome);
+      assertThat(result.isError()).isTrue();
+      assertThat(result.content()).contains("effect").contains("rendered no effect");
+    }
+  }
+
+  /**
+   * {@link UsagePolicy.Static} is a closed extension point (fix round 1, F1): only {@link
+   * UsagePolicy.Allow} and {@link UsagePolicy.Deny} may ever implement it, enforced by the compiler
+   * via {@code sealed ... permits}, not by convention — a third implementor anywhere else in the
+   * codebase simply does not compile. That closure is what keeps the rung-0 fast path safe: it
+   * bypasses {@code evaluate}'s own fail-closed staging entirely, so only the two verdicts the
+   * framework itself controls may ever take that path.
+   */
+  @Nested
+  class StaticMarkerIsSealed {
+
+    @Test
+    void only_allow_and_deny_are_permitted_static_implementations() {
+      assertThat(UsagePolicy.Static.class.isSealed()).isTrue();
+      assertThat(UsagePolicy.Static.class.getPermittedSubclasses())
+          .containsExactlyInAnyOrder(UsagePolicy.Allow.class, UsagePolicy.Deny.class);
+    }
+
+    @Test
+    void a_context_reading_policy_is_not_static_and_so_cannot_bypass_evaluate() {
+      UsagePolicy<Object> contextReading =
+          UsagePolicy.of((context, effect) -> new PolicyDecision.Allow());
+
+      assertThat(contextReading).isNotInstanceOf(UsagePolicy.Static.class);
+    }
   }
 
   /**
@@ -928,6 +1001,29 @@ class GatedToolCallExecutorTest {
       ToolResult result = resultOf(outcome);
       assertThat(result.isError()).isTrue();
       assertThat(result.content()).isEqualTo("Denied: from-first/from-second");
+    }
+
+    /**
+     * Fix round 1, F3: an org-wide enricher library's own pre-declared, invariantly-typed constant
+     * — {@code List<Enricher<Object>>}, exactly the shape design §4's reuse story describes — must
+     * weld into a typed grant's {@code List<? extends Enricher<? super E>>} parameter without a
+     * cast.
+     */
+    private static final List<Enricher<Object>> STANDARD_ENRICHERS =
+        List.of((context, effect) -> context);
+
+    @Test
+    void a_pre_declared_list_of_enricher_object_welds_into_a_typed_grant() {
+      UsagePolicy<SpendEffect> nonStaticAllow = (context, effect) -> new PolicyDecision.Allow();
+      RecordingApprover approver = new RecordingApprover(Awaited.ready(Decision.allow()));
+
+      GatedToolCallExecutor executor =
+          executorFor(
+              ToolGrant.grant(new SpendTool(), STANDARD_ENRICHERS, nonStaticAllow), approver);
+
+      Awaited<ConversationEvent> outcome = executor.execute(spendCall(5), state, observed::add);
+
+      assertThat(resultOf(outcome)).isEqualTo(ToolResult.ok("spent:5"));
     }
   }
 

@@ -67,7 +67,7 @@ public record ToolGrant(Tool<?> tool, UsagePolicy<?> policy, List<Enricher<?>> e
    */
   public static <I, E> ToolGrant grant(
       EffectfulTool<I, E> tool,
-      List<Enricher<? super E>> enrichers,
+      List<? extends Enricher<? super E>> enrichers,
       UsagePolicy<? super E> policy) {
     Objects.requireNonNull(enrichers, "enrichers must not be null");
     List<Enricher<?>> widened = new ArrayList<>(enrichers);

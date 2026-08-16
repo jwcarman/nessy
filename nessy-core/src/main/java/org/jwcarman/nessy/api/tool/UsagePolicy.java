@@ -85,18 +85,20 @@ public interface UsagePolicy<E> {
   }
 
   /**
-   * Marker for a policy whose verdict never depends on context or effect — implemented by {@link
-   * Allow} and {@link Deny}, the two canonical statics. The chokepoint checks for this rather than
-   * for identity against a single instance, since {@link #deny(String)} cannot be one shared
-   * singleton across every reason: any policy, canonical or custom, may implement it to opt into
-   * the same rung-0 fast path.
+   * Marker for a policy whose verdict never depends on context or effect — implemented ONLY by
+   * {@link Allow} and {@link Deny}, the two canonical statics, and sealed shut to exactly those
+   * two. The chokepoint checks for this rather than for identity against a single instance, since
+   * {@link #deny(String)} cannot be one shared singleton across every reason.
    *
-   * <p>{@link #decision()} must never be {@link PolicyDecision.RequireApproval}: the whole point of
-   * the fast path is that no context is assembled and no effect is rendered for a {@code Static}
-   * policy, and an approver has nothing to adjudicate without either. {@link #requireApproval()}
-   * deliberately does not implement this marker for exactly that reason.
+   * <p>This is deliberately closed, not an extension point: the chokepoint's rung-0 fast path skips
+   * {@link #evaluate}'s own fail-closed staging entirely (no effect rendered, no context assembled,
+   * no enrichers run — nothing there to catch a throw), so a third {@code Static} implementor would
+   * bypass fail-closed staging outright, and if its {@link #decision()} ever returned {@link
+   * PolicyDecision.RequireApproval} the executor would have no context or effect to hand the
+   * approver at all. {@link #requireApproval()} does not implement this marker for exactly that
+   * reason.
    */
-  interface Static {
+  sealed interface Static permits Allow, Deny {
 
     /** The one verdict this policy ever returns — never {@link PolicyDecision.RequireApproval}. */
     PolicyDecision decision();
