@@ -61,5 +61,10 @@ public final class Chat {
         .plan(built.planStore())
         .farewell("goodbye.")
         .run();
+    // The REPL is done, but the model-provider SDK's HTTP client keeps non-daemon worker
+    // threads alive after the last call (idle connection pools linger for up to a minute).
+    // Exiting here is honest cleanup of SDK threads we don't own, not a workaround for
+    // state we failed to release.
+    System.exit(0);
   }
 }
