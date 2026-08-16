@@ -99,12 +99,13 @@ public class AnthropicProviderAutoConfiguration {
   }
 
   /**
-   * {@code nessy.provider} names something other than {@code anthropic}, {@code openai}, or {@code
-   * gemini} — most likely a typo. Declared here (rather than only in the ambiguous-classpath case
-   * above) so it fires whenever this module is on the classpath at all, regardless of which other
-   * provider modules ride along; {@link
-   * OpenAiProviderAutoConfiguration#invalidProviderModelProvider} and {@link
-   * GeminiProviderAutoConfiguration#invalidProviderModelProvider} each cover the remaining gap
+   * {@code nessy.provider} names something other than {@code anthropic}, {@code openai}, {@code
+   * gemini}, or {@code bedrock} — most likely a typo. Declared here (rather than only in the
+   * ambiguous-classpath case above) so it fires whenever this module is on the classpath at all,
+   * regardless of which other provider modules ride along; {@link
+   * OpenAiProviderAutoConfiguration#invalidProviderModelProvider}, {@link
+   * GeminiProviderAutoConfiguration#invalidProviderModelProvider}, and {@link
+   * BedrockProviderAutoConfiguration#invalidProviderModelProvider} each cover the remaining gap
    * their own module leaves — an Anthropic-absent classpath — without racing a duplicate bean
    * definition against this one when Anthropic is present.
    */
@@ -116,7 +117,7 @@ public class AnthropicProviderAutoConfiguration {
         "nessy.provider="
             + properties.provider()
             + " is not a recognized value; expected"
-            + " anthropic, openai, or gemini");
+            + " anthropic, openai, gemini, or bedrock");
   }
 
   /**

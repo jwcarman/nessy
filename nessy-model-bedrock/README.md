@@ -102,7 +102,10 @@ retries the call that opens a stream, not a mid-stream failure.
 
 `BedrockModelProvider` is also `AutoCloseable`: the real `BedrockClient` owns a
 `BedrockRuntimeAsyncClient`, whose Netty transport holds resources that outlive one `stream()`
-call. Close the provider (or the SDK client passed to `.client(...)`) when done with it.
+call. Closing the provider closes that client — but only when the provider built it itself, via
+`region(...)`/`credentialsProvider(...)`/`fromEnv()`. A client passed to `.client(...)` is the
+caller's own: the provider never closes it, since it never opened it either — close that client
+yourself, on whatever lifecycle you built it against.
 
 A stream failure's `CompletionException` wrapper (the SDK's own future-chaining artifact) is
 unwrapped before it reaches the harness: the underlying cause — an `SdkServiceException` for a

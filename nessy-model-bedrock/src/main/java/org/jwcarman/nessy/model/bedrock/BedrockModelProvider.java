@@ -69,6 +69,13 @@ import software.amazon.awssdk.services.bedrockruntime.model.MessageStopEvent;
  * additive: callers that construct a {@code BedrockModelProvider} directly (rather than through a
  * DI container that already manages its lifecycle) should close it when done, the same as they
  * would the underlying SDK client itself.
+ *
+ * <p><b>Close ownership is not symmetric across {@link Builder}'s two client paths.</b> {@link
+ * #close()} closes the {@code BedrockRuntimeAsyncClient} only when this provider built it itself
+ * (the {@code region}/{@code credentialsProvider}/{@code fromEnv()} path); a client handed in
+ * through {@link Builder#client(BedrockRuntimeAsyncClient)} is never closed here — see that
+ * method's javadoc. The two paths are not independent alternatives for who does the closing, only
+ * for who does the building.
  */
 public final class BedrockModelProvider implements ModelProvider, AutoCloseable {
 
@@ -152,6 +159,12 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
     /**
      * Escape hatch: supply a fully preconfigured {@link BedrockRuntimeAsyncClient} instead of
      * {@code region}/{@code credentialsProvider}.
+     *
+     * <p><b>Ownership stays with the caller.</b> {@link BedrockModelProvider#close()} closes only a
+     * client this builder constructed itself from {@code region}/{@code credentialsProvider}/{@code
+     * fromEnv()} — a client supplied here is never closed by the provider, since it was never
+     * opened by the provider either. Close {@code client} yourself, on whatever lifecycle you built
+     * it against.
      */
     public Builder client(BedrockRuntimeAsyncClient client) {
       this.sdkClient = client;
@@ -164,7 +177,7 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
 
     private BedrockClient resolveClient() {
       if (sdkClient != null) {
-        return wrap(sdkClient);
+        return wrap(sdkClient, false);
       }
       var resolvedRegion = resolveRegion();
       var resolvedCredentials =
@@ -174,7 +187,7 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
               .region(resolvedRegion)
               .credentialsProvider(resolvedCredentials)
               .build();
-      return wrap(asyncClient);
+      return wrap(asyncClient, true);
     }
 
     private Region resolveRegion() {
@@ -229,8 +242,18 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
      * javadoc: "once events flow, tokens have already been fed downstream"), so an opening failure
      * that instead surfaced from the first {@code hasNext()}/{@code next()} call would silently
      * never be retried, unlike the identical failure on every synchronous-SDK sibling provider.
+     *
+     * <p><b>Close ownership.</b> {@code ownsClient} decides what {@link BedrockClient#close()} does
+     * to {@code sdkClient}: {@code true} for the client this builder constructed itself (the {@code
+     * region}/{@code credentialsProvider} path in {@link #resolveClient()}), {@code false} for one
+     * handed in through {@link #client(BedrockRuntimeAsyncClient)}. A caller who supplied their own
+     * {@code BedrockRuntimeAsyncClient} still owns it — {@link BedrockModelProvider#close()} must
+     * never close resources it did not open, the same convention a caller-supplied {@code
+     * DataSource} or {@code ExecutorService} follows elsewhere. Package-private rather than {@code
+     * private} so the ownership branch is directly testable without a real, network-capable SDK
+     * client on either side (see {@code BedrockModelProviderTest$CloseOwnership}).
      */
-    private static BedrockClient wrap(BedrockRuntimeAsyncClient sdkClient) {
+    static BedrockClient wrap(BedrockRuntimeAsyncClient sdkClient, boolean ownsClient) {
       return new BedrockClient() {
         @Override
         public BedrockStream converseStream(ConverseStreamRequest request) {
@@ -252,7 +275,9 @@ public final class BedrockModelProvider implements ModelProvider, AutoCloseable 
 
         @Override
         public void close() {
-          sdkClient.close();
+          if (ownsClient) {
+            sdkClient.close();
+          }
         }
       };
     }

@@ -1,15 +1,16 @@
 # Providers
 
-`Nessy.harness(provider)` takes any `ModelProvider`. Three native modules
-ship today — `nessy-model-anthropic`, `nessy-model-openai`, and
-`nessy-model-gemini` — and a fourth, `nessy-model-env`, picks between them
-from the environment so an application can switch providers by switching a
-variable, not its code. `OpenAiModelProvider` also reaches every service that
-speaks OpenAI's wire protocol, covered below.
+`Nessy.harness(provider)` takes any `ModelProvider`. Four native modules ship
+today — `nessy-model-anthropic`, `nessy-model-openai`, `nessy-model-gemini`,
+and `nessy-model-bedrock` — and a fifth, `nessy-model-env`, picks between
+them from the environment so an application can switch providers by
+switching a variable, not its code. `OpenAiModelProvider` also reaches every
+service that speaks OpenAI's wire protocol, covered below.
 
 Anthropic, OpenAI, and Gemini are all live-validated against their real
 APIs — Gemini most recently on 2026-08-15, including the tool-call round
-trip with real thought signatures.
+trip with real thought signatures. Bedrock is **not yet live-validated** —
+see [Bedrock](#bedrock) below.
 
 ## Building one directly
 
@@ -27,18 +28,26 @@ ModelProvider provider = OpenAiModelProvider.builder().apiKey(key).build();
 ModelProvider provider = GeminiModelProvider.builder().apiKey(key).build();
 ```
 
-`.fromEnv()` on any of the three builders delegates to that provider's own
+```java
+ModelProvider provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build();
+```
+
+`.fromEnv()` on any of the four builders delegates to that provider's own
 seam-integrity read of the environment — for Anthropic and OpenAI this
 resolves to the underlying SDK's own environment resolution
 (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and the rest of what each SDK
 understands); for Gemini, `.fromEnv()` reads `GEMINI_API_KEY` then
-`GOOGLE_API_KEY` itself, rather than delegating to the SDK's own resolution.
-Reach for the builder directly whenever one of those matters;
-`nessy-model-env`, below, only ever reads the API key.
+`GOOGLE_API_KEY` itself, rather than delegating to the SDK's own resolution;
+for Bedrock, `.fromEnv()` uses the AWS SDK's own default credentials chain
+(env vars, shared profile files, container/instance metadata) and resolves
+the region by reading `AWS_REGION` then, if unset, `AWS_DEFAULT_REGION`
+itself — see [Bedrock](#bedrock) below. Reach for the builder directly
+whenever one of those matters; `nessy-model-env`, below, only ever reads the
+API key (and, for Bedrock, never reads a key at all).
 
 ## Switching by environment variable
 
-`nessy-model-env` depends on all three provider modules non-optionally —
+`nessy-model-env` depends on all four provider modules non-optionally —
 that's the whole point, so any key just works with no per-provider
 dependency choice left to the consumer:
 
@@ -65,6 +74,13 @@ present key in the order above and logs one `WARN` line naming the default
 and how to override it. None present fails fast with an
 `IllegalStateException` naming every variable it checked.
 
+**Bedrock is the one exception to this whole scheme.** It has no env var of
+its own, and is never chosen by key presence — not even as a fallback, not
+even as a participant in the tiebreak above. The only way to choose it is
+`NESSY_PROVIDER=bedrock`, checked before any key is even looked at; it wins
+outright regardless of which other keys happen to be set. See
+[Bedrock](#bedrock) below for why.
+
 Each provider is built the same way its own module builds one from an
 explicit key — not that provider's own `fromEnv()`. The choice
 `EnvModelProviders` makes from the environment is the choice that gets
@@ -77,11 +93,11 @@ directly when one of those is needed.
 
 `fromEnv()` returns only the `ModelProvider`. `select()` returns a
 `Selection` — the provider, its lowercase name (`"anthropic"`/`"openai"`/
-`"gemini"`/`"xai"`, the same vocabulary `NESSY_PROVIDER` accepts), and a
-model — so an application that wants to show or log what was picked (a
-demo's banner, for instance) doesn't have to re-derive the provider's
-identity itself via `instanceof`: the knowledge of which provider was
-chosen, and which model goes with it, belongs to the selector, not the
+`"gemini"`/`"xai"`/`"bedrock"`, the same vocabulary `NESSY_PROVIDER`
+accepts), and a model — so an application that wants to show or log what was
+picked (a demo's banner, for instance) doesn't have to re-derive the
+provider's identity itself via `instanceof`: the knowledge of which provider
+was chosen, and which model goes with it, belongs to the selector, not the
 caller.
 
 ```java
@@ -97,9 +113,11 @@ override looks, by type, exactly like an OpenAI model, so nothing else can
 tell `select()` which model name is right for it. The same applies to
 OpenRouter and LM Studio models reached the same way. Without `NESSY_MODEL`,
 `select()` falls back to a small, cheap default for the chosen provider
-(Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-3.6-flash`, or
+(Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-3.6-flash`,
 `grok-4.6` for xAI — read from docs.x.ai on 2026-08-15; not exercised against
-the live API).
+the live API — or, for Bedrock, `us.anthropic.claude-haiku-4-5-20251001-v1:0`,
+the `us` cross-region inference profile id for Claude Haiku 4.5, docs-verified
+2026-08-16 and likewise not yet exercised against the live API).
 
 `nessy-examples/chat-cli`'s `Chat` main is this in practice: one main, no
 `if` branch for which provider module to import, because `select()` already
@@ -155,6 +173,80 @@ of degraded reasoning continuity for that one call only.
     yourself anytime:
     `GEMINI_API_KEY=... ./mvnw test -Dnessy.excludedGroups= -pl
     nessy-model-gemini`.
+
+## Bedrock
+
+`nessy-model-bedrock` is a native `ModelProvider` on the AWS SDK for Java
+v2's `bedrockruntime` client, talking to Amazon Bedrock's unified
+Converse/ConverseStream API — one nessy provider covers Claude, Nova, Llama,
+Mistral, and the rest of the Bedrock catalog, since Converse is
+model-agnostic on the wire (`InvokeModel*`'s per-model JSON bodies are out
+of scope, deliberately: they re-fragment exactly what Converse unified):
+
+```java
+ModelProvider provider = BedrockModelProvider.builder().region(Region.US_EAST_1).build();
+```
+
+```java
+ModelProvider provider = BedrockModelProvider.builder().fromEnv().build();
+```
+
+`.fromEnv()` uses the AWS SDK's own default credentials provider chain —
+env vars, shared profile/credentials files, container/instance metadata —
+the AWS idiom of ambient credentials, the same reason there is no
+`.apiKey(...)` on this builder at all. Only the **region** is resolved
+directly rather than delegated to the SDK's own region chain: `AWS_REGION`
+first, then `AWS_DEFAULT_REGION` if that is unset — Amazon's own documented
+pair. An explicit `.region(...)` set alongside `.fromEnv()` still wins;
+neither variable set fails fast at `.build()` with an
+`IllegalStateException` naming both. `.credentialsProvider(AwsCredentialsProvider)`
+overrides the credentials chain outright, and `.client(BedrockRuntimeAsyncClient)`
+is the escape hatch for a fully preconfigured async SDK client.
+
+**Close ownership is not symmetric.** `BedrockModelProvider` is
+`AutoCloseable` — the real client holds Netty resources (an event-loop
+group, a connection pool) that outlive one `stream()` call. Closing the
+provider closes that client only when the provider built it itself (the
+`region`/`credentialsProvider`/`fromEnv()` path); a client handed in via
+`.client(...)` is the caller's own to close, on whatever lifecycle the
+caller built it against — the provider never closes it, since it never
+opened it either.
+
+**Explicit selection only.** Neither `EnvModelProviders` nor
+`nessy-autoconfigure` ever choose Bedrock by key presence, classpath
+presence, or any other ambient signal — `NESSY_PROVIDER=bedrock` /
+`nessy.provider=bedrock` is the only door, checked before any other
+provider's candidacy is even computed. This is not an oversight: AWS
+credentials (and, on some platforms, even `AWS_REGION` itself — AWS Lambda
+sets it automatically) are ambient on a large fraction of machines, so
+letting their mere presence win, or even enter a tiebreak, would silently
+hijack any application with a stray AWS profile into talking to Bedrock the
+moment `nessy-model-bedrock` rode the classpath. See
+[Switching by environment variable](#switching-by-environment-variable)
+above and [Spring Boot](spring-boot.md) for exactly how each door enforces
+this.
+
+Capabilities in v1: text and tool calls, including parallel tool calls in
+one assistant turn (Converse already streams several `toolUse` content
+blocks per turn, each on its own `contentBlockIndex`). Thinking output is
+not yet mapped — `ThinkingBlock`/`RedactedThinkingBlock` are dropped on
+replay, the same discipline Gemini's own unadvertised capabilities document.
+
+!!! note "Not yet live-validated"
+    Unlike Anthropic, OpenAI, and Gemini above, the Bedrock mapping has not
+    been exercised against the real Bedrock API — no AWS credentials with
+    Bedrock model access were available in the environment this module was
+    built in. The default model id
+    (`us.anthropic.claude-haiku-4-5-20251001-v1:0`, the `us` cross-region
+    inference profile for Claude Haiku 4.5) is **docs-verified**, not
+    live-verified: confirmed 2026-08-16 against Anthropic's own Amazon
+    Bedrock documentation, but never sent to Bedrock. Offline mapping tests
+    (request/response translation, the async-to-blocking bridge, stop-reason
+    and usage tables) are exercised entirely against hand-built SDK fixtures
+    and a hand-rolled async-client fake — no mocking library, no network.
+    Run the live suite yourself once credentials are available:
+    `AWS_REGION=... ./mvnw test -Dnessy.excludedGroups= -pl
+    nessy-model-bedrock`.
 
 ## The OpenAI-compatible universe
 

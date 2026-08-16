@@ -29,7 +29,7 @@
 
   <artifactId>nessy-model-env</artifactId>
   <name>Nessy Model Env</name>
-  <description>The provider follows the key: one fromEnv() that picks Anthropic, OpenAI, Gemini, or xAI (OpenAI-compatible) by which API key is set, over all provider modules non-optionally.</description>
+  <description>The provider follows the key: one fromEnv() that picks Anthropic, OpenAI, Gemini, or xAI (OpenAI-compatible) by which API key is set, or Bedrock by explicit selection only, over all provider modules non-optionally.</description>
 
   <dependencies>
     <dependency>
@@ -52,6 +52,15 @@
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-model-gemini</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Bedrock rides the classpath the same non-optional way, even though EnvModelProviders
+         never key-detects it (design §4: explicit nessy.provider=bedrock only) — so
+         NESSY_PROVIDER=bedrock just works without a separate dependency choice, the same promise
+         the other three providers make. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-model-bedrock</artifactId>
       <version>${project.version}</version>
     </dependency>
   </dependencies>

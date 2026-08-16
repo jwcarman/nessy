@@ -69,14 +69,16 @@ public class GeminiProviderAutoConfiguration {
   }
 
   /**
-   * {@code nessy.provider} names something other than {@code anthropic}, {@code openai}, or {@code
-   * gemini} — most likely a typo. {@link
+   * {@code nessy.provider} names something other than {@code anthropic}, {@code openai}, {@code
+   * gemini}, or {@code bedrock} — most likely a typo. {@link
    * AnthropicProviderAutoConfiguration#invalidProviderModelProvider} and {@link
    * OpenAiProviderAutoConfiguration#invalidProviderModelProvider} already cover every classpath
-   * where either of those modules is present; this bean fills the one gap that leaves — a
-   * Gemini-only classpath — gated on both their absence so no two of the three ever match at once
-   * and race a duplicate bean definition. All three sibling beans' messages list the same three
-   * recognized values.
+   * where either of those modules is present; this bean fills the gap that leaves — Gemini present
+   * with Anthropic and OpenAI both absent — gated on both their absence so no two of the four ever
+   * match at once and race a duplicate bean definition. {@link
+   * BedrockProviderAutoConfiguration#invalidProviderModelProvider} fills the one narrower gap this
+   * bean itself cannot see — Bedrock present with all three of Anthropic, OpenAI, and Gemini absent
+   * — the same way. All four sibling beans' messages list the same four recognized values.
    */
   @Bean
   @ConditionalOnMissingBean({ModelProvider.class, Harness.class})
@@ -90,7 +92,7 @@ public class GeminiProviderAutoConfiguration {
         "nessy.provider="
             + properties.provider()
             + " is not a recognized value; expected"
-            + " anthropic, openai, or gemini");
+            + " anthropic, openai, gemini, or bedrock");
   }
 
   /**

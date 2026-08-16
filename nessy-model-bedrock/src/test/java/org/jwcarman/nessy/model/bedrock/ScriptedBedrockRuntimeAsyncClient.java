@@ -44,6 +44,7 @@ final class ScriptedBedrockRuntimeAsyncClient implements BedrockRuntimeAsyncClie
   private final Throwable failure;
   private final boolean leaveFuturePending;
   private CompletableFuture<Void> lastFuture;
+  private boolean closed;
 
   private ScriptedBedrockRuntimeAsyncClient(
       List<ConverseStreamOutput> events, Throwable failure, boolean leaveFuturePending) {
@@ -101,5 +102,16 @@ final class ScriptedBedrockRuntimeAsyncClient implements BedrockRuntimeAsyncClie
   }
 
   @Override
-  public void close() {}
+  public void close() {
+    closed = true;
+  }
+
+  /**
+   * Whether {@link #close()} has been called — the close-ownership rider's observable seam: {@link
+   * BedrockModelProvider#close()} must call this only for an internally built client, never for one
+   * supplied through {@link BedrockModelProvider.Builder#client(BedrockRuntimeAsyncClient)}.
+   */
+  boolean isClosed() {
+    return closed;
+  }
 }

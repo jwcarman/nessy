@@ -17,6 +17,7 @@ package org.jwcarman.nessy.model.env;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -178,6 +179,14 @@ class EnvModelProvidersTest {
           .hasMessageContaining("GEMINI_API_KEY")
           .hasMessageContaining("GOOGLE_API_KEY")
           .hasMessageContaining("XAI_API_KEY");
+    }
+
+    @Test
+    void names_bedrock_as_the_explicit_only_alternative_that_needs_no_key() {
+      assertThatThrownBy(() -> EnvModelProviders.fromEnv(Map.of()))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("NESSY_PROVIDER")
+          .hasMessageContaining("bedrock");
     }
   }
 
@@ -375,6 +384,97 @@ class EnvModelProvidersTest {
 
       assertThat(provider).isInstanceOf(OpenAiModelProvider.class);
       assertThat(appender.list).isEmpty();
+    }
+  }
+
+  /**
+   * Bedrock joins the {@code NESSY_PROVIDER} vocabulary as explicit-selection-only (design §4): no
+   * key of its own, never a candidate, never part of the ambiguity count or the which-key tiebreak.
+   * {@code EnvModelProviders} builds it via {@code BedrockModelProvider.Builder#fromEnv()} once
+   * chosen, which resolves {@code AWS_REGION}/{@code AWS_DEFAULT_REGION} from the real process
+   * environment (not the offline {@code env} map this test drives everything else through) — the
+   * same real-environment read {@code BedrockModelProviderTest}'s own {@code fromEnv()} tests
+   * exercise, so these tests borrow that suite's {@code assumeTrue} guard: skipped rather than
+   * false-failing on a shell that happens to have a region configured. What's proven here is the
+   * selection half — that the explicit choice reaches {@code
+   * BedrockModelProvider.Builder#fromEnv()} at all, silently and regardless of which keys are also
+   * present — not the build's own success, which is {@code BedrockModelProviderTest}'s job.
+   */
+  @Nested
+  class Explicit_bedrock_selection {
+
+    @Test
+    void wins_outright_even_with_other_keys_present_and_needs_no_key_of_its_own() {
+      assumeTrue(System.getenv("AWS_REGION") == null, "AWS_REGION is set in this shell");
+      assumeTrue(
+          System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
+      Map<String, String> env =
+          Map.of(
+              "ANTHROPIC_API_KEY", "fake-anthropic-key",
+              "OPENAI_API_KEY", "fake-openai-key",
+              "NESSY_PROVIDER", "bedrock");
+
+      // Reaching BedrockModelProvider.Builder#fromEnv()'s own missing-region failure — rather
+      // than silently building AnthropicModelProvider, the first-precedence keyed candidate —
+      // is what proves the explicit choice was honored ahead of any keyed candidate.
+      assertThatThrownBy(() -> EnvModelProviders.fromEnv(env))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("AWS_REGION")
+          .hasMessageContaining("AWS_DEFAULT_REGION");
+    }
+
+    @Test
+    void is_reachable_with_zero_api_keys_present_at_all() {
+      assumeTrue(System.getenv("AWS_REGION") == null, "AWS_REGION is set in this shell");
+      assumeTrue(
+          System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
+
+      assertThatThrownBy(() -> EnvModelProviders.fromEnv(Map.of("NESSY_PROVIDER", "bedrock")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("AWS_REGION");
+    }
+
+    @Test
+    void is_read_case_insensitively_like_every_other_nessy_provider_value() {
+      assumeTrue(System.getenv("AWS_REGION") == null, "AWS_REGION is set in this shell");
+      assumeTrue(
+          System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
+
+      assertThatThrownBy(() -> EnvModelProviders.fromEnv(Map.of("NESSY_PROVIDER", "BEDROCK")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("AWS_REGION");
+    }
+
+    @Test
+    void never_logs_an_ambiguity_warning_even_though_multiple_keys_are_present() {
+      assumeTrue(System.getenv("AWS_REGION") == null, "AWS_REGION is set in this shell");
+      assumeTrue(
+          System.getenv("AWS_DEFAULT_REGION") == null, "AWS_DEFAULT_REGION is set in this shell");
+      var logger = (Logger) LoggerFactory.getLogger(EnvModelProviders.class);
+      var originalLevel = logger.getLevel();
+      logger.setLevel(Level.WARN);
+      var appender = new ListAppender<ILoggingEvent>();
+      appender.start();
+      logger.addAppender(appender);
+      try {
+        Map<String, String> env =
+            Map.of(
+                "ANTHROPIC_API_KEY", "k1",
+                "OPENAI_API_KEY", "k2",
+                "GEMINI_API_KEY", "k3",
+                "XAI_API_KEY", "k4",
+                "NESSY_PROVIDER", "bedrock");
+
+        // Bedrock's own missing-region failure is expected here too (see the class javadoc) —
+        // what this test adds is the absence of any ambiguity WARN, proving the explicit choice
+        // bypassed the tiebreak machinery entirely rather than merely winning it silently.
+        assertThatThrownBy(() -> EnvModelProviders.fromEnv(env))
+            .isInstanceOf(IllegalStateException.class);
+        assertThat(appender.list).isEmpty();
+      } finally {
+        logger.detachAppender(appender);
+        logger.setLevel(originalLevel);
+      }
     }
   }
 

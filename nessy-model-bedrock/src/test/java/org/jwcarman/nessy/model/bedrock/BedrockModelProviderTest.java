@@ -260,17 +260,52 @@ class BedrockModelProviderTest {
   class ClientOverride {
 
     @Test
-    void a_real_preconfigured_client_is_accepted_and_closed_with_the_provider() {
+    void a_real_preconfigured_client_is_accepted_and_left_open_by_the_provider() {
       BedrockRuntimeAsyncClient sdkClient =
           BedrockRuntimeAsyncClient.builder().region(Region.US_EAST_1).build();
 
       try (var provider = BedrockModelProvider.builder().client(sdkClient).build()) {
         assertThat(provider.name()).isEqualTo("Bedrock");
       }
-      // provider.close() (via try-with-resources) delegates to sdkClient.close(); a second,
-      // redundant close below would be harmless but isn't needed to prove it happened — the
-      // absence of a leaked event-loop group is not independently observable from here, so this
-      // test's job is only to confirm the escape hatch builds and reports correctly.
+      // provider.close() (via try-with-resources) must NOT delegate to sdkClient.close() — the
+      // close-ownership rider: a caller-supplied client is the caller's to close, not the
+      // provider's. That branch is pinned precisely, with a fake that records close calls, by
+      // CloseOwnership below; this test's own job is only to confirm the escape hatch itself
+      // still builds and reports correctly. sdkClient is closed here, once, to avoid leaking its
+      // real Netty resources for the rest of the test run.
+      sdkClient.close();
+    }
+  }
+
+  /**
+   * Pins the close-ownership rider from Task 1's re-review: {@link BedrockModelProvider#close()}
+   * must close only a {@code BedrockRuntimeAsyncClient} this provider built itself, never one
+   * supplied through {@link BedrockModelProvider.Builder#client(BedrockRuntimeAsyncClient)}. {@link
+   * BedrockModelProvider.Builder#wrap} is package-private specifically so this ownership branch is
+   * directly testable against {@link ScriptedBedrockRuntimeAsyncClient}'s close-tracking, without
+   * needing a real, network-capable SDK client on either side of the assertion.
+   */
+  @Nested
+  class CloseOwnership {
+
+    @Test
+    void an_internally_built_client_is_closed_when_the_provider_is_closed() {
+      var fake = ScriptedBedrockRuntimeAsyncClient.succeedingWith(List.of());
+      var provider = new BedrockModelProvider(BedrockModelProvider.Builder.wrap(fake, true));
+
+      provider.close();
+
+      assertThat(fake.isClosed()).isTrue();
+    }
+
+    @Test
+    void a_caller_supplied_client_is_not_closed_when_the_provider_is_closed() {
+      var fake = ScriptedBedrockRuntimeAsyncClient.succeedingWith(List.of());
+      var provider = new BedrockModelProvider(BedrockModelProvider.Builder.wrap(fake, false));
+
+      provider.close();
+
+      assertThat(fake.isClosed()).isFalse();
     }
   }
 }

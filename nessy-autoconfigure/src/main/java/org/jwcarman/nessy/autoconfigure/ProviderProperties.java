@@ -17,12 +17,17 @@ package org.jwcarman.nessy.autoconfigure;
 
 /**
  * Property keys and provider class names shared by {@link AnthropicProviderAutoConfiguration},
- * {@link OpenAiProviderAutoConfiguration}, and {@link GeminiProviderAutoConfiguration}'s selection
- * conditions.
+ * {@link OpenAiProviderAutoConfiguration}, {@link GeminiProviderAutoConfiguration}, and {@link
+ * BedrockProviderAutoConfiguration}'s selection conditions.
  *
- * <p>Hoisted into one place so the three autoconfigurations' mirrored selection logic can never
+ * <p>Hoisted into one place so the four autoconfigurations' mirrored selection logic can never
  * desync on a literal — a typo in a copy-pasted string constant would otherwise fail silently on
  * one side only.
+ *
+ * <p>{@code BEDROCK_KEY_PROPERTY} deliberately does not exist: Bedrock is explicit-selection-only
+ * (bedrock-provider design §4) — it is never "keyed" the way the other three are, so it never
+ * participates in {@link AnthropicProviderAutoConfiguration.AmbiguousProviderCondition}'s keyed
+ * count. Only {@code BEDROCK_PROVIDER_CLASS_NAME} is needed, for classpath-presence checks.
  */
 final class ProviderProperties {
 
@@ -36,6 +41,8 @@ final class ProviderProperties {
       "org.jwcarman.nessy.model.openai.OpenAiModelProvider";
   static final String GEMINI_PROVIDER_CLASS_NAME =
       "org.jwcarman.nessy.model.gemini.GeminiModelProvider";
+  static final String BEDROCK_PROVIDER_CLASS_NAME =
+      "org.jwcarman.nessy.model.bedrock.BedrockModelProvider";
 
   private ProviderProperties() {}
 }
