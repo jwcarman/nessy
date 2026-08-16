@@ -40,6 +40,8 @@ import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The default {@code CallModel} performance: recall from Memory, stream from the provider, merge
@@ -53,6 +55,8 @@ import org.jwcarman.nessy.spi.model.ModelStream;
  * settled usage the instant {@link ModelEvent.TurnEnded} arrives.
  */
 public final class ProviderModelCallExecutor implements ModelCallExecutor {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ProviderModelCallExecutor.class);
 
   private final ModelProvider provider;
   private final ModelSettings config;
@@ -132,9 +136,19 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
       throw new IllegalStateException("model stream ended without a TurnEnded event");
     } catch (ContextOverflowException e) {
       return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), e.getMessage()));
-    } catch (RuntimeException e) {
+    } catch (IllegalStateException e) {
+      // Our own protocol invariant broke, not the provider's call: a bug to surface loudly, not a
+      // fate to fold quietly.
       modelCall.error(e);
       throw e;
+    } catch (RuntimeException e) {
+      // Everything else the provider call or stream consumption can throw — a 403, a socket reset,
+      // whatever a provider SDK decides to raise — folds to ModelCallFailed instead of leaking out
+      // of execute() and leaving the conversation stuck at AWAITING_MODEL.
+      modelCall.error(e);
+      LOGGER.error("model call failed", e);
+      String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
+      return Awaited.ready(new ConversationEvent.ModelCallFailed(state.id(), reason));
     } finally {
       modelCall.stop();
     }

@@ -226,6 +226,40 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
+  void a_runtime_exception_from_the_provider_becomes_the_failure_fact_not_an_exception() {
+    ProviderModelCallExecutor executor =
+        new ProviderModelCallExecutor(
+            throwingProvider(new RuntimeException("403: no credits")),
+            settings(),
+            ToolRegistry.of(),
+            memory,
+            ObservationRegistry.NOOP);
+
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    ConversationEvent.ModelCallFailed fact =
+        (ConversationEvent.ModelCallFailed) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.reason()).contains("RuntimeException").contains("403: no credits");
+  }
+
+  @Test
+  void a_runtime_exception_mid_stream_becomes_the_failure_fact_not_an_exception() {
+    ProviderModelCallExecutor executor =
+        new ProviderModelCallExecutor(
+            midStreamThrowingProvider(new RuntimeException("connection reset")),
+            settings(),
+            ToolRegistry.of(),
+            memory,
+            ObservationRegistry.NOOP);
+
+    Awaited<ConversationEvent> outcome = executor.execute(state, observed::add);
+
+    ConversationEvent.ModelCallFailed fact =
+        (ConversationEvent.ModelCallFailed) ((Awaited.Ready<ConversationEvent>) outcome).value();
+    assertThat(fact.reason()).contains("RuntimeException").contains("connection reset");
+  }
+
+  @Test
   void a_stream_that_ends_without_turn_ended_throws() {
     ProviderModelCallExecutor executor = executorStreaming(new ModelEvent.TextChunk("hi"));
 
@@ -281,6 +315,54 @@ class ProviderModelCallExecutorTest {
       @Override
       public ModelStream stream(ModelRequest request) {
         throw new ContextOverflowException("too long");
+      }
+
+      @Override
+      public Set<Capability> capabilities() {
+        return Set.of();
+      }
+    };
+  }
+
+  private static ModelProvider throwingProvider(RuntimeException failure) {
+    return new ModelProvider() {
+      @Override
+      public ModelStream stream(ModelRequest request) {
+        throw failure;
+      }
+
+      @Override
+      public Set<Capability> capabilities() {
+        return Set.of();
+      }
+    };
+  }
+
+  private static ModelProvider midStreamThrowingProvider(RuntimeException failure) {
+    return new ModelProvider() {
+      @Override
+      public ModelStream stream(ModelRequest request) {
+        return new ModelStream() {
+          @Override
+          public Iterator<ModelEvent> iterator() {
+            return new Iterator<>() {
+              @Override
+              public boolean hasNext() {
+                return true;
+              }
+
+              @Override
+              public ModelEvent next() {
+                throw failure;
+              }
+            };
+          }
+
+          @Override
+          public void close() {
+            // scripted stream owns no resource; nothing to release.
+          }
+        };
       }
 
       @Override
