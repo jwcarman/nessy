@@ -279,6 +279,20 @@ ModelProvider provider =
     OpenAiModelProvider.builder().apiKey(key).baseUrl("https://openrouter.ai/api/v1").build();
 ```
 
+**Groq** (validated 2026-08-16 — the chip company with the LPU inference
+silicon, no relation to xAI's Grok — serving open-weight models at extreme
+speed; `openai/gpt-oss-120b` through chat-cli: text, an approval-gated tool
+round trip, and a notebook write, with time-to-first-token in the tens of
+milliseconds. Keys are `gsk_...` from console.groq.com. One field-tested
+quirk: a freshly minted key can intermittently 401 for a few minutes while
+it propagates across their edge — the failed request won't even appear in
+their logs; just retry):
+
+```java
+ModelProvider provider =
+    OpenAiModelProvider.builder().apiKey(key).baseUrl("https://api.groq.com/openai/v1").build();
+```
+
 **NVIDIA NIM** (validated 2026-08-16 — the free open-weight
 `nvidia/nemotron-3.5-lightning-30b-a3b` on NVIDIA's free developer tier,
 through chat-cli: text, an approval-gated tool round trip, and a notebook

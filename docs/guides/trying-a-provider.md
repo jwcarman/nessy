@@ -113,6 +113,18 @@ $ OPENAI_API_KEY=sk-or-... OPENAI_BASE_URL=https://openrouter.ai/api/v1 \
     ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
 ```
 
+**Groq** (free tier; the LPU chip company, unrelated to xAI's Grok — keys
+are `gsk_...` from console.groq.com; the validated path is
+`openai/gpt-oss-120b`, served at extreme speed. A freshly minted key can
+intermittently 401 for a few minutes while it propagates across their
+edge — the failed request won't appear in their logs; just retry):
+
+```console
+$ OPENAI_API_KEY=gsk_... OPENAI_BASE_URL=https://api.groq.com/openai/v1 \
+    NESSY_MODEL=openai/gpt-oss-120b \
+    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+```
+
 **NVIDIA NIM** (free developer tier; keys are `nvapi-...` from
 build.nvidia.com, model ids are NVIDIA's catalog ids — the validated path is
 the free open-weight `nvidia/nemotron-3.5-lightning-30b-a3b`, which drove
