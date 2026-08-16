@@ -178,42 +178,25 @@ public interface Enricher<E> {
   string schema that is not a valid parameter object for OpenAI or Anthropic. The
   vocabulary is therefore a record or a POJO; an enum is how you box a FIELD inside
   one, never the vocabulary itself.
-  - **Sealed interfaces of records are REJECTED in v1 (amended after empirical
-    finding, Task 3b):** victools 4.38.0 renders a sealed interface as a bare
-    `{"type":"object"}` — no `oneOf`, no properties — so the model receives an empty
-    schema and Jackson cannot reconstruct the abstract type without `@JsonTypeInfo`
-    and subtype-resolver wiring nessy does not do. Accepting it at wiring time and
-    failing at call time is silent non-functionality; nessy does not ship advertised
-    paths that do not work. The wiring gate therefore rejects abstract types
-    (interfaces, abstract classes) with a message naming the flat-record-with-
-    discriminator fallback. Polymorphic vocabularies return when the schema
-    machinery earns them — a roadmap item, not a v1 promise. Open-ended intent
-  means declaring your own shape (`record OpenIntent(String what, String why)`) —
-  which is better than a free string anyway, because the fields carry the questions.
-  `intent(...)` REJECTS at wiring time any type that cannot render as an object schema
-  (String, primitives and their boxes, enums, collections, arrays), with a message
-  naming the offending type and telling the caller to wrap it in a record.
-- **Lifetime: until re-declared or cleared**, scoped to the conversation.
-- **Wired by one field on the agent (amended after owner review — IntentSupport is
-  WITHDRAWN):** `AgentConfig<I>.intent(Class<?> intentType)` is the whole public
-  surface. The build assembles the declare tool, the clear tool, and the reading
-  enricher internally from that type plus the harness's store; the user never learns
-  a second noun. The withdrawn `IntentSupport<V>` failed on its own signature —
-  `AgentConfig<I>` is parameterized on the AGENT'S input type, so `V` could only ever
-  be a method-level type variable appearing in one argument and nowhere in the return:
-  decoration, not typing. It would have bought `support.declaredIn(ctx)` over
-  `context.declaredIntent(RefundIntent.class)` — one class token, written where the
-  vocabulary is already known — at the price of a permanent public type at 0.1.0.
-  - One field makes the one-intent-per-agent rule true by construction (a second
-    call is a wiring-time error, not a runtime row overwrite).
-  - `HarnessConfig.intentStore(...)` follows every other store (in-memory default,
-    inherited by agents), so the shipped example reads `.intent(RefundIntent.class)`
-    and nothing else. No ordering hazard against `.grant(...)`: policy lambdas run
-    per call, not at wiring.
-  - Policies read the blessed accessor `context.declaredIntent(Class<T>)`; storage
-    stays the single `DECLARED_INTENT` (`Key<Object>`) so vocabulary-blind readers (the §8
-    report, audit rendering) keep working, and app-defined keys remain the seam for
-    anyone running their own intent discipline.
+  - **The gate validates the RENDERED SCHEMA, not the Java construct (amended after
+    owner review — the earlier abstract-type ban is WITHDRAWN as arbitrary):** the
+    invariant is that a vocabulary must render a schema a model can actually fill —
+    an object with at least one property, or a `oneOf`/`anyOf` of such objects.
+    Rejecting abstract types was a proxy for that, and a bad one in both directions:
+    it UNDER-rejected (a concrete POJO with no accessible properties renders the same
+    empty `{"type":"object"}` and passed), and it OVER-rejected (sealed interfaces
+    render poorly only because nessy's victools configuration enables no subtype
+    resolution — a gap in our wiring, elevated by mistake into a permanent
+    prohibition). The schema check is available for free: the wiring gate already
+    probes the schema, so it can assert the real property instead of a stand-in for it.
+  - Empirical finding that prompted this (Task 3b, still true): victools 4.38.0 with
+    nessy's current configuration renders a sealed interface of records as a bare
+    `{"type":"object"}` — no `oneOf`, no properties. Under the schema check such a
+    vocabulary is rejected with a message showing what it rendered and naming the
+    concrete-record-with-discriminator fallback. Should nessy later ship subtype
+    resolution, the same gate admits polymorphic vocabularies with no rule change —
+    that is the point of measuring the schema rather than the construct. Shipping that
+    resolution is a separate, additive question, deliberately left open.
   - Implementation note (as built): the declare/clear tools and the reader enricher
     are package-private in `org.jwcarman.nessy` (`IntentAssembly`), NOT under
     `spi/intent/` — deliberate, so `Tool` stays the only sanctioned api→internal
