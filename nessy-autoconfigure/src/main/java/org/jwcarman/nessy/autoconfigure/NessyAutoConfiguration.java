@@ -22,6 +22,7 @@ import org.jwcarman.nessy.Nessy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -42,9 +43,9 @@ import org.springframework.util.StringUtils;
  * <p>Runs after {@link AnthropicProviderAutoConfiguration}, {@link
  * OpenAiProviderAutoConfiguration}, {@link GeminiProviderAutoConfiguration}, and {@link
  * JdbcPersistenceAutoConfiguration} so whichever {@link ModelProvider}, {@link ConversationStore},
- * or {@link Parks} those produce are already in the context by the time {@link #harness} runs.
- * {@link ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means this configuration stays
- * inert until some provider module is present and resolved; {@link
+ * {@link Parks}, or {@link SubagentLinks} those produce are already in the context by the time
+ * {@link #harness} runs. {@link ConditionalOnBean @ConditionalOnBean(ModelProvider.class)} means
+ * this configuration stays inert until some provider module is present and resolved; {@link
  * ConditionalOnMissingBean @ConditionalOnMissingBean(Harness.class)} means a user-declared {@link
  * Harness} bean always wins outright, this class never runs a second pass over it.
  *
@@ -72,11 +73,13 @@ public class NessyAutoConfiguration {
       NessyProperties properties,
       ObjectProvider<ConversationStore> store,
       ObjectProvider<Parks> parks,
+      ObjectProvider<SubagentLinks> subagentLinks,
       ObjectProvider<ObservationRegistry> observations,
       ObjectProvider<ObjectMapper> mapper) {
     var builder = Nessy.harness(provider);
     store.ifAvailable(builder::store);
     parks.ifAvailable(builder::parks);
+    subagentLinks.ifAvailable(builder::subagentLinks);
     observations.ifAvailable(builder::observations);
     mapper.ifAvailable(builder::mapper);
     if (StringUtils.hasText(properties.defaultModel())) {

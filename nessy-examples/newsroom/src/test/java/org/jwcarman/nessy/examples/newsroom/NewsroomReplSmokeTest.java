@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
-import org.jwcarman.nessy.api.ConversationSettled;
 import org.jwcarman.nessy.api.StopReason;
 import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
@@ -54,8 +53,6 @@ import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.notebook.NotebookTools;
 import org.jwcarman.nessy.spi.plan.PlanStore;
 import org.jwcarman.nessy.spi.plan.PlanTools;
-import org.jwcarman.nessy.spi.subagent.AgentTools;
-import org.jwcarman.nessy.spi.subagent.CallbackRouter;
 import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 
@@ -67,17 +64,20 @@ import org.jwcarman.nessy.spi.transcript.Transcript;
  * was never written" — final review SF-3), driven end to end over piped console I/O and a scripted
  * model, with no real database and no mocking library.
  *
- * <p>Wiring here mirrors {@link NewsroomAgents#agentsFor} — same tools, same gate, same shared
- * {@link SubjectId} — but swaps every {@code nessy-jdbc} door for its in-memory default, since
- * there is no in-memory-harness path through {@code agentsFor} itself (it takes a {@code
- * DataSource}); duplicating the dozen lines of tool/memory wiring here is cheaper than adding one.
+ * <p>Wiring here mirrors {@link NewsroomAgents#agentsFor} — same v2 construction surface (design of
+ * record 2026-08-16 §1: the researcher is declared inside the writer's own {@code .subagent(...)}
+ * call, no {@code AgentTools}, no {@code CallbackRouter}, no manual links wiring), same tools, same
+ * gate, same shared {@link SubjectId} — but swaps every {@code nessy-jdbc} door for its in-memory
+ * default, since there is no in-memory-harness path through {@code agentsFor} itself (it takes a
+ * {@code DataSource}); duplicating the dozen lines of tool/memory wiring here is cheaper than
+ * adding one.
  *
  * <p>One {@link ScriptedModelProvider} is shared by both agents, exactly as the real harness shares
  * one {@link org.jwcarman.nessy.spi.model.ModelProvider} — the turns queue in the order the loop
  * actually calls the model, regardless of which agent asks: the writer delegates, the researcher
  * asks a clarifying question and parks, the console approves it, the researcher's answer completes
- * it, {@link AgentTools#completions} wakes the writer synchronously inside that same {@code
- * approve} call, and the writer's own final turn prints.
+ * it, the harness's internally-wired completions listener wakes the writer synchronously inside
+ * that same {@code approve} call, and the writer's own final turn prints.
  */
 class NewsroomReplSmokeTest {
 
@@ -113,43 +113,21 @@ class NewsroomReplSmokeTest {
     Notebook notebook = Notebook.inMemory();
     PlanStore planStore = PlanStore.inMemory();
     SubagentLinks links = SubagentLinks.inMemory();
-    CallbackRouter router = new CallbackRouter();
     PendingAnswers pendingAnswers = new PendingAnswers();
     SubjectId subject = new SubjectId("newsroom-smoke-test");
     Function<ConversationId, SubjectId> subjectResolver = id -> subject;
 
     Harness harness =
-        Nessy.harness(provider)
-            .store(store)
-            .parks(parks)
-            .listen(ConversationSettled.class, AgentTools.completions(links, parks, router))
-            .build();
-
-    Agent<String> researcher =
-        harness
-            .agent()
-            .name("researcher")
-            .model("test-model")
-            .tools(
-                ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
-                ToolGrant.grant(new AskQuestionTool(pendingAnswers), UsagePolicy.requireApproval()))
-            .approver(Approver.parkAll())
-            .memory(
-                Memory.pipeline(transcript)
-                    .transform(NotebookTools.transformer(notebook, subjectResolver))
-                    .build())
-            .build();
+        Nessy.harness(provider).store(store).parks(parks).subagentLinks(links).build();
 
     Agent<String> writer =
         harness
             .agent()
             .name("writer")
             .model("test-model")
+            .approver(Approver.parkAll())
             .tools(
                 ToolGrant.grant(PlanTools.updatePlan(planStore), UsagePolicy.allow()),
-                ToolGrant.grant(
-                    AgentTools.subagent(researcher, "Delegates research to the researcher.", links),
-                    UsagePolicy.allow()),
                 ToolGrant.grant(
                     NotebookTools.remember(notebook, subjectResolver), UsagePolicy.allow()),
                 ToolGrant.grant(
@@ -161,13 +139,23 @@ class NewsroomReplSmokeTest {
                     .transform(PlanTools.transformer(planStore))
                     .transform(NotebookTools.transformer(notebook, subjectResolver))
                     .build())
+            .subagent(
+                sub ->
+                    sub.name("researcher")
+                        .description("Delegates research to the researcher.")
+                        .model("test-model")
+                        .tools(
+                            ToolGrant.grant(new SearchNotesTool(), UsagePolicy.allow()),
+                            ToolGrant.grant(
+                                new AskQuestionTool(pendingAnswers), UsagePolicy.requireApproval()))
+                        .memory(
+                            Memory.pipeline(transcript)
+                                .transform(NotebookTools.transformer(notebook, subjectResolver))
+                                .build()))
             .build();
 
-    router.register(writer);
-    router.register(researcher);
-
     NewsroomAgents.Built built =
-        new NewsroomAgents.Built(writer, researcher, planStore, pendingAnswers);
+        new NewsroomAgents.Built(writer, writer.subagent("researcher"), planStore, pendingAnswers);
     BufferedReader input =
         new BufferedReader(
             new StringReader("look into octopuses\ny\noctopuses have three hearts\nexit\n"));

@@ -28,13 +28,24 @@ import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.AgentConfigurationException;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.ParkToken;
+import org.jwcarman.nessy.api.approval.ApprovalRequest;
+import org.jwcarman.nessy.api.approval.Approver;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.InboxEntry;
+import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.model.ModelProvider;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -107,6 +118,58 @@ class NessyAutoConfigurationTest {
               Agent<String> agent = harness.agent().name("probe").model("probe-model").build();
               assertThat(agent.peek(token)).isPresent();
               assertThat(agent.peek(token).orElseThrow().token()).isEqualTo(token);
+            });
+  }
+
+  /**
+   * Final review SF-3: before this bean existed, a Boot app with {@code nessy-jdbc} on the
+   * classpath and a {@code .subagent(...)} declared got {@code SubagentLinks.inMemory()} regardless
+   * of what {@code JdbcPersistenceAutoConfiguration} produced, because nothing in {@link
+   * NessyAutoConfiguration} ever called {@code HarnessBuilder.subagentLinks(...)}. {@code
+   * Harness#subagentLinks()} is package-private, and — unlike {@link Parks}, which {@link
+   * Agent#peek} reads directly — no public {@link Agent}/{@link org.jwcarman.nessy.Subagent} door
+   * reads a {@link SubagentLinks} bean at all; it is purely {@code AgentTools}' own internal
+   * park-recipe bookkeeping. So the proof has to go through the actual delegation-park flow that
+   * touches it, the same probe technique {@link #a_store_bean_is_woven_in} uses for {@link
+   * ConversationStore}: a hand-instrumented {@link SubagentLinks}, standing in for the woven bean,
+   * records whether the harness's own internal machinery actually reaches it once a gated child
+   * parks.
+   */
+  @Test
+  void a_subagent_links_bean_is_woven_in() {
+    var probe = new ProbeSubagentLinks();
+    ScriptedModelProvider provider =
+        ScriptedModelProvider.builder()
+            .toolUse("d1", "researcher", JsonNodeFactory.instance.objectNode().put("task", "go"))
+            .endWithToolUse()
+            .toolUse("ask-1", "ask_question", JsonNodeFactory.instance.objectNode())
+            .endWithToolUse()
+            .build();
+    ParkingApprover approver = new ParkingApprover();
+    runner
+        .withBean("provider", ModelProvider.class, () -> provider)
+        .withBean("mine", SubagentLinks.class, () -> probe)
+        .run(
+            context -> {
+              Harness harness = context.getBean(Harness.class);
+              Agent<String> writer =
+                  harness
+                      .agent()
+                      .name("writer")
+                      .model("probe-model")
+                      .approver(approver)
+                      .subagent(
+                          sub ->
+                              sub.name("researcher")
+                                  .description("delegates research")
+                                  .model("probe-model")
+                                  .tools(
+                                      ToolGrant.grant(
+                                          new AskQuestionTool(), UsagePolicy.requireApproval())))
+                      .build();
+              assertThat(probe.saved()).isFalse();
+              writer.converse().tell("investigate");
+              assertThat(probe.saved()).isTrue();
             });
   }
 
@@ -184,6 +247,74 @@ class NessyAutoConfigurationTest {
     @Override
     public void append(ConversationId id, InboxEntry entry) {
       delegate.append(id, entry);
+    }
+  }
+
+  /**
+   * Delegates every operation to a fresh {@link SubagentLinks#inMemory()}, except {@link #save} —
+   * the call the internal subagent-tool machinery makes the moment a gated child parks — which is
+   * also recorded in {@link #saved()}, the observable proof {@link
+   * #a_subagent_links_bean_is_woven_in} reads instead of reflecting into {@link Harness}'s private
+   * field.
+   */
+  private static final class ProbeSubagentLinks implements SubagentLinks {
+
+    private final SubagentLinks delegate = SubagentLinks.inMemory();
+    private final AtomicBoolean saved = new AtomicBoolean();
+
+    boolean saved() {
+      return saved.get();
+    }
+
+    @Override
+    public Optional<ParkToken> find(ConversationId child) {
+      return delegate.find(child);
+    }
+
+    @Override
+    public void save(ConversationId child, ParkToken parentToken) {
+      saved.set(true);
+      delegate.save(child, parentToken);
+    }
+
+    @Override
+    public void forget(ConversationId child) {
+      delegate.forget(child);
+    }
+  }
+
+  record AskInput(String question) {}
+
+  /** A tool that always succeeds once invoked — the gate is what parks, not the tool itself. */
+  private static final class AskQuestionTool implements Tool<AskInput> {
+
+    @Override
+    public String name() {
+      return "ask_question";
+    }
+
+    @Override
+    public String description() {
+      return "Asks a clarifying question";
+    }
+
+    @Override
+    public Class<AskInput> inputType() {
+      return AskInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(AskInput input, ToolContext context) {
+      return Awaited.ready(ToolResult.ok("answered: " + input.question()));
+    }
+  }
+
+  /** Parks the first call it is asked. */
+  private static final class ParkingApprover implements Approver {
+
+    @Override
+    public Awaited<Decision> approve(ApprovalRequest request) {
+      return Awaited.parked(ParkToken.generate());
     }
   }
 }

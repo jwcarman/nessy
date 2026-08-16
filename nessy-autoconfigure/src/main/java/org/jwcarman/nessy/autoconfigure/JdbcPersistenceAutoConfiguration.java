@@ -24,12 +24,14 @@ import org.jwcarman.nessy.jdbc.JdbcNotebook;
 import org.jwcarman.nessy.jdbc.JdbcParks;
 import org.jwcarman.nessy.jdbc.JdbcPersistence;
 import org.jwcarman.nessy.jdbc.JdbcPlanStore;
+import org.jwcarman.nessy.jdbc.JdbcSubagentLinks;
 import org.jwcarman.nessy.jdbc.JdbcTranscript;
 import org.jwcarman.nessy.spi.conversation.ConversationStore;
 import org.jwcarman.nessy.spi.conversation.Parks;
 import org.jwcarman.nessy.spi.memory.Memory;
 import org.jwcarman.nessy.spi.notebook.Notebook;
 import org.jwcarman.nessy.spi.plan.PlanStore;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -172,6 +174,29 @@ public class JdbcPersistenceAutoConfiguration {
   @ConditionalOnMissingBean
   Memory memory(Transcript transcript) {
     return Memory.pipeline(transcript).build();
+  }
+
+  /**
+   * The subagent facility's own correlation store (design of record 2026-08-16 §3) — flows into
+   * {@link org.jwcarman.nessy.autoconfigure.NessyAutoConfiguration}'s harness the same way {@link
+   * #conversationStore}/{@link #parks} do (final review SF-3: before this bean existed, a Boot app
+   * with {@code nessy-jdbc} on the classpath and a {@code .subagent(...)} declared got {@code
+   * SubagentLinks.inMemory()} regardless — the exact durability gap {@code AgentBuilder}'s own
+   * agent-level WARN describes — because nothing in this module ever called {@code
+   * HarnessBuilder.subagentLinks(...)}). {@link JdbcSubagentLinks}, unlike {@link
+   * #conversationStore}/{@link #parks}/{@link #transcript}, has no {@link ObjectMapper}-accepting
+   * {@code create}/constructor overload ({@code nessy_subagent_links} carries no JSON column — a
+   * child conversation id and a parent token, both plain strings), so this bean method does not go
+   * through the shared {@link #build} helper; unlike {@link #planStore}/{@link #notebook}, though,
+   * {@link JdbcSubagentLinks} DOES offer an explicit-dialect constructor, so the non-bootstrap
+   * branch here honors {@code nessy.jdbc.dialect} the same way the bootstrap branch does.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  SubagentLinks subagentLinks(DataSource dataSource, NessyProperties properties) {
+    return properties.bootstrapSchema()
+        ? JdbcSubagentLinks.create(dataSource, resolveDialect(properties))
+        : new JdbcSubagentLinks(dataSource, resolveDialect(properties));
   }
 
   private static ObjectMapper resolveMapper(ObjectProvider<ObjectMapper> mapper) {

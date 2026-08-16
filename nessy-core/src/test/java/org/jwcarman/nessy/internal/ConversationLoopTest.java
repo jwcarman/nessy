@@ -159,6 +159,19 @@ class ConversationLoopTest {
    * A tool executor whose calls park under a scripted token, and whose {@code resume} settles them
    * with a scripted fact — counting how many times {@code resume} actually ran, so a test can pin
    * at-least-once-delivery-but-exactly-once-effect for a token reused by a redelivered resolution.
+   *
+   * <p>Design §4 (the re-park fix): {@code resume} may itself park a call a second time, exactly
+   * the shape a gated delegation's own execution wait takes once its approval is granted. {@link
+   * #reparksOnResume} scripts the idempotent case — the same token every time, standing in for the
+   * subagent tool's own snapshot short-circuit on a redelivered resolution; {@link
+   * #reparksOnResumeWithAnotherCallsToken} scripts a misbehaving tool that hands back a token that
+   * is somebody else's wait entirely; {@link #parksOnFirstResumeThenSettles} scripts the two-wait
+   * timeline itself — the first resume parks for the call's own execution wait, the second (a
+   * later, distinct resolution) settles it; {@link #resumeYields} queues an exact, ordered sequence
+   * of outcomes per call id, one popped per {@code resume} call — for scripting the same call id
+   * living through two independent park episodes across two turns (design review round 1, Finding
+   * 2: call ids legally recur — a Gemini response missing a function-call id mints one from a
+   * per-response counter that restarts every turn).
    */
   private static final class ParkingToolCallExecutor implements ToolCallExecutor {
 
@@ -167,6 +180,12 @@ class ConversationLoopTest {
     private final Map<String, ConversationEvent> settleResults = new HashMap<>();
     private final Map<String, ConversationEvent> resumeResults = new HashMap<>();
     private final Map<String, ParkToken> reparkOnResume = new HashMap<>();
+    private final Map<String, ParkToken> reparkWithForeignToken = new HashMap<>();
+    private final Map<String, ParkToken> parksOnFirstResumeOnly = new HashMap<>();
+    private final Map<String, ConversationEvent> settlesAfterFirstResume = new HashMap<>();
+    private final Map<String, Integer> resumeCallsByCallId = new HashMap<>();
+    private final Map<String, Deque<Supplier<Awaited<ConversationEvent>>>> resumeScripts =
+        new HashMap<>();
     private int resumeCalls;
 
     ParkingToolCallExecutor(List<String> journal) {
@@ -191,11 +210,46 @@ class ConversationLoopTest {
     }
 
     /**
-     * A legitimate executor outcome the loop's own re-park guard refuses this generation:
-     * approval-resume invokes the tool, and the tool itself parks again.
+     * Every {@code resume} of {@code callId} parks again under the exact same token — the
+     * idempotent-tool shape a redelivered resolution must fold as a no-op.
      */
     ParkingToolCallExecutor reparksOnResume(String callId) {
       reparkOnResume.put(callId, ParkToken.generate());
+      return this;
+    }
+
+    /**
+     * Every {@code resume} of {@code callId} parks under {@code foreignToken} — a token already
+     * registered to some other wait entirely (a sibling call, most concretely). The loop must never
+     * fold this as a replay of {@code callId}'s own wait.
+     */
+    ParkingToolCallExecutor reparksOnResumeWithAnotherCallsToken(
+        String callId, ParkToken foreignToken) {
+      reparkWithForeignToken.put(callId, foreignToken);
+      return this;
+    }
+
+    /**
+     * The first {@code resume} of {@code callId} parks under {@code executionToken} — the call's
+     * own execution wait, minted fresh once its approval is granted; every later {@code resume}
+     * settles with {@code settleFact} instead — the second resolution, answering that execution
+     * wait.
+     */
+    ParkingToolCallExecutor parksOnFirstResumeThenSettles(
+        String callId, ParkToken executionToken, ConversationEvent settleFact) {
+      parksOnFirstResumeOnly.put(callId, executionToken);
+      settlesAfterFirstResume.put(callId, settleFact);
+      return this;
+    }
+
+    /**
+     * Queues one more scripted outcome for the next {@code resume} of {@code callId} — consumed
+     * first-in-first-out, one per call, independent of any of the other scripting methods (checked
+     * first). Lets a test drive the same call id through several independent park episodes (e.g.
+     * two separate turns) with exact control over each one's own resume sequence.
+     */
+    ParkingToolCallExecutor resumeYields(String callId, Awaited<ConversationEvent> outcome) {
+      resumeScripts.computeIfAbsent(callId, ignored -> new ArrayDeque<>()).addLast(() -> outcome);
       return this;
     }
 
@@ -224,9 +278,26 @@ class ConversationLoopTest {
         ToolCall call, ToolResolution resolution, ConversationState state, TurnObserver observer) {
       journal.add("resume:" + call.id());
       resumeCalls++;
-      ParkToken reparkToken = reparkOnResume.get(call.id());
-      if (reparkToken != null) {
-        return Awaited.parked(reparkToken);
+      Deque<Supplier<Awaited<ConversationEvent>>> script = resumeScripts.get(call.id());
+      if (script != null && !script.isEmpty()) {
+        return script.pollFirst().get();
+      }
+      int callCount = resumeCallsByCallId.merge(call.id(), 1, Integer::sum);
+      ParkToken foreignToken = reparkWithForeignToken.get(call.id());
+      if (foreignToken != null) {
+        return Awaited.parked(foreignToken);
+      }
+      ParkToken fixedReparkToken = reparkOnResume.get(call.id());
+      if (fixedReparkToken != null) {
+        return Awaited.parked(fixedReparkToken);
+      }
+      ParkToken executionToken = parksOnFirstResumeOnly.get(call.id());
+      if (executionToken != null && callCount == 1) {
+        return Awaited.parked(executionToken);
+      }
+      ConversationEvent settleFact = settlesAfterFirstResume.get(call.id());
+      if (settleFact != null) {
+        return Awaited.ready(settleFact);
       }
       ConversationEvent fact = resumeResults.get(call.id());
       if (fact == null) {
@@ -1678,21 +1749,169 @@ class ConversationLoopTest {
           .filteredOn(e -> e instanceof TurnEvent.TurnEnded)
           .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
     }
+  }
+
+  /**
+   * Design §4, the re-park fix: parking is a repeatable state of a call, not a one-shot. An
+   * approval-resume that invokes the tool, and the tool itself parks again, is now a legitimate
+   * second wait for the same call — the v1 refusal these tests used to pin is gone. What survives
+   * from v1 is narrower: at most one OUTSTANDING park per call. A resolved park is history, not a
+   * lock; the drained resolution is consumed by the execution it triggers whatever that execution's
+   * outcome — ok, error, or a fresh park; a redelivered resolution that reparks under the very same
+   * token it minted last time is an idempotent no-op; a park under a token that has never been seen
+   * before, arriving while a different token is already on record for the call, is refused loud.
+   */
+  @Nested
+  class Repeatable_parking {
 
     /**
-     * Opus fix round 1, Finding 2 (Important): a throw between accepting a resolution and folding
-     * its fact must not destroy the only copy of that resolution. The re-park guard is a real,
-     * reachable throw (approval-resume invokes the tool, and the tool parks again) — this pins that
-     * the Resolved entry survives it, on the inbox, for a future retry.
+     * The two-wait timeline spec §4 exists for: a gated tool parks for approval, the approval is
+     * granted, the tool's own execution itself parks under a brand new token (the call stays
+     * outstanding — {@code applyParked}'s single narration choke point fires a second time, so
+     * {@code Parks} ends up holding both stamps, the newer one the one still outstanding), and only
+     * once that second wait is itself resolved does the turn actually complete.
      */
     @Test
-    void a_throwing_resume_leaves_the_resolution_on_the_inbox_for_retry() {
+    void the_full_two_wait_timeline_parks_for_approval_then_execution_then_completes() {
       List<String> journal = new ArrayList<>();
-      ToolCall c1 = toolCall("c1", "search");
+      ToolCall c1 = toolCall("c1", "delegate");
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(journal, homework(c1), plainAnswer("Delegated result."));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken approvalToken = tools.parksWhen("c1");
+      ParkToken executionToken = ParkToken.generate();
+      tools.parksOnFirstResumeThenSettles(
+          "c1", executionToken, new ConversationEvent.ToolFinished(ID, c1, ToolResult.ok("done")));
+      Parks parks = Parks.inMemory();
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  parks,
+                  new RecordingEmitter(journal)),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+      List<TurnEvent> events = new ArrayList<>();
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate x"), events::add);
+
+      // Approve: the gate clears, the tool itself parks under a fresh, second token. Narration for
+      // just this drive is captured separately too, so the repark's own TurnEnded can be pinned
+      // without the earlier loop.run's own narration muddying the count (review round 1, Note 5).
+      store.append(ID, InboxEntry.resolved(c1.id(), new ToolResolution.Decided(Decision.allow())));
+      List<TurnEvent> approvalResumeEvents = new ArrayList<>();
+      RunOutcome afterApproval =
+          loop.drive(
+              ID,
+              event -> {
+                events.add(event);
+                approvalResumeEvents.add(event);
+              });
+
+      assertThat(afterApproval).isInstanceOf(RunOutcome.Parked.class);
+      assertThat(afterApproval.state().status()).isEqualTo(ConversationStatus.PARKED);
+      assertThat(afterApproval.state().parkedCalls()).containsExactly(c1);
+      assertThat(parks.find(approvalToken)).isPresent();
+      assertThat(parks.find(executionToken))
+          .contains(new Parks.Park(ID, executionToken, c1, "loop-test-agent"));
+      List<TurnEvent.ToolCallParked> parkStamps =
+          events.stream()
+              .filter(TurnEvent.ToolCallParked.class::isInstance)
+              .map(TurnEvent.ToolCallParked.class::cast)
+              .toList();
+      assertThat(parkStamps).isNotEmpty();
+      assertThat(parkStamps)
+          .containsExactly(
+              new TurnEvent.ToolCallParked(c1, approvalToken),
+              new TurnEvent.ToolCallParked(c1, executionToken));
+      assertThat(approvalResumeEvents)
+          .filteredOn(TurnEvent.TurnEnded.class::isInstance)
+          .containsExactly(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+
+      // Resolve the second (still outstanding) token: the turn finally completes.
+      store.append(ID, InboxEntry.resolved(c1.id(), new ToolResolution.Decided(Decision.allow())));
+      RunOutcome afterExecution = loop.drive(ID, events::add);
+
+      assertThat(afterExecution).isInstanceOf(RunOutcome.Completed.class);
+      assertThat(afterExecution.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(afterExecution.state().parkedCalls()).isEmpty();
+      assertThat(tools.resumeCalls()).isEqualTo(2);
+    }
+
+    /**
+     * A redelivered resolution — every real transport is at-least-once — that reparks the same call
+     * under the exact same token it already registered is the idempotent replay shape the subagent
+     * tool's own snapshot short-circuit produces. It must fold as a no-op: no third {@code
+     * ToolCallParked} stamp, the call's outstanding membership unchanged, the redelivered entry
+     * still drained so it does not linger forever.
+     */
+    @Test
+    void a_redelivered_resolution_that_reparks_with_the_same_token_is_an_idempotent_no_op() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "delegate");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ParkToken approvalToken = tools.parksWhen("c1");
+      tools.reparksOnResume("c1");
+      Parks parks = Parks.inMemory();
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  parks,
+                  new RecordingEmitter(journal)),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+      List<TurnEvent> events = new ArrayList<>();
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate x"), events::add);
+      store.append(ID, InboxEntry.resolved(c1.id(), new ToolResolution.Decided(Decision.allow())));
+      RunOutcome firstRepark = loop.drive(ID, events::add);
+      assertThat(firstRepark.state().parkedCalls()).containsExactly(c1);
+
+      // Redelivery: the very same approval resolution arrives a second time.
+      store.append(ID, InboxEntry.resolved(c1.id(), new ToolResolution.Decided(Decision.allow())));
+      RunOutcome replayed = loop.drive(ID, events::add);
+
+      assertThat(tools.resumeCalls()).isEqualTo(2);
+      assertThat(replayed.state().status()).isEqualTo(firstRepark.state().status());
+      assertThat(replayed.state().parkedCalls()).isEqualTo(firstRepark.state().parkedCalls());
+      assertThat(store.load(ID).orElseThrow().inbox()).isEmpty();
+      long approvalStamps =
+          events.stream()
+              .filter(TurnEvent.ToolCallParked.class::isInstance)
+              .map(TurnEvent.ToolCallParked.class::cast)
+              .filter(stamp -> stamp.token().equals(approvalToken))
+              .count();
+      assertThat(approvalStamps).isEqualTo(1);
+      long totalParkStamps =
+          events.stream().filter(TurnEvent.ToolCallParked.class::isInstance).count();
+      assertThat(totalParkStamps).isEqualTo(2); // approval + the one legitimate repark, no third
+    }
+
+    /**
+     * Design review round 1, Finding 2: the executor contract (traced against {@code
+     * GatedToolCallExecutor.resume}) only ever reparks in answer to a {@code Decided} resolution —
+     * a {@code Completed} one always settles or fails. A never-seen token minted in answer to a
+     * {@code Completed} resolution is therefore never the ordinary approval-then-execution
+     * transition; it is refused loud rather than silently accepted as a legitimate second wait, and
+     * the resolution survives on the inbox for a future, corrected retry — the same
+     * retry-preserving shape v1's blanket refusal always had.
+     */
+    @Test
+    void a_park_answering_a_completed_resolution_fails_loud_instead_of_silently_reparking() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "delegate");
       ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
       ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
       tools.parksWhen("c1");
-      tools.reparksOnResume("c1");
+      tools.reparksOnResume("c1"); // a fresh, never-registered token: the answer itself is wrong
       ConversationStore store = ConversationStore.inMemory();
       ConversationLoop loop =
           new ConversationLoop(
@@ -1705,14 +1924,194 @@ class ConversationLoopTest {
                   new RecordingEmitter(journal)),
               ObservationRegistry.NOOP,
               "loop-test-agent");
-      loop.run(ID, ConversationEvent.AgentTold.of(ID, "search x"), OBSERVER);
-      InboxEntry.Resolved resolvedEntry =
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate x"), OBSERVER);
+
+      InboxEntry.Resolved completed =
+          InboxEntry.resolved(c1.id(), new ToolResolution.Completed(ToolResult.ok("premature")));
+      store.append(ID, completed);
+
+      assertThatThrownBy(() -> loop.drive(ID, OBSERVER))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("c1")
+          .hasMessageContaining("outstanding");
+
+      assertThat(store.load(ID).orElseThrow().inbox()).containsExactly(completed);
+    }
+
+    /**
+     * Design review round 1, Finding 1: a resumed call whose tool hands back a token that is
+     * already registered — but to a <em>sibling</em> call, not this one — must never be folded as
+     * this call's own replay. Doing so would drain the only copy of the resolution, register
+     * nothing new for this call, and leave it parked forever with no live token anywhere naming it
+     * — the exact silent wedge the corrected identity check exists to prevent. The corrected rule
+     * refuses loud instead, and the call stays recoverable: still outstanding, its resolution still
+     * on the inbox for a corrected retry.
+     */
+    @Test
+    void a_park_answering_with_a_sibling_calls_token_fails_loud_instead_of_replaying() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "delegate");
+      ToolCall c2 = toolCall("c2", "delegate");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1, c2));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.parksWhen("c1");
+      ParkToken siblingToken = tools.parksWhen("c2");
+      tools.reparksOnResumeWithAnotherCallsToken("c1", siblingToken);
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate x"), OBSERVER);
+
+      InboxEntry.Resolved approveC1 =
           InboxEntry.resolved(c1.id(), new ToolResolution.Decided(Decision.allow()));
-      store.append(ID, resolvedEntry);
+      store.append(ID, approveC1);
 
-      assertThatThrownBy(() -> loop.drive(ID, OBSERVER)).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> loop.drive(ID, OBSERVER))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("c1")
+          .hasMessageContaining("outstanding");
 
-      assertThat(store.load(ID).orElseThrow().inbox()).containsExactly(resolvedEntry);
+      // Not silently wedged: c1's resolution is still there for a corrected retry, and c1 itself
+      // is still parked (recoverable) rather than lost.
+      assertThat(store.load(ID).orElseThrow().inbox()).containsExactly(approveC1);
+      assertThat(store.load(ID).orElseThrow().state().parkedCalls())
+          .extracting(ToolCall::id)
+          .contains(c1.id());
+    }
+
+    /**
+     * Design review round 1, Finding 2's required proof: call ids legally recur across turns of the
+     * same conversation (a Gemini response missing a function-call id mints one from a per-response
+     * counter that restarts every turn — {@code GeminiStream}, pinned by {@code GeminiStreamTest}).
+     * The classification rule must key off the current wait, not a lifetime count of every {@code
+     * Parks} entry a call id has ever accumulated: two entirely separate gated delegations sharing
+     * one recurred call id, each living its own full two-wait lifecycle, must both complete without
+     * ever tripping the one-outstanding guard.
+     */
+    @Test
+    void two_gated_delegations_with_a_recurring_call_id_across_turns_both_complete() {
+      List<String> journal = new ArrayList<>();
+      ToolCall firstTurnCall = toolCall("c1", "delegate");
+      ToolCall secondTurnCall = toolCall("c1", "delegate");
+      ScriptedModelCallExecutor model =
+          new ScriptedModelCallExecutor(
+              journal,
+              homework(firstTurnCall),
+              plainAnswer("first done."),
+              homework(secondTurnCall),
+              plainAnswer("second done."));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+
+      // Turn 1: c1's own two-wait lifecycle, start to finish.
+      tools.parksWhen("c1");
+      ParkToken firstExecutionToken = ParkToken.generate();
+      tools.resumeYields("c1", Awaited.parked(firstExecutionToken));
+      tools.resumeYields(
+          "c1",
+          Awaited.ready(
+              new ConversationEvent.ToolFinished(ID, firstTurnCall, ToolResult.ok("r1"))));
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate x"), OBSERVER);
+      store.append(ID, InboxEntry.resolved("c1", new ToolResolution.Decided(Decision.allow())));
+      loop.drive(ID, OBSERVER); // approval granted, c1 reparks under firstExecutionToken
+      store.append(
+          ID, InboxEntry.resolved("c1", new ToolResolution.Completed(ToolResult.ok("r1"))));
+      RunOutcome firstTurn = loop.drive(ID, OBSERVER);
+      assertThat(firstTurn.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+
+      // Turn 2: the SAME call id "c1" lives an entirely independent second two-wait lifecycle.
+      tools.parksWhen("c1"); // a fresh approval token for this turn's episode
+      ParkToken secondExecutionToken = ParkToken.generate();
+      tools.resumeYields("c1", Awaited.parked(secondExecutionToken));
+      tools.resumeYields(
+          "c1",
+          Awaited.ready(
+              new ConversationEvent.ToolFinished(ID, secondTurnCall, ToolResult.ok("r2"))));
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate again"), OBSERVER);
+      store.append(ID, InboxEntry.resolved("c1", new ToolResolution.Decided(Decision.allow())));
+      loop.drive(ID, OBSERVER); // no violation, despite four Parks entries now on record for "c1"
+      store.append(
+          ID, InboxEntry.resolved("c1", new ToolResolution.Completed(ToolResult.ok("r2"))));
+      RunOutcome secondTurn = loop.drive(ID, OBSERVER);
+
+      assertThat(secondTurn.state().status()).isEqualTo(ConversationStatus.COMPLETE);
+      assertThat(secondTurn.state().parkedCalls()).isEmpty();
+      assertThat(tools.resumeCalls()).isEqualTo(4);
+    }
+
+    /**
+     * Final review SF-1: a non-idempotent parking tool — unlike the subagent tool's own snapshot
+     * short-circuit, one that mints a genuinely fresh {@link ParkToken} on every {@code resume}
+     * call rather than replaying its own prior answer — exposes the crash-then-redelivery shape
+     * spec §4's violation arm exists for. The timeline: {@code c1} parks for approval, is approved,
+     * and reparks for its own execution wait under a fresh token B (the ordinary, legitimate
+     * transition) — but the resolution that drove that transition is redelivered (every real
+     * transport is at-least-once) before the earlier delivery's own drain landed, so BOTH the
+     * surviving original and the redelivered duplicate {@code Decided} resolutions sit in the inbox
+     * together and both reach the parked executor's {@code resume} within the same {@code
+     * driveOnce} attempt. The non-idempotent tool mints a second fresh token C for the redelivered
+     * one — a park with a new token while B is still outstanding — which the guard must refuse
+     * loud, not silently register as a second, orphaning execution wait.
+     */
+    @Test
+    void a_non_idempotent_tools_second_fresh_token_within_one_attempt_is_refused_loud() {
+      List<String> journal = new ArrayList<>();
+      ToolCall c1 = toolCall("c1", "delegate");
+      ScriptedModelCallExecutor model = new ScriptedModelCallExecutor(journal, homework(c1));
+      ParkingToolCallExecutor tools = new ParkingToolCallExecutor(journal);
+      tools.parksWhen("c1");
+      ParkToken executionTokenB = ParkToken.generate();
+      ParkToken executionTokenC = ParkToken.generate();
+      tools.resumeYields("c1", Awaited.parked(executionTokenB));
+      tools.resumeYields("c1", Awaited.parked(executionTokenC));
+      ConversationStore store = ConversationStore.inMemory();
+      ConversationLoop loop =
+          new ConversationLoop(
+              new ConversationLoop.Collaborators(
+                  new EffectExecutors(model, tools),
+                  new RecordingMemory(journal),
+                  TerminationPolicy.never(),
+                  store,
+                  Parks.inMemory(),
+                  new RecordingEmitter(journal)),
+              ObservationRegistry.NOOP,
+              "loop-test-agent");
+      loop.run(ID, ConversationEvent.AgentTold.of(ID, "delegate x"), OBSERVER);
+
+      // The surviving original, plus the redelivered duplicate — both undrained, both reaching
+      // this same drive() attempt, exactly the shape an interrupted earlier attempt's own crash
+      // window leaves behind.
+      store.append(ID, InboxEntry.resolved("c1", new ToolResolution.Decided(Decision.allow())));
+      store.append(ID, InboxEntry.resolved("c1", new ToolResolution.Decided(Decision.allow())));
+
+      assertThatThrownBy(() -> loop.drive(ID, OBSERVER))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("c1")
+          .hasMessageContaining("outstanding");
+
+      // B (the first, legitimate repark) registered; C never did — the violation fired before
+      // applyParked ever saw it.
+      assertThat(tools.resumeCalls()).isEqualTo(2);
     }
   }
 

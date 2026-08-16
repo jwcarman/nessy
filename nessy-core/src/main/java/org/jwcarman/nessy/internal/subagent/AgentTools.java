@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.subagent;
+package org.jwcarman.nessy.internal.subagent;
 
 import java.util.List;
 import java.util.Objects;
@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.conversation.Parks;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 
 /**
  * Turns an {@link Agent} into an ordinary {@link Tool}: a subagent call is a tool call whose work
@@ -96,6 +97,24 @@ public final class AgentTools {
       throw new IllegalArgumentException("description must not be blank");
     }
     return new SubagentTool(child, description, links);
+  }
+
+  /**
+   * The typed door (design of record 2026-08-16 §0.5): {@code T} IS the delegation tool's own wire
+   * shape — {@link Tool#inputType()} returns {@code inputType} directly, so the model calls this
+   * tool with {@code T}'s own victools schema, not the degenerate {@link Delegation} wrapper — and
+   * one call runs one turn of a dedicated child conversation over {@code T} (see {@link
+   * TypedSubagentTool#execute} for the same parking recipe {@link #subagent(Agent, String,
+   * SubagentLinks)} uses, generalized off {@code T} instead of {@code Delegation.task()}).
+   */
+  public static <T> Tool<T> subagentTyped(
+      Agent<T> child, Class<T> inputType, String description, SubagentLinks links) {
+    Objects.requireNonNull(child, "child must not be null");
+    Objects.requireNonNull(inputType, "inputType must not be null");
+    if (description == null || description.isBlank()) {
+      throw new IllegalArgumentException("description must not be blank");
+    }
+    return new TypedSubagentTool<>(child, inputType, description, links);
   }
 
   /**
@@ -330,8 +349,9 @@ public final class AgentTools {
         throw new IllegalStateException(
             "the child parked, but no SubagentLinks store was configured for '"
                 + child.name()
-                + "' — pass one to AgentTools.subagent(child, description, links) so the parent's"
-                + " own park can be correlated back to the child's eventual settlement");
+                + "' — call .subagentLinks(...) on the harness (e.g."
+                + " JdbcPersistence.subagentLinks()) so the parent's own park can be correlated back"
+                + " to the child's eventual settlement");
       }
     }
 
@@ -340,6 +360,158 @@ public final class AgentTools {
      * transcript, the same fallback source {@code ConversationLoop.publishSettlement} consults when
      * it has no attempt-local message of its own. The empty string when the child said nothing.
      */
+    private String finalAssistantText(Context context) {
+      List<Message> messages = context.messages();
+      for (int i = messages.size() - 1; i >= 0; i--) {
+        Message message = messages.get(i);
+        if (message.role() == Role.ASSISTANT) {
+          return joinedText(message);
+        }
+      }
+      return "";
+    }
+
+    private static String joinedText(Message message) {
+      StringBuilder text = new StringBuilder();
+      for (ContentBlock block : message.content()) {
+        if (block instanceof TextBlock(String blockText)) {
+          text.append(blockText);
+        }
+      }
+      return text.toString();
+    }
+  }
+
+  /**
+   * The typed door's own {@link #subagentTyped}: the same execute/settle/park recipe as {@link
+   * SubagentTool}, generalized off {@code T} directly instead of unwrapping {@link
+   * Delegation#task()} — {@code T} rides straight through to {@link Agent#conversation}'s own
+   * {@code tell}, rendered by the child's own {@link org.jwcarman.nessy.api.message.InputRenderer}.
+   * Deliberately a separate class rather than a shared parent with {@link SubagentTool}: the
+   * degenerate door's wire shape is pinned byte-for-byte (design of record 2026-08-16 §0.5), so
+   * nothing here is ever allowed to be the thing that changes it.
+   */
+  private static final class TypedSubagentTool<T> implements Tool<T> {
+
+    private final Agent<T> child;
+    private final Class<T> inputType;
+    private final String description;
+    private final SubagentLinks links;
+
+    TypedSubagentTool(Agent<T> child, Class<T> inputType, String description, SubagentLinks links) {
+      this.child = child;
+      this.inputType = inputType;
+      this.description = description;
+      this.links = links;
+    }
+
+    @Override
+    public String name() {
+      return child.name();
+    }
+
+    @Override
+    public String description() {
+      return description;
+    }
+
+    @Override
+    public Class<T> inputType() {
+      return inputType;
+    }
+
+    /**
+     * Unlike {@link SubagentTool#describe}, which unwraps {@link Delegation#task()} because it
+     * knows its own input is always that one degenerate shape, this door's {@code T} is an
+     * arbitrary application record with no field this class can assume the name or meaning of — so
+     * {@link Tool}'s own default (the record's {@code toString()}) is the best available without
+     * more information, and an explicit override says so rather than leaving the divergence from
+     * {@link SubagentTool}'s own override invisible (final review N-2). An application whose typed
+     * input reads poorly as a bare {@code toString()} in an approval prompt should override {@code
+     * describe} on its own record's {@link Tool} usage — this generic wrapper cannot do better on
+     * its behalf.
+     */
+    @Override
+    public String describe(T input) {
+      return String.valueOf(input);
+    }
+
+    /** See {@link SubagentTool#execute} — identical recipe, generalized off {@code T}. */
+    @Override
+    public Awaited<ToolResult> execute(T input, ToolContext context) {
+      ConversationId childId =
+          new ConversationId(context.conversationId().value() + "/" + context.call().id());
+      ConversationSnapshot snapshot = child.snapshot(childId);
+      return switch (snapshot.status()) {
+        case COMPLETE -> Awaited.ready(ToolResult.ok(finalAssistantText(snapshot.context())));
+        case FAILED ->
+            Awaited.ready(
+                ToolResult.error(
+                    "subagent '" + child.name() + "' already failed; this replay was not re-run"));
+        case PARKED -> existingPark(childId);
+        default -> tell(childId, input, context);
+      };
+    }
+
+    private Awaited<ToolResult> tell(ConversationId childId, T input, ToolContext context) {
+      TurnObserver progressRelay =
+          event -> {
+            if (event instanceof TurnEvent.ToolCallRequested(ToolCall call)) {
+              context.progress(child.name() + ": " + call.name());
+            }
+          };
+      RunOutcome outcome = child.conversation(childId).tell(input, progressRelay);
+      return switch (outcome) {
+        case RunOutcome.Parked _ -> freshPark(childId);
+        case RunOutcome.Completed(ConversationState state) -> settled(childId, state);
+      };
+    }
+
+    private Awaited<ToolResult> settled(ConversationId childId, ConversationState state) {
+      return switch (state.status()) {
+        case COMPLETE ->
+            Awaited.ready(ToolResult.ok(finalAssistantText(child.contextFor(childId))));
+        case FAILED -> Awaited.ready(ToolResult.error(state.failureReason()));
+        default ->
+            throw new IllegalStateException(
+                "a completed subagent run carried an unexpected status: " + state.status());
+      };
+    }
+
+    private Awaited<ToolResult> freshPark(ConversationId childId) {
+      requireLinks();
+      ParkToken parentToken = ParkToken.generate();
+      links.save(childId, parentToken);
+      return Awaited.parked(parentToken);
+    }
+
+    private Awaited<ToolResult> existingPark(ConversationId childId) {
+      requireLinks();
+      ParkToken parentToken =
+          links
+              .find(childId)
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "child conversation "
+                              + childId.value()
+                              + " is parked, but SubagentLinks has no parent token on file for it"
+                              + " — the delegation's own bookkeeping is missing an entry it should"
+                              + " hold"));
+      return Awaited.parked(parentToken);
+    }
+
+    private void requireLinks() {
+      if (links == null) {
+        throw new IllegalStateException(
+            "the child parked, but no SubagentLinks store was configured for '"
+                + child.name()
+                + "' — call .subagentLinks(...) on the harness (e.g."
+                + " JdbcPersistence.subagentLinks()) so the parent's own park can be correlated back"
+                + " to the child's eventual settlement");
+      }
+    }
+
     private String finalAssistantText(Context context) {
       List<Message> messages = context.messages();
       for (int i = messages.size() - 1; i >= 0; i--) {

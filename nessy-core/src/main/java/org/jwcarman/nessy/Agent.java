@@ -63,22 +63,48 @@ public final class Agent<I> {
   private final ListenerRegistry events;
   private final ConversationStore store;
   private final Parks parks;
+  private final Map<String, Agent<?>> subagents;
   private final Memory memory;
   private final InputRenderer<I> renderer;
+
+  /**
+   * The two coordination pieces a subagent's doors need — {@link Parks}, for the ordinary callback
+   * doors every agent has, and this agent's own direct children, keyed by name, for {@link
+   * #subagent(String)} — bundled together (java:S107: an eighth constructor parameter otherwise).
+   * Grandchildren are not carried here: {@link Subagent#subagent(String)} reaches them by asking
+   * the child's own {@link Agent#subagent(String)} in turn, so each agent only ever needs to
+   * remember its own direct children.
+   *
+   * <p>{@code Agent<?>}, not {@code Agent<String>}: a typed-door child (design of record 2026-08-16
+   * §0.5) is an {@code Agent<T>} for whatever record its own delegation tool carries, not
+   * necessarily {@code String}. Every door {@link Subagent} delegates to —
+   * approve/deny/resume/snapshot/subagent — is independent of the child's own vocabulary, so the
+   * wildcard costs nothing at the handle and buys typed subagents their own agents.
+   */
+  record Coordination(Parks parks, Map<String, Agent<?>> subagents) {
+
+    Coordination {
+      Objects.requireNonNull(parks, "parks must not be null");
+      Objects.requireNonNull(subagents, "subagents must not be null");
+      subagents = Map.copyOf(subagents);
+    }
+  }
 
   Agent(
       String name,
       ConversationLoop loop,
       ListenerRegistry events,
       ConversationStore store,
-      Parks parks,
+      Coordination coordination,
       Memory memory,
       InputRenderer<I> renderer) {
     this.name = Objects.requireNonNull(name, "name must not be null");
     this.loop = Objects.requireNonNull(loop, "loop must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.store = Objects.requireNonNull(store, "store must not be null");
-    this.parks = Objects.requireNonNull(parks, "parks must not be null");
+    Objects.requireNonNull(coordination, "coordination must not be null");
+    this.parks = coordination.parks();
+    this.subagents = coordination.subagents();
     this.memory = Objects.requireNonNull(memory, "memory must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
   }
@@ -86,6 +112,29 @@ public final class Agent<I> {
   /** This agent's required, durable identity (design §3) — the stamp its parks carry. */
   public String name() {
     return name;
+  }
+
+  /**
+   * This agent's own direct child, named {@code name}, as a narrow {@link Subagent} doors handle
+   * (design of record 2026-08-16 §0, ruling 3) — {@code approve}/{@code deny}/{@code resume}/{@code
+   * snapshot} against the child, and further traversal via {@link Subagent#subagent(String)} for a
+   * grandchild. Only this agent's own directly-declared children are reachable here; a deeper
+   * descendant is reached by chaining, one door at a time, exactly matching the lexical nesting
+   * {@link AgentBuilder#subagent(SubagentCustomizer)} and {@link
+   * SubagentConfig#subagent(SubagentCustomizer)} built the tree with — either the degenerate {@code
+   * String} door or the typed door (design of record 2026-08-16 §0.5); the handle is the same
+   * either way.
+   *
+   * @throws IllegalArgumentException if this agent has no subagent named {@code name}
+   */
+  public Subagent subagent(String name) {
+    Objects.requireNonNull(name, "name must not be null");
+    Agent<?> child = subagents.get(name);
+    if (child == null) {
+      throw new IllegalArgumentException(
+          "agent '" + this.name + "' has no subagent named '" + name + "'");
+    }
+    return new Subagent(child);
   }
 
   /** Opens a fresh conversation. */
@@ -123,10 +172,20 @@ public final class Agent<I> {
    *
    * <p>The registry entry survives resolution (design §5) — it is the durable record that this
    * token once named this wait, not a single-use claim — so a redelivered resume (every real
-   * transport is at-least-once) translates the token again, appends another {@code Resolved} entry,
-   * and the fold's own is-this-call-still-outstanding check drains it quietly rather than replaying
-   * the call: the drive simply reads whatever the first delivery already produced. Either way,
-   * appending always succeeds.
+   * transport is at-least-once) translates the token again and appends another {@code Resolved}
+   * entry. Once the call has fully settled — folded to {@code COMPLETE}/{@code FAILED}, or already
+   * drained by an earlier delivery of this exact resolution — the fold's own
+   * is-this-call-still-outstanding check drains the redelivery quietly rather than replaying the
+   * call: the drive simply reads whatever the first delivery already produced. That quiet-drain
+   * promise is narrower since design §4's repark fix, though: a call that reparked for its own
+   * execution wait (permission, then work) is still outstanding, under a NEW token — a redelivered
+   * resume of the original, already-answered token routes straight back through the parked
+   * executor's own {@code resume} and re-invokes the tool, exactly as a fresh call would. That is
+   * safe only for a tool that makes itself idempotent (the subagent tool's own snapshot
+   * short-circuit, for instance) — not a general promise this door makes — and the loop's own
+   * one-outstanding-park guard is what catches a non-idempotent tool minting a second, orphaning
+   * token from that replay rather than letting it silently succeed. Either way, appending always
+   * succeeds.
    *
    * <p>That quiet-drain protection is serial, not concurrent: it is the fold picking a winner among
    * entries already appended, so it only shields a resume that arrives after an earlier one has
@@ -327,10 +386,26 @@ public final class Agent<I> {
             () -> new ConversationSnapshot(ConversationStatus.IDLE, List.of(), Context.empty()));
   }
 
+  /**
+   * A {@code StaleStateException}-retried park, or a call that has parked more than once (design of
+   * record 2026-08-16 §4: an approval wait followed by its own execution wait), can legitimately
+   * register more than one token for the same call id — every one of them resolves that same
+   * outstanding call, so the collision must not crash the page rebuild. {@code toMap}'s merge
+   * function picks a winner with no ordering contract over {@link Parks#forConversation}'s own
+   * return (it is a plain {@code List}, not sorted by registration time), so for a reparked call
+   * the token this method reports is <strong>unspecified</strong> — any of that call's outstanding
+   * tokens may come back. That is harmless for {@code approve}/{@code deny} against the current
+   * wait: every door verifies the token against {@link Parks#find} at the moment it is used, so
+   * whichever token this method happens to report still routes to the same call when presented
+   * back. It is not harmless in every sense, though: a reported token that turns out to be the
+   * call's older, already-answered wait (its approval wait, say, rather than its live execution
+   * wait) re-invokes the parked executor's own {@code resume} exactly as a fresh resolution would
+   * (design §4's repark fix narrows the quiet-drain promise {@link #resume}'s own javadoc
+   * documents), rather than doing nothing new — safe for an idempotent tool, a live re-run for
+   * anything else. A caller building a UI atop this card should not assume presenting it back is
+   * always a no-op replay.
+   */
   private List<ParkedCall> cards(ConversationId id, ConversationStore.Loaded loaded) {
-    // A StaleStateException-retried park can legitimately register two tokens for the same call
-    // (orphan tolerance); either resolves the same outstanding call, so the first registered card
-    // wins rather than the collision crashing the page rebuild.
     Map<String, Park> byCallId =
         parks.forConversation(id).stream()
             .collect(

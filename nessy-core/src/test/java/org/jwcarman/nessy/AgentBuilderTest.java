@@ -60,6 +60,7 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.model.ModelStream;
+import org.jwcarman.nessy.spi.subagent.SubagentLinks;
 import org.jwcarman.nessy.spi.transcript.Transcript;
 import org.slf4j.LoggerFactory;
 
@@ -468,6 +469,138 @@ class AgentBuilderTest {
           .name("scribe")
           .model("fake-model")
           .memory(Memory.pipeline(Transcript.inMemory()).build())
+          .build();
+
+      assertThat(warnings()).isEmpty();
+    }
+  }
+
+  /**
+   * S2 (task-2-review.md, task-2 fix round 2): the agent-level warning {@code
+   * AgentBuilder.buildSubagents()} logs when a subagent is declared against a harness whose own
+   * store was explicitly configured but whose {@code subagentLinks} was left on the in-memory
+   * default — the durability gap where a child settling after a restart leaves its parent parked
+   * forever with nothing logged anywhere. Distinct from {@link
+   * HarnessBuilderTest.Parks_downgrade_warning}: that one fires from {@code HarnessBuilder}
+   * whenever a durable store is configured, regardless of subagents; this one fires from {@code
+   * AgentBuilder} only when a subagent is actually declared — {@code AgentBuilder.build()} is the
+   * only place both facts (a durable store, and at least one {@code .subagent(...)}) are known
+   * together.
+   */
+  @Nested
+  class Subagent_links_warning {
+
+    private ListAppender<ILoggingEvent> appender;
+    private Logger logger;
+    private Level originalLevel;
+
+    @BeforeEach
+    void wires_a_capturing_appender_onto_the_agent_builder_logger() {
+      logger = (Logger) LoggerFactory.getLogger(AgentBuilder.class);
+      originalLevel = logger.getLevel();
+      logger.setLevel(Level.WARN);
+      appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void unwires_the_appender_and_restores_the_loggers_level() {
+      logger.detachAppender(appender);
+      logger.setLevel(originalLevel);
+    }
+
+    /**
+     * Only the WARN events — the guard's own voice. The appender hears the whole logger category,
+     * and another test's async listener can blow up on its executor thread AFTER its test ends,
+     * landing an unrelated ERROR here mid-capture (the flake CI caught on 2026-08-15). Filtering to
+     * WARN keeps every assertion about exactly the guard, immune to cross-test log bleed.
+     */
+    private java.util.List<ILoggingEvent> warnings() {
+      return appender.list.stream().filter(e -> e.getLevel() == Level.WARN).toList();
+    }
+
+    @Test
+    void
+        a_subagent_declared_against_a_configured_store_with_defaulted_links_warns_about_the_downgrade() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider)
+          .store(ConversationStore.inMemory())
+          .build()
+          .agent()
+          .name("writer")
+          .model("fake-model")
+          // Explicit memory on both agents, isolating this guard from AgentBuilder's own
+          // unrelated memory-downgrade warning (Memory_downgrade_warning above) — both share this
+          // same logger, and a store configured with no memory declared would otherwise warn twice
+          // (once per agent this harness builds) and pollute this assertion.
+          .memory(Memory.pipeline(Transcript.inMemory()).build())
+          .subagent(
+              sub ->
+                  sub.name("researcher")
+                      .description("delegates research")
+                      .model("fake-model")
+                      .memory(Memory.pipeline(Transcript.inMemory()).build()))
+          .build();
+
+      assertThat(warnings()).hasSize(1);
+      ILoggingEvent event = warnings().getFirst();
+      assertThat(event.getLevel()).isEqualTo(Level.WARN);
+      assertThat(event.getFormattedMessage()).contains("subagentLinks").contains(".subagentLinks(");
+    }
+
+    @Test
+    void
+        an_explicitly_configured_subagent_links_store_stays_silent_even_with_a_configured_store_and_a_subagent() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider)
+          .store(ConversationStore.inMemory())
+          .subagentLinks(SubagentLinks.inMemory())
+          .build()
+          .agent()
+          .name("writer")
+          .model("fake-model")
+          .memory(Memory.pipeline(Transcript.inMemory()).build())
+          .subagent(
+              sub ->
+                  sub.name("researcher")
+                      .description("delegates research")
+                      .model("fake-model")
+                      .memory(Memory.pipeline(Transcript.inMemory()).build()))
+          .build();
+
+      assertThat(warnings()).isEmpty();
+    }
+
+    @Test
+    void no_subagent_declared_stays_silent_even_with_a_configured_store_and_defaulted_links() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider)
+          .store(ConversationStore.inMemory())
+          .build()
+          .agent()
+          .name("writer")
+          .model("fake-model")
+          .memory(Memory.pipeline(Transcript.inMemory()).build())
+          .build();
+
+      assertThat(warnings()).isEmpty();
+    }
+
+    @Test
+    void a_subagent_declared_against_a_defaulted_store_stays_silent() {
+      FakeProvider provider = new FakeProvider("hi");
+
+      Nessy.harness(provider)
+          .build()
+          .agent()
+          .name("writer")
+          .model("fake-model")
+          .subagent(
+              sub -> sub.name("researcher").description("delegates research").model("fake-model"))
           .build();
 
       assertThat(warnings()).isEmpty();

@@ -442,16 +442,35 @@ public record ConversationState(
    * moved — a sibling call still running keeps the conversation {@code EXECUTING_TOOL} until it too
    * settles or parks. Fold-free and loop-applied, like {@link #halted(String)}: no message is born,
    * so unlike {@code halted} there is nothing for the loop to remember, only to save.
+   *
+   * <p>Parking is repeatable (design §4, the re-park fix): a resumed call may itself park again,
+   * minting a fresh token for its own new wait while the {@link #parkedCalls} membership this
+   * method tracks stays exactly what it already was — {@code call} never leaves the outstanding set
+   * between its first park and whichever fold ({@link #toolFinished}) eventually removes it for
+   * good, so re-applying this same closure for a call already present is idempotent by
+   * construction: no duplicate entry, and status is recomputed the same way either time.
    */
   public ConversationState parked(ToolCall call) {
     Objects.requireNonNull(call, "call must not be null");
     List<ToolCall> remaining = new ArrayList<>(pendingCalls);
     removeFirstMatch(remaining, call.id());
-    List<ToolCall> newParkedCalls = new ArrayList<>(parkedCalls);
-    newParkedCalls.add(call);
+    List<ToolCall> newParkedCalls = withCallParked(call);
     ConversationStatus newStatus =
         remaining.isEmpty() ? ConversationStatus.PARKED : ConversationStatus.EXECUTING_TOOL;
     return withPendingCalls(remaining).withParkedCalls(newParkedCalls).with(newStatus);
+  }
+
+  /**
+   * {@link #parkedCalls} with {@code call} present exactly once — unchanged if it is already there
+   * (a repeat park of the same call, design §4), appended otherwise.
+   */
+  private List<ToolCall> withCallParked(ToolCall call) {
+    if (parkedCalls.stream().anyMatch(existing -> existing.id().equals(call.id()))) {
+      return parkedCalls;
+    }
+    List<ToolCall> newParkedCalls = new ArrayList<>(parkedCalls);
+    newParkedCalls.add(call);
+    return newParkedCalls;
   }
 
   /**
