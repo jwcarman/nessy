@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.approval.ApprovalRequest;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 class ConsoleApproverTest {
 
@@ -42,7 +42,7 @@ class ConsoleApproverTest {
       new ApprovalRequest(
           CONVERSATION_ID,
           CALL,
-          AuthorizationContext.of(
+          AuthzContext.of(
               CONVERSATION_ID,
               "test-agent",
               CALL,

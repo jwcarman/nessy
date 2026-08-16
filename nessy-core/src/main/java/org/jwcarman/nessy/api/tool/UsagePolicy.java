@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 /**
  * The authority half of a {@link ToolGrant}: whether one call to a granted tool may proceed.
@@ -26,8 +26,8 @@ import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
  * has no say in the outcome — it only ever sees the result, allowed, denied, or approved.
  *
  * <p>{@code evaluate} must be pure: no I/O, no mutation, nothing beyond a function of its two
- * arguments — the final {@link AuthorizationContext} an ordered chain of enrichers assembled, and
- * the tool's own rendered effect. The executor may call it from any thread and treats an escaping
+ * arguments — the final {@link AuthzContext} an ordered chain of enrichers assembled, and the
+ * tool's own rendered effect. The executor may call it from any thread and treats an escaping
  * {@code RuntimeException} as a {@link PolicyDecision.Deny} naming the policy stage — a broken
  * policy fails closed rather than becoming an allow.
  *
@@ -42,7 +42,7 @@ import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
 public interface UsagePolicy<E> {
 
   /** Decides {@code call}'s fate, purely from the final context and the tool's rendered effect. */
-  PolicyDecision evaluate(AuthorizationContext context, E effect);
+  PolicyDecision evaluate(AuthzContext context, E effect);
 
   /**
    * Every call proceeds; the approver is never consulted. Always the same canonical instance — the
@@ -76,9 +76,8 @@ public interface UsagePolicy<E> {
 
   /**
    * Pins the effect type {@code E} at the call site for a rung-1 lambda reading {@link
-   * AuthorizationContext#call()}/{@link AuthorizationContext#state()} — {@code
-   * UsagePolicy.<Foo>of((context, effect) -> ...)} where target-type inference alone would
-   * otherwise leave {@code E} ambiguous.
+   * AuthzContext#call()}/{@link AuthzContext#state()} — {@code UsagePolicy.<Foo>of((context,
+   * effect) -> ...)} where target-type inference alone would otherwise leave {@code E} ambiguous.
    */
   static <E> UsagePolicy<E> of(UsagePolicy<E> policy) {
     return Objects.requireNonNull(policy, "policy must not be null");
@@ -118,7 +117,7 @@ public interface UsagePolicy<E> {
     private Allow() {}
 
     @Override
-    public PolicyDecision evaluate(AuthorizationContext context, Object effect) {
+    public PolicyDecision evaluate(AuthzContext context, Object effect) {
       return decision();
     }
 
@@ -142,7 +141,7 @@ public interface UsagePolicy<E> {
     }
 
     @Override
-    public PolicyDecision evaluate(AuthorizationContext context, Object effect) {
+    public PolicyDecision evaluate(AuthzContext context, Object effect) {
       return decision;
     }
 

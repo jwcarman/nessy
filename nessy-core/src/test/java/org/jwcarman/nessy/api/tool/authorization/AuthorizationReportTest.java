@@ -104,7 +104,7 @@ class AuthorizationReportTest {
   static final class RiskThresholdPolicy implements UsagePolicy<TransferEffect> {
 
     @Override
-    public PolicyDecision evaluate(AuthorizationContext context, TransferEffect effect) {
+    public PolicyDecision evaluate(AuthzContext context, TransferEffect effect) {
       throw new AssertionError("building a report must never evaluate a policy");
     }
   }
@@ -266,8 +266,8 @@ class AuthorizationReportTest {
       Key<String> seen = new Key<>(String.class, "seen");
       ConversationId conversationId = new ConversationId("s1");
       ToolCall call = new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode());
-      AuthorizationContext context =
-          AuthorizationContext.of(
+      AuthzContext context =
+          AuthzContext.of(
               conversationId,
               "test-agent",
               call,
@@ -275,7 +275,7 @@ class AuthorizationReportTest {
       Enricher<Object> delegate = (ctx, effect) -> ctx.with(seen, "yes");
       Enricher<Object> named = Enricher.named("marker", delegate);
 
-      AuthorizationContext extended = named.enrich(context, "irrelevant");
+      AuthzContext extended = named.enrich(context, "irrelevant");
 
       assertThat(named.displayName()).contains("marker");
       assertThat(extended.get(seen)).contains("yes");

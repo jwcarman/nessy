@@ -18,12 +18,12 @@ package org.jwcarman.nessy.api.tool.authorization;
 import java.util.Objects;
 
 /**
- * A typed slot in an {@link AuthorizationContext}: a class token plus a name.
+ * A typed slot in an {@link AuthzContext}: a class token plus a name.
  *
- * <p>Nessy ships a few well-known keys ({@link AuthorizationContext#PRINCIPAL}, {@link
- * AuthorizationContext#DECLARED_INTENT}) as its own opinions; everything else is an application's
- * or an enricher library's own escape hatch — declare a {@code static final Key<Foo> FOO = new
- * Key<>(Foo.class, "foo")} and deposit into it with {@link AuthorizationContext#with}.
+ * <p>Nessy ships a few well-known keys ({@link AuthzContext#PRINCIPAL}, {@link
+ * AuthzContext#DECLARED_INTENT}) as its own opinions; everything else is an application's or an
+ * enricher library's own escape hatch — declare a {@code static final Key<Foo> FOO = new
+ * Key<>(Foo.class, "foo")} and deposit into it with {@link AuthzContext#with}.
  *
  * <p>Equality is identity, deliberately: two {@code Key} instances never collide just because they
  * share a type and a name. A key is meant to be referenced as the one static constant both the

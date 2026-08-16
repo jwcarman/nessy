@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.examples.orderdesk;
 
 import java.util.Optional;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.tool.authorization.Key;
 
@@ -36,8 +36,8 @@ final class RushOrderEnricher implements Enricher<RequestFulfillmentTool.Fulfill
   private static final int RUSH_ITEM_COUNT = 3;
 
   @Override
-  public AuthorizationContext enrich(
-      AuthorizationContext context, RequestFulfillmentTool.FulfillmentEffect effect) {
+  public AuthzContext enrich(
+      AuthzContext context, RequestFulfillmentTool.FulfillmentEffect effect) {
     boolean rush = effect.items().size() >= RUSH_ITEM_COUNT;
     return rush ? context.with(RUSH_ORDER, true) : context;
   }

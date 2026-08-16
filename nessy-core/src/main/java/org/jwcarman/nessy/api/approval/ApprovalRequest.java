@@ -18,7 +18,7 @@ package org.jwcarman.nessy.api.approval;
 import java.util.Objects;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 /**
  * The question put to a human — adjudication parity (design of record 2026-08-16-authorization §9):
@@ -32,7 +32,7 @@ import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
  *     person actually reads via {@link #description()}
  */
 public record ApprovalRequest(
-    ConversationId conversationId, ToolCall call, AuthorizationContext context, Object effect) {
+    ConversationId conversationId, ToolCall call, AuthzContext context, Object effect) {
 
   public ApprovalRequest {
     Objects.requireNonNull(conversationId, "conversationId must not be null");

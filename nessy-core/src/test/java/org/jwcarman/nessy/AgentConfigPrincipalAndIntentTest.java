@@ -41,7 +41,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.intent.IntentStore;
@@ -54,7 +54,7 @@ import org.jwcarman.nessy.spi.model.ModelStream;
 /**
  * {@code AgentConfig.principal(Function)} and {@code AgentConfig.intent(Class)}'s own runtime
  * behavior (design of record 2026-08-16-authorization §6, §7, Task 3b): both feeders reach the
- * {@link AuthorizationContext} a rung-1+ policy sees, and both stay fail-closed on their own terms.
+ * {@link AuthzContext} a rung-1+ policy sees, and both stay fail-closed on their own terms.
  */
 class AgentConfigPrincipalAndIntentTest {
 
@@ -94,15 +94,15 @@ class AgentConfigPrincipalAndIntentTest {
   /** A rung-1+ policy that always allows, but remembers every context it was handed. */
   private static final class CapturingPolicy implements UsagePolicy<Object> {
 
-    private final List<AuthorizationContext> seen = new ArrayList<>();
+    private final List<AuthzContext> seen = new ArrayList<>();
 
     @Override
-    public PolicyDecision evaluate(AuthorizationContext context, Object effect) {
+    public PolicyDecision evaluate(AuthzContext context, Object effect) {
       seen.add(context);
       return new PolicyDecision.Allow();
     }
 
-    List<AuthorizationContext> seen() {
+    List<AuthzContext> seen() {
       return List.copyOf(seen);
     }
   }

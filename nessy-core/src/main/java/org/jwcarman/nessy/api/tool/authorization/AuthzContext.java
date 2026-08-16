@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * <p>A missing key is {@link Optional#empty()}, never an exception — a policy that cares about an
  * absent slot fails closed on its own terms and says so in its deny reason.
  */
-public interface AuthorizationContext {
+public interface AuthzContext {
 
   /** The well-known slot a principal-resolving enricher deposits into. Empty until one does. */
   Key<Object> PRINCIPAL = new Key<>(Object.class, "principal");
@@ -59,7 +59,7 @@ public interface AuthorizationContext {
   <T> Optional<T> get(Key<T> key);
 
   /** A new context, functionally extended with {@code key} bound to {@code value}. */
-  <T> AuthorizationContext with(Key<T> key, T value);
+  <T> AuthzContext with(Key<T> key, T value);
 
   /**
    * The nominal principal a conversation acts for — any type, nessy defines only the slot (design
@@ -91,8 +91,8 @@ public interface AuthorizationContext {
    * The harness-known facts, with no deposits yet — the chokepoint's own starting point before any
    * enricher runs.
    */
-  static AuthorizationContext of(
+  static AuthzContext of(
       ConversationId conversationId, String agentName, ToolCall call, ConversationState state) {
-    return new AuthorizationContextImpl(conversationId, agentName, call, state);
+    return new AuthzContextImpl(conversationId, agentName, call, state);
   }
 }

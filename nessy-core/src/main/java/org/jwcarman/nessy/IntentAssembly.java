@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.spi.intent.IntentStore;
 
@@ -146,8 +146,8 @@ final class IntentAssembly {
   /**
    * The internal enricher {@link AgentConfig#intent(Class)} wires onto every non-static grant: one
    * keyed {@link IntentStore#get} per evaluated call, depositing under {@link
-   * AuthorizationContext#DECLARED_INTENT} only when the stored row's own type name matches this
-   * agent's configured vocabulary exactly.
+   * AuthzContext#DECLARED_INTENT} only when the stored row's own type name matches this agent's
+   * configured vocabulary exactly.
    *
    * <p>Fail-closed by construction, never by catching a cast failure: a foreign vocabulary (a row
    * some other agent — or an earlier build of this one, before a class rename — declared under a
@@ -174,7 +174,7 @@ final class IntentAssembly {
     }
 
     @Override
-    public AuthorizationContext enrich(AuthorizationContext context, Object effect) {
+    public AuthzContext enrich(AuthzContext context, Object effect) {
       Optional<IntentStore.StoredIntent> stored = store.get(context.conversationId());
       if (stored.isEmpty()) {
         return context;
@@ -192,7 +192,7 @@ final class IntentAssembly {
         // Malformed for this type: also reads as absent rather than denying the whole call.
         return context;
       }
-      return context.with(AuthorizationContext.DECLARED_INTENT, declared);
+      return context.with(AuthzContext.DECLARED_INTENT, declared);
     }
   }
 }

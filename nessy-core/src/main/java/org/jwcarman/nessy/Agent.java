@@ -134,10 +134,11 @@ public final class Agent<I> {
 
   /**
    * This agent's own authorization story, read from its grants' wiring — the self-documentation
-   * requirement made literal (design of record 2026-08-16-authorization §8). Rebuilding it never
-   * renders an effect, runs an enricher, or evaluates a policy: it is a read of the same wiring
-   * {@link org.jwcarman.nessy.spi.execute.GatedToolCallExecutor} consults, never a second place
-   * authority is declared.
+   * requirement made literal (design of record 2026-08-16-authorization §8). It is built once, at
+   * agent construction, and returned here as an immutable snapshot; building it renders no effect,
+   * runs no enricher, and evaluates no policy — it is a read of the same wiring {@link
+   * org.jwcarman.nessy.spi.execute.GatedToolCallExecutor} consults, never a second place authority
+   * is declared.
    */
   public AuthorizationReport authorizationReport() {
     return authorizationReport;

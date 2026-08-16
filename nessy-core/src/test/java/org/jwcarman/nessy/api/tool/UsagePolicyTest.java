@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 class UsagePolicyTest {
 
@@ -40,8 +40,8 @@ class UsagePolicyTest {
     return new ToolCall("c1", "spend", args);
   }
 
-  private static AuthorizationContext contextFor(ToolCall call) {
-    return AuthorizationContext.of(CONVERSATION_ID, "test-agent", call, STATE);
+  private static AuthzContext contextFor(ToolCall call) {
+    return AuthzContext.of(CONVERSATION_ID, "test-agent", call, STATE);
   }
 
   @Nested
@@ -87,9 +87,9 @@ class UsagePolicyTest {
 
     /**
      * A rung-1 policy that behaves like a spend cap: allow under the limit, deny at or over it —
-     * reading the call out of {@link AuthorizationContext#call()} rather than a raw {@code
-     * ToolCall} parameter (design of record 2026-08-16-authorization §5's migration: today's
-     * two-arg policies become context-reading lambdas).
+     * reading the call out of {@link AuthzContext#call()} rather than a raw {@code ToolCall}
+     * parameter (design of record 2026-08-16-authorization §5's migration: today's two-arg policies
+     * become context-reading lambdas).
      */
     private static UsagePolicy<Object> approveUnder(int limit) {
       return UsagePolicy.of(

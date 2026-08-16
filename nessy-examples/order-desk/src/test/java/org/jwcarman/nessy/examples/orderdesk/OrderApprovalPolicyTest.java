@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 /**
  * The order desk's threshold policy (design of record 2026-08-16-authorization §5): allow routine
@@ -37,11 +37,11 @@ class OrderApprovalPolicyTest {
 
   private final OrderApprovalPolicy policy = new OrderApprovalPolicy();
 
-  private static AuthorizationContext freshContext() {
+  private static AuthzContext freshContext() {
     ConversationId id = new ConversationId("order-4711");
     ToolCall call =
         new ToolCall("c1", "request_fulfillment", JsonNodeFactory.instance.objectNode());
-    return AuthorizationContext.of(id, "order-desk", call, ConversationState.newConversation(id));
+    return AuthzContext.of(id, "order-desk", call, ConversationState.newConversation(id));
   }
 
   private static RequestFulfillmentTool.FulfillmentEffect effectOf(BigDecimal total) {
@@ -72,7 +72,7 @@ class OrderApprovalPolicyTest {
   @Nested
   class A_rush_order {
 
-    private static AuthorizationContext flaggedContext() {
+    private static AuthzContext flaggedContext() {
       return freshContext().with(RushOrderEnricher.RUSH_ORDER, true);
     }
 

@@ -22,8 +22,8 @@ import java.util.Optional;
  * The impure gathering stage: deposits assessments into the context before the {@code UsagePolicy}
  * judges (design of record 2026-08-16-authorization §4). A grant wires these as an ordered list;
  * each receives the previous enricher's own context and the tool's rendered effect, and returns the
- * next context — {@link AuthorizationContext#with} functionally, so nothing upstream ever sees a
- * later enricher's deposit.
+ * next context — {@link AuthzContext#with} functionally, so nothing upstream ever sees a later
+ * enricher's deposit.
  *
  * <p>Enrichers MAY do I/O — a principal exchange, a risk service call, a quota read — the policy
  * stays pure so all of that impurity belongs here instead.
@@ -43,7 +43,7 @@ import java.util.Optional;
 public interface Enricher<E> {
 
   /** Returns the next context — {@code context} functionally extended, never mutated. */
-  AuthorizationContext enrich(AuthorizationContext context, E effect);
+  AuthzContext enrich(AuthzContext context, E effect);
 
   /**
    * A human-readable label for this enricher, read by {@link AuthorizationReport} (design §8) —
@@ -67,7 +67,7 @@ public interface Enricher<E> {
     Objects.requireNonNull(delegate, "delegate must not be null");
     return new Enricher<>() {
       @Override
-      public AuthorizationContext enrich(AuthorizationContext context, E effect) {
+      public AuthzContext enrich(AuthzContext context, E effect) {
         return delegate.enrich(context, effect);
       }
 

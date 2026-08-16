@@ -18,7 +18,7 @@ package org.jwcarman.nessy.examples.orderdesk;
 import java.math.BigDecimal;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 /**
  * The desk's own standing order (design of record 2026-08-16-authorization §5): fulfill routine
@@ -33,7 +33,7 @@ final class OrderApprovalPolicy implements UsagePolicy<RequestFulfillmentTool.Fu
 
   @Override
   public PolicyDecision evaluate(
-      AuthorizationContext context, RequestFulfillmentTool.FulfillmentEffect effect) {
+      AuthzContext context, RequestFulfillmentTool.FulfillmentEffect effect) {
     boolean rush = context.get(RushOrderEnricher.RUSH_ORDER).orElse(false);
     BigDecimal threshold = rush ? RUSH_THRESHOLD : STANDARD_THRESHOLD;
     return effect.orderTotal().compareTo(threshold) > 0

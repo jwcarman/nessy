@@ -24,18 +24,18 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 /** The one enricher the order-desk grant carries (design of record 2026-08-16-authorization §4). */
 class RushOrderEnricherTest {
 
   private final RushOrderEnricher enricher = new RushOrderEnricher();
 
-  private static AuthorizationContext freshContext() {
+  private static AuthzContext freshContext() {
     ConversationId id = new ConversationId("order-4711");
     ToolCall call =
         new ToolCall("c1", "request_fulfillment", JsonNodeFactory.instance.objectNode());
-    return AuthorizationContext.of(id, "order-desk", call, ConversationState.newConversation(id));
+    return AuthzContext.of(id, "order-desk", call, ConversationState.newConversation(id));
   }
 
   private static RequestFulfillmentTool.FulfillmentEffect effectOf(List<String> items) {
@@ -44,15 +44,14 @@ class RushOrderEnricherTest {
 
   @Test
   void leaves_a_small_basket_unflagged() {
-    AuthorizationContext extended =
-        enricher.enrich(freshContext(), effectOf(List.of("lantern", "rope")));
+    AuthzContext extended = enricher.enrich(freshContext(), effectOf(List.of("lantern", "rope")));
 
     assertThat(extended.get(RushOrderEnricher.RUSH_ORDER)).isEmpty();
   }
 
   @Test
   void flags_a_basket_of_three_or_more_items_as_rush() {
-    AuthorizationContext extended =
+    AuthzContext extended =
         enricher.enrich(freshContext(), effectOf(List.of("lantern", "rope", "compass")));
 
     assertThat(extended.get(RushOrderEnricher.RUSH_ORDER)).contains(true);

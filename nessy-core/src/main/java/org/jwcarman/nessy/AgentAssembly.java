@@ -28,8 +28,8 @@ import org.jwcarman.nessy.api.event.ListenerRegistry;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
 import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.internal.ConversationLoop;
 import org.jwcarman.nessy.spi.execute.EffectExecutors;
@@ -150,7 +150,7 @@ final class AgentAssembly {
                 Object principal = resolver.apply(context.conversationId());
                 return principal == null
                     ? context
-                    : context.with(AuthorizationContext.PRINCIPAL, principal);
+                    : context.with(AuthzContext.PRINCIPAL, principal);
               }));
     }
     if (config.intentType() != null) {

@@ -40,7 +40,7 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.tool.authorization.AuthorizationContext;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
@@ -181,7 +181,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
    * PolicyDecision.RequireApproval}.
    */
   private Awaited<ConversationEvent> gate(
-      AuthorizationContext context,
+      AuthzContext context,
       Object effect,
       ToolCall call,
       ConversationState state,
@@ -215,7 +215,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
   }
 
   /** What {@link #evaluate} settles on, plus what {@link #gate} needs if it deferred. */
-  private record Evaluation(PolicyDecision decision, AuthorizationContext context, Object effect) {}
+  private record Evaluation(PolicyDecision decision, AuthzContext context, Object effect) {}
 
   /**
    * The staged chokepoint for every non-static grant: render the effect, assemble the context, fold
@@ -236,7 +236,7 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
           null,
           null);
     }
-    AuthorizationContext context = AuthorizationContext.of(state.id(), agentName, call, state);
+    AuthzContext context = AuthzContext.of(state.id(), agentName, call, state);
     for (Enricher<?> enricher : grant.enrichers()) {
       try {
         context = enrichCaptured(enricher, context, effect);
@@ -266,14 +266,14 @@ public final class GatedToolCallExecutor implements ToolCallExecutor {
    * org.jwcarman.nessy.internal.ToolInvoker} captures {@code Tool<?>}'s own wildcard, except there
    * is no {@code Class<E>} token here to check it against.
    */
-  private static <E> AuthorizationContext enrichCaptured(
-      Enricher<E> enricher, AuthorizationContext context, Object effect) {
+  private static <E> AuthzContext enrichCaptured(
+      Enricher<E> enricher, AuthzContext context, Object effect) {
     return enricher.enrich(context, (E) effect);
   }
 
   /** {@link #enrichCaptured}, for the grant's own policy instead of one of its enrichers. */
   private static <E> PolicyDecision evaluateCaptured(
-      UsagePolicy<E> policy, AuthorizationContext context, Object effect) {
+      UsagePolicy<E> policy, AuthzContext context, Object effect) {
     return policy.evaluate(context, (E) effect);
   }
 

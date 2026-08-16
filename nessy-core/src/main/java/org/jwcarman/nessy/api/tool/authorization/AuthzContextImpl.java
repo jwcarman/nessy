@@ -24,12 +24,12 @@ import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * The sole {@link AuthorizationContext} implementation — package-private, so the interface stays
- * the only reachable shape (design of record 2026-08-16-authorization §3). Deposits live in an
- * immutable map; {@link #with} copies rather than mutates, which is what makes an earlier
- * enricher's own context reference stay exactly what it was after a later one extends it.
+ * The sole {@link AuthzContext} implementation — package-private, so the interface stays the only
+ * reachable shape (design of record 2026-08-16-authorization §3). Deposits live in an immutable
+ * map; {@link #with} copies rather than mutates, which is what makes an earlier enricher's own
+ * context reference stay exactly what it was after a later one extends it.
  */
-final class AuthorizationContextImpl implements AuthorizationContext {
+final class AuthzContextImpl implements AuthzContext {
 
   private final ConversationId conversationId;
   private final String agentName;
@@ -37,12 +37,12 @@ final class AuthorizationContextImpl implements AuthorizationContext {
   private final ConversationState state;
   private final Map<Key<?>, Object> deposits;
 
-  AuthorizationContextImpl(
+  AuthzContextImpl(
       ConversationId conversationId, String agentName, ToolCall call, ConversationState state) {
     this(conversationId, agentName, call, state, Map.of());
   }
 
-  private AuthorizationContextImpl(
+  private AuthzContextImpl(
       ConversationId conversationId,
       String agentName,
       ToolCall call,
@@ -82,12 +82,11 @@ final class AuthorizationContextImpl implements AuthorizationContext {
   }
 
   @Override
-  public <T> AuthorizationContext with(Key<T> key, T value) {
+  public <T> AuthzContext with(Key<T> key, T value) {
     Objects.requireNonNull(key, "key must not be null");
     Objects.requireNonNull(value, "value must not be null");
     Map<Key<?>, Object> extended = new LinkedHashMap<>(deposits);
     extended.put(key, value);
-    return new AuthorizationContextImpl(
-        conversationId, agentName, call, state, Map.copyOf(extended));
+    return new AuthzContextImpl(conversationId, agentName, call, state, Map.copyOf(extended));
   }
 }
