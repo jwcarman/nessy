@@ -32,6 +32,8 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.Agent;
 import org.jwcarman.nessy.Harness;
 import org.jwcarman.nessy.Nessy;
@@ -81,9 +83,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "welcome aboard",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("welcome aboard", "you> ", Set.of("exit", "quit"), null),
               null,
               new ConsoleRepl.Io(reader, writer))
           .run();
@@ -99,7 +99,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> ");
@@ -119,7 +122,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       int promptCount = writer.toString().split("you> ", -1).length - 1;
@@ -138,7 +144,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> ");
@@ -158,7 +167,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> ");
@@ -176,7 +188,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> you> ");
@@ -194,7 +209,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> hello once\nyou> hello twice\nyou> ");
@@ -232,7 +250,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       String output = writer.toString();
@@ -267,9 +288,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
               custom,
               new ConsoleRepl.Io(reader, writer))
           .run();
@@ -339,9 +358,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
               null,
               new ConsoleRepl.Io(sharedReader, writer))
           .run();
@@ -398,9 +415,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
               null,
               new ConsoleRepl.Io(reader, writer),
               store)
@@ -420,9 +435,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
               null,
               new ConsoleRepl.Io(reader, writer),
               store)
@@ -441,9 +454,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
               null,
               new ConsoleRepl.Io(reader, writer),
               null)
@@ -463,9 +474,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
               null,
               new ConsoleRepl.Io(reader, writer),
               store)
@@ -488,9 +497,7 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
               null,
               new ConsoleRepl.Io(reader, writer),
               store)
@@ -558,45 +565,23 @@ class ConsoleReplTest {
   @Nested
   class The_farewell_line {
 
-    @Test
-    void prints_immediately_after_an_exit_word_before_returning() {
+    @ParameterizedTest
+    @ValueSource(strings = {"quit\n", ""})
+    void prints_immediately_before_returning_whether_the_loop_ends_by_exit_word_or_end_of_input(
+        String script) {
+      // "quit\n" ends the loop via the exit word; "" is an empty source, so readLine() returns
+      // null on the very first read — the same shape as a closed pipe or Ctrl-D at a real
+      // terminal. Both must print the farewell immediately, before run() returns.
       Ansi.overrideEnabled(false);
       Agent<String> agent = agent_saying();
-      BufferedReader reader = new BufferedReader(new StringReader("quit\n"));
+      BufferedReader reader = new BufferedReader(new StringReader(script));
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), "goodbye."),
               null,
-              new ConsoleRepl.Io(reader, writer),
-              null,
-              "goodbye.")
-          .run();
-
-      assertThat(writer).hasToString("you> goodbye.\n");
-    }
-
-    @Test
-    void prints_after_end_of_input_too() {
-      Ansi.overrideEnabled(false);
-      Agent<String> agent = agent_saying();
-      // An empty source: readLine() returns null on the very first read, the same shape as a
-      // closed pipe or Ctrl-D at a real terminal.
-      BufferedReader reader = new BufferedReader(new StringReader(""));
-      StringWriter writer = new StringWriter();
-
-      new ConsoleRepl(
-              agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
-              null,
-              new ConsoleRepl.Io(reader, writer),
-              null,
-              "goodbye.")
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> goodbye.\n");
@@ -611,13 +596,9 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), "goodbye."),
               null,
-              new ConsoleRepl.Io(reader, writer),
-              null,
-              "goodbye.")
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> " + Ansi.dim("goodbye.") + "\n");
@@ -632,13 +613,9 @@ class ConsoleReplTest {
 
       new ConsoleRepl(
               agent,
-              "",
-              "you> ",
-              Set.of("exit", "quit"),
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), "goodbye."),
               null,
-              new ConsoleRepl.Io(reader, writer),
-              null,
-              "goodbye.")
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> goodbye.\n");
@@ -652,7 +629,10 @@ class ConsoleReplTest {
       StringWriter writer = new StringWriter();
 
       new ConsoleRepl(
-              agent, "", "you> ", Set.of("exit", "quit"), null, new ConsoleRepl.Io(reader, writer))
+              agent,
+              new ConsoleRepl.Chrome("", "you> ", Set.of("exit", "quit"), null),
+              null,
+              new ConsoleRepl.Io(reader, writer))
           .run();
 
       assertThat(writer).hasToString("you> ");

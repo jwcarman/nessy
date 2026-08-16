@@ -71,47 +71,37 @@ public final class ConsoleRepl {
     }
   }
 
-  ConsoleRepl(
-      Agent<String> agent,
-      String banner,
-      String prompt,
-      Set<String> exitWords,
-      TurnObserver renderer,
-      Io io) {
-    this(agent, banner, prompt, exitWords, renderer, io, null, null);
+  /**
+   * The loop's fixed decor as one value: banner, prompt, exit words, and farewell (S107, alongside
+   * {@link Io}). {@code farewell} is nullable — {@code null} means no farewell line (see {@link
+   * Builder#farewell}).
+   */
+  record Chrome(String banner, String prompt, Set<String> exitWords, String farewell) {
+    Chrome {
+      Objects.requireNonNull(banner, "banner must not be null");
+      Objects.requireNonNull(prompt, "prompt must not be null");
+      exitWords = Set.copyOf(Objects.requireNonNull(exitWords, "exitWords must not be null"));
+    }
+  }
+
+  ConsoleRepl(Agent<String> agent, Chrome chrome, TurnObserver renderer, Io io) {
+    this(agent, chrome, renderer, io, null);
   }
 
   ConsoleRepl(
-      Agent<String> agent,
-      String banner,
-      String prompt,
-      Set<String> exitWords,
-      TurnObserver renderer,
-      Io io,
-      PlanStore planStore) {
-    this(agent, banner, prompt, exitWords, renderer, io, planStore, null);
-  }
-
-  ConsoleRepl(
-      Agent<String> agent,
-      String banner,
-      String prompt,
-      Set<String> exitWords,
-      TurnObserver renderer,
-      Io io,
-      PlanStore planStore,
-      String farewell) {
+      Agent<String> agent, Chrome chrome, TurnObserver renderer, Io io, PlanStore planStore) {
     Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(chrome, "chrome must not be null");
     Objects.requireNonNull(io, "io must not be null");
     this.writer = io.writer();
     this.conversation = agent.converse();
-    this.banner = Objects.requireNonNull(banner, "banner must not be null");
-    this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
-    this.exitWords = Set.copyOf(Objects.requireNonNull(exitWords, "exitWords must not be null"));
+    this.banner = chrome.banner();
+    this.prompt = chrome.prompt();
+    this.exitWords = chrome.exitWords();
     this.renderer = renderer != null ? renderer : ConsoleRenderer.observer(this.writer);
     this.reader = io.reader();
     this.planStore = planStore;
-    this.farewell = farewell;
+    this.farewell = chrome.farewell();
   }
 
   /**
@@ -327,13 +317,10 @@ public final class ConsoleRepl {
     public void run() {
       new ConsoleRepl(
               agent,
-              banner,
-              prompt,
-              exitWords,
+              new Chrome(banner, prompt, exitWords, farewell),
               renderer,
               new Io(ConsoleIo.stdin(), ConsoleIo.stdout()),
-              planStore,
-              farewell)
+              planStore)
           .run();
     }
   }
