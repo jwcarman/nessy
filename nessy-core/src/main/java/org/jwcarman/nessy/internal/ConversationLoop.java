@@ -92,6 +92,21 @@ public final class ConversationLoop {
   }
 
   /**
+   * What resuming one parked call yielded (design §4, the re-park fix): a settled fact to fold,
+   * exactly as v1 always allowed; a fresh, legitimate park under a new token — the call's own
+   * execution wait, now that its approval cleared; or a replay this attempt must fold as a no-op —
+   * the same token the call is already outstanding under, redelivered.
+   */
+  private sealed interface ResumeOutcome {
+
+    record Settled(ConversationEvent fact) implements ResumeOutcome {}
+
+    record Reparked(ToolCall call, ParkToken token) implements ResumeOutcome {}
+
+    record ReplayedNoOp() implements ResumeOutcome {}
+  }
+
+  /**
    * The five collaborators an agent's own identity picks — its model/tool executors, its memory,
    * its termination policy, the durable store, the parks registry — bundled into one parameter
    * (java:S107: a ninth constructor parameter otherwise) because every one of them travels
@@ -231,11 +246,16 @@ public final class ConversationLoop {
       //    a resolution whose call id is NOT a live park drains quietly no matter the status too (a
       //    stale entry left behind by a settled call no longer lingers outside PARKED waiting for
       //    a status it will never see again — the retired single-use-token-claim's replay guard,
-      //    now this same fold-owned is-this-call-still-outstanding check, design §5). Unlike a
-      //    note's fold, resuming a call can throw before ever reaching a fold (the re-park guard,
-      //    below) — so the entry's id joins `drained` only once resumeParkedCall and its fold have
-      //    both succeeded; a throw between them must leave the entry on the inbox for a future
-      //    retry to find, not destroy the only copy of the resolution that arrived.
+      //    now this same fold-owned is-this-call-still-outstanding check, design §5). A call that
+      //    stays outstanding across a repark (design §4) keeps routing every later Resolved entry
+      //    naming it the same way — including a redelivery of the very resolution that triggered
+      //    the repark, which resumeParkedCall folds as a no-op rather than a third wait. Unlike a
+      //    note's fold, resuming a call can throw before ever reaching a fold or a park closure —
+      //    the one-outstanding-park violation, below — so the entry's id joins `drained` only once
+      //    resumeParkedCall and whatever it triggers have both succeeded; a throw between them must
+      //    leave the entry on the inbox for a future retry to find, not destroy the only copy of
+      // the
+      //    resolution that arrived.
       for (InboxEntry entry : loaded.inbox()) {
         if (entry instanceof InboxEntry.Resolved(String entryId, String callId, var resolution)) {
           Optional<ToolCall> park =
@@ -246,17 +266,26 @@ public final class ConversationLoop {
             drained.add(entryId); // stale resolution: call already settled
             continue;
           }
-          ConversationEvent fact =
+          ResumeOutcome resumed =
               resumeParkedCall(park.get(), resolution, progress.get(), observer);
-          FoldOutcome folded = fold(progress, fact, drained, observer, lastAssistantMessage);
-          drained.add(entryId);
-          runCycle(
-              progress,
-              new ArrayDeque<>(folded.effects()),
-              drained,
-              observer,
-              endingNarrated,
-              lastAssistantMessage);
+          switch (resumed) {
+            case ResumeOutcome.Settled(ConversationEvent fact) -> {
+              FoldOutcome folded = fold(progress, fact, drained, observer, lastAssistantMessage);
+              drained.add(entryId);
+              runCycle(
+                  progress,
+                  new ArrayDeque<>(folded.effects()),
+                  drained,
+                  observer,
+                  endingNarrated,
+                  lastAssistantMessage);
+            }
+            case ResumeOutcome.Reparked(ToolCall call, ParkToken token) -> {
+              applyParked(progress, call, token, drained, observer, endingNarrated);
+              drained.add(entryId);
+            }
+            case ResumeOutcome.ReplayedNoOp _ -> drained.add(entryId);
+          }
         }
       }
 
@@ -513,16 +542,17 @@ public final class ConversationLoop {
    * translates fine, appends mail addressed to a call the reloaded state no longer finds
    * outstanding, and drains as stale — tolerated, not prevented. The narration still fires only
    * after the save lands, not before: a park that never actually commits (a save that throws) must
-   * not have told the observer a story state itself never confirms. Both park paths — the
-   * approver's gate and a tool parking itself — funnel through this one choke point, so this is
-   * {@link TurnEvent.ToolCallParked}'s single emission site — but it is only <em>one of two</em>
-   * possible {@link TurnEvent.TurnEnded} sites, not the sole one: parked() only flips status to
-   * PARKED once every pending call in the cycle has settled or parked, so this call closes the
-   * cycle only when it is the last one to land — a sibling settling afterward (or a call that
-   * settles while this one is still parking) can just as easily be the one that observes PARKED,
-   * and a drive that finds the conversation already PARKED on entry never reaches this method at
-   * all. {@code endingNarrated} is the attempt-wide arbiter: whichever site — this one, or
-   * driveOnce's own settled-return check — gets there first is the one that narrates.
+   * not have told the observer a story state itself never confirms. All three park paths — the
+   * approver's gate, a tool parking itself, and a resumed call's own repark (design §4) — funnel
+   * through this one choke point, so this is {@link TurnEvent.ToolCallParked}'s single emission
+   * site — but it is only <em>one of two</em> possible {@link TurnEvent.TurnEnded} sites, not the
+   * sole one: parked() only flips status to PARKED once every pending call in the cycle has settled
+   * or parked, so this call closes the cycle only when it is the last one to land — a sibling
+   * settling afterward (or a call that settles while this one is still parking) can just as easily
+   * be the one that observes PARKED, and a drive that finds the conversation already PARKED on
+   * entry never reaches this method at all. {@code endingNarrated} is the attempt-wide arbiter:
+   * whichever site — this one, or driveOnce's own settled-return check — gets there first is the
+   * one that narrates.
    */
   private void applyParked(
       AtomicReference<ConversationState> progress,
@@ -542,12 +572,13 @@ public final class ConversationLoop {
   }
 
   /**
-   * Routes a resolved inbox entry to the parked executor's own {@code resume} and returns its
-   * settled fact. The executor contract allows a resumed call to park again (an approved call whose
-   * tool itself then parks); this generation does not support re-parking an already-parked call, so
-   * that outcome fails loud rather than silently losing the call.
+   * Routes a resolved inbox entry to the parked executor's own {@code resume} and classifies what
+   * it yielded (design §4, the re-park fix): a settled fact folds exactly as v1 always allowed; a
+   * park is either the call's own next, legitimate wait — nothing on record for this call but the
+   * token whose resolution is being consumed right now — or a redelivered replay of the token the
+   * call is already outstanding under, classified by {@link #classifyRepark}.
    */
-  private ConversationEvent resumeParkedCall(
+  private ResumeOutcome resumeParkedCall(
       ToolCall parkedCall,
       ToolResolution resolution,
       ConversationState state,
@@ -555,14 +586,41 @@ public final class ConversationLoop {
     Awaited<ConversationEvent> outcome =
         executors.toolCall().resume(parkedCall, resolution, state, observer);
     return switch (outcome) {
-      case Awaited.Ready<ConversationEvent>(ConversationEvent value) -> value;
-      case Awaited.Parked<ConversationEvent> _ ->
-          throw new IllegalStateException(
-              "resumed call "
-                  + parkedCall.id()
-                  + " parked again; this generation does not support re-parking an already-parked"
-                  + " call");
+      case Awaited.Ready<ConversationEvent>(ConversationEvent value) ->
+          new ResumeOutcome.Settled(value);
+      case Awaited.Parked<ConversationEvent>(ParkToken token) ->
+          classifyRepark(state.id(), parkedCall, token);
     };
+  }
+
+  /**
+   * Tells a legitimate repark from a redelivered replay from the one-outstanding violation (design
+   * §4). {@code token} already present in {@link #parks} for this exact call is the idempotent
+   * replay shape a redelivered resolution takes once the subagent tool's own snapshot short-circuit
+   * kicks in on a second dispatch — a no-op, not a third wait. A never-seen token is legitimate
+   * only when nothing but the just-consumed wait is on record for the call ({@code
+   * Parks.forConversation} names at most one prior entry): the ordinary approval-then-execution
+   * transition. A never-seen token arriving when two or more entries already exist for the call
+   * means some other wait is already outstanding underneath it — a non-idempotent tool minting a
+   * fresh token instead of replaying its last one — and that is refused loud rather than silently
+   * accepted, the same way v1 refused every repark.
+   */
+  private ResumeOutcome classifyRepark(ConversationId id, ToolCall call, ParkToken token) {
+    if (parks.find(token).isPresent()) {
+      return new ResumeOutcome.ReplayedNoOp();
+    }
+    long onRecordForThisCall =
+        parks.forConversation(id).stream()
+            .filter(park -> park.call().id().equals(call.id()))
+            .count();
+    if (onRecordForThisCall >= 2) {
+      throw new IllegalStateException(
+          "call "
+              + call.id()
+              + " parked under a new token while a different park was already outstanding for it;"
+              + " at most one outstanding park per call is supported (design §4)");
+    }
+    return new ResumeOutcome.Reparked(call, token);
   }
 
   private PerformOutcome perform(Effect effect, ConversationState state, TurnObserver observer) {
