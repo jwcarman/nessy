@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spi.subagent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -267,12 +268,18 @@ class AgentToolsTest {
   @Nested
   class Child_conversation_identity {
 
+    /**
+     * Task-3 fix round 1, must-fix 2: {@code execute} inspects {@link Agent#snapshot} before
+     * telling anything, so a redelivered call under the same call id (every real transport is
+     * at-least-once) never re-runs the child — only one turn is ever driven, and every replay
+     * answers with that same turn's own text. Only a single {@code ScriptedProvider} turn is queued
+     * here on purpose: if the implementation regressed to re-telling on replay, the second {@code
+     * execute} would exhaust the script and throw.
+     */
     @Test
-    void two_executes_with_the_same_call_id_land_on_the_same_child_conversation() {
+    void two_executes_with_the_same_call_id_run_the_child_exactly_once() {
       ScriptedProvider provider =
-          new ScriptedProvider()
-              .turn(new ModelEvent.TextChunk("first"), endTurn())
-              .turn(new ModelEvent.TextChunk("second"), endTurn());
+          new ScriptedProvider().turn(new ModelEvent.TextChunk("the answer"), endTurn());
       Agent<String> child =
           Nessy.harness(provider).build().agent().name("researcher").model("m").build();
       Tool<AgentTools.Delegation> tool =
@@ -282,11 +289,14 @@ class AgentToolsTest {
       ToolContext context = contextFor(parentId, call);
       ConversationId expectedChildId = new ConversationId(parentId.value() + "/" + call.id());
 
-      tool.execute(new AgentTools.Delegation("investigate"), context);
-      tool.execute(new AgentTools.Delegation("investigate further"), context);
+      Awaited<ToolResult> first = tool.execute(new AgentTools.Delegation("investigate"), context);
+      Awaited<ToolResult> second = tool.execute(new AgentTools.Delegation("investigate"), context);
 
-      assertThat(child.snapshot(expectedChildId).status()).isEqualTo(ConversationStatus.COMPLETE);
-      assertThat(child.contextFor(expectedChildId).messages()).hasSize(4);
+      assertThat(first).isInstanceOf(Awaited.Ready.class);
+      assertThat(second).isInstanceOf(Awaited.Ready.class);
+      assertThat(((Awaited.Ready<ToolResult>) first).value().content()).isEqualTo("the answer");
+      assertThat(((Awaited.Ready<ToolResult>) second).value().content()).isEqualTo("the answer");
+      assertThat(child.contextFor(expectedChildId).messages()).hasSize(2);
     }
   }
 
@@ -366,6 +376,48 @@ class AgentToolsTest {
       assertThat(links.find(expectedChildId)).contains(parentToken);
     }
 
+    /**
+     * Task-3 fix round 1, should-fix 4: a redelivered {@code execute} against a still-parked child
+     * (same call id) must return the exact same parent token already on file — not mint a fresh
+     * one, which would orphan the first token's park entry and reopen {@link
+     * AgentTools#completions}'s race window on every replay. Only a single {@code ScriptedProvider}
+     * turn is queued: the second {@code execute} must never re-tell the child at all.
+     */
+    @Test
+    void re_executing_a_parked_delegation_returns_the_same_parent_token() {
+      ToolCall childCall =
+          new ToolCall("c1", "ask_question", JsonNodeFactory.instance.objectNode());
+      ScriptedProvider provider =
+          new ScriptedProvider().turn(new ModelEvent.ToolUseEmitted(childCall), endWithToolUse());
+      ParkingApprover approver = new ParkingApprover();
+      Agent<String> child =
+          Nessy.harness(provider)
+              .build()
+              .agent()
+              .name("researcher")
+              .model("m")
+              .tools(ToolGrant.grant(new AskQuestionTool(), UsagePolicy.requireApproval()))
+              .approver(approver)
+              .build();
+      SubagentLinks links = SubagentLinks.inMemory();
+      Tool<AgentTools.Delegation> tool = AgentTools.subagent(child, "delegates research", links);
+      ConversationId parentId = ConversationId.generate();
+      ToolCall call = new ToolCall("call-1", "researcher", taskArguments("ask around"));
+      ToolContext context = contextFor(parentId, call);
+      ConversationId expectedChildId = new ConversationId(parentId.value() + "/" + call.id());
+      AgentTools.Delegation input = new AgentTools.Delegation("ask around");
+
+      Awaited<ToolResult> first = tool.execute(input, context);
+      Awaited<ToolResult> second = tool.execute(input, context);
+
+      assertThat(first).isInstanceOf(Awaited.Parked.class);
+      assertThat(second).isInstanceOf(Awaited.Parked.class);
+      ParkToken firstToken = ((Awaited.Parked<ToolResult>) first).token();
+      ParkToken secondToken = ((Awaited.Parked<ToolResult>) second).token();
+      assertThat(secondToken).isEqualTo(firstToken);
+      assertThat(links.find(expectedChildId)).contains(firstToken);
+    }
+
     @Test
     void a_parked_child_with_no_links_store_throws_naming_the_missing_store() {
       ToolCall childCall =
@@ -425,7 +477,10 @@ class AgentToolsTest {
 
       tool.execute(new AgentTools.Delegation("echo hi"), context);
 
-      assertThat(heard).isNotEmpty();
+      // Exactly one ToolCallRequested narrates in this script (one tool call, one text turn) — an
+      // implementation pinging on every TextDelta instead would over-produce and this would catch
+      // it.
+      assertThat(heard).hasSize(1);
       assertThat(heard.getFirst().message()).isEqualTo("researcher: echo");
     }
   }
@@ -438,15 +493,27 @@ class AgentToolsTest {
       SubagentLinks links = SubagentLinks.inMemory();
       Parks parks = Parks.inMemory();
       CallbackRouter router = new CallbackRouter();
+      ConversationId childId = ConversationId.generate();
       ConversationSettled event =
-          new ConversationSettled(
-              ConversationId.generate(), ConversationStatus.COMPLETE, null, "x");
+          new ConversationSettled(childId, ConversationStatus.COMPLETE, null, "x");
 
-      AgentTools.completions(links, parks, router).accept(event);
+      assertThatCode(() -> AgentTools.completions(links, parks, router).accept(event))
+          .doesNotThrowAnyException();
+      assertThat(links.find(childId)).isEmpty();
     }
 
+    /**
+     * Task-3 fix round 1, must-fix 1: {@link Parks} never deletes an entry once registered, so a
+     * present link whose park is absent can only mean the parent's own park has not landed
+     * <em>yet</em> — the narrow race window between {@code execute}'s own {@code links.save} and
+     * the parent loop's later {@code Parks.park}. Forgetting the link here (the old behaviour) was
+     * a lost wakeup: the child had already settled and nothing would ever wake it again. The
+     * corrected behaviour throws instead, and — critically — leaves the link in place so a
+     * redelivery of this same settlement (the whole point of registering this consumer
+     * synchronously) can succeed once the park has landed.
+     */
     @Test
-    void a_settlement_whose_park_is_already_gone_forgets_the_link_and_resumes_nobody() {
+    void a_settlement_whose_park_has_not_registered_yet_throws_and_leaves_the_link_in_place() {
       ConversationId childId = ConversationId.generate();
       ParkToken parentToken = ParkToken.generate();
       SubagentLinks links = SubagentLinks.inMemory();
@@ -455,10 +522,14 @@ class AgentToolsTest {
       CallbackRouter router = new CallbackRouter();
       ConversationSettled event =
           new ConversationSettled(childId, ConversationStatus.COMPLETE, null, "x");
+      var consumer = AgentTools.completions(links, parks, router);
 
-      AgentTools.completions(links, parks, router).accept(event);
+      assertThatThrownBy(() -> consumer.accept(event))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(childId.value())
+          .hasMessageContaining(parentToken.value());
 
-      assertThat(links.find(childId)).isEmpty();
+      assertThat(links.find(childId)).contains(parentToken);
     }
 
     /**

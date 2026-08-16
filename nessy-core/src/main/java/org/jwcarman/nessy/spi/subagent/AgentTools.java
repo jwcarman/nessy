@@ -26,9 +26,11 @@ import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.RunOutcome;
 import org.jwcarman.nessy.api.ToolResolution;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.conversation.ConversationSnapshot;
 import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -70,6 +72,12 @@ public final class AgentTools {
    * child whose own tools never park, but the moment the child does park, {@link Tool#execute}
    * throws {@link IllegalStateException} naming the missing store — there is nowhere to remember
    * the parent's own park token.
+   *
+   * <p>That throw never reaches the application, though: the harness's own tool-call executor
+   * catches whatever a tool throws and turns it into an ordinary {@link ToolResult#error}, so the
+   * model simply sees a failed call — and the child conversation is left parked on a token nobody
+   * holds, unreachable forever. The {@link SubagentLinks}-carrying overload is the only durable
+   * path; reach for this one only when the child is known never to park.
    */
   public static Tool<Delegation> subagent(Agent<String> child, String description) {
     return subagent(child, description, null);
@@ -106,9 +114,20 @@ public final class AgentTools {
    *   <li>{@code links.find} is empty — either this child never delegated a park (it settled in one
    *       shot with nothing to wake), or a prior delivery already {@link SubagentLinks#forget} it.
    *       Either way, a silent no-op — this is what makes a duplicate settlement idempotent.
-   *   <li>{@code links.find} is present but {@code parks.find} is empty — the parent token is
-   *       known, but nobody is waiting on it any longer (its wait already resolved some other way).
-   *       The link is forgotten and nothing is resumed.
+   *   <li>{@code links.find} is present but {@code parks.find} is empty — this is
+   *       <strong>not</strong> "nobody is waiting any more": {@link Parks} never deletes an entry
+   *       once registered (see {@link Parks}'s own javadoc), so an absent park can only mean the
+   *       parent's own park has not been registered <em>yet</em> — the narrow window between this
+   *       {@code execute}'s own {@link SubagentLinks#save} and the parent loop's later {@code
+   *       Parks.park} call landing. Forgetting the link here would be a lost wakeup: the child has
+   *       already settled, the park is about to register moments later, and nothing will ever wake
+   *       it again. This throws {@link IllegalStateException} instead, naming the child and the
+   *       not-yet-registered token — the settlement fires inside the child driver's own synchronous
+   *       drive, so the throw fails that delivery and the at-least-once transport (the same
+   *       reasoning this method's own sync-registration requirement rests on) retries once the
+   *       window has closed. A genuine duplicate settlement — the same child settling twice — never
+   *       reaches this branch: the first successful wake already forgot the link, so the second
+   *       delivery drains via the empty-{@code links.find} case above.
    *   <li>Both present — the settlement resolves the parent's own park: {@link
    *       ConversationStatus#COMPLETE} resumes with {@link ToolResolution.Completed} carrying
    *       {@link ToolResult#ok}; {@link ConversationStatus#FAILED} carries {@link
@@ -132,8 +151,15 @@ public final class AgentTools {
       ParkToken token = parentToken.get();
       Optional<Parks.Park> park = parks.find(token);
       if (park.isEmpty()) {
-        links.forget(childId);
-        return;
+        throw new IllegalStateException(
+            "child "
+                + childId.value()
+                + " settled before its parent's own park ("
+                + token.value()
+                + ") was registered — Parks entries are never deleted, so an absent park can only"
+                + " mean this settlement arrived inside the narrow window between"
+                + " SubagentLinks.save and the parent loop registering its own park; failing this"
+                + " delivery lets the at-least-once transport retry once that window has closed");
       }
       ToolResult result =
           event.status() == ConversationStatus.COMPLETE
@@ -181,31 +207,65 @@ public final class AgentTools {
     }
 
     /**
-     * Drives one turn of a child conversation stably keyed to this call — {@code
+     * Drives (at most) one turn of a child conversation stably keyed to this call — {@code
      * parentConversationId/toolCallId} — so a redelivered call (every real transport is
-     * at-least-once) lands on the same child conversation rather than spawning a sibling: the child
-     * folds the redelivered {@code tell} once, no stutter.
+     * at-least-once) lands on the same child conversation rather than spawning a sibling.
      *
-     * <p>Progress relay (documented approximation, spec §9 wants per-turn): a {@link TurnObserver}
-     * passed to the child's own {@code tell} calls {@link ToolContext#progress} on every {@link
-     * TurnEvent.ToolCallRequested} the child's turn narrates — an activity ping, not a per-turn
-     * summary, so a long delegation chain never looks frozen even though it says less than the
-     * child is actually doing.
+     * <p><strong>True short-circuit idempotency, not the transcript's own no-stutter rule.</strong>
+     * A redelivered {@code execute} would otherwise re-{@code tell} an already-settled or
+     * already-parked child — this harness has no ordinary at-least-once tool semantics that absorb
+     * that on their own (a {@code tell} against a completed conversation drives a fresh turn; a
+     * {@code tell} against a parked one queues a second, later-folding {@code Told}), so this door
+     * inspects {@link Agent#snapshot} <em>before</em> telling anything, and only a genuinely
+     * fresh/idle child is told at all:
      *
-     * <p>{@link ConversationStatus#COMPLETE} answers with the child's last assistant message, read
-     * back via {@link Agent#contextFor} the same way {@code ConversationLoop}'s own settlement-fact
-     * fallback does (durable transcript, not attempt-local state — this door has no attempt-local
-     * message to fast-path from). {@link ConversationStatus#FAILED} answers with {@link
-     * ConversationState#failureReason()} directly. A park mints a fresh parent {@link ParkToken}
-     * the same way {@code RequestFulfillmentTool} (order-desk) and {@code RequestFieldCrewTool}
-     * (dispatcher) do, saves the correlation, and returns it — requiring {@code links} to exist,
-     * since without one there is nowhere to remember which parent token the child's eventual
-     * settlement must resume.
+     * <ul>
+     *   <li>{@link ConversationStatus#COMPLETE} — answered without telling, from the child's last
+     *       assistant message, read back via {@link Agent#contextFor} the same way {@code
+     *       ConversationLoop}'s own settlement-fact fallback does.
+     *   <li>{@link ConversationStatus#FAILED} — answered without telling, as {@link
+     *       ToolResult#error}. {@link Agent#snapshot}/{@link Agent#contextFor} do not expose {@link
+     *       ConversationState#failureReason()} for an already-stored conversation (that field lives
+     *       only on a live {@link RunOutcome}'s state), so a replayed FAILED answer carries a
+     *       generic "already failed" message rather than fabricating the original reason — a fresh,
+     *       first-time FAILED settlement (below, off the just-driven {@code RunOutcome}) still
+     *       carries the real one.
+     *   <li>{@link ConversationStatus#PARKED} — answered without telling, returning the parent
+     *       token already on file in {@code links} rather than minting a fresh one (minting again
+     *       here would orphan the earlier token's park entry and reopen the {@link #completions}
+     *       race window on every replay). {@code links} is this delegation's own bookkeeping, so a
+     *       parked child with no matching link is a bug, not a recoverable state: {@link
+     *       IllegalStateException}.
+     *   <li>Anything else (no conversation stored yet, or a status a redelivery should never
+     *       actually observe outside a genuine crash-replay) — a fresh {@code tell}, narrated by a
+     *       progress relay: a {@link TurnObserver} passed to the child's own {@code tell} calls
+     *       {@link ToolContext#progress} on every {@link TurnEvent.ToolCallRequested} the child's
+     *       turn narrates — an activity ping (documented approximation, spec §9 wants per-turn),
+     *       not a per-turn summary, so a long delegation chain never looks frozen even though it
+     *       says less than the child is actually doing. Its own outcome maps the same way: {@link
+     *       RunOutcome.Completed} through {@link #settled}, {@link RunOutcome.Parked} through
+     *       {@link #freshPark}, which mints the parent {@link ParkToken} the same way {@code
+     *       RequestFulfillmentTool} (order-desk) and {@code RequestFieldCrewTool} (dispatcher) do.
+     * </ul>
      */
     @Override
     public Awaited<ToolResult> execute(Delegation input, ToolContext context) {
       ConversationId childId =
           new ConversationId(context.conversationId().value() + "/" + context.call().id());
+      ConversationSnapshot snapshot = child.snapshot(childId);
+      return switch (snapshot.status()) {
+        case COMPLETE -> Awaited.ready(ToolResult.ok(finalAssistantText(snapshot.context())));
+        case FAILED ->
+            Awaited.ready(
+                ToolResult.error(
+                    "subagent '" + child.name() + "' already failed; this replay was not re-run"));
+        case PARKED -> existingPark(childId);
+        default -> tell(childId, input, context);
+      };
+    }
+
+    private Awaited<ToolResult> tell(
+        ConversationId childId, Delegation input, ToolContext context) {
       TurnObserver progressRelay =
           event -> {
             if (event instanceof TurnEvent.ToolCallRequested requested) {
@@ -214,14 +274,15 @@ public final class AgentTools {
           };
       RunOutcome outcome = child.conversation(childId).tell(input.task(), progressRelay);
       return switch (outcome) {
-        case RunOutcome.Parked _ -> park(childId);
+        case RunOutcome.Parked _ -> freshPark(childId);
         case RunOutcome.Completed completed -> settled(childId, completed.state());
       };
     }
 
     private Awaited<ToolResult> settled(ConversationId childId, ConversationState state) {
       return switch (state.status()) {
-        case COMPLETE -> Awaited.ready(ToolResult.ok(finalAssistantText(childId)));
+        case COMPLETE ->
+            Awaited.ready(ToolResult.ok(finalAssistantText(child.contextFor(childId))));
         case FAILED -> Awaited.ready(ToolResult.error(state.failureReason()));
         default ->
             throw new IllegalStateException(
@@ -229,7 +290,30 @@ public final class AgentTools {
       };
     }
 
-    private Awaited<ToolResult> park(ConversationId childId) {
+    private Awaited<ToolResult> freshPark(ConversationId childId) {
+      requireLinks();
+      ParkToken parentToken = ParkToken.generate();
+      links.save(childId, parentToken);
+      return Awaited.parked(parentToken);
+    }
+
+    private Awaited<ToolResult> existingPark(ConversationId childId) {
+      requireLinks();
+      ParkToken parentToken =
+          links
+              .find(childId)
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "child conversation "
+                              + childId.value()
+                              + " is parked, but SubagentLinks has no parent token on file for it"
+                              + " — the delegation's own bookkeeping is missing an entry it should"
+                              + " hold"));
+      return Awaited.parked(parentToken);
+    }
+
+    private void requireLinks() {
       if (links == null) {
         throw new IllegalStateException(
             "the child parked, but no SubagentLinks store was configured for '"
@@ -237,19 +321,15 @@ public final class AgentTools {
                 + "' — pass one to AgentTools.subagent(child, description, links) so the parent's"
                 + " own park can be correlated back to the child's eventual settlement");
       }
-      ParkToken parentToken = ParkToken.generate();
-      links.save(childId, parentToken);
-      return Awaited.parked(parentToken);
     }
 
     /**
      * The last {@link Role#ASSISTANT} message's text blocks, concatenated in order — the durable
-     * transcript read via {@link Agent#contextFor}, the same fallback source {@code
-     * ConversationLoop.publishSettlement} consults when it has no attempt-local message of its own.
-     * The empty string when the child said nothing.
+     * transcript, the same fallback source {@code ConversationLoop.publishSettlement} consults when
+     * it has no attempt-local message of its own. The empty string when the child said nothing.
      */
-    private String finalAssistantText(ConversationId childId) {
-      List<Message> messages = child.contextFor(childId).messages();
+    private String finalAssistantText(Context context) {
+      List<Message> messages = context.messages();
       for (int i = messages.size() - 1; i >= 0; i--) {
         Message message = messages.get(i);
         if (message.role() == Role.ASSISTANT) {
