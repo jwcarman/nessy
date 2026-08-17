@@ -47,7 +47,7 @@
          in 1.55.0 instead. Boot 4.1.0 manages 1.62.0 — at or above the 1.60.1 floor — so this pin
          is bumped to the 2.26.x line per that same rule. Bump this only alongside Boot's managed
          opentelemetry version. -->
-    <opentelemetry-instrumentation.version>2.26.1-alpha</opentelemetry-instrumentation.version>
+    <opentelemetry-instrumentation.version>2.30.0-alpha</opentelemetry-instrumentation.version>
     <!-- Pinned to match mocapi-enterprise-demo (this recipe's source), which pins the same
          version for the same reason: nothing here manages it for us. -->
     <datasource-micrometer.version>2.2.1</datasource-micrometer.version>
