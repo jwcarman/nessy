@@ -48,7 +48,7 @@
          release available, rather than reusing an untested pin. -->
     <mysql-connector-j.version>9.4.0</mysql-connector-j.version>
     <mariadb-java-client.version>3.5.6</mariadb-java-client.version>
-    <mssql-jdbc.version>12.8.1.jre11</mssql-jdbc.version>
+    <mssql-jdbc.version>13.4.0.jre11</mssql-jdbc.version>
     <ojdbc11.version>23.9.0.25.07</ojdbc11.version>
   </properties>
 
