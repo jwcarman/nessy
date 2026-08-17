@@ -85,9 +85,11 @@ public interface UsagePolicy<E> {
 
   /**
    * Marker for a policy whose verdict never depends on context or effect — implemented ONLY by
-   * {@link Allow} and {@link Deny}, the two canonical statics, and sealed shut to exactly those
-   * two. The chokepoint checks for this rather than for identity against a single instance, since
-   * {@link #deny(String)} cannot be one shared singleton across every reason.
+   * {@code Allow} and {@code Deny}, the two canonical statics (both package-private top-level
+   * classes beside this interface, reachable only through {@link #allow()} and {@link
+   * #deny(String)}), and sealed shut to exactly those two. The chokepoint checks for this rather
+   * than for identity against a single instance, since {@link #deny(String)} cannot be one shared
+   * singleton across every reason.
    *
    * <p>This is deliberately closed, not an extension point: the chokepoint's rung-0 fast path skips
    * {@link #evaluate}'s own fail-closed staging entirely (no effect rendered, no context assembled,
@@ -101,74 +103,5 @@ public interface UsagePolicy<E> {
 
     /** The one verdict this policy ever returns — never {@link PolicyDecision.RequireApproval}. */
     PolicyDecision decision();
-  }
-
-  /**
-   * The canonical singleton {@link #allow()} returns. A dedicated class rather than a field
-   * directly on this interface: interface fields are implicitly {@code public static final}, and a
-   * field here would publish this type's shape directly. The type itself is necessarily public —
-   * interfaces cannot hide a member type — but its constructor and {@link #INSTANCE} are private,
-   * so the canonical instance is reachable only through {@link #allow()}.
-   */
-  final class Allow implements UsagePolicy<Object>, Static {
-
-    private static final Allow INSTANCE = new Allow();
-
-    private Allow() {}
-
-    @Override
-    public PolicyDecision evaluate(AuthzContext context, Object effect) {
-      return decision();
-    }
-
-    @Override
-    public PolicyDecision decision() {
-      return new PolicyDecision.Allow();
-    }
-  }
-
-  /**
-   * What {@link #deny(String)} returns: a fresh instance per reason (the reason varies, so unlike
-   * {@link Allow} there is no single shared singleton), but always {@link Static} — its verdict is
-   * fixed at construction, never a function of context or effect.
-   */
-  final class Deny implements UsagePolicy<Object>, Static {
-
-    private final PolicyDecision decision;
-
-    private Deny(String reason) {
-      this.decision = new PolicyDecision.Deny(reason);
-    }
-
-    @Override
-    public PolicyDecision evaluate(AuthzContext context, Object effect) {
-      return decision;
-    }
-
-    @Override
-    public PolicyDecision decision() {
-      return decision;
-    }
-  }
-
-  /**
-   * The canonical singleton {@link #requireApproval()} returns. A named final class, not a bare
-   * lambda, purely so {@code AuthorizationReport}'s policy story can recognize it by type and print
-   * its own canonical factory name ({@code requireApproval()}) rather than an unreadable synthetic
-   * lambda token — the same motivation {@link Allow} and {@link Deny} already have. Deliberately
-   * does NOT implement {@link Static}: unlike those two, its verdict still needs the tool's
-   * rendered effect and the assembled context handed to the approver (design §9), so it must not
-   * take the chokepoint's rung-0 fast path (see {@link Static}'s own javadoc).
-   */
-  final class RequireApproval implements UsagePolicy<Object> {
-
-    private static final RequireApproval INSTANCE = new RequireApproval();
-
-    private RequireApproval() {}
-
-    @Override
-    public PolicyDecision evaluate(AuthzContext context, Object effect) {
-      return new PolicyDecision.RequireApproval();
-    }
   }
 }

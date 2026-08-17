@@ -953,12 +953,18 @@ class GatedToolCallExecutorTest {
   }
 
   /**
-   * {@link UsagePolicy.Static} is a closed extension point (fix round 1, F1): only {@link
-   * UsagePolicy.Allow} and {@link UsagePolicy.Deny} may ever implement it, enforced by the compiler
-   * via {@code sealed ... permits}, not by convention — a third implementor anywhere else in the
+   * {@link UsagePolicy.Static} is a closed extension point (fix round 1, F1): only the framework's
+   * own {@code Allow} and {@code Deny} classes may ever implement it, enforced by the compiler via
+   * {@code sealed ... permits}, not by convention — a third implementor anywhere else in the
    * codebase simply does not compile. That closure is what keeps the rung-0 fast path safe: it
    * bypasses {@code evaluate}'s own fail-closed staging entirely, so only the two verdicts the
    * framework itself controls may ever take that path.
+   *
+   * <p>{@code Allow} and {@code Deny} are package-private to {@code org.jwcarman.nessy.api.tool}
+   * (this test lives one package over, in {@code spi.execute}), so this cannot name the permitted
+   * subclasses directly the way an earlier version of this test did; asserting by simple name and
+   * count is the same invariant — no third implementor can ever enter the permits list — proven
+   * without naming a type this package cannot see.
    */
   @Nested
   class StaticMarkerIsSealed {
@@ -966,8 +972,11 @@ class GatedToolCallExecutorTest {
     @Test
     void only_allow_and_deny_are_permitted_static_implementations() {
       assertThat(UsagePolicy.Static.class.isSealed()).isTrue();
-      assertThat(UsagePolicy.Static.class.getPermittedSubclasses())
-          .containsExactlyInAnyOrder(UsagePolicy.Allow.class, UsagePolicy.Deny.class);
+      List<Class<?>> permitted = List.of(UsagePolicy.Static.class.getPermittedSubclasses());
+
+      assertThat(permitted).isNotEmpty();
+      assertThat(permitted.stream().map(Class::getSimpleName))
+          .containsExactlyInAnyOrder("Allow", "Deny");
     }
 
     @Test
