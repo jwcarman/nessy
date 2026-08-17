@@ -174,13 +174,14 @@ public final class HarnessConfig implements ListenerDeclarations<HarnessConfig> 
     Objects.requireNonNull(provider, "provider must not be null");
     return new Harness(
         provider,
-        new Harness.StoreSelection(
-            Optional.ofNullable(store).orElseGet(this::defaultStore), storeSet),
-        new Harness.CoordinationStores(
-            Optional.ofNullable(parks).orElseGet(this::defaultParks),
-            Optional.ofNullable(subagentLinks).orElseGet(this::defaultSubagentLinks),
-            subagentLinksSet),
-        Optional.ofNullable(intentStore).orElseGet(this::defaultIntentStore),
+        new Harness.Stores(
+            new Harness.StoreSelection(
+                Optional.ofNullable(store).orElseGet(this::defaultStore), storeSet),
+            new Harness.CoordinationStores(
+                Optional.ofNullable(parks).orElseGet(this::defaultParks),
+                Optional.ofNullable(subagentLinks).orElseGet(this::defaultSubagentLinks),
+                subagentLinksSet),
+            Optional.ofNullable(intentStore).orElseGet(this::defaultIntentStore)),
         Optional.ofNullable(observations).orElseGet(this::defaultObservations),
         Optional.ofNullable(mapper).orElseGet(this::defaultMapper),
         defaultModel,

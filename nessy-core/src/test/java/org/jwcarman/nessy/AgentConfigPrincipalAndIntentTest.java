@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -151,7 +152,7 @@ class AgentConfigPrincipalAndIntentTest {
 
     @Override
     public void on(TurnEvent event) {
-      if (event instanceof TurnEvent.ToolCallDecided(var _, Decision decision)) {
+      if (event instanceof TurnEvent.ToolCallDecided(_, Decision decision)) {
         decisions.add(decision);
       }
     }
@@ -401,7 +402,7 @@ class AgentConfigPrincipalAndIntentTest {
       agent.converse().tell(new Nothing());
 
       List<String> offeredToolNames =
-          provider.requests().getFirst().tools().stream().map(spec -> spec.name()).toList();
+          provider.requests().getFirst().tools().stream().map(ToolSpec::name).toList();
       assertThat(offeredToolNames).isNotEmpty().doesNotContain("declare_intent", "clear_intent");
       assertThat(policy.seen()).hasSize(1);
       assertThat(policy.seen().getFirst().declaredIntent()).isEmpty();

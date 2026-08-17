@@ -20,8 +20,8 @@ import java.util.Objects;
 /**
  * A typed slot in an {@link AuthzContext}: a class token plus a name.
  *
- * <p>Nessy ships a few well-known keys ({@link AuthzContext#PRINCIPAL}, {@link
- * AuthzContext#DECLARED_INTENT}) as its own opinions; everything else is an application's or an
+ * <p>Nessy ships a few well-known keys ({@link AuthzContext#PRINCIPAL_KEY}, {@link
+ * AuthzContext#DECLARED_INTENT_KEY}) as its own opinions; everything else is an application's or an
  * enricher library's own escape hatch — declare a {@code static final Key<Foo> FOO = new
  * Key<>(Foo.class, "foo")} and deposit into it with {@link AuthzContext#with}.
  *

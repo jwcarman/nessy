@@ -38,13 +38,13 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 public interface AuthzContext {
 
   /** The well-known slot a principal-resolving enricher deposits into. Empty until one does. */
-  Key<Object> PRINCIPAL = new Key<>(Object.class, "principal");
+  Key<Object> PRINCIPAL_KEY = new Key<>(Object.class, "principal");
 
   /**
    * The well-known slot {@code spi.intent} deposits the latest declaration recorded in the
    * harness's {@code IntentStore} into.
    */
-  Key<Object> DECLARED_INTENT = new Key<>(Object.class, "declaredIntent");
+  Key<Object> DECLARED_INTENT_KEY = new Key<>(Object.class, "declaredIntent");
 
   /** The conversation this call belongs to. */
   ConversationId conversationId();
@@ -66,10 +66,10 @@ public interface AuthzContext {
 
   /**
    * The nominal principal a conversation acts for — any type, nessy defines only the slot (design
-   * §6). Empty until an enricher deposits one under {@link #PRINCIPAL}.
+   * §6). Empty until an enricher deposits one under {@link #PRINCIPAL_KEY}.
    */
   default Optional<Object> principal() {
-    return get(PRINCIPAL);
+    return get(PRINCIPAL_KEY);
   }
 
   /** {@link #principal()}, recovered by class token: empty on a miss as well as an absence. */
@@ -82,7 +82,7 @@ public interface AuthzContext {
    * wired and has a declaration recorded in the harness's {@code IntentStore}.
    */
   default Optional<Object> declaredIntent() {
-    return get(DECLARED_INTENT);
+    return get(DECLARED_INTENT_KEY);
   }
 
   /** {@link #declaredIntent()}, recovered by class token: empty on a miss as well as an absence. */

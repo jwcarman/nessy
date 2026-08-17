@@ -29,17 +29,19 @@ import org.jwcarman.nessy.api.conversation.ConversationId;
  */
 final class InMemoryIntentStore implements IntentStore {
 
+  private static final String ID_MUST_NOT_BE_NULL = "id must not be null";
+
   private final Map<ConversationId, StoredIntent> intents = new ConcurrentHashMap<>();
 
   @Override
   public Optional<StoredIntent> get(ConversationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     return Optional.ofNullable(intents.get(id));
   }
 
   @Override
   public void put(ConversationId id, String type, String json) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(json, "json must not be null");
     intents.put(id, new StoredIntent(type, json));
@@ -47,7 +49,7 @@ final class InMemoryIntentStore implements IntentStore {
 
   @Override
   public void clear(ConversationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     intents.remove(id);
   }
 }

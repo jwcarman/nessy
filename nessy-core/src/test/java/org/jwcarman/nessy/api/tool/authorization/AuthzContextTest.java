@@ -93,7 +93,7 @@ class AuthzContextTest {
 
     @Test
     void principal_typed_recovery_hits_on_a_matching_class_token() {
-      AuthzContext context = freshContext().with(AuthzContext.PRINCIPAL, "ada");
+      AuthzContext context = freshContext().with(AuthzContext.PRINCIPAL_KEY, "ada");
 
       assertThat(context.principal()).contains("ada");
       assertThat(context.principal(String.class)).contains("ada");
@@ -101,7 +101,7 @@ class AuthzContextTest {
 
     @Test
     void principal_typed_recovery_misses_on_a_mismatched_class_token() {
-      AuthzContext context = freshContext().with(AuthzContext.PRINCIPAL, "ada");
+      AuthzContext context = freshContext().with(AuthzContext.PRINCIPAL_KEY, "ada");
 
       assertThat(context.principal(Integer.class)).isEmpty();
     }
@@ -116,7 +116,7 @@ class AuthzContextTest {
 
     @Test
     void declared_intent_typed_recovery_hits_on_a_matching_class_token() {
-      AuthzContext context = freshContext().with(AuthzContext.DECLARED_INTENT, "read-only");
+      AuthzContext context = freshContext().with(AuthzContext.DECLARED_INTENT_KEY, "read-only");
 
       assertThat(context.declaredIntent()).contains("read-only");
       assertThat(context.declaredIntent(String.class)).contains("read-only");

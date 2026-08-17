@@ -137,7 +137,7 @@ public final class AuthorizationReport {
   private static String policySummary(UsagePolicy<?> policy) {
     if (policy instanceof UsagePolicy.Static staticPolicy) {
       return switch (staticPolicy.decision()) {
-        case PolicyDecision.Allow ignored -> "allow()";
+        case PolicyDecision.Allow _ -> "allow()";
         case PolicyDecision.Deny(String reason) -> "deny(\"" + reason + "\")";
         // Unreachable: Static is sealed to the framework's own Allow/Deny (see its own javadoc),
         // and neither's decision() ever returns RequireApproval — UsagePolicy.requireApproval()
@@ -145,7 +145,7 @@ public final class AuthorizationReport {
         // caught by the reference-equality check just below instead. Kept only so this switch
         // stays exhaustive over PolicyDecision's three cases without a default arm masking a
         // future one.
-        case PolicyDecision.RequireApproval ignored -> "requireApproval()";
+        case PolicyDecision.RequireApproval _ -> "requireApproval()";
       };
     }
     if (policy == UsagePolicy.requireApproval()) {

@@ -104,22 +104,38 @@ public final class Harness {
     }
   }
 
-  Harness(
-      ModelProvider provider,
+  /**
+   * Every store this harness carries, bundled together (java:S107: the intent store pushed the
+   * constructor past seven parameters) — {@link StoreSelection} and {@link CoordinationStores} were
+   * already their own bundles for the same reason; this is the next fold, not a new principle,
+   * grouping the harness's whole store family under one constructor parameter.
+   */
+  record Stores(
       StoreSelection storeSelection,
       CoordinationStores coordinationStores,
-      IntentStore intentStore,
+      IntentStore intentStore) {
+
+    Stores {
+      Objects.requireNonNull(storeSelection, "storeSelection must not be null");
+      Objects.requireNonNull(coordinationStores, "coordinationStores must not be null");
+      Objects.requireNonNull(intentStore, "intentStore must not be null");
+    }
+  }
+
+  Harness(
+      ModelProvider provider,
+      Stores stores,
       ObservationRegistry observations,
       ObjectMapper mapper,
       String defaultModel,
       ListenerRegistry registry) {
     this.provider = provider;
-    this.store = storeSelection.store();
-    this.storeSet = storeSelection.storeSet();
-    this.parks = coordinationStores.parks();
-    this.subagentLinks = coordinationStores.subagentLinks();
-    this.subagentLinksSet = coordinationStores.subagentLinksSet();
-    this.intentStore = intentStore;
+    this.store = stores.storeSelection().store();
+    this.storeSet = stores.storeSelection().storeSet();
+    this.parks = stores.coordinationStores().parks();
+    this.subagentLinks = stores.coordinationStores().subagentLinks();
+    this.subagentLinksSet = stores.coordinationStores().subagentLinksSet();
+    this.intentStore = stores.intentStore();
     this.observations = observations;
     this.mapper = mapper;
     this.defaultModel = defaultModel;

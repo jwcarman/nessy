@@ -146,7 +146,7 @@ final class IntentAssembly {
   /**
    * The internal enricher {@link AgentConfig#intent(Class)} wires onto every non-static grant: one
    * keyed {@link IntentStore#get} per evaluated call, depositing under {@link
-   * AuthzContext#DECLARED_INTENT} only when the stored row's own type name matches this agent's
+   * AuthzContext#DECLARED_INTENT_KEY} only when the stored row's own type name matches this agent's
    * configured vocabulary exactly.
    *
    * <p>Fail-closed by construction, never by catching a cast failure: a foreign vocabulary (a row
@@ -188,11 +188,11 @@ final class IntentAssembly {
       Object declared;
       try {
         declared = mapper.readValue(intent.json(), intentType);
-      } catch (IOException e) {
+      } catch (IOException _) {
         // Malformed for this type: also reads as absent rather than denying the whole call.
         return context;
       }
-      return context.with(AuthzContext.DECLARED_INTENT, declared);
+      return context.with(AuthzContext.DECLARED_INTENT_KEY, declared);
     }
   }
 }

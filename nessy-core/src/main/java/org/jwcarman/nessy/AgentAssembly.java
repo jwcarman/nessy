@@ -150,7 +150,7 @@ final class AgentAssembly {
                 Object principal = resolver.apply(context.conversationId());
                 return principal == null
                     ? context
-                    : context.with(AuthzContext.PRINCIPAL, principal);
+                    : context.with(AuthzContext.PRINCIPAL_KEY, principal);
               }));
     }
     if (config.intentType() != null) {

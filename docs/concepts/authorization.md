@@ -265,7 +265,7 @@ AgentConfig<T> principal(Function<ConversationId, ?> resolver)
 
 `resolver` runs once per evaluated call, impure allowed — a token exchange or a
 directory lookup belongs exactly here. Its return value is deposited into
-`AuthzContext.PRINCIPAL`; a `null` return is a legitimate "no principal for this
+`AuthzContext.PRINCIPAL_KEY`; a `null` return is a legitimate "no principal for this
 conversation" answer, not a failure, and the slot simply stays absent for that call.
 Recovery is a checked class-token lookup:
 

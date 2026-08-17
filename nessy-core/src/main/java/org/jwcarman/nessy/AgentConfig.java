@@ -265,8 +265,8 @@ public final class AgentConfig<T> implements ListenerDeclarations<AgentConfig<T>
    * {@code resolver} runs once per evaluated call — impure allowed, since a token exchange or a
    * directory lookup is exactly the kind of I/O the context-assembly stage exists for — and its
    * return value is deposited into {@link
-   * org.jwcarman.nessy.api.tool.authorization.AuthzContext#PRINCIPAL}. A {@code null} return is a
-   * legitimate "no principal for this conversation" answer, not a failure: the slot stays absent
+   * org.jwcarman.nessy.api.tool.authorization.AuthzContext#PRINCIPAL_KEY}. A {@code null} return is
+   * a legitimate "no principal for this conversation" answer, not a failure: the slot stays absent
    * for that call, exactly as if {@code resolver} had never been wired. A thrown exception is a
    * different story — it propagates out of the enricher stage the same as any other enricher
    * failure, so the chokepoint denies that one call closed, naming the enricher stage, rather than
