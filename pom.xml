@@ -97,7 +97,7 @@
          breaking Schemas.java's direct assignment to a Jackson 2 ObjectNode.
          Held at 4.38: victools 5 breaks Schemas.java (Jackson 2 -> 3 node type
          migration) -->
-    <victools.version>4.38.0</victools.version>
+    <victools.version>5.0.0</victools.version>
     <!-- Matches the slf4j-api version victools pulls transitively. -->
     <slf4j.version>2.0.16</slf4j.version>
     <logback.version>1.6.1</logback.version>
