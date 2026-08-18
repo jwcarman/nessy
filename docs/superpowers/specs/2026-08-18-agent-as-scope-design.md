@@ -758,6 +758,43 @@ thread parks on the future while executor virtual threads do the work; a parked 
 just a timeout, uniform with every other slow tool. Streaming rides the same registration —
 `onTextDelta` on the same builder — so wait and stream are one mechanism.
 
+### 7.1 Use-case builders — the front door
+
+Every wiring choice this design pushes to "chosen at bind" needs a place where it actually gets
+chosen. Three builders bundle them, one per real use case — and they map onto §1.1's matrix, which
+is evidence the cases are the right ones:
+
+| Choice | `cli()` | `web()` | `autonomous()` |
+| --- | --- | --- | --- |
+| Binding | constant id | per-request | per-key |
+| Parking (§4.3) | ✗ — rendezvous: terminal prompt | ✗ — rendezvous: approval endpoint | ✓ — park desk |
+| Output | blocking `converse(line)` | per-turn `SseEmitter` (§7) | narration → audit/log |
+| Backlog | trivial in-memory | in-memory per scope | durable, coalescing |
+| Stores / `Memory` | in-memory defaults | supplied factories | supplied factories |
+
+```java
+var agent = Nessy.cli().definition(def).build();
+System.out.println(agent.converse("hello"));
+
+var web = Nessy.web().definition(def)
+    .binding(req -> AgentId.of(req.sessionId()))
+    .memory(memories).stateStore(stores)
+    .build();
+SseEmitter stream = web.chat(sessionId, message);   // the stream IS the response
+
+var auto = Nessy.autonomous().definition(def)
+    .binding(msg -> AgentId.of(msg.tenantId()))
+    .memory(memories).stateStore(stores)
+    .parks(jdbcParks).backlog(backlogs)
+    .build();
+queue.subscribe(auto::deliver);
+```
+
+**Builders wire existing seams; they never own machinery.** Anything a builder defaults is
+overridable; anything a builder can produce, hand-wiring can produce without it — batteries, not
+law. That is the test that keeps `cli()` from growing behavior unreachable by construction, and it
+is why the builders add zero types to the core: they are front doors onto §3.5's factories.
+
 **"Which reply is mine" mostly dissolves under per-turn streams:** a response-scoped stream cannot
 carry anyone else's reply. What remains — a shared scope where a second participant wants to watch
 activity they did not initiate — is an ambient-feed feature, deferred until traffic justifies it.
