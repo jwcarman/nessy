@@ -708,10 +708,26 @@ through the observer, releases. Contention is effectively zero — a human does 
 so the optimistic floor's retry path stays cold, and sticky session routing gives partition-like
 exclusivity for free.
 
-The SSE emitter outlives any one instance, so it is **attached at construction, per delivery**
-(§3.5): the factory looks up the scope's live emitters and composes them into the instance's
-observer. A continuation arriving days later constructs a new instance the same way — the stream
-stays live because every instance is born already wired to it.
+**Streams are per-turn, not per-session.** Each inbound message opens one response stream; the
+observer completes it on `TurnEnded`; the next message opens a new one. The emitter is handed
+**directly at bind** — no connection registry, no scope-keyed lookup:
+
+```
+POST /chat → new SseEmitter(finiteTimeout)
+           → agents.bind(id, sseObserver(emitter))
+           → agent.observe(message)
+           → return emitter                    // the stream IS the response
+onTurnEnded → emitter.complete()
+```
+
+Mid-turn continuity needs no machinery because **an in-flight turn keeps its instance alive**: the
+executors hold `sink = agent::apply`, a strong reference, so from `observe` to `TurnEnded` the
+instance — and the emitter wired into it — is reachable and stable. The instance becomes garbage
+exactly when the turn ends, which is exactly when the stream closes.
+
+A turn that outlives its stream — parked, or resumed on another node — completes without a watcher:
+narration goes to the remaining observers, the exchange lands in `Memory`, and the next fetch shows
+it. A human who walked away gets the answer on return; that is parking working, not a gap.
 
 **Autonomous host.** A long-running partitioned consumer. Drains, drives, nobody waits.
 
@@ -730,9 +746,9 @@ thread parks on the future while executor virtual threads do the work; a parked 
 just a timeout, uniform with every other slow tool. Streaming rides the same registration —
 `onTextDelta` on the same builder — so wait and stream are one mechanism.
 
-**"Which reply is mine" is not solved and does not need to be.** The observer is scope-scoped, so a
-second participant sees the first's traffic — correct, because it *is* the shared session.
-Correlation is deferred until traffic justifies it.
+**"Which reply is mine" mostly dissolves under per-turn streams:** a response-scoped stream cannot
+carry anyone else's reply. What remains — a shared scope where a second participant wants to watch
+activity they did not initiate — is an ambient-feed feature, deferred until traffic justifies it.
 
 ## 8. Observation — `TurnObserver`, restored
 
