@@ -1,4 +1,4 @@
-# Agent as Scope — a pure reducer and a thin shell
+# Agent as Scope — phases, a thin shell, and memory that owns history
 
 **Date:** 2026-08-18
 **Status:** Design of record (proposed). Supersedes the `Agent`/`Conversation` split, the blocking
@@ -7,24 +7,38 @@ drive, and the park-as-state model in `2026-08-09-nessy-agent-harness-design-v2.
 This design is not constrained by the current implementation. Where the existing code is in the
 way, it goes.
 
+> **Revision note.** The first draft of this document (commit `84ee530f`) was built around a pure
+> `Reducer` over an event log, with `Memory` demoted to a read-only projection. That framing was
+> wrong in several places and is retracted here. §10 records every reversal, including the ones
+> where this document previously argued the opposite case on merit.
+
 ## 0. Thesis
 
 There is no such thing as a conversation. There is an **agent bound to an identity**, and its
-state is the fold of everything that has happened to it.
+state is a small, explicit phase.
 
-Everything else follows from one rule:
+Three rules carry the design:
 
-> **The reducer is pure. Every side effect lives in a named executor.**
+> **1. Decisions are pure.** Deciding what happens next touches nothing outside its arguments.
+>
+> **2. History belongs to `Memory`.** The core never owns, stores, or reconstructs what was said.
+>
+> **3. The instance is the scope.** No core-facing method takes an `AgentId`.
 
-Hold that rule and the design collapses to two data types, one function, and a thin shell.
+Hold those three and the design collapses to a sealed phase machine, one shell, and two executors.
+
+**What is deliberately *not* a rule:** event sourcing. State is not a fold over a durable log, the
+core keeps no transcript, and nothing replays. An earlier draft made purity a doctrine and derived
+an event log, a mandatory transcript, and a read-only `Memory` from it. Those consequences were
+worse than the property they protected (§10.1).
 
 ## 1. The model
 
 ### 1.1 Identity, binding, host
 
 An agent instance is a **definition** (system prompt, tools, model) bound to an **`AgentId`**. The
-id is the scope. Memory, log, and backlog are all scoped by it, and nothing in the core ever takes
-it as a parameter — the instance *is* the scope.
+id is the scope. Memory, state, and backlog are all scoped by it, and nothing in the core ever
+takes it as a parameter — the instance *is* the scope (§3.5).
 
 Two orthogonal axes cover every deployment shape:
 
@@ -42,7 +56,7 @@ Two orthogonal axes cover every deployment shape:
 |                    | Interactive host | Autonomous host      |
 | ------------------ | ---------------- | -------------------- |
 | **Constant id**    | CLI              | the autonomous agent |
-| **Per-request id** | web chat         | per-tenant monitor    |
+| **Per-request id** | web chat         | per-tenant monitor   |
 
 The fourth cell is not filler — a per-tenant monitor is one scope per tenant with nobody waiting.
 That it falls out for free is evidence the axes are right.
@@ -57,18 +71,27 @@ The word does not survive anywhere: not in the type names, not in the event gram
 store. `ConversationId`, `ConversationEvent`, `ConversationStore`, `ConversationStatus`,
 `ConversationSnapshot`, and `ConversationLoop` are all deleted or renamed (§9).
 
-## 2. The pure core
+## 2. The core
 
-Four types and one function. No I/O, no collaborators, no clock, no randomness.
+Four small types and one method. No I/O, no collaborators, no clock, no randomness.
 
 ### 2.1 `AgentEvent` — facts, past tense
 
 ```java
 public sealed interface AgentEvent {
-  record Told(List<ContentBlock> content) implements AgentEvent {}
-  record ModelResponded(List<ContentBlock> content, List<ToolCall> calls) implements AgentEvent {}
-  record ModelFailed(String reason) implements AgentEvent {}
-  record ToolFinished(ToolCall call, ToolResult result) implements AgentEvent {}
+  record Observed(List<ContentBlock> content)             implements AgentEvent {}
+  record ModelFinished(ModelOutcome outcome)              implements AgentEvent {}
+  record ToolFinished(ToolCall call, ToolOutcome outcome) implements AgentEvent {}
+}
+
+public sealed interface ModelOutcome {
+  record Responded(List<ContentBlock> content, List<ToolCall> calls) implements ModelOutcome {}
+  record Failed(String reason)                                       implements ModelOutcome {}
+}
+
+public sealed interface ToolOutcome {
+  record Returned(ToolResult result) implements ToolOutcome {}
+  record Failed(ToolError error)     implements ToolOutcome {}
 }
 ```
 
@@ -76,94 +99,233 @@ public sealed interface AgentEvent {
 belongs to when there is only one it could belong to. Outbound narration is stamped with the id at
 emission (§8), which is the only place it is genuinely needed.
 
-**The failure asymmetry is deliberate**, not an inconsistency inherited from the old grammar.
-`ToolFinished` carries a possibly-failed `ToolResult`, while `ModelFailed` is its own variant,
-because the two failures differ in kind. A failed tool call is **in-band**: it goes into the log,
-the model reads it, and the model reacts — that is the whole agent loop working correctly. A failed
-model call is **out-of-band**: there is nowhere to put it and nobody to read it. The grammar should
-say so.
+**Invariant: every effect has exactly one completion event.** `CallModel` completes as
+`ModelFinished`; `ExecuteTool` completes as `ToolFinished`. `Observed` is the sole inbound fact,
+because the world is not answering anything. Success and failure are a *sealed outcome inside* the
+completion, never separate events.
 
-### 2.2 `State` — the fold
+This is a reversal (§10.4). An earlier draft had `ModelResponded`/`ModelFailed` as two events and
+`ToolFinished` as one, defended on the grounds that tool failure is in-band and model failure is
+out-of-band. That difference is real, but it is a fact about **how a phase handles an outcome**,
+not about **what happened**. The grammar describes events; phases assign meaning. Keeping the
+policy out of the grammar also makes §2.4's ceiling honest: a third effect now visibly costs a
+third completion event.
+
+### 2.2 `Phase` — state that carries its own data
 
 ```java
-public record State(List<Message> log, List<ToolCall> outstanding) {}
+public sealed interface Phase {
+  record Idle()          implements Phase {}
+  record AwaitingModel() implements Phase {}
+  record AwaitingTools(Message assistantTurn,
+                       Set<ToolCallId> pending,
+                       List<Message> gathered) implements Phase {}
+
+  Transition handle(AgentEvent event);
+}
 ```
 
-**`idle` is derived, not tracked**: `outstanding.isEmpty()`. There is no status enum. "Awaiting
-model" versus "awaiting tools" is simply *what* is outstanding, read off the state rather than
-maintained in a parallel field that can disagree with it.
+An earlier draft asserted that status is derived, not tracked — `idle` was
+`outstanding.isEmpty()`, and there was no phase type at all (§10.3). That was wrong on a plain
+fact: **a model call in flight puts nothing in `outstanding`**, so "awaiting model" and "idle" are
+indistinguishable under that scheme. The shell's idle test then admits a second observation while
+a model call is outstanding, and a burst of ten observations fires ten concurrent model calls on
+one scope.
 
-### 2.3 `Effect` — commands, imperative
+The sealed form is stronger than a status enum beside a data field, and it answers the original
+objection rather than accepting it: the earlier fear was a status drifting out of agreement with
+the outstanding set, and here **there is no second field to disagree with**. Pending calls exist
+only inside `AwaitingTools`. "Idle with outstanding calls" is not a bug to review for; it is
+unrepresentable.
+
+Dispatch is phase-first, which makes the phase × event matrix explicit. Cells that cannot legally
+occur are stated rather than implied:
+
+- A completion arriving in a phase that did not request it is **stale** — discarded, narrated, not
+  folded. Under §6 two nodes may both emit `CallModel`, so duplicate completions are expected
+  traffic, not a hypothetical.
+- `Observed` cannot reach any phase but `Idle`, because lane 2 polls the backlog only when idle
+  (§3.3). Reaching one is a programming error, not a runtime condition.
+
+**Chosen axis.** Phase-first dispatch scatters a single event's handling across phases: "what
+happens on `ToolFinished`" means reading three cases rather than one. That is the expression
+problem, and the axis is chosen deliberately — the event grammar is a designed ceiling (§2.4)
+while phases plausibly grow. Were events the growing axis, event-first dispatch would be right.
+
+### 2.3 `State`
+
+```java
+public record State(Phase phase, long version) {}
+```
+
+`version` is the optimistic-concurrency token (§6). It belongs to the state, not to the phase, and
+`handle` never sees it — the shell owns it.
+
+**Sizing.** `State` is not uniformly small: `AwaitingTools` carries one turn's assistant message
+and its gathered results until the turn completes (§2.5). It is bounded by a **single turn**,
+never by history. `AgentStateStore` therefore needs a payload column (JSON or blob), not two
+scalars.
+
+### 2.4 `Effect` — commands, imperative
 
 ```java
 public sealed interface Effect {
-  record CallModel() implements Effect {}
+  record CallModel()              implements Effect {}
   record ExecuteTool(ToolCall call) implements Effect {}
 }
 ```
 
-`CallModel` is a **bare marker with no payload**. This is the direct consequence of the purity
-rule: putting an assembled `Context` in it would require the reducer to call `recall`, and a
-reducer that does I/O is not a reducer. Context assembly belongs to the executor that needs it
-(§4.1).
-
-The sealed supertype earns its place because `Step` returns a *list* of effects and a list needs an
-element type — not because a grammar is inherently good.
+`CallModel` is a **bare marker with no payload**, and the reason is no longer purity for its own
+sake: the executor asks `Memory` for the context itself (§4.1), so there is nothing to carry.
+Putting an assembled `Context` in the effect would create a second path by which content reaches
+the model — one through memory, one riding the effect, free to disagree.
 
 **Two variants is the designed ceiling, not today's count.** There was once a third,
 `Effect.Compact`, shipped and tested; it was absorbed into memory during the context-pipeline
 rework. That is the pattern: anything a single collaborator needs is solved inside that
-collaborator's facade, never by widening the grammar. A third effect would be a deliberate
-architectural change.
+collaborator's facade, never by widening the grammar.
 
-### 2.4 `Reducer` — the whole of the logic
+**Rejected: a `Remember` effect.** Committing to history is not an effect and must not join the
+grammar. Every effect is an *asynchronous request whose result returns as an event*; committing is
+synchronous, produces no event, and must **succeed before** any effect is dispatched. Modelling it
+as a list element would turn that ordering requirement into an implicit positional rule — the exact
+bug class this design keeps generating (§10.7) — and would force a `RememberFailed` event into a
+frozen grammar. A failed commit should abort the transition, which is what an exception does for
+free.
+
+### 2.5 `Transition` — what to become, what to commit, what to fire
 
 ```java
-public record Step(State state, List<Effect> effects) {}
-
-@FunctionalInterface
-public interface Reducer {
-  Step reduce(State state, AgentEvent event);
+public record Transition(Phase next, List<Message> commit, List<Effect> effects) {
+  public static Transition to(Phase next, Effect... effects) { … }
+  public static Transition ignore(AgentEvent stale)          { … }
+  public Transition commit(Message... messages)              { … }
 }
 ```
 
-Pure, total, synchronous. The entire decision logic of the framework, testable with values and
-nothing else — no mocks, no fakes, no stand-ins. This is the property everything else is arranged
-to protect.
+Three components, because a transition genuinely decides three things. Returning them as a value —
+rather than emitting through a context object handed to `handle` — keeps I/O structurally
+impossible rather than merely absent: a method given only values has nothing to call. A context
+parameter degrades that guarantee to "nobody has added the wrong method yet," and every serious
+defect in this design has come from something acquiring a second path to do its job.
 
-The rules are small enough to state in full:
+**The unit of history is a completed exchange, not an event.** A model turn carrying tool calls and
+the results answering it form one indivisible unit: the provider requires the `tool_use` turn to be
+followed immediately by a turn carrying **all** corresponding results. Committing the assistant
+turn when it arrives would leave memory holding a dangling `tool_use` turn, and any `recall()` in
+that window returns a conversation the provider rejects.
 
-- **`Told`** — append to the log, emit `CallModel`.
-- **`ModelResponded`** — append. If it carries tool calls, add them to `outstanding` and emit one
-  `ExecuteTool` each. If not, the turn is over and no effect is emitted; the agent is now idle.
-- **`ModelFailed`** — append nothing to the log. Emit nothing. The agent is idle, and the failure
-  reaches the observer (§8) rather than the model.
-- **`ToolFinished`** — append the result, remove the call from `outstanding`. When `outstanding`
-  empties, emit `CallModel`.
+So `AwaitingTools` **holds the assistant turn back** and accumulates results, committing both
+together only when `pending` empties:
+
+```java
+record AwaitingTools(Message assistantTurn, Set<ToolCallId> pending, List<Message> gathered)
+    implements Phase {
+
+  public Transition handle(AgentEvent event) {
+    return switch (event) {
+
+      case ToolFinished(var call, var outcome) -> {
+        if (!pending.contains(call.id())) yield Transition.ignore(event);  // duplicate or stale
+        var left = minus(pending, call.id());
+        var all  = plus(gathered, Message.toolResult(call, outcome));      // failure renders in-band
+        yield left.isEmpty()
+            ? Transition.to(new AwaitingModel(), new CallModel())
+                        .commit(assistantTurn, Message.toolResults(all))
+            : Transition.to(new AwaitingTools(assistantTurn, left, all));
+      }
+
+      case ModelFinished ignored -> Transition.ignore(event);              // stale duplicate turn
+      case Observed ignored -> throw new IllegalStateException("lane 2 polls only when Idle");
+    };
+  }
+}
+```
+
+Two details that are load-bearing:
+
+- **Correlate by `ToolCallId`, never by `equals` on the whole call.** Identical inputs to the same
+  tool would otherwise collide. Keying by id additionally makes **at-least-once delivery idempotent
+  for free**: a redelivered completion finds its id already gone and is ignored. §6 makes duplicate
+  tool delivery the standing contract, so this is required, not defensive.
+- **Accumulating in the phase does not cost incremental durability**, because the phase *is*
+  persisted state (§5.2). `store.save` runs on every completion, so `gathered` is durable as it
+  grows; a crash mid-fan-out resumes with results intact and re-runs only what had not returned.
+- **Provider continuity tokens ride the content blocks, never `ToolCall`.** `ToolUseBlock(call,
+  signature)` and `ThinkingBlock` carry opaque provider-issued signatures (Gemini's thought
+  signatures; Anthropic's thinking signatures) that must be replayed verbatim on the next request or
+  the provider rejects the history. They survive here because the held-back assistant turn is built
+  **from the response's content blocks** — `Message.assistant(content, calls)` takes the blocks as
+  delivered, signatures included — and `Memory` replays them through `recall()`. An implementation
+  that reconstructs tool-use blocks from the bare `calls` list instead of taking them from `content`
+  silently drops every signature and breaks Gemini on the following turn. `ToolCall` itself stays
+  signature-free: executors execute tools; only replay-to-model needs continuity, and that is a
+  history concern (§5.1).
+
+The remaining phases:
+
+```java
+record Idle() implements Phase {
+  public Transition handle(AgentEvent event) {
+    return switch (event) {
+      case Observed(var content) ->
+          Transition.to(new AwaitingModel(), new CallModel())
+                    .commit(Message.user(content));
+      case ModelFinished ignored, ToolFinished ignored -> Transition.ignore(event);
+    };
+  }
+}
+
+record AwaitingModel() implements Phase {
+  public Transition handle(AgentEvent event) {
+    return switch (event) {
+      case ModelFinished(Responded(var content, var calls)) when calls.isEmpty() ->
+          Transition.to(new Idle()).commit(Message.assistant(content));
+
+      case ModelFinished(Responded(var content, var calls)) ->
+          Transition.to(new AwaitingTools(Message.assistant(content, calls), ids(calls), List.of()))
+                    .emit(calls.stream().map(ExecuteTool::new).toList());
+
+      case ModelFinished(ModelOutcome.Failed ignored) ->
+          Transition.to(new Idle());          // out-of-band: nothing to commit; observer only
+
+      case ToolFinished ignored, Observed ignored -> Transition.ignore(event);
+    };
+  }
+}
+```
+
+Testing is value comparison, with no mocks, fakes, or stand-ins:
+
+```java
+assertThat(new AwaitingTools(turn, Set.of(a, b), List.of()).handle(finished(a)))
+    .isEqualTo(Transition.to(new AwaitingTools(turn, Set.of(b), List.of(resultOf(a)))));
+```
 
 ## 3. The shell
 
 ```java
 public interface Agent<O> {
-  void onObservation(O observation);
-  void onEvent(AgentEvent event);
+  void observe(O observation);     // → backlog. never blocks, never claims.
+  void onEvent(AgentEvent event);  // → continuation queue. never blocks, never claims.
+  void drive();                    // claims, then works.
 }
 ```
 
-Two methods, because there are exactly **two inbound lanes**:
+Three methods, because there are **two inbound lanes and one worker**:
 
-- **Continuations** (`onEvent`) — the machinery reporting back. These *are* the drive. They fold
-  immediately and never queue behind world traffic.
-- **Observations** (`onObservation`) — ambient world facts. They go to the backlog and are absorbed
-  only at an idle boundary.
+- **Continuations** (`onEvent`) — the machinery reporting back. These *are* the drive.
+- **Observations** (`observe`) — ambient world facts. They go to the backlog and are absorbed only
+  at an idle boundary.
+- **`drive()`** — the only method that does work.
 
-The split is not stylistic. A tool result must not wait behind a thousand stock ticks to be folded.
+Splitting the worker out of the inbound methods makes the lane priority a **mechanism rather than a
+promise**: both inbound methods are pure non-blocking enqueues, no executor callback thread ever
+blocks, and the recovery sweep (§6.1) stops being new machinery — it is `drive()` on stalled
+scopes.
 
-**One inbound method for events, two outbound methods for effects (§4), and that asymmetry is
-correct** — it is fan-in versus fan-out. Events fan *in* to one reducer, which must switch on the
-sealed grammar anyway; typed inbound methods would be four one-line delegations that merely move
-the switch to the caller. Effects fan *out* to two genuinely different collaborators; there is no
-single object that can execute an arbitrary effect, so the dispatch is real work.
+`observe` and `onEvent` are named asymmetrically on purpose: `observe` is what the world calls,
+`onEvent` is what an executor calls back into.
 
 ### 3.1 The drain invariant
 
@@ -174,35 +336,150 @@ One invariant, not a list of triggers. The events that can make it true — an o
 a turn ending, a recovery sweep — are consequences. Stated as an invariant, a new trigger cannot be
 forgotten.
 
-### 3.2 What the shell does
-
-The shell holds everything the reducer refuses to: the backlog, the renderer, persistence, the
-executors, and the observer.
-
-`onObservation(o)`:
-
-1. `backlog.add(o)`.
-2. If not idle, return — the drive in flight will drain it.
-3. `backlog.poll()`; if empty, return.
-4. Render to content blocks; feed `Told` to `onEvent`.
-
-`onEvent(e)`:
-
-1. `Step step = reducer.reduce(state, e)`.
-2. Append `e` to the durable log at the expected version (§6).
-3. Adopt `step.state()`.
-4. Narrate `e` and `step.effects()` to the observer.
-5. Dispatch each effect to its executor.
-6. If now idle, apply the drain invariant.
-
-### 3.3 `Backlog`
+### 3.2 Concurrency
 
 ```java
+private final Executor serial;                       // injected — never a spawned thread (§4.1)
+private final AtomicBoolean scheduled = new AtomicBoolean();
+
+@Override public void observe(O observation) { backlog.add(observation); drive(); }
+@Override public void onEvent(AgentEvent event) { continuations.add(event); drive(); }
+
+@Override public void drive() {
+  if (scheduled.compareAndSet(false, true)) {
+    serial.execute(this::runLoop);
+  }
+}
+
+private void runLoop() {
+  try {
+    work();
+  } finally {
+    scheduled.set(false);
+    if (hasWork()) drive();      // re-check AFTER clearing, or the last arrival strands
+  }
+}
+```
+
+A scheduled loop on an **injected `Executor`** — the same idiom §4.1 mandates for summarisation. The
+CAS admits one loop at a time; a failed CAS means a loop is already scheduled or running and will
+see the newly queued item, and the `finally` re-check closes the window where an arrival lands after
+`work()` drained but before the flag cleared.
+
+This keeps the inbound contract honest: `observe` and `onEvent` **never block**, from any thread —
+they enqueue, attempt one CAS, and return. A webhook thread is never held for the duration of
+someone else's drive, which includes synchronous store writes (`remember`, `save`). An earlier
+revision used a `synchronized drive()` with a `working` boolean; it was retired because the monitor
+made every inbound call *block* behind an in-flight drive — the spec said "never blocks" while the
+code said otherwise (§10.2).
+
+The executor choice is deployment policy, not design: a same-thread executor runs the entire agent
+on the caller's thread — deterministic tests, and the natural CLI shape — while virtual threads suit
+the hosts. Serialization comes from the CAS, not the executor, so even a common pool preserves
+one-drive-at-a-time.
+
+`this::onEvent` is the sink handed to every executor. A synchronous executor — an in-process tool,
+a test stub, a canned model — re-enters `onEvent`, whose `drive()` fails the CAS and returns; the
+running loop picks the item up on its next pass. No stack growth, no reentrancy deadlock, no special
+case. A fully synchronous wiring plus a same-thread executor runs the entire agent on one thread,
+deterministically.
+
+### 3.3 The work loop
+
+```java
+private void work() {
+  for (boolean progressed = true; progressed; ) {
+    progressed = false;
+
+    // Lane 1 — continuations drain to exhaustion, always first.
+    for (AgentEvent e = continuations.poll(); e != null; e = continuations.poll()) {
+      apply(e);
+      progressed = true;
+    }
+
+    // Lane 2 — exactly one observation, and only when idle.
+    if (state.phase() instanceof Idle) {
+      progressed |= backlog.poll().flatMap(this::render).map(this::applied).orElse(false);
+    }
+  }
+}
+```
+
+**The backlog is never bypassed.** `observe` only ever calls `add`; `poll` happens exclusively at
+the idle boundary above. The round trip looks redundant when the backlog is empty and is
+load-bearing when it is not: bypassing would jump the new observation ahead of queued work, would
+deny the backlog its chance to coalesce, and would create a second path by which observations reach
+a phase. With a coalescing policy, `add` followed by `poll` may legitimately return something other
+than what was just added — that is the policy working correctly.
+
+### 3.4 Applying one event
+
+```java
+private void apply(AgentEvent event) {
+  Transition t = state.phase().handle(event);          // pure — classify before committing
+  if (t.isIgnored()) { observer.ignored(event); return; }
+  t.commit().forEach(memory::remember);                // whole units only, in order
+  state = new State(t.next(), state.version());
+  store.save(state);                                   // versioned; stale ⇒ reload and re-handle
+  observer.observed(event, t.effects());
+  t.effects().forEach(this::dispatch);
+}
+
+private void dispatch(Effect effect) {
+  switch (effect) {
+    case CallModel ignored          -> model.callModel(this::onEvent);
+    case ExecuteTool(ToolCall call) -> tools.executeTool(call, this::onEvent);
+  }
+}
+```
+
+Two orderings here are invariants, not step numbers:
+
+> **Decide before committing.** `handle` runs first so a duplicate or stale completion can be
+> classified and dropped *before* anything is written. Committing first would write a redelivered
+> tool result into history and make the phase's idempotence useless.
+
+> **Commit before dispatch.** `ModelCallExecutor` calls `memory.recall()`, so the exchange must be
+> in memory before the effect goes out. Reverse them and the model does not see what provoked the
+> call.
+
+### 3.5 Everything is pre-scoped
+
+No core-facing seam takes an `AgentId`:
+
+```java
+public interface Memory {
+  void remember(Message message);        // a no-op is legal — discard-most memories exist
+  Context recall();                      // hydrate, summarise, trim, budget
+}
+
+public interface AgentStateStore {
+  State load();
+  void save(State state);                // throws on version conflict
+}
+
 public interface Backlog<O> {
   void add(O observation);
   Optional<O> poll();
 }
 ```
+
+Binding is what construction *does*. Cross-scope access stops being a bug caught in review and
+becomes unrepresentable — for a per-tenant monitor that is an isolation boundary obtained from the
+type system.
+
+Two consequences that must be written down or they will be got wrong:
+
+- **Each seam gains a factory.** Something must derive the scoped collaborator from a process-wide
+  one — `MemoryFactory { Memory bind(AgentId id); }` and its siblings. This is the whole remaining
+  job of `Harness` (§9). Integrators implement the factory; Spring users get it as a scoped bean.
+- **Scoped facades must be stateless views.** Instances are transient. A scoped `Memory` that
+  caches a summary in a field loses it when the instance dies, and a high-frequency observation
+  stream thrashes it. All caches, pools, and the summarisation in-flight tracker (§4.1) live in the
+  process-wide store, keyed by id. Get this backwards and async summarisation silently stops
+  working, because every instance believes no summary is in flight.
+
+### 3.6 `Backlog`
 
 Two operations. There is deliberately no `isEmpty()`: check-then-act races under concurrent adds,
 and `Optional` collapses the check and the act.
@@ -217,62 +494,57 @@ keep-everything — all of it lives inside one `add`. Two consequences:
   `poll` merges — not a drain-all loop in the shell. The shell stays strictly
   one-observation-per-turn, which keeps the invariant trivial.
 
-### 3.4 `ObservationRenderer<O>`
+### 3.7 `ObservationRenderer<O>`
 
-Lives on the shell, applies at **poll time, not add time** — rendering to `Message` on `add` would
-destroy the coalescing key, and a backlog cannot keep-last-per-symbol if it can no longer see the
-symbol. It is not on the backlog because storage and presentation are different axes; putting it
-there would force every backlog implementation to carry it and stop two agents from rendering the
-same tick differently.
+Lives on the shell, applies at **poll time, not add time** — rendering on `add` would destroy the
+coalescing key, and a backlog cannot keep-last-per-symbol if it can no longer see the symbol. It is
+not on the backlog because storage and presentation are different axes; putting it there would
+force every backlog implementation to carry it and stop two agents from rendering the same tick
+differently.
 
-`O` therefore exists for exactly two reasons — the backlog polled and the renderer applied.
-Nothing in the core ever sees it.
+`O` therefore exists for exactly two reasons — the backlog polled and the renderer applied. Nothing
+in the core ever sees it.
 
 **A renderer that throws discards that observation, narrates the failure to the observer, and
-leaves the agent idle to continue draining.** The current code lets it propagate, justified by "the
-caller is present to see it" — false here, since absorption happens at an idle boundary and the
-autonomous host has no caller. One malformed observation must not wedge a scope.
+leaves the agent idle to continue draining.** One malformed observation must not wedge a scope, and
+in the autonomous host there is no caller present to see a propagated exception.
 
 ## 4. Executors — where every side effect lives
 
 ```java
-public interface ModelCallExecutor { void callModel(AgentId id, State state, Sink sink); }
-public interface ToolCallExecutor  { void executeTool(AgentId id, ToolCall call, Sink sink); }
+public interface ModelCallExecutor { void callModel(Sink sink); }
+public interface ToolCallExecutor  { void executeTool(ToolCall call, Sink sink); }
 ```
 
-`Sink` accepts an `AgentEvent`. The `AgentId` is a **delivery address**, passed alongside the
-effect rather than embedded in it — the grammar stays pure data, and an executor that must deliver
-days later has the address it needs to persist.
+Both are pre-scoped (§3.5) and asynchronous: they return immediately and call back through the
+`Sink`. The shell's thread never blocks on a model or a tool.
 
-Both are asynchronous: they return immediately and call back. The shell's thread never blocks on a
-model or a tool.
+An executor that must deliver days later persists whatever address it needs internally; the id is
+not a parameter on the way in.
 
 ### 4.1 `ModelCallExecutor` owns memory
 
-Memory does not appear anywhere in the core. The executor projects `State` into a `Context` —
-hydration, summaries, trimming, budget — calls the provider, and delivers `ModelResponded` or
-`ModelFailed`.
-
-This is the honest version of "memory hides a lot from the loop": it hides *everything*, by not
-being in the loop.
+The executor calls `memory.recall()`, gets a `Context`, calls the provider, and delivers
+`ModelFinished`. `Memory` does hydration, summaries, trimming, and budget.
 
 **`recall` must be cheap.** For summarising projection the hot path is: look for a summary record;
-if present use it plus the log tail after it, else use the whole log. No model call, ever, on the
-path that answers a projection.
+if present use it plus the tail after it, else use everything. No model call, ever, on the path
+that answers a projection.
 
 **Summarisation runs asynchronously, owned by the projector.** When it notices the tail has passed
 threshold it submits a task and returns with what it has. Three requirements, all internal:
 
 - **An injected `Executor`, never a spawned thread.** Tests pass a same-thread executor and the
   whole thing is deterministic — no mocks, no sleeps.
-- **In-flight tracking**, cleared on failure as well as success (`whenComplete`, not `thenRun`). A
-  leaked entry means that scope never summarises again and its context grows unbounded, silently.
+- **In-flight tracking**, cleared on failure as well as success (`whenComplete`, not `thenRun`), and
+  held **process-wide, keyed by id** (§3.5). A leaked entry means that scope never summarises again
+  and its context grows unbounded, silently.
 - **Emission to the observer.** Started, finished, failed are ordinary narration.
 
 Two accepted costs, chosen rather than discovered: the context is **deliberately stale** until the
 summary lands, so the projector owns a policy for how far past budget it will go before degrading;
 and in-flight tracking is **per-JVM**, so two nodes both submit — fixed with a claim-write on the
-summary record, or accepted, since a summary is a pure function of a log prefix.
+summary record, or accepted, since a summary is derived (§5.1).
 
 ### 4.2 `ToolCallExecutor` owns the gate and the address book
 
@@ -280,17 +552,26 @@ Authorization, tool dispatch, and delivery. Nothing about it reaches the core.
 
 ### 4.3 Parks are not a state — they are an address book
 
-**From the reducer's view there is no difference between a tool that returns in 200ms and one that
-returns in three days.** Both are an outstanding call that will produce a `ToolFinished`.
+**From a phase's view there is no difference between a tool that returns in 200ms and one that
+returns in three days.** Both are a pending call that will produce a `ToolFinished`.
 
-So there is no parked state, no `ParkToken` in the grammar, no `AWAITING_INPUT` status, and no
-`resume`/`approve`/`deny`/`peek`/`progress` on the agent. `Parks` demotes to what it always was: a
-durable map from token to `(AgentId, ToolCall)`, private to `ToolCallExecutor`. A token is a
-delivery address, not a lifecycle.
+So there is no parked phase, no `ParkToken` in the grammar, and no `resume`/`approve`/`deny`/`peek`/
+`progress` on the agent. `Parks` demotes to what it always was: a durable map from token to
+`(AgentId, ToolCall)`, private to `ToolCallExecutor`. A token is a delivery address, not a
+lifecycle.
 
 Human-in-the-loop stops being special. The gate parks, a human answers, a `ToolFinished` arrives —
 the same path as a slow HTTP call. The approve/deny doors become an ordinary API on the tool
 executor, not core surface.
+
+**The token is delivered, never broadcast.** A park token is a *capability* — whoever holds it can
+approve or deny the call — so it moves point-to-point, not over the observer stream. When the
+ladder answers `RequireApproval`, the executor parks and hands the token to a **configured
+handler** on the tool executor — the seam that emails the approver, posts to Slack, or stores it
+for an approval UI. One recipient, chosen by the application at configuration time — and the
+**only** party told at all: parking is not narrated (§8). Fan-out narration of tokens would put
+live capabilities in front of every observer — including `logging()`, which would write them into
+application logs.
 
 ### 4.4 Subagents need no core support
 
@@ -300,44 +581,62 @@ that returns slowly.** No delegation concept, no link store, no callback router 
 
 ## 5. Durability
 
-**The event log is the only durable state.** `State` is `fold(events)`. There is no separate
-transcript — the log *is* the transcript, and memory projects it. The current
-`ConversationStore`-plus-`Transcript` duality is deleted; it stored the same history twice under
-two vocabularies.
+**There is no event log and no core-owned transcript.** Two stores, each owning one thing:
 
-Replay cost is a store concern, not a design concern: a store may snapshot folded state
-periodically. The design does not know or care.
+| Store             | Owns                                   | Shape                          |
+| ----------------- | -------------------------------------- | ------------------------------ |
+| `Memory`          | history — what was said                | implementation-defined         |
+| `AgentStateStore` | control — phase and version            | one row per scope              |
 
-### 5.1 Nothing writes to memory
+### 5.1 `Memory` owns history, and may discard it
 
-`Memory.remember` does not exist. Memory is **read-only projection over the log** — hydrate,
-summarise, trim, budget — and the two-method facade collapses to one direction.
+`remember` is on `Memory`, and **a discard-most memory writes nothing at all**. This restores a
+deliberate ruling (2026-08-14) that the first draft of this document reversed without saying so
+(§10.1).
 
-A new user message reaches the model by the ordinary path and no other: `onEvent(Told)` reduces,
-and the shell appends `Told` to the log. When `ModelCallExecutor` projects, the message is already
-there.
+`Memory` is free in representation as well as retention: a verbatim table, summary-plus-tail, a
+rolling window, a vector store, a hosted memory service. The core never inspects it, never
+reconstructs from it, and never requires that it retain anything.
 
-For the same reason `CallModel` must **not** carry the rendered message. It is already in the log
-the projector reads, so carrying it would state the same fact in two places, put payload back into
-a marker argued down to nothing, and create a second path by which content reaches the model — one
-through the log, one riding the effect, free to disagree.
+**Summaries are the one thing memory writes for itself.** They are *derived* — a pure function of a
+history prefix — so duplicate writes across nodes waste CPU and cannot corrupt anything (§4.1).
+Delete every summary and the system is unchanged but slower. This distinction is why §11.2 is
+allowed to stay open rather than blocking.
 
-**Invariant: append before dispatch.** The shell appends the event to the durable log before
-dispatching any effect the reduction produced. Reverse them and the executor projects a log missing
-the very message that provoked the call.
+**Audit is not `Memory`'s job.** A discard-most memory is legal, so nothing durable would record
+what happened — which is the tension the 08-14 notes flagged and left unresolved. The answer is
+that audit was never `Memory`'s consumer: the **observer stream** is (§8). Every event and effect
+is already narrated and stamped with the id, so a transcription service subscribes there,
+independent of the `Memory` seam.
+
+- **`Memory`** — history *for the model*. Lossy at the implementer's discretion.
+- **Observers** — history *for humans*: audit, chat replay, debugging. Always available, never
+  imposed on `Memory`.
+
+### 5.2 `AgentStateStore` owns the phase
+
+`load` and `save`, scoped, with `version` for optimistic concurrency. The record is one turn's worth
+at most (§2.3), never history.
+
+**The crash window between the two stores is real and accepted.** `apply` commits to memory, then
+saves state, with no transaction spanning them. A crash in between leaves an exchange remembered
+whose phase did not advance; on the next drive the model may see it twice. That is benign compared
+with the alternative ordering — saving first and crashing would advance the phase past an exchange
+the model never sees, which is silent context loss. Stated here rather than discovered later.
 
 ## 6. Multi-node
 
 Multi-node is a hard requirement, so in-process residency cannot be the lock.
 
-**The correctness floor is optimistic concurrency**, and it is free under §5. Each `onEvent`
-appends at an expected version. Two nodes may fold the same state and both emit `CallModel`; the
-second append fails on version conflict, and that node reloads and re-folds. Duplicated work,
-never corrupted state. Plain JDBC suffices; single-node embedding is trivial.
+**The correctness floor is optimistic concurrency.** Each `save` writes at an expected version. Two
+nodes may handle the same event and both emit `CallModel`; the second save fails on version
+conflict, and that node reloads and re-handles. Duplicated work, never corrupted state. Plain JDBC
+suffices; single-node embedding is trivial.
 
 The residual cost is duplicated *effects* — a wasted model call, or at-least-once tool execution.
 The latter is already the standing contract: a tool that cannot be safely re-run makes itself
-idempotent.
+idempotent. Duplicate *completions* are handled in the core, by phase-first dispatch discarding
+stale events and by `ToolCallId` correlation (§2.5).
 
 **The deployment layer is partitioned ownership.** Observations for an id arrive on a partition
 keyed by that id, and the broker guarantees one active consumer per key — Kafka partitions,
@@ -345,21 +644,18 @@ RabbitMQ single-active-consumer behind a consistent-hash exchange. This removes 
 costs **zero code in the core**, because the broker does it.
 
 **Rejected: durable leases.** An ownership record with expiry, renewal, and fencing tokens is a
-lock manager with clock dependence and its own bug class. Not worth it when §6's floor is already
+lock manager with clock dependence and its own bug class. Not worth it when the floor is already
 correct.
-
-**Rejected: durable drive phase.** Writing every transition before dispatching effects doubles
-store traffic and makes two nodes rehydrating one drive a real scenario.
 
 ### 6.1 Crash mid-drive
 
-The log is intact and consistent; appends are atomic and versioned. What is lost is an in-flight
-effect. The scope resumes on the next event — the next tick, or the next thing a user says, at
-which point the log is whole.
+State is consistent; saves are atomic and versioned. What is lost is an in-flight effect. The scope
+resumes on the next event — the next tick, or the next thing a user says.
 
-The gap is a scope that crashes mid-drive and then receives nothing. A recovery sweep — find scopes
-with outstanding calls and no progress past a threshold, re-drive — is a **bolt-on, not core**. It
-is named here so its absence is a decision.
+The gap is a scope that crashes mid-drive and then receives nothing. A recovery sweep is a
+**bolt-on, not core**: find scopes whose phase is not `Idle` and whose state has not advanced past a
+threshold, and call `drive()`. Persisting the phase discriminator makes that an indexed query
+rather than a scan — one of the operational payoffs of §2.2.
 
 ## 7. Hosts
 
@@ -382,68 +678,192 @@ instance, the stream goes silent exactly when the user is still watching.
 **Autonomous host.** A long-running partitioned consumer. Drains, drives, nobody waits.
 
 **The synchronous adapter.** Fire-and-forget everywhere is a real ergonomic loss for tests, CLIs,
-and embedding. So: a `CompletableFuture` completed by an observer when the scope reaches idle. Not
-a second code path — one observer, one reducer, a convenience wrapper. This is also the answer to
-"observers are hard to test": the observer is an interface with a recording implementation, and the
-adapter turns "the drive finished" into a value you can await deterministically.
+and embedding. So: a `CompletableFuture` completed by an observer when the scope reaches `Idle`. Not
+a second code path — one observer, one phase machine, a convenience wrapper. This is also the answer
+to "observers are hard to test": the observer is an interface with a recording implementation, and
+the adapter turns "the drive finished" into a value you can await deterministically.
 
 **"Which reply is mine" is not solved and does not need to be.** The observer is scope-scoped, so a
 second participant sees the first's traffic — correct, because it *is* the shared session.
 Correlation is deferred until traffic justifies it.
 
-## 8. Observers and observability
+## 8. Observation — `TurnObserver`, restored
+
+Narration keeps the **existing `TurnEvent` grammar and `TurnObserver` machinery** — the sealed
+event family, the `TurnObserverConfig` builder, `noop()`, and `logging()`. They are already
+written, already tested, and nothing in this design invalidates them. An earlier revision of this
+document replaced them with a bare `observed(AgentEvent, List<Effect>)` tuple; that discarded
+streaming, tool lifecycle, and the builder in one stroke, and is retracted (§10.6).
+
+**Two vocabularies, two jobs — deliberately not one grammar:**
+
+| | Purpose | Size | Growth |
+| --- | --- | --- | --- |
+| `AgentEvent` (§2.1) | facts that **drive phases** | 3 variants | frozen ceiling |
+| `TurnEvent` | **narration** for humans and tooling | 10+ variants | grows freely |
+
+No phase ever switches on a `TurnEvent`, which is exactly why it can afford to be rich: adding
+`ToolCallProgressed` costs the core nothing. Collapsing the two into one grammar would force every
+phase to ignore most of it and every narration change to touch the frozen core.
+
+The grammar carries over with two adjustments:
+
+- **`TurnEnded`** — carried `ConversationStatus`, a deleted type; it now carries the terminal
+  `Phase` and the failure reason. This is what makes the synchronous adapter (§7) one line —
+  `onTurnEnded(ended -> future.complete(ended))` — instead of inferring idleness from event shapes.
+- **`ToolCallParked` is deleted.** If a parked call is indistinguishable from a slow call by
+  design (§4.3), narrating parked-ness narrates a distinction the design says does not exist — and
+  the token it carried is a capability that fan-out would hand to every observer, `logging()`
+  included. Every consumer has a better door: approval UX rides the executor's approval handler,
+  the waiting caller times out uniformly (a parked call is just a slow call to the waiter too), the
+  gate's verdict is already narrated as `ToolCallDecided`, and "why is this scope stuck" is a query
+  on the park desk's own API. `TurnEvent` narrates the model's turn, never executor bookkeeping.
+
+The streaming variants — `TextDelta`, `ThinkingDelta`, `RedactedThinking` — are the interactive
+host's live-output seam. They already answer how a CLI shows tokens as they arrive; this design
+nearly reinvented what it already had.
 
 **Observers narrate; they never influence.** A listener that can affect the flow creates
 inter-listener ordering dependence and a shadow decision surface competing with the authorization
-ladder. Behavior injection has designated seams and all of them are interfaces already: `Reducer`,
-`Backlog`, `ObservationRenderer`, both executors, and the grants.
+ladder. Behavior injection has designated seams and all of them are interfaces already: `Memory`,
+`AgentStateStore`, `Backlog`, `ObservationRenderer`, both executors, and the grants.
 
 **Multiple observers is normal, not speculative.** §7 alone requires two at once: the synchronous
-adapter and the SSE emitter, on the same scope, during the same drive.
+adapter and the SSE emitter, on the same scope, during the same drive. §5.1 adds a third, since
+audit rides this stream.
 
-What an observer sees is exactly the reducer's input and output — **`(AgentId, AgentEvent,
-List<Effect>)`** — stamped with the id at emission. That is a complete, replayable narration of
-every decision the framework makes, and it is trivially recordable in a test.
+**Who emits what** follows §4's ownership lines, stamped with the id at emission:
+
+| Source | Events |
+| --- | --- |
+| `ModelCallExecutor` (decorator) | `TextDelta`, `ThinkingDelta`, `RedactedThinking`, `ToolCallRequested` |
+| `ToolCallExecutor` (decorator) | `ToolCallDecided`, `ToolCallProgressed`, `ToolCallCompleted` |
+| the shell | `AssistantSaid`, `TurnEnded`, plus `ignored`/`renderFailed` diagnostics |
 
 **Observability splits three ways.** Call-level spans go in **decorators around the executors** —
 they are interfaces, and only a decorator is on the call stack where context propagation is
 possible. Turn-level scope goes in **the shell**, because only the shell knows where a drive begins
 and ends. Metrics and trajectory ride **the observer**, since counters genuinely are after-the-fact
-narration. Nothing goes in the reducer.
+narration. Nothing goes in a phase.
 
 The metrics roster itself belongs to its own design. This spec declares the seams and stops.
 
 ## 9. What is deleted
 
-| Deleted                                  | Because                                                      |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| `Conversation<I>`                        | held an id and delegated; the instance is the scope           |
-| `ConversationId`                         | → `AgentId`                                                   |
-| `ConversationEvent`                      | → `AgentEvent`, with the id removed from every record         |
-| `ConversationStore` + `Transcript`       | one event log (§5); they stored history twice                 |
-| `ConversationStatus`                     | `idle` is `outstanding.isEmpty()`                             |
-| `ConversationLoop` (blocking)            | → pure `Reducer` + shell                                      |
-| `ParkToken` / park state / `ParkedCall`  | an address book, private to the tool executor (§4.3)          |
-| `approve`/`deny`/`resume`/`peek`/`progress` on the agent | tool-executor API, not core surface           |
-| `RunOutcome`                             | → the synchronous adapter (§7)                                |
-| `SubagentLinks`, `CallbackRouter`        | a subagent is a slow tool (§4.4)                              |
-| `Harness` as mandatory root              | demoted: collaborator holder plus an optional default resolver |
-| `InputRenderer<I>`                       | → `ObservationRenderer<O>`, applied at poll time              |
-| `Memory` in the core                     | behind `ModelCallExecutor` (§4.1)                             |
-| `Memory.remember`                        | the log is the transcript; memory only projects (§5.1)        |
+| Deleted                                  | Because                                                       |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| `Conversation<I>`                        | held an id and delegated; the instance is the scope            |
+| `ConversationId`                         | → `AgentId`                                                    |
+| `ConversationEvent`                      | → `AgentEvent`, with the id removed from every record          |
+| `ConversationStore` + `Transcript`       | → `Memory` (history) and `AgentStateStore` (control), §5       |
+| `ConversationStatus`                     | → `Phase`, which carries its own data                          |
+| `ConversationLoop` (blocking)            | → phase machine + shell                                        |
+| `ParkToken` / park state / `ParkedCall`  | an address book, private to the tool executor (§4.3)           |
+| `approve`/`deny`/`resume`/`peek`/`progress` on the agent | tool-executor API, not core surface            |
+| `RunOutcome`                             | → the synchronous adapter (§7)                                 |
+| `SubagentLinks`, `CallbackRouter`        | a subagent is a slow tool (§4.4)                               |
+| `Harness` as mandatory root              | demoted to the factory layer of §3.5                           |
+| `InputRenderer<I>`                       | → `ObservationRenderer<O>`, applied at poll time               |
+| `Reducer` / `Step`                       | → `Phase.handle` returning `Transition`; an SPI nobody implements is a type tax |
+| the event log                            | never existed outside the first draft; history is `Memory`'s   |
 
 `Harness` shrinks rather than dies: something must derive scoped collaborators from process-wide
 ones, and nessy-core must work without a DI container. But it stops being the required entry point
 — Spring scopes a bean, hand-wiring constructs an agent directly, and the default resolver is
 batteries, not law.
 
-## 10. Open questions
+## 10. Reversals
 
-1. **Recovery sweep** (§6.1) — deferred as a bolt-on. Confirm before implementation, not after.
+Decisions this document overturns, recorded so that no ruling is ever silently replaced again. The
+first entry is the reason this section exists.
+
+### 10.1 `Memory.remember` is restored — reverses the first draft, not the user
+
+**Reversed:** the first draft's §5.1, "Nothing writes to memory," which made the shell the sole
+writer and `Memory` a read-only projection over a mandatory event log.
+
+**Restores:** the ruling of 2026-08-14, recorded as deliberate — *"`remember()` stays on `Memory`;
+a discard-most memory writes no transcript at all. The loop does NOT own transcript writes."*
+
+**Why the first draft was wrong:** it forced universal, verbatim, permanent retention. That leaves
+nowhere to stand for a memory that must *not* retain (erasure obligations, ephemeral chat), makes a
+high-volume monitor append every observation forever, and excludes any memory backed by a foreign
+system with its own representation.
+
+**Process note:** this reversal was made without being flagged as one. Everything in this section
+exists so that cannot recur.
+
+### 10.2 The drive loop, twice reversed
+
+**Reversed first:** a CAS claim with a "dirty before claim, clear before work, re-check after
+release" protocol — over-engineered lock-freedom nobody required.
+**Reversed second:** its replacement, a `synchronized drive()` with a `working` boolean. The monitor
+made every inbound call **block** behind an in-flight drive — including its store writes — while the
+spec promised `observe`/`onEvent` never block. The flag also only handled *same-thread* re-entry;
+cross-thread callers didn't skip, they queued on the monitor.
+**Landed on:** a scheduled loop on an injected `Executor` with one CAS and a post-clear re-check
+(§3.2) — the same idiom §4.1 already mandates, rather than a second concurrency vocabulary.
+
+### 10.3 `Phase` replaces derived status — reverses "idle is derived, not tracked"
+
+**Reversed:** the first draft's §2.2, which claimed a status enum is a parallel field that can
+disagree with the outstanding set.
+**Why:** the claim rests on a false premise. A model call in flight puts nothing in the outstanding
+set, so "awaiting model" and "idle" were indistinguishable, and the shell would fire one model call
+per queued observation. The sealed form answers the original objection outright: pending calls live
+*inside* `AwaitingTools`, so there is no second field to disagree with (§2.2).
+
+### 10.4 One completion event per effect — reverses the defended failure asymmetry
+
+**Reversed:** the first draft's §2.1, which kept `ModelResponded`/`ModelFailed` as two events and
+`ToolFinished` as one, and defended the split on merit.
+**Why:** in-band versus out-of-band is a fact about how a phase handles an outcome, not about what
+happened. The grammar states events; phases assign meaning (§2.1).
+
+### 10.5 The reducer as doctrine is abandoned
+
+**Reversed:** the first draft's thesis, "the reducer is pure; every side effect lives in a named
+executor," and the event log, mandatory transcript, and projection-only `Memory` derived from it.
+**Why:** 12-factor says own your control flow and keep state out of the loop; it does not mandate a
+reducer. The claimed payoff — testing decisions with pure values — survives intact on
+`Phase.handle`, and fully synchronous executors already give a deterministic, mock-free test of the
+whole shell. What survives is the discipline (decisions do no I/O), not the vocabulary.
+
+### 10.6 `TurnObserver` is restored — reverses the observer tuple
+
+**Reversed:** this document's own §8 first draft, which replaced the `TurnEvent`/`TurnObserver`
+machinery with a single `observed(AgentEvent, List<Effect>)` narration.
+**Why:** the tuple could not even serve §7's synchronous adapter (the next phase was not in it, and
+"empty effects" is false as an idle test — a partial `ToolFinished` also emits nothing), and it
+silently deleted the streaming deltas, the tool lifecycle events, and the builder — working, tested
+code. Facts that drive phases and narration for humans are two vocabularies with two jobs (§8).
+
+### 10.7 Invariants that exist because this design keeps regenerating one bug
+
+Four separate defects in this design have been the same defect: **an implicit ordering rule, or a
+second path to do one job.** They are collected here because the next one will look just as
+reasonable.
+
+| Invariant                     | The bug it prevents                                            |
+| ----------------------------- | -------------------------------------------------------------- |
+| Decide before committing      | a redelivered completion written to history before it is judged |
+| Commit before dispatch        | the model projecting history missing the exchange that provoked it |
+| Never bypass the backlog      | ordering jumped, coalescing denied, a second path to a phase    |
+| `CallModel` carries no context | two paths for content to reach the model, free to disagree     |
+
+## 11. Open questions
+
+1. **`Transition` ergonomics** — the three-field shape is settled (§2.5), but the builder surface
+   (`to`/`commit`/`emit`/`ignore`) is a sketch and wants one pass for readability.
 2. **Duplicate summarisation across nodes** (§4.1) — claim-write, or accept the waste.
 3. **Staleness policy** (§4.1) — how far past budget projection degrades rather than returning an
    oversized context.
-4. **Definition name vs `AgentId`** — an instance is a definition bound to an id. Subagent stamping
+4. **Stale-state retry policy** (§3.4, §6) — reload and re-handle is stated; whether re-dispatch may
+   double-execute a tool, and how that interacts with the at-least-once contract, is not.
+5. **`AgentStateStore` payload format** — JSON or blob, and how `Phase` variants serialize without
+   freezing the sealed hierarchy against future phases.
+6. **Definition name vs `AgentId`** — an instance is a definition bound to an id. Subagent stamping
    and routing want the definition's name. Confirm they stay two things.
-5. **Migration or replacement** — §9 deletes most of the public API and both stores. Whether this
+7. **Recovery sweep** (§6.1) — deferred as a bolt-on. Confirm before implementation, not after.
+8. **Migration or replacement** — §9 deletes most of the public API and both stores. Whether this
    ships as a major version or a parallel package is a release decision this spec does not make.
