@@ -492,9 +492,10 @@ Two consequences that must be written down or they will be got wrong:
   job of `Harness` (§9). Integrators implement the factory; Spring users get it as a scoped bean.
 - **Scoped facades must be stateless views.** Instances are transient. A scoped `Memory` that
   caches a summary in a field loses it when the instance dies, and a high-frequency observation
-  stream thrashes it. All caches, pools, and the summarisation in-flight tracker (§4.1) live in the
-  process-wide store, keyed by id. Get this backwards and async summarisation silently stops
-  working, because every instance believes no summary is in flight.
+  stream thrashes it. All caches and pools live in the process-wide factory; anything that must
+  survive instances or nodes — the summarisation claim (§4.1), the park desk (§4.3) — lives in a
+  store. A scope-keyed in-memory map of live state is a second lock vocabulary and is rejected
+  wherever it appears (§3.2, §4.1, §7).
 
 ### 3.6 `Backlog`
 
@@ -559,15 +560,19 @@ threshold it submits a task and returns with what it has. Three requirements, al
 
 - **An injected `Executor`, never a spawned thread.** Tests pass a same-thread executor and the
   whole thing is deterministic — no mocks, no sleeps.
-- **In-flight tracking**, cleared on failure as well as success (`whenComplete`, not `thenRun`), and
-  held **process-wide, keyed by id** (§3.5). A leaked entry means that scope never summarises again
-  and its context grows unbounded, silently.
+- **Dedup is a claim-write in the summary store, never an in-memory tracker.** The projector
+  claims `(id, watermark)` before submitting; one winner, store-enforced, on any node. The task
+  writes the summary idempotently keyed the same way and clears the claim; a claim older than a
+  threshold is claimable again, so a crashed claimer costs a redo, not a wedge. An in-memory
+  in-flight map was rejected as a second lock vocabulary (§3.2 — the store is the lock) with a
+  named failure mode: a leaked entry silently stops a scope summarising forever. The claim's
+  expiry is not the clock-dependent lease §6 rejects — that ban protects correctness-critical
+  ownership, and this claim guards **derived** data (§5.1): an expired claim redone twice wastes
+  CPU and cannot corrupt anything.
 - **Emission to the observer.** Started, finished, failed are ordinary narration.
 
-Two accepted costs, chosen rather than discovered: the context is **deliberately stale** until the
-summary lands, so the projector owns a policy for how far past budget it will go before degrading;
-and in-flight tracking is **per-JVM**, so two nodes both submit — fixed with a claim-write on the
-summary record, or accepted, since a summary is derived (§5.1).
+One accepted cost, chosen rather than discovered: the context is **deliberately stale** until the
+summary lands, so the projector owns a policy for how far past budget it will go before degrading.
 
 ### 4.2 `ToolCallExecutor` owns the gate and the address book
 
@@ -972,7 +977,8 @@ reasonable.
 
 1. **`Transition` ergonomics** — the three-field shape is settled (§2.5), but the builder surface
    (`to`/`commit`/`emit`/`ignore`) is a sketch and wants one pass for readability.
-2. **Duplicate summarisation across nodes** (§4.1) — claim-write, or accept the waste.
+2. ~~Duplicate summarisation across nodes~~ — **closed**: the claim-write in the summary store is
+   the mechanism (§4.1), replacing per-JVM in-flight tracking entirely.
 3. **Staleness policy** (§4.1) — how far past budget projection degrades rather than returning an
    oversized context.
 4. **Stale-state retry policy** (§3.4, §6) — reload and re-handle is stated; whether re-dispatch may
