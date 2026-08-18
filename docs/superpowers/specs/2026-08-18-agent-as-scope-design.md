@@ -587,6 +587,16 @@ Human-in-the-loop stops being special. The gate parks, a human answers, a `ToolF
 the same path as a slow HTTP call. The approve/deny doors become an ordinary API on the tool
 executor, not core surface.
 
+**Parking is a capability of the wiring, not a right of every deployment.** The interactive host
+binds a **non-parking** tool executor: approvals go through a *rendezvous* handler — block the
+virtual thread on a future the human completes (a click in web, an inline `approve? [y/N]` prompt
+in a CLI), bounded by a timeout. A tool that attempts to park anyway fails **loudly and in-band**
+— `ToolOutcome.Failed` delivered immediately — so the model explains itself and the turn completes.
+The reason is not taste: observations are absorbed only at `Idle` (§3.3), so a parked turn in a
+conversation **wedges the conversation** — the human types into a backlog that never drains. The
+park desk belongs where nobody waits; the autonomous host's wiring carries it, and the same agent
+definition runs in both.
+
 **Out-of-band delivery is another bind.** The `Sink` is a capability of an *instance* and dies with
 it; what survives is the **address** in the desk. A result arriving days later, on any node,
 resolves its token to `(AgentId, ToolCall)` and then enters exactly the way every trigger enters:
@@ -725,9 +735,11 @@ executors hold `sink = agent::apply`, a strong reference, so from `observe` to `
 instance — and the emitter wired into it — is reachable and stable. The instance becomes garbage
 exactly when the turn ends, which is exactly when the stream closes.
 
-A turn that outlives its stream — parked, or resumed on another node — completes without a watcher:
-narration goes to the remaining observers, the exchange lands in `Memory`, and the next fetch shows
-it. A human who walked away gets the answer on return; that is parking working, not a gap.
+Interactive turns are **request-bounded by construction**: the interactive host binds a
+non-parking tool executor (§4.3), so every turn ends — with an answer, a rendezvous result, or a
+loud in-band failure — while its stream is open. Turns that genuinely span days are the autonomous
+host's business, where parked completions land in `Memory` with nobody watching, which is parking
+working, not a gap.
 
 **Autonomous host.** A long-running partitioned consumer. Drains, drives, nobody waits.
 
