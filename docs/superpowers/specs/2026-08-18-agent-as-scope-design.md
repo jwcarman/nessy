@@ -306,23 +306,24 @@ assertThat(new AwaitingTools(turn, Set.of(a, b), List.of()).handle(finished(a)))
 
 ```java
 public interface Agent<O> {
-  void observe(O observation);     // → backlog. never blocks, never claims.
-  void onEvent(AgentEvent event);  // → continuation queue. never blocks, never claims.
-  void drive();                    // claims, then works.
+  void observe(O observation);     // → backlog, then drain.
+  void onEvent(AgentEvent event);  // applies the event, on the calling thread.
+  void drive();                    // the drain invariant as a method.
 }
 ```
 
-Three methods, because there are **two inbound lanes and one worker**:
+Three methods, two lanes:
 
-- **Continuations** (`onEvent`) — the machinery reporting back. These *are* the drive.
+- **Continuations** (`onEvent`) — an executor reporting back, on its own thread. The event is
+  applied immediately; serialization is the store's version CAS (§3.2), not a queue.
 - **Observations** (`observe`) — ambient world facts. They go to the backlog and are absorbed only
   at an idle boundary.
-- **`drive()`** — the only method that does work.
+- **`drive()`** — drain: while the phase is `Idle` and the backlog yields an observation, absorb
+  one. `observe` ends by calling it, and the recovery sweep (§6.1) *is* it, on stalled scopes.
 
-Splitting the worker out of the inbound methods makes the lane priority a **mechanism rather than a
-promise**: both inbound methods are pure non-blocking enqueues, no executor callback thread ever
-blocks, and the recovery sweep (§6.1) stops being new machinery — it is `drive()` on stalled
-scopes.
+The lane priority costs no machinery: a continuation applies the moment it arrives, and an
+observation cannot be absorbed at all until the phase returns to `Idle` — the priority is a
+consequence of the phase grammar, not of queue discipline.
 
 `observe` and `onEvent` are named asymmetrically on purpose: `observe` is what the world calls,
 `onEvent` is what an executor calls back into.
@@ -336,71 +337,57 @@ One invariant, not a list of triggers. The events that can make it true — an o
 a turn ending, a recovery sweep — are consequences. Stated as an invariant, a new trigger cannot be
 forgotten.
 
-### 3.2 Concurrency
+### 3.2 Concurrency — the store is the lock
+
+**There is no concurrency machinery in the shell.** No claim flag, no continuation queue, no
+scheduled loop. Two rules replace all of it:
+
+> **Executors are asynchronous, always.** The `Sink` is never invoked on the stack that dispatched
+> the effect; delivery arrives on the executor's own thread — a virtual thread wrapping a blocking
+> HTTP call is the normal shape. This holds in every deployment, the CLI included: there is no
+> synchronous wiring mode.
+
+> **Serialization is the version CAS, everywhere.** Concurrent applies — sibling tool results in a
+> fan-out, or two nodes driving one scope — are resolved by `save` at an expected version. The
+> loser wastes one in-memory `handle`, reloads, and re-handles. Intra-process contention and
+> multi-node contention are the same case handled by the same mechanism (§6).
+
+The fan-out race, walked: `pending = {b, c}`, both results land at once. Each handles from the
+loaded state and computes a non-empty remainder, so **neither commits anything to memory** — the
+unit is held back (§2.5). One save wins; the loser reloads, sees the true remainder, and re-handles
+— now correctly last, committing the unit. The held-back commit is what makes the retry clean.
+
+**Every `AgentStateStore` enforces versioning — the in-memory one included.** A store may not
+assume single-threaded callers; the CAS is the concurrency model, so a store that skips it in the
+name of simplicity removes the lock. The in-memory store is a `compareAndExchange` on a reference,
+which is exactly as hard as it sounds.
+
+**Why the agent carries no state field.** `apply` loads, handles, and saves; the store is the only
+authority. A cached field shared across callback threads would need its own synchronization and
+could regress under racing writes — the load is cheap (in-memory or one indexed row) and buys the
+whole problem away. This is also the transient-instance model being honest: an instance that dies
+between requests never trusted a field anyway.
+
+**What died here, three times.** This section previously held (1) a CAS claim with a dirty-flag
+protocol, (2) a `synchronized` drive with a `working` boolean, (3) a scheduled trampoline on an
+injected executor. Each was retired in turn (§10.2). The trampoline's last justification was
+flattening *synchronous* executor re-entry — so the fix was to stop supporting synchronous
+executors, not to keep machinery whose only client was a wiring style nobody needed.
+
+**Tests** use a pumped executor: tasks queue, the test pumps until quiet. Deterministic, mock-free,
+and it exercises the real asynchronous contract instead of a same-thread special case that no
+longer exists.
+
+### 3.3 The drain loop
 
 ```java
-private final Executor serial;                       // injected — never a spawned thread (§4.1)
-private final AtomicBoolean scheduled = new AtomicBoolean();
-
 @Override public void observe(O observation) { backlog.add(observation); drive(); }
-@Override public void onEvent(AgentEvent event) { continuations.add(event); drive(); }
 
 @Override public void drive() {
-  if (scheduled.compareAndSet(false, true)) {
-    serial.execute(this::runLoop);
-  }
-}
-
-private void runLoop() {
-  try {
-    work();
-  } finally {
-    scheduled.set(false);
-    if (hasWork()) drive();      // re-check AFTER clearing, or the last arrival strands
-  }
-}
-```
-
-A scheduled loop on an **injected `Executor`** — the same idiom §4.1 mandates for summarisation. The
-CAS admits one loop at a time; a failed CAS means a loop is already scheduled or running and will
-see the newly queued item, and the `finally` re-check closes the window where an arrival lands after
-`work()` drained but before the flag cleared.
-
-This keeps the inbound contract honest: `observe` and `onEvent` **never block**, from any thread —
-they enqueue, attempt one CAS, and return. A webhook thread is never held for the duration of
-someone else's drive, which includes synchronous store writes (`remember`, `save`). An earlier
-revision used a `synchronized drive()` with a `working` boolean; it was retired because the monitor
-made every inbound call *block* behind an in-flight drive — the spec said "never blocks" while the
-code said otherwise (§10.2).
-
-The executor choice is deployment policy, not design: a same-thread executor runs the entire agent
-on the caller's thread — deterministic tests, and the natural CLI shape — while virtual threads suit
-the hosts. Serialization comes from the CAS, not the executor, so even a common pool preserves
-one-drive-at-a-time.
-
-`this::onEvent` is the sink handed to every executor. A synchronous executor — an in-process tool,
-a test stub, a canned model — re-enters `onEvent`, whose `drive()` fails the CAS and returns; the
-running loop picks the item up on its next pass. No stack growth, no reentrancy deadlock, no special
-case. A fully synchronous wiring plus a same-thread executor runs the entire agent on one thread,
-deterministically.
-
-### 3.3 The work loop
-
-```java
-private void work() {
-  for (boolean progressed = true; progressed; ) {
-    progressed = false;
-
-    // Lane 1 — continuations drain to exhaustion, always first.
-    for (AgentEvent e = continuations.poll(); e != null; e = continuations.poll()) {
-      apply(e);
-      progressed = true;
-    }
-
-    // Lane 2 — exactly one observation, and only when idle.
-    if (state.phase() instanceof Idle) {
-      progressed |= backlog.poll().flatMap(this::render).map(this::applied).orElse(false);
-    }
+  while (store.load().phase() instanceof Idle) {
+    Optional<O> next = backlog.poll();
+    if (next.isEmpty()) return;
+    next.flatMap(this::render).ifPresent(this::apply);
   }
 }
 ```
@@ -412,17 +399,30 @@ deny the backlog its chance to coalesce, and would create a second path by which
 a phase. With a coalescing policy, `add` followed by `poll` may legitimately return something other
 than what was just added — that is the policy working correctly.
 
+**A lost race returns the observation to the backlog.** Two threads can pass the idle check
+together; both poll, both apply, one save loses. The loser's observation is re-added — not dropped,
+not forced — where the coalescing policy decides its fate again. This is also why `Observed`
+reaching a non-`Idle` phase is a shell bug, not a legal race: the conflict is caught at `save` and
+resolved by re-adding, never by handing a non-idle phase an observation.
+
 ### 3.4 Applying one event
 
 ```java
 private void apply(AgentEvent event) {
-  Transition t = state.phase().handle(event);          // pure — classify before committing
-  if (t.isIgnored()) { observer.ignored(event); return; }
-  t.commit().forEach(memory::remember);                // whole units only, in order
-  state = new State(t.next(), state.version());
-  store.save(state);                                   // versioned; stale ⇒ reload and re-handle
-  observer.observed(event, t.effects());
-  t.effects().forEach(this::dispatch);
+  while (true) {
+    State state = store.load();
+    Transition t = state.phase().handle(event);        // pure — classify before committing
+    if (t.isIgnored()) { observer.ignored(event); return; }
+    t.commit().forEach(memory::remember);              // whole units only, in order
+    try {
+      store.save(new State(t.next(), state.version() + 1));
+    } catch (StaleStateException e) {
+      continue;                                        // someone else advanced — re-handle
+    }
+    observer.observed(event, t.effects());
+    t.effects().forEach(this::dispatch);
+    return;
+  }
 }
 
 private void dispatch(Effect effect) {
@@ -442,6 +442,11 @@ Two orderings here are invariants, not step numbers:
 > **Commit before dispatch.** `ModelCallExecutor` calls `memory.recall()`, so the exchange must be
 > in memory before the effect goes out. Reverse them and the model does not see what provoked the
 > call.
+
+A retry after a lost save re-runs `handle` against the fresh state; a transition that committed and
+then lost can write its messages twice. That is the same benign-duplicate class as the crash window
+(§5.2), and it is rare by construction — the common conflict, sibling fan-out results, commits
+nothing until the last one (§3.2).
 
 ### 3.5 Everything is pre-scoped
 
@@ -516,8 +521,10 @@ public interface ModelCallExecutor { void callModel(Sink sink); }
 public interface ToolCallExecutor  { void executeTool(ToolCall call, Sink sink); }
 ```
 
-Both are pre-scoped (§3.5) and asynchronous: they return immediately and call back through the
-`Sink`. The shell's thread never blocks on a model or a tool.
+Both are pre-scoped (§3.5) and asynchronous **by contract, not by convention**: they return
+immediately, and the `Sink` is never invoked on the stack that dispatched the effect (§3.2). An
+executor wrapping a blocking client hands the call to a virtual thread and delivers from there.
+The shell's thread never blocks on a model or a tool, and delivery never recurses into the shell.
 
 An executor that must deliver days later persists whatever address it needs internally; the id is
 not a parameter on the way in.
@@ -618,6 +625,11 @@ independent of the `Memory` seam.
 `load` and `save`, scoped, with `version` for optimistic concurrency. The record is one turn's worth
 at most (§2.3), never history.
 
+Versioning is enforced by **every** implementation, the in-memory store included — the CAS is the
+system's only lock (§3.2), so a store without it removes the lock. Save-conflict retries can
+duplicate a committed message in the same way the crash window can; both land in the same benign
+class below.
+
 **The crash window between the two stores is real and accepted.** `apply` commits to memory, then
 saves state, with no transaction spanning them. A crash in between leaves an exchange remembered
 whose phase did not advance; on the next drive the model may see it twice. That is benign compared
@@ -678,10 +690,19 @@ instance, the stream goes silent exactly when the user is still watching.
 **Autonomous host.** A long-running partitioned consumer. Drains, drives, nobody waits.
 
 **The synchronous adapter.** Fire-and-forget everywhere is a real ergonomic loss for tests, CLIs,
-and embedding. So: a `CompletableFuture` completed by an observer when the scope reaches `Idle`. Not
-a second code path — one observer, one phase machine, a convenience wrapper. This is also the answer
-to "observers are hard to test": the observer is an interface with a recording implementation, and
-the adapter turns "the drive finished" into a value you can await deterministically.
+and embedding. So: a `CompletableFuture` completed from narration —
+
+```java
+var waiter = TurnObserver.observe(o -> o.onTurnEnded(future::complete));
+// register on the scope's listener registry BEFORE observing, or a fast turn ends unheard
+agent.observe(line);
+TurnEnded ended = future.get(timeout);    // terminal Phase + failure reason
+```
+
+Not a second code path — one observer, one phase machine, a convenience wrapper. The caller's
+thread parks on the future while executor virtual threads do the work; a parked or slow turn is
+just a timeout, uniform with every other slow tool. Streaming rides the same registration —
+`onTextDelta` on the same builder — so wait and stream are one mechanism.
 
 **"Which reply is mine" is not solved and does not need to be.** The observer is scope-scoped, so a
 second participant sees the first's traffic — correct, because it *is* the shared session.
@@ -793,16 +814,21 @@ system with its own representation.
 **Process note:** this reversal was made without being flagged as one. Everything in this section
 exists so that cannot recur.
 
-### 10.2 The drive loop, twice reversed
+### 10.2 The drive loop, thrice reversed — then deleted
 
 **Reversed first:** a CAS claim with a "dirty before claim, clear before work, re-check after
 release" protocol — over-engineered lock-freedom nobody required.
-**Reversed second:** its replacement, a `synchronized drive()` with a `working` boolean. The monitor
-made every inbound call **block** behind an in-flight drive — including its store writes — while the
-spec promised `observe`/`onEvent` never block. The flag also only handled *same-thread* re-entry;
-cross-thread callers didn't skip, they queued on the monitor.
-**Landed on:** a scheduled loop on an injected `Executor` with one CAS and a post-clear re-check
-(§3.2) — the same idiom §4.1 already mandates, rather than a second concurrency vocabulary.
+**Reversed second:** a `synchronized drive()` with a `working` boolean. The monitor made every
+inbound call **block** behind an in-flight drive while the spec promised it never would; the flag
+only handled same-thread re-entry.
+**Reversed third:** a scheduled trampoline on an injected `Executor` — one CAS, a post-clear
+re-check, two queues. Correct, but its surviving justification was flattening *synchronous*
+executor re-entry, and save-before-dispatch had already made the "callback races the running
+drive" story moot: the store's version CAS serializes concurrent applies by itself, intra-process
+and multi-node alike.
+**Landed on:** no shell machinery at all. Executors are asynchronous by contract, the store's
+version CAS is the only lock, and `apply` is load–handle–save–dispatch with a retry (§3.2). Three
+mechanisms died protecting a wiring style — synchronous executors — that was then simply removed.
 
 ### 10.3 `Phase` replaces derived status — reverses "idle is derived, not tracked"
 
