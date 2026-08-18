@@ -587,6 +587,15 @@ Human-in-the-loop stops being special. The gate parks, a human answers, a `ToolF
 the same path as a slow HTTP call. The approve/deny doors become an ordinary API on the tool
 executor, not core surface.
 
+**Out-of-band delivery is another bind.** The `Sink` is a capability of an *instance* and dies with
+it; what survives is the **address** in the desk. A result arriving days later, on any node,
+resolves its token to `(AgentId, ToolCall)` and then enters exactly the way every trigger enters:
+the factory binds a fresh instance for the id — collaborators, observers, and `Sink` all wired at
+construction (§3.5) — and the newly bound executor delivers `ToolFinished` through the `Sink` it
+was born holding. Nothing persists a callback; the durable thing is an address, and address → live
+`Sink` is instance construction. The version CAS covers two triggers binding concurrently, and the
+subagent's parent callback (§4.4) rides the same path.
+
 **The token is delivered, never broadcast.** A park token is a *capability* — whoever holds it can
 approve or deny the call — so it moves point-to-point, not over the observer stream. When the
 ladder answers `RequireApproval`, the executor parks and hands the token to a **configured
