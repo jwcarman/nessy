@@ -20,7 +20,7 @@ Five parts, and nothing else:
 1. **A system prompt** — static configuration.
 2. **A backlog** — inbound world observations, awaiting absorption.
 3. **A memory** — durable, scoped, hiding transcript and summarisation entirely.
-4. **An intent emitter** — the only thing that does heavy work.
+4. **An intent executor** — the only thing that does heavy work.
 5. **An observer** — everything the agent does, narrated outward.
 
 Parts 2 and 3 are *bound to a scope key at construction*. That binding is the whole of what
@@ -164,19 +164,39 @@ the caller is already watching.
 
 ## 3. Intents
 
-### 3.1 The emitter
+### 3.1 The executor — two methods, no vocabulary
 
 ```java
-public interface IntentEmitter {
-  void emit(Intent intent);
+public interface IntentExecutor {
+  void callModel(CallModel intent);
+  void callTool(CallTool intent);
 }
 ```
 
-The emitter is the **only** component that does heavy work, and it always does it off the fold's
-thread. It calls back into `onModelCall`/`onToolCall` when work completes. This is the seam that
-keeps the fold pure and non-blocking, and it is the seam tests replace with a recording emitter.
+The executor is the **only** component that does heavy work, and it always does it off the
+fold's thread. It calls back into `onModelCall`/`onToolCall` when work completes. This is the
+seam that keeps the fold pure and non-blocking, and the seam tests replace with a recording
+implementation.
 
-### 3.2 The model-call intent is a complete value
+**There is deliberately no sealed `Intent` supertype and no generic `emit`.** The inbound side
+already declined to unify — `onModelCall` and `onToolCall` are two methods rather than
+`onContinuation(Continuation)` over a grammar — so unifying the outbound side would be
+asymmetric for no gain. Over two variants, a sealed interface buys a `switch` and an
+exhaustiveness obligation in exchange for nothing, since both variants are always handled.
+
+It does not even buy optionality: adding a third method breaks implementers, and adding a third
+sealed variant breaks exhaustive switches. Symmetric cost, so the ceremony is unpaid-for.
+
+The grammar is designed to stay at two, not merely observed to be two today: summarisation and
+compaction belong to `Memory` (§4), coalescing to `Backlog` (§5), and subagent delegation and
+authorization are already tool calls. §10.5 forbids `Memory` and `Backlog` implementations from
+introducing intent kinds. A third kind would be a genuine architectural change, at which point a
+third method is the honest way to record it.
+
+The name is `IntentExecutor`, not `IntentEmitter`: a single `emit` reads like an event bus, and
+this is not one.
+
+### 3.2 The intents are complete values
 
 The intent carries the **assembled context**, not a reference to where context could be found:
 
@@ -191,13 +211,18 @@ This buys three things:
 - The observer reports exactly what went to the provider, not what it was derived from.
 - A retry re-sends what was decided, rather than re-deriving something that may have drifted.
 
-The alternative — the intent naming a scope and the emitter recalling for itself — was rejected
+The alternative — the intent naming a scope and the executor recalling for itself — was rejected
 because it makes the intent un-loggable, un-assertable, and non-deterministic under retry, and
 because it drags `Memory` into a component that otherwise never touches it.
 
 This is only affordable because §4 moves summarisation off `recall`'s hot path. Without that
 ruling, building the intent would mean blocking on a model call in order to decide to make a
 model call.
+
+Note that this property is **independent of §3.1's ruling**. Dropping the sealed supertype cuts
+the container, not the contents: `CallModel` and `CallTool` remain complete, self-describing
+records. It is the records that make tests assert on values and let the observer report exactly
+what went to the provider — the supertype contributed nothing to either.
 
 ## 4. Memory
 
@@ -329,7 +354,7 @@ core**. It is listed here so its absence is a decision rather than an oversight.
 
 ## 7. Hosts
 
-One core, two hosts. The fold, the intent grammar, `Memory`, `Backlog`, and `Parks` are
+One core, two hosts. The fold, the intents, `Memory`, `Backlog`, and `Parks` are
 identical in both; the hosts differ only in how observations arrive, who owns the scope, and who
 consumes the output.
 
@@ -431,6 +456,8 @@ adapted, not reopened.
    back an oversized context.
 4. **Scope key naming** — `ScopeId`? `AgentKey`? It is `ConversationId`'s successor and the name
    should stop implying chat.
-5. **Intent grammar sealing** — the sealed-grammar etiquette in the design of record applies.
-   Confirm the grammar is exactly `CallModel` and `CallTool` before locking it; anything a single
-   `Memory` or `Backlog` implementation needs must *not* appear there.
+5. **The two-intent ceiling** — §3.1 drops the sealed supertype on the grounds that two kinds is
+   the designed steady state, not a temporary count. That holds only while `Memory` and `Backlog`
+   implementations are forbidden from needing an intent of their own; anything either one requires
+   must be solved inside its own facade, as summarisation and coalescing already are. A third
+   `IntentExecutor` method is a deliberate architectural change, not a routine addition.
