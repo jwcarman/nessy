@@ -1,275 +1,201 @@
-# Agent as Scope — the conversation dissolves
+# Agent as Scope — a pure reducer and a thin shell
 
 **Date:** 2026-08-18
-**Status:** Design of record (proposed) — supersedes the `Agent`/`Conversation` split in
-`2026-08-09-nessy-agent-harness-design-v2.md` §17 and the blocking-drive model throughout.
+**Status:** Design of record (proposed). Supersedes the `Agent`/`Conversation` split, the blocking
+drive, and the park-as-state model in `2026-08-09-nessy-agent-harness-design-v2.md`.
 
-## 0. The one-sentence version
+This design is not constrained by the current implementation. Where the existing code is in the
+way, it goes.
 
-An agent is not a factory of conversations. An agent **is** a conversation — or rather,
-"conversation" was never a thing at all: it was a **scope key** plus the durable state bound to
-it. What is left, once that is named honestly, is an event-driven fold over two inbound lanes
-that emits intents and never blocks.
+## 0. Thesis
+
+There is no such thing as a conversation. There is an **agent bound to an identity**, and its
+state is the fold of everything that has happened to it.
+
+Everything else follows from one rule:
+
+> **The reducer is pure. Every side effect lives in a named executor.**
+
+Hold that rule and the design collapses to two data types, one function, and a thin shell.
 
 ## 1. The model
 
-### 1.1 What an agent is
+### 1.1 Identity, binding, host
 
-Five parts, and nothing else:
+An agent instance is a **definition** (system prompt, tools, model) bound to an **`AgentId`**. The
+id is the scope. Memory, log, and backlog are all scoped by it, and nothing in the core ever takes
+it as a parameter — the instance *is* the scope.
 
-1. **A system prompt** — static configuration.
-2. **A backlog** — inbound world observations, awaiting absorption.
-3. **A memory** — durable, scoped, hiding transcript and summarisation entirely.
-4. **An intent executor** — the only thing that does heavy work.
-5. **An observer** — everything the agent does, narrated outward.
+Two orthogonal axes cover every deployment shape:
 
-Parts 2 and 3 are *bound to a scope key at construction*. That binding is the whole of what
-`Conversation` used to mean.
+**Binding** — how the id resolves:
 
-### 1.2 Scope key, binding, host
-
-Two orthogonal axes, and every deployment shape is a cell in the grid.
-
-**Binding** — how the scope key resolves:
-
-- *Constant* — the agent's own name. One scope, forever.
-- *Per-request* — derived from an HTTP session, a tenant, a ticket id.
+- *Constant* — the agent's own identity. One scope, forever.
+- *Per-request* — derived from a session, tenant, or ticket.
 
 **Host** — who drives and who waits:
 
-- *Interactive* — a caller waits. The terminal assistant message is the product; the drive is
-  narrated through the observer as it happens.
-- *Autonomous* — nobody waits. Tool calls are the product; assistant text is a parenthetical
-  note ("I restarted the pod"). Runs indefinitely.
+- *Interactive* — a caller waits; the terminal assistant message is the product.
+- *Autonomous* — nobody waits; tool calls are the product, and assistant text is a parenthetical
+  note ("I restarted the pod").
 
-|                     | Interactive host | Autonomous host       |
-| ------------------- | ---------------- | --------------------- |
-| **Constant key**    | CLI              | the autonomous agent  |
-| **Per-request key** | web chat         | per-tenant monitor    |
+|                    | Interactive host | Autonomous host      |
+| ------------------ | ---------------- | -------------------- |
+| **Constant id**    | CLI              | the autonomous agent |
+| **Per-request id** | web chat         | per-tenant monitor    |
 
-The fourth cell is not a gap invented to fill the table — a per-tenant monitor is a real thing,
-one scope per tenant with nobody waiting. That it falls out for free is the evidence the axes
-are correctly chosen.
+The fourth cell is not filler — a per-tenant monitor is one scope per tenant with nobody waiting.
+That it falls out for free is evidence the axes are right.
 
-### 1.3 Why "conversation" goes away
+### 1.2 Why "conversation" goes
 
-`Conversation<I>` today holds a `ConversationId` and delegates every method. It earns almost
-nothing as a type, and it forces every scope to be conceptually a chat session — which the
-autonomous agent is not, and which is exactly where the current model turns clunky.
+`Conversation` held an id and delegated every call. It earned nothing as a type, and it forced
+every scope to be conceptually a chat session — which the autonomous agent is not. That mismatch
+is where the current model turns clunky.
 
-Under this design the id survives as the **scope key** and stops being a parameter on every
-call. `ConversationId` is renamed to reflect that it keys a scope rather than naming a chat.
-Nothing else about it changes.
+The word does not survive anywhere: not in the type names, not in the event grammar, not in the
+store. `ConversationId`, `ConversationEvent`, `ConversationStore`, `ConversationStatus`,
+`ConversationSnapshot`, and `ConversationLoop` are all deleted or renamed (§9).
 
-## 2. The agent
+## 2. The pure core
 
-### 2.1 Shape
+Four types and one function. No I/O, no collaborators, no clock, no randomness.
+
+### 2.1 `AgentEvent` — facts, past tense
+
+```java
+public sealed interface AgentEvent {
+  record Told(List<ContentBlock> content) implements AgentEvent {}
+  record ModelResponded(List<ContentBlock> content, List<ToolCall> calls) implements AgentEvent {}
+  record ModelFailed(String reason) implements AgentEvent {}
+  record ToolFinished(ToolCall call, ToolResult result) implements AgentEvent {}
+}
+```
+
+**No id on any event.** The instance is the scope; an event does not need to say which scope it
+belongs to when there is only one it could belong to. Outbound narration is stamped with the id at
+emission (§8), which is the only place it is genuinely needed.
+
+**The failure asymmetry is deliberate**, not an inconsistency inherited from the old grammar.
+`ToolFinished` carries a possibly-failed `ToolResult`, while `ModelFailed` is its own variant,
+because the two failures differ in kind. A failed tool call is **in-band**: it goes into the log,
+the model reads it, and the model reacts — that is the whole agent loop working correctly. A failed
+model call is **out-of-band**: there is nowhere to put it and nobody to read it. The grammar should
+say so.
+
+### 2.2 `State` — the fold
+
+```java
+public record State(List<Message> log, List<ToolCall> outstanding) {}
+```
+
+**`idle` is derived, not tracked**: `outstanding.isEmpty()`. There is no status enum. "Awaiting
+model" versus "awaiting tools" is simply *what* is outstanding, read off the state rather than
+maintained in a parallel field that can disagree with it.
+
+### 2.3 `Effect` — commands, imperative
+
+```java
+public sealed interface Effect {
+  record CallModel() implements Effect {}
+  record ExecuteTool(ToolCall call) implements Effect {}
+}
+```
+
+`CallModel` is a **bare marker with no payload**. This is the direct consequence of the purity
+rule: putting an assembled `Context` in it would require the reducer to call `recall`, and a
+reducer that does I/O is not a reducer. Context assembly belongs to the executor that needs it
+(§4.1).
+
+The sealed supertype earns its place because `Step` returns a *list* of effects and a list needs an
+element type — not because a grammar is inherently good.
+
+**Two variants is the designed ceiling, not today's count.** There was once a third,
+`Effect.Compact`, shipped and tested; it was absorbed into memory during the context-pipeline
+rework. That is the pattern: anything a single collaborator needs is solved inside that
+collaborator's facade, never by widening the grammar. A third effect would be a deliberate
+architectural change.
+
+### 2.4 `Reducer` — the whole of the logic
+
+```java
+public record Step(State state, List<Effect> effects) {}
+
+@FunctionalInterface
+public interface Reducer {
+  Step reduce(State state, AgentEvent event);
+}
+```
+
+Pure, total, synchronous. The entire decision logic of the framework, testable with values and
+nothing else — no mocks, no fakes, no stand-ins. This is the property everything else is arranged
+to protect.
+
+The rules are small enough to state in full:
+
+- **`Told`** — append to the log, emit `CallModel`.
+- **`ModelResponded`** — append. If it carries tool calls, add them to `outstanding` and emit one
+  `ExecuteTool` each. If not, the turn is over and no effect is emitted; the agent is now idle.
+- **`ModelFailed`** — append nothing to the log. Emit nothing. The agent is idle, and the failure
+  reaches the observer (§8) rather than the model.
+- **`ToolFinished`** — append the result, remove the call from `outstanding`. When `outstanding`
+  empties, emit `CallModel`.
+
+## 3. The shell
 
 ```java
 public interface Agent<O> {
   void onObservation(O observation);
-  void onModelCall(ModelCallEvent event);
-  void onToolCall(ToolCallEvent event);
+  void onEvent(AgentEvent event);
 }
 ```
 
-Three inbound methods, no outbound ones. The agent is a **reactor**: nothing calls it and waits.
-Results leave through the observer and through intents.
+Two methods, because there are exactly **two inbound lanes**:
 
-### 2.2 Two lanes, one thread
+- **Continuations** (`onEvent`) — the machinery reporting back. These *are* the drive. They fold
+  immediately and never queue behind world traffic.
+- **Observations** (`onObservation`) — ambient world facts. They go to the backlog and are absorbed
+  only at an idle boundary.
 
-The inbound methods are not peers. They are **two lanes with different priority**:
+The split is not stylistic. A tool result must not wait behind a thousand stock ticks to be folded.
 
-- **Continuations** (`onModelCall`, `onToolCall`) — the machinery reporting back. These *are*
-  the drive. They arrive at discrete state boundaries and advance the fold immediately. They
-  never queue behind world traffic.
-- **Observations** (`onObservation`) — ambient world facts. They go to the backlog and are
-  absorbed only at an idle boundary.
+**One inbound method for events, two outbound methods for effects (§4), and that asymmetry is
+correct** — it is fan-in versus fan-out. Events fan *in* to one reducer, which must switch on the
+sealed grammar anyway; typed inbound methods would be four one-line delegations that merely move
+the switch to the caller. Effects fan *out* to two genuinely different collaborators; there is no
+single object that can execute an arbitrary effect, so the dispatch is real work.
 
-The reason for the split is concrete: a tool result must not wait behind a thousand stock ticks
-to be folded. A continuation is the process moving forward; an observation is the world talking.
+### 3.1 The drain invariant
 
-**The agent folds strictly one event at a time.** The two lanes are a dequeue priority, not
-parallelism: within one instance there is exactly one thread of execution, and the fold never
-blocks or does I/O beyond a cheap memory append and a cheap recall.
+> **Whenever the agent is idle and the backlog is non-empty, poll one observation, absorb it, and
+> drive.**
 
-This is an *intra-instance* guarantee, not a cross-node one. Two nodes may each hold an instance
-for the same scope and each fold single-threadedly; excluding that is §6's problem, not the
-fold's.
+One invariant, not a list of triggers. The events that can make it true — an observation arriving,
+a turn ending, a recovery sweep — are consequences. Stated as an invariant, a new trigger cannot be
+forgotten.
 
-### 2.3 The drain invariant
+### 3.2 What the shell does
 
-> **Whenever the agent is idle and the backlog is non-empty, poll one observation, absorb it,
-> and drive.**
+The shell holds everything the reducer refuses to: the backlog, the renderer, persistence, the
+executors, and the observer.
 
-One invariant, not two rules. The two events that can make it true — an observation arriving,
-and a turn ending — are consequences, not separate cases. Stating it as an invariant means a
-third trigger (a recovery sweep, a park resolving into idle) cannot be forgotten later.
+`onObservation(o)`:
 
-"Idle" is derived, not tracked: **idle means no outstanding intents.** There is no state enum.
-`AwaitingModel` versus `AwaitingToolResults` is simply *what kind* of intent is outstanding, and
-the fold reads it off the outstanding set rather than maintaining a parallel field that can
-disagree.
+1. `backlog.add(o)`.
+2. If not idle, return — the drive in flight will drain it.
+3. `backlog.poll()`; if empty, return.
+4. Render to content blocks; feed `Told` to `onEvent`.
 
-### 2.4 `onObservation`
+`onEvent(e)`:
 
-1. Add the observation to the backlog. (Coalescing, if any, happens inside `add` — see §5.)
-2. If not idle, return. The drive in flight will pick it up when it ends.
-3. Poll the backlog. If empty, return — another thread got there first; this is why `poll`
-   returns `Optional` and there is no `isEmpty`.
-4. Render the polled observation to content blocks via `ObservationRenderer<O>`.
-5. `memory.remember(...)` the resulting message.
-6. `memory.recall(...)` and emit a model-call intent carrying the assembled context.
+1. `Step step = reducer.reduce(state, e)`.
+2. Append `e` to the durable log at the expected version (§6).
+3. Adopt `step.state()`.
+4. Narrate `e` and `step.effects()` to the observer.
+5. Dispatch each effect to its executor.
+6. If now idle, apply the drain invariant.
 
-### 2.5 `onModelCall`
-
-Remove the intent from the outstanding set. Append the assistant message to memory. Then:
-
-- **Tool calls present** — emit a tool-call intent per call and remain non-idle.
-- **No tool calls** — the turn is over. The agent is idle; narrate the terminal message to the
-  observer; apply the drain invariant.
-
-### 2.6 `onToolCall`
-
-Remove the intent from the outstanding set and append the result to memory. When the last
-outstanding tool call settles, emit a model-call intent with freshly recalled context. A call
-that parked instead of returning leaves the agent non-idle with a durable wait outstanding — see
-§8.
-
-### 2.7 Rendering, and what happens when it throws
-
-`ObservationRenderer<O>` lives **on the agent**, not on the backlog, and applies at **poll time,
-not add time**.
-
-- Not on the backlog, because the backlog's job is storage, ordering, and coalescing — a
-  different axis. Putting rendering there forces every backlog implementation to carry it, so
-  in-memory and JDBC backlogs could not be swapped freely, and two agents sharing a
-  `Backlog<StockTick>` could not render a tick differently.
-- Not at add time, because rendering to `Message` destroys the coalescing key. A backlog cannot
-  keep-last-per-symbol if it can no longer see the symbol.
-
-`O` therefore exists for exactly two reasons — the backlog the agent polls and the renderer it
-applies. Nothing in the fold ever sees it.
-
-**Failure policy — this is a real change.** The current `Conversation.render` javadoc lets a
-renderer's exception propagate unwrapped, justified by "a renderer is the application's own
-code, failing on its own thread, with the caller present to see it." Under this design that
-justification is false: absorption happens at an idle boundary, and under the autonomous host
-nobody is present.
-
-So: **a renderer failure discards that observation, is emitted to the observer, and the agent
-stays idle and continues the drain invariant.** A single malformed observation must not wedge a
-scope. Under the interactive host the caller still learns of it, because the observer is what
-the caller is already watching.
-
-## 3. Intents
-
-### 3.1 The executor — two methods, no vocabulary
-
-```java
-public interface IntentExecutor {
-  void callModel(CallModel intent);
-  void callTool(CallTool intent);
-}
-```
-
-The executor is the **only** component that does heavy work, and it always does it off the
-fold's thread. It calls back into `onModelCall`/`onToolCall` when work completes. This is the
-seam that keeps the fold pure and non-blocking, and the seam tests replace with a recording
-implementation.
-
-**There is deliberately no sealed `Intent` supertype and no generic `emit`.** The inbound side
-already declined to unify — `onModelCall` and `onToolCall` are two methods rather than
-`onContinuation(Continuation)` over a grammar — so unifying the outbound side would be
-asymmetric for no gain. Over two variants, a sealed interface buys a `switch` and an
-exhaustiveness obligation in exchange for nothing, since both variants are always handled.
-
-It does not even buy optionality: adding a third method breaks implementers, and adding a third
-sealed variant breaks exhaustive switches. Symmetric cost, so the ceremony is unpaid-for.
-
-The grammar is designed to stay at two, not merely observed to be two today: summarisation and
-compaction belong to `Memory` (§4), coalescing to `Backlog` (§5), and subagent delegation and
-authorization are already tool calls. §10.5 forbids `Memory` and `Backlog` implementations from
-introducing intent kinds. A third kind would be a genuine architectural change, at which point a
-third method is the honest way to record it.
-
-The name is `IntentExecutor`, not `IntentEmitter`: a single `emit` reads like an event bus, and
-this is not one.
-
-### 3.2 The intents are complete values
-
-The intent carries the **assembled context**, not a reference to where context could be found:
-
-```java
-record CallModel(SystemPrompt prompt, Context context, List<ToolSchema> tools, String model)
-```
-
-This buys three things:
-
-- A test asserts on a **value**, with no mocking library — which is a standing promise of this
-  project that the current blocking loop cannot keep.
-- The observer reports exactly what went to the provider, not what it was derived from.
-- A retry re-sends what was decided, rather than re-deriving something that may have drifted.
-
-The alternative — the intent naming a scope and the executor recalling for itself — was rejected
-because it makes the intent un-loggable, un-assertable, and non-deterministic under retry, and
-because it drags `Memory` into a component that otherwise never touches it.
-
-This is only affordable because §4 moves summarisation off `recall`'s hot path. Without that
-ruling, building the intent would mean blocking on a model call in order to decide to make a
-model call.
-
-Note that this property is **independent of §3.1's ruling**. Dropping the sealed supertype cuts
-the container, not the contents: `CallModel` and `CallTool` remain complete, self-describing
-records. It is the records that make tests assert on values and let the observer report exactly
-what went to the provider — the supertype contributed nothing to either.
-
-## 4. Memory
-
-`Memory` stays a two-method facade — `remember`, `recall` — and hides transcripts, summaries,
-hydration, and compaction from the fold entirely. The fold knows nothing about how context is
-assembled, and gains nothing by knowing.
-
-**`recall` is cheap by contract.** For `SummarizingHydrator` the hot path is exactly:
-
-1. Look for a summary record.
-2. If present, use it plus the transcript tail after it. If absent, use the whole history.
-
-No model call, ever, on the hot path.
-
-**Summarisation runs asynchronously, owned by the hydrator.** When `recall` notices the tail has
-passed the threshold, it submits a summarisation task and returns immediately with what it has.
-
-Three requirements on that, all of them the hydrator's own business and none of them the fold's:
-
-- **An injected `Executor`, never a spawned thread.** Tests pass a same-thread executor and the
-  whole thing is deterministic — no mocks, no sleeps. Production passes a pool it owns and can
-  shut down. Note `PipelineMemoryConfig#summarizing` already takes five parameters, so the
-  executor is a sixth and trips S107; it wants the same bundling record `Agent` already uses for
-  `Coordination` and `SelfDescription`.
-- **In-flight tracking inside the hydrator.** It holds the set of scope keys it is currently
-  summarising and does not submit twice. **Cleared on failure as well as success** — a
-  `whenComplete`, not a `thenRun`. An entry that leaks on failure means that scope never
-  summarises again and its context grows unbounded with no signal.
-- **Emission on the existing `ListenerRegistry`.** Started, finished, failed become ordinary
-  observable traffic. The fold still knows nothing; the operator does.
-
-Two accepted consequences, stated so they are chosen rather than discovered:
-
-- **The context is deliberately stale for a turn or more.** The turn that notices summarisation
-  is needed still sends the un-summarised context, as does every turn until the summary lands.
-  Under a fast autonomous loop that can be several turns. `PipelineMemory` owns the policy for
-  how far past the threshold `recall` will go before degrading rather than handing back an
-  oversized context.
-- **In-flight tracking is per-JVM.** Two nodes recalling the same scope both submit. The cheap
-  fix is making the `SummaryStore` write a claim rather than a blind put; the lazy fix is
-  accepting a duplicate model call, since a summary is a pure function of the transcript prefix
-  and the second write is harmless. Pick one deliberately.
-
-`contextWindow` becomes memory's own configuration — the budget the threshold is measured
-against — rather than a field the loop consults.
-
-## 5. Backlog
+### 3.3 `Backlog`
 
 ```java
 public interface Backlog<O> {
@@ -278,186 +204,246 @@ public interface Backlog<O> {
 }
 ```
 
-Two operations. There is deliberately no `isEmpty()`: `isEmpty()`-then-`poll()` is check-then-act
-and races under concurrent adds. `Optional` collapses the check and the act into one.
+Two operations. There is deliberately no `isEmpty()`: check-then-act races under concurrent adds,
+and `Optional` collapses the check and the act.
 
 **The agent knows nothing about coalescing.** Keep-last-per-symbol, sum-per-counter,
-keep-everything — all of it lives inside one `add` implementation. This is the same move
-`Memory` makes for summarisation, and it pays the same dividend.
+keep-everything — all of it lives inside one `add`. Two consequences:
 
-Two things fall out of it:
+- **Durability is an implementation choice, not a design ruling.** In-memory for CLI, durable for
+  the clustered autonomous host, broker-backed if the queue should be the backlog. Same interface,
+  same agent.
+- **Batching lives in the element type.** Five ticks as one turn is a `Backlog<TickBatch>` whose
+  `poll` merges — not a drain-all loop in the shell. The shell stays strictly
+  one-observation-per-turn, which keeps the invariant trivial.
 
-- **Durability becomes an implementation choice, not a design ruling.** In-memory for CLI,
-  JDBC-backed for the clustered autonomous host, broker-backed if someone wants the queue itself
-  to be the backlog. Same interface, same agent, no core change.
-- **Batching lives in the element type.** If five ticks should be absorbed as one turn rather
-  than five, that is a `Backlog<TickBatch>` whose `poll` merges — not a drain-all loop in the
-  agent. The agent stays strictly one-observation-per-turn, which keeps the fold trivial.
+### 3.4 `ObservationRenderer<O>`
+
+Lives on the shell, applies at **poll time, not add time** — rendering to `Message` on `add` would
+destroy the coalescing key, and a backlog cannot keep-last-per-symbol if it can no longer see the
+symbol. It is not on the backlog because storage and presentation are different axes; putting it
+there would force every backlog implementation to carry it and stop two agents from rendering the
+same tick differently.
+
+`O` therefore exists for exactly two reasons — the backlog polled and the renderer applied.
+Nothing in the core ever sees it.
+
+**A renderer that throws discards that observation, narrates the failure to the observer, and
+leaves the agent idle to continue draining.** The current code lets it propagate, justified by "the
+caller is present to see it" — false here, since absorption happens at an idle boundary and the
+autonomous host has no caller. One malformed observation must not wedge a scope.
+
+## 4. Executors — where every side effect lives
+
+```java
+public interface ModelCallExecutor { void callModel(AgentId id, State state, Sink sink); }
+public interface ToolCallExecutor  { void executeTool(AgentId id, ToolCall call, Sink sink); }
+```
+
+`Sink` accepts an `AgentEvent`. The `AgentId` is a **delivery address**, passed alongside the
+effect rather than embedded in it — the grammar stays pure data, and an executor that must deliver
+days later has the address it needs to persist.
+
+Both are asynchronous: they return immediately and call back. The shell's thread never blocks on a
+model or a tool.
+
+### 4.1 `ModelCallExecutor` owns memory
+
+Memory does not appear anywhere in the core. The executor projects `State` into a `Context` —
+hydration, summaries, trimming, budget — calls the provider, and delivers `ModelResponded` or
+`ModelFailed`.
+
+This is the honest version of "memory hides a lot from the loop": it hides *everything*, by not
+being in the loop.
+
+**`recall` must be cheap.** For summarising projection the hot path is: look for a summary record;
+if present use it plus the log tail after it, else use the whole log. No model call, ever, on the
+path that answers a projection.
+
+**Summarisation runs asynchronously, owned by the projector.** When it notices the tail has passed
+threshold it submits a task and returns with what it has. Three requirements, all internal:
+
+- **An injected `Executor`, never a spawned thread.** Tests pass a same-thread executor and the
+  whole thing is deterministic — no mocks, no sleeps.
+- **In-flight tracking**, cleared on failure as well as success (`whenComplete`, not `thenRun`). A
+  leaked entry means that scope never summarises again and its context grows unbounded, silently.
+- **Emission to the observer.** Started, finished, failed are ordinary narration.
+
+Two accepted costs, chosen rather than discovered: the context is **deliberately stale** until the
+summary lands, so the projector owns a policy for how far past budget it will go before degrading;
+and in-flight tracking is **per-JVM**, so two nodes both submit — fixed with a claim-write on the
+summary record, or accepted, since a summary is a pure function of a log prefix.
+
+### 4.2 `ToolCallExecutor` owns the gate and the address book
+
+Authorization, tool dispatch, and delivery. Nothing about it reaches the core.
+
+### 4.3 Parks are not a state — they are an address book
+
+**From the reducer's view there is no difference between a tool that returns in 200ms and one that
+returns in three days.** Both are an outstanding call that will produce a `ToolFinished`.
+
+So there is no parked state, no `ParkToken` in the grammar, no `AWAITING_INPUT` status, and no
+`resume`/`approve`/`deny`/`peek`/`progress` on the agent. `Parks` demotes to what it always was: a
+durable map from token to `(AgentId, ToolCall)`, private to `ToolCallExecutor`. A token is a
+delivery address, not a lifecycle.
+
+Human-in-the-loop stops being special. The gate parks, a human answers, a `ToolFinished` arrives —
+the same path as a slow HTTP call. The approve/deny doors become an ordinary API on the tool
+executor, not core surface.
+
+### 4.4 Subagents need no core support
+
+A subagent is a tool that resolves a child agent, drives it, and returns its terminal message as
+the tool result. Since it is slow, it parks. That is the entire integration: **subagents are a tool
+that returns slowly.** No delegation concept, no link store, no callback router in the core.
+
+## 5. Durability
+
+**The event log is the only durable state.** `State` is `fold(events)`. There is no separate
+transcript — the log *is* the transcript, and memory projects it. The current
+`ConversationStore`-plus-`Transcript` duality is deleted; it stored the same history twice under
+two vocabularies.
+
+Replay cost is a store concern, not a design concern: a store may snapshot folded state
+periodically. The design does not know or care.
+
+### 5.1 Nothing writes to memory
+
+`Memory.remember` does not exist. Memory is **read-only projection over the log** — hydrate,
+summarise, trim, budget — and the two-method facade collapses to one direction.
+
+A new user message reaches the model by the ordinary path and no other: `onEvent(Told)` reduces,
+and the shell appends `Told` to the log. When `ModelCallExecutor` projects, the message is already
+there.
+
+For the same reason `CallModel` must **not** carry the rendered message. It is already in the log
+the projector reads, so carrying it would state the same fact in two places, put payload back into
+a marker argued down to nothing, and create a second path by which content reaches the model — one
+through the log, one riding the effect, free to disagree.
+
+**Invariant: append before dispatch.** The shell appends the event to the durable log before
+dispatching any effect the reduction produced. Reverse them and the executor projects a log missing
+the very message that provoked the call.
 
 ## 6. Multi-node
 
-Multi-node is a hard requirement, so residency-as-lock is not available: an in-process registry
-entry cannot exclude another node.
+Multi-node is a hard requirement, so in-process residency cannot be the lock.
 
-The design's position is **two layers, not two alternatives**.
+**The correctness floor is optimistic concurrency**, and it is free under §5. Each `onEvent`
+appends at an expected version. Two nodes may fold the same state and both emit `CallModel`; the
+second append fails on version conflict, and that node reloads and re-folds. Duplicated work,
+never corrupted state. Plain JDBC suffices; single-node embedding is trivial.
 
-### 6.1 The correctness floor — optimistic concurrency
+The residual cost is duplicated *effects* — a wasted model call, or at-least-once tool execution.
+The latter is already the standing contract: a tool that cannot be safely re-run makes itself
+idempotent.
 
-No ownership. Any node may drive any scope. Correctness comes from compare-and-set on the state
-version; a loser reloads and re-folds. This mechanism **already exists** — `StaleStateException`
-and the version-retry on state appends are how today's design survives concurrent drives without
-a lock, and the redesign must not introduce a lock manager where the current one got away
-without one.
+**The deployment layer is partitioned ownership.** Observations for an id arrive on a partition
+keyed by that id, and the broker guarantees one active consumer per key — Kafka partitions,
+RabbitMQ single-active-consumer behind a consistent-hash exchange. This removes the duplication and
+costs **zero code in the core**, because the broker does it.
 
-The cost is duplicated **intents**: two nodes can both emit a model call (one wasted) or both
-emit a tool call (at-least-once execution). The latter is already house policy — "a tool that
-cannot be safely re-run makes itself idempotent" is in `Agent`'s own javadoc today, and the
-`resume` javadoc already documents the concurrent-delivery exposure in detail.
+**Rejected: durable leases.** An ownership record with expiry, renewal, and fencing tokens is a
+lock manager with clock dependence and its own bug class. Not worth it when §6's floor is already
+correct.
 
-This floor is a property of the core, with no infrastructure assumptions. Single-node embedding
-stays trivial. Plain JDBC is sufficient.
+**Rejected: durable drive phase.** Writing every transition before dispatching effects doubles
+store traffic and makes two nodes rehydrating one drive a real scenario.
 
-### 6.2 The deployment layer — partitioned ownership
+### 6.1 Crash mid-drive
 
-Let the broker be the lock. Observations for a scope arrive on a partition keyed by scope id,
-and the broker guarantees one active consumer per key — Kafka partitions, or RabbitMQ
-single-active-consumer behind a consistent-hash exchange. Real exclusivity, real horizontal
-scaling, and **zero lock code inside Nessy**.
+The log is intact and consistent; appends are atomic and versioned. What is lost is an in-flight
+effect. The scope resumes on the next event — the next tick, or the next thing a user says, at
+which point the log is whole.
 
-This eliminates the duplication §6.1 tolerates, and it costs no core code because the broker
-does the work.
-
-### 6.3 What is explicitly rejected
-
-**Durable leases.** An ownership record with expiry, renewal, and fencing tokens is a lock
-manager with clock dependence, liveness tuning, and its own bug class. It is the only option
-that avoids duplicate work with no broker, and it is not worth that.
-
-**Durable drive phase.** Writing every state transition before emitting intents would let any
-node rehydrate a mid-flight drive. It doubles the store traffic and makes two nodes rehydrating
-the same drive a real scenario. Rejected in favour of §6.1 plus §8.
-
-### 6.4 Crash mid-drive
-
-A process dies with intents outstanding. The scope's durable state is intact and consistent —
-nothing is half-written, because appends are atomic and versioned. What is lost is the in-flight
-intent.
-
-The scope resumes on the next event: another observation arrives, or a park resolves, and the
-fold re-derives from stored state. For the autonomous host that is typically milliseconds
-(the next tick). For an interactive scope it is when the user next speaks, at which point the
-transcript is intact.
-
-The gap is a scope that crashes mid-drive and receives nothing further. A recovery sweep — find
-scopes with outstanding calls and no progress past a threshold, re-drive — is a **bolt-on, not
-core**. It is listed here so its absence is a decision rather than an oversight.
+The gap is a scope that crashes mid-drive and then receives nothing. A recovery sweep — find scopes
+with outstanding calls and no progress past a threshold, re-drive — is a **bolt-on, not core**. It
+is named here so its absence is a decision.
 
 ## 7. Hosts
 
-One core, two hosts. The fold, the intents, `Memory`, `Backlog`, and `Parks` are
-identical in both; the hosts differ only in how observations arrive, who owns the scope, and who
-consumes the output.
+One core, two hosts, as **distinct public types**. Their APIs genuinely differ — one returns a
+stream, one runs forever — and a single type would have half its methods unusable in each mode.
 
-Two **distinct public types**, not one type with a mode flag — their APIs genuinely differ (one
-returns a stream, one returns nothing and runs forever), and a single type would have half its
-methods unusable in each mode.
+They are hosts over one agent, **not two agent types**. The deciding case is the agent that needs
+both: a support agent a human chats with *and* that reacts to a ticket webhook. Two hosts over one
+id handle that as a matter of course; two agent types cannot express it.
 
-They are hosts over one agent, **not two agent types**. The deciding case is the agent that
-needs both: a support agent a human chats with *and* that reacts to a ticket webhook or a
-nightly sweep. Two hosts over one scope handle that as a matter of course; two agent types
-cannot express it.
+**Interactive host.** Resolves the instance for the id, feeds the observation, streams the drive
+through the observer, releases. Contention is effectively zero — a human does not race themselves —
+so the optimistic floor's retry path stays cold, and sticky session routing gives partition-like
+exclusivity for free.
 
-### 7.1 Interactive host
+The SSE emitter is registered with the **scope's listener registry, not held by the instance**. The
+instance is transient and dies between drives; the emitter outlives the request. Held by the
+instance, the stream goes silent exactly when the user is still watching.
 
-Resolves the instance for the scope key, feeds the observation, streams the drive through the
-observer, and releases. The caller's product is the terminal assistant message.
+**Autonomous host.** A long-running partitioned consumer. Drains, drives, nobody waits.
 
-**Observer lifetime is the sharp edge.** The agent instance is transient and dies between
-drives; an SSE emitter outlives the HTTP request and must survive that. So the emitter is
-registered with the scope's `ListenerRegistry`, which owns its lifetime — *not* held by the
-instance. Otherwise the stream goes silent the moment a drive ends, which is precisely when the
-user is still watching.
+**The synchronous adapter.** Fire-and-forget everywhere is a real ergonomic loss for tests, CLIs,
+and embedding. So: a `CompletableFuture` completed by an observer when the scope reaches idle. Not
+a second code path — one observer, one reducer, a convenience wrapper. This is also the answer to
+"observers are hard to test": the observer is an interface with a recording implementation, and the
+adapter turns "the drive finished" into a value you can await deterministically.
 
-**Contention on an interactive scope is effectively zero** — a human does not race themselves —
-so the optimistic floor's retry path is cold, and sticky session routing (standard web practice
-regardless) gives partition-like exclusivity for free.
+**"Which reply is mine" is not solved and does not need to be.** The observer is scope-scoped, so a
+second participant sees the first's traffic — correct, because it *is* the shared session.
+Correlation is deferred until traffic justifies it.
 
-### 7.2 Autonomous host
+## 8. Observers and observability
 
-A long-running consumer, partitioned by scope key per §6.2. Drains the backlog, drives, and
-nobody waits. Assistant text is narrated to the observer as commentary; tool calls are the
-product.
+**Observers narrate; they never influence.** A listener that can affect the flow creates
+inter-listener ordering dependence and a shadow decision surface competing with the authorization
+ladder. Behavior injection has designated seams and all of them are interfaces already: `Reducer`,
+`Backlog`, `ObservationRenderer`, both executors, and the grants.
 
-### 7.3 The synchronous adapter
+**Multiple observers is normal, not speculative.** §7 alone requires two at once: the synchronous
+adapter and the SSE emitter, on the same scope, during the same drive.
 
-Fire-and-forget everywhere would be a real ergonomic loss. `RunOutcome tell(...)` is a gift to
-tests, CLIs, and anyone embedding the library in a `main` method, and SSE does nothing for any
-of them.
+What an observer sees is exactly the reducer's input and output — **`(AgentId, AgentEvent,
+List<Effect>)`** — stamped with the id at emission. That is a complete, replayable narration of
+every decision the framework makes, and it is trivially recordable in a test.
 
-So: a **`CompletableFuture` completed by an observer when the scope reaches idle**, wrapped for
-convenience. Not a second code path — one observer, one fold, a convenience wrapper. This is
-also what the test suite will want, and it is the answer to the concern that an
-observer-centric design is hard to test: the observer is an interface with a recording
-implementation, and the adapter turns "the drive finished" into a value you can await
-deterministically.
+**Observability splits three ways.** Call-level spans go in **decorators around the executors** —
+they are interfaces, and only a decorator is on the call stack where context propagation is
+possible. Turn-level scope goes in **the shell**, because only the shell knows where a drive begins
+and ends. Metrics and trajectory ride **the observer**, since counters genuinely are after-the-fact
+narration. Nothing goes in the reducer.
 
-**"Which reply is mine" is not solved, and does not need to be.** The observer is scope-scoped,
-so a second participant on the same scope sees the first's traffic — which is correct, because
-it *is* the shared session. Per-observation correlation is deferred until real
-multiple-callers-into-one-scope traffic exists to justify it.
+The metrics roster itself belongs to its own design. This spec declares the seams and stops.
 
-## 8. Parks — unchanged
+## 9. What is deleted
 
-`Parks` is untouched, and becomes *the* durability story rather than one of three. The unifying
-rule:
+| Deleted                                  | Because                                                      |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `Conversation<I>`                        | held an id and delegated; the instance is the scope           |
+| `ConversationId`                         | → `AgentId`                                                   |
+| `ConversationEvent`                      | → `AgentEvent`, with the id removed from every record         |
+| `ConversationStore` + `Transcript`       | one event log (§5); they stored history twice                 |
+| `ConversationStatus`                     | `idle` is `outstanding.isEmpty()`                             |
+| `ConversationLoop` (blocking)            | → pure `Reducer` + shell                                      |
+| `ParkToken` / park state / `ParkedCall`  | an address book, private to the tool executor (§4.3)          |
+| `approve`/`deny`/`resume`/`peek`/`progress` on the agent | tool-executor API, not core surface           |
+| `RunOutcome`                             | → the synchronous adapter (§7)                                |
+| `SubagentLinks`, `CallbackRouter`        | a subagent is a slow tool (§4.4)                              |
+| `Harness` as mandatory root              | demoted: collaborator holder plus an optional default resolver |
+| `InputRenderer<I>`                       | → `ObservationRenderer<O>`, applied at poll time              |
+| `Memory` in the core                     | behind `ModelCallExecutor` (§4.1)                             |
+| `Memory.remember`                        | the log is the transcript; memory only projects (§5.1)        |
 
-> **Short waits are in-memory. Long waits park.**
-
-A model call or a tool call expected back in seconds is an outstanding intent held by a live
-instance. Anything that might outlive the process parks — durably, through `Parks`, exactly as
-today — and **its resolution arrives as an observation**.
-
-That last clause is the simplification. Today `resume`/`approve`/`deny`/`peek`/`progress` live
-on `Agent` precisely *because* they are cross-conversation: a `ParkToken` arrives from a webhook
-with no conversation context, and `Parks` translates token to conversation before anything is
-appended. Under this design that translation happens **before** an instance is resolved: the
-token names a scope, the host resolves that scope's agent, and the resolution enters through
-`onObservation` like anything else. The callback doors stop needing a special cross-scope
-surface.
-
-The `WrongAgentException` stamp check moves to the resolution step and keeps its current
-semantics.
-
-## 9. Migration
-
-| Today                            | Becomes                                                            |
-| -------------------------------- | ------------------------------------------------------------------ |
-| `Agent<I>` (factory)             | split: `Agent<O>` (scope-bound reactor) + host/resolver             |
-| `Conversation<I>`                | gone — its id becomes the scope key                                 |
-| `ConversationId`                 | renamed to a scope key; semantics unchanged                         |
-| `ConversationLoop.run` (blocking) | the fold — pure, non-blocking, `(event) → intents`                 |
-| `InputRenderer<I>`               | `ObservationRenderer<O>`, applied at poll time                      |
-| `RunOutcome tell(...)`           | §7.3 synchronous adapter over the observer                          |
-| `TurnObserver` / `ListenerRegistry` | unchanged; now the primary output path                           |
-| `Memory`, `Parks`, `ConversationStore`, authorization, tools, subagents | unchanged                     |
-
-Public API breaks hard. The SPI mostly does not — which is the point of taking this approach
-over a full actor-system rewrite: the substrate is mature and already does the right things, and
-authorization and parks are the two most carefully-reasoned subsystems in the codebase. They are
-adapted, not reopened.
+`Harness` shrinks rather than dies: something must derive scoped collaborators from process-wide
+ones, and nessy-core must work without a DI container. But it stops being the required entry point
+— Spring scopes a bean, hand-wiring constructs an agent directly, and the default resolver is
+batteries, not law.
 
 ## 10. Open questions
 
-1. **Recovery sweep** (§6.4) — deferred as a bolt-on. Confirm that is acceptable before
-   implementation rather than after.
-2. **Duplicate summarisation across nodes** (§4) — claim-write or accept the waste. Needs a
-   ruling.
-3. **Staleness policy** (§4) — how far past the threshold `recall` degrades rather than handing
-   back an oversized context.
-4. **Scope key naming** — `ScopeId`? `AgentKey`? It is `ConversationId`'s successor and the name
-   should stop implying chat.
-5. **The two-intent ceiling** — §3.1 drops the sealed supertype on the grounds that two kinds is
-   the designed steady state, not a temporary count. That holds only while `Memory` and `Backlog`
-   implementations are forbidden from needing an intent of their own; anything either one requires
-   must be solved inside its own facade, as summarisation and coalescing already are. A third
-   `IntentExecutor` method is a deliberate architectural change, not a routine addition.
+1. **Recovery sweep** (§6.1) — deferred as a bolt-on. Confirm before implementation, not after.
+2. **Duplicate summarisation across nodes** (§4.1) — claim-write, or accept the waste.
+3. **Staleness policy** (§4.1) — how far past budget projection degrades rather than returning an
+   oversized context.
+4. **Definition name vs `AgentId`** — an instance is a definition bound to an id. Subagent stamping
+   and routing want the definition's name. Confirm they stay two things.
+5. **Migration or replacement** — §9 deletes most of the public API and both stores. Whether this
+   ships as a major version or a parallel package is a release decision this spec does not make.
