@@ -473,6 +473,14 @@ Binding is what construction *does*. Cross-scope access stops being a bug caught
 becomes unrepresentable — for a per-tenant monitor that is an isolation boundary obtained from the
 type system.
 
+**`TurnObserver` is a construction collaborator, not a registration.** The instance is transient;
+every delivery constructs a fresh one, so the factory that binds the scope also supplies its
+observer — the sync adapter's waiter, the live SSE emitters for the scope, the audit subscriber —
+composed with `TurnObserver.composite(...)`. There is no listener registry in the core: "find the
+observers for this scope" is part of binding, exactly like finding the scoped `Memory`. And
+"register before observing" stops being a rule to remember — construction precedes `observe`,
+structurally.
+
 Two consequences that must be written down or they will be got wrong:
 
 - **Each seam gains a factory.** Something must derive the scoped collaborator from a process-wide
@@ -683,9 +691,10 @@ through the observer, releases. Contention is effectively zero — a human does 
 so the optimistic floor's retry path stays cold, and sticky session routing gives partition-like
 exclusivity for free.
 
-The SSE emitter is registered with the **scope's listener registry, not held by the instance**. The
-instance is transient and dies between drives; the emitter outlives the request. Held by the
-instance, the stream goes silent exactly when the user is still watching.
+The SSE emitter outlives any one instance, so it is **attached at construction, per delivery**
+(§3.5): the factory looks up the scope's live emitters and composes them into the instance's
+observer. A continuation arriving days later constructs a new instance the same way — the stream
+stays live because every instance is born already wired to it.
 
 **Autonomous host.** A long-running partitioned consumer. Drains, drives, nobody waits.
 
@@ -694,7 +703,7 @@ and embedding. So: a `CompletableFuture` completed from narration —
 
 ```java
 var waiter = TurnObserver.observe(o -> o.onTurnEnded(future::complete));
-// register on the scope's listener registry BEFORE observing, or a fast turn ends unheard
+var agent  = agents.bind(id, waiter);     // observer supplied at construction (§3.5)
 agent.observe(line);
 TurnEnded ended = future.get(timeout);    // terminal Phase + failure reason
 ```
