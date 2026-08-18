@@ -307,26 +307,29 @@ assertThat(new AwaitingTools(turn, Set.of(a, b), List.of()).handle(finished(a)))
 ```java
 public interface Agent<O> {
   void observe(O observation);     // → backlog, then drain.
-  void onEvent(AgentEvent event);  // applies the event, on the calling thread.
   void drive();                    // the drain invariant as a method.
 }
 ```
 
-Three methods, two lanes:
+Two public methods — and the continuation door is deliberately not one of them:
 
-- **Continuations** (`onEvent`) — an executor reporting back, on its own thread. The event is
-  applied immediately; serialization is the store's version CAS (§3.2), not a queue.
 - **Observations** (`observe`) — ambient world facts. They go to the backlog and are absorbed only
   at an idle boundary.
 - **`drive()`** — drain: while the phase is `Idle` and the backlog yields an observation, absorb
-  one. `observe` ends by calling it, and the recovery sweep (§6.1) *is* it, on stalled scopes.
+  one. `observe` ends by calling it, and the recovery sweep (§6.1) uses it on stalled scopes.
+- **Continuations** arrive through the `Sink` each executor receives **at construction** — a
+  reference to the implementation's private apply method. An executor reports back on its own
+  thread and the event applies immediately; serialization is the store's version CAS (§3.2), not a
+  queue.
+
+Keeping the sink off the interface is the same ruling as the park token (§4.3): a delivery door is
+a **capability**, handed point-to-point to the party that needs it, never published on a surface
+everyone sees. An application cannot fabricate a `ToolFinished`, because the method to deliver one
+is not expressible in its vocabulary.
 
 The lane priority costs no machinery: a continuation applies the moment it arrives, and an
 observation cannot be absorbed at all until the phase returns to `Idle` — the priority is a
 consequence of the phase grammar, not of queue discipline.
-
-`observe` and `onEvent` are named asymmetrically on purpose: `observe` is what the world calls,
-`onEvent` is what an executor calls back into.
 
 ### 3.1 The drain invariant
 
@@ -426,9 +429,10 @@ private void apply(AgentEvent event) {
 }
 
 private void dispatch(Effect effect) {
+  // executors were handed this::apply as their Sink at construction; dispatch is effect → request
   switch (effect) {
-    case CallModel ignored          -> model.callModel(this::onEvent);
-    case ExecuteTool(ToolCall call) -> tools.executeTool(call, this::onEvent);
+    case CallModel ignored          -> model.callModel();
+    case ExecuteTool(ToolCall call) -> tools.executeTool(call);
   }
 }
 ```
@@ -525,12 +529,16 @@ in the autonomous host there is no caller present to see a propagated exception.
 ## 4. Executors — where every side effect lives
 
 ```java
-public interface ModelCallExecutor { void callModel(Sink sink); }
-public interface ToolCallExecutor  { void executeTool(ToolCall call, Sink sink); }
+public interface ModelCallExecutor { void callModel(); }
+public interface ToolCallExecutor  { void executeTool(ToolCall call); }
+
+@FunctionalInterface
+public interface Sink { void deliver(AgentEvent event); }   // handed to executors at construction
 ```
 
-Both are pre-scoped (§3.5) and asynchronous **by contract, not by convention**: they return
-immediately, and the `Sink` is never invoked on the stack that dispatched the effect (§3.2). An
+Both are pre-scoped (§3.5), hold their `Sink` from construction (§3), and are asynchronous **by
+contract, not by convention**: they return immediately, and the `Sink` is never invoked on the
+stack that dispatched the effect (§3.2). An
 executor wrapping a blocking client hands the call to a virtual thread and delivers from there.
 The shell's thread never blocks on a model or a tool, and delivery never recurses into the shell.
 
