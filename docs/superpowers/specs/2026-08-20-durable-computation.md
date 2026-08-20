@@ -29,6 +29,40 @@
 > ordinary pending call); `AgentRunId` — the scope coordinate `(AgentType, AgentId)` is the
 > identity, and the continuation is `ResumeScope(type, id, toolCallId)`, which is the desk entry.
 >
+> **Rulings woven in after review (2026-08-20, binding):**
+>
+> 1. **The computation model is two-armed, not three.** `AttachedComputation` (§6.2) is a
+>    `CompletionStage`-era artifact: under the push-shaped sink seam, virtual threads, and
+>    recovery-as-retry, "locally awaitable" is every executor's default posture between dispatch
+>    and delivery, not a category. The two cases that differ semantically are **in-process**
+>    (crash ⇒ re-execute; the recovery arm re-fires, tools are idempotent per the at-least-once
+>    contract) and **durable** (crash ⇒ resume; the outcome survives in the slot and the work is
+>    NOT re-run). "Immediate" is the degenerate fast case of each, not a third row. The
+>    `CompletionPolicy` names keep all three tiers for tool declaration and filtering, but only
+>    the AWAITABLE/DURABLE boundary gates behavior.
+> 2. **The continuation vocabulary is fully generic.** The backend stores
+>    `(continuation_type, continuation_data)` as opaque rows; a **continuation dispatcher** maps
+>    registered types to handlers. Agent resumption is one registered handler
+>    (`RESUME_SCOPE` → bind `(AgentType, AgentId)`, deliver the completion event) contributed by
+>    the agent layer — the primitive knows nothing about agents.
+> 3. **Exactly-once is layered, never promised of execution.** Completion: one PENDING→terminal
+>    flip — the outcome exists exactly once. Delivery attempt: outbox lease (or the lazy re-drive
+>    floor) — usually one at a time, an optimization. Receipt: completion-id dedup in the phase
+>    fold plus the state store's version CAS — the *effect* happens exactly once. Residue:
+>    commit-before-save can duplicate a committed message on a lost race — the accepted §5.2
+>    class, which the lease narrows. Exactly-once *execution* of the callback is a non-goal (§3),
+>    honestly.
+> 4. **Durable computations have deterministic identity per logical piece of work** (submit-once
+>    discipline): the slot id derives from the work's coordinates (scope + call id, scope +
+>    version), never a fresh random id per attempt, so a recovery re-fire finds the existing slot
+>    and re-`await`s idempotently instead of double-submitting the work. Without this rule the
+>    sweep double-spends.
+> 5. **The consumer roster** this primitive serves: HITL approvals (the park desk is the first
+>    consumer; the token is the completion capability), batch/async model calls (submit-once,
+>    resume-not-redo), durable timers (a slot with only a deadline), **subagent callbacks** (the
+>    child's terminal turn completes the parent's slot — answering the parked callback-desk
+>    question from the store rework), and external jobs completing via webhook.
+>
 > **Removed** (ruled 2026-08-20): the Restate and Temporal backend sections and their comparison.
 > Workflow runtimes hosting the agent contradict the architecture (§29 as rewritten); provider
 > backends beyond SQL are future work with no binding text here.
