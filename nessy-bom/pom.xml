@@ -41,6 +41,11 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-testing</artifactId>
                 <version>${project.version}</version>
             </dependency>
