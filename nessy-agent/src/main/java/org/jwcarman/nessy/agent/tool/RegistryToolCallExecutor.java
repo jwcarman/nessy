@@ -23,9 +23,11 @@ import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
+import org.jwcarman.nessy.agent.spi.ParkedCallPolicy;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -37,9 +39,11 @@ import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 
 /**
- * The non-parking tool executor (§4.3): find, bind, execute, deliver — and a park attempt fails
- * loudly in-band, because a parked turn wedges a conversation. The desk arrives with the autonomous
- * wiring (Plan 4). The {@link ConversationId} bridge is interim vocabulary (plan decision 3).
+ * The registry tool executor (§4.3): find, bind, execute, deliver. What happens when a tool parks
+ * is the wiring's {@link ParkedCallPolicy}: the default (4-arg constructor) fails loudly in-band —
+ * a parked turn wedges a conversation — while a durable wiring suspends the call into a slot. A
+ * suspended call delivers nothing and narrates nothing. The {@link ConversationId} bridge is
+ * interim vocabulary (plan decision 3).
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
@@ -48,43 +52,63 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final TurnObserver turn;
   private final Executor executor;
   private final ObjectMapper mapper = new ObjectMapper();
+  private final ParkedCallPolicy parkedCallPolicy;
+
+  private static final String PARKING_UNAVAILABLE =
+      "parking is unavailable in this wiring; the desk arrives with the autonomous host";
 
   public RegistryToolCallExecutor(
       ToolRegistry registry, AgentId id, TurnObserver turn, Executor executor) {
+    this(registry, id, turn, executor, null);
+  }
+
+  public RegistryToolCallExecutor(
+      ToolRegistry registry,
+      AgentId id,
+      TurnObserver turn,
+      Executor executor,
+      ParkedCallPolicy parkedCallPolicy) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     this.bridgedId = new ConversationId(Objects.requireNonNull(id, "id must not be null").value());
     this.turn = Objects.requireNonNull(turn, "turn must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
+    this.parkedCallPolicy =
+        parkedCallPolicy != null
+            ? parkedCallPolicy
+            : (call, token) -> Optional.of(failed(call, PARKING_UNAVAILABLE));
   }
 
   @Override
   public void executeTool(ToolCall call, Sink sink) {
-    executor.execute(() -> sink.deliver(new AgentEvent.ToolFinished(call, execute(call))));
+    executor.execute(
+        () ->
+            execute(call)
+                .ifPresent(outcome -> sink.deliver(new AgentEvent.ToolFinished(call, outcome))));
   }
 
-  private ToolOutcome execute(ToolCall call) {
+  /** Empty means the call is suspended: nothing delivered, nothing narrated (§4.3). */
+  private Optional<ToolOutcome> execute(ToolCall call) {
     Optional<Tool<?>> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return failed(call, "unknown tool: " + call.name());
+      return Optional.of(failed(call, "unknown tool: " + call.name()));
     }
     try {
-      ToolResult result = invoke(found.get(), call);
-      turn.on(new TurnEvent.ToolCallCompleted(call, result));
-      return new ToolOutcome.Returned(result);
+      return invoke(found.get(), call);
     } catch (RuntimeException e) {
       String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-      return failed(call, message);
+      return Optional.of(failed(call, message));
     }
   }
 
-  private <T> ToolResult invoke(Tool<T> tool, ToolCall call) {
+  private <T> Optional<ToolOutcome> invoke(Tool<T> tool, ToolCall call) {
     T input = mapper.convertValue(call.arguments(), tool.inputType());
     ToolContext context = new ToolContext(bridgedId, call, event -> narrateProgress(call, event));
     return switch (tool.execute(input, context)) {
-      case Awaited.Ready<ToolResult>(ToolResult value) -> value;
-      case Awaited.Parked<ToolResult> ignored ->
-          throw new IllegalStateException(
-              "parking is unavailable in this wiring; the desk arrives with the autonomous host");
+      case Awaited.Ready<ToolResult>(ToolResult value) -> {
+        turn.on(new TurnEvent.ToolCallCompleted(call, value));
+        yield Optional.of(new ToolOutcome.Returned(value));
+      }
+      case Awaited.Parked<ToolResult>(ParkToken token) -> parkedCallPolicy.onParked(call, token);
     };
   }
 

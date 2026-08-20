@@ -178,4 +178,33 @@ class RegistryToolCallExecutorTest {
     run(ToolRegistry.of(new ProgressTool()), call, turn);
     assertThat(turn.events()).contains(new TurnEvent.ToolCallProgressed(call, "halfway"));
   }
+
+  @Test
+  void aSuspendingPolicyDeliversNothingAndNarratesNothing() {
+    var call =
+        new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var pump = new PumpedExecutor();
+    var turn = new RecordingTurnObserver();
+    var executor =
+        new RegistryToolCallExecutor(
+            ToolRegistry.of(new ParkingTool()),
+            AgentId.of("cli"),
+            turn,
+            pump,
+            (parkedCall, token) -> java.util.Optional.empty());
+    var delivered = new java.util.ArrayList<org.jwcarman.nessy.agent.AgentEvent>();
+    executor.executeTool(call, delivered::add);
+    pump.pumpUntilQuiet();
+    assertThat(delivered).isEmpty();
+    assertThat(turn.events()).isEmpty();
+  }
+
+  @Test
+  void theLoudDefaultSurvivesThePolicySeam() {
+    var call =
+        new ToolCall("c9", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).contains("parking is unavailable");
+  }
 }
