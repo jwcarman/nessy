@@ -56,11 +56,6 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-tck</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-model-anthropic</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -86,27 +81,7 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-jdbc</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-tool-mcp</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-autoconfigure</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-spring-boot-starter</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-console</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

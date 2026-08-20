@@ -38,10 +38,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p><b>Coverage:</b> every sibling module, reached by relative path from this one, that ships
  * {@code src/main/java} and is part of the public nessy surface: {@code nessy-core} (this module),
- * {@code nessy-console}, the four model providers ({@code nessy-model-anthropic}, {@code
- * nessy-model-openai}, {@code nessy-model-gemini}, {@code nessy-model-bedrock}), {@code
- * nessy-model-env}, {@code nessy-testing}, {@code nessy-jdbc}, {@code nessy-tck}, {@code
- * nessy-tool-mcp}, and {@code nessy-autoconfigure}. {@code nessy-bom} ships no Java at all; {@code
+ * the four model providers ({@code nessy-model-anthropic}, {@code nessy-model-openai}, {@code
+ * nessy-model-gemini}, {@code nessy-model-bedrock}), {@code nessy-model-env}, {@code
+ * nessy-testing}, and {@code nessy-tool-mcp}. {@code nessy-bom} ships no Java at all; {@code
  * nessy-spring-boot-starter} ships only a {@code src/main/javadoc} placeholder type, not a real
  * public class; {@code nessy-examples} is demo code with its own nested reactor, not a published
  * module. None of those three are scanned.
@@ -80,17 +79,13 @@ class NoPublicBuildersTest {
   private static final List<String> SCANNED_MODULES =
       List.of(
           "nessy-core",
-          "nessy-console",
           "nessy-model-anthropic",
           "nessy-model-openai",
           "nessy-model-gemini",
           "nessy-model-bedrock",
           "nessy-model-env",
           "nessy-testing",
-          "nessy-jdbc",
-          "nessy-tck",
-          "nessy-tool-mcp",
-          "nessy-autoconfigure");
+          "nessy-tool-mcp");
 
   private static final Pattern PUBLIC_TYPE_DECLARATION =
       Pattern.compile(

@@ -59,18 +59,12 @@
     <module>nessy-agent</module>
     <module>nessy-durable</module>
     <module>nessy-testing</module>
-    <module>nessy-tck</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>
     <module>nessy-model-gemini</module>
     <module>nessy-model-bedrock</module>
     <module>nessy-model-env</module>
-    <module>nessy-jdbc</module>
     <module>nessy-tool-mcp</module>
-    <module>nessy-autoconfigure</module>
-    <module>nessy-spring-boot-starter</module>
-    <module>nessy-console</module>
-    <module>nessy-examples</module>
   </modules>
 
   <properties>
