@@ -93,6 +93,39 @@ class ProviderModelCallExecutorTest {
   }
 
   @Test
+  void aSignedThinkingBlockClosesAndANewChunkStartsFresh() {
+    var turn = new RecordingTurnObserver();
+    var outcome =
+        run(
+            List.of(
+                new ModelEvent.ThinkingChunk("first"),
+                new ModelEvent.ThinkingSigned("sig"),
+                new ModelEvent.ThinkingChunk("second")),
+            new VerbatimMemory(),
+            turn);
+    var responded = (ModelOutcome.Responded) outcome;
+    assertThat(responded.content())
+        .containsExactly(new ThinkingBlock("first", "sig"), new ThinkingBlock("second", ""));
+  }
+
+  @Test
+  void aToolUseBetweenTextChunksBreaksTheMerge() {
+    var turn = new RecordingTurnObserver();
+    var outcome =
+        run(
+            List.of(
+                new ModelEvent.TextChunk("a"),
+                new ModelEvent.ToolUseEmitted(CALL, null),
+                new ModelEvent.TextChunk("b")),
+            new VerbatimMemory(),
+            turn);
+    var responded = (ModelOutcome.Responded) outcome;
+    assertThat(responded.content())
+        .containsExactly(new TextBlock("a"), new ToolUseBlock(CALL, null), new TextBlock("b"));
+    assertThat(responded.calls()).containsExactly(CALL);
+  }
+
+  @Test
   void theRequestCarriesTheRecalledContext() {
     var memory = new VerbatimMemory();
     memory.remember(Message.user("earlier"));
