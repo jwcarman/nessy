@@ -17,7 +17,6 @@ package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class AwaitedTest {
@@ -29,28 +28,15 @@ class AwaitedTest {
     String resolved =
         switch (awaited) {
           case Awaited.Ready<String>(String value) -> value;
-          case Awaited.Parked<String>(ParkToken token) -> "parked:" + token.value();
+          case Awaited.Deferred<String> ignored -> "deferred";
         };
 
     assertThat(resolved).isEqualTo("done");
   }
 
   @Test
-  void parked_carries_its_token() {
-    ParkToken token = new ParkToken("t1");
-
-    Awaited<String> awaited = Awaited.parked(token);
-
-    assertThat(awaited).isEqualTo(new Awaited.Parked<String>(token));
-  }
-
-  @Test
-  void random_tokens_are_distinct() {
-    assertThat(ParkToken.generate()).isNotEqualTo(ParkToken.generate());
-  }
-
-  @Test
-  void generated_park_tokens_are_time_ordered_uuidv7() {
-    assertThat(UUID.fromString(ParkToken.generate().value()).version()).isEqualTo(7);
+  void deferred_is_a_marker() {
+    Awaited<String> awaited = Awaited.deferred();
+    assertThat(awaited).isEqualTo(new Awaited.Deferred<String>());
   }
 }

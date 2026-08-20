@@ -39,7 +39,6 @@ import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -82,7 +81,7 @@ class DurableParkDemo {
 
     @Override
     public Awaited<ToolResult> execute(ApprovalInput input, ToolContext context) {
-      return Awaited.parked(new ParkToken("tok-demo-1"));
+      return Awaited.deferred();
     }
   }
 

@@ -22,8 +22,6 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.EffectfulTool;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -273,14 +271,8 @@ class AuthorizationReportTest {
     @Test
     void named_wraps_a_delegate_without_changing_its_behavior() {
       Key<String> seen = new Key<>(String.class, "seen");
-      ConversationId conversationId = new ConversationId("s1");
       ToolCall call = new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode());
-      AuthzContext context =
-          AuthzContext.of(
-              conversationId,
-              "test-agent",
-              call,
-              ConversationState.newConversation(conversationId));
+      AuthzContext context = AuthzContext.of("test-agent", call);
       Enricher<Object> delegate = (ctx, effect) -> ctx.with(seen, "yes");
       Enricher<Object> named = Enricher.named("marker", delegate);
 

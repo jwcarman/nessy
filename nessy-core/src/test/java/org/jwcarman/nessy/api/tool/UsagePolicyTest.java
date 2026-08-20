@@ -25,14 +25,9 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 class UsagePolicyTest {
-
-  private static final ConversationId CONVERSATION_ID = new ConversationId("s1");
-  private static final ConversationState STATE = ConversationState.newConversation(CONVERSATION_ID);
 
   private static ToolCall spendCall(int amount) {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
@@ -41,7 +36,7 @@ class UsagePolicyTest {
   }
 
   private static AuthzContext contextFor(ToolCall call) {
-    return AuthzContext.of(CONVERSATION_ID, "test-agent", call, STATE);
+    return AuthzContext.of("test-agent", call);
   }
 
   @Nested

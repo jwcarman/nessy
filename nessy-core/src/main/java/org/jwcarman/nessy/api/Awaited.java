@@ -18,9 +18,11 @@ package org.jwcarman.nessy.api;
 /**
  * The outcome of something that might have to wait.
  *
- * <p>Virtual threads unmount a task from a carrier thread; this unmounts a session from a process.
- * An in-process implementation blocks and returns {@link Ready}; a durable one returns {@link
- * Parked} so the loop can persist the session and let another machine finish it.
+ * <p>Two arms, no third (durable spec, two-armed ruling): {@link Ready} is the answer in hand;
+ * {@link Deferred} says the answer arrives through a durable computation. Deferred carries no
+ * identity — the wiring derives the slot's deterministic id from the work's coordinates
+ * (submit-once discipline), because a tool can neither reach the backend nor know the scope. A
+ * future {@code ToolContext} may grow slot creation for tools that own their references.
  *
  * @param <T> what the wait produces
  */
@@ -29,20 +31,16 @@ public sealed interface Awaited<T> {
   /** The wait finished in-process: {@code value} is the answer, in hand right now. */
   record Ready<T>(T value) implements Awaited<T> {}
 
-  /**
-   * The wait outlives this process: {@code token} is the correlation contract a later {@link
-   * org.jwcarman.nessy.Agent#resume} looks up to finish it — see {@link
-   * org.jwcarman.nessy.api.tool.Tool#execute} for the minting recipe.
-   */
-  record Parked<T>(ParkToken token) implements Awaited<T> {}
+  /** The wait outlives this process: the answer arrives through the durable computation. */
+  record Deferred<T>() implements Awaited<T> {}
 
   /** {@link Ready#Ready(Object)} wrapping {@code value}. */
   static <T> Awaited<T> ready(T value) {
     return new Ready<>(value);
   }
 
-  /** {@link Parked#Parked(ParkToken)} wrapping {@code token}. */
-  static <T> Awaited<T> parked(ParkToken token) {
-    return new Parked<>(token);
+  /** A {@link Deferred} marker. */
+  static <T> Awaited<T> deferred() {
+    return new Deferred<>();
   }
 }

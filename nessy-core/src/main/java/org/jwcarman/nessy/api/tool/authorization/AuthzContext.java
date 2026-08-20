@@ -16,8 +16,6 @@
 package org.jwcarman.nessy.api.tool.authorization;
 
 import java.util.Optional;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -26,11 +24,11 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * UsagePolicy} written against this interface composes into any grant regardless of what {@code E}
  * that grant welded.
  *
- * <p>The harness knows {@link #conversationId()}, {@link #agentName()}, {@link #call()}, and {@link
- * #state()} before any application code runs; everything else — including the well-known {@link
- * #principal()} and {@link #declaredIntent()} slots — starts empty and is filled in by enrichers
- * via {@link #with}, functionally: each call returns a new context, so an earlier enricher's view
- * is never mutated out from under it (design of record 2026-08-16-authorization §3).
+ * <p>The harness knows {@link #agentName()} and {@link #call()} before any application code runs;
+ * everything else — including the well-known {@link #principal()} and {@link #declaredIntent()}
+ * slots — starts empty and is filled in by enrichers via {@link #with}, functionally: each call
+ * returns a new context, so an earlier enricher's view is never mutated out from under it (design
+ * of record 2026-08-16-authorization §3).
  *
  * <p>A missing key is {@link Optional#empty()}, never an exception — a policy that cares about an
  * absent slot fails closed on its own terms and says so in its deny reason.
@@ -46,17 +44,11 @@ public interface AuthzContext {
    */
   Key<Object> DECLARED_INTENT_KEY = new Key<>(Object.class, "declaredIntent");
 
-  /** The conversation this call belongs to. */
-  ConversationId conversationId();
-
   /** The agent that owns the grant being evaluated. */
   String agentName();
 
   /** The raw call: tool name and parsed arguments. */
   ToolCall call();
-
-  /** The conversation's control block at the moment this call was evaluated. */
-  ConversationState state();
 
   /** Whatever an enricher deposited under {@code key}, or empty if nothing did. */
   <T> Optional<T> get(Key<T> key);
@@ -94,8 +86,7 @@ public interface AuthzContext {
    * The harness-known facts, with no deposits yet — the chokepoint's own starting point before any
    * enricher runs.
    */
-  static AuthzContext of(
-      ConversationId conversationId, String agentName, ToolCall call, ConversationState state) {
-    return new AuthzContextImpl(conversationId, agentName, call, state);
+  static AuthzContext of(String agentName, ToolCall call) {
+    return new AuthzContextImpl(agentName, call);
   }
 }

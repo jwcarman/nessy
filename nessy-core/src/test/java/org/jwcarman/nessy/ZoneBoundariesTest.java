@@ -38,13 +38,7 @@ class ZoneBoundariesTest {
   private static final Path SOURCE_ROOT = Path.of("src", "main", "java");
 
   /** The only api types allowed to reach into internal machinery, and why. */
-  private static final Set<String> SANCTIONED_API_TO_INTERNAL_IMPORTS =
-      Set.of(
-          "ConversationId.java", // -> Identifiers, for UUIDv7 generation
-          "ParkToken.java", // -> Identifiers, for UUIDv7 generation
-          "InboxEntry.java", // -> Identifiers, for UUIDv7 generation
-          "Tool.java" // -> Schemas, to derive its wire ToolSpec
-          );
+  private static final Set<String> SANCTIONED_API_TO_INTERNAL_IMPORTS = Set.of();
 
   /**
    * The only root-package files allowed to reach into internal machinery, and why: each assembles a

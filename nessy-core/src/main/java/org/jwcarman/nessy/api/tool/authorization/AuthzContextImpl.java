@@ -19,8 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -31,33 +29,18 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  */
 final class AuthzContextImpl implements AuthzContext {
 
-  private final ConversationId conversationId;
   private final String agentName;
   private final ToolCall call;
-  private final ConversationState state;
   private final Map<Key<?>, Object> deposits;
 
-  AuthzContextImpl(
-      ConversationId conversationId, String agentName, ToolCall call, ConversationState state) {
-    this(conversationId, agentName, call, state, Map.of());
+  AuthzContextImpl(String agentName, ToolCall call) {
+    this(agentName, call, Map.of());
   }
 
-  private AuthzContextImpl(
-      ConversationId conversationId,
-      String agentName,
-      ToolCall call,
-      ConversationState state,
-      Map<Key<?>, Object> deposits) {
-    this.conversationId = Objects.requireNonNull(conversationId, "conversationId must not be null");
+  private AuthzContextImpl(String agentName, ToolCall call, Map<Key<?>, Object> deposits) {
     this.agentName = Objects.requireNonNull(agentName, "agentName must not be null");
     this.call = Objects.requireNonNull(call, "call must not be null");
-    this.state = Objects.requireNonNull(state, "state must not be null");
     this.deposits = deposits;
-  }
-
-  @Override
-  public ConversationId conversationId() {
-    return conversationId;
   }
 
   @Override
@@ -68,11 +51,6 @@ final class AuthzContextImpl implements AuthzContext {
   @Override
   public ToolCall call() {
     return call;
-  }
-
-  @Override
-  public ConversationState state() {
-    return state;
   }
 
   @Override
@@ -87,6 +65,6 @@ final class AuthzContextImpl implements AuthzContext {
     Objects.requireNonNull(value, "value must not be null");
     Map<Key<?>, Object> extended = new LinkedHashMap<>(deposits);
     extended.put(key, value);
-    return new AuthzContextImpl(conversationId, agentName, call, state, Map.copyOf(extended));
+    return new AuthzContextImpl(agentName, call, Map.copyOf(extended));
   }
 }

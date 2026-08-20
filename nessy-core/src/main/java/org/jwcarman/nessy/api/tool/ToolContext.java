@@ -16,15 +16,13 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.event.ToolProgress;
 
 /** What a tool learns about the invocation it is serving. */
-public record ToolContext(ConversationId conversationId, ToolCall call, EventEmitter events) {
+public record ToolContext(ToolCall call, EventEmitter events) {
 
   public ToolContext {
-    Objects.requireNonNull(conversationId, "conversationId must not be null");
     Objects.requireNonNull(call, "call must not be null");
     Objects.requireNonNull(events, "events must not be null");
   }
@@ -35,6 +33,6 @@ public record ToolContext(ConversationId conversationId, ToolCall call, EventEmi
    * arrives, so there is nothing to distrust).
    */
   public void progress(String message) {
-    events.emit(new ToolProgress(conversationId, call.id(), message));
+    events.emit(new ToolProgress(call.id(), message));
   }
 }

@@ -20,19 +20,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.conversation.ConversationState;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 class AuthzContextTest {
 
-  private static final ConversationId CONVERSATION_ID = new ConversationId("s1");
   private static final ToolCall CALL =
       new ToolCall("c1", "spend", JsonNodeFactory.instance.objectNode());
-  private static final ConversationState STATE = ConversationState.newConversation(CONVERSATION_ID);
 
   private static AuthzContext freshContext() {
-    return AuthzContext.of(CONVERSATION_ID, "test-agent", CALL, STATE);
+    return AuthzContext.of("test-agent", CALL);
   }
 
   @Nested
@@ -42,10 +38,8 @@ class AuthzContextTest {
     void carries_conversation_id_agent_name_call_and_state_as_given() {
       AuthzContext context = freshContext();
 
-      assertThat(context.conversationId()).isEqualTo(CONVERSATION_ID);
       assertThat(context.agentName()).isEqualTo("test-agent");
       assertThat(context.call()).isEqualTo(CALL);
-      assertThat(context.state()).isEqualTo(STATE);
     }
   }
 

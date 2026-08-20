@@ -20,9 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 class MessageTest {
@@ -70,15 +68,5 @@ class MessageTest {
     assertThat(ToolResult.ok("fine").isError()).isFalse();
     assertThat(ToolResult.error("boom").isError()).isTrue();
     assertThat(ToolResult.error("boom").content()).isEqualTo("boom");
-  }
-
-  @Test
-  void random_session_ids_are_distinct() {
-    assertThat(ConversationId.generate()).isNotEqualTo(ConversationId.generate());
-  }
-
-  @Test
-  void generated_session_ids_are_time_ordered_uuidv7() {
-    assertThat(UUID.fromString(ConversationId.generate().value()).version()).isEqualTo(7);
   }
 }

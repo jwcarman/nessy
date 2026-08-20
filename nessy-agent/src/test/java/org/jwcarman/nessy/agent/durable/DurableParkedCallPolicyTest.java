@@ -23,7 +23,6 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.ComputationId;
@@ -39,20 +38,19 @@ class DurableParkedCallPolicyTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
-  private static final ParkToken TOKEN = new ParkToken("tok-1");
   private static final ComputationId SLOT = ComputationId.of("tool:approver:demo:c1");
 
   @Test
   void aFirstParkCreatesTheSlotRegistersAndSuspends() {
-    assertThat(policy.onParked(CALL, TOKEN)).isEqualTo(new ToolExecution.Deferred(SLOT));
+    assertThat(policy.onDeferred(CALL)).isEqualTo(new ToolExecution.Deferred(SLOT));
     assertThat(backend.status(SLOT)).contains(ComputationStatus.PENDING);
     assertThat(backend.continuationsOf(SLOT)).hasSize(1);
   }
 
   @Test
   void aReDriveFindsTheExistingSlotAndStaysSuspended() {
-    policy.onParked(CALL, TOKEN);
-    assertThat(policy.onParked(CALL, TOKEN)).isEqualTo(new ToolExecution.Deferred(SLOT));
+    policy.onDeferred(CALL);
+    assertThat(policy.onDeferred(CALL)).isEqualTo(new ToolExecution.Deferred(SLOT));
     assertThat(backend.create(SLOT).created()).isFalse();
     assertThat(backend.continuationsOf(SLOT)).hasSize(1);
   }
@@ -61,7 +59,7 @@ class DurableParkedCallPolicyTest {
   void anAnswerThatArrivedWhileAwayDeliversNow() {
     backend.create(SLOT);
     backend.complete(SLOT, new Outcome.Success(ToolResult.ok("pre-approved")));
-    assertThat(policy.onParked(CALL, TOKEN))
+    assertThat(policy.onDeferred(CALL))
         .isEqualTo(
             new ToolExecution.Immediate(new ToolOutcome.Returned(ToolResult.ok("pre-approved"))));
   }

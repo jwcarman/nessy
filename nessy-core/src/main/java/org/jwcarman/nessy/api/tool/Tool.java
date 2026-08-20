@@ -56,16 +56,10 @@ public interface Tool<T> {
   }
 
   /**
-   * Runs the tool. Returns {@link Awaited.Parked} only if it genuinely must wait.
-   *
-   * <p>The parking recipe, in three steps: mint a token via {@link
-   * org.jwcarman.nessy.api.ParkToken#generate()}; return {@link
-   * Awaited#parked(org.jwcarman.nessy.api.ParkToken)} with it; then get that token to the outside
-   * world — the tool's own job, not the harness's, done via {@link ToolContext#progress}, the
-   * tool's own transport (a webhook payload, a queued message), or a caller reading it back off
-   * {@link org.jwcarman.nessy.Agent#snapshot}.
-   *
-   * @see org.jwcarman.nessy.Agent#resume
+   * Runs the tool. Returns {@link Awaited.Deferred} only if the answer genuinely arrives through a
+   * durable computation — a callback, an approval, a job. The deferred marker carries no identity:
+   * the wiring derives the slot's deterministic id from the work's coordinates and registers the
+   * continuation (durable spec, submit-once discipline).
    */
   Awaited<ToolResult> execute(T input, ToolContext context);
 

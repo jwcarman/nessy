@@ -15,11 +15,10 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * What a wiring does when a tool parks (spec §4.3). {@link ToolExecution.Deferred} means the call
+ * What a wiring does when a tool defers (spec §4.3). {@link ToolExecution.Deferred} means the call
  * is suspended into its durable slot: the executor delivers nothing and narrates nothing — parking
  * is invisible, but the suspension carries its reference. {@link ToolExecution.Immediate} means an
  * outcome to deliver now — the loud in-band failure of a non-parking wiring, or a durable slot's
@@ -28,5 +27,5 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 @FunctionalInterface
 public interface ParkedCallPolicy {
 
-  ToolExecution onParked(ToolCall call, ParkToken token);
+  ToolExecution onDeferred(ToolCall call);
 }

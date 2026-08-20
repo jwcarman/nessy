@@ -27,7 +27,6 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -80,7 +79,7 @@ class RegistryToolCallExecutorTest {
 
     @Override
     public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
-      return Awaited.parked(new ParkToken("t-1"));
+      return Awaited.deferred();
     }
   }
 
@@ -193,8 +192,7 @@ class RegistryToolCallExecutorTest {
             AgentId.of("cli"),
             turn,
             pump,
-            (parkedCall, token) ->
-                new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")));
+            parkedCall -> new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")));
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();

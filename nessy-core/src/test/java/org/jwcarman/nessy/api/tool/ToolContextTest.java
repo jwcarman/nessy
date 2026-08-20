@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.ToolProgress;
 
 class ToolContextTest {
@@ -30,10 +29,10 @@ class ToolContextTest {
   void progress_emits_with_the_frameworks_own_ids() {
     List<Object> heard = new ArrayList<>();
     ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
-    ToolContext context = new ToolContext(new ConversationId("s1"), call, heard::add);
+    ToolContext context = new ToolContext(call, heard::add);
 
     context.progress("halfway");
 
-    assertThat(heard).containsExactly(new ToolProgress(new ConversationId("s1"), "c1", "halfway"));
+    assertThat(heard).containsExactly(new ToolProgress("c1", "halfway"));
   }
 }

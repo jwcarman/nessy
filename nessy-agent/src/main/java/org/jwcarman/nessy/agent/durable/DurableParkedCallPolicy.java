@@ -22,7 +22,6 @@ import org.jwcarman.nessy.agent.DurableOutcomes;
 import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.spi.ParkedCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.AwaitResult;
 import org.jwcarman.nessy.durable.ComputationId;
@@ -32,7 +31,6 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
  * The durable wiring's answer to a park (§4.3): get-or-create the slot at its deterministic id
  * (submit-once — a recovery re-fire finds the same slot, ruling 4) and await atomically. Registered
  * means suspended; AlreadyCompleted means the answer arrived while we were away — deliver it now.
- * The tool's {@code ParkToken} is a park SIGNAL, not an address, and is ignored: the slot's
  * deterministic id is the one handle per question. Completion-capability secrets (durable spec §9,
  * "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
  */
@@ -49,7 +47,7 @@ public final class DurableParkedCallPolicy implements ParkedCallPolicy {
   }
 
   @Override
-  public ToolExecution onParked(ToolCall call, ParkToken token) {
+  public ToolExecution onDeferred(ToolCall call) {
     ComputationId slotId =
         ComputationId.of("tool:%s:%s:%s".formatted(type.name(), id.value(), call.id()));
     backend.create(slotId);

@@ -28,8 +28,6 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.ConversationId;
 import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -43,13 +41,11 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
  * The registry tool executor (§4.3): find, bind, execute, deliver. What happens when a tool parks
  * is the wiring's {@link ParkedCallPolicy}: the default (4-arg constructor) fails loudly in-band —
  * a parked turn wedges a conversation — while a durable wiring suspends the call into a slot. A
- * suspended call delivers nothing and narrates nothing. The {@link ConversationId} bridge is
- * interim vocabulary (plan decision 3).
+ * suspended call delivers nothing and narrates nothing.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private final ToolRegistry registry;
-  private final ConversationId bridgedId;
   private final TurnObserver turn;
   private final Executor executor;
   private final ObjectMapper mapper = new ObjectMapper();
@@ -70,7 +66,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       Executor executor,
       ParkedCallPolicy parkedCallPolicy) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
-    this.bridgedId = new ConversationId(Objects.requireNonNull(id, "id must not be null").value());
+    Objects.requireNonNull(id, "id must not be null");
     this.turn = Objects.requireNonNull(turn, "turn must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
     this.parkedCallPolicy =
@@ -107,13 +103,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private <T> ToolExecution invoke(Tool<T> tool, ToolCall call) {
     T input = mapper.convertValue(call.arguments(), tool.inputType());
-    ToolContext context = new ToolContext(bridgedId, call, event -> narrateProgress(call, event));
+    ToolContext context = new ToolContext(call, event -> narrateProgress(call, event));
     return switch (tool.execute(input, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
         yield new ToolExecution.Immediate(new ToolOutcome.Returned(value));
       }
-      case Awaited.Parked<ToolResult>(ParkToken token) -> parkedCallPolicy.onParked(call, token);
+      case Awaited.Deferred<ToolResult> ignored -> parkedCallPolicy.onDeferred(call);
     };
   }
 
@@ -124,7 +120,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
    */
   private void narrateProgress(ToolCall call, Object event) {
     String message =
-        event instanceof ToolProgress(var _, var _, String progressMessage)
+        event instanceof ToolProgress(var _, String progressMessage)
             ? progressMessage
             : String.valueOf(event);
     turn.on(new TurnEvent.ToolCallProgressed(call, message));
@@ -138,7 +134,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   /** The 4-arg constructor's default: fails loudly in-band rather than suspending silently. */
   private static ParkedCallPolicy defaultPolicy(TurnObserver turn) {
-    return (call, token) -> {
+    return call -> {
       ToolResult error = ToolResult.error(PARKING_UNAVAILABLE);
       turn.on(new TurnEvent.ToolCallCompleted(call, error));
       return new ToolExecution.Immediate(
