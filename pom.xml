@@ -57,6 +57,7 @@
     <module>nessy-bom</module>
     <module>nessy-core</module>
     <module>nessy-agent</module>
+    <module>nessy-durable</module>
     <module>nessy-testing</module>
     <module>nessy-tck</module>
     <module>nessy-model-anthropic</module>

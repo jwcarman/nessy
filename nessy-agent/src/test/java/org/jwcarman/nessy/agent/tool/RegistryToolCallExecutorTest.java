@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -177,5 +178,34 @@ class RegistryToolCallExecutorTest {
     var turn = new RecordingTurnObserver();
     run(ToolRegistry.of(new ProgressTool()), call, turn);
     assertThat(turn.events()).contains(new TurnEvent.ToolCallProgressed(call, "halfway"));
+  }
+
+  @Test
+  void aSuspendingPolicyDeliversNothingAndNarratesNothing() {
+    var call =
+        new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var pump = new PumpedExecutor();
+    var turn = new RecordingTurnObserver();
+    var executor =
+        new RegistryToolCallExecutor(
+            ToolRegistry.of(new ParkingTool()),
+            AgentId.of("cli"),
+            turn,
+            pump,
+            (parkedCall, token) -> Optional.empty());
+    var delivered = new ArrayList<AgentEvent>();
+    executor.executeTool(call, delivered::add);
+    pump.pumpUntilQuiet();
+    assertThat(delivered).isEmpty();
+    assertThat(turn.events()).isEmpty();
+  }
+
+  @Test
+  void theLoudDefaultSurvivesThePolicySeam() {
+    var call =
+        new ToolCall("c9", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).contains("parking is unavailable");
   }
 }
