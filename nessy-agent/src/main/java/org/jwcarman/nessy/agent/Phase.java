@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -41,6 +42,12 @@ public sealed interface Phase {
 
   Transition handle(AgentEvent event);
 
+  /**
+   * The effects still in flight for this phase, re-derivable on any node — the §6.1 recovery
+   * invariant as a method. Every future phase must keep this total.
+   */
+  List<Effect> outstandingEffects();
+
   record Idle() implements Phase {
     @Override
     public Transition handle(AgentEvent event) {
@@ -51,6 +58,11 @@ public sealed interface Phase {
         case AgentEvent.ModelFinished ignored -> Transition.ignore();
         case AgentEvent.ToolFinished ignored -> Transition.ignore();
       };
+    }
+
+    @Override
+    public List<Effect> outstandingEffects() {
+      return List.of();
     }
   }
 
@@ -73,6 +85,11 @@ public sealed interface Phase {
         case AgentEvent.Observed ignored ->
             throw new IllegalStateException("observations absorb only at Idle");
       };
+    }
+
+    @Override
+    public List<Effect> outstandingEffects() {
+      return List.of(new Effect.CallModel());
     }
   }
 
@@ -121,6 +138,20 @@ public sealed interface Phase {
         case AgentEvent.Observed ignored ->
             throw new IllegalStateException("observations absorb only at Idle");
       };
+    }
+
+    @Override
+    public List<Effect> outstandingEffects() {
+      var byId = new HashMap<String, ToolCall>();
+      for (var block : assistantTurn.content()) {
+        if (block instanceof ToolUseBlock(ToolCall call, String ignoredSignature)) {
+          byId.put(call.id(), call);
+        }
+      }
+      return pending.stream()
+          .sorted()
+          .map(id -> (Effect) new Effect.ExecuteTool(byId.get(id)))
+          .toList();
     }
 
     private static ToolResultBlock resultBlock(ToolCall call, ToolOutcome outcome) {
