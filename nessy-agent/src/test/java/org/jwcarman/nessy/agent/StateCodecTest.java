@@ -75,4 +75,16 @@ class StateCodecTest {
     var idle = new Phase.Idle();
     assertThatThrownBy(() -> new State(idle, -1L)).isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void aStateRejectsANullPhase() {
+    assertThatThrownBy(() -> new State(null, 0L)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void anUnreadablePayloadFailsLoudly() {
+    var codecUnderTest = codec;
+    assertThatThrownBy(() -> codecUnderTest.decode("not json at all"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }
