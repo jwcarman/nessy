@@ -605,6 +605,22 @@ summary lands, so the projector owns a policy for how far past budget it will go
 
 Authorization, tool dispatch, and delivery. Nothing about it reaches the core.
 
+**The policy seam always receives an `AuthzContext`** (ruled 2026-08-20). The authorization
+ladder's existing contract — `UsagePolicy.evaluate(AuthzContext, effect)` — carries forward
+unchanged in shape: context is a required parameter on every policy evaluation, even for policies
+that ignore it, because adding a parameter later breaks every implementor while an unused one
+costs nothing. `AuthzContext`'s extensibility model is the future-proofing and is preserved
+verbatim: an immutable typed-key bag (`get(Key<T>)`, `with(key, value)`) that **enrichers**
+populate — principal, declared intent, and whatever tomorrow needs. A new authorization fact is a
+new key, never a new method or parameter.
+
+Two members adapt under §9's deletions: `conversationId()` becomes the scope coordinate
+`(AgentType, AgentId)` (§1.1), and `state()` — the old control block — goes, because pre-scoped
+executors never load `State`; a policy that needs turn context obtains it through an enricher,
+which is where cross-cutting context acquisition already lives. The gate remains the single place
+authorization happens (§8: observers never influence), and none of this reaches the core: the
+grammar has no authorization vocabulary, by design.
+
 ### 4.3 Parks are not a state — they are an address book
 
 **From a phase's view there is no difference between a tool that returns in 200ms and one that
