@@ -67,4 +67,25 @@ class TransitionTest {
     var ignored = Transition.ignore();
     assertThatThrownBy(ignored::next).isInstanceOf(IllegalStateException.class);
   }
+
+  @Test
+  void anIgnoredTransitionEqualsNothingButItself() {
+    assertThat(Transition.ignore()).isEqualTo(Transition.ignore());
+    assertThat(Transition.to(new Phase.Idle())).isNotEqualTo(Transition.ignore());
+    assertThat(Transition.ignore()).isNotEqualTo(Transition.to(new Phase.Idle()));
+  }
+
+  @Test
+  void anIgnoredTransitionRefusesToCommit() {
+    var ignored = Transition.ignore();
+    assertThatThrownBy(() -> ignored.commit(Message.user("x")))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void anIgnoredTransitionRefusesToEmit() {
+    var ignored = Transition.ignore();
+    var effects = List.<Effect>of(new Effect.CallModel());
+    assertThatThrownBy(() -> ignored.emit(effects)).isInstanceOf(IllegalStateException.class);
+  }
 }

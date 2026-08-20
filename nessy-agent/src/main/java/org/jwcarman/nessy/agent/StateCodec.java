@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -75,8 +76,13 @@ public final class StateCodec {
     Objects.requireNonNull(json, "json must not be null");
     try {
       JsonNode root = mapper.readTree(json);
-      long version = root.get("version").asLong();
-      String discriminator = root.get(PHASE).asText();
+      JsonNode versionNode = root.get("version");
+      JsonNode phaseNode = root.get(PHASE);
+      if (versionNode == null || phaseNode == null) {
+        throw new IllegalArgumentException("state payload missing required field: version|phase");
+      }
+      long version = versionNode.asLong();
+      String discriminator = phaseNode.asText();
       Phase phase =
           switch (discriminator) {
             case IDLE -> new Phase.Idle();
@@ -86,7 +92,7 @@ public final class StateCodec {
                 throw new IllegalArgumentException("unknown phase discriminator: " + discriminator);
           };
       return new State(phase, version);
-    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+    } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("unreadable state payload", e);
     }
   }
@@ -133,7 +139,9 @@ public final class StateCodec {
           node.put("signature", signature);
         }
       }
-      case ToolResultBlock b -> node.set("block", writeResultBlock(b));
+      case ToolResultBlock b -> {
+        return writeResultBlock(b);
+      }
       case ImageBlock(String mediaType, String base64Data) ->
           node.put("type", "image").put("mediaType", mediaType).put("data", base64Data);
     }
@@ -141,16 +149,13 @@ public final class StateCodec {
   }
 
   private ContentBlock readBlock(JsonNode node) {
-    if (node.has("block")) {
-      return readResultBlock(node.get("block"));
-    }
     String type = node.get("type").asText();
     return switch (type) {
       case "text" -> new TextBlock(node.get("text").asText());
       case "thinking" ->
           new ThinkingBlock(
               node.get("text").asText(),
-              node.has("signature") ? node.get("signature").asText() : null);
+              node.has("signature") ? node.get("signature").asText() : "");
       case "redacted_thinking" -> new RedactedThinkingBlock(node.get("data").asText());
       case "tool_use" ->
           new ToolUseBlock(
@@ -160,6 +165,7 @@ public final class StateCodec {
       case "image" ->
           new ImageBlock(node.get("mediaType").asText(), node.get("data").asText()); // data ↔
       // base64Data
+      case "tool_result" -> readResultBlock(node);
       default -> throw new IllegalArgumentException("unknown content block type: " + type);
     };
   }

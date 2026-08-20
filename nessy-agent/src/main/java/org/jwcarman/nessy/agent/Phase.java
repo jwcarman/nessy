@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -32,7 +33,10 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  */
 public sealed interface Phase {
 
-  /** Used only by {@link Transition#ignore()}'s marker; never escapes. */
+  /**
+   * Backs {@link Transition#ignore()}'s marker; public by interface rules, inert because it is an
+   * ordinary Idle.
+   */
   Phase SENTINEL = new Idle();
 
   Transition handle(AgentEvent event);
@@ -81,6 +85,18 @@ public sealed interface Phase {
       gathered = List.copyOf(gathered);
       if (pending.isEmpty()) {
         throw new IllegalArgumentException("awaiting tools with nothing pending is not a phase");
+      }
+      Set<String> toolUseIds =
+          assistantTurn.content().stream()
+              .filter(ToolUseBlock.class::isInstance)
+              .map(ToolUseBlock.class::cast)
+              .map(b -> b.call().id())
+              .collect(Collectors.toUnmodifiableSet());
+      Set<String> missing = new HashSet<>(pending);
+      missing.removeAll(toolUseIds);
+      if (!missing.isEmpty()) {
+        throw new IllegalArgumentException(
+            "pending ids missing from the assistant turn's tool-use blocks: " + missing);
       }
     }
 

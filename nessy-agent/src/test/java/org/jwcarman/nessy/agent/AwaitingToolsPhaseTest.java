@@ -111,4 +111,12 @@ class AwaitingToolsPhaseTest {
     assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, empty, none))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void aPendingIdAbsentFromTheHeldBackTurnIsRejected() {
+    Set<String> pending = Set.of("ghost");
+    List<ToolResultBlock> none = List.of();
+    assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, pending, none))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

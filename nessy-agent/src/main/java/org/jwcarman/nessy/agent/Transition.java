@@ -77,4 +77,30 @@ public record Transition(Phase next, List<Message> commit, List<Effect> effects)
       throw new IllegalStateException("an ignored transition decides nothing");
     }
   }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (isIgnored() || !(o instanceof Transition other) || other.isIgnored()) {
+      return false;
+    }
+    return Objects.equals(next, other.next)
+        && Objects.equals(commit, other.commit)
+        && Objects.equals(effects, other.effects);
+  }
+
+  @Override
+  public int hashCode() {
+    return isIgnored() ? System.identityHashCode(this) : Objects.hash(next, commit, effects);
+  }
+
+  @Override
+  public String toString() {
+    if (isIgnored()) {
+      return "Transition[ignored]";
+    }
+    return "Transition[next=" + next + ", commit=" + commit + ", effects=" + effects + "]";
+  }
 }

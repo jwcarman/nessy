@@ -23,7 +23,11 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.ImageBlock;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.RedactedThinkingBlock;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -64,9 +68,7 @@ class StateCodecTest {
 
   @Test
   void anUnknownDiscriminatorFailsLoudly() {
-    var codecUnderTest = codec;
-    assertThatThrownBy(
-            () -> codecUnderTest.decode("{\"phase\":\"AWAITING_APPROVAL\",\"version\":1}"))
+    assertThatThrownBy(() -> codec.decode("{\"phase\":\"AWAITING_APPROVAL\",\"version\":1}"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -83,8 +85,40 @@ class StateCodecTest {
 
   @Test
   void anUnreadablePayloadFailsLoudly() {
-    var codecUnderTest = codec;
-    assertThatThrownBy(() -> codecUnderTest.decode("not json at all"))
+    assertThatThrownBy(() -> codec.decode("not json at all"))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void aPayloadMissingItsFieldsFailsLoudly() {
+    assertThatThrownBy(() -> codec.decode("{}")).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void everyContentBlockTypeRoundTrips() {
+    var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
+    var turn =
+        Message.assistant(
+            List.of(
+                new TextBlock("thinking done"),
+                new ThinkingBlock("hmm", "anthropic-sig"),
+                new ThinkingBlock("unsigned", ""),
+                new RedactedThinkingBlock("opaque-data"),
+                new ToolUseBlock(call, "gemini-sig"),
+                new ToolUseBlock(call, null),
+                new ImageBlock("image/png", "aGVsbG8="),
+                new ToolResultBlock("z", "prior", false)));
+    var state = new State(new Phase.AwaitingTools(turn, Set.of("a"), List.of()), 3L);
+    assertThat(codec.decode(codec.encode(state))).isEqualTo(state);
+  }
+
+  @Test
+  void pendingIdsSerializeInSortedOrder() {
+    var callB = new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
+    var callA = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
+    var turn =
+        Message.assistant(List.of(new ToolUseBlock(callB, null), new ToolUseBlock(callA, null)));
+    var state = new State(new Phase.AwaitingTools(turn, Set.of("b", "a"), List.of()), 1L);
+    assertThat(codec.encode(state)).contains("\"pending\":[\"a\",\"b\"]");
   }
 }
