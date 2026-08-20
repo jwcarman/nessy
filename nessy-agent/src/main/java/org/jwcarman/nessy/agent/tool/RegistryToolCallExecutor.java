@@ -59,7 +59,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   public RegistryToolCallExecutor(
       ToolRegistry registry, AgentId id, TurnObserver turn, Executor executor) {
-    this(registry, id, turn, executor, null);
+    this(registry, id, turn, executor, defaultPolicy(turn));
   }
 
   public RegistryToolCallExecutor(
@@ -73,9 +73,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     this.turn = Objects.requireNonNull(turn, "turn must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
     this.parkedCallPolicy =
-        parkedCallPolicy != null
-            ? parkedCallPolicy
-            : (call, token) -> Optional.of(failed(call, PARKING_UNAVAILABLE));
+        Objects.requireNonNull(parkedCallPolicy, "parkedCallPolicy must not be null");
   }
 
   @Override
@@ -129,5 +127,14 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     ToolResult error = ToolResult.error(message);
     turn.on(new TurnEvent.ToolCallCompleted(call, error));
     return new ToolOutcome.Failed(new ToolError(message));
+  }
+
+  /** The 4-arg constructor's default: fails loudly in-band rather than suspending silently. */
+  private static ParkedCallPolicy defaultPolicy(TurnObserver turn) {
+    return (call, token) -> {
+      ToolResult error = ToolResult.error(PARKING_UNAVAILABLE);
+      turn.on(new TurnEvent.ToolCallCompleted(call, error));
+      return Optional.of(new ToolOutcome.Failed(new ToolError(PARKING_UNAVAILABLE)));
+    };
   }
 }

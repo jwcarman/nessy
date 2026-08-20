@@ -80,4 +80,14 @@ class ScopeResumptionTest {
     assertThatThrownBy(() -> handler.completed(corrupt, outcome))
         .isInstanceOf(IllegalStateException.class);
   }
+
+  @Test
+  void aContinuationWithAnIncompleteCallIsAProgrammingErrorNotAnNpe() {
+    var incomplete =
+        new Continuation(
+            ScopeResumption.TYPE, "{\"agentType\":\"a\",\"agentId\":\"b\",\"call\":{}}");
+    var outcome = new Outcome.Success(ToolResult.ok("x"));
+    assertThatThrownBy(() -> handler.completed(incomplete, outcome))
+        .isInstanceOf(IllegalStateException.class);
+  }
 }

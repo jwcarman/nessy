@@ -42,11 +42,18 @@ public final class ApprovalDesk {
     this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher must not be null");
   }
 
-  /** Idempotent: registering the same token for the same slot twice is one registration. */
+  /**
+   * Idempotent: registering the same token for the same slot twice is one registration. Rebinding
+   * an already-registered token to a different slot is refused loudly rather than silently
+   * discarded.
+   */
   public void register(ParkToken token, ComputationId id) {
     Objects.requireNonNull(token, "token must not be null");
     Objects.requireNonNull(id, "id must not be null");
-    byToken.putIfAbsent(token, id);
+    ComputationId prior = byToken.putIfAbsent(token, id);
+    if (prior != null && !prior.equals(id)) {
+      throw new IllegalStateException("token already bound to a different computation");
+    }
   }
 
   public void approve(ParkToken token, ToolResult result) {
@@ -59,6 +66,10 @@ public final class ApprovalDesk {
     decide(token, new Outcome.Failure(reason));
   }
 
+  /**
+   * A handler throw here leaves the token retired and the slot terminal — the lazy re-drive floor
+   * (plan decision 3) covers delivery; the Plan-5 outbox is the prompt-delivery upgrade.
+   */
   private void decide(ParkToken token, Outcome outcome) {
     Objects.requireNonNull(token, "token must not be null");
     ComputationId id = byToken.get(token);
@@ -69,6 +80,6 @@ public final class ApprovalDesk {
       throw new IllegalStateException("already decided: " + id.value());
     }
     dispatcher.fire(backend.continuationsOf(id), outcome);
-    byToken.remove(token);
+    byToken.values().removeIf(id::equals);
   }
 }

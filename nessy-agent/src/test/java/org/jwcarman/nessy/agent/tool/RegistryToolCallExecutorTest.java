@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -191,8 +192,8 @@ class RegistryToolCallExecutorTest {
             AgentId.of("cli"),
             turn,
             pump,
-            (parkedCall, token) -> java.util.Optional.empty());
-    var delivered = new java.util.ArrayList<org.jwcarman.nessy.agent.AgentEvent>();
+            (parkedCall, token) -> Optional.empty());
+    var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();
     assertThat(delivered).isEmpty();

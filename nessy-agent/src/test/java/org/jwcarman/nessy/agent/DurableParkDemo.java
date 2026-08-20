@@ -48,6 +48,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
@@ -155,7 +156,11 @@ class DurableParkDemo {
     System.out.println("phase after park: " + store.load().phase().getClass().getSimpleName());
     assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
     assertThat(backend.status(slot)).contains(ComputationStatus.PENDING);
-    assertThat(memory.recall().messages()).hasSize(1); // the held-back unit: nothing committed yet
+    // only the observation is committed; the assistant tool-use turn is held back
+    assertThat(memory.recall().messages())
+        .containsExactly(Message.user(List.of(new TextBlock("please restart prod"))));
+    assertThat(narrator.events()).isNotEmpty();
+    assertThat(narrator.events()).noneMatch(e -> e instanceof TurnEvent.ToolCallCompleted);
 
     System.out.println("== the instance is garbage; hours pass; any node may answer ==");
     desk.approve(new ParkToken("tok-demo-1"), ToolResult.ok("approved by jcarman"));

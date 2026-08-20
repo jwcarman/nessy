@@ -31,9 +31,9 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
 
 /**
  * The durable wiring's answer to a park (§4.3): get-or-create the slot at its deterministic id
- * (submit-once — a recovery re-fire finds it, ruling 4), hand the desk the token, and await
- * atomically. Registered means suspended; AlreadyCompleted means the answer arrived while we were
- * away — deliver it now.
+ * (submit-once — a recovery re-fire finds it, ruling 4), await atomically, and only then hand the
+ * desk the token — if the answer already arrived, nothing is registered. Registered means
+ * suspended; AlreadyCompleted means the answer arrived while we were away — deliver it now.
  */
 public final class DurableParkedCallPolicy implements ParkedCallPolicy {
 
@@ -55,11 +55,13 @@ public final class DurableParkedCallPolicy implements ParkedCallPolicy {
     ComputationId slotId =
         ComputationId.of("tool:%s:%s:%s".formatted(type.name(), id.value(), call.id()));
     backend.create(slotId);
-    desk.register(token, slotId);
     return switch (backend.await(slotId, ScopeResumption.continuationFor(type, id, call))) {
       case AwaitResult.AlreadyCompleted(var outcome) ->
           Optional.of(DurableOutcomes.toToolOutcome(outcome));
-      case AwaitResult.Registered() -> Optional.empty();
+      case AwaitResult.Registered() -> {
+        desk.register(token, slotId);
+        yield Optional.empty();
+      }
     };
   }
 }

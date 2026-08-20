@@ -65,7 +65,12 @@ public final class ScopeResumption implements ContinuationHandler {
       throw new IllegalStateException("undecodable RESUME_SCOPE continuation", e);
     }
     JsonNode callNode = data.get("call");
-    if (callNode == null || data.get("agentType") == null || data.get("agentId") == null) {
+    if (callNode == null
+        || data.get("agentType") == null
+        || data.get("agentId") == null
+        || callNode.get("id") == null
+        || callNode.get("name") == null
+        || callNode.get("arguments") == null) {
       throw new IllegalStateException(
           "RESUME_SCOPE continuation missing required fields: " + continuation.data());
     }

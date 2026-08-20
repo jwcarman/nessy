@@ -80,4 +80,36 @@ class ApprovalDeskTest {
     assertThatThrownBy(() -> desk.approve(TOKEN, result))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void aSecondDecisionOnTheSameSlotIsRefusedAsAlreadyDecided() {
+    backend.create(SLOT);
+    backend.complete(SLOT, new Outcome.Success(ToolResult.ok("prior")));
+    desk.register(TOKEN, SLOT);
+    var result = ToolResult.ok("approved");
+    assertThatThrownBy(() -> desk.approve(TOKEN, result))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("already decided");
+  }
+
+  @Test
+  void aDecisionRetiresEverySiblingToken() {
+    park();
+    var secondToken = new ParkToken("tok-2");
+    desk.register(secondToken, SLOT);
+    desk.approve(TOKEN, ToolResult.ok("approved"));
+    var result = ToolResult.ok("again");
+    assertThatThrownBy(() -> desk.approve(secondToken, result))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void reMappingATokenToADifferentSlotIsRefused() {
+    var otherSlot = ComputationId.of("tool:t:a:c2");
+    backend.create(SLOT);
+    backend.create(otherSlot);
+    desk.register(TOKEN, SLOT);
+    assertThatThrownBy(() -> desk.register(TOKEN, otherSlot))
+        .isInstanceOf(IllegalStateException.class);
+  }
 }

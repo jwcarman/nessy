@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.durable;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
@@ -65,5 +66,8 @@ class DurableParkedCallPolicyTest {
     var outcome = policy.onParked(CALL, TOKEN);
     assertThat(outcome).isPresent();
     assertThat(outcome.get()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("pre-approved")));
+    var someResult = ToolResult.ok("late");
+    assertThatThrownBy(() -> desk.approve(TOKEN, someResult))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

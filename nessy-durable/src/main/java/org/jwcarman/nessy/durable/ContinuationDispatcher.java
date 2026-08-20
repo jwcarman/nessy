@@ -38,6 +38,10 @@ public final class ContinuationDispatcher {
     }
   }
 
+  /**
+   * A handler throw here leaves the token retired and the slot terminal — the lazy re-drive floor
+   * (plan decision 3) covers delivery; the Plan-5 outbox is the prompt-delivery upgrade.
+   */
   public void fire(List<Continuation> continuations, Outcome outcome) {
     Objects.requireNonNull(continuations, "continuations must not be null");
     Objects.requireNonNull(outcome, "outcome must not be null");

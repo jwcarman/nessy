@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.durable;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -74,6 +73,7 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
     }
   }
 
+  /** An unknown id returns empty rather than throwing — contrast {@link #continuationsOf}. */
   @Override
   public Optional<ComputationStatus> status(ComputationId id) {
     Objects.requireNonNull(id, "id must not be null");
@@ -86,11 +86,12 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
     }
   }
 
+  /** An unknown id throws {@link IllegalArgumentException} — contrast {@link #status}. */
   @Override
   public List<Continuation> continuationsOf(ComputationId id) {
     Slot slot = required(id);
     synchronized (slot) {
-      return List.copyOf(new ArrayList<>(slot.continuations));
+      return List.copyOf(slot.continuations);
     }
   }
 
