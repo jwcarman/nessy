@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.support;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.agent.AgentEvent;
+import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 
@@ -30,6 +31,8 @@ public final class RecordingObserver implements AgentObserver {
   private final List<AgentEvent> ignored = new ArrayList<>();
   private final List<Object> renderFailures = new ArrayList<>();
   private final List<AgentEvent> applyFailures = new ArrayList<>();
+  private final List<List<Effect>> reFires = new ArrayList<>();
+  private final List<Object> requeued = new ArrayList<>();
 
   @Override
   public void applied(AgentEvent event, Transition transition) {
@@ -51,6 +54,16 @@ public final class RecordingObserver implements AgentObserver {
     applyFailures.add(event);
   }
 
+  @Override
+  public void reFired(List<Effect> effects) {
+    reFires.add(effects);
+  }
+
+  @Override
+  public void observationRequeued(Object observation) {
+    requeued.add(observation);
+  }
+
   public List<Applied> applied() {
     return List.copyOf(applied);
   }
@@ -65,5 +78,13 @@ public final class RecordingObserver implements AgentObserver {
 
   public List<AgentEvent> applyFailures() {
     return List.copyOf(applyFailures);
+  }
+
+  public List<List<Effect>> reFires() {
+    return List.copyOf(reFires);
+  }
+
+  public List<Object> requeued() {
+    return List.copyOf(requeued);
   }
 }

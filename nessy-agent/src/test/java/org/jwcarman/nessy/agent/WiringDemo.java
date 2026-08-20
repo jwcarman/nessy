@@ -82,6 +82,12 @@ class WiringDemo {
 
           @Override
           public void applyFailed(AgentEvent e, RuntimeException x) {}
+
+          @Override
+          public void reFired(List<Effect> effects) {}
+
+          @Override
+          public void observationRequeued(Object observation) {}
         };
 
     // ---- the wiring: one record, ten slots ----
