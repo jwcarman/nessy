@@ -57,11 +57,17 @@
 >    version), never a fresh random id per attempt, so a recovery re-fire finds the existing slot
 >    and re-`await`s idempotently instead of double-submitting the work. Without this rule the
 >    sweep double-spends.
-> 5. **The consumer roster** this primitive serves: HITL approvals (the park desk is the first
->    consumer; the token is the completion capability), batch/async model calls (submit-once,
->    resume-not-redo), durable timers (a slot with only a deadline), **subagent callbacks** (the
->    child's terminal turn completes the parent's slot — answering the parked callback-desk
->    question from the store rework), and external jobs completing via webhook.
+> 5. **The migration mandate** (ruled 2026-08-20): everything deferrable migrates onto this
+>    primitive — it is the ONE substrate for all deferred work in Nessy, not one option among
+>    several. The roster, in landing order: HITL approvals (the park desk, first consumer —
+>    SHIPPED with Plan 4; the token is the completion capability), durable timers (a slot with
+>    only a deadline), batch/async model calls (submit-once, resume-not-redo), **subagent
+>    callbacks** (the child's terminal turn completes the parent's slot — answering the parked
+>    callback-desk question from the store rework), external jobs completing via webhook, and any
+>    future wait-shaped mechanism. New deferred-work machinery outside this primitive is a spec
+>    violation, not a design choice. The carve-out is principled, per ruling 1: work that is
+>    in-process and redo-safe stays on the recovery-retry path — "deferrable" means the completion
+>    comes from outside the process or the work must not be re-executed.
 >
 > **Removed** (ruled 2026-08-20): the Restate and Temporal backend sections and their comparison.
 > Workflow runtimes hosting the agent contradict the architecture (§29 as rewritten); provider
