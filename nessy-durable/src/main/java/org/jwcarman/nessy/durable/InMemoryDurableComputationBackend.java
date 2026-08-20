@@ -61,8 +61,11 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
 
   @Override
   public CompletionResult complete(ComputationId id, Outcome outcome) {
+    Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(outcome, "outcome must not be null");
-    Slot slot = required(id);
+    // Ruling 6: completion creates the slot when it must — an address may be handed out
+    // before the slot exists, and a fast completer who arrives first simply wins.
+    Slot slot = slots.computeIfAbsent(id, ignored -> new Slot());
     synchronized (slot) {
       if (slot.status != ComputationStatus.PENDING) {
         return CompletionResult.ALREADY_TERMINAL;

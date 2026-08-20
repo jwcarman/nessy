@@ -87,12 +87,9 @@ class InMemoryDurableComputationBackendTest {
   }
 
   @Test
-  void unknownIdsFailLoudly() {
+  void awaitOnAnUnknownIdFailsLoudlyButStatusIsJustEmpty() {
     var unknown = ComputationId.of("ghost");
-    var outcome = new Outcome.Failure("x");
     assertThatThrownBy(() -> backend.await(unknown, RESUME))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> backend.complete(unknown, outcome))
         .isInstanceOf(IllegalArgumentException.class);
     assertThat(backend.status(unknown)).isEmpty();
   }
@@ -114,6 +111,34 @@ class InMemoryDurableComputationBackendTest {
     }
     assertThat(results).isNotEmpty();
     assertThat(results.stream().filter(r -> r == CompletionResult.COMPLETED).count()).isEqualTo(1L);
+  }
+
+  @Test
+  void completingAnUnknownIdBirthsTheSlotAlreadyTerminal() {
+    var backend = new InMemoryDurableComputationBackend();
+    var id = ComputationId.of("tool:t:a:c9");
+    assertThat(backend.complete(id, new Outcome.Success("early")))
+        .isEqualTo(CompletionResult.COMPLETED);
+    assertThat(backend.status(id)).contains(ComputationStatus.SUCCEEDED);
+  }
+
+  @Test
+  void createAfterAnEarlyCompletionFindsTheSlotAndAwaitAnswersAlreadyCompleted() {
+    var backend = new InMemoryDurableComputationBackend();
+    var id = ComputationId.of("tool:t:a:c9");
+    backend.complete(id, new Outcome.Success("early"));
+    assertThat(backend.create(id).created()).isFalse();
+    assertThat(backend.await(id, new Continuation("T", "{}")))
+        .isEqualTo(new AwaitResult.AlreadyCompleted(new Outcome.Success("early")));
+  }
+
+  @Test
+  void anEarlyCompletionStillFlipsOnlyOnce() {
+    var backend = new InMemoryDurableComputationBackend();
+    var id = ComputationId.of("tool:t:a:c9");
+    backend.complete(id, new Outcome.Success("early"));
+    assertThat(backend.complete(id, new Outcome.Failure("late")))
+        .isEqualTo(CompletionResult.ALREADY_TERMINAL);
   }
 
   @Test

@@ -39,8 +39,10 @@ public interface DurableComputationBackend {
   AwaitResult await(ComputationId id, Continuation continuation);
 
   /**
-   * One flip (durable spec §10, §23): the first completion wins; every later attempt returns {@link
-   * CompletionResult#ALREADY_TERMINAL} and changes nothing.
+   * One flip (durable spec §10, §23, ruling 6): the first completion wins; every later attempt
+   * returns {@link CompletionResult#ALREADY_TERMINAL} and changes nothing. An unknown id is created
+   * already terminal — the deterministic address may travel before the slot exists, and the {@code
+   * AlreadyCompleted} arm of {@link #await} absorbs completed-before-create.
    */
   CompletionResult complete(ComputationId id, Outcome outcome);
 
