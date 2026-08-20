@@ -620,7 +620,14 @@ park desk belongs where nobody waits; the autonomous host's wiring carries it, a
 definition runs in both. The cost, stated: rendezvous approval is **node-sticky** — the approve
 click must reach the node holding the blocked virtual thread. Sticky sessions provide that, and
 the rendezvous timeout bounds the miss; a deployment that cannot route stickily should not choose
-rendezvous wiring.
+rendezvous wiring. A node dying mid-rendezvous loses only the **question**: nothing durable exists
+(no desk entry, no token), the pre-dispatch save left the phase as the recovery anchor, and the
+user's retry re-fires the call — the gate simply asks again. A stale approve click for the dead
+prompt is refused loudly. Being re-askable is rendezvous's licensed failure mode — the human is
+present to re-answer — and it is the true dividing line from the desk, which never re-asks because
+its audience may be gone. Approval does not weaken at-least-once: an approved tool that executed
+before the crash may execute again on re-approval, and makes itself idempotent like every other
+tool (§6).
 
 **Parks expire as desk metadata, not as machinery.** Each entry carries `expires_at`, set at park
 time from configuration or a per-tool hint. An expired park resolves as the tool *failing slowly*:
