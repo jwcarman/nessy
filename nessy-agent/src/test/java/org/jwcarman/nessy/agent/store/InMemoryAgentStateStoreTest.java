@@ -18,6 +18,9 @@ package org.jwcarman.nessy.agent.store;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -26,6 +29,7 @@ import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
+import org.jwcarman.nessy.agent.support.TestClock;
 
 class InMemoryAgentStateStoreTest {
 
@@ -74,5 +78,23 @@ class InMemoryAgentStateStoreTest {
     assertThat(outcomes).isNotEmpty();
     assertThat(outcomes.stream().filter(Boolean::booleanValue).count()).isEqualTo(1L);
     assertThat(store.load().version()).isEqualTo(1L);
+  }
+
+  @Test
+  void aFreshScopeReportsItsBirthAsLastSaved() {
+    var clock = Clock.fixed(Instant.parse("2026-08-20T12:00:00Z"), ZoneOffset.UTC);
+    var store = new InMemoryAgentStateStore(clock);
+    assertThat(store.lastSaved()).isEqualTo(Instant.parse("2026-08-20T12:00:00Z"));
+  }
+
+  @Test
+  void aSaveStampsTheClocksNow() {
+    var birth = Instant.parse("2026-08-20T12:00:00Z");
+    var later = Instant.parse("2026-08-20T12:05:00Z");
+    var clock = new TestClock(birth);
+    var store = new InMemoryAgentStateStore(clock);
+    clock.set(later);
+    store.save(new State(new Phase.AwaitingModel(), 0L));
+    assertThat(store.lastSaved()).isEqualTo(later);
   }
 }

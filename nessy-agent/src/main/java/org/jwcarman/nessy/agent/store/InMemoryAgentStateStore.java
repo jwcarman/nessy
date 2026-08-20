@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.agent.store;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.agent.State;
@@ -25,11 +27,28 @@ import org.jwcarman.nessy.agent.State;
  */
 public final class InMemoryAgentStateStore implements AgentStateStore {
 
-  private final AtomicReference<State> current = new AtomicReference<>(State.initial());
+  private record Entry(State state, Instant savedAt) {}
+
+  private final Clock clock;
+  private final AtomicReference<Entry> current;
+
+  public InMemoryAgentStateStore() {
+    this(Clock.systemUTC());
+  }
+
+  public InMemoryAgentStateStore(Clock clock) {
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.current = new AtomicReference<>(new Entry(State.initial(), clock.instant()));
+  }
 
   @Override
   public State load() {
-    return current.get();
+    return current.get().state();
+  }
+
+  @Override
+  public Instant lastSaved() {
+    return current.get().savedAt();
   }
 
   @Override
@@ -37,11 +56,11 @@ public final class InMemoryAgentStateStore implements AgentStateStore {
     Objects.requireNonNull(state, "state must not be null");
     State next = new State(state.phase(), state.version() + 1);
     while (true) {
-      State stored = current.get();
-      if (stored.version() != state.version()) {
-        throw new StaleStateException(state.version(), stored.version());
+      Entry stored = current.get();
+      if (stored.state().version() != state.version()) {
+        throw new StaleStateException(state.version(), stored.state().version());
       }
-      if (current.compareAndSet(stored, next)) {
+      if (current.compareAndSet(stored, new Entry(next, clock.instant()))) {
         return;
       }
     }

@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.store;
 
+import java.time.Instant;
 import org.jwcarman.nessy.agent.State;
 
 /**
@@ -33,4 +34,10 @@ public interface AgentStateStore {
    * passes the state it loaded — it never computes the next version (spec §3.4).
    */
   void save(State state);
+
+  /**
+   * The instant of the most recent successful {@link #save}; a fresh scope reports its construction
+   * instant. Staleness — a dead effect versus a slow one — is read from here (§6.1).
+   */
+  Instant lastSaved();
 }
