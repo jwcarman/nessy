@@ -27,6 +27,7 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.conversation.ConversationId;
+import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -78,17 +79,26 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private <T> ToolResult invoke(Tool<T> tool, ToolCall call) {
     T input = mapper.convertValue(call.arguments(), tool.inputType());
-    ToolContext context =
-        new ToolContext(
-            bridgedId,
-            call,
-            event -> turn.on(new TurnEvent.ToolCallProgressed(call, String.valueOf(event))));
+    ToolContext context = new ToolContext(bridgedId, call, event -> narrateProgress(call, event));
     return switch (tool.execute(input, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> value;
       case Awaited.Parked<ToolResult> ignored ->
           throw new IllegalStateException(
               "parking is unavailable in this wiring; the desk arrives with the autonomous host");
     };
+  }
+
+  /**
+   * A {@link ToolContext}'s own {@code progress} emits a {@link ToolProgress} record; that is the
+   * one shape worth reading a message out of. Anything else falls back to {@code
+   * String.valueOf(event)} rather than being dropped.
+   */
+  private void narrateProgress(ToolCall call, Object event) {
+    String message =
+        event instanceof ToolProgress(var _, var _, String progressMessage)
+            ? progressMessage
+            : String.valueOf(event);
+    turn.on(new TurnEvent.ToolCallProgressed(call, message));
   }
 
   private ToolOutcome failed(ToolCall call, String message) {

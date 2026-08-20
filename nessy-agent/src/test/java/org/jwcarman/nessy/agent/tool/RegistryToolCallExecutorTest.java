@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 
 class RegistryToolCallExecutorTest {
 
@@ -93,21 +94,22 @@ class RegistryToolCallExecutorTest {
   }
 
   @Test
-  void a_known_tool_executes_and_returns() {
+  void aKnownToolExecutesAndReturns() {
     var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
     var finished = run(ToolRegistry.of(new EchoTool()), call, new RecordingTurnObserver());
     assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("echo: hi")));
   }
 
   @Test
-  void an_unknown_tool_fails_in_band() {
+  void anUnknownToolFailsInBand() {
     var call = new ToolCall("c1", "nope", JsonNodeFactory.instance.objectNode());
     var finished = run(ToolRegistry.of(new EchoTool()), call, new RecordingTurnObserver());
-    assertThat(finished.outcome()).isInstanceOf(ToolOutcome.Failed.class);
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).contains("unknown tool").contains("nope");
   }
 
   @Test
-  void a_parking_tool_fails_loudly_in_this_wiring() {
+  void aParkingToolFailsLoudlyInThisWiring() {
     var call =
         new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
     var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
@@ -116,7 +118,7 @@ class RegistryToolCallExecutorTest {
   }
 
   @Test
-  void a_throwing_tool_fails_in_band_instead_of_escaping() {
+  void aThrowingToolFailsInBandInsteadOfEscaping() {
     var boom =
         new Tool<EchoInput>() {
           @Override
@@ -143,5 +145,37 @@ class RegistryToolCallExecutorTest {
     var finished = run(ToolRegistry.of(boom), call, new RecordingTurnObserver());
     var failed = (ToolOutcome.Failed) finished.outcome();
     assertThat(failed.error().message()).contains("kaboom");
+  }
+
+  static final class ProgressTool implements Tool<EchoInput> {
+    @Override
+    public String name() {
+      return "progress_me";
+    }
+
+    @Override
+    public String description() {
+      return "reports progress once";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      context.progress("halfway");
+      return Awaited.ready(ToolResult.ok("done"));
+    }
+  }
+
+  @Test
+  void aRunningToolsProgressNarratesAsToolCallProgressedWithItsOwnMessage() {
+    var call =
+        new ToolCall("c1", "progress_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var turn = new RecordingTurnObserver();
+    run(ToolRegistry.of(new ProgressTool()), call, turn);
+    assertThat(turn.events()).contains(new TurnEvent.ToolCallProgressed(call, "halfway"));
   }
 }
