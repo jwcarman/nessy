@@ -69,6 +69,25 @@
 >    in-process and redo-safe stays on the recovery-retry path — "deferrable" means the completion
 >    comes from outside the process or the work must not be re-executed.
 >
+> 6. **Completion creates the slot when it must** (ruled 2026-08-20, second wave): `complete()`
+>    on an id no slot exists under births the slot already terminal — one flip, at birth. This
+>    closes the advertise-before-create race: a caller may hand out a deterministic address
+>    *before* the slot is created (a tool telling an external system where to answer), and a fast
+>    completer who arrives first simply wins; the later `create` returns `created=false` and
+>    `await` answers `AlreadyCompleted` — the existing arm, now also covering
+>    completed-before-create. `await` on an unknown id remains an error: awaiting implies the
+>    submit-once discipline ran.
+> 7. **Two axes decide the arm, not one** (ruled 2026-08-20, second wave): (a) does completion
+>    arrive in-process or out-of-band, and (b) is redo safe? A slot is *needed* only for
+>    out-of-band completion; recovery-retry is *allowed* only for redo-safe work. Streaming model
+>    calls are in-process and redo-safe (a redo costs tokens; the phase's single-completion
+>    commit plus the version CAS make it idempotent at the commit point) — they never get a slot.
+>    Batch model calls are redo-safe but out-of-band — they get a slot purely for the wait, with
+>    identity anchored in the `AwaitingModel` phase (persisted commit-before-dispatch, so
+>    re-drives re-read the same id); they arrive with the batch executor, not before. Approvals
+>    are out-of-band AND redo-hostile — slot, for both reasons. Tools vary per tool, which is why
+>    tools alone carry a runtime seam (`Awaited`).
+>
 > **Removed** (ruled 2026-08-20): the Restate and Temporal backend sections and their comparison.
 > Workflow runtimes hosting the agent contradict the architecture (§29 as rewritten); provider
 > backends beyond SQL are future work with no binding text here.

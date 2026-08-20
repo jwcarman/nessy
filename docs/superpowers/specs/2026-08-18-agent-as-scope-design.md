@@ -700,6 +700,43 @@ for an approval UI. One recipient, chosen by the application at configuration ti
 live capabilities in front of every observer — including `logging()`, which would write them into
 application logs.
 
+**Amendment (2026-08-20, second wave — approval is a fact in the backend).** The paragraphs
+above predate the durable-computation reconciliation; where they speak of tokens and a token map,
+the companion spec's rulings govern: the address is the deterministic `ComputationId`, and there
+is no token. This amendment binds the approval mechanics onto the primitive:
+
+- **Two slots per call, by kind.** One tool call can pose two durable questions over its lifetime,
+  and each gets its own deterministic address: `approval:{agentType}:{agentId}:{callId}` ("may it
+  run?") and `tool:{agentType}:{agentId}:{callId}` ("what did it return?"). The kind prefix is
+  part of the address, so approving a call and then having the tool itself defer never collide.
+- **The gate resolves `RequireApproval` against the slot.** The policy stays pure and speaks the
+  same verdict on every evaluation (§4.2); the *decision* is adjudication, not judgment, and it
+  lives in the backend — the slot is the fact, and the backend is the state. On
+  `RequireApproval` the gate consults the approval slot: absent → create, register a re-drive
+  continuation, hand the approval request to the configured handler (one recipient, point-to-point
+  — the paragraph above already rules this; it now carries the slot id as the capability), and
+  suspend (nothing delivered, nothing narrated). Pending → re-`await` (idempotent) and suspend.
+  Terminal `Success(Decision.Allow)` → execute the tool in the one place tools execute. Terminal
+  `Success(Decision.Deny(reason))` → deliver the denial in-band as an ordinary failed outcome so
+  the model reads it and reacts. The approval slot completes with a `Decision` — answering "no"
+  is a *successful* adjudication; `Failure` is reserved for the asking machinery breaking, and
+  `Cancelled` for expiry when it lands.
+- **Resumption is a re-drive, not a payload.** The approval continuation (`REDRIVE_SCOPE`)
+  carries only the scope coordinate: on fire, the host re-dispatches the phase's outstanding
+  effects unconditionally (staleness does not gate a decided approval). The re-fired call meets
+  the gate again, finds the decision, and proceeds — at-least-once, same semantics as recovery.
+  `RESUME_SCOPE` (a tool-result payload delivered to the scope) and `REDRIVE_SCOPE` (a poke)
+  stay two continuation types because they are two intents.
+- **Two desks, two intents.** `ApprovalDesk.approve(id)` / `deny(id, reason)` complete *approval*
+  slots with a `Decision`; a separate completion door completes *tool* slots with a `ToolResult`
+  (what the Plan-4 desk actually did). One desk answering both questions with one vocabulary was
+  the conflation.
+- **The `Approver` seam mirrors the deferral seam.** `RequireApproval` routes to a wiring-chosen
+  `Approver` whose adjudication is `Granted`, `Refused(reason)`, or `Suspended(slot)`. The
+  default, like the deferral default, refuses loudly in-band — approval is a capability of the
+  wiring, not a right of every deployment. The rendezvous approver (interactive wirings, above)
+  and the slot-backed approver (autonomous host) are two implementations of this one seam.
+
 ### 4.4 Subagents need no core support
 
 A subagent is a tool that resolves a child agent, drives it, and returns its terminal message as
@@ -1110,11 +1147,31 @@ reasonable.
 | Never bypass the backlog      | ordering jumped, coalescing denied, a second path to a phase    |
 | `CallModel` carries no context | two paths for content to reach the model, free to disagree     |
 
+### 10.9 The call's addresses are stamped, not discovered
+
+Ruled 2026-08-20 (second wave). A tool that defers may need to tell an external system where to
+answer, but it can neither mint an identity (deterministic ids derive from scope it does not
+have) nor be told one after the fact. So the executor — the one party that provably holds the
+scope — stamps a `CallAddress` (`agentType`, `agentId`, `callId`, as plain strings) onto the
+`ToolContext` before the tool runs, and the address owns the two derivations
+(`approval:`/`tool:` → `ComputationId`) as the single derivation site. This lives on
+`ToolContext`, not on the `ToolCall` record: the record is the model's utterance — serialized
+into phases and continuations where scope is redundant and re-derivable — while the context is
+the executor's grant to the tool, which is exactly the §10.7 principle: a capability is handed
+by a party that provably holds its target. Determinism makes the stamp free everywhere: a
+non-durable wiring stamps the same address and simply never materializes a slot under it, and a
+re-executed tool (at-least-once) hands the identical address to the external side, which may
+dedup on it.
+
 ## 11. Open questions
 
-0. **Backlog backpressure for the autonomous host** — the backlog is an unbounded mailbox with no
-   rejection vocabulary; coalescing bounds turn size, not queue depth. Decide before the
-   autonomous host ships (raised at Plan 3's final review).
+0. ~~Backlog backpressure for the autonomous host~~ — **closed** (ruled 2026-08-20): the
+   rejection vocabulary is the exception. The autonomous host's default in-memory backlog is
+   bounded (configurable capacity); `add` beyond capacity throws `IllegalStateException`, which
+   surfaces at the door that tried to deliver — the caller decides whether to retry, shed, or
+   propagate, because backpressure policy belongs to the transport, not the mailbox. `Backlog`
+   stays an SPI; a smarter implementation (coalescing, priority, persistent queue) replaces the
+   default without new vocabulary.
 1. **`Transition` ergonomics** — the three-field shape is settled (§2.5), but the builder surface
    (`to`/`commit`/`emit`/`ignore`) is a sketch and wants one pass for readability.
 2. ~~Duplicate summarisation across nodes~~ — **closed**: the claim-write in the summary store is
