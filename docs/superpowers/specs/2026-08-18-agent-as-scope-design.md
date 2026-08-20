@@ -36,9 +36,19 @@ worse than the property they protected (§10.1).
 
 ### 1.1 Identity, binding, host
 
-An agent instance is a **definition** (system prompt, tools, model) bound to an **`AgentId`**. The
-id is the scope. Memory, state, and backlog are all scoped by it, and nothing in the core ever
-takes it as a parameter — the instance *is* the scope (§3.5).
+An agent instance is an **`AgentType`** — the recipe: system prompt, tools, model, wiring — bound
+to an **`AgentId`**. The id is the scope: memory, state, and backlog are scoped by it, and nothing
+in the core ever takes it as a parameter — the instance *is* the scope (§3.5).
+
+**The type is code; the id is data** (ruled 2026-08-20, closing §11's question). The recipe lives
+in the deployment artifact — every node running the same build can rebuild the instance; the id
+lives in stores and durable addresses. "Attach an agent to an id from anywhere" works because any
+node already has one half and is handed the other. Consequently **every durable address carries
+the pair `(type, id)`, never the id alone** — a desk entry or a sweep row naming only `tenant-42`
+cannot be rebuilt in a process hosting three types. The builders (§7.1) make the pair cheap: each
+built host is one type's front door with type-fixed factories, so `bind(id)` inside a host is
+unambiguous, and a small type registry (name → host) routes desk deliveries and subagent
+resolution across types.
 
 Two orthogonal axes cover every deployment shape:
 
@@ -1069,8 +1079,9 @@ reasonable.
    `Observed` re-adds to the backlog (§3.4); duplicates die by stale-discard and `ToolCallId` dedup.
 5. ~~`AgentStateStore` payload format~~ — **closed** (ruled 2026-08-20): JSON with a type
    discriminator on the phase; unknown discriminators fail loudly (§2.3).
-6. **Definition name vs `AgentId`** — an instance is a definition bound to an id. Subagent stamping
-   and routing want the definition's name. Confirm they stay two things.
+6. ~~Definition name vs `AgentId`~~ — **closed** (ruled 2026-08-20): they stay two things —
+   `AgentType` is the recipe, code-resident and rebuildable anywhere; `AgentId` is the scope, pure
+   data; durable addresses carry the pair (§1.1).
 7. ~~Recovery sweep~~ — **closed**: recovery is `drive()`'s second arm, effects re-derive from the
    phase, and the scheduled sweep exists only in the autonomous host (§6.1).
 8. **Migration or replacement** — §9 deletes most of the public API and both stores. Whether this
