@@ -18,24 +18,11 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.time.Clock;
-import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.spi.LatentSink;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
-import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
-import org.jwcarman.nessy.agent.support.RecordingMemory;
-import org.jwcarman.nessy.agent.support.RecordingObserver;
-import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
-import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -51,56 +38,9 @@ class DefaultAgentApplyTest {
   private static final ToolCall CALL_B =
       new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
 
-  /** One fully-wired agent on a pump; the fixture is the test's vocabulary. */
-  static final class Fixture {
-    final PumpedExecutor pump = new PumpedExecutor();
-    final LatentSink sink = new LatentSink();
-    final RecordingMemory memory = new RecordingMemory();
-    final RecordingObserver observer = new RecordingObserver();
-    final ScriptedModelExecutor model = new ScriptedModelExecutor(pump, sink, memory);
-    final ScriptedToolExecutor tools = new ScriptedToolExecutor(pump, sink);
-    final Deque<String> backlogQueue = new ArrayDeque<>();
-    final Backlog<String> backlog =
-        new Backlog<>() {
-          @Override
-          public void add(String observation) {
-            backlogQueue.add(observation);
-          }
-
-          @Override
-          public Optional<String> poll() {
-            return Optional.ofNullable(backlogQueue.poll());
-          }
-        };
-    final AgentStateStore store;
-    final DefaultAgent<String> agent;
-
-    Fixture(AgentStateStore store, boolean drainOnIdle) {
-      this.store = store;
-      this.agent =
-          new DefaultAgent<>(
-              new AgentWiring<>(
-                  memory,
-                  store,
-                  backlog,
-                  text -> List.of(new TextBlock(text)),
-                  model,
-                  tools,
-                  observer,
-                  drainOnIdle,
-                  Duration.ofMinutes(5),
-                  Clock.systemUTC()));
-      sink.bind(agent::deliver);
-    }
-
-    Fixture() {
-      this(new InMemoryAgentStateStore(), false);
-    }
-  }
-
   @Test
   void aFullTurnRunsObserveToIdle() {
-    var f = new Fixture();
+    var f = new AgentFixture();
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("hello back")), List.of()));
     f.agent.observe("hello");
     f.pump.pumpUntilQuiet();
@@ -114,7 +54,7 @@ class DefaultAgentApplyTest {
 
   @Test
   void theUserMessageIsInMemoryBeforeTheModelIsCalled() {
-    var f = new Fixture();
+    var f = new AgentFixture();
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     f.agent.observe("hello");
     f.pump.pumpUntilQuiet();
@@ -124,7 +64,7 @@ class DefaultAgentApplyTest {
 
   @Test
   void aFanOutCommitsTheWholeUnitExactlyOnce() {
-    var f = new Fixture();
+    var f = new AgentFixture();
     var turnBlocks =
         List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a"), new ToolUseBlock(CALL_B, null));
     f.model.enqueue(new ModelOutcome.Responded(turnBlocks, List.of(CALL_A, CALL_B)));
@@ -148,7 +88,7 @@ class DefaultAgentApplyTest {
 
   @Test
   void aDuplicateToolDeliveryIsIgnoredAndWritesNothing() {
-    var f = new Fixture();
+    var f = new AgentFixture();
     var turnBlocks = List.<ContentBlock>of(new ToolUseBlock(CALL_A, null));
     f.model.enqueue(new ModelOutcome.Responded(turnBlocks, List.of(CALL_A)));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("done")), List.of()));
@@ -165,7 +105,7 @@ class DefaultAgentApplyTest {
 
   @Test
   void aModelFailureEndsTheTurnQuietlyInBand() {
-    var f = new Fixture();
+    var f = new AgentFixture();
     f.model.enqueue(new ModelOutcome.Failed("overloaded"));
     f.agent.observe("hello");
     f.pump.pumpUntilQuiet();
@@ -188,7 +128,7 @@ class DefaultAgentApplyTest {
     var aFinished =
         new AgentEvent.ToolFinished(CALL_A, new ToolOutcome.Returned(ToolResult.ok("42")));
     var competitorState = new State(awaiting.handle(aFinished).next(), 1L);
-    var f = new Fixture(new RaceOnceStore(inner, competitorState), false);
+    var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("done")), List.of()));
     f.agent.deliver(
         new AgentEvent.ToolFinished(CALL_B, new ToolOutcome.Returned(ToolResult.ok("ok"))));
