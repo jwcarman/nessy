@@ -199,7 +199,7 @@ collaborator's facade, never by widening the grammar.
 grammar. Every effect is an *asynchronous request whose result returns as an event*; committing is
 synchronous, produces no event, and must **succeed before** any effect is dispatched. Modelling it
 as a list element would turn that ordering requirement into an implicit positional rule — the exact
-bug class this design keeps generating (§10.7) — and would force a `RememberFailed` event into a
+bug class this design keeps generating (§10.8) — and would force a `RememberFailed` event into a
 frozen grammar. A failed commit should abort the transition, which is what an exception does for
 free.
 
@@ -327,10 +327,10 @@ Two public methods — and the continuation door is deliberately not one of them
   at an idle boundary.
 - **`drive()`** — drain: while the phase is `Idle` and the backlog yields an observation, absorb
   one. `observe` ends by calling it, and the recovery sweep (§6.1) uses it on stalled scopes.
-- **Continuations** arrive through the `Sink` each executor receives **at construction** — a
-  reference to the implementation's private apply method. An executor reports back on its own
-  thread and the event applies immediately; serialization is the store's version CAS (§3.2), not a
-  queue.
+- **Continuations** arrive through the `Sink` the shell hands each executor **at dispatch** — a
+  reference to the implementation's private apply method, alive for exactly one dispatch. An
+  executor reports back on its own thread and the event applies immediately; serialization is the
+  store's version CAS (§3.2), not a queue.
 
 Keeping the sink off the interface is the same ruling as the park token (§4.3): a delivery door is
 a **capability**, handed point-to-point to the party that needs it, never published on a surface
@@ -446,10 +446,10 @@ otherwise invent two off-by-one conventions.
 
 ```java
 private void dispatch(Effect effect) {
-  // executors were handed this::apply as their Sink at construction; dispatch is effect → request
+  // the sink rides the dispatch: handed by the one party that provably holds its target
   switch (effect) {
-    case CallModel ignored          -> model.callModel();
-    case ExecuteTool(ToolCall call) -> tools.executeTool(call);
+    case CallModel ignored          -> model.callModel(this::deliver);
+    case ExecuteTool(ToolCall call) -> tools.executeTool(call, this::deliver);
   }
 }
 ```
@@ -547,26 +547,32 @@ in the autonomous host there is no caller present to see a propagated exception.
 ## 4. Executors — where every side effect lives
 
 ```java
-public interface ModelCallExecutor { void callModel(); }
-public interface ToolCallExecutor  { void executeTool(ToolCall call); }
+public interface ModelCallExecutor { void callModel(Sink sink); }
+public interface ToolCallExecutor  { void executeTool(ToolCall call, Sink sink); }
 
 @FunctionalInterface
-public interface Sink { void deliver(AgentEvent event); }   // handed to executors at construction
+public interface Sink { void deliver(AgentEvent event); }   // handed per dispatch, lives one dispatch
 ```
 
-Both are pre-scoped (§3.5), hold their `Sink` from construction (§3), and are asynchronous **by
-contract, not by convention**: they return immediately, and the `Sink` is never invoked on the
-stack that dispatched the effect (§3.2). An
+Both are pre-scoped (§3.5) and asynchronous **by contract, not by convention**: they return
+immediately, and the `Sink` is never invoked on the stack that dispatched the effect (§3.2). An
 executor wrapping a blocking client hands the call to a virtual thread and delivers from there.
 The shell's thread never blocks on a model or a tool, and delivery never recurses into the shell.
+
+**The sink is a dispatch parameter, not a constructor collaborator** (ruled 2026-08-20, reversing
+§10.8). A sink is handed only by a party that **provably holds its target**: the shell at dispatch
+(same-turn completions), the binder at re-bind (late completions, §4.3). Both are moments after
+the agent exists, so no holder, no late binding, and no construction cycle can occur — the
+capability's lifetime is exactly one dispatch, which is the address-lifetime rule below applied to
+the sink itself.
 
 An executor that must deliver days later persists whatever address it needs internally; the id is
 not a parameter on the way in.
 
 **A continuation returns to an address with the same lifetime as itself.** Sub-turn completions —
 a model call resolving in seconds, a tool in milliseconds — return to the `Sink`, which is not a
-registration but a reachability fact: the executor's reference is what keeps the turn's instance
-alive, so it cannot dangle. Anything that can outlive the turn — a park, a crash, a sweep — was
+registration but a reachability fact: the in-flight completion's closure over the sink is what
+keeps the turn's instance alive, so it cannot dangle. Anything that can outlive the turn — a park, a crash, a sweep — was
 never given the `Sink` as its address; it holds a durable one (a desk entry, the phase row) and
 re-enters by bind on whatever node it lands on (§4.3), where the fresh instance loads the same
 phase from the same store and scope-constant observers are the only correct ones, the original
@@ -670,10 +676,11 @@ need none of this: they never park, and the provider client's own timeout alread
 **Out-of-band delivery is another bind.** The `Sink` is a capability of an *instance* and dies with
 it; what survives is the **address** in the desk. A result arriving days later, on any node,
 resolves its token to `(AgentId, ToolCall)` and then enters exactly the way every trigger enters:
-the factory binds a fresh instance for the id — collaborators, observers, and `Sink` all wired at
-construction (§3.5) — and the newly bound executor delivers `ToolFinished` through the `Sink` it
-was born holding. Nothing persists a callback; the durable thing is an address, and address → live
-`Sink` is instance construction. The version CAS covers two triggers binding concurrently, and the
+the binder constructs a fresh instance for the id — collaborators and observers wired at
+construction (§3.5) — and, now provably holding the instance, hands the desk its door for this one
+delivery: the same point-to-point sink handoff as dispatch, performed at bind time (§4). Nothing
+persists a callback; the durable thing is an address, and address → live `Sink` is instance
+construction plus the binder's handoff. The version CAS covers two triggers binding concurrently, and the
 subagent's parent callback (§4.4) rides the same path.
 
 **The token is delivered, never broadcast.** A park token is a *capability* — whoever holds it can
@@ -1070,7 +1077,19 @@ machinery with a single `observed(AgentEvent, List<Effect>)` narration.
 silently deleted the streaming deltas, the tool lifecycle events, and the builder — working, tested
 code. Facts that drive phases and narration for humans are two vocabularies with two jobs (§8).
 
-### 10.7 Invariants that exist because this design keeps regenerating one bug
+### 10.7 The construction-held sink is reversed — the band-aid named it
+
+**Reversed:** the ruling that executors "hold their `Sink` from construction," made while taking
+the continuation door off the `Agent` interface.
+**Why:** it handed a dispatch-lifetime capability to an instance-lifetime holder *before the
+target existed* — violating §4's own address-lifetime rule — and the resulting construction cycle
+(executor needs sink, sink needs agent, agent needs executors) had to be bandaged with a mutable
+one-shot holder (`LatentSink`: bind-once, throws-if-early). The band-aid was the diagnosis: a sink
+must be handed only by a party that provably holds its target — the shell at dispatch, the binder
+at re-bind. The capability ruling itself survives untouched: `deliver` stays off the public
+interface, and the handoff stays point-to-point.
+
+### 10.8 Invariants that exist because this design keeps regenerating one bug
 
 Four separate defects in this design have been the same defect: **an implicit ordering rule, or a
 second path to do one job.** They are collected here because the next one will look just as
