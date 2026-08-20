@@ -48,7 +48,9 @@ public final class DefaultAgent<O> implements Agent<O> {
       return;
     }
     if (isStale()) {
-      state.phase().outstandingEffects().forEach(this::dispatch); // §6.1 — the re-fire arm
+      List<Effect> outstanding = state.phase().outstandingEffects();
+      wiring.observer().reFired(outstanding);
+      outstanding.forEach(this::dispatch); // §6.1 — the re-fire arm
     }
   }
 
@@ -117,6 +119,7 @@ public final class DefaultAgent<O> implements Agent<O> {
         applyOnce(state, new AgentEvent.Observed(content));
       } catch (StaleStateException e) {
         wiring.backlog().add(observation); // lost race → back to the backlog (§3.3)
+        wiring.observer().observationRequeued(observation);
       }
     }
   }

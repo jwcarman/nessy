@@ -15,7 +15,9 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
+import java.util.List;
 import org.jwcarman.nessy.agent.AgentEvent;
+import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.Transition;
 
 /**
@@ -39,6 +41,12 @@ public interface AgentObserver {
    */
   void applyFailed(AgentEvent event, RuntimeException error);
 
+  /** The recovery arm re-dispatched a stalled phase's outstanding effects (§6.1). */
+  void reFired(List<Effect> effects);
+
+  /** An observation lost the idle race and went back to the backlog (§3.3). */
+  void observationRequeued(Object observation);
+
   /** Accepts everything, tells no one. */
   static AgentObserver noop() {
     return new AgentObserver() {
@@ -53,6 +61,12 @@ public interface AgentObserver {
 
       @Override
       public void applyFailed(AgentEvent event, RuntimeException error) {}
+
+      @Override
+      public void reFired(List<Effect> effects) {}
+
+      @Override
+      public void observationRequeued(Object observation) {}
     };
   }
 }

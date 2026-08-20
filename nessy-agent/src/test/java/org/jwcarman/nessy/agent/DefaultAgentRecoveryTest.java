@@ -106,4 +106,15 @@ class DefaultAgentRecoveryTest {
     assertThat(f.backlogQueue).isEmpty();
     assertThat(f.model.callCount()).isEqualTo(1);
   }
+
+  @Test
+  void aReFireIsNarrated() {
+    var clock = new TestClock(T0);
+    var f = stalled(new Phase.AwaitingModel(), clock);
+    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
+    clock.advance(Duration.ofMinutes(6));
+    f.agent.drive();
+    f.pump.pumpUntilQuiet();
+    assertThat(f.observer.reFires()).containsExactly(List.of(new Effect.CallModel()));
+  }
 }

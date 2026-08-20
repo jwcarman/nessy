@@ -177,4 +177,14 @@ class DefaultAgentDrainTest {
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).isEmpty();
   }
+
+  @Test
+  void aRequeueIsNarrated() {
+    var inner = new InMemoryAgentStateStore();
+    var competitorState = new State(new Phase.AwaitingModel(), 0L);
+    var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
+    f.agent.observe("hello");
+    f.pump.pumpUntilQuiet();
+    assertThat(f.observer.requeued()).containsExactly("hello");
+  }
 }
