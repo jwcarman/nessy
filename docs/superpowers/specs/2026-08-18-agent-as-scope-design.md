@@ -1,7 +1,7 @@
 # Agent as Scope — phases, a thin shell, and memory that owns history
 
 **Date:** 2026-08-18
-**Status:** Design of record (proposed). Supersedes the `Agent`/`Conversation` split, the blocking
+**Status:** Design of record (accepted; §9 executed by the distillation plan, 2026-08-20). Supersedes the `Agent`/`Conversation` split, the blocking
 drive, and the park-as-state model in `2026-08-09-nessy-agent-harness-design-v2.md`.
 
 This design is not constrained by the current implementation. Where the existing code is in the
@@ -990,7 +990,7 @@ narration. Nothing goes in a phase.
 
 The metrics roster itself belongs to its own design. This spec declares the seams and stops.
 
-## 9. What is deleted
+## 9. What is deleted (executed 2026-08-20 — the distillation plan)
 
 | Deleted                                  | Because                                                       |
 | ---------------------------------------- | ------------------------------------------------------------- |

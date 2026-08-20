@@ -1,3 +1,7 @@
+> **Superseded** by `2026-08-18-agent-as-scope-design.md` (and its companion
+> `2026-08-20-durable-computation.md`); that spec's §9 deletion table was executed by the
+> distillation plan on 2026-08-20. Retained as history — do not implement from this document.
+
 # Nessy — An AI Agent Harness Framework for Java (v2)
 
 **Status:** approved design, revision 2
