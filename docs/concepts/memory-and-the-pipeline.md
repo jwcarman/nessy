@@ -1,6 +1,6 @@
 # Memory and the Pipeline
 
-**`Memory`** owns what a model call actually sees — the content jurisdiction. It is
+**`AgentMemory`** owns what a model call actually sees — the content jurisdiction. It is
 *told* every message-grade happening (the user message, the assistant message, and the
 batched tool-results message once the last pending call clears — a closed list of
 exactly three tellings), and it is *asked*: `Memory#recall(conversationId)` builds the
@@ -24,10 +24,10 @@ outright.
     `Memory#remember` must be idempotent. This is the same at-least-once posture
     documented on [The Durable Loop](durable-loop.md).
 
-## `PipelineMemory`: the only `Memory` Nessy ships
+## `PipelineMemory`: the only `AgentMemory` Nessy ships
 
 `Memory.pipeline(transcript)` is the one composition surface for transcript-backed
-memory, and `PipelineMemory` — its product — is the only `Memory` implementation Nessy
+memory, and `PipelineMemory` — its product — is the only `AgentMemory` implementation Nessy
 ships today. It remembers everything verbatim through a `Transcript` (an append-only,
 versioned, per-conversation message log); what `recall` builds from it is a two-part
 pipeline: **hydrate, then stages**.

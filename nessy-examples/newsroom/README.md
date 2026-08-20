@@ -31,7 +31,7 @@ exactly where it left off.
 Both agents resolve to the same fixed `SubjectId` and read from the same
 `Notebook` (spec §9's continuity ruling): a note the writer keeps is visible
 in the researcher's own context on its very next turn, and vice versa,
-because both agents' `Memory` pipelines carry the same
+because both agents' `AgentMemory` pipelines carry the same
 `NotebookTools.transformer` over the same notebook and resolver.
 
 **Fan-out here is sequential, not parallel** (spec §9): the writer waits on

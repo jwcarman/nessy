@@ -63,7 +63,7 @@ public interface ContextHydrator {
 }
 ```
 
-Two implementations ship, both extracted from code that already exists (the existing `Memory`
+Two implementations ship, both extracted from code that already exists (the existing `AgentMemory`
 classes keep their public faces and delegate to the extracted hydrators, so the logic lives
 exactly once):
 
@@ -164,7 +164,7 @@ explicit `optional(...)` wrapper.
 
 ### 2.4 The builder
 
-A static factory on `Memory`, beside `windowed`:
+A static factory on `AgentMemory`, beside `windowed`:
 
 ```java
 Memory memory = Memory.pipeline(transcript)                              // full hydration
@@ -176,7 +176,7 @@ Memory memory = Memory.pipeline(transcript)                              // full
     .build();
 ```
 
-- The type behind it is **`PipelineMemory`** — a public final `Memory` implementation in
+- The type behind it is **`PipelineMemory`** — a public final `AgentMemory` implementation in
   `spi.memory`, sibling to `TranscriptMemory` and `SummarizingMemory`, whose `recall` runs
   hydration then the stage list. Its builder is nested (`PipelineMemory.Builder`);
   `Memory.pipeline(Transcript)` is the shortcut that returns it. The transcript is the one
@@ -201,11 +201,11 @@ Memory memory = Memory.pipeline(transcript)                              // full
   the whole history, every time, behaviorally identical to `TranscriptMemory`. Every addition
   to the chain is strictly opt-in from there.
 
-**Ruling, re-affirmed (retention stays delegated):** the kernel knows only `Memory` —
+**Ruling, re-affirmed (retention stays delegated):** the kernel knows only `AgentMemory` —
 `remember`/`recall` is the whole retention contract, and nothing in the loop or the api
 references `Transcript` (the one kernel-adjacent mention is `AgentBuilder`'s no-memory
 default, which merely picks an implementation). `PipelineMemory` does not change that: it is
-one `Memory` implementation family that *chooses* transcript backing, declared in its own
+one `AgentMemory` implementation family that *chooses* transcript backing, declared in its own
 constructor; `ContextHydrator`'s `Transcript` parameter is that family's internal seam, not a
 kernel contract. A Memory that wants different retention implements the two-method interface
 directly and owes the pipeline nothing.
@@ -475,7 +475,7 @@ doubles, S5778/S5841 discipline, Awaitility over sleep.
 
 ## 10. Amendment (owner-ruled, 2026-08-15): one shipped Memory
 
-`PipelineMemory` becomes the **only** `Memory` implementation nessy ships. The `Memory`
+`PipelineMemory` becomes the **only** `AgentMemory` implementation nessy ships. The `AgentMemory`
 interface remains the SPI — bring-your-own retention is untouched — but the facades die:
 
 - **Delete `TranscriptMemory` and `SummarizingMemory`.** Post-extraction they are pure
@@ -485,7 +485,7 @@ interface remains the SPI — bring-your-own retention is untouched — but the 
   there. `SummarizingMemory`'s watermark/no-fencing class javadoc — the best prose in the
   package — migrates to `SummarizingHydrator`, where the mechanism it describes now lives.
 - **Delete `Memory.windowed(delegate, n)`.** Its transcript-backed use case is
-  `Memory.pipeline(transcript).keepRecent(n)`; a custom `Memory` clips inside its own
+  `Memory.pipeline(transcript).keepRecent(n)`; a custom `AgentMemory` clips inside its own
   implementation. One composition surface, not two.
 - **`AgentBuilder`'s no-memory default** becomes `Memory.pipeline(Transcript.inMemory()).build()`
   — behaviorally identical (same floor, same WARN story).
@@ -498,4 +498,4 @@ interface remains the SPI — bring-your-own retention is untouched — but the 
 
 Rationale: three public names for one concept is API clutter with a choice tax, and the
 pre-1.0 breaking window is open now (§5 shipped in it). The kernel's posture is unchanged:
-it knows only `Memory` (§2.4's retention ruling).
+it knows only `AgentMemory` (§2.4's retention ruling).

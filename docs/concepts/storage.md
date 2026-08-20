@@ -52,7 +52,7 @@ List<Entry> page(ConversationId id, long beforeVersion, int limit);
 `append` doesn't stutter: appending a message equal to the current last entry returns the
 existing entry instead of a duplicate — the at-least-once re-telling rule. The transcript
 stores raw tellings, open tails included: `Context` assembly, wire legality, and the
-open-tail trim are `Memory`'s border law, not the transcript's — an auditor sees what was
+open-tail trim are `AgentMemory`'s border law, not the transcript's — an auditor sees what was
 actually told. See [Memory and the Pipeline](memory-and-the-pipeline.md) for how a
 hydrator reads it.
 
@@ -160,7 +160,7 @@ Agent<String> agent =
 
 Restart survival needs three doors: `ConversationStore` keeps the control block and
 inbox; `Parks` keeps the registry a callback's token must translate back into a
-conversation and call; and the pipeline `Memory` over a durable `Transcript` keeps the
+conversation and call; and the pipeline `AgentMemory` over a durable `Transcript` keeps the
 message log — the same pipeline over `Transcript.inMemory()` dies with the JVM.
 
 In a Spring Boot application the wiring above is optional: add

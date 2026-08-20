@@ -5,8 +5,8 @@
 patient-researcher example, whose branch is archived at
 `patient-researcher-archive` and whose spec is retired as UNBUILT)
 **Builds on:** the Spring Boot starter (2026-08-13, shipped) and the durable
-kernel's `Memory` seam (2026-08-12, shipped) — this example is the starter's
-no-web dogfood and the first dogfood of a custom `Memory` implementation.
+kernel's `AgentMemory` seam (2026-08-12, shipped) — this example is the starter's
+no-web dogfood and the first dogfood of a custom `AgentMemory` implementation.
 
 ---
 
@@ -23,7 +23,7 @@ one example, each absent from the family today:
   recent rounds, so trend judgment ("third consecutive climb") is real
   conversation state at work, not a bolted-on history query,
 - **bounded memory** — the conversation runs indefinitely but its recalled
-  context cannot grow without bound: a windowing `Memory` implementation is
+  context cannot grow without bound: a windowing `AgentMemory` implementation is
   the first dogfood of the seam's "freedom of retention, rule of law at the
   border" promise.
 
@@ -74,7 +74,7 @@ Properties (the whole surface):
 
 ## 4. The bound — `WindowedMemory`
 
-An example-owned `Memory` implementation, the example's second lesson made
+An example-owned `AgentMemory` implementation, the example's second lesson made
 code:
 
 ```java

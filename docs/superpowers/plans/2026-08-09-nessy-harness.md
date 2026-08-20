@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reify the harness: `Nessy.harness()` (infrastructure) vs `harness.agent()` (identity), per-grant authority (`ToolGrant` + `UsagePolicy`), the `Memory` recall seam, and the context assembler with `Agent.contextFor`.
+**Goal:** Reify the harness: `Nessy.harness()` (infrastructure) vs `harness.agent()` (identity), per-grant authority (`ToolGrant` + `UsagePolicy`), the `AgentMemory` recall seam, and the context assembler with `Agent.contextFor`.
 
 **Architecture:** Spec of record: `docs/superpowers/specs/2026-08-09-nessy-agent-harness-design-v2.md` §1.1 (services), §8.4 (Harness; typed generics are OUT OF SCOPE — own design round), §10.5 (per-grant authority), §10.9 (Memory), §10.10 (assembler). All in `nessy-core` + `nessy-testing` + `nessy-examples` touch-ups.
 
@@ -96,7 +96,7 @@ public record ToolGrant(Tool<?> tool, UsagePolicy policy) {
 
 ---
 
-### Task 3: The `Memory` recall seam
+### Task 3: The `AgentMemory` recall seam
 
 **Files:**
 - Create: `spi/memory/Memory.java`, `api/event/RecallFailed.java` (hub record, sibling style to `CompactionFailed`)

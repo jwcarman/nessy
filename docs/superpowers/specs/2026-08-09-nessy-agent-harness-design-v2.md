@@ -1462,7 +1462,7 @@ listener, not a store.
 | The journal (§10.8, §17) | absent — a declared `MessageAppended` listener is opt-in | `nessy-store-cassandra` ships a `MessageAppended` listener class, not a store | any listener that follows the transcript |
 | `Summarizer` (§10.8) | `usingProvider(…)` — the agent's own model, no persona forwarded | cheap-model variant; extractive | remote services, custom |
 | `TokenEstimator` (§10.8) | `heuristic()` (chars / 4) | tokenizer-library adapter | provider count-tokens APIs |
-| `Memory` (§10.9) | `Memory.none()` | graph-backed recall | vector stores, custom retrieval |
+| `AgentMemory` (§10.9) | `Memory.none()` | graph-backed recall | vector stores, custom retrieval |
 
 ### 13.1 Classpath-upgradeable defaults (the Spring starter's defining feature)
 
@@ -1531,7 +1531,7 @@ the application's own explicit declaration. If none is declared, the starter's
    `DurableEngine` as planned. **Plan 6 delivered**, the remainder of the
    2026-08-09 design session's queue except its typed front door: the
    `Harness` reification (§8.4, minus the type parameter), per-grant
-   authority (§10.5), `Memory` (§10.9), and the context assembler plus
+   authority (§10.5), `AgentMemory` (§10.9), and the context assembler plus
    `Agent.contextFor` (§10.10) all shipped and are tested end to end. **The
    typed front door has since landed too** (`Agent<I>`/`Conversation<I>`,
    §8.4) — its own brainstorm-to-spec round settled the vocabulary/rendering
@@ -1608,7 +1608,7 @@ the application's own explicit declaration. If none is declared, the starter's
 | Per-message token accounting? (2026-08-09) | Models report per call only; `TokenEstimator` computes the message-level figure on demand, read-path only — the journal stores facts (`turnUsage`), never derivations (§10.8) |
 | What is a harness? (2026-08-09) | The model-independent runtime an agent runs inside, defined by its eight-service contract (§1.1); reified as the `Harness` object (§8.4) |
 | Where does authority attach? (2026-08-09; tightened 2026-08-10) | To the grant, exclusively — `ToolGrant.grant(tool, policy)` per agent-tool binding, policy mandatory; `Tool.requiresApproval()` is DELETED, so there is no tool-author default left to loosen or tighten (§10.5, §17 addendum) |
-| Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `Memory` is a sibling seam with its own best-effort failure policy (§10.9) |
+| Is memory a `ContextBuilder`? (2026-08-09) | No — projection is pure, recall is I/O; `AgentMemory` is a sibling seam with its own best-effort failure policy (§10.9) |
 | Are agents typed? (2026-08-09) | Yes, all of them — `Agent<I>` over an application-owned sealed vocabulary; `Agent<String>` degenerate; born pre-1.0; tools keep their own input types (§8.4) |
 | Whose spend does the ledger bill? (2026-08-10, supersedes 2026-08-09) | The loop's own — `TurnEnded` for conversational turns; auxiliary spend (compaction, tool-internal) is telemetry's jurisdiction; `Compacted` carries only the working set (§10.6) |
 | Is compaction pluggable? (2026-08-09; consolidated 2026-08-10) | Wholesale — `Compactor.requiresCompaction(state)` + `compact(state) → Result(workingSet)`; the compactor proposes, the reducer disposes; trigger/policy dissolved into `Compactors.summarizing`'s builder; `Summarizer` is its sub-seam (§10.6) |

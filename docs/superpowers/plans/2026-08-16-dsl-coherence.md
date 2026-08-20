@@ -80,7 +80,7 @@ public <T> Agent<T> agent(Class<T> inputType, AgentCustomizer<T> customizer); //
 (`TurnObserver.observe(TurnObserverCustomizer)` or closest natural factory — settle
 against the class and say which in the report), `PipelineMemory.java` (:142 public
 `build()` dies; `Memory.pipeline(transcript)` chain ends in a terminal that returns
-`Memory` — inventory the current chain shape first), `ScriptedModelProvider.java`
+`AgentMemory` — inventory the current chain shape first), `ScriptedModelProvider.java`
 (nessy-testing) + all their tests and in-repo call sites (chat-cli/scout/newsroom
 construction lines migrate here ONLY if trivial; else Task 3).
 

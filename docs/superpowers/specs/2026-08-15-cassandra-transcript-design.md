@@ -85,7 +85,7 @@ family the JDBC auto-config uses, and ordered
 **`before = JdbcPersistenceAutoConfiguration.class`** — its `Transcript`
 bean lands first, and the JDBC auto-config's own
 `@ConditionalOnMissingBean` `Transcript` backs off by the rule it already
-lives by. The JDBC `Memory` bean composes over whichever `Transcript`
+lives by. The JDBC `AgentMemory` bean composes over whichever `Transcript`
 won: that composition IS the polyglot story, and a context test proves it
 (DataSource + CqlSession both present → JDBC store/parks, Cassandra
 transcript, one Memory over it). `CqlSession` itself arrives from Boot's

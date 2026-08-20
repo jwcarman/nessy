@@ -72,7 +72,7 @@ renders as one prose line ("Signal for INC-7: water-main — corner of
 - The example's own nessy config: ONE bean, the agent
   (`claude-sonnet-4-5`, dispatcher standing orders, the tool granted
   `UsagePolicy.allow()`, `onToolProgressAsync` logging listener,
-  starter-supplied `Memory`).
+  starter-supplied `AgentMemory`).
 - Endpoints (one controller each or one small controller — implementer's
   call, prose over ceremony):
   - `POST /signals` → validate body (incidentId, kind, detail all

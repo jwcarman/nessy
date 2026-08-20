@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Retire `TranscriptMemory`, `SummarizingMemory`, and `Memory.windowed` so `PipelineMemory` is the only shipped `Memory` implementation.
+**Goal:** Retire `TranscriptMemory`, `SummarizingMemory`, and `Memory.windowed` so `PipelineMemory` is the only shipped `AgentMemory` implementation.
 
 **Architecture:** Pure consolidation — no logic moves, only facades die. The hydrators already carry all behavior; every caller re-expresses itself through `Memory.pipeline(...)`.
 
@@ -28,7 +28,7 @@
 - Delete-after-folding: `TranscriptMemoryTest.java`, `SummarizingMemoryTest.java`, `MemoryWindowedTest.java` — first diff each against `ContextHydratorTest`/`PipelineMemoryTest` coverage; move any un-covered assertion (expected: SummarizingMemory's fold-behavior cases largely already re-covered via hydrator tests — verify case by case, list the disposition of EVERY test method in the report)
 - Docs: root `README.md` (memory story → one implementation), `CHANGELOG.md` (Unreleased: Removed entries for the three names + Changed for the default), `nessy-examples/night-watchman/README.md` (window wording)
 
-**Interfaces produced:** none new — `spi.memory` afterwards contains exactly: `Memory`, `PipelineMemory`, `ContextHydrator`, `ContextTransformer`, `OptionalTransformer` (pkg-private), `SummarizingHydrator` (pkg-private), `SummaryStore`, `InMemorySummaryStore` (pkg-private).
+**Interfaces produced:** none new — `spi.memory` afterwards contains exactly: `AgentMemory`, `PipelineMemory`, `ContextHydrator`, `ContextTransformer`, `OptionalTransformer` (pkg-private), `SummarizingHydrator` (pkg-private), `SummaryStore`, `InMemorySummaryStore` (pkg-private).
 
 - [ ] **Step 1:** Grep-audit every reference (`TranscriptMemory|SummarizingMemory|Memory\.windowed|windowed\(`) and write the disposition list into your report BEFORE editing.
 - [ ] **Step 2:** Migrate the javadoc (SummarizingMemory → SummarizingHydrator), then delete the two classes and `Memory.windowed`, then fix every caller per the file list.

@@ -159,7 +159,7 @@ Awaited<ConversationEvent> execute(…)   // one fact, or a park
   consumes the provider's `ModelEvent` stream (translating texture to the
   observer, accumulating the settled message), yields `ModelResponded` or
   `ModelCallFailed`. (Plan-level resolution: the implemented shape takes
-  `Memory` at construction rather than as a call parameter — one instance per
+  `AgentMemory` at construction rather than as a call parameter — one instance per
   agent, so the wire request and `contextFor` can never disagree about what
   Memory holds.)
 - `ToolCallExecutor.execute(call, state, observer)` — gate-then-invoke,

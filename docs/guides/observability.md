@@ -33,7 +33,7 @@ response settles.
     A memory pipeline's hydration and its stages — including the summarizing
     hydrator's own model call (see [Summarizing Memory](summarizing-memory.md))
     — run inside `recall`, and none of that is observed today. The three
-    spans above cover the loop's phases, not what a `Memory` implementation
+    spans above cover the loop's phases, not what a `AgentMemory` implementation
     does internally to build a `Context`. A summarizing pipeline's fold call
     genuinely spends tokens against the configured model, and that spend is
     currently invisible to the observation registry — it's on the roadmap,

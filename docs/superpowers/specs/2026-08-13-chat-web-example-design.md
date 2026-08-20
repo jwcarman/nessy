@@ -20,7 +20,7 @@ and the demo script (§7) runs end to end — including surviving a kill.
 
 Restart survival requires durable *Memory*, not just durable state: the
 Postgres store preserves the control block (status, agenda, parks, debt), but
-the transcript lives behind the `Memory` seam, and `ListMemory` dies with the
+the transcript lives behind the `AgentMemory` seam, and `ListMemory` dies with the
 JVM. Every real durable deployment needs this, so it lands in the framework:
 
 - **`JdbcMemory`** in `nessy-store-jdbc` (`org.jwcarman.nessy.store.jdbc`),
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS nessy_memory (
 ```
 
 - `remember(id, message)`: append with the next `seq`, applying the
-  at-least-once idempotency rule the `Memory` contract requires — skip when
+  at-least-once idempotency rule the `AgentMemory` contract requires — skip when
   `message` equals the row with the highest `seq` for that conversation
   (`ListMemory`'s consecutive-duplicate rule, in SQL). Insert and dup-check in
   one transaction.

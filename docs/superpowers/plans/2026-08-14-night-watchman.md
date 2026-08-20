@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A long-lived Spring Boot example (`nessy-examples/night-watchman`) exhibiting the time-triggered agent pattern: a `@Scheduled(cron = …)` firing initiates each turn of ONE continuous conversation, whose recalled context is hard-bounded by a windowing `Memory`.
+**Goal:** A long-lived Spring Boot example (`nessy-examples/night-watchman`) exhibiting the time-triggered agent pattern: a `@Scheduled(cron = …)` firing initiates each turn of ONE continuous conversation, whose recalled context is hard-bounded by a windowing `AgentMemory`.
 
-**Architecture:** `@EnableScheduling` keeps the JVM alive; each firing tells the same conversation "It is HH:mm — do your rounds." The agent reads drifting synthetic vitals via `check_vitals`, judges trends against its standing orders, and either reports all-quiet or calls `raise_alarm`. `WindowedMemory` (delegate `ListMemory`, recall `keepRecent(window)`) is the first custom-`Memory` dogfood. No web, no JDBC, no Docker anywhere — the starter's in-memory defaults carry everything, and the whole test suite runs in the offline default build.
+**Architecture:** `@EnableScheduling` keeps the JVM alive; each firing tells the same conversation "It is HH:mm — do your rounds." The agent reads drifting synthetic vitals via `check_vitals`, judges trends against its standing orders, and either reports all-quiet or calls `raise_alarm`. `WindowedMemory` (delegate `ListMemory`, recall `keepRecent(window)`) is the first custom-`AgentMemory` dogfood. No web, no JDBC, no Docker anywhere — the starter's in-memory defaults carry everything, and the whole test suite runs in the offline default build.
 
 **Tech Stack:** Java 25, Spring Boot 4.1.0 (plain `spring-boot-starter` + `spring-context` scheduling), `nessy-spring-boot-starter`, `nessy-model-anthropic`, scripted `ModelProvider` for tests (no Testcontainers).
 
@@ -352,7 +352,7 @@ git commit -m "feat: the engine room breathes — three gauges, one biased walk"
 - Test: `nessy-examples/night-watchman/src/test/java/org/jwcarman/nessy/examples/watchman/WindowedMemoryTest.java`
 
 **Interfaces:**
-- Consumes from nessy-core: `Memory` (`remember(ConversationId, Message)`, `recall(ConversationId)`), `ListMemory` (public no-arg constructor), `Context.keepRecent(int)` (pair-safe trim).
+- Consumes from nessy-core: `AgentMemory` (`remember(ConversationId, Message)`, `recall(ConversationId)`), `ListMemory` (public no-arg constructor), `Context.keepRecent(int)` (pair-safe trim).
 - Produces (Task 4 relies on it): `public final class WindowedMemory implements Memory`, constructor `WindowedMemory(int window)` (throws `IllegalArgumentException` if `window < 1`).
 
 - [ ] **Step 1: Write the failing test**
@@ -1057,7 +1057,7 @@ git commit -m "feat: the clock calls and the watchman answers — one conversati
 
 Match the repo's README register (first person of the project, precise, no filler — read the root README's Examples section and `nessy-examples/chat-web/README.md` first). Content requirements:
 
-- **What it demonstrates** (spec §1): the time-triggered agent pattern — the trigger event is the clock; wake → observe → judge → act or stay quiet; one continuous conversation across firings (trend judgment is conversation state at work); bounded recall via a custom `Memory`.
+- **What it demonstrates** (spec §1): the time-triggered agent pattern — the trigger event is the clock; wake → observe → judge → act or stay quiet; one continuous conversation across firings (trend judgment is conversation state at work); bounded recall via a custom `AgentMemory`.
 - **The story** (spec §2): the engine room, the three gauges, the biased bilge, the guaranteed arc in ~5–8 minutes at default cadence.
 - **Run it:** `ANTHROPIC_API_KEY=… ./mvnw -q -pl nessy-examples/night-watchman -am spring-boot:run` — then watch the log. No Docker, no database, nothing else. Ctrl-C ends the watch; the conversation honestly dies with the JVM (in-memory is the point).
 - **The two properties:** `watchman.cadence` (Spring cron, default each minute — show speeding it up: `-Dspring-boot.run.arguments=--watchman.cadence="*/15 * * * * *"`), `watchman.window` (default 40).
@@ -1066,11 +1066,11 @@ Match the repo's README register (first person of the project, precise, no fille
 
 - [ ] **Step 2: Update the root README's Examples section**
 
-The section currently opens "`nessy-examples` is a family of two runnable apps…". Make it three, adding **`night-watchman`** after the `chat-web` entry in the existing entries' exact format: the time-triggered agent — `@Scheduled` cron initiates each turn of one continuous conversation; a windowing `Memory` keeps endless rounds from growing the model call; the leanest example (no web, no database, no Docker). Link `nessy-examples/night-watchman/README.md`, show the one-line run command. State the matrix once: chat-cli (plain + interactive), chat-web (Boot web + HITL), night-watchman (Boot + scheduled autonomy).
+The section currently opens "`nessy-examples` is a family of two runnable apps…". Make it three, adding **`night-watchman`** after the `chat-web` entry in the existing entries' exact format: the time-triggered agent — `@Scheduled` cron initiates each turn of one continuous conversation; a windowing `AgentMemory` keeps endless rounds from growing the model call; the leanest example (no web, no database, no Docker). Link `nessy-examples/night-watchman/README.md`, show the one-line run command. State the matrix once: chat-cli (plain + interactive), chat-web (Boot web + HITL), night-watchman (Boot + scheduled autonomy).
 
 - [ ] **Step 3: Add the CHANGELOG entry**
 
-Append one top-level bullet at the END of the `### Added` section (before `### Breaking (pre-1.0)`), matching the existing entries' voice, roughly 20–35 lines: **`nessy-example-night-watchman` — the clock is the caller.** Sub-bullets: (1) the pattern — `@Scheduled(cron)` initiates each turn of ONE continuous conversation; trend judgment is conversation state at work; (2) `WindowedMemory`, the first custom-`Memory` dogfood — freedom of retention, `keepRecent` at the border, the recall bound that lets a conversation run forever; (3) the leanest example: in-memory substrate from the starter's defaults, whole suite offline, no Docker anywhere. Also note in one line that the patient-researcher spec retired UNBUILT (branch archived) and the examples matrix now reads chat-cli / chat-web / night-watchman.
+Append one top-level bullet at the END of the `### Added` section (before `### Breaking (pre-1.0)`), matching the existing entries' voice, roughly 20–35 lines: **`nessy-example-night-watchman` — the clock is the caller.** Sub-bullets: (1) the pattern — `@Scheduled(cron)` initiates each turn of ONE continuous conversation; trend judgment is conversation state at work; (2) `WindowedMemory`, the first custom-`AgentMemory` dogfood — freedom of retention, `keepRecent` at the border, the recall bound that lets a conversation run forever; (3) the leanest example: in-memory substrate from the starter's defaults, whole suite offline, no Docker anywhere. Also note in one line that the patient-researcher spec retired UNBUILT (branch archived) and the examples matrix now reads chat-cli / chat-web / night-watchman.
 
 - [ ] **Step 4: Full offline verify**
 

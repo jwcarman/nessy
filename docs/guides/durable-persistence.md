@@ -2,7 +2,7 @@
 
 Everything in [Getting Started](getting-started.md) dies with the JVM: the
 harness's defaults are `ConversationStore.inMemory()`, `Parks.inMemory()`,
-and a pipeline `Memory` over `Transcript.inMemory()`. `nessy-jdbc` replaces
+and a pipeline `AgentMemory` over `Transcript.inMemory()`. `nessy-jdbc` replaces
 all of that with a real database, over one `javax.sql.DataSource`, with no
 change to how an agent is built or told things.
 
@@ -35,7 +35,7 @@ Agent<String> agent =
 ```
 
 `persistence.memory()` is `Memory.pipeline(persistence.transcript())`
-— the durable `Memory`, verbatim retention over the same transcript
+— the durable `AgentMemory`, verbatim retention over the same transcript
 `JdbcPersistence` just bootstrapped. `.subagentLinks(...)` matters only for a
 harness with at least one `.subagent(...)` declared — the correlation a
 settled child's completion wakes its parent's own park against — but wiring
@@ -107,7 +107,7 @@ Three doors carry the whole story:
   durable inbox.
 - `Parks` keeps the registry a callback's token must translate back into a
   conversation and call.
-- The pipeline `Memory`, built over a durable `Transcript`, keeps the
+- The pipeline `AgentMemory`, built over a durable `Transcript`, keeps the
   message log — the same pipeline over `Transcript.inMemory()` dies with the
   JVM.
 
@@ -124,7 +124,7 @@ memory, plan store, notebook, subagent links, and intent store are all
 autoconfigured — the application declares one bean, the agent. `SummaryStore` is the
 exception: nothing in
 `nessy-autoconfigure` builds one, so a summarizing pipeline still needs an
-application-declared `Memory` bean over a hand-built
+application-declared `AgentMemory` bean over a hand-built
 `JdbcSummaryStore.create(dataSource)`. See [Spring Boot](spring-boot.md).
 
 ## Testing this module

@@ -18,7 +18,7 @@ This is the third consumer of `ContextTransformer` and the second member of the
 tool-writable, recall-injected family. Placement rulings carry over from the plan facility:
 core concept, zero dependencies, opt-in entirely at the composition line.
 
-Ratified namings: the jurisdiction is the **`Notebook`** (a `Memory`-adjacent name was
+Ratified namings: the jurisdiction is the **`Notebook`** (a `AgentMemory`-adjacent name was
 rejected — that word is taken by the recall subsystem); the model-facing verbs are
 **`remember` / `recall` / `forget`** (the protocol models are already trained on; the tool
 named `recall` shares only a word with `Memory.recall`, never a call path — a spec note, not

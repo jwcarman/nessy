@@ -22,7 +22,7 @@ callback door answering the world (`findPark`, `findParkConversation`,
 carries token bookkeeping its own logic never uses — the fold pairs by call
 id everywhere (`removeFirstMatchParked` matches `call.id()`); tokens ride
 along only so `save` can derive an index for a *different* caller. And the
-message log lives in a `Memory` implementation that is secretly a versioned
+message log lives in a `AgentMemory` implementation that is secretly a versioned
 table (`nessy_memory (conversation_id, seq, message)`) nobody can read for
 audit or pagination because it has no name.
 
@@ -278,7 +278,7 @@ an index on `conversation_id`.
   plus the summary store; `nessy-autoconfigure` grows `Parks` and
   `Transcript` beans under the same classpath-and-datasource rules as
   today's store/memory beans, each yielding to a user-declared bean; the
-  `Memory` bean becomes `TranscriptMemory` over the `JdbcTranscript`.
+  `AgentMemory` bean becomes `TranscriptMemory` over the `JdbcTranscript`.
   `NessyAutoConfiguration` passes the `Parks` bean into the harness.
 - The examples: chat-web recompiles against renamed types with no
   behavioral change; night-watchman's `WindowedMemory` delegates to
@@ -357,5 +357,5 @@ routing (unchanged, still a future spec).
    trim stays at Memory's border.
 7. The Transcript lives in `spi.memory`, not its own package — it is the
    memory jurisdiction's storage primitive, and the package should read as
-   one story: `Memory`, `Transcript`, `TranscriptMemory`, `SummaryStore`,
+   one story: `AgentMemory`, `Transcript`, `TranscriptMemory`, `SummaryStore`,
    `SummarizingMemory`.

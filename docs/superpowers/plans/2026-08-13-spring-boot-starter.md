@@ -100,7 +100,7 @@ class ProviderAutoConfigurationTest {
 
 **Interfaces:**
 - Consumes: `NessyProperties.jdbc` (Task 1), `JdbcPersistence.create(DataSource, ObjectMapper)` and the two public constructors `new JdbcConversationStore(ds, mapper)` / `new JdbcMemory(ds, mapper)` (bootstrap-free — READ both classes to confirm the constructors are public and skip DDL; if they are not public, widen nothing: call the factories and drop the `bootstrap-schema=false` distinction, noting it in your report and the property javadoc).
-- Produces: `ConversationStore` + `Memory` beans when `nessy-store-jdbc` and a `DataSource` bean are present; `nessy.jdbc.enabled=false` disables; user beans win.
+- Produces: `ConversationStore` + `AgentMemory` beans when `nessy-store-jdbc` and a `DataSource` bean are present; `nessy.jdbc.enabled=false` disables; user beans win.
 
 - [ ] **Step 1: failing tests.** Runner with `JdbcPersistenceAutoConfiguration` + a stub `DataSource` bean (the offline stub pattern from `JdbcPersistenceRecordTest` — construction never opens a connection when bootstrap is off; for the bootstrap-on default use `bootstrap-schema=false` in these context tests and leave real-DDL proof to chat-web's smoke):
   - `jdbc_on_the_classpath_with_a_datasource_yields_store_and_memory` (both beans present, `bootstrap-schema=false`);

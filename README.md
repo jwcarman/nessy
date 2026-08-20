@@ -83,7 +83,7 @@ returns — one rule, checked in one place, everywhere a harness gets built.
 `tell(I, TurnObserver)` narrates the model's prose and tool activity live as
 `TurnEvent`s and returns a `RunOutcome` — `Completed` or `Parked` — carrying
 the settled `ConversationState`. Every config default already works: in-memory
-conversation store, in-memory `Memory`, an allow-all approver (replace it
+conversation store, in-memory `AgentMemory`, an allow-all approver (replace it
 before you point real tools at anything), no-op observations. The smallest
 useful agent is a provider and a model name. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
@@ -215,7 +215,7 @@ A few seams the site doesn't have a dedicated page for yet: a cost/call
 budget (`TerminationPolicy`, the wallet guard against runaway loops), a
 `RetryingModelProvider` decorator for wrapping any `ModelProvider` with retry
 policy, and `AgentConfig#contextWindow(long)`, a declared-but-unconsumed
-token-budget dial reserved for a future token-aware `Memory`. All three exist
+token-budget dial reserved for a future token-aware `AgentMemory`. All three exist
 in `nessy-core` today; see the Javadoc until they get a home on the site.
 
 ## Examples

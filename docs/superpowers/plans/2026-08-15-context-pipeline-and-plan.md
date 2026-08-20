@@ -53,7 +53,7 @@
 
 - [ ] **Step 1: git mv the three files**, change `package` to `org.jwcarman.nessy.spi.transcript`.
 - [ ] **Step 2: Make `TranscriptTrim` public** — `public final class TranscriptTrim`, public static method(s), keep the private constructor; add one class-javadoc sentence: it is public because custom `ContextHydrator`s must discharge the open-tail border duty from outside the package (spec §2.1).
-- [ ] **Step 3: Rewrite all imports** (`grep -rl "spi\.memory\.Transcript\|spi\.memory\.InMemoryTranscript\|spi\.memory\.TranscriptTrim" --include="*.java" .` minus target). `SummaryStore` and the `Memory` implementations DO NOT move.
+- [ ] **Step 3: Rewrite all imports** (`grep -rl "spi\.memory\.Transcript\|spi\.memory\.InMemoryTranscript\|spi\.memory\.TranscriptTrim" --include="*.java" .` minus target). `SummaryStore` and the `AgentMemory` implementations DO NOT move.
 - [ ] **Step 4: Verify** `./mvnw -q clean verify`; grep proves no `spi.memory.Transcript` references remain.
 - [ ] **Step 5: Commit** `refactor: the transcript moves out of memory's house into spi.transcript`.
 

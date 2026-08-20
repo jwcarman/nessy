@@ -30,7 +30,7 @@
 | `ToolResolution` | `org.jwcarman.nessy.api` (beside `Awaited`, `ParkToken`) |
 | `ModelResponded`, `ModelCallFailed` | variants of `org.jwcarman.nessy.api.ConversationEvent` |
 | `Effect`, `Step` | move to `org.jwcarman.nessy.api.conversation` (Task 9; api must not depend on spi) |
-| `Memory`, `ListMemory` | `org.jwcarman.nessy.spi.memory` (new) |
+| `AgentMemory`, `ListMemory` | `org.jwcarman.nessy.spi.memory` (new) |
 | `ModelCallExecutor`, `ToolCallExecutor`, `EffectExecutors`, impls | `org.jwcarman.nessy.spi.execute` (new) |
 | `ContextOverflowException` | `org.jwcarman.nessy.spi.model` |
 | `ConversationLoop` | `org.jwcarman.nessy.internal` (core-owned, not implementable) |
@@ -389,7 +389,7 @@ Note: check `Message` for its actual factories — `Message.user(String)` / `Mes
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `./mvnw -q -pl nessy-core test -Dtest=ListMemoryTest`
-Expected: COMPILATION ERROR — `Memory` / `ListMemory` do not exist.
+Expected: COMPILATION ERROR — `AgentMemory` / `ListMemory` do not exist.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1517,7 +1517,7 @@ git commit -m "feat: GatedToolCallExecutor — there is no door that isn't the g
 - Test: `nessy-core/src/test/java/org/jwcarman/nessy/internal/ConversationLoopTest.java`
 
 **Interfaces:**
-- Consumes: `ConversationState.fold`/`halted` (Task 5), `EffectExecutors` (Task 7), `Memory` (Task 3), `TurnObserver` (Task 1), `ToolResolution` (Task 2); existing `TerminationPolicy`, `ConversationStore`, `EventEmitter`, `ObservationRegistry`, `EngineObservations.run`, `RunOutcome`, `ParkToken`, `Effect`, `Step`.
+- Consumes: `ConversationState.fold`/`halted` (Task 5), `EffectExecutors` (Task 7), `AgentMemory` (Task 3), `TurnObserver` (Task 1), `ToolResolution` (Task 2); existing `TerminationPolicy`, `ConversationStore`, `EventEmitter`, `ObservationRegistry`, `EngineObservations.run`, `RunOutcome`, `ParkToken`, `Effect`, `Step`.
 - Produces:
   - `ConversationLoop(EffectExecutors executors, Memory memory, TerminationPolicy termination, ConversationStore store, EventEmitter emitter, ObservationRegistry observations)`
   - `RunOutcome run(ConversationId id, ConversationEvent.AgentTold input, TurnObserver observer)`
@@ -1742,7 +1742,7 @@ Everything new exists and is tested; this task swaps the wiring and deletes the 
 **Files (modify):**
 - `api/ConversationEvent.java` — delete variants `TextDelta`, `ThinkingDelta`, `ThinkingSigned`, `RedactedThinkingArrived`, `ToolCallRequested`, `ModelTurnEnded`, `ApprovalDecided`, `Compacted`, `CompactionSkipped`; delete the fold's nine legacy scaffold arms in `ConversationState.fold`.
 - `spi/Effect.java` — delete `RequestApproval` and `Compact` (+ singleton + factory); delete the loop's two scaffold arms. Move `Effect.java` and `Step.java` to `org.jwcarman.nessy.api.conversation` (if not already moved in Task 5); update every import.
-- `Agent.java`, `AgentBuilder.java` — replace engine assembly with: default `Memory` = `new ListMemory()` (add `.memory(Memory)` builder option); build `ProviderModelCallExecutor` + `GatedToolCallExecutor` + `EffectExecutors` + `ConversationLoop`. Remove `.compactor`/`.summarizer`/enrichment/projection builder options and their default assembly (`Compactors.window`, `Summarizer.usingProvider`). Keep `.termination`, `.approver`, tool/grant registration, listener registration, renderer.
+- `Agent.java`, `AgentBuilder.java` — replace engine assembly with: default `AgentMemory` = `new ListMemory()` (add `.memory(Memory)` builder option); build `ProviderModelCallExecutor` + `GatedToolCallExecutor` + `EffectExecutors` + `ConversationLoop`. Remove `.compactor`/`.summarizer`/enrichment/projection builder options and their default assembly (`Compactors.window`, `Summarizer.usingProvider`). Keep `.termination`, `.approver`, tool/grant registration, listener registration, renderer.
 - `Conversation.java` — now wraps `ConversationLoop`: `RunOutcome tell(I input)` (observer = `TurnObserver.noop()`) and `RunOutcome tell(I input, TurnObserver observer)`; delete the `Consumer<ConversationEvent> tap` overload (fact-tapping stays available via `events()`); `events()` unchanged.
 - `Harness.java`, `HarnessBuilder.java`, `Nessy.java` — replace `ExecutionEngine` references with `ConversationLoop`; `HarnessBuilder` gains/keeps nothing else.
 - `internal/EngineObservations.java` — delete the `compaction` observation factory; keep `run`, `turn`, `modelCall`, `toolCall`, `approvalWait`, `recordUsage`, `recordOutcome` (executors and loop use them).

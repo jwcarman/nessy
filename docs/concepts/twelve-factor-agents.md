@@ -38,7 +38,7 @@ loop. See [Planning](planning.md).
 ## 3. Own your context window
 
 ✅ **Supported.**
-`Memory` owns what a model call actually sees, and it's a pipeline an
+`AgentMemory` owns what a model call actually sees, and it's a pipeline an
 application composes explicitly: a hydrator that bootstraps the initial
 `Context` from durable history, then an ordered list of `ContextTransformer`
 stages an application chooses and orders itself — clamp, redact, elide,

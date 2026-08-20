@@ -1,7 +1,7 @@
 # Nessy Example: Chat Web
 
 A Spring Boot chat app that dogfoods the durable kernel end to end: a real
-browser UI, a real Postgres-backed `ConversationStore` and `Memory`, a tool
+browser UI, a real Postgres-backed `ConversationStore` and `AgentMemory`, a tool
 gated behind human approval, and full observability — with `nessy-spring-boot-starter`
 autoconfiguring every substrate bean, `ChatWebConfig.java` declares exactly one:
 the agent.
@@ -21,15 +21,15 @@ The whole nessy wiring an application writes itself — one bean in `ChatWebConf
 }
 ```
 
-`Harness` and `Memory` arrive as method parameters, autoconfigured by the
+`Harness` and `AgentMemory` arrive as method parameters, autoconfigured by the
 starter from the classpath: `nessy-model-anthropic` (plus `.fromEnv()`
 credential resolution) yields the `ModelProvider`, `nessy-jdbc` next
 to the app's `DataSource` bean yields the Postgres-backed `ConversationStore`
-and `Memory`, and both feed the autoconfigured `Harness` — Boot's own
+and `AgentMemory`, and both feed the autoconfigured `Harness` — Boot's own
 auto-configured `ObservationRegistry` included, so nessy's spans join Boot's
 in the same trace with no application wiring at all. The approver is the
 durable-HITL posture in one line: every approval parks — the browser is the
-approver, and the park survives a restart because `Memory` and the
+approver, and the park survives a restart because `AgentMemory` and the
 `ConversationStore` both live in Postgres, not the JVM's heap. (`ChatWebConfig`
 carries no `@Profile` split anymore — the container smoke test's own
 `@TestConfiguration` `Harness` bean wins over the starter's by

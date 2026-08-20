@@ -105,7 +105,7 @@ Memory memory(Transcript transcript, DataSource dataSource, ModelProvider provid
 ```
 
 That bean, once declared, satisfies `@ConditionalOnMissingBean` and replaces
-the starter's autoconfigured plain-pipeline `Memory`.
+the starter's autoconfigured plain-pipeline `AgentMemory`.
 
 ## Where next
 

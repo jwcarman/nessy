@@ -69,7 +69,7 @@ agent.
 
 `.name("adder")` isn't decoration — every agent identifies itself, and that
 identity is what a [parked callback](concepts/parks-and-callbacks.md) checks
-before letting a resume through. `Memory` here is the config's default —
+before letting a resume through. `AgentMemory` here is the config's default —
 an in-memory [pipeline](concepts/memory-and-the-pipeline.md) over the
 transcript — swapped for a durable one only when you ask.
 

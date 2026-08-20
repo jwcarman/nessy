@@ -71,10 +71,10 @@ silently. Classpath expresses intent; properties are the escape hatch.
 `@ConditionalOnBean(DataSource)`):
 
 - `JdbcPersistence.create(dataSource, mapper)` → `ConversationStore` and
-  `Memory` beans. Adding `nessy-store-jdbc` next to a datasource flips the
+  `AgentMemory` beans. Adding `nessy-store-jdbc` next to a datasource flips the
   app from JVM-lifetime memory to durable — the right default the moment the
   classpath says "I have a database."
-- Escape hatches: your own `ConversationStore`/`Memory` beans, or
+- Escape hatches: your own `ConversationStore`/`AgentMemory` beans, or
   `nessy.jdbc.enabled=false` for "the jar is here for other reasons."
 - Schema bootstrap is the factories' own idempotent `create` — no migration
   choreography; `nessy.jdbc.bootstrap-schema=false` for DBAs who run the DDL

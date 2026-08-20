@@ -64,7 +64,7 @@ A few things worth naming:
   capability story: a tool the model can see is one this call explicitly
   granted, with a policy (`allow()` here; `requireApproval()` gates it
   instead) — see [Tools and Grants](../concepts/tools-and-grants.md).
-- `Memory` isn't set here, so the config's default applies: an in-memory
+- `AgentMemory` isn't set here, so the config's default applies: an in-memory
   pipeline over the transcript. It disappears when the process does — see
   [Durable Persistence](durable-persistence.md) for the version that
   doesn't.

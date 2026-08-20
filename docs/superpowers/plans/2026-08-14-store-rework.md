@@ -121,7 +121,7 @@
 ### Task 7: The starter learns the doors
 
 **Files:**
-- Modify: `nessy-autoconfigure` — `JdbcPersistenceAutoConfiguration` grows `Parks` and `Transcript` beans (same `@ConditionalOnMissingBean` + datasource + classpath rules; `Memory` bean becomes `TranscriptMemory` over the transcript bean); `NessyAutoConfiguration.harness(...)` resolves an `ObjectProvider<Parks>` and calls `builder.parks(...)` when available; property surface unchanged.
+- Modify: `nessy-autoconfigure` — `JdbcPersistenceAutoConfiguration` grows `Parks` and `Transcript` beans (same `@ConditionalOnMissingBean` + datasource + classpath rules; `AgentMemory` bean becomes `TranscriptMemory` over the transcript bean); `NessyAutoConfiguration.harness(...)` resolves an `ObjectProvider<Parks>` and calls `builder.parks(...)` when available; property surface unchanged.
 - Tests: extend `JdbcPersistenceAutoConfigurationTest`/`NessyAutoConfigurationTest` — parks/transcript beans appear with a datasource and back off to user-declared beans; harness receives the parks bean; the ordering pin (`after = DataSourceAutoConfiguration.class`) still asserted.
 - Verify chat-web: `./mvnw -q verify -pl nessy-examples/chat-web -am -Dnessy.excludedGroups=live` — the smoke test passes with its assertions UNTOUCHED (wiring-only changes to the example, e.g. renamed types). If an assertion fails, STOP and report BLOCKED — do not adapt the assertion.
 

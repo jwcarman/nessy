@@ -57,10 +57,10 @@ provider.
 ## Persistence
 
 Add `nessy-jdbc` next to a `DataSource` bean, and a JDBC-backed
-`ConversationStore`, `Parks`, `Transcript`, `Memory`, `PlanStore`, `Notebook`,
+`ConversationStore`, `Parks`, `Transcript`, `AgentMemory`, `PlanStore`, `Notebook`,
 `SubagentLinks`, and `IntentStore` are all autoconfigured — eight beans, covering
 seven of the eight components [Durable Persistence](durable-persistence.md) wires
-by hand with `JdbcPersistence.create` (`Memory` is synthesized from the
+by hand with `JdbcPersistence.create` (`AgentMemory` is synthesized from the
 autoconfigured `Transcript` bean, the same way `JdbcPersistence#memory()`
 synthesizes it).
 `nessy.jdbc.enabled` is the master switch;
@@ -89,16 +89,16 @@ Memory memory(Transcript transcript, DataSource dataSource, ModelProvider provid
 ```
 
 That bean, once declared, satisfies `@ConditionalOnMissingBean` and replaces
-the autoconfigured plain-pipeline `Memory` above.
+the autoconfigured plain-pipeline `AgentMemory` above.
 
 A `Harness` is also fine with no store at all: `ConversationStore` and
-`Memory` are each optional, defaulting to an in-memory implementation when
+`AgentMemory` are each optional, defaulting to an in-memory implementation when
 neither the JDBC autoconfiguration nor the application supplies one.
 
 ## Wiring an agent on top
 
 The application's own configuration injects the autoconfigured `Harness`
-and, when `nessy-jdbc` is present, the autoconfigured `Memory`:
+and, when `nessy-jdbc` is present, the autoconfigured `AgentMemory`:
 
 ```java
 @Bean

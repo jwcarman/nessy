@@ -85,7 +85,7 @@ sequence of renames and interim shapes that produced it.
   `Approver` decides per `ApprovalRequest` and may itself park, deferring
   the decision to a human or another system before the gated tool ever
   runs.
-- **`Memory` and the context pipeline.** `Memory` (`spi.memory`) owns what a
+- **`AgentMemory` and the context pipeline.** `AgentMemory` (`spi.memory`) owns what a
   model call actually sees. `Memory.pipeline(Transcript)` composes a
   `ContextHydrator` (full or summarizing recall) with an ordered chain of
   `.transform(...)` steps over a fixed floor — the transcript is always the
@@ -149,7 +149,7 @@ sequence of renames and interim shapes that produced it.
   cost/call budget guarding against a runaway loop; `RetryingModelProvider`
   decorates any `ModelProvider` with retry policy;
   `AgentConfig#contextWindow(long)` is a declared token-budget dial
-  reserved for a future token-aware `Memory`.
+  reserved for a future token-aware `AgentMemory`.
 - **Native model providers.** `nessy-model-anthropic`, `nessy-model-openai`,
   `nessy-model-gemini`, and `nessy-model-bedrock` each implement
   `ModelProvider` against their own SDK; `nessy-model-env` picks between

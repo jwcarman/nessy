@@ -35,7 +35,7 @@ ANTHROPIC_API_KEY=… ./mvnw -pl nessy-examples/night-watchman spring-boot:run
 No Docker, no database, nothing else to stand up — just the log, which is the
 UI. Watch it: quiet rounds at first ("all quiet" reports), then a trend, then
 an alarm. Ctrl-C ends the watch — the conversation honestly dies with the JVM.
-The pipeline `Memory` over an in-memory `Transcript` is in-memory by design,
+The pipeline `AgentMemory` over an in-memory `Transcript` is in-memory by design,
 the same way the framework's default is; nothing about this example asks for
 durability.
 
@@ -58,7 +58,7 @@ scheduled firing.
 
 ## How the bound works
 
-Bounding recall used to mean a bespoke `Memory` implementation; now it's one
+Bounding recall used to mean a bespoke `AgentMemory` implementation; now it's one
 stage, wired straight into the agent bean:
 
 ```java
@@ -84,5 +84,5 @@ Durable — the conversation is JVM-lifetime state, gone on Ctrl-C, unlike
 the only surface. HITL — no approval gate; both tools are granted
 `UsagePolicy.allow()`, so nothing here ever parks waiting on a human. Really
 alerting — `raise_alarm` logs a WARN and nothing else; no pager is harmed. It
-demonstrates the clock-triggered pattern and the bounded-recall `Memory` seam,
+demonstrates the clock-triggered pattern and the bounded-recall `AgentMemory` seam,
 nothing more.

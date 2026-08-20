@@ -29,7 +29,7 @@
 - Test: extend `nessy-store-jdbc/src/test/java/org/jwcarman/nessy/store/jdbc/StateCodecTest.java`; create `JdbcMemoryTest.java` (container-tagged)
 
 **Interfaces:**
-- Consumes: `Memory` (`spi.memory`: `void remember(ConversationId, Message)`, `Context recall(ConversationId)`), `StateCodec`'s existing mixin-configured mapper, `Context.of(List<Message>)`.
+- Consumes: `AgentMemory` (`spi.memory`: `void remember(ConversationId, Message)`, `Context recall(ConversationId)`), `StateCodec`'s existing mixin-configured mapper, `Context.of(List<Message>)`.
 - Produces: `JdbcMemory implements Memory`, constructor `(DataSource, ObjectMapper)`, factory `create(DataSource, ObjectMapper)` (bootstraps `memory-schema.sql` idempotently, mirroring `JdbcConversationStore.create`'s discipline exactly — read that method first and copy its shape); `StateCodec.writeMessage(Message) → String` / `readMessage(String) → Message` (package-private, like its four siblings).
 
 - [ ] **Step 1:** Add to `StateCodecTest` (offline): `a_message_round_trips_through_the_codec` — a `Message.assistant(List.of(new ThinkingBlock("hmm","sig"), new TextBlock("hi"), new ToolUseBlock(call)))` written and re-read equals itself; and `an_unknown_message_payload_fails_loudly` (malformed type id → exception, S5778: one throwing call). Run — fails (methods missing).

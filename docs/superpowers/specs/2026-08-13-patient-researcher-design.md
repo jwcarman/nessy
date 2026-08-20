@@ -64,7 +64,7 @@ seconds. The examples matrix reads: chat-cli (plain + interactive), chat-web
 `nessy-spring-boot-starter` (its own spec, sequenced before this one)
 on the web face; this proves it with no web anywhere.
 
-- DataSource, `ConversationStore`/`Memory` (via `JdbcPersistence`),
+- DataSource, `ConversationStore`/`AgentMemory` (via `JdbcPersistence`),
   `ModelProvider`, and `Harness` all arrive from the starter's
   autoconfiguration — the example's own config is ONE bean: the agent (one
   tool, `UsagePolicy.allow()` — no human in this loop —
