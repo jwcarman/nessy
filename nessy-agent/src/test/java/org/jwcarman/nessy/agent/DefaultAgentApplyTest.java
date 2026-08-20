@@ -28,7 +28,6 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.spi.LatentSink;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
@@ -173,7 +172,6 @@ class DefaultAgentApplyTest {
   void theStateIsSavedBeforeAnyEffectIsDispatched() {
     var store = new InMemoryAgentStateStore();
     var versionsAtCall = new ArrayList<Long>();
-    var sink = new LatentSink();
     var queue = new ArrayDeque<String>();
     Backlog<String> backlog =
         new Backlog<>() {
@@ -193,13 +191,13 @@ class DefaultAgentApplyTest {
             store,
             backlog,
             text -> List.of(new TextBlock(text)),
-            () -> versionsAtCall.add(store.load().version()),
-            call -> {},
+            sink -> versionsAtCall.add(store.load().version()),
+            (call, sink) -> {},
             AgentObserver.noop(),
             false,
             Duration.ofMinutes(5),
             Clock.systemUTC());
-    var agent = DefaultAgent.create(wiring, sink);
+    var agent = new DefaultAgent<>(wiring);
     agent.observe("hi");
     assertThat(versionsAtCall).isNotEmpty();
     assertThat(versionsAtCall.getFirst()).isEqualTo(1L); // post-save version, not the loaded 0

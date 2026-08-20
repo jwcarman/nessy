@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.agent.spi.LatentSink;
 import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.message.ContentBlock;
 
@@ -31,18 +30,8 @@ public final class DefaultAgent<O> implements Agent<O> {
 
   private final AgentWiring<O> wiring;
 
-  private DefaultAgent(AgentWiring<O> wiring) {
+  public DefaultAgent(AgentWiring<O> wiring) {
     this.wiring = Objects.requireNonNull(wiring, "wiring must not be null");
-  }
-
-  /**
-   * The hand-wiring door (§7.1): builds the agent and binds the sink its executors were constructed
-   * around.
-   */
-  public static <O> Agent<O> create(AgentWiring<O> wiring, LatentSink sink) {
-    DefaultAgent<O> agent = new DefaultAgent<>(wiring);
-    sink.bind(agent::deliver);
-    return agent;
   }
 
   @Override
@@ -64,8 +53,9 @@ public final class DefaultAgent<O> implements Agent<O> {
   }
 
   /**
-   * The continuation door: executors hold this (via a bound Sink) from construction. Completions
-   * that lose the version race re-handle against fresh state until applied or ignored (§3.4).
+   * The continuation door: executors are handed this method reference as their Sink at dispatch
+   * (§4). Completions that lose the version race re-handle against fresh state until applied or
+   * ignored (§3.4).
    */
   void deliver(AgentEvent event) {
     while (true) {
@@ -138,8 +128,8 @@ public final class DefaultAgent<O> implements Agent<O> {
 
   private void dispatch(Effect effect) {
     switch (effect) {
-      case Effect.CallModel ignored -> wiring.model().callModel();
-      case Effect.ExecuteTool(var call) -> wiring.tools().executeTool(call);
+      case Effect.CallModel ignored -> wiring.model().callModel(this::deliver);
+      case Effect.ExecuteTool(var call) -> wiring.tools().executeTool(call, this::deliver);
     }
   }
 }

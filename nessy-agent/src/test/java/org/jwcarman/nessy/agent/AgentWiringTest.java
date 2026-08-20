@@ -59,8 +59,8 @@ class AgentWiringTest {
 
   private static final AgentStateStore STORE = new InMemoryAgentStateStore();
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
-  private static final ModelCallExecutor MODEL = () -> {};
-  private static final ToolCallExecutor TOOLS = call -> {};
+  private static final ModelCallExecutor MODEL = sink -> {};
+  private static final ToolCallExecutor TOOLS = (call, sink) -> {};
   private static final AgentObserver OBSERVER = AgentObserver.noop();
   private static final Duration STALE_THRESHOLD = Duration.ofMinutes(5);
   private static final Clock CLOCK = Clock.systemUTC();

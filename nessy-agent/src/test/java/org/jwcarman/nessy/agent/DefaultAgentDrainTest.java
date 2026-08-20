@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.spi.LatentSink;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
@@ -36,12 +35,12 @@ class DefaultAgentDrainTest {
 
   @Test
   void aFailingRendererDiscardsTheObservationAndKeepsDraining() {
-    // A second agent over the SAME collaborators: instances are stateless views (§3.5), so the
-    // fixture's sink delivering to f.agent while we drive `poisoned` is correct by design —
+    // A second agent over the SAME collaborators: instances are stateless views (§3.5), so
+    // completions delivered by f's executors while we drive `poisoned` are correct by design —
     // both apply against the shared store, and this test quietly proves interchangeability.
     var f = new AgentFixture();
     var poisoned =
-        DefaultAgent.create(
+        new DefaultAgent<>(
             new AgentWiring<>(
                 f.memory,
                 f.store,
@@ -57,8 +56,7 @@ class DefaultAgentDrainTest {
                 f.observer,
                 false,
                 Duration.ofMinutes(5),
-                Clock.systemUTC()),
-            new LatentSink());
+                Clock.systemUTC()));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     f.backlogQueue.add("bad-observation");
     f.backlogQueue.add("good-observation");
@@ -101,13 +99,13 @@ class DefaultAgentDrainTest {
             store,
             racingBacklog,
             text -> List.of(new TextBlock(text)),
-            () -> {},
-            call -> {},
+            sink -> {},
+            (call, sink) -> {},
             new RecordingObserver(),
             false,
             Duration.ofMinutes(5),
             Clock.systemUTC());
-    var agent = DefaultAgent.create(wiring, new LatentSink());
+    var agent = new DefaultAgent<>(wiring);
     agent.drive();
     assertThat(addedBack).containsExactly("hello");
     assertThat(store.load().phase()).isEqualTo(new Phase.AwaitingModel());
@@ -118,7 +116,7 @@ class DefaultAgentDrainTest {
     var f = new AgentFixture();
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     var poisoned =
-        DefaultAgent.create(
+        new DefaultAgent<>(
             new AgentWiring<>(
                 f.memory,
                 f.store,
@@ -129,8 +127,7 @@ class DefaultAgentDrainTest {
                 f.observer,
                 false,
                 Duration.ofMinutes(5),
-                Clock.systemUTC()),
-            new LatentSink());
+                Clock.systemUTC()));
     f.backlogQueue.add("declined");
     f.backlogQueue.add("good-observation");
     poisoned.drive();

@@ -22,7 +22,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.spi.LatentSink;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -35,11 +34,10 @@ import org.jwcarman.nessy.api.message.TextBlock;
 /** One fully-wired agent on a pump; the fixture is the test's vocabulary. */
 final class AgentFixture {
   final PumpedExecutor pump = new PumpedExecutor();
-  final LatentSink sink = new LatentSink();
   final RecordingMemory memory = new RecordingMemory();
   final RecordingObserver observer = new RecordingObserver();
-  final ScriptedModelExecutor model = new ScriptedModelExecutor(pump, sink, memory);
-  final ScriptedToolExecutor tools = new ScriptedToolExecutor(pump, sink);
+  final ScriptedModelExecutor model = new ScriptedModelExecutor(pump, memory);
+  final ScriptedToolExecutor tools = new ScriptedToolExecutor(pump);
   final Deque<String> backlogQueue = new ArrayDeque<>();
   final Backlog<String> backlog =
       new Backlog<>() {
@@ -59,20 +57,18 @@ final class AgentFixture {
   AgentFixture(AgentStateStore store, boolean drainOnIdle, Duration staleThreshold, Clock clock) {
     this.store = store;
     this.agent =
-        (DefaultAgent<String>)
-            DefaultAgent.create(
-                new AgentWiring<>(
-                    memory,
-                    store,
-                    backlog,
-                    text -> List.of(new TextBlock(text)),
-                    model,
-                    tools,
-                    observer,
-                    drainOnIdle,
-                    staleThreshold,
-                    clock),
-                sink);
+        new DefaultAgent<>(
+            new AgentWiring<>(
+                memory,
+                store,
+                backlog,
+                text -> List.of(new TextBlock(text)),
+                model,
+                tools,
+                observer,
+                drainOnIdle,
+                staleThreshold,
+                clock));
   }
 
   AgentFixture(AgentStateStore store, boolean drainOnIdle) {

@@ -15,7 +15,10 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
-/** Model invocation: async by contract; holds its Sink from construction (§4). */
+/**
+ * Model invocation: async by contract. The sink is handed per dispatch, lives one dispatch, and is
+ * never invoked on the dispatching stack (§4).
+ */
 public interface ModelCallExecutor {
-  void callModel();
+  void callModel(Sink sink);
 }

@@ -17,7 +17,10 @@ package org.jwcarman.nessy.agent.spi;
 
 import org.jwcarman.nessy.api.tool.ToolCall;
 
-/** Tool execution: async by contract; holds its Sink from construction (§4). */
+/**
+ * Tool execution: async by contract. The sink is handed per dispatch, lives one dispatch, and is
+ * never invoked on the dispatching stack (§4).
+ */
 public interface ToolCallExecutor {
-  void executeTool(ToolCall call);
+  void executeTool(ToolCall call, Sink sink);
 }

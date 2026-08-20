@@ -32,14 +32,12 @@ import org.jwcarman.nessy.agent.spi.Sink;
 public final class ScriptedModelExecutor implements ModelCallExecutor {
 
   private final Executor pump;
-  private final Sink sink;
   private final Deque<ModelOutcome> script = new ArrayDeque<>();
   private final List<Integer> memorySizesAtCall = new ArrayList<>();
   private final RecordingMemory memory;
 
-  public ScriptedModelExecutor(Executor pump, Sink sink, RecordingMemory memory) {
+  public ScriptedModelExecutor(Executor pump, RecordingMemory memory) {
     this.pump = pump;
-    this.sink = sink;
     this.memory = memory;
   }
 
@@ -48,7 +46,7 @@ public final class ScriptedModelExecutor implements ModelCallExecutor {
   }
 
   @Override
-  public void callModel() {
+  public void callModel(Sink sink) {
     memorySizesAtCall.add(memory.remembered().size());
     ModelOutcome outcome = script.poll();
     if (outcome == null) {

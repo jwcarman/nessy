@@ -30,13 +30,11 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 public final class ScriptedToolExecutor implements ToolCallExecutor {
 
   private final Executor pump;
-  private final Sink sink;
   private final Map<String, ToolOutcome> outcomes = new HashMap<>();
   private final List<ToolCall> executed = new ArrayList<>();
 
-  public ScriptedToolExecutor(Executor pump, Sink sink) {
+  public ScriptedToolExecutor(Executor pump) {
     this.pump = pump;
-    this.sink = sink;
   }
 
   public void answer(String callId, ToolOutcome outcome) {
@@ -44,7 +42,7 @@ public final class ScriptedToolExecutor implements ToolCallExecutor {
   }
 
   @Override
-  public void executeTool(ToolCall call) {
+  public void executeTool(ToolCall call, Sink sink) {
     executed.add(call);
     ToolOutcome outcome = outcomes.get(call.id());
     if (outcome == null) {
