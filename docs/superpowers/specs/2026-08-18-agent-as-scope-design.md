@@ -553,6 +553,16 @@ The shell's thread never blocks on a model or a tool, and delivery never recurse
 An executor that must deliver days later persists whatever address it needs internally; the id is
 not a parameter on the way in.
 
+**A continuation returns to an address with the same lifetime as itself.** Sub-turn completions —
+a model call resolving in seconds, a tool in milliseconds — return to the `Sink`, which is not a
+registration but a reachability fact: the executor's reference is what keeps the turn's instance
+alive, so it cannot dangle. Anything that can outlive the turn — a park, a crash, a sweep — was
+never given the `Sink` as its address; it holds a durable one (a desk entry, the phase row) and
+re-enters by bind on whatever node it lands on (§4.3), where the fresh instance loads the same
+phase from the same store and scope-constant observers are the only correct ones, the original
+turn's stream being long closed. Two mechanisms, one rule — and no instance is ever found, because
+none is ever lost.
+
 ### 4.1 `ModelCallExecutor` owns memory
 
 The executor calls `memory.recall()`, gets a `Context`, calls the provider, and delivers
@@ -607,7 +617,10 @@ in a CLI), bounded by a timeout. A tool that attempts to park anyway fails **lou
 The reason is not taste: observations are absorbed only at `Idle` (§3.3), so a parked turn in a
 conversation **wedges the conversation** — the human types into a backlog that never drains. The
 park desk belongs where nobody waits; the autonomous host's wiring carries it, and the same agent
-definition runs in both.
+definition runs in both. The cost, stated: rendezvous approval is **node-sticky** — the approve
+click must reach the node holding the blocked virtual thread. Sticky sessions provide that, and
+the rendezvous timeout bounds the miss; a deployment that cannot route stickily should not choose
+rendezvous wiring.
 
 **Parks expire as desk metadata, not as machinery.** Each entry carries `expires_at`, set at park
 time from configuration or a per-tool hint. An expired park resolves as the tool *failing slowly*:
