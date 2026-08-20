@@ -13,22 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent.model;
+package org.jwcarman.nessy.agent.support;
 
 import java.util.Set;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
-/** Minimal, real fixtures for {@link ProviderModelCallExecutorTest}. */
-final class TestSettings {
+/** Minimal, real fixtures shared across agent tests. */
+public final class TestSettings {
 
   private TestSettings() {}
 
-  static ModelSettings settings() {
+  public static ModelSettings settings() {
     return new ModelSettings("test-model", "you are helpful", 1024, Set.of(), null);
   }
 
-  static ToolRegistry emptyRegistry() {
+  public static ToolRegistry emptyRegistry() {
     return ToolRegistry.of();
   }
 }
