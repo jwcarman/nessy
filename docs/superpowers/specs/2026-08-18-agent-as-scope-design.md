@@ -428,7 +428,7 @@ private void apply(AgentEvent event) {
     if (t.isIgnored()) { observer.ignored(event); return; }
     t.commit().forEach(memory::remember);              // whole units only, in order
     try {
-      store.save(new State(t.next(), state.version() + 1));
+      store.save(new State(t.next(), state.version()));   // CAS on the version we loaded — the store bumps
     } catch (StaleStateException e) {
       continue;                                        // someone else advanced — re-handle
     }
