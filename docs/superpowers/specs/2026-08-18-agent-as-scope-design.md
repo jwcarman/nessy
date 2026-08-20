@@ -1084,5 +1084,12 @@ reasonable.
    data; durable addresses carry the pair (§1.1).
 7. ~~Recovery sweep~~ — **closed**: recovery is `drive()`'s second arm, effects re-derive from the
    phase, and the scheduled sweep exists only in the autonomous host (§6.1).
-8. **Migration or replacement** — §9 deletes most of the public API and both stores. Whether this
-   ships as a major version or a parallel package is a release decision this spec does not make.
+8. ~~Migration or replacement~~ — **closed** (ruled 2026-08-20): **`nessy-agent` is the permanent
+   user-facing module** — the machine and the front doors (`Agent`, `Phase`, `Transition`, the
+   builders, the hosts) — while `nessy-core` distills into the vocabulary and SPIs (messages,
+   tools, `Decision`, `TurnEvent`/`TurnObserver`, `Memory`, `AgentStateStore`, `Backlog`, the
+   desk). Users depend on `nessy-agent`; provider and store adapters depend on `nessy-core` only
+   and **never see a phase**. Names are permanent from day one, so the cut-over is subtraction:
+   core sheds the old loop (§9's table is the checklist) and no rename ever happens. The layering
+   is enforced by dependency direction — core must never grow a reference to the machine — checked
+   mechanically in the build.
