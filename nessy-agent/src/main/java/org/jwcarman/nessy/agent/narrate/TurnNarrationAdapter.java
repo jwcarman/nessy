@@ -23,7 +23,6 @@ import org.jwcarman.nessy.agent.ModelOutcome;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -34,8 +33,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Machine narration → human narration (§8). The transition carries everything synthesis needs:
  * assistant commits become AssistantSaid; landing on Idle ends the turn, with the failure reason
- * taken from ModelFinished(Failed) when that is what ended it. ConversationStatus is interim
- * vocabulary until the Plan-5 distillation reshapes TurnEnded.
+ * taken from ModelFinished(Failed) when that is what ended it. TurnEnded carries only the failure
+ * reason; null means completed (distillation, 2026-08-20).
  */
 public final class TurnNarrationAdapter implements AgentObserver {
 
@@ -56,9 +55,9 @@ public final class TurnNarrationAdapter implements AgentObserver {
     }
     if (transition.next() instanceof Phase.Idle) {
       if (event instanceof AgentEvent.ModelFinished(ModelOutcome.Failed(String reason))) {
-        turn.on(new TurnEvent.TurnEnded(ConversationStatus.FAILED, reason));
+        turn.on(new TurnEvent.TurnEnded(reason));
       } else {
-        turn.on(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+        turn.on(new TurnEvent.TurnEnded(null));
       }
     }
   }

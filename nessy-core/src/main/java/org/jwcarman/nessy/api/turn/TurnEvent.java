@@ -17,8 +17,6 @@ package org.jwcarman.nessy.api.turn;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -35,30 +33,11 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * <p>Sealed-grammar etiquette: core switches over this type are exhaustive with no {@code default}
  * arm; extender code is advised to include one for forward tolerance across majors.
  *
- * <p>Two contracts this event makes explicit rather than accidental:
- *
- * <ul>
- *   <li><b>Narration is at-least-once.</b> The loop's write discipline retries on stale saves from
- *       fresh loads, and narration is never transactional with the record (texture never alters it)
- *       — so a retried segment can emit {@link ToolCallParked} twice for one token. This is already
- *       true of every {@code TurnEvent}; the parked event just makes duplicates visible (a doubled
- *       approval card, not a doubled token-consumption — resume idempotency is untouched).
- *       Observers that materialize per-event UI dedupe by the event's natural key — for {@link
- *       ToolCallParked}, the token. The gap runs the other way too: a driver that loses the save
- *       race may see <em>no</em> {@link ToolCallParked} at all for a park another driver committed
- *       — which is why a rebuild read ({@code snapshot}) must remain a card source in UIs, not the
- *       live segment alone.
- *   <li><b>The entry-scoped-observer invariant.</b> The token may ride {@link ToolCallParked}
- *       <em>because</em> a {@link TurnObserver} is supplied by the caller of {@code tell}/{@code
- *       resume} — the two real places a caller can read a token back from are {@code
- *       Agent.snapshot} and {@code Agent.peek} ({@code RunOutcome.Parked} itself carries only
- *       state, not the token) — the event grants nothing to anyone who lacks it. Capability-bearing
- *       events like this one are legal only while observers are entry-scoped; any future agent-wide
- *       standing observer must revisit {@link ToolCallParked} loudly rather than silently becoming
- *       a capability broadcast. A throwing observer costs the caller its {@code RunOutcome}, never
- *       the record — the park (or any other committed transition) stays durable and recoverable via
- *       {@code Agent.snapshot} / {@code Agent.peek}.
- * </ul>
+ * <p>Narration is at-least-once: the shell's write discipline retries on stale saves, and narration
+ * is never transactional with the record — a retried apply can narrate the same event twice.
+ * Observers that materialize per-event UI dedupe by the event's natural key. Parking is never
+ * narrated at all: a parked call is executor bookkeeping, indistinguishable from a slow one
+ * (agent-as-scope §4.3).
  */
 public sealed interface TurnEvent {
 
@@ -121,26 +100,15 @@ public sealed interface TurnEvent {
   }
 
   /**
-   * The call parked — waiting on something that outlives this process. The token rides this event
-   * deliberately: see the type-level javadoc's entry-scoped-observer invariant.
-   */
-  record ToolCallParked(ToolCall call, ParkToken token) implements TurnEvent {
-    public ToolCallParked {
-      Objects.requireNonNull(call, CALL_MUST_NOT_BE_NULL);
-      Objects.requireNonNull(token, "token must not be null");
-    }
-  }
-
-  /**
    * A settled assistant-role message — the deltas ({@link TextDelta}, {@link ThinkingDelta}) were
    * the preview; this is the sentence. Emitted once per model response the fold absorbs, including
    * a response that carries only tool-use blocks and no prose (asking for homework is still saying
    * something; observers wanting prose alone filter for {@link
    * org.jwcarman.nessy.api.message.TextBlock} content). Emitted at the same beat the {@code
    * ModelResponded} fact folds — live narration, subject to this type's at-least-once narration
-   * rule (see the type-level javadoc's first bullet, the same rule {@link ToolCallParked}
-   * documents): a retried segment may re-say it, and observers materializing per-event UI should
-   * dedupe the way {@link ToolCallParked} consumers are advised to.
+   * rule (see the type-level javadoc, the same rule {@link AssistantSaid} documents): a retried
+   * segment may re-say it, and observers materializing per-event UI should Consumers keying UI on
+   * this event dedupe by its natural key.
    */
   record AssistantSaid(Message message) implements TurnEvent {
     public AssistantSaid {
@@ -149,24 +117,15 @@ public sealed interface TurnEvent {
   }
 
   /**
-   * The segment's closing line — emitted at every exit a segment observes: quiescent completion
-   * ({@code COMPLETE} or {@code IDLE}), {@code FAILED} (with {@code failureReason} carried), and
-   * {@code PARKED}. {@code failureReason} is meaningful only when {@code status} is {@code FAILED};
-   * it is {@code null} otherwise — mirroring {@link
-   * org.jwcarman.nessy.api.conversation.ConversationState}'s one sanctioned nullable field, and no
-   * cross-field validation beyond {@code status} itself being non-null is enforced here.
-   *
-   * <p>Exactly once <em>per drive attempt</em>, not per observed segment: subject to this type's
-   * at-least-once narration rule (see the type-level javadoc's first bullet, the same rule {@link
-   * ToolCallParked} and {@link AssistantSaid} document). A driver whose own save loses a fence
-   * after this was already narrated for that attempt is retried, and the winning retry — even when
-   * it has nothing left to fold but a drained-inbox tail save — narrates its own ending too;
-   * consumers keying UI on this event dedupe the way {@link ToolCallParked} consumers are already
-   * advised to.
+   * The turn's closing line, emitted when a transition lands on {@code Idle}. {@code failureReason}
+   * is {@code null} for a completed turn and carries the reason when the turn ended because the
+   * model call failed. Subject to the at-least-once narration rule above.
    */
-  record TurnEnded(ConversationStatus status, String failureReason) implements TurnEvent {
-    public TurnEnded {
-      Objects.requireNonNull(status, "status must not be null");
+  record TurnEnded(String failureReason) implements TurnEvent {
+
+    /** Whether the turn ended in failure rather than an answer. */
+    public boolean failed() {
+      return failureReason != null;
     }
   }
 }

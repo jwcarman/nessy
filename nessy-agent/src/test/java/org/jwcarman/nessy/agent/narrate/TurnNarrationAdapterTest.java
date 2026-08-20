@@ -25,7 +25,6 @@ import org.jwcarman.nessy.agent.ModelOutcome;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -50,15 +49,14 @@ class TurnNarrationAdapterTest {
     var t = Transition.to(new Phase.Idle());
     adapter.applied(
         new AgentEvent.ModelFinished(new ModelOutcome.Responded(List.of(), List.of())), t);
-    assertThat(turn.events()).contains(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+    assertThat(turn.events()).contains(new TurnEvent.TurnEnded(null));
   }
 
   @Test
   void aModelFailureEndsTheTurnFailedWithItsReason() {
     var t = Transition.to(new Phase.Idle());
     adapter.applied(new AgentEvent.ModelFinished(new ModelOutcome.Failed("overloaded")), t);
-    assertThat(turn.events())
-        .contains(new TurnEvent.TurnEnded(ConversationStatus.FAILED, "overloaded"));
+    assertThat(turn.events()).contains(new TurnEvent.TurnEnded("overloaded"));
   }
 
   @Test

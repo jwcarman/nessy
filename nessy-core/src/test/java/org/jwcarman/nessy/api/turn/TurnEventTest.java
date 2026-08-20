@@ -22,8 +22,6 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -33,7 +31,6 @@ class TurnEventTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
-  private static final ParkToken TOKEN = ParkToken.generate();
   private static final Message ASSISTANT_MESSAGE =
       Message.assistant(List.of(new TextBlock("hello")));
 
@@ -49,9 +46,8 @@ class TurnEventTest {
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
         new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
         new TurnEvent.ToolCallProgressed(CALL, "halfway"),
-        new TurnEvent.ToolCallParked(CALL, TOKEN),
         new TurnEvent.AssistantSaid(ASSISTANT_MESSAGE),
-        new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+        new TurnEvent.TurnEnded(null));
   }
 
   @Test
@@ -82,12 +78,6 @@ class TurnEventTest {
   @Test
   void assistant_said_rejects_a_null_message() {
     assertThatThrownBy(() -> new TurnEvent.AssistantSaid(null))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void turn_ended_rejects_a_null_status() {
-    assertThatThrownBy(() -> new TurnEvent.TurnEnded(null, "boom"))
         .isInstanceOf(NullPointerException.class);
   }
 }

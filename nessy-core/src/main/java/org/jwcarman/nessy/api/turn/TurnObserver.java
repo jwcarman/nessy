@@ -17,7 +17,6 @@ package org.jwcarman.nessy.api.turn;
 
 import java.util.Objects;
 import java.util.function.Supplier;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -116,17 +115,11 @@ public interface TurnObserver {
                             prefix.get(),
                             completed.call().name(),
                             completed.result().isError()))
-                .onToolCallParked(
-                    parked ->
-                        logger.info(
-                            "{} parked: tool={} token={}",
-                            prefix.get(),
-                            parked.call().name(),
-                            parked.token().value()))
                 .onTurnEnded(
                     ended -> {
-                      logger.info("{} ends: {}", prefix.get(), ended.status());
-                      if (ended.status() == ConversationStatus.FAILED) {
+                      logger.info(
+                          "{} ends: {}", prefix.get(), ended.failed() ? "FAILED" : "COMPLETE");
+                      if (ended.failed()) {
                         logger.warn("{} failed: {}", prefix.get(), ended.failureReason());
                       }
                     }));

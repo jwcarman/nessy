@@ -20,7 +20,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -40,9 +39,10 @@ public final class AwaitingReply implements TurnObserver {
   public void on(TurnEvent event) {
     switch (event) {
       case TurnEvent.AssistantSaid said -> lastAssistantText = textOf(said);
-      case TurnEvent.TurnEnded(ConversationStatus status, String reason) -> {
-        if (status == ConversationStatus.FAILED) {
-          reply.completeExceptionally(new IllegalStateException("turn failed: " + reason));
+      case TurnEvent.TurnEnded ended -> {
+        if (ended.failed()) {
+          reply.completeExceptionally(
+              new IllegalStateException("turn failed: " + ended.failureReason()));
         } else {
           reply.complete(lastAssistantText);
         }

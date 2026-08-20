@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 
 class RelayTurnObserverTest {
@@ -30,7 +29,7 @@ class RelayTurnObserverTest {
     var relay = new RelayTurnObserver();
     var observer = new RecordingTurnObserver();
     relay.set(observer);
-    var event = new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null);
+    var event = new TurnEvent.TurnEnded(null);
     relay.on(event);
     assertThat(observer.events()).containsExactly(event);
   }
@@ -41,7 +40,7 @@ class RelayTurnObserverTest {
     var observer = new RecordingTurnObserver();
     relay.set(observer);
     relay.clear();
-    relay.on(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+    relay.on(new TurnEvent.TurnEnded(null));
     assertThat(observer.events()).isEmpty();
   }
 
@@ -58,7 +57,7 @@ class RelayTurnObserverTest {
     var second = new RecordingTurnObserver();
     relay.set(first);
     relay.set(second);
-    var event = new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null);
+    var event = new TurnEvent.TurnEnded(null);
     relay.on(event);
     assertThat(first.events()).isEmpty();
     assertThat(second.events()).containsExactly(event);

@@ -29,8 +29,6 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
@@ -50,7 +48,6 @@ class TurnObserverLoggingTest {
   private static final String PREFIX = "watchman";
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
-  private static final ParkToken TOKEN = ParkToken.generate();
 
   private ListAppender<ILoggingEvent> appender;
   private Logger logger;
@@ -121,21 +118,10 @@ class TurnObserverLoggingTest {
   }
 
   @Test
-  void a_park_logs_a_parked_line_carrying_the_token() {
-    TurnObserver observer = TurnObserver.logging(logger, PREFIX);
-
-    observer.on(new TurnEvent.ToolCallParked(CALL, TOKEN));
-
-    assertThat(appender.list).hasSize(1);
-    assertThat(appender.list.getFirst().getFormattedMessage())
-        .isEqualTo("watchman parked: tool=search token=" + TOKEN.value());
-  }
-
-  @Test
   void turn_ended_logs_an_info_ends_line() {
     TurnObserver observer = TurnObserver.logging(logger, PREFIX);
 
-    observer.on(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+    observer.on(new TurnEvent.TurnEnded(null));
 
     assertThat(appender.list).hasSize(1);
     ILoggingEvent event = appender.list.getFirst();
@@ -147,7 +133,7 @@ class TurnObserverLoggingTest {
   void a_failed_turn_ended_also_logs_a_warn_carrying_the_failure_reason() {
     TurnObserver observer = TurnObserver.logging(logger, PREFIX);
 
-    observer.on(new TurnEvent.TurnEnded(ConversationStatus.FAILED, "boom"));
+    observer.on(new TurnEvent.TurnEnded("boom"));
 
     assertThat(appender.list).hasSize(2);
     assertThat(appender.list.get(0).getLevel()).isEqualTo(Level.INFO);
@@ -160,7 +146,7 @@ class TurnObserverLoggingTest {
   void a_non_failed_turn_ended_logs_no_warn() {
     TurnObserver observer = TurnObserver.logging(logger, PREFIX);
 
-    observer.on(new TurnEvent.TurnEnded(ConversationStatus.PARKED, null));
+    observer.on(new TurnEvent.TurnEnded(null));
 
     assertThat(appender.list).isNotEmpty().noneMatch(event -> event.getLevel() == Level.WARN);
   }
@@ -189,7 +175,7 @@ class TurnObserverLoggingTest {
 
       observer.on(new TurnEvent.ToolCallRequested(CALL));
       prefixes.set(0, "order-42");
-      observer.on(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+      observer.on(new TurnEvent.TurnEnded(null));
 
       assertThat(appender.list).hasSize(2);
       assertThat(appender.list.get(0).getFormattedMessage()).isEqualTo("unknown tool: search");

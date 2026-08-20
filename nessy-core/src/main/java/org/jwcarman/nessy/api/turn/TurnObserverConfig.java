@@ -45,7 +45,6 @@ public final class TurnObserverConfig {
   private Consumer<TurnEvent.ToolCallDecided> onToolCallDecided = event -> {};
   private Consumer<TurnEvent.ToolCallCompleted> onToolCallCompleted = event -> {};
   private Consumer<TurnEvent.ToolCallProgressed> onToolCallProgressed = event -> {};
-  private Consumer<TurnEvent.ToolCallParked> onToolCallParked = event -> {};
   private Consumer<TurnEvent.AssistantSaid> onAssistantSaid = event -> {};
   private Consumer<TurnEvent.TurnEnded> onTurnEnded = event -> {};
 
@@ -86,11 +85,6 @@ public final class TurnObserverConfig {
     return this;
   }
 
-  public TurnObserverConfig onToolCallParked(Consumer<TurnEvent.ToolCallParked> consumer) {
-    onToolCallParked = onToolCallParked.andThen(require(consumer));
-    return this;
-  }
-
   public TurnObserverConfig onAssistantSaid(Consumer<TurnEvent.AssistantSaid> consumer) {
     onAssistantSaid = onAssistantSaid.andThen(require(consumer));
     return this;
@@ -115,7 +109,6 @@ public final class TurnObserverConfig {
     Consumer<TurnEvent.ToolCallDecided> decided = onToolCallDecided;
     Consumer<TurnEvent.ToolCallCompleted> completed = onToolCallCompleted;
     Consumer<TurnEvent.ToolCallProgressed> progressed = onToolCallProgressed;
-    Consumer<TurnEvent.ToolCallParked> parked = onToolCallParked;
     Consumer<TurnEvent.AssistantSaid> said = onAssistantSaid;
     Consumer<TurnEvent.TurnEnded> ended = onTurnEnded;
     return new TurnObserverAdapter() {
@@ -152,11 +145,6 @@ public final class TurnObserverConfig {
       @Override
       protected void onToolCallProgressed(TurnEvent.ToolCallProgressed event) {
         progressed.accept(event);
-      }
-
-      @Override
-      protected void onToolCallParked(TurnEvent.ToolCallParked event) {
-        parked.accept(event);
       }
 
       @Override

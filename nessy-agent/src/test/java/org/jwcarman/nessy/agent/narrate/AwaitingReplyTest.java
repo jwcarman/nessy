@@ -21,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -32,14 +31,14 @@ class AwaitingReplyTest {
   void theLastAssistantTextIsTheReply() {
     var waiter = new AwaitingReply();
     waiter.on(new TurnEvent.AssistantSaid(Message.assistant(List.of(new TextBlock("hello back")))));
-    waiter.on(new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
+    waiter.on(new TurnEvent.TurnEnded(null));
     assertThat(waiter.await(Duration.ofSeconds(1))).isEqualTo("hello back");
   }
 
   @Test
   void aFailedTurnThrowsWithItsReason() {
     var waiter = new AwaitingReply();
-    waiter.on(new TurnEvent.TurnEnded(ConversationStatus.FAILED, "overloaded"));
+    waiter.on(new TurnEvent.TurnEnded("overloaded"));
     assertThatThrownBy(() -> waiter.await(Duration.ofSeconds(1)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("overloaded");

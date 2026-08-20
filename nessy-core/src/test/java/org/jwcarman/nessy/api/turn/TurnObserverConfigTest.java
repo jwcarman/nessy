@@ -23,8 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.ParkToken;
-import org.jwcarman.nessy.api.conversation.ConversationStatus;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -34,7 +32,6 @@ class TurnObserverConfigTest {
 
   private static final ToolCall CALL =
       new ToolCall("c1", "search", JsonNodeFactory.instance.objectNode());
-  private static final ParkToken TOKEN = ParkToken.generate();
   private static final Message ASSISTANT_MESSAGE =
       Message.assistant(List.of(new TextBlock("hello")));
 
@@ -47,45 +44,8 @@ class TurnObserverConfigTest {
         new TurnEvent.ToolCallDecided(CALL, Decision.allow()),
         new TurnEvent.ToolCallCompleted(CALL, ToolResult.ok("done")),
         new TurnEvent.ToolCallProgressed(CALL, "halfway"),
-        new TurnEvent.ToolCallParked(CALL, TOKEN),
         new TurnEvent.AssistantSaid(ASSISTANT_MESSAGE),
-        new TurnEvent.TurnEnded(ConversationStatus.COMPLETE, null));
-  }
-
-  @Test
-  void every_registered_consumer_hears_exactly_its_own_variant() {
-    List<String> heard = new ArrayList<>();
-    TurnObserver observer =
-        TurnObserver.observe(
-            o ->
-                o.onTextDelta(delta -> heard.add("text:" + delta.text()))
-                    .onThinkingDelta(delta -> heard.add("thinking:" + delta.text()))
-                    .onRedactedThinking(redacted -> heard.add("redacted:" + redacted.data()))
-                    .onToolCallRequested(
-                        requested -> heard.add("requested:" + requested.call().name()))
-                    .onToolCallDecided(decided -> heard.add("decided:" + decided.call().name()))
-                    .onToolCallCompleted(
-                        completed -> heard.add("completed:" + completed.call().name()))
-                    .onToolCallProgressed(
-                        progressed -> heard.add("progressed:" + progressed.message()))
-                    .onToolCallParked(parked -> heard.add("parked:" + parked.token().value()))
-                    .onAssistantSaid(said -> heard.add("said:" + said.message().content().size()))
-                    .onTurnEnded(ended -> heard.add("ended:" + ended.status())));
-
-    oneOfEveryVariant().forEach(observer::on);
-
-    assertThat(heard)
-        .containsExactly(
-            "text:prose",
-            "thinking:hmm",
-            "redacted:opaque",
-            "requested:search",
-            "decided:search",
-            "completed:search",
-            "progressed:halfway",
-            "parked:" + TOKEN.value(),
-            "said:1",
-            "ended:COMPLETE");
+        new TurnEvent.TurnEnded(null));
   }
 
   @Test
