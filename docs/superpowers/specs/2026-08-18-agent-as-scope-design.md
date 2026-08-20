@@ -641,7 +641,15 @@ Human-in-the-loop stops being special. The gate parks, a human answers, a `ToolF
 the same path as a slow HTTP call. The approve/deny doors become an ordinary API on the tool
 executor, not core surface.
 
-**Parking is a capability of the wiring, not a right of every deployment.** The interactive host
+**Parking is a capability of the wiring, not a right of every deployment** — named as a
+`CompletionPolicy` hierarchy (`IMMEDIATE ⊂ AWAITABLE ⊂ DURABLE`) by the companion spec
+`2026-08-20-durable-computation.md`, whose reconciliation preamble binds: interactive wirings are
+`AWAITABLE`, the autonomous host is `DURABLE`, and the park desk is the SQL reference
+implementation of that spec's durable-computation backend — a computation whose *work* is
+node-agnostic, not merely its wait. **Filtering precedes failing** (adopted from its §14): a tool
+that declares it requires `DURABLE` completion is not exposed to the model at all in an
+`AWAITABLE` wiring — the registry filters `specs()` by the wiring's policy — and the loud in-band
+failure below remains as the backstop for tools that under-declare. The interactive host
 binds a **non-parking** tool executor: approvals go through a *rendezvous* handler — block the
 virtual thread on a future the human completes (a click in web, an inline `approve? [y/N]` prompt
 in a CLI), bounded by a timeout. A tool that attempts to park anyway fails **loudly and in-band**
@@ -1104,6 +1112,9 @@ reasonable.
 
 ## 11. Open questions
 
+0. **Backlog backpressure for the autonomous host** — the backlog is an unbounded mailbox with no
+   rejection vocabulary; coalescing bounds turn size, not queue depth. Decide before the
+   autonomous host ships (raised at Plan 3's final review).
 1. **`Transition` ergonomics** — the three-field shape is settled (§2.5), but the builder surface
    (`to`/`commit`/`emit`/`ignore`) is a sketch and wants one pass for readability.
 2. ~~Duplicate summarisation across nodes~~ — **closed**: the claim-write in the summary store is
