@@ -28,6 +28,7 @@ import org.jwcarman.nessy.agent.spi.Memory;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
+import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -56,25 +57,136 @@ class AgentWiringTest {
         }
       };
 
+  private static final AgentStateStore STORE = new InMemoryAgentStateStore();
+  private static final ObservationRenderer<String> RENDERER = text -> List.of();
+  private static final ModelCallExecutor MODEL = () -> {};
+  private static final ToolCallExecutor TOOLS = call -> {};
+  private static final AgentObserver OBSERVER = AgentObserver.noop();
+  private static final Duration STALE_THRESHOLD = Duration.ofMinutes(5);
+  private static final Clock CLOCK = Clock.systemUTC();
+
+  private static AgentWiring<String> wiring(
+      Memory memory,
+      AgentStateStore store,
+      Backlog<String> backlog,
+      ObservationRenderer<String> renderer,
+      ModelCallExecutor model,
+      ToolCallExecutor tools,
+      AgentObserver observer,
+      Duration staleThreshold,
+      Clock clock) {
+    return new AgentWiring<>(
+        memory, store, backlog, renderer, model, tools, observer, false, staleThreshold, clock);
+  }
+
   @Test
-  void everyCollaboratorIsRequired() {
-    var store = new InMemoryAgentStateStore();
-    ObservationRenderer<String> renderer = text -> List.of();
-    ModelCallExecutor model = () -> {};
-    ToolCallExecutor tools = call -> {};
+  void memoryIsRequired() {
     assertThatThrownBy(
             () ->
-                new AgentWiring<>(
+                wiring(
+                    null, STORE, BACKLOG, RENDERER, MODEL, TOOLS, OBSERVER, STALE_THRESHOLD, CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void storeIsRequired() {
+    assertThatThrownBy(
+            () ->
+                wiring(
+                    MEMORY,
                     null,
-                    store,
                     BACKLOG,
-                    renderer,
-                    model,
-                    tools,
-                    AgentObserver.noop(),
-                    false,
-                    Duration.ofMinutes(5),
-                    Clock.systemUTC()))
+                    RENDERER,
+                    MODEL,
+                    TOOLS,
+                    OBSERVER,
+                    STALE_THRESHOLD,
+                    CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void backlogIsRequired() {
+    assertThatThrownBy(
+            () ->
+                wiring(
+                    MEMORY, STORE, null, RENDERER, MODEL, TOOLS, OBSERVER, STALE_THRESHOLD, CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void rendererIsRequired() {
+    assertThatThrownBy(
+            () ->
+                wiring(
+                    MEMORY, STORE, BACKLOG, null, MODEL, TOOLS, OBSERVER, STALE_THRESHOLD, CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void modelIsRequired() {
+    assertThatThrownBy(
+            () ->
+                wiring(
+                    MEMORY,
+                    STORE,
+                    BACKLOG,
+                    RENDERER,
+                    null,
+                    TOOLS,
+                    OBSERVER,
+                    STALE_THRESHOLD,
+                    CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void toolsIsRequired() {
+    assertThatThrownBy(
+            () ->
+                wiring(
+                    MEMORY,
+                    STORE,
+                    BACKLOG,
+                    RENDERER,
+                    MODEL,
+                    null,
+                    OBSERVER,
+                    STALE_THRESHOLD,
+                    CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void observerIsRequired() {
+    assertThatThrownBy(
+            () ->
+                wiring(
+                    MEMORY, STORE, BACKLOG, RENDERER, MODEL, TOOLS, null, STALE_THRESHOLD, CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void staleThresholdIsRequired() {
+    assertThatThrownBy(
+            () -> wiring(MEMORY, STORE, BACKLOG, RENDERER, MODEL, TOOLS, OBSERVER, null, CLOCK))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void clockIsRequired() {
+    assertThatThrownBy(
+            () ->
+                wiring(
+                    MEMORY,
+                    STORE,
+                    BACKLOG,
+                    RENDERER,
+                    MODEL,
+                    TOOLS,
+                    OBSERVER,
+                    STALE_THRESHOLD,
+                    null))
         .isInstanceOf(NullPointerException.class);
   }
 }

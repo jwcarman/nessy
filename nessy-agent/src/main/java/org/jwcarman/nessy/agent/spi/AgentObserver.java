@@ -33,6 +33,12 @@ public interface AgentObserver {
   /** A renderer threw; the observation is discarded and the scope stays idle (§3.7). */
   void renderFailed(Object observation, RuntimeException error);
 
+  /**
+   * Applying a completion threw — a malformed delivery or a phase-contract violation. The event is
+   * dropped and narrated; the scope's phase is unchanged (validation belongs at the executor seam).
+   */
+  void applyFailed(AgentEvent event, RuntimeException error);
+
   /** Accepts everything, tells no one. */
   static AgentObserver noop() {
     return new AgentObserver() {
@@ -44,6 +50,9 @@ public interface AgentObserver {
 
       @Override
       public void renderFailed(Object observation, RuntimeException error) {}
+
+      @Override
+      public void applyFailed(AgentEvent event, RuntimeException error) {}
     };
   }
 }

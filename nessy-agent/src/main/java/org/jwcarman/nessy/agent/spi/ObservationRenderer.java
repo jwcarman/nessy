@@ -18,7 +18,10 @@ package org.jwcarman.nessy.agent.spi;
 import java.util.List;
 import org.jwcarman.nessy.api.message.ContentBlock;
 
-/** Translates observations to inference blocks: applied at poll time (§3.7). */
+/**
+ * Translates observations to inference blocks: applied at poll time (§3.7). An empty list declines
+ * the observation: the shell discards it and keeps draining (§3.3).
+ */
 @FunctionalInterface
 public interface ObservationRenderer<O> {
   List<ContentBlock> render(O observation);

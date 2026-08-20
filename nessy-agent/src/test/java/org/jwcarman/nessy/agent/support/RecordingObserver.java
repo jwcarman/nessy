@@ -29,6 +29,7 @@ public final class RecordingObserver implements AgentObserver {
   private final List<Applied> applied = new ArrayList<>();
   private final List<AgentEvent> ignored = new ArrayList<>();
   private final List<Object> renderFailures = new ArrayList<>();
+  private final List<AgentEvent> applyFailures = new ArrayList<>();
 
   @Override
   public void applied(AgentEvent event, Transition transition) {
@@ -45,6 +46,11 @@ public final class RecordingObserver implements AgentObserver {
     renderFailures.add(observation);
   }
 
+  @Override
+  public void applyFailed(AgentEvent event, RuntimeException error) {
+    applyFailures.add(event);
+  }
+
   public List<Applied> applied() {
     return List.copyOf(applied);
   }
@@ -55,5 +61,9 @@ public final class RecordingObserver implements AgentObserver {
 
   public List<Object> renderFailures() {
     return List.copyOf(renderFailures);
+  }
+
+  public List<AgentEvent> applyFailures() {
+    return List.copyOf(applyFailures);
   }
 }

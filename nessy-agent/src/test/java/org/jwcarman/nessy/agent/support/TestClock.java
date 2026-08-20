@@ -50,6 +50,6 @@ public final class TestClock extends Clock {
 
   @Override
   public Clock withZone(ZoneId zone) {
-    return this;
+    throw new UnsupportedOperationException("TestClock is zoneless by design");
   }
 }

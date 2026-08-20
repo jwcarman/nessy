@@ -67,6 +67,19 @@ class DefaultAgentRecoveryTest {
   }
 
   @Test
+  void aTurnStalledForExactlyTheThresholdIsReFired() {
+    // Pins the inclusive boundary (>=): advancing by exactly the threshold must still count as
+    // stale, not merely one tick past it.
+    var clock = new TestClock(T0);
+    var f = stalled(new Phase.AwaitingModel(), clock);
+    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("recovered")), List.of()));
+    clock.advance(THRESHOLD);
+    f.agent.drive();
+    f.pump.pumpUntilQuiet();
+    assertThat(f.model.callCount()).isEqualTo(1);
+  }
+
+  @Test
   void aStaleFanOutReFiresOnlyThePendingCallsWithTheirFullArguments() {
     var clock = new TestClock(T0);
     var turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a")));

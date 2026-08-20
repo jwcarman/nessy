@@ -19,10 +19,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.LatentSink;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
+import org.jwcarman.nessy.agent.support.RecordingMemory;
+import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 
@@ -35,7 +41,7 @@ class DefaultAgentDrainTest {
     // both apply against the shared store, and this test quietly proves interchangeability.
     var f = new AgentFixture();
     var poisoned =
-        new DefaultAgent<String>(
+        DefaultAgent.create(
             new AgentWiring<>(
                 f.memory,
                 f.store,
@@ -51,7 +57,8 @@ class DefaultAgentDrainTest {
                 f.observer,
                 false,
                 Duration.ofMinutes(5),
-                Clock.systemUTC()));
+                Clock.systemUTC()),
+            new LatentSink());
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     f.backlogQueue.add("bad-observation");
     f.backlogQueue.add("good-observation");
@@ -60,6 +67,79 @@ class DefaultAgentDrainTest {
     assertThat(f.observer.renderFailures()).containsExactly("bad-observation");
     assertThat(f.memory.remembered())
         .contains(Message.user(List.of(new TextBlock("good-observation"))));
+  }
+
+  @Test
+  void aWriterAdvancingBetweenTheIdleCheckAndThePollIsCaughtAtSaveNotHandle() {
+    // The backlog's poll() doubles as an out-of-band competitor: it advances the scope from
+    // Idle to AwaitingModel before handing back the observation it was asked for. With one load
+    // per drain iteration, the race is caught by the save CAS (StaleStateException), never by
+    // handing a non-idle phase an Observed event.
+    var store = new InMemoryAgentStateStore();
+    var addedBack = new ArrayList<String>();
+    Backlog<String> racingBacklog =
+        new Backlog<>() {
+          private boolean raced;
+
+          @Override
+          public void add(String observation) {
+            addedBack.add(observation);
+          }
+
+          @Override
+          public Optional<String> poll() {
+            if (!raced) {
+              raced = true;
+              store.save(new State(new Phase.AwaitingModel(), store.load().version()));
+            }
+            return Optional.of("hello");
+          }
+        };
+    var wiring =
+        new AgentWiring<String>(
+            new RecordingMemory(),
+            store,
+            racingBacklog,
+            text -> List.of(new TextBlock(text)),
+            () -> {},
+            call -> {},
+            new RecordingObserver(),
+            false,
+            Duration.ofMinutes(5),
+            Clock.systemUTC());
+    var agent = DefaultAgent.create(wiring, new LatentSink());
+    agent.drive();
+    assertThat(addedBack).containsExactly("hello");
+    assertThat(store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+  }
+
+  @Test
+  void anEmptyRenderDeclinesTheObservationAndKeepsDraining() {
+    var f = new AgentFixture();
+    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
+    var poisoned =
+        DefaultAgent.create(
+            new AgentWiring<>(
+                f.memory,
+                f.store,
+                f.backlog,
+                text -> text.equals("declined") ? List.of() : List.of(new TextBlock(text)),
+                f.model,
+                f.tools,
+                f.observer,
+                false,
+                Duration.ofMinutes(5),
+                Clock.systemUTC()),
+            new LatentSink());
+    f.backlogQueue.add("declined");
+    f.backlogQueue.add("good-observation");
+    poisoned.drive();
+    f.pump.pumpUntilQuiet();
+    assertThat(f.backlogQueue).isEmpty();
+    var remembered = f.memory.remembered();
+    assertThat(remembered).isNotEmpty();
+    assertThat(remembered).contains(Message.user(List.of(new TextBlock("good-observation"))));
+    assertThat(remembered).doesNotContain(Message.user(List.of(new TextBlock("declined"))));
   }
 
   @Test

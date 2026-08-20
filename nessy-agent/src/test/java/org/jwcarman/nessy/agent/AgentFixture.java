@@ -59,19 +59,20 @@ final class AgentFixture {
   AgentFixture(AgentStateStore store, boolean drainOnIdle, Duration staleThreshold, Clock clock) {
     this.store = store;
     this.agent =
-        new DefaultAgent<>(
-            new AgentWiring<>(
-                memory,
-                store,
-                backlog,
-                text -> List.of(new TextBlock(text)),
-                model,
-                tools,
-                observer,
-                drainOnIdle,
-                staleThreshold,
-                clock));
-    sink.bind(agent::deliver);
+        (DefaultAgent<String>)
+            DefaultAgent.create(
+                new AgentWiring<>(
+                    memory,
+                    store,
+                    backlog,
+                    text -> List.of(new TextBlock(text)),
+                    model,
+                    tools,
+                    observer,
+                    drainOnIdle,
+                    staleThreshold,
+                    clock),
+                sink);
   }
 
   AgentFixture(AgentStateStore store, boolean drainOnIdle) {

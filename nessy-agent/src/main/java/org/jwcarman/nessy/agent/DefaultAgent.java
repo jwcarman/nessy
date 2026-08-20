@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.agent.spi.LatentSink;
 import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.message.ContentBlock;
 
@@ -30,8 +31,18 @@ public final class DefaultAgent<O> implements Agent<O> {
 
   private final AgentWiring<O> wiring;
 
-  public DefaultAgent(AgentWiring<O> wiring) {
+  private DefaultAgent(AgentWiring<O> wiring) {
     this.wiring = Objects.requireNonNull(wiring, "wiring must not be null");
+  }
+
+  /**
+   * The hand-wiring door (§7.1): builds the agent and binds the sink its executors were constructed
+   * around.
+   */
+  public static <O> Agent<O> create(AgentWiring<O> wiring, LatentSink sink) {
+    DefaultAgent<O> agent = new DefaultAgent<>(wiring);
+    sink.bind(agent::deliver);
+    return agent;
   }
 
   @Override
@@ -63,12 +74,20 @@ public final class DefaultAgent<O> implements Agent<O> {
         return;
       } catch (StaleStateException e) {
         // another writer advanced the scope — re-handle against what it left behind
+      } catch (RuntimeException e) {
+        wiring
+            .observer()
+            .applyFailed(event, e); // narrate-and-drop: the shell manufactures no events
+        return;
       }
     }
   }
 
   private void applyOnce(AgentEvent event) {
-    State state = wiring.store().load();
+    applyOnce(wiring.store().load(), event);
+  }
+
+  private void applyOnce(State state, AgentEvent event) {
     Transition t = state.phase().handle(event); // decide before committing
     if (t.isIgnored()) {
       wiring.observer().ignored(event);
@@ -84,7 +103,11 @@ public final class DefaultAgent<O> implements Agent<O> {
   }
 
   private void drain() {
-    while (wiring.store().load().phase() instanceof Phase.Idle) {
+    while (true) {
+      State state = wiring.store().load();
+      if (!(state.phase() instanceof Phase.Idle)) {
+        return;
+      }
       Optional<O> next = wiring.backlog().poll();
       if (next.isEmpty()) {
         return;
@@ -97,8 +120,11 @@ public final class DefaultAgent<O> implements Agent<O> {
         wiring.observer().renderFailed(observation, e); // discard; stay idle; keep draining
         continue;
       }
+      if (content.isEmpty()) {
+        continue; // an empty render is a decline — skip, keep draining (§3.7)
+      }
       try {
-        applyOnce(new AgentEvent.Observed(content));
+        applyOnce(state, new AgentEvent.Observed(content));
       } catch (StaleStateException e) {
         wiring.backlog().add(observation); // lost race → back to the backlog (§3.3)
       }

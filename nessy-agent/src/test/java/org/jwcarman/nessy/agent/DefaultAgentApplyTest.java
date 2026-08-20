@@ -18,11 +18,20 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.LatentSink;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
+import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -144,5 +153,55 @@ class DefaultAgentApplyTest {
             Message.assistant(List.of(new TextBlock("done"))));
     assertThat(f.model.callCount()).isEqualTo(1);
     assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
+  }
+
+  @Test
+  void aHandleFailureIsNarratedAndDroppedWithThePhaseUnchanged() {
+    // The model responds with tool calls but omits the ToolUseBlock for CALL_A from its content —
+    // AwaitingTools's constructor rejects that inside handle(), and the failure must be narrated
+    // and dropped rather than escaping the pump.
+    var f = new AgentFixture();
+    f.model.enqueue(
+        new ModelOutcome.Responded(List.of(new TextBlock("no tool blocks")), List.of(CALL_A)));
+    f.agent.observe("go");
+    f.pump.pumpUntilQuiet();
+    assertThat(f.observer.applyFailures()).hasSize(1);
+    assertThat(f.store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+  }
+
+  @Test
+  void theStateIsSavedBeforeAnyEffectIsDispatched() {
+    var store = new InMemoryAgentStateStore();
+    var versionsAtCall = new ArrayList<Long>();
+    var sink = new LatentSink();
+    var queue = new ArrayDeque<String>();
+    Backlog<String> backlog =
+        new Backlog<>() {
+          @Override
+          public void add(String observation) {
+            queue.add(observation);
+          }
+
+          @Override
+          public Optional<String> poll() {
+            return Optional.ofNullable(queue.poll());
+          }
+        };
+    var wiring =
+        new AgentWiring<String>(
+            new RecordingMemory(),
+            store,
+            backlog,
+            text -> List.of(new TextBlock(text)),
+            () -> versionsAtCall.add(store.load().version()),
+            call -> {},
+            AgentObserver.noop(),
+            false,
+            Duration.ofMinutes(5),
+            Clock.systemUTC());
+    var agent = DefaultAgent.create(wiring, sink);
+    agent.observe("hi");
+    assertThat(versionsAtCall).isNotEmpty();
+    assertThat(versionsAtCall.getFirst()).isEqualTo(1L); // post-save version, not the loaded 0
   }
 }
