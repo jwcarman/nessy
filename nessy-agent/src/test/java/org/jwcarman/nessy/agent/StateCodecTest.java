@@ -121,4 +121,19 @@ class StateCodecTest {
     var state = new State(new Phase.AwaitingTools(turn, Set.of("b", "a"), List.of()), 1L);
     assertThat(codec.encode(state)).contains("\"pending\":[\"a\",\"b\"]");
   }
+
+  @Test
+  void aThinkingBlockWithoutASignatureKeyDecodesAsUnsigned() {
+    var json =
+        """
+        {"version":1,"phase":"AWAITING_TOOLS",
+         "assistantTurn":{"role":"ASSISTANT","content":[
+           {"type":"thinking","text":"hmm"},
+           {"type":"tool_use","id":"a","name":"lookup","arguments":{}}]},
+         "pending":["a"],"gathered":[]}
+        """;
+    var decoded = codec.decode(json);
+    var turn = ((Phase.AwaitingTools) decoded.phase()).assistantTurn();
+    assertThat(turn.content()).contains(new ThinkingBlock("hmm", ""));
+  }
 }

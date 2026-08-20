@@ -78,8 +78,8 @@ class TransitionTest {
   @Test
   void anIgnoredTransitionRefusesToCommit() {
     var ignored = Transition.ignore();
-    assertThatThrownBy(() -> ignored.commit(Message.user("x")))
-        .isInstanceOf(IllegalStateException.class);
+    var message = Message.user("x");
+    assertThatThrownBy(() -> ignored.commit(message)).isInstanceOf(IllegalStateException.class);
   }
 
   @Test
