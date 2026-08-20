@@ -19,11 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.ToolOutcome;
+import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.api.Awaited;
@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.durable.ComputationId;
 
 class RegistryToolCallExecutorTest {
 
@@ -192,7 +193,8 @@ class RegistryToolCallExecutorTest {
             AgentId.of("cli"),
             turn,
             pump,
-            (parkedCall, token) -> Optional.empty());
+            (parkedCall, token) ->
+                new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")));
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();

@@ -26,6 +26,7 @@ import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.ParkedCallPolicy;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
+import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.conversation.ConversationId;
@@ -79,32 +80,38 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   @Override
   public void executeTool(ToolCall call, Sink sink) {
     executor.execute(
-        () ->
-            execute(call)
-                .ifPresent(outcome -> sink.deliver(new AgentEvent.ToolFinished(call, outcome))));
+        () -> {
+          switch (execute(call)) {
+            case ToolExecution.Immediate(ToolOutcome outcome) ->
+                sink.deliver(new AgentEvent.ToolFinished(call, outcome));
+            case ToolExecution.Deferred(var computation) -> {
+              // suspended into its slot: nothing delivered, nothing narrated (§4.3) — the
+              // completion re-enters through the slot's registered continuation
+            }
+          }
+        });
   }
 
-  /** Empty means the call is suspended: nothing delivered, nothing narrated (§4.3). */
-  private Optional<ToolOutcome> execute(ToolCall call) {
+  private ToolExecution execute(ToolCall call) {
     Optional<Tool<?>> found = registry.find(call.name());
     if (found.isEmpty()) {
-      return Optional.of(failed(call, "unknown tool: " + call.name()));
+      return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
     }
     try {
       return invoke(found.get(), call);
     } catch (RuntimeException e) {
       String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-      return Optional.of(failed(call, message));
+      return new ToolExecution.Immediate(failed(call, message));
     }
   }
 
-  private <T> Optional<ToolOutcome> invoke(Tool<T> tool, ToolCall call) {
+  private <T> ToolExecution invoke(Tool<T> tool, ToolCall call) {
     T input = mapper.convertValue(call.arguments(), tool.inputType());
     ToolContext context = new ToolContext(bridgedId, call, event -> narrateProgress(call, event));
     return switch (tool.execute(input, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
-        yield Optional.of(new ToolOutcome.Returned(value));
+        yield new ToolExecution.Immediate(new ToolOutcome.Returned(value));
       }
       case Awaited.Parked<ToolResult>(ParkToken token) -> parkedCallPolicy.onParked(call, token);
     };
@@ -134,7 +141,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return (call, token) -> {
       ToolResult error = ToolResult.error(PARKING_UNAVAILABLE);
       turn.on(new TurnEvent.ToolCallCompleted(call, error));
-      return Optional.of(new ToolOutcome.Failed(new ToolError(PARKING_UNAVAILABLE)));
+      return new ToolExecution.Immediate(
+          new ToolOutcome.Failed(new ToolError(PARKING_UNAVAILABLE)));
     };
   }
 }

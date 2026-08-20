@@ -139,7 +139,7 @@ class DurableParkDemo {
                         id,
                         narrator,
                         pump,
-                        new DurableParkedCallPolicy(backend, desk, type, id)),
+                        new DurableParkedCallPolicy(backend, type, id)),
                     AgentObserver.noop(),
                     false,
                     Duration.ofMinutes(5),
@@ -163,7 +163,7 @@ class DurableParkDemo {
     assertThat(narrator.events()).noneMatch(e -> e instanceof TurnEvent.ToolCallCompleted);
 
     System.out.println("== the instance is garbage; hours pass; any node may answer ==");
-    desk.approve(new ParkToken("tok-demo-1"), ToolResult.ok("approved by jcarman"));
+    desk.approve(slot, ToolResult.ok("approved by jcarman"));
     pump.pumpUntilQuiet();
 
     System.out.println("final phase: " + store.load().phase());

@@ -16,13 +16,12 @@
 package org.jwcarman.nessy.agent.durable;
 
 import java.util.Objects;
-import java.util.Optional;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DurableOutcomes;
 import org.jwcarman.nessy.agent.ScopeResumption;
-import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.ParkedCallPolicy;
+import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.AwaitResult;
@@ -31,37 +30,33 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
 
 /**
  * The durable wiring's answer to a park (§4.3): get-or-create the slot at its deterministic id
- * (submit-once — a recovery re-fire finds it, ruling 4), await atomically, and only then hand the
- * desk the token — if the answer already arrived, nothing is registered. Registered means
- * suspended; AlreadyCompleted means the answer arrived while we were away — deliver it now.
+ * (submit-once — a recovery re-fire finds the same slot, ruling 4) and await atomically. Registered
+ * means suspended; AlreadyCompleted means the answer arrived while we were away — deliver it now.
+ * The tool's {@code ParkToken} is a park SIGNAL, not an address, and is ignored: the slot's
+ * deterministic id is the one handle per question. Completion-capability secrets (durable spec §9,
+ * "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
  */
 public final class DurableParkedCallPolicy implements ParkedCallPolicy {
 
   private final DurableComputationBackend backend;
-  private final ApprovalDesk desk;
   private final AgentType type;
   private final AgentId id;
 
-  public DurableParkedCallPolicy(
-      DurableComputationBackend backend, ApprovalDesk desk, AgentType type, AgentId id) {
+  public DurableParkedCallPolicy(DurableComputationBackend backend, AgentType type, AgentId id) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
-    this.desk = Objects.requireNonNull(desk, "desk must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.id = Objects.requireNonNull(id, "id must not be null");
   }
 
   @Override
-  public Optional<ToolOutcome> onParked(ToolCall call, ParkToken token) {
+  public ToolExecution onParked(ToolCall call, ParkToken token) {
     ComputationId slotId =
         ComputationId.of("tool:%s:%s:%s".formatted(type.name(), id.value(), call.id()));
     backend.create(slotId);
     return switch (backend.await(slotId, ScopeResumption.continuationFor(type, id, call))) {
       case AwaitResult.AlreadyCompleted(var outcome) ->
-          Optional.of(DurableOutcomes.toToolOutcome(outcome));
-      case AwaitResult.Registered() -> {
-        desk.register(token, slotId);
-        yield Optional.empty();
-      }
+          new ToolExecution.Immediate(DurableOutcomes.toToolOutcome(outcome));
+      case AwaitResult.Registered() -> new ToolExecution.Deferred(slotId);
     };
   }
 }

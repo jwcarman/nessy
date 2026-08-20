@@ -15,19 +15,18 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
-import java.util.Optional;
-import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
- * What a wiring does when a tool parks (spec §4.3). Empty means the call is suspended: the executor
- * delivers nothing and narrates nothing — parking is invisible. Present means an outcome to deliver
- * now — the loud in-band failure of a non-parking wiring, or a durable slot's already-terminal
- * answer.
+ * What a wiring does when a tool parks (spec §4.3). {@link ToolExecution.Deferred} means the call
+ * is suspended into its durable slot: the executor delivers nothing and narrates nothing — parking
+ * is invisible, but the suspension carries its reference. {@link ToolExecution.Immediate} means an
+ * outcome to deliver now — the loud in-band failure of a non-parking wiring, or a durable slot's
+ * already-terminal answer.
  */
 @FunctionalInterface
 public interface ParkedCallPolicy {
 
-  Optional<ToolOutcome> onParked(ToolCall call, ParkToken token);
+  ToolExecution onParked(ToolCall call, ParkToken token);
 }

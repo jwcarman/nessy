@@ -16,9 +16,6 @@
 package org.jwcarman.nessy.agent.durable;
 
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import org.jwcarman.nessy.api.ParkToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.CompletionResult;
 import org.jwcarman.nessy.durable.ComputationId;
@@ -27,63 +24,41 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
 
 /**
- * The approve/deny doors (§4.3): a token is the completion capability, resolved here to its slot.
- * Complete-then-fire, at-least-once — a crash between the flip and the fire is covered by the lazy
- * re-drive floor (plan decision 3). Unknown tokens and second decisions are refused loudly.
+ * The approve/deny doors (§4.3), addressed by the computation's own deterministic identity — the
+ * desk holds no state of its own, because the backend is the state. Re-drives re-derive the same
+ * id, so there is exactly one handle per question, ever. Unknown ids and second decisions are
+ * refused loudly by the backend's own vocabulary. Completion-capability secrets (durable spec §9,
+ * "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
+ *
+ * <p>Complete-then-fire, at-least-once (plan decision 3): a handler throw during fire propagates
+ * with the slot already terminal — the lazy re-drive floor covers delivery, and the Plan-5 outbox
+ * is the prompt-delivery upgrade.
  */
 public final class ApprovalDesk {
 
   private final DurableComputationBackend backend;
   private final ContinuationDispatcher dispatcher;
-  private final ConcurrentMap<ParkToken, ComputationId> byToken = new ConcurrentHashMap<>();
 
   public ApprovalDesk(DurableComputationBackend backend, ContinuationDispatcher dispatcher) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher must not be null");
   }
 
-  /**
-   * Idempotent: registering the same token for the same slot twice is one registration. Rebinding
-   * an already-registered token to a different slot is refused loudly rather than silently
-   * discarded.
-   */
-  public void register(ParkToken token, ComputationId id) {
-    Objects.requireNonNull(token, "token must not be null");
-    Objects.requireNonNull(id, "id must not be null");
-    ComputationId prior = byToken.putIfAbsent(token, id);
-    if (prior != null && !prior.equals(id)) {
-      throw new IllegalStateException("token already bound to a different computation");
-    }
-  }
-
-  public void approve(ParkToken token, ToolResult result) {
+  public void approve(ComputationId id, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
-    decide(token, new Outcome.Success(result));
+    decide(id, new Outcome.Success(result));
   }
 
-  public void deny(ParkToken token, String reason) {
+  public void deny(ComputationId id, String reason) {
     Objects.requireNonNull(reason, "reason must not be null");
-    decide(token, new Outcome.Failure(reason));
+    decide(id, new Outcome.Failure(reason));
   }
 
-  /**
-   * A handler throw here propagates BEFORE the token retirement below runs: the slot is terminal
-   * (backend side) but the token and its siblings remain registered — a later decision on them
-   * throws "already decided" rather than "unknown". The lazy re-drive floor (plan decision 3)
-   * covers delivery; the Plan-5 outbox is the prompt-delivery upgrade and must also reconcile this
-   * desk-side residue. (plan decision 3) covers delivery; the Plan-5 outbox is the prompt-delivery
-   * upgrade.
-   */
-  private void decide(ParkToken token, Outcome outcome) {
-    Objects.requireNonNull(token, "token must not be null");
-    ComputationId id = byToken.get(token);
-    if (id == null) {
-      throw new IllegalArgumentException("unknown or already-decided token");
-    }
+  private void decide(ComputationId id, Outcome outcome) {
+    Objects.requireNonNull(id, "id must not be null");
     if (backend.complete(id, outcome) == CompletionResult.ALREADY_TERMINAL) {
       throw new IllegalStateException("already decided: " + id.value());
     }
     dispatcher.fire(backend.continuationsOf(id), outcome);
-    byToken.values().removeIf(id::equals);
   }
 }
