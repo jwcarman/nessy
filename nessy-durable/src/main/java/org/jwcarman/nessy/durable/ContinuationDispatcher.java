@@ -39,8 +39,9 @@ public final class ContinuationDispatcher {
   }
 
   /**
-   * A handler throw here leaves the token retired and the slot terminal — the lazy re-drive floor
-   * (plan decision 3) covers delivery; the Plan-5 outbox is the prompt-delivery upgrade.
+   * All handlers are resolved before any runs, so an unknown type fails before side effects. There
+   * is no atomicity ACROSS handlers: if handler k throws, handlers before it have run and handlers
+   * after it will not — callers own their at-least-once story (e.g. a re-drive floor or an outbox).
    */
   public void fire(List<Continuation> continuations, Outcome outcome) {
     Objects.requireNonNull(continuations, "continuations must not be null");

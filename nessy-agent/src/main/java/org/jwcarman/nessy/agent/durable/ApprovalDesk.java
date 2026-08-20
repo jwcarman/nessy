@@ -67,8 +67,12 @@ public final class ApprovalDesk {
   }
 
   /**
-   * A handler throw here leaves the token retired and the slot terminal — the lazy re-drive floor
-   * (plan decision 3) covers delivery; the Plan-5 outbox is the prompt-delivery upgrade.
+   * A handler throw here propagates BEFORE the token retirement below runs: the slot is terminal
+   * (backend side) but the token and its siblings remain registered — a later decision on them
+   * throws "already decided" rather than "unknown". The lazy re-drive floor (plan decision 3)
+   * covers delivery; the Plan-5 outbox is the prompt-delivery upgrade and must also reconcile this
+   * desk-side residue. (plan decision 3) covers delivery; the Plan-5 outbox is the prompt-delivery
+   * upgrade.
    */
   private void decide(ParkToken token, Outcome outcome) {
     Objects.requireNonNull(token, "token must not be null");
