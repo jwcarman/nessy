@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.internal.Identifiers;
-
 /**
  * Names one parked wait so a later resume can find it.
  *

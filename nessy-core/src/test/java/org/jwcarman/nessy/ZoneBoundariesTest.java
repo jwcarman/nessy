@@ -97,53 +97,6 @@ class ZoneBoundariesTest {
     return Stream.of("org.jwcarman.nessy.spi");
   }
 
-  @Test
-  void files_under_api_importing_internal_are_exactly_the_sanctioned_set() {
-    List<JavaFile> filesUnderApi = filesUnder("api");
-    assertThat(filesUnderApi).isNotEmpty();
-    for (JavaFile file : filesUnderApi) {
-      if (file.importsPackage("org.jwcarman.nessy.internal")) {
-        assertThat(SANCTIONED_API_TO_INTERNAL_IMPORTS)
-            .as(
-                "%s imports org.jwcarman.nessy.internal but is not on the sanctioned list; either"
-                    + " widen the sanctioned set deliberately or remove the dependency",
-                file.relativePath())
-            .contains(file.fileName());
-      }
-    }
-  }
-
-  @Test
-  void files_under_spi_importing_internal_are_exactly_the_sanctioned_set() {
-    List<JavaFile> filesUnderSpi = filesUnder("spi");
-    assertThat(filesUnderSpi).isNotEmpty();
-    for (JavaFile file : filesUnderSpi) {
-      if (file.importsPackage("org.jwcarman.nessy.internal")) {
-        assertThat(SANCTIONED_SPI_TO_INTERNAL_IMPORTS)
-            .as(
-                "%s imports org.jwcarman.nessy.internal but is not on the sanctioned list; either"
-                    + " widen the sanctioned set deliberately or remove the dependency",
-                file.relativePath())
-            .contains(file.fileName());
-      }
-    }
-  }
-
-  @Test
-  void root_package_files_importing_internal_are_exactly_the_sanctioned_set() {
-    assertThat(rootPackageFiles()).isNotEmpty();
-    for (JavaFile file : rootPackageFiles()) {
-      if (file.importsPackage("org.jwcarman.nessy.internal")) {
-        assertThat(SANCTIONED_ROOT_TO_INTERNAL_IMPORTS)
-            .as(
-                "%s imports org.jwcarman.nessy.internal but is not on the sanctioned list; either"
-                    + " widen the sanctioned set deliberately or remove the dependency",
-                file.relativePath())
-            .contains(file.fileName());
-      }
-    }
-  }
-
   /**
    * Files whose relative path is under the given slash-separated package segment — matching both
    * the segment's direct children and anything nested deeper. A zone name is the leading path
@@ -198,5 +151,14 @@ class ZoneBoundariesTest {
           .lines()
           .anyMatch(line -> line.strip().startsWith("import " + packageName + "."));
     }
+  }
+
+  @Test
+  void nothing_imports_internal_because_internal_is_gone() {
+    List<JavaFile> importers =
+        allJavaFiles().stream()
+            .filter(file -> file.importsPackage("org.jwcarman.nessy.internal"))
+            .toList();
+    assertThat(importers).isEmpty();
   }
 }

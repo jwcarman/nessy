@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.conversation;
 
 import java.io.Serializable;
-import org.jwcarman.nessy.internal.Identifiers;
+import org.jwcarman.nessy.api.Identifiers;
 
 /** Identifies one conversation. Opaque on purpose: the store chooses what it means. */
 public record ConversationId(String value) implements Serializable {

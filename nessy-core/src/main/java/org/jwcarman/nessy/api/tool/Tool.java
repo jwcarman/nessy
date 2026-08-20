@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.api.tool;
 
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.internal.Schemas;
 
 /**
  * Something the model can ask the harness to do.

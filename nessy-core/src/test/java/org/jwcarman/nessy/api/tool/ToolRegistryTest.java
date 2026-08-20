@@ -18,16 +18,12 @@ package org.jwcarman.nessy.api.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.conversation.ConversationId;
-import org.jwcarman.nessy.api.event.EventEmitter;
-import org.jwcarman.nessy.internal.ToolInvoker;
 
 class ToolRegistryTest {
 
@@ -91,7 +87,6 @@ class ToolRegistryTest {
   }
 
   private final ToolRegistry registry = ToolRegistry.of(new GreetTool());
-  private final ToolInvoker invoker = new ToolInvoker(new ObjectMapper());
 
   private static ToolCall greetCall(String name) {
     ObjectNode args = JsonNodeFactory.instance.objectNode();
@@ -150,29 +145,6 @@ class ToolRegistryTest {
       assertThatThrownBy(() -> ToolRegistry.of(first, second))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("greet");
-    }
-  }
-
-  @Nested
-  class Invocation {
-
-    @Test
-    void invoking_binds_json_arguments_to_the_record() {
-      Tool<?> tool = registry.find("greet").orElseThrow();
-      ToolCall call = greetCall("Ada");
-
-      Awaited<ToolResult> awaited =
-          invoker.invoke(
-              tool, call, new ToolContext(new ConversationId("s1"), call, EventEmitter.noop()));
-
-      assertThat(awaited).isEqualTo(Awaited.ready(ToolResult.ok("Hello, Ada")));
-    }
-
-    @Test
-    void effect_renders_the_call_for_a_human() {
-      Tool<?> tool = registry.find("greet").orElseThrow();
-
-      assertThat(invoker.effect(tool, greetCall("Ada"))).isEqualTo("greet(Ada)");
     }
   }
 }
