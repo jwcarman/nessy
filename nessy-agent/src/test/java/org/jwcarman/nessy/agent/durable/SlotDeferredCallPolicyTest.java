@@ -30,11 +30,11 @@ import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
 
-class DurableParkedCallPolicyTest {
+class SlotDeferredCallPolicyTest {
 
   private final InMemoryDurableComputationBackend backend = new InMemoryDurableComputationBackend();
-  private final DurableParkedCallPolicy policy =
-      new DurableParkedCallPolicy(backend, AgentType.of("approver"), AgentId.of("demo"));
+  private final SlotDeferredCallPolicy policy =
+      new SlotDeferredCallPolicy(backend, AgentType.of("approver"), AgentId.of("demo"));
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());

@@ -19,13 +19,13 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * What a wiring does when a tool defers (spec §4.3). {@link ToolExecution.Deferred} means the call
- * is suspended into its durable slot: the executor delivers nothing and narrates nothing — parking
+ * is suspended into its durable slot: the executor delivers nothing and narrates nothing — deferral
  * is invisible, but the suspension carries its reference. {@link ToolExecution.Immediate} means an
- * outcome to deliver now — the loud in-band failure of a non-parking wiring, or a durable slot's
+ * outcome to deliver now — the loud in-band failure of a non-durable wiring, or a durable slot's
  * already-terminal answer.
  */
 @FunctionalInterface
-public interface ParkedCallPolicy {
+public interface DeferredCallPolicy {
 
   ToolExecution onDeferred(ToolCall call);
 }

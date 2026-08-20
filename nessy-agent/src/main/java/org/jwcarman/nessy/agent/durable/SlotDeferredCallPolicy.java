@@ -20,7 +20,7 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DurableOutcomes;
 import org.jwcarman.nessy.agent.ScopeResumption;
-import org.jwcarman.nessy.agent.spi.ParkedCallPolicy;
+import org.jwcarman.nessy.agent.spi.DeferredCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.AwaitResult;
@@ -28,19 +28,19 @@ import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 
 /**
- * The durable wiring's answer to a park (§4.3): get-or-create the slot at its deterministic id
+ * The durable wiring's answer to a deferral (§4.3): get-or-create the slot at its deterministic id
  * (submit-once — a recovery re-fire finds the same slot, ruling 4) and await atomically. Registered
  * means suspended; AlreadyCompleted means the answer arrived while we were away — deliver it now.
  * deterministic id is the one handle per question. Completion-capability secrets (durable spec §9,
  * "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
  */
-public final class DurableParkedCallPolicy implements ParkedCallPolicy {
+public final class SlotDeferredCallPolicy implements DeferredCallPolicy {
 
   private final DurableComputationBackend backend;
   private final AgentType type;
   private final AgentId id;
 
-  public DurableParkedCallPolicy(DurableComputationBackend backend, AgentType type, AgentId id) {
+  public SlotDeferredCallPolicy(DurableComputationBackend backend, AgentType type, AgentId id) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.id = Objects.requireNonNull(id, "id must not be null");

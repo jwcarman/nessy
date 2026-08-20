@@ -23,7 +23,7 @@ import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
-import org.jwcarman.nessy.agent.spi.ParkedCallPolicy;
+import org.jwcarman.nessy.agent.spi.DeferredCallPolicy;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
@@ -38,9 +38,9 @@ import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 
 /**
- * The registry tool executor (§4.3): find, bind, execute, deliver. What happens when a tool parks
- * is the wiring's {@link ParkedCallPolicy}: the default (4-arg constructor) fails loudly in-band —
- * a parked turn wedges a conversation — while a durable wiring suspends the call into a slot. A
+ * The registry tool executor (§4.3): find, bind, execute, deliver. What happens when a tool defers
+ * is the wiring's {@link DeferredCallPolicy}: the default (4-arg constructor) fails loudly in-band
+ * — a deferred turn wedges a conversation — while a durable wiring suspends the call into a slot. A
  * suspended call delivers nothing and narrates nothing.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
@@ -49,10 +49,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final TurnObserver turn;
   private final Executor executor;
   private final ObjectMapper mapper = new ObjectMapper();
-  private final ParkedCallPolicy parkedCallPolicy;
+  private final DeferredCallPolicy deferredCallPolicy;
 
   private static final String PARKING_UNAVAILABLE =
-      "parking is unavailable in this wiring; the desk arrives with the autonomous host";
+      "deferred execution is unavailable in this wiring; the desk arrives with the autonomous host";
 
   public RegistryToolCallExecutor(
       ToolRegistry registry, AgentId id, TurnObserver turn, Executor executor) {
@@ -64,13 +64,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       AgentId id,
       TurnObserver turn,
       Executor executor,
-      ParkedCallPolicy parkedCallPolicy) {
+      DeferredCallPolicy deferredCallPolicy) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     Objects.requireNonNull(id, "id must not be null");
     this.turn = Objects.requireNonNull(turn, "turn must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
-    this.parkedCallPolicy =
-        Objects.requireNonNull(parkedCallPolicy, "parkedCallPolicy must not be null");
+    this.deferredCallPolicy =
+        Objects.requireNonNull(deferredCallPolicy, "deferredCallPolicy must not be null");
   }
 
   @Override
@@ -109,7 +109,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
         yield new ToolExecution.Immediate(new ToolOutcome.Returned(value));
       }
-      case Awaited.Deferred<ToolResult> ignored -> parkedCallPolicy.onDeferred(call);
+      case Awaited.Deferred<ToolResult> ignored -> deferredCallPolicy.onDeferred(call);
     };
   }
 
@@ -133,7 +133,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   /** The 4-arg constructor's default: fails loudly in-band rather than suspending silently. */
-  private static ParkedCallPolicy defaultPolicy(TurnObserver turn) {
+  private static DeferredCallPolicy defaultPolicy(TurnObserver turn) {
     return call -> {
       ToolResult error = ToolResult.error(PARKING_UNAVAILABLE);
       turn.on(new TurnEvent.ToolCallCompleted(call, error));

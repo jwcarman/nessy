@@ -115,7 +115,7 @@ class RegistryToolCallExecutorTest {
         new ToolCall("c1", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
     var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
     var failed = (ToolOutcome.Failed) finished.outcome();
-    assertThat(failed.error().message()).contains("parking is unavailable");
+    assertThat(failed.error().message()).contains("deferred execution is unavailable");
   }
 
   @Test
@@ -206,6 +206,6 @@ class RegistryToolCallExecutorTest {
         new ToolCall("c9", "park_me", JsonNodeFactory.instance.objectNode().put("value", "x"));
     var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
     var failed = (ToolOutcome.Failed) finished.outcome();
-    assertThat(failed.error().message()).contains("parking is unavailable");
+    assertThat(failed.error().message()).contains("deferred execution is unavailable");
   }
 }
