@@ -30,30 +30,48 @@ public final class CliAgent implements AutoCloseable {
   private final Agent<String> agent;
   private final RelayTurnObserver relay;
   private final ExecutorService executor;
+  private final boolean ownsExecutor;
+  private AwaitingReply current;
 
-  CliAgent(Agent<String> agent, RelayTurnObserver relay, ExecutorService executor) {
+  CliAgent(
+      Agent<String> agent,
+      RelayTurnObserver relay,
+      ExecutorService executor,
+      boolean ownsExecutor) {
     this.agent = Objects.requireNonNull(agent);
     this.relay = Objects.requireNonNull(relay);
     this.executor = Objects.requireNonNull(executor);
+    this.ownsExecutor = ownsExecutor;
   }
 
   public String converse(String line) {
     return converse(line, Duration.ofMinutes(2));
   }
 
-  public String converse(String line, Duration timeout) {
-    var waiter = new AwaitingReply();
-    relay.set(waiter);
-    try {
-      agent.observe(line);
-      return waiter.await(timeout);
-    } finally {
-      relay.clear();
+  /**
+   * One turn at a time (§7): a still-in-flight turn refuses a new line before it ever reaches the
+   * backlog, so a late reply from an abandoned turn can never be misattributed to a fresh waiter.
+   */
+  public synchronized String converse(String line, Duration timeout) {
+    if (current != null && !current.isDone()) {
+      throw new IllegalStateException("a previous turn is still in flight; try again shortly");
     }
+    var waiter = new AwaitingReply();
+    current = waiter;
+    relay.set(waiter);
+    agent.observe(line);
+    return waiter.await(timeout);
+  }
+
+  /** True once the last turn started has settled, or no turn has started yet. */
+  boolean lastTurnDone() {
+    return current == null || current.isDone();
   }
 
   @Override
   public void close() {
-    executor.close();
+    if (ownsExecutor) {
+      executor.close();
+    }
   }
 }

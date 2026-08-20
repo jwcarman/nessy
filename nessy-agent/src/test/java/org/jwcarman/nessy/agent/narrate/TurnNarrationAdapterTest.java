@@ -69,14 +69,4 @@ class TurnNarrationAdapterTest {
     adapter.applied(new AgentEvent.Observed(List.of(new TextBlock("hello"))), t);
     assertThat(turn.events()).isEmpty();
   }
-
-  @Test
-  void midTurnTransitionsEndNothing() {
-    var t =
-        Transition.to(new Phase.AwaitingModel(), new Effect.CallModel())
-            .commit(Message.user("hello"));
-    adapter.applied(new AgentEvent.Observed(List.of(new TextBlock("hello"))), t);
-    boolean anyEnded = turn.events().stream().anyMatch(e -> e instanceof TurnEvent.TurnEnded);
-    assertThat(anyEnded).isFalse();
-  }
 }

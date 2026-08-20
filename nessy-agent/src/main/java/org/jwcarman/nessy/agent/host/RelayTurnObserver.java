@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.host;
 
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
@@ -29,7 +30,7 @@ public final class RelayTurnObserver implements TurnObserver {
   private final AtomicReference<TurnObserver> delegate = new AtomicReference<>();
 
   public void set(TurnObserver observer) {
-    delegate.set(observer);
+    delegate.set(Objects.requireNonNull(observer, "observer must not be null"));
   }
 
   public void clear() {

@@ -51,6 +51,11 @@ public final class AwaitingReply implements TurnObserver {
     }
   }
 
+  /** True once the reply has settled — completed, failed, or the caller stopped waiting. */
+  public boolean isDone() {
+    return reply.isDone();
+  }
+
   public String await(Duration timeout) {
     try {
       return reply.get(timeout.toMillis(), TimeUnit.MILLISECONDS);

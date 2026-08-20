@@ -28,6 +28,8 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.Role;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Machine narration → human narration (§8). The transition carries everything synthesis needs:
@@ -36,6 +38,8 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
  * vocabulary until the Plan-5 distillation reshapes TurnEnded.
  */
 public final class TurnNarrationAdapter implements AgentObserver {
+
+  private static final Logger log = LoggerFactory.getLogger(TurnNarrationAdapter.class);
 
   private final TurnObserver turn;
 
@@ -60,17 +64,27 @@ public final class TurnNarrationAdapter implements AgentObserver {
   }
 
   @Override
-  public void ignored(AgentEvent event) {}
+  public void ignored(AgentEvent event) {
+    log.debug("event ignored as stale: {}", event);
+  }
 
   @Override
-  public void renderFailed(Object observation, RuntimeException error) {}
+  public void renderFailed(Object observation, RuntimeException error) {
+    log.warn("observation could not be rendered and was discarded: {}", observation, error);
+  }
 
   @Override
-  public void applyFailed(AgentEvent event, RuntimeException error) {}
+  public void applyFailed(AgentEvent event, RuntimeException error) {
+    log.warn("applying {} failed; event dropped", event, error);
+  }
 
   @Override
-  public void reFired(List<Effect> effects) {}
+  public void reFired(List<Effect> effects) {
+    log.debug("effects re-fired: {}", effects);
+  }
 
   @Override
-  public void observationRequeued(Object observation) {}
+  public void observationRequeued(Object observation) {
+    log.debug("observation requeued: {}", observation);
+  }
 }

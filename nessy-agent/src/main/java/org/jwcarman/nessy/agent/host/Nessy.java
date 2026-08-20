@@ -53,62 +53,70 @@ public final class Nessy {
 
     private ModelProvider provider;
     private ModelSettings settings;
-    private Memory memory = new VerbatimMemory();
+    private Memory memory;
     private String id = "cli";
     private List<Tool<?>> tools = List.of();
     private ExecutorService executor;
 
+    /** The model backend the scope talks to. */
     public CliBuilder provider(ModelProvider provider) {
-      this.provider = provider;
+      this.provider = Objects.requireNonNull(provider, "provider must not be null");
       return this;
     }
 
+    /** The model call's tuning knobs — model id, system prompt, token budget, capabilities. */
     public CliBuilder settings(ModelSettings settings) {
-      this.settings = settings;
+      this.settings = Objects.requireNonNull(settings, "settings must not be null");
       return this;
     }
 
+    /** The conversation store; defaults to a fresh {@link VerbatimMemory} per build. */
     public CliBuilder memory(Memory memory) {
-      this.memory = memory;
+      this.memory = Objects.requireNonNull(memory, "memory must not be null");
       return this;
     }
 
+    /** The scope's constant agent id. */
     public CliBuilder id(String id) {
-      this.id = id;
+      this.id = Objects.requireNonNull(id, "id must not be null");
       return this;
     }
 
+    /** The tools the model may call during a turn. */
     public CliBuilder tools(Tool<?>... tools) {
-      this.tools = List.of(tools);
+      this.tools = List.of(Objects.requireNonNull(tools, "tools must not be null"));
       return this;
     }
 
+    /** A caller-supplied executor; when omitted, the built agent owns and closes its own. */
     public CliBuilder executor(ExecutorService executor) {
-      this.executor = executor;
+      this.executor = Objects.requireNonNull(executor, "executor must not be null");
       return this;
     }
 
     public CliAgent build() {
       Objects.requireNonNull(provider, "provider must not be null");
       Objects.requireNonNull(settings, "settings must not be null");
-      ExecutorService exec =
-          executor != null ? executor : Executors.newVirtualThreadPerTaskExecutor();
+      boolean ownsExecutor = executor == null;
+      ExecutorService exec = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : executor;
+      Memory effectiveMemory = memory != null ? memory : new VerbatimMemory();
       var relay = new RelayTurnObserver();
       ToolRegistry registry = ToolRegistry.of(tools.toArray(Tool[]::new));
       var agentId = AgentId.of(id);
       var wiring =
           new AgentWiring<String>(
-              memory,
+              effectiveMemory,
               new InMemoryAgentStateStore(),
               inMemoryBacklog(),
               text -> List.of(new TextBlock(text)),
-              new ProviderModelCallExecutor(provider, settings, registry, memory, relay, exec),
+              new ProviderModelCallExecutor(
+                  provider, settings, registry, effectiveMemory, relay, exec),
               new RegistryToolCallExecutor(registry, agentId, relay, exec),
               new TurnNarrationAdapter(relay),
               false,
               Duration.ofMinutes(5),
               Clock.systemUTC());
-      return new CliAgent(new DefaultAgent<>(wiring), relay, exec);
+      return new CliAgent(new DefaultAgent<>(wiring), relay, exec, ownsExecutor);
     }
 
     private static Backlog<String> inMemoryBacklog() {
