@@ -85,15 +85,54 @@ opinions, not mandates (an org with its own model deposits its own type under it
 ## 3. Intent reborn
 
 Only `DECLARED_INTENT_KEY` survived the distillation; the bolt-on returns, rebuilt against the
-new machine, in `nessy-agent` (`org.jwcarman.nessy.agent.intent`):
+new machine (kit in `nessy-agent`, SPI in `nessy-spi`, `Intent` in `nessy-api`):
 
 - `record Intent(String declaration)` — the model's untrusted claim, free text.
-- `IntentStore` SPI (pre-scoped, like `Memory`): `record(Intent)`, `Optional<Intent> latest()`;
-  `InMemoryIntentStore` reference implementation.
+- `IntentStore` SPI (pre-scoped, like `Memory`); `InMemoryIntentStore` reference implementation.
 - `IntentTool` — the tool the model calls to declare intent before acting (IMMEDIATE, always
   allowed by design — it is the claim channel, not an effectful act).
 - `IntentEnricher` — deposits the latest declaration under `DECLARED_INTENT_KEY`. The claim is
   untrusted by definition (2026-08-16 §7); policies weigh it accordingly.
+
+**Amendment (2026-08-21, ratified in conversation — intent speaks two tiers, and the typed tier
+constrains the model):**
+
+- **Two tiers, both industry-anchored.** The unstructured tier is the **purpose string** (the
+  word is Apple's: the free-text justification accompanying a privileged request) — today's
+  `Intent(String declaration)`, zero ceremony, always available, honest about being
+  string-inspectable at best. The structured tier is the **intent vocabulary**, the NLU
+  tradition's meaning of "intent" (Dialogflow/Rasa/LUIS: a closed set with typed slots; outside
+  the set is unrepresentable): the organization declares a sealed interface of intent records,
+  and the model must declare within it. Typing sharpens the claim's *structure*, never its
+  *trustworthiness* — the §7 trust table stands.
+- **One generic kit carries both.** `IntentStore<T>` / `InMemoryIntentStore<T>` /
+  `IntentTool<T>` / `IntentEnricher<T>`; the freeform tier is the pre-built `T = Intent`
+  instance. The store's write verb renames `record(T)` → `declare(T)` (the old name collided
+  with the `record` keyword — S6213 — and "declare" is the domain word anyway).
+- **The schema is the constraint.** `Schemas` learns sealed interfaces: the wire schema is a
+  `oneOf` over the permitted records, each carrying a required const discriminator property
+  `"type"` whose value is the record's simple name, as written. **Nessy performs the
+  discriminator binding itself** — read `"type"`, match against `getPermittedSubclasses()`,
+  bind the remainder into that record — so vocabularies carry no Jackson annotations and no
+  Jackson-version roulette. A missing or unknown `"type"`, or a malformed body, fails binding
+  in-band: the model reads the error and corrects. The constraint compounds across three
+  layers: the schema bounds what can be said, the binding rejects what slipped through, the
+  policy judges what bound. Sealed-input support is general — any tool may take a sealed
+  interface as its input type.
+- **Enforcement is a policy, never an enricher** (ruled 2026-08-21: enrichers gather, policies
+  judge — absence of a declaration is a successfully gathered fact, and a policy denial teaches
+  where an enricher throw malfunctions). `IntentPolicies.requireDeclared(Class<?> vocabulary)`:
+  no declaration of that type on the context → `Deny` with a message telling the model to use
+  the declare tool first — the in-band denial doubles as the teaching loop.
+- **Policies gain the composition the enricher chain always had:**
+  `UsagePolicy.allOf(policies...)` — evaluate in order; the first `Deny` wins; else any
+  `RequireApproval` wins; else `Allow`. Deny-biased, boringly predictable, never `Static`, and
+  rejects an empty list. This closes the gap that made judgment-in-enrichers tempting.
+- **Consistency checking is the payoff.** A typed declaration lets an org policy pattern-match
+  the declared intent against the rendered action (declared `Restart("prod-eu")` vs an action
+  touching `prod-us` → deny naming the mismatch) — the prompt-injection tripwire upgraded from
+  string-grep to typed field comparison, with sealed exhaustiveness breaking every unconsidered
+  vocabulary member at compile time.
 
 ## 4. The principal kit
 
