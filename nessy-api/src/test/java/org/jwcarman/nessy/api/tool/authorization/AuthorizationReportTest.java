@@ -102,16 +102,16 @@ class AuthorizationReportTest {
       ActionContributor.named("transfer-action", TRANSFER_ACTION);
 
   /** A named policy class — its report identity is its own simple name, no field to declare. */
-  static final class RiskThresholdPolicy implements UsagePolicy<TransferAction> {
+  static final class RiskThresholdPolicy implements UsagePolicy {
 
     @Override
-    public PolicyDecision evaluate(AuthzContext context, TransferAction action) {
+    public PolicyDecision evaluate(AuthzContext context) {
       throw new AssertionError("building a report must never evaluate a policy");
     }
   }
 
-  private static Enricher<TransferAction> explodingEnricher(String failureMessage) {
-    return (context, action) -> {
+  private static Enricher explodingEnricher(String failureMessage) {
+    return context -> {
       throw new AssertionError(failureMessage);
     };
   }
@@ -165,9 +165,7 @@ class AuthorizationReportTest {
         ToolGrant.grant(
             new TransferTool(),
             NAMED_TRANSFER_ACTION,
-            List.of(
-                Enricher.named("principal", (context, action) -> context),
-                (context, action) -> context),
+            List.of(Enricher.named("principal", context -> context), context -> context),
             new RiskThresholdPolicy());
 
     @Test
@@ -239,8 +237,7 @@ class AuthorizationReportTest {
     @Test
     void reports_its_own_string_value_of_display_name_not_the_unnamed_placeholder() {
       ToolGrant grant =
-          ToolGrant.grant(
-              new ClockTool(), UsagePolicy.of((context, action) -> new PolicyDecision.Allow()));
+          ToolGrant.grant(new ClockTool(), UsagePolicy.of(context -> new PolicyDecision.Allow()));
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
@@ -315,7 +312,7 @@ class AuthorizationReportTest {
 
     @Test
     void a_bare_enricher_lambda_carries_no_display_name_by_default() {
-      Enricher<Object> bare = (context, action) -> context;
+      Enricher bare = context -> context;
 
       assertThat(bare.displayName()).isEmpty();
     }
@@ -325,10 +322,10 @@ class AuthorizationReportTest {
       Key<String> seen = new Key<>(String.class, "seen");
       ToolCall call = new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode());
       AuthzContext context = AuthzContext.of("test-agent", call);
-      Enricher<Object> delegate = (ctx, action) -> ctx.with(seen, "yes");
-      Enricher<Object> named = Enricher.named("marker", delegate);
+      Enricher delegate = ctx -> ctx.with(seen, "yes");
+      Enricher named = Enricher.named("marker", delegate);
 
-      AuthzContext extended = named.enrich(context, "irrelevant");
+      AuthzContext extended = named.enrich(context);
 
       assertThat(named.displayName()).contains("marker");
       assertThat(extended.get(seen)).contains("yes");

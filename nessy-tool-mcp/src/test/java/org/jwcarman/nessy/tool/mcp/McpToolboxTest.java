@@ -254,7 +254,7 @@ class McpToolboxTest {
         ToolCall call = new ToolCall("call-1", "echo", arguments);
         AuthzContext context = AuthzContext.of("test-agent", call);
 
-        ToolGrant.Judged judged = grant.judgment().decide(context, arguments);
+        ToolGrant.Judged judged = grant.judge(context, arguments);
 
         assertThat(judged.action()).isEqualTo("echo " + arguments);
         assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("pinned"));

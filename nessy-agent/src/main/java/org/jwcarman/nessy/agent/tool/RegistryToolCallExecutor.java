@@ -49,13 +49,13 @@ import org.jwcarman.nessy.spi.approval.Approver;
 
 /**
  * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
- * authorization chokepoint. Every call passes its grant's {@link ToolGrant#judgment()} before the
- * tool ever runs: a {@link UsagePolicy.Static} grant (Allow/Deny) takes the rung-0 fast path — no
- * action rendered, no context assembled — while every other grant renders the action, runs its
- * enrichers, and lets the policy judge. A {@code RuntimeException} escaping any of that is caught
- * and turned into a fail-closed denial whose message names the stage that broke. {@link
- * PolicyDecision.Deny} and a refused {@link Adjudication} both deliver in-band, narrated, so the
- * model reads the reason and reacts; {@link PolicyDecision.Allow} and a granted {@link
+ * authorization chokepoint. Every call passes its grant's {@link ToolGrant#judge(AuthzContext,
+ * Object)} before the tool ever runs: a {@link UsagePolicy.Static} grant (Allow/Deny) takes the
+ * rung-0 fast path — no action rendered, no context assembled — while every other grant renders the
+ * action, runs its enrichers, and lets the policy judge. A {@code RuntimeException} escaping any of
+ * that is caught and turned into a fail-closed denial whose message names the stage that broke.
+ * {@link PolicyDecision.Deny} and a refused {@link Adjudication} both deliver in-band, narrated, so
+ * the model reads the reason and reacts; {@link PolicyDecision.Allow} and a granted {@link
  * Adjudication} run the tool. {@link PolicyDecision.RequireApproval} routes to the wiring's {@link
  * Approver} — the default (5- and 6-arg constructors) refuses loudly in-band, since approval is a
  * capability of the wiring, not a right of every deployment.
@@ -155,7 +155,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     } else {
       ToolGrant.Judged judged;
       try {
-        judged = grant.judgment().decide(AuthzContext.of(type.name(), call), input);
+        judged = grant.judge(AuthzContext.of(type.name(), call), input);
       } catch (RuntimeException e) {
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         return new ToolExecution.Immediate(failed(call, "authorization failed: " + message));

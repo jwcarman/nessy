@@ -48,9 +48,9 @@ class IntentPoliciesTest {
 
     @Test
     void deniesWhenNoDeclarationIsPresent() {
-      UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
+      UsagePolicy policy = IntentPolicies.requireDeclared(Restart.class);
 
-      PolicyDecision decision = policy.evaluate(freshContext(), CALL);
+      PolicyDecision decision = policy.evaluate(freshContext());
 
       assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
       String reason = ((PolicyDecision.Deny) decision).reason();
@@ -59,11 +59,11 @@ class IntentPoliciesTest {
 
     @Test
     void deniesWhenTheDeclarationOnTheContextIsTheWrongType() {
-      UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
+      UsagePolicy policy = IntentPolicies.requireDeclared(Restart.class);
       AuthzContext context =
           freshContext().with(AuthzContext.DECLARED_INTENT_KEY, new OtherIntent("note"));
 
-      PolicyDecision decision = policy.evaluate(context, CALL);
+      PolicyDecision decision = policy.evaluate(context);
 
       assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
       String reason = ((PolicyDecision.Deny) decision).reason();
@@ -72,16 +72,16 @@ class IntentPoliciesTest {
 
     @Test
     void allowsWhenADeclarationOfTheRightTypeIsPresent() {
-      UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
+      UsagePolicy policy = IntentPolicies.requireDeclared(Restart.class);
       AuthzContext context =
           freshContext().with(AuthzContext.DECLARED_INTENT_KEY, new Restart("prod-eu"));
 
-      assertThat(policy.evaluate(context, CALL)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(context)).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void aRequireDeclaredPolicyIsNeverStatic() {
-      UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
+      UsagePolicy policy = IntentPolicies.requireDeclared(Restart.class);
 
       assertThat(policy).isNotInstanceOf(UsagePolicy.Static.class);
     }

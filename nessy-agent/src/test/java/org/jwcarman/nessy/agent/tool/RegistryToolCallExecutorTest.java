@@ -353,9 +353,9 @@ class RegistryToolCallExecutorTest {
 
   @Test
   void aThrowingPolicyFailsClosed() {
-    UsagePolicy<Object> boomingPolicy =
+    UsagePolicy boomingPolicy =
         UsagePolicy.of(
-            (context, action) -> {
+            context -> {
               throw new RuntimeException("boom");
             });
     var registry = ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), boomingPolicy));
@@ -388,8 +388,8 @@ class RegistryToolCallExecutorTest {
           requests.add(request);
           return new Adjudication.Granted();
         };
-    Enricher<Object> principalEnricher =
-        Enricher.named("principal", (ctx, action) -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
+    Enricher principalEnricher =
+        Enricher.named("principal", ctx -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
     ActionContributor<EchoInput, String> stringValueOf = String::valueOf;
     var registry =
         ToolRegistry.of(

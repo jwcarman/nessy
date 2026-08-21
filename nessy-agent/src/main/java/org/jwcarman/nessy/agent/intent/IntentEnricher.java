@@ -32,7 +32,7 @@ import org.jwcarman.nessy.spi.intent.IntentStore;
  * declaration by {@link Object}. Typed recovery is a policy's own concern, through {@link
  * AuthzContext#declaredIntent(Class)}.
  */
-public final class IntentEnricher implements Enricher<Object> {
+public final class IntentEnricher implements Enricher {
 
   private final IntentStore<?> store;
 
@@ -41,7 +41,7 @@ public final class IntentEnricher implements Enricher<Object> {
   }
 
   @Override
-  public AuthzContext enrich(AuthzContext context, Object action) {
+  public AuthzContext enrich(AuthzContext context) {
     Optional<?> declared = store.latest();
     return declared
         .map(intent -> context.with(AuthzContext.DECLARED_INTENT_KEY, intent))
