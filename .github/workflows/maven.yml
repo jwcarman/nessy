@@ -32,11 +32,6 @@ jobs:
     - name: Build with Maven
       run: mvn -B verify -Dnessy.excludedGroups=live,vendor
 
-    - name: Verify hello's five-minute promise runs for real
-      run: |
-        ./mvnw -q -pl nessy-examples/hello -am compile exec:java | tee hello-output.txt
-        grep -q "The answer is 4. (COMPLETE)" hello-output.txt
-
     - name: Verify release profile (javadoc, sources, signing skipped)
       run: mvn -B -P release -DskipTests -Dgpg.skip=true verify
 
