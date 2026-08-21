@@ -15,19 +15,21 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import java.util.Objects;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** What a tool may tell the harness mid-execution — sealed: every event is harness-interpreted. */
-public sealed interface ToolEvent {
+import org.junit.jupiter.api.Test;
 
-  /** A progress heartbeat from inside a long-running tool. */
-  record Progress(String message) implements ToolEvent {
+class ToolEventTest {
 
-    public Progress {
-      Objects.requireNonNull(message, "message must not be null");
-      if (message.isBlank()) {
-        throw new IllegalArgumentException("message must not be blank");
-      }
-    }
+  @Test
+  void aBlankProgressMessageIsRefused() {
+    assertThatThrownBy(() -> new ToolEvent.Progress(" "))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("message must not be blank");
+  }
+
+  @Test
+  void aNullProgressMessageThrowsANullPointerExceptionLikeEverySiblingType() {
+    assertThatThrownBy(() -> new ToolEvent.Progress(null)).isInstanceOf(NullPointerException.class);
   }
 }
