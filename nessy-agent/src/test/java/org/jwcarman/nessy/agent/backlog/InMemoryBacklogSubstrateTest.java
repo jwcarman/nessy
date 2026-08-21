@@ -62,6 +62,13 @@ class InMemoryBacklogSubstrateTest {
   }
 
   @Test
+  void addingANullObservationIsRejected() {
+    var substrate = new InMemoryBacklogSubstrate(2);
+    var view = substrate.forScope("scope-a");
+    assertThatThrownBy(() -> view.add(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
   void viewsOfDifferentIdsAreIsolated() {
     var substrate = new InMemoryBacklogSubstrate(2);
     var scopeA = substrate.forScope("scope-a");

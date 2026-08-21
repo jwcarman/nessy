@@ -26,7 +26,9 @@ import org.jwcarman.nessy.agent.spi.Backlog;
  * The shared, thread-safe underlay behind many scopes' observation queues (spec §10.11): one map of
  * per-id bounded deques, all sharing a single capacity. {@link #forScope(String)} returns a thin
  * view — a reference to this map plus an id, never a copy of the data. Losing a view loses nothing;
- * two views of the same id observe each other's writes.
+ * two views of the same id observe each other's writes. The map holds one entry per distinct scope
+ * id ever touched and never evicts one — this is a single-node, bounded-population choice, not a
+ * durable substrate.
  */
 public final class InMemoryBacklogSubstrate {
 
@@ -63,6 +65,7 @@ public final class InMemoryBacklogSubstrate {
 
     @Override
     public void add(String observation) {
+      Objects.requireNonNull(observation, "observation must not be null");
       Deque<String> queue = queueFor(id);
       synchronized (queue) {
         if (queue.size() >= capacity) {

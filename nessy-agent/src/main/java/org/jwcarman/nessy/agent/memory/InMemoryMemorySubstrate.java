@@ -27,7 +27,8 @@ import org.jwcarman.nessy.spi.Memory;
  * The shared, thread-safe underlay behind many scopes' conversation history (spec §10.11): one map
  * of per-id message lists. {@link #forScope(String)} returns a thin view — a reference to this map
  * plus an id, never a copy of the data. Losing a view loses nothing; two views of the same id
- * observe each other's writes.
+ * observe each other's writes. The map holds one entry per distinct scope id ever touched and never
+ * evicts one — this is a single-node, bounded-population choice, not a durable substrate.
  */
 public final class InMemoryMemorySubstrate {
 

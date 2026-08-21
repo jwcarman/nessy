@@ -21,9 +21,9 @@ import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.Backlog;
 
 /**
- * The autonomous host's backlog (spec §11, open question 0): a fixed-capacity queue whose rejection
- * vocabulary is the exception itself, surfaced at the door — a full backlog refuses the observation
- * rather than growing without bound.
+ * A single-scope, fixed-capacity backlog (spec §11, open question 0): a bounded queue whose
+ * rejection vocabulary is the exception itself, surfaced at the door — a full backlog refuses the
+ * observation rather than growing without bound.
  */
 public final class BoundedBacklog<O> implements Backlog<O> {
 

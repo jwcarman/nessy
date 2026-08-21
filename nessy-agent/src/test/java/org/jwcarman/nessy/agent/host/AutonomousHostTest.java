@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.model.ModelRequest;
 
 class AutonomousHostTest {
 
@@ -90,6 +91,39 @@ class AutonomousHostTest {
     assertThat(aMessages).allMatch(m -> !m.content().contains(new TextBlock("hello from b")));
     assertThat(bMessages).isNotEmpty();
     assertThat(bMessages).allMatch(m -> !m.content().contains(new TextBlock("hello from a")));
+  }
+
+  /**
+   * F3: the default memoryFactory/storeFactory substrates are built inside {@code build()}, not
+   * once in field initializers — so two {@code build()} calls from the SAME builder each get their
+   * own fresh default substrates and don't leak history between hosts.
+   */
+  @Test
+  void twoBuildCallsFromOneBuilderDoNotShareDefaultSubstrateState() {
+    var provider =
+        new ScriptedModelProvider(
+            List.of(
+                List.of(new ModelEvent.TextChunk("reply one")),
+                List.of(new ModelEvent.TextChunk("reply two"))));
+
+    var builder = Nessy.autonomous().provider(provider).settings(TestSettings.settings());
+
+    var pumpOne = new PumpedExecutor();
+    var hostOne = builder.executor(pumpOne).build();
+    hostOne.post("shared-scope", "message one");
+    pumpOne.pumpUntilQuiet();
+
+    var pumpTwo = new PumpedExecutor();
+    var hostTwo = builder.executor(pumpTwo).build();
+    hostTwo.post("shared-scope", "message two");
+    pumpTwo.pumpUntilQuiet();
+
+    List<ModelRequest> requests = provider.requests();
+    assertThat(requests).hasSize(2);
+    List<Message> secondHostMessages = requests.get(1).context().messages();
+    assertThat(secondHostMessages).isNotEmpty();
+    assertThat(secondHostMessages)
+        .noneMatch(m -> m.content().contains(new TextBlock("message one")));
   }
 
   @Test

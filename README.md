@@ -108,11 +108,18 @@ approval, the call suspends on a durable slot and `approvalNotifier` fires
 once with the `ApprovalRequest` — `request.address().approval()` is the slot
 id `host.approvals().approve(...)`/`.deny(..., reason)` decides. Nothing here
 holds a thread open waiting; whether the slot outlives a restart of the
-process that opened it depends on the `.backend(...)` and the
-`.memoryFactory(...)`/`.storeFactory(...)` supplied above — the in-memory ones
-shown here do not, a durable implementation does. See
+process that opened it depends on the durable computation backend and the
+memory/state factories in play — the `.backend(...)` shown here and the
+default in-memory `memoryFactory`/`storeFactory` behind it do not survive a
+restart, a durable implementation of each does. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
 the docs site for the rest of the walkthrough.
+
+Migration note: a factory that creates fresh state per call — the old
+cached-world idiom `id -> new InMemoryAgentStateStore()` — now silently loses
+history on every delivery, since there is no per-id cache behind it any more;
+factories must return views over shared state, such as
+`InMemoryStateSubstrate#forScope` or `InMemoryMemorySubstrate#forScope`.
 
 Under both front doors, an agent is assembled in four tiers: a **substrate**
 holds the durable state (in-memory here, JDBC or another durable backend in

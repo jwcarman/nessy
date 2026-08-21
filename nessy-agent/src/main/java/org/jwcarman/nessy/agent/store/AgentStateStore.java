@@ -36,8 +36,9 @@ public interface AgentStateStore {
   void save(State state);
 
   /**
-   * The instant of the most recent successful {@link #save}; a fresh scope reports its construction
-   * instant. Staleness — a dead effect versus a slow one — is read from here (§6.1).
+   * The instant of the most recent successful {@link #save}; a scope that has never saved reports
+   * the instant its state first came into existence in the store. Staleness — a dead effect versus
+   * a slow one — is read from here (§6.1).
    */
   Instant lastSaved();
 }

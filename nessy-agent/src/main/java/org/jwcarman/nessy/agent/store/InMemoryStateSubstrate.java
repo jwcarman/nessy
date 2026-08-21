@@ -26,7 +26,9 @@ import org.jwcarman.nessy.agent.State;
  * The shared, thread-safe underlay behind many scopes' state (spec §10.11): one {@link
  * ConcurrentHashMap} keyed by scope id, one clock for every scope's {@code lastSaved} stamp. {@link
  * #forScope(String)} returns a thin view — a reference to this map plus an id, never a copy of the
- * data. Losing a view loses nothing; two views of the same id observe each other's writes.
+ * data. Losing a view loses nothing; two views of the same id observe each other's writes. The map
+ * holds one entry per distinct scope id ever touched and never evicts one — this is a single-node,
+ * bounded-population choice, not a durable substrate.
  */
 public final class InMemoryStateSubstrate {
 

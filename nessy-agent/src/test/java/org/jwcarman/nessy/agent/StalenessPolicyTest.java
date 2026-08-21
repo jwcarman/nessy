@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -77,5 +78,20 @@ class StalenessPolicyTest {
   void afterWithoutAnExplicitClockUsesSystemUtc() {
     var policy = StalenessPolicy.after(Duration.ofMillis(1));
     assertThat(policy.isStale(new Phase.AwaitingModel(), Instant.now().minusSeconds(1))).isTrue();
+  }
+
+  @Test
+  void aNegativeThresholdIsRejected() {
+    var clock = new TestClock(T0);
+    assertThatThrownBy(() -> StalenessPolicy.after(Duration.ofSeconds(-1), clock))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("threshold must not be negative");
+  }
+
+  @Test
+  void aZeroThresholdIsLegalAndMakesEveryPhaseImmediatelyStale() {
+    var clock = new TestClock(T0);
+    var policy = StalenessPolicy.after(Duration.ZERO, clock);
+    assertThat(policy.isStale(new Phase.AwaitingModel(), T0)).isTrue();
   }
 }

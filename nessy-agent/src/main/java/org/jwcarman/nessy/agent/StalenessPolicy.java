@@ -47,6 +47,9 @@ public interface StalenessPolicy {
   static StalenessPolicy after(Duration threshold, Clock clock) {
     Objects.requireNonNull(threshold, "threshold must not be null");
     Objects.requireNonNull(clock, "clock must not be null");
+    if (threshold.isNegative()) {
+      throw new IllegalArgumentException("threshold must not be negative");
+    }
     return (phase, lastSaved) -> {
       Objects.requireNonNull(phase, "phase must not be null");
       Objects.requireNonNull(lastSaved, "lastSaved must not be null");

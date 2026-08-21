@@ -16,11 +16,8 @@
 package org.jwcarman.nessy.agent.host;
 
 import java.time.Duration;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,6 +34,7 @@ import org.jwcarman.nessy.agent.ResolvingAgentBinder;
 import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.StalenessPolicy;
+import org.jwcarman.nessy.agent.backlog.BoundedBacklog;
 import org.jwcarman.nessy.agent.backlog.InMemoryBacklogSubstrate;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
@@ -164,18 +162,7 @@ public final class Nessy {
     }
 
     private static Backlog<String> inMemoryBacklog() {
-      Deque<String> queue = new ArrayDeque<>();
-      return new Backlog<>() {
-        @Override
-        public synchronized void add(String observation) {
-          queue.add(observation);
-        }
-
-        @Override
-        public synchronized Optional<String> poll() {
-          return Optional.ofNullable(queue.poll());
-        }
-      };
+      return new BoundedBacklog<>(1024);
     }
   }
 
@@ -185,8 +172,8 @@ public final class Nessy {
     private ModelSettings settings;
     private String typeName = "autonomous";
     private List<ToolGrant> grants = List.of();
-    private Function<String, Memory> memoryFactory = new InMemoryMemorySubstrate()::forScope;
-    private Function<String, AgentStateStore> storeFactory = new InMemoryStateSubstrate()::forScope;
+    private Function<String, Memory> memoryFactory;
+    private Function<String, AgentStateStore> storeFactory;
     private DurableComputationBackend backend = new InMemoryDurableComputationBackend();
     private Consumer<ApprovalRequest> approvalNotifier = request -> {};
     private TurnObserver turnObserver = TurnObserver.noop();
@@ -326,6 +313,10 @@ public final class Nessy {
       ToolRegistry base = ToolRegistry.of(grants.toArray(ToolGrant[]::new));
       ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
       var backlogSubstrate = new InMemoryBacklogSubstrate(backlogCapacity);
+      Function<String, Memory> effectiveMemoryFactory =
+          memoryFactory != null ? memoryFactory : new InMemoryMemorySubstrate()::forScope;
+      Function<String, AgentStateStore> effectiveStoreFactory =
+          storeFactory != null ? storeFactory : new InMemoryStateSubstrate()::forScope;
 
       Harness<String> harness =
           Harness.of(
@@ -334,8 +325,8 @@ public final class Nessy {
               agentObserver,
               true,
               stalenessPolicy,
-              memoryFactory,
-              storeFactory,
+              effectiveMemoryFactory,
+              effectiveStoreFactory,
               backlogSubstrate::forScope,
               binding ->
                   new ProviderModelCallExecutor(
