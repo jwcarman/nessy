@@ -1163,6 +1163,32 @@ non-durable wiring stamps the same address and simply never materializes a slot 
 re-executed tool (at-least-once) hands the identical address to the external side, which may
 dedup on it.
 
+### 10.10 Core dissolves — api and spi become modules
+
+Ruled 2026-08-21 (owner). The distillation left `nessy-core` containing only `api.**` and
+`spi.**` — nothing remained to be "core," so the module dissolves into what it already was.
+This is §11 q8's "cut-over is subtraction" completing itself: no rename, an evaporation.
+
+The boundary rule, one sentence each, so placement is law rather than debate:
+
+- **`nessy-api`** — the vocabulary everyone shares: messages, the tool and authorization/risk
+  grammar, turn events, `Awaited`, `CallAddress`, `CompletionPolicy`, `ToolEvent`, `Intent`.
+  "api" does not mean "never implemented" — `Tool` lives here because it is everyone's words,
+  spoken and implemented alike. Depends on `nessy-durable` and Jackson only.
+- **`nessy-spi`** — seams an outsider implements without ever knowing the machine: the model
+  provider SPI, `Memory`, `IntentStore`, and the approver trio
+  (`Approver`/`Adjudication`/`ApprovalRequest`). Depends on api.
+- **`nessy-agent`** — the machine, the hosts, the shipped kit (`VerbatimMemory`,
+  `InMemoryIntentStore`, `IntentTool`, `IntentEnricher`, the slot-backed wiring), and the
+  machine's OWN seams: `Sink`, `AgentObserver`, `DeferredToolCallPolicy`, and today's
+  `AgentStateStore` all reference `AgentEvent`/`Transition`/`State` — wiring joints, not
+  third-party surface. The state store joins `nessy-spi` only when the opaque-payload reform
+  (the q8 tension) makes it machine-blind.
+
+Chain: `durable ← api ← spi ← agent`. Personas: tool/policy/enricher authors compile against
+`nessy-api` alone; adapter authors against `nessy-spi`; app builders against `nessy-agent`.
+The layering guards become per-module Maven law and keep their source-scanning enforcement.
+
 ## 11. Open questions
 
 0. ~~Backlog backpressure for the autonomous host~~ — **closed** (ruled 2026-08-20): the
