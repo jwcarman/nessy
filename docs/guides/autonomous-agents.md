@@ -213,6 +213,11 @@ Run it from the IDE with a provider key set — see
 [Providers](providers.md) — to watch the park-notify-approve-redrive arc
 happen live, narrated turn by turn.
 
+For this same arc as consumer code, runnable with no key at all, see
+`nessy-examples/approvals` (`./mvnw -q -pl nessy-examples/approvals -am
+compile exec:java -Dexec.args=--scripted`) and `nessy-examples/governed` for
+the full declared-intent-plus-risk-threshold gate.
+
 ## Where next
 
 - [Durable Computation](../concepts/durable-computation.md) — the slot

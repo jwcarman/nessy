@@ -122,6 +122,10 @@ build so a keyless `./mvnw verify` never touches the network. Point one of
 ./mvnw test -pl nessy-agent -Dtest=CliLiveSmokeTest -Dnessy.excludedGroups=
 ```
 
+Or run the shape this page just built, for real, with no key at all:
+`./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted`
+(`nessy-examples/hello` in the repo).
+
 ## Where next
 
 - [Autonomous Agents](autonomous-agents.md) — the second front door, for a

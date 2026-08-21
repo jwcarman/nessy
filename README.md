@@ -131,6 +131,22 @@ harness for the length of a single delivery. `storeFactory`/`memoryFactory`
 each hand back a thin view over the shared substrate rather than fresh state,
 which is what makes a scope's history survive from one delivery to the next.
 
+## Try it
+
+`nessy-examples` has three runnable modules, each consumer code against the
+public API only — no key, no network, scripted providers throughout:
+
+```bash
+# hello: one tool, one turn, the five-minute promise above, for real
+./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted
+
+# approvals: the autonomous door plus a desk — a restart parks for a human
+./mvnw -q -pl nessy-examples/approvals -am compile exec:java -Dexec.args=--scripted
+
+# governed: the full gate — declared intent, risk threshold, one narrated turn
+./mvnw -q -pl nessy-examples/governed -am compile exec:java
+```
+
 ## Install
 
 Nessy has not yet made a public release to Maven Central: until then, build

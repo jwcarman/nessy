@@ -318,3 +318,28 @@ sequence of renames and interim shapes that produced it.
   builder shape (`harness.agent(...)`, a bare `.approver(...)`) no longer in
   the tree, now rebuilt on `Nessy.autonomous()` and `ToolGrant.grant` — and
   sweeps the site for dead vocabulary and broken `Where next` links.
+- **`nessy-examples`: three runnable modules, consumer code against the
+  current API.** A non-published aggregator (`maven.deploy.skip`, excluded
+  from Sonar) in the root reactor with `hello`, `approvals`, and `governed`,
+  each a standalone `main` using only `Nessy.cli()`/`Nessy.autonomous()`,
+  `Tool.of`, and `ToolGrant.grant` — no internals. `hello` wires one
+  calculator tool through `Nessy.cli()` for one turn; `--scripted` swaps in
+  a `ScriptedModelProvider` so it needs no key and no network, printing "The
+  answer is 4. (COMPLETE)". `approvals` mirrors `ApprovalPlayground` as
+  consumer code: one DURABLE `restart` tool behind
+  `UsagePolicy.requireApproval()`, a console loop (post / approve / deny /
+  quit) against a real provider, or `--scripted` for a deterministic
+  post-park-approve-complete arc printing "APPROVED AND COMPLETE".
+  `governed` plays the full gate — a typed `OpsIntent` vocabulary, a
+  risk-assessing enricher, and `UsagePolicy.allOf(requireDeclared,
+  threshold)` — narrating one scripted run end to end (bounce, declare,
+  park, approve, complete) to "GOVERNED TURN COMPLETE". CI restores the
+  consumer smoke the build had lost: a step runs `hello` scripted and greps
+  its sentinel, so the README's five-minute promise is checked against a
+  real run on every build, not just against source.
+- **The autonomous host narrates the turn by default.**
+  `Nessy.AutonomousBuilder#build()` now defaults `agentObserver` to a
+  `TurnNarrationAdapter` over the turn observer when the caller never sets
+  one, matching the posture `CliBuilder` has always had: `AssistantSaid` and
+  `TurnEnded` narrate on the turn observer without extra wiring. A
+  caller-supplied `.agentObserver(...)` still replaces the wiring wholesale.
