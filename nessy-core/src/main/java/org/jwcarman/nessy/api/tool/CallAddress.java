@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import java.util.Objects;
 import org.jwcarman.nessy.durable.ComputationId;
 
 /**
@@ -46,7 +47,8 @@ public record CallAddress(String agentType, String agentId, String callId) {
   }
 
   private static void requireText(String value, String name) {
-    if (value == null || value.isBlank()) {
+    Objects.requireNonNull(value, name + " must not be null");
+    if (value.isBlank()) {
       throw new IllegalArgumentException(name + " must not be blank");
     }
   }

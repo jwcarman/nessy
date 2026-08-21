@@ -30,7 +30,9 @@ import org.jwcarman.nessy.agent.durable.CompletionDesk;
  * The long-running door (§7.1, §4.3 second-wave amendment): many scopes, one process, one shared
  * backend behind the two desks. Per-id worlds — store, memory, backlog — are cached here and
  * survive across resolves; the {@link DefaultAgent} wrapper handed back is fresh every time (the
- * transient-instance model, §4.3).
+ * transient-instance model, §4.3). The per-scope world cache grows monotonically for the host's
+ * lifetime — one entry per {@link AgentId} ever posted to — and nothing evicts it; eviction is a
+ * future seam.
  */
 public final class AutonomousHost implements AutoCloseable {
 

@@ -125,13 +125,26 @@ public final class DefaultAgent<O> implements Agent<O> {
   }
 
   /**
-   * The redrive door (spec §4.3 amendment): re-dispatch this scope's outstanding effects
-   * unconditionally — a decided approval is not gated by staleness. At-least-once, same semantics
-   * as the §6.1 recovery arm; ToolCallId dedup absorbs any duplicate completion.
+   * The redrive door (spec §4.3 amendment): unblocks gated tool calls by re-dispatching this
+   * scope's outstanding {@link Effect.ExecuteTool} effects unconditionally — a decided approval is
+   * not gated by staleness. At-least-once, same semantics as the §6.1 recovery arm; ToolCallId
+   * dedup absorbs any duplicate completion.
+   *
+   * <p>An Idle scope has nothing outstanding, so this returns before narrating anything — no {@code
+   * reFired(List.of())} lie. And only {@code ExecuteTool} effects are re-fired: a stalled model
+   * call stays the §6.1 staleness arm's job in {@link #drive()}, because a stale {@code
+   * ModelFinished} response carries no correlation id — re-firing {@code CallModel} from here could
+   * commit a stale response into a later turn.
    */
   void redispatch() {
     State state = wiring.store().load();
-    List<Effect> outstanding = state.phase().outstandingEffects();
+    if (state.phase() instanceof Phase.Idle) {
+      return;
+    }
+    List<Effect> outstanding =
+        state.phase().outstandingEffects().stream()
+            .filter(effect -> effect instanceof Effect.ExecuteTool)
+            .toList();
     wiring.observer().reFired(outstanding);
     outstanding.forEach(this::dispatch);
   }

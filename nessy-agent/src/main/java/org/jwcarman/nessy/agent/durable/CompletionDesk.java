@@ -30,8 +30,9 @@ import org.jwcarman.nessy.durable.Outcome;
  * exactly one handle per question, ever.
  *
  * <p>Complete-then-fire, at-least-once (plan decision 3): a handler throw during fire propagates
- * with the slot already terminal — the lazy re-drive floor covers delivery, and the Plan-5 outbox
- * is the prompt-delivery upgrade.
+ * with the slot already terminal, leaving delivery deferred — no floor re-drives it promptly.
+ * Prompt delivery (a sweeper, or the Plan-5 outbox) is future work; until it lands, a stranded
+ * scope resumes only on its next observation or on a staleness re-drive.
  */
 public final class CompletionDesk {
 

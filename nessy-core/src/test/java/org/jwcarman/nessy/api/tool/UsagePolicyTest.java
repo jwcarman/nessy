@@ -43,7 +43,7 @@ class UsagePolicyTest {
   class Factories {
 
     @Test
-    void allow_always_allows() {
+    void allowAlwaysAllows() {
       UsagePolicy<Object> policy = UsagePolicy.allow();
       ToolCall call = spendCall(1);
 
@@ -51,7 +51,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void deny_always_denies_with_the_same_reason() {
+    void denyAlwaysDeniesWithTheSameReason() {
       UsagePolicy<Object> policy = UsagePolicy.deny("no budget");
       ToolCall first = spendCall(1);
       ToolCall second = spendCall(999);
@@ -63,7 +63,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void require_approval_always_defers() {
+    void requireApprovalAlwaysDefers() {
       UsagePolicy<Object> policy = UsagePolicy.requireApproval();
       ToolCall call = spendCall(1);
 
@@ -72,7 +72,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void allow_returns_the_same_instance_every_time() {
+    void allowReturnsTheSameInstanceEveryTime() {
       assertThat(UsagePolicy.allow()).isSameAs(UsagePolicy.allow());
     }
   }
@@ -97,7 +97,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void a_call_under_the_limit_is_allowed() {
+    void aCallUnderTheLimitIsAllowed() {
       UsagePolicy<Object> policy = approveUnder(100);
       ToolCall call = spendCall(50);
 
@@ -105,7 +105,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void a_call_at_or_over_the_limit_is_denied() {
+    void aCallAtOrOverTheLimitIsDenied() {
       UsagePolicy<Object> policy = approveUnder(100);
       ToolCall call = spendCall(100);
 
@@ -147,7 +147,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void grant_rejects_a_null_tool() {
+    void grantRejectsANullTool() {
       UsagePolicy<Object> policy = UsagePolicy.allow();
 
       assertThatThrownBy(() -> ToolGrant.grant(null, policy))
@@ -156,7 +156,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void grant_rejects_a_null_policy() {
+    void grantRejectsANullPolicy() {
       Recorder tool = new Recorder();
 
       assertThatThrownBy(() -> ToolGrant.grant(tool, null))
@@ -165,7 +165,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void grant_states_the_tool_and_policy_it_was_given() {
+    void grantStatesTheToolAndPolicyItWasGiven() {
       Recorder tool = new Recorder();
       UsagePolicy<Object> policy = UsagePolicy.requireApproval();
 
@@ -182,7 +182,7 @@ class UsagePolicyTest {
     private static final ToolGrant.Judgment NOOP_JUDGMENT = (context, input) -> null;
 
     @Test
-    void a_grant_rejects_a_null_tool() {
+    void aGrantRejectsANullTool() {
       UsagePolicy<Object> policy = UsagePolicy.allow();
 
       assertThatThrownBy(() -> new ToolGrant(null, policy, List.of(), NOOP_JUDGMENT))
@@ -191,7 +191,7 @@ class UsagePolicyTest {
     }
 
     @Test
-    void a_grant_rejects_a_null_policy() {
+    void aGrantRejectsANullPolicy() {
       Grant_construction.Recorder tool = new Grant_construction.Recorder();
 
       assertThatThrownBy(() -> new ToolGrant(tool, null, List.of(), NOOP_JUDGMENT))
@@ -200,14 +200,14 @@ class UsagePolicyTest {
     }
 
     @Test
-    void a_deny_decision_rejects_a_blank_reason() {
+    void aDenyDecisionRejectsABlankReason() {
       assertThatThrownBy(() -> new PolicyDecision.Deny(" "))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("reason");
     }
 
     @Test
-    void a_deny_decision_rejects_a_null_reason() {
+    void aDenyDecisionRejectsANullReason() {
       assertThatThrownBy(() -> new PolicyDecision.Deny(null))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("reason");

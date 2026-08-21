@@ -29,10 +29,12 @@ import org.jwcarman.nessy.agent.support.LatchedModelProvider;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
 class CliAgentTest {
@@ -149,7 +151,53 @@ class CliAgentTest {
     assertThat(provider.requests().get(1).context().messages()).hasSize(3);
   }
 
+  @Test
+  void aDurableOnlyToolsSpecIsAbsentFromWhatTheCliDoorShowsTheModel() throws Exception {
+    var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+    try (var agent =
+        Nessy.cli()
+            .provider(provider)
+            .settings(TestSettings.settings())
+            .tools(new EchoTool(), new DurableOnlyTool())
+            .build()) {
+      agent.converse("hello");
+    }
+
+    List<ToolSpec> specs = provider.requests().getFirst().tools();
+
+    assertThat(specs).isNotEmpty();
+    assertThat(specs).noneMatch(spec -> spec.name().equals("durable_only"));
+    assertThat(specs).anyMatch(spec -> spec.name().equals("echo"));
+  }
+
   record EchoInput(String value) {}
+
+  static final class DurableOnlyTool implements Tool<EchoInput> {
+    @Override
+    public String name() {
+      return "durable_only";
+    }
+
+    @Override
+    public String description() {
+      return "only ever answers through a durable slot";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      return Awaited.deferred();
+    }
+
+    @Override
+    public CompletionPolicy requiredCompletion() {
+      return CompletionPolicy.DURABLE;
+    }
+  }
 
   static final class EchoTool implements Tool<EchoInput> {
     @Override

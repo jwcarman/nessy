@@ -28,12 +28,14 @@ import org.jwcarman.nessy.api.tool.authorization.Enricher;
  * UsagePolicy} the tool call executor consults before it runs — all three welded into one {@link
  * Judgment} closure at the point where the types are still live.
  *
- * <p>This is the security statement of the harness, and there is exactly one way to write it: one
- * of the {@code grant} factories below. No bare grant, no derived floor, no re-dressing an existing
+ * <p>This is the security statement of the harness, and the {@code grant} factories below are the
+ * only supported way to write one. No bare grant, no derived floor, no re-dressing an existing
  * grant with a different policy — a grant does not exist until its authority is answered. The
- * executor consults only the {@link #judgment()} a grant carries, never the tool directly — the
- * welding at construction time is what lets the authorization chokepoint run with no unchecked cast
- * anywhere in its own code.
+ * canonical constructor stays public because the records platform requires it, but it enforces no
+ * policy or judgment coherence on its own; a caller who builds a {@code ToolGrant} directly,
+ * bypassing the factories, forfeits the chokepoint's guarantees. The executor consults only the
+ * {@link #judgment()} a grant carries, never the tool directly — the welding the factories perform
+ * is what lets the authorization chokepoint run with no unchecked cast anywhere in its own code.
  *
  * <p>Three doors, one rising in rigor from the last (design of record 2026-08-16-authorization §1):
  *

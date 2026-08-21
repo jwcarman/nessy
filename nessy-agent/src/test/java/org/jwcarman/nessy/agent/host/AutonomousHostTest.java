@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -89,5 +90,14 @@ class AutonomousHostTest {
     assertThat(aMessages).allMatch(m -> !m.content().contains(new TextBlock("hello from b")));
     assertThat(bMessages).isNotEmpty();
     assertThat(bMessages).allMatch(m -> !m.content().contains(new TextBlock("hello from a")));
+  }
+
+  @Test
+  void backlogCapacityRejectsLessThanOneAtBuildTimeConfiguration() {
+    var builder = Nessy.autonomous();
+
+    assertThatThrownBy(() -> builder.backlogCapacity(0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("backlogCapacity must be at least 1");
   }
 }

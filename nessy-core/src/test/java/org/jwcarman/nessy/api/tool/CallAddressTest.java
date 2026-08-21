@@ -47,4 +47,10 @@ class CallAddressTest {
     assertThatThrownBy(() -> new CallAddress("ops", "a", " "))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void aNullCoordinateThrowsANullPointerExceptionLikeEverySiblingType() {
+    assertThatThrownBy(() -> new CallAddress(null, "a", "c"))
+        .isInstanceOf(NullPointerException.class);
+  }
 }

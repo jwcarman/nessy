@@ -30,8 +30,8 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
  * The durable wiring's answer to a deferral (§4.3): get-or-create the slot at its deterministic id
  * (submit-once — a recovery re-fire finds the same slot, ruling 4) and await atomically. Registered
  * means suspended; AlreadyCompleted means the answer arrived while we were away — deliver it now.
- * deterministic id is the one handle per question. Completion-capability secrets (durable spec §9,
- * "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
+ * The deterministic id is the one handle per question. Completion-capability secrets (durable spec
+ * §9, "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
  */
 public final class SlotDeferredToolCallPolicy implements DeferredToolCallPolicy {
 

@@ -182,6 +182,7 @@ public final class Nessy {
     private DurableComputationBackend backend = new InMemoryDurableComputationBackend();
     private Consumer<ApprovalRequest> approvalNotifier = request -> {};
     private TurnObserver turnObserver = TurnObserver.noop();
+    private AgentObserver agentObserver = AgentObserver.noop();
     private Executor executor;
     private int backlogCapacity = 1024;
     private Duration staleThreshold = Duration.ofMinutes(5);
@@ -260,6 +261,15 @@ public final class Nessy {
       return this;
     }
 
+    /**
+     * The shell-failure narration seam: {@code applyFailed}, {@code renderFailed}, {@code reFired},
+     * and {@code observationRequeued} land here; default keeps {@link AgentObserver#noop()}.
+     */
+    public AutonomousBuilder agentObserver(AgentObserver agentObserver) {
+      this.agentObserver = Objects.requireNonNull(agentObserver, "agentObserver must not be null");
+      return this;
+    }
+
     /** A caller-supplied executor; when omitted, the built host owns and closes its own. */
     public AutonomousBuilder executor(Executor executor) {
       this.executor = Objects.requireNonNull(executor, "executor must not be null");
@@ -268,6 +278,9 @@ public final class Nessy {
 
     /** The bounded backlog's per-scope capacity (spec §11, open question 0); default 1024. */
     public AutonomousBuilder backlogCapacity(int backlogCapacity) {
+      if (backlogCapacity < 1) {
+        throw new IllegalArgumentException("backlogCapacity must be at least 1");
+      }
       this.backlogCapacity = backlogCapacity;
       return this;
     }
@@ -317,7 +330,7 @@ public final class Nessy {
                     exec,
                     new SlotDeferredToolCallPolicy(backend),
                     new SlotApprover(backend, approvalNotifier)),
-                AgentObserver.noop(),
+                agentObserver,
                 true,
                 staleThreshold,
                 clock);

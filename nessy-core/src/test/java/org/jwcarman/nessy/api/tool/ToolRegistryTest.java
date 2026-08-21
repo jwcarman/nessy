@@ -153,19 +153,19 @@ class ToolRegistryTest {
   class Lookup {
 
     @Test
-    void finds_a_registered_tool() {
+    void findsARegisteredTool() {
       assertThat(registry.find("greet")).isPresent();
     }
 
     @Test
-    void the_interface_is_the_front_door_to_its_default() {
+    void theInterfaceIsTheFrontDoorToItsDefault() {
       ToolRegistry localRegistry = ToolRegistry.of(new GreetTool());
 
       assertThat(localRegistry.find("greet")).isPresent();
     }
 
     @Test
-    void returns_empty_for_an_unknown_tool() {
+    void returnsEmptyForAnUnknownTool() {
       assertThat(registry.find("nope")).isEmpty();
     }
 
@@ -209,7 +209,7 @@ class ToolRegistryTest {
   class Specs {
 
     @Test
-    void specs_carry_name_description_and_schema() {
+    void specsCarryNameDescriptionAndSchema() {
       ToolSpec spec = registry.specs().getFirst();
 
       assertThat(spec.name()).isEqualTo("greet");
@@ -218,7 +218,7 @@ class ToolRegistryTest {
     }
 
     @Test
-    void specs_preserve_registration_order() {
+    void specsPreserveRegistrationOrder() {
       ToolRegistry ordered =
           ToolRegistry.of(new NamedTool("charlie"), new NamedTool("alpha"), new NamedTool("bravo"));
 
@@ -228,7 +228,7 @@ class ToolRegistryTest {
     }
 
     @Test
-    void duplicate_names_are_rejected_at_registration_time() {
+    void duplicateNamesAreRejectedAtRegistrationTime() {
       GreetTool first = new GreetTool();
       GreetTool second = new GreetTool();
 
