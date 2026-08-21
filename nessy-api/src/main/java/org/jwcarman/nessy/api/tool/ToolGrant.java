@@ -28,7 +28,7 @@ import org.jwcarman.nessy.api.tool.authorization.GrantStory;
 /**
  * A capability and the authority to use it, declared together: which {@link Tool} an agent may
  * call, the {@link ActionContributor} that states what one call will do, the ordered {@link
- * Enricher}s that assess a call before judgment, and the {@link UsagePolicy} the tool call executor
+ * Enricher}s that gather facts into the context, and the {@link UsagePolicy} the tool call executor
  * consults before it runs.
  *
  * <p>This is the security statement of the harness, and the {@code grant} factories below are the
@@ -97,7 +97,9 @@ public final class ToolGrant {
     return policy;
   }
 
-  /** The ordered {@link Enricher}s that assess a call before judgment. */
+  /**
+   * The ordered {@link Enricher}s — the gathering stage: facts into the context, never verdicts.
+   */
   public List<Enricher> enrichers() {
     return enrichers;
   }

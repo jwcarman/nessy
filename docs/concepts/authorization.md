@@ -14,10 +14,11 @@ Five words carry the whole design, from least to most trusted:
   rendered by the application from the bound input.
 - **Assessment** — a fact an enricher gathers about the action or its
   context: a risk level, a resolved principal, a quota check.
-- **Judgment** — the pure verdict a policy reaches from the assembled
-  facts: allow, deny, or require approval.
+- **Judgment** — the pure act of deciding, from the assembled facts alone;
+  its verdict is a `PolicyDecision`: allow, deny, or require approval.
 - **Adjudication** — what a human or an external system decides once the
-  policy asks.
+  policy asks — including its most interesting state, `Suspended`: not decided
+  yet, parked in a durable slot.
 
 Each stage only ever adds information; nothing downstream can widen what an
 upstream stage already narrowed.
@@ -26,7 +27,7 @@ upstream stage already narrowed.
 
 `ToolGrant` names four things together: which `Tool` an agent may call, the
 `ActionContributor` that states what one call will do, the ordered
-`Enricher`s that assess a call before judgment, and the `UsagePolicy` the
+`Enricher`s that gather facts into the context, and the `UsagePolicy` the
 executor consults before it runs.
 
 `ToolGrant` is a **final class with a private constructor** — the `grant`
