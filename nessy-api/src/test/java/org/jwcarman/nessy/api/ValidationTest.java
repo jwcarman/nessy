@@ -35,12 +35,6 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
 class ValidationTest {
 
   @Test
-  void a_blank_session_id_is_rejected() {}
-
-  @Test
-  void a_blank_park_token_is_rejected() {}
-
-  @Test
   void a_tool_call_without_an_id_is_rejected() {
     var arguments = JsonNodeFactory.instance.objectNode();
 

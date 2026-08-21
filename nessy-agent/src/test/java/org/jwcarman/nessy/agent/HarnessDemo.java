@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.agent;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -141,5 +143,9 @@ class HarnessDemo {
                         + m.role()
                         + ": "
                         + m.content().stream().map(b -> b.getClass().getSimpleName()).toList()));
+
+    // ---- the turn actually finished, and the model's recollections were captured ----
+    assertThat(store.load().phase()).isInstanceOf(Phase.Idle.class);
+    assertThat(memory.remembered()).isNotEmpty();
   }
 }
