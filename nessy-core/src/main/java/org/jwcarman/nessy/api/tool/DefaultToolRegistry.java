@@ -21,33 +21,40 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** The default registry: a fixed set of tools, resolved by name. */
+/** The default registry: a fixed set of grants, resolved by name. */
 final class DefaultToolRegistry implements ToolRegistry {
 
-  private final Map<String, Tool<?>> tools;
+  private final Map<String, ToolGrant> grants;
+  private final List<ToolGrant> ordered;
   private final List<ToolSpec> specs;
 
-  private DefaultToolRegistry(Map<String, Tool<?>> tools) {
-    this.tools = Collections.unmodifiableMap(new LinkedHashMap<>(tools));
+  private DefaultToolRegistry(Map<String, ToolGrant> grants) {
+    this.grants = Collections.unmodifiableMap(new LinkedHashMap<>(grants));
+    this.ordered = List.copyOf(this.grants.values());
     // Computed once: Tool.spec() runs reflective schema generation, and specs()
     // is called on every model round-trip.
-    this.specs = this.tools.values().stream().map(Tool::spec).toList();
+    this.specs = this.ordered.stream().map(grant -> grant.tool().spec()).toList();
   }
 
-  static DefaultToolRegistry of(Tool<?>... tools) {
-    Map<String, Tool<?>> byName = new LinkedHashMap<>();
-    for (Tool<?> tool : tools) {
-      Tool<?> existing = byName.put(tool.name(), tool);
+  static DefaultToolRegistry of(ToolGrant... grants) {
+    Map<String, ToolGrant> byName = new LinkedHashMap<>();
+    for (ToolGrant grant : grants) {
+      ToolGrant existing = byName.put(grant.tool().name(), grant);
       if (existing != null) {
-        throw new IllegalArgumentException("duplicate tool name: " + tool.name());
+        throw new IllegalArgumentException("duplicate tool name: " + grant.tool().name());
       }
     }
     return new DefaultToolRegistry(byName);
   }
 
   @Override
-  public Optional<Tool<?>> find(String name) {
-    return Optional.ofNullable(tools.get(name));
+  public Optional<ToolGrant> find(String name) {
+    return Optional.ofNullable(grants.get(name));
+  }
+
+  @Override
+  public List<ToolGrant> grants() {
+    return ordered;
   }
 
   @Override

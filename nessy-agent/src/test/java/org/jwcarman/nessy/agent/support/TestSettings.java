@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.support;
 
 import java.util.Set;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 
@@ -29,6 +30,6 @@ public final class TestSettings {
   }
 
   public static ToolRegistry emptyRegistry() {
-    return ToolRegistry.of();
+    return ToolRegistry.of(new ToolGrant[0]);
   }
 }

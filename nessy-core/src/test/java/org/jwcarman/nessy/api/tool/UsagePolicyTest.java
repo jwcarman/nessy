@@ -179,11 +179,13 @@ class UsagePolicyTest {
   @Nested
   class Validation {
 
+    private static final ToolGrant.Judgment NOOP_JUDGMENT = (context, input) -> null;
+
     @Test
     void a_grant_rejects_a_null_tool() {
       UsagePolicy<Object> policy = UsagePolicy.allow();
 
-      assertThatThrownBy(() -> new ToolGrant(null, policy, List.of()))
+      assertThatThrownBy(() -> new ToolGrant(null, policy, List.of(), NOOP_JUDGMENT))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("tool");
     }
@@ -192,7 +194,7 @@ class UsagePolicyTest {
     void a_grant_rejects_a_null_policy() {
       Grant_construction.Recorder tool = new Grant_construction.Recorder();
 
-      assertThatThrownBy(() -> new ToolGrant(tool, null, List.of()))
+      assertThatThrownBy(() -> new ToolGrant(tool, null, List.of(), NOOP_JUDGMENT))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("policy");
     }

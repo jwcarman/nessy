@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
@@ -95,7 +96,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   private ToolExecution execute(ToolCall call) {
-    Optional<Tool<?>> found = registry.find(call.name());
+    Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
       return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
     }
@@ -107,7 +108,11 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     }
   }
 
-  private <T> ToolExecution invoke(Tool<T> tool, ToolCall call) {
+  private ToolExecution invoke(ToolGrant grant, ToolCall call) {
+    return invokeTool(grant.tool(), call);
+  }
+
+  private <T> ToolExecution invokeTool(Tool<T> tool, ToolCall call) {
     T input = mapper.convertValue(call.arguments(), tool.inputType());
     CallAddress address = new CallAddress(type.name(), id.value(), call.id());
     ToolContext context = new ToolContext(call, event -> narrateProgress(call, event), address);

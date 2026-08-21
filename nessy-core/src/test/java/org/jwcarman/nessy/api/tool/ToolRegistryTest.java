@@ -24,6 +24,7 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CompletionPolicy;
 
 class ToolRegistryTest {
 
@@ -86,6 +87,33 @@ class ToolRegistryTest {
     }
   }
 
+  static final class DurableOnlyTool implements Tool<Named> {
+    @Override
+    public String name() {
+      return "durable_only";
+    }
+
+    @Override
+    public String description() {
+      return "Only ever answers through a durable slot";
+    }
+
+    @Override
+    public Class<Named> inputType() {
+      return Named.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(Named input, ToolContext context) {
+      return Awaited.deferred();
+    }
+
+    @Override
+    public CompletionPolicy requiredCompletion() {
+      return CompletionPolicy.DURABLE;
+    }
+  }
+
   private final ToolRegistry registry = ToolRegistry.of(new GreetTool());
 
   private static ToolCall greetCall(String name) {
@@ -112,6 +140,30 @@ class ToolRegistryTest {
     @Test
     void returns_empty_for_an_unknown_tool() {
       assertThat(registry.find("nope")).isEmpty();
+    }
+
+    @Test
+    void aBareToolIsSugarForAnAllowGrant() {
+      ToolRegistry sugared = ToolRegistry.of(new GreetTool());
+
+      assertThat(sugared.find("greet")).isPresent();
+      assertThat(sugared.find("greet").orElseThrow().policy()).isSameAs(UsagePolicy.allow());
+    }
+  }
+
+  @Nested
+  class Limited {
+
+    @Test
+    void limitedHidesToolsWhoseRequirementExceedsTheWiring() {
+      ToolRegistry base = ToolRegistry.of(new GreetTool(), new DurableOnlyTool());
+
+      ToolRegistry limited = ToolRegistry.limited(base, CompletionPolicy.AWAITABLE);
+
+      assertThat(limited.find("durable_only")).isEmpty();
+      assertThat(limited.specs()).isNotEmpty();
+      assertThat(limited.specs()).noneMatch(spec -> spec.name().equals("durable_only"));
+      assertThat(limited.specs()).anyMatch(spec -> spec.name().equals("greet"));
     }
   }
 
