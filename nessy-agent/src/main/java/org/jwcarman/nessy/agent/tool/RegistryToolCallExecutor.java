@@ -50,7 +50,7 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
  * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
  * authorization chokepoint. Every call passes its grant's {@link ToolGrant#judgment()} before the
  * tool ever runs: a {@link UsagePolicy.Static} grant (Allow/Deny) takes the rung-0 fast path — no
- * effect rendered, no context assembled — while every other grant renders the effect, runs its
+ * action rendered, no context assembled — while every other grant renders the action, runs its
  * enrichers, and lets the policy judge. A {@code RuntimeException} escaping any of that is caught
  * and turned into a fail-closed denial whose message names the stage that broke. {@link
  * PolicyDecision.Deny} and a refused {@link Adjudication} both deliver in-band, narrated, so the
@@ -147,9 +147,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     CallAddress address = new CallAddress(type.name(), id.value(), call.id());
     PolicyDecision decision;
     AuthzContext context = null;
-    Object effect = null;
+    Object action = null;
     if (grant.policy() instanceof UsagePolicy.Static fixed) {
-      decision = fixed.decision(); // rung 0: no effect rendered, no context assembled
+      decision = fixed.decision(); // rung 0: no action rendered, no context assembled
     } else {
       ToolGrant.Judged judged;
       try {
@@ -160,13 +160,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       }
       decision = judged.decision();
       context = judged.context();
-      effect = judged.action();
+      action = judged.action();
     }
     return switch (decision) {
       case PolicyDecision.Allow ignored -> run(grant.tool(), input, call, address);
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
       case PolicyDecision.RequireApproval ignored ->
-          switch (approver.adjudicate(new ApprovalRequest(address, call, effect, context))) {
+          switch (approver.adjudicate(new ApprovalRequest(address, call, action, context))) {
             case Adjudication.Granted granted -> run(grant.tool(), input, call, address);
             case Adjudication.Refused(String reason) ->
                 new ToolExecution.Immediate(failed(call, reason));

@@ -117,10 +117,10 @@ class RegistryToolCallExecutorTest {
     }
   }
 
-  static final class EffectBlindTool implements Tool<EchoInput> {
+  static final class ActionBlindTool implements Tool<EchoInput> {
     @Override
     public String name() {
-      return "effect_blind";
+      return "action_blind";
     }
 
     @Override
@@ -305,7 +305,7 @@ class RegistryToolCallExecutorTest {
   void aThrowingPolicyFailsClosed() {
     UsagePolicy<Object> boomingPolicy =
         UsagePolicy.of(
-            (context, effect) -> {
+            (context, action) -> {
               throw new RuntimeException("boom");
             });
     var registry = ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), boomingPolicy));
@@ -323,15 +323,15 @@ class RegistryToolCallExecutorTest {
           throw new AssertionError("no action may be rendered on the rung-0 fast path");
         };
     var registry =
-        ToolRegistry.of(ToolGrant.grant(new EffectBlindTool(), mustNotRender, UsagePolicy.allow()));
+        ToolRegistry.of(ToolGrant.grant(new ActionBlindTool(), mustNotRender, UsagePolicy.allow()));
     var call =
-        new ToolCall("c1", "effect_blind", JsonNodeFactory.instance.objectNode().put("value", "x"));
+        new ToolCall("c1", "action_blind", JsonNodeFactory.instance.objectNode().put("value", "x"));
     var finished = run(registry, call, new RecordingTurnObserver());
     assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("ran: x")));
   }
 
   @Test
-  void requireApprovalRoutesToTheApproverWithEffectAndContext() {
+  void requireApprovalRoutesToTheApproverWithActionAndContext() {
     var requests = new ArrayList<ApprovalRequest>();
     Approver recordingApprover =
         request -> {
@@ -339,7 +339,7 @@ class RegistryToolCallExecutorTest {
           return new Adjudication.Granted();
         };
     Enricher<Object> principalEnricher =
-        Enricher.named("principal", (ctx, effect) -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
+        Enricher.named("principal", (ctx, action) -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
     ActionContributor<EchoInput, String> stringValueOf = String::valueOf;
     var registry =
         ToolRegistry.of(
@@ -353,7 +353,7 @@ class RegistryToolCallExecutorTest {
     assertThat(requests).hasSize(1);
     var request = requests.getFirst();
     assertThat(request.address()).isEqualTo(new CallAddress("cli", "cli", "c1"));
-    assertThat(request.effect()).isEqualTo("EchoInput[value=hi]");
+    assertThat(request.action()).isEqualTo("EchoInput[value=hi]");
     assertThat(request.context().agentName()).isEqualTo("cli");
     assertThat(request.context().principal()).contains("ada");
     assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("echo: hi")));

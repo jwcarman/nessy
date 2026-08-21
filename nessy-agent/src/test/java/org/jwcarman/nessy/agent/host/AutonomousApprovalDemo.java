@@ -128,7 +128,7 @@ class AutonomousApprovalDemo {
       assertThat(stores.get("prod-eu").load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       assertThat(backend.status(slot)).contains(ComputationStatus.PENDING);
       assertThat(requests).hasSize(1);
-      assertThat(requests.getFirst().effect()).isEqualTo("restart prod-eu");
+      assertThat(requests.getFirst().action()).isEqualTo("restart prod-eu");
       assertThat(requests.getFirst().address().approval()).isEqualTo(slot);
 
       System.out.println("== hours pass; every instance is garbage; any node may answer ==");

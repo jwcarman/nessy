@@ -21,16 +21,16 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 /**
- * Everything the adjudicating party sees (authorization design §9): the rendered effect and the
+ * Everything the adjudicating party sees (authorization design §9): the rendered action and the
  * assembled context, never less.
  */
 public record ApprovalRequest(
-    CallAddress address, ToolCall call, Object effect, AuthzContext context) {
+    CallAddress address, ToolCall call, Object action, AuthzContext context) {
 
   public ApprovalRequest {
     Objects.requireNonNull(address, "address must not be null");
     Objects.requireNonNull(call, "call must not be null");
-    Objects.requireNonNull(effect, "effect must not be null");
+    Objects.requireNonNull(action, "action must not be null");
     Objects.requireNonNull(context, "context must not be null");
   }
 }

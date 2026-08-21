@@ -45,7 +45,7 @@ class SlotApproverTest {
     ObjectNode arguments = JsonNodeFactory.instance.objectNode();
     ToolCall call = new ToolCall(address.callId(), "some-tool", arguments);
     AuthzContext context = AuthzContext.of("test-agent", call);
-    return new ApprovalRequest(address, call, "some effect", context);
+    return new ApprovalRequest(address, call, "some action", context);
   }
 
   @Test
