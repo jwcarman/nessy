@@ -24,15 +24,22 @@ import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ToolOutcome;
+import org.jwcarman.nessy.agent.spi.Adjudication;
+import org.jwcarman.nessy.agent.spi.ApprovalRequest;
+import org.jwcarman.nessy.agent.spi.Approver;
+import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.durable.ComputationId;
 
@@ -81,6 +88,55 @@ class RegistryToolCallExecutorTest {
     @Override
     public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
       return Awaited.deferred();
+    }
+  }
+
+  static final class NeverRunTool implements Tool<EchoInput> {
+    @Override
+    public String name() {
+      return "never_run";
+    }
+
+    @Override
+    public String description() {
+      return "must never execute";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      throw new AssertionError("this tool must never run");
+    }
+  }
+
+  static final class EffectBlindTool implements Tool<EchoInput> {
+    @Override
+    public String name() {
+      return "effect_blind";
+    }
+
+    @Override
+    public String description() {
+      return "its effect must never be rendered";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Object effect(EchoInput input) {
+      throw new AssertionError("effect must never be rendered on the rung-0 fast path");
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      return Awaited.ready(ToolResult.ok("ran: " + input.value()));
     }
   }
 
@@ -211,5 +267,122 @@ class RegistryToolCallExecutorTest {
     var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
     var failed = (ToolOutcome.Failed) finished.outcome();
     assertThat(failed.error().message()).contains("deferred execution is unavailable");
+  }
+
+  private DeferredToolCallPolicy neverParks() {
+    return (parkedCall, address) -> {
+      throw new AssertionError("no tool in this test defers");
+    };
+  }
+
+  private AgentEvent.ToolFinished runWithApprover(
+      ToolRegistry registry, ToolCall call, RecordingTurnObserver turn, Approver approver) {
+    var pump = new PumpedExecutor();
+    var executor =
+        new RegistryToolCallExecutor(
+            registry, AgentType.of("cli"), AgentId.of("cli"), turn, pump, neverParks(), approver);
+    var delivered = new ArrayList<AgentEvent>();
+    executor.executeTool(call, delivered::add);
+    pump.pumpUntilQuiet();
+    assertThat(delivered).hasSize(1);
+    return (AgentEvent.ToolFinished) delivered.getFirst();
+  }
+
+  @Test
+  void aDeniedCallDeliversTheDenialInBandAndNarratesIt() {
+    var registry =
+        ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), UsagePolicy.deny("not today")));
+    var call =
+        new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var turn = new RecordingTurnObserver();
+    var finished = run(registry, call, turn);
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).isEqualTo("not today");
+    assertThat(turn.events())
+        .contains(new TurnEvent.ToolCallCompleted(call, ToolResult.error("not today")));
+  }
+
+  @Test
+  void aThrowingPolicyFailsClosed() {
+    UsagePolicy<Object> boomingPolicy =
+        UsagePolicy.of(
+            (context, effect) -> {
+              throw new RuntimeException("boom");
+            });
+    var registry = ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), boomingPolicy));
+    var call =
+        new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var finished = run(registry, call, new RecordingTurnObserver());
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).contains("authorization failed").contains("boom");
+  }
+
+  @Test
+  void theStaticAllowFastPathRunsTheToolWithoutRenderingTheEffect() {
+    var registry = ToolRegistry.of(ToolGrant.grant(new EffectBlindTool(), UsagePolicy.allow()));
+    var call =
+        new ToolCall("c1", "effect_blind", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var finished = run(registry, call, new RecordingTurnObserver());
+    assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("ran: x")));
+  }
+
+  @Test
+  void requireApprovalRoutesToTheApproverWithEffectAndContext() {
+    var requests = new ArrayList<ApprovalRequest>();
+    Approver recordingApprover =
+        request -> {
+          requests.add(request);
+          return new Adjudication.Granted();
+        };
+    var registry = ToolRegistry.of(ToolGrant.grant(new EchoTool(), UsagePolicy.requireApproval()));
+    var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
+    var finished = runWithApprover(registry, call, new RecordingTurnObserver(), recordingApprover);
+    assertThat(requests).hasSize(1);
+    var request = requests.getFirst();
+    assertThat(request.address()).isEqualTo(new CallAddress("cli", "cli", "c1"));
+    assertThat(request.effect()).isNotNull();
+    assertThat(request.context().agentName()).isEqualTo("cli");
+    assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("echo: hi")));
+  }
+
+  @Test
+  void aRefusedAdjudicationIsInBand() {
+    Approver refusingApprover = request -> new Adjudication.Refused("the desk said no");
+    var registry =
+        ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), UsagePolicy.requireApproval()));
+    var call =
+        new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var turn = new RecordingTurnObserver();
+    var finished = runWithApprover(registry, call, turn, refusingApprover);
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).isEqualTo("the desk said no");
+    assertThat(turn.events())
+        .contains(new TurnEvent.ToolCallCompleted(call, ToolResult.error("the desk said no")));
+  }
+
+  @Test
+  void aSuspendedAdjudicationDeliversNothingAndNarratesNothing() {
+    var slot = ComputationId.of("approval:cli:cli:c1");
+    Approver suspendingApprover = request -> new Adjudication.Suspended(slot);
+    var registry =
+        ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), UsagePolicy.requireApproval()));
+    var call =
+        new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var turn = new RecordingTurnObserver();
+    var pump = new PumpedExecutor();
+    var executor =
+        new RegistryToolCallExecutor(
+            registry,
+            AgentType.of("cli"),
+            AgentId.of("cli"),
+            turn,
+            pump,
+            neverParks(),
+            suspendingApprover);
+    var delivered = new ArrayList<AgentEvent>();
+    executor.executeTool(call, delivered::add);
+    pump.pumpUntilQuiet();
+    assertThat(delivered).isEmpty();
+    assertThat(turn.events()).isEmpty();
   }
 }
