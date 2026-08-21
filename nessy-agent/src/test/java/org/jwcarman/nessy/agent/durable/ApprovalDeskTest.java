@@ -23,6 +23,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
@@ -62,11 +63,11 @@ class ApprovalDeskTest {
   }
 
   @Test
-  void anUnknownIdIsRefusedLoudlyByTheBackendsOwnVocabulary() {
+  void approvingAnUnknownIdBirthsTheSlotAlreadyApprovedAndFiresNothing() {
     var ghost = ComputationId.of("ghost");
-    var result = ToolResult.ok("x");
-    assertThatThrownBy(() -> desk.approve(ghost, result))
-        .isInstanceOf(IllegalArgumentException.class);
+    desk.approve(ghost, ToolResult.ok("x"));
+    assertThat(backend.status(ghost)).contains(ComputationStatus.SUCCEEDED);
+    assertThat(fired).isEmpty();
   }
 
   @Test
