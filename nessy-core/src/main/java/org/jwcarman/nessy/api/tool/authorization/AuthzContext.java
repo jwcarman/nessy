@@ -51,6 +51,13 @@ public interface AuthzContext {
    */
   Key<Object> ACTION_KEY = new Key<>(Object.class, "action");
 
+  /**
+   * The well-known slot a risk-assessing enricher deposits its {@link RiskAssessment} into
+   * (action-wave spec §2). Empty until one does; {@link RiskPolicies#threshold} fails closed on the
+   * absence.
+   */
+  Key<RiskAssessment> RISK_KEY = new Key<>(RiskAssessment.class, "risk");
+
   /** The agent that owns the grant being evaluated. */
   String agentName();
 
@@ -96,6 +103,14 @@ public interface AuthzContext {
    */
   default Optional<Object> action() {
     return get(ACTION_KEY);
+  }
+
+  /**
+   * The risk assessment a risk-assessing enricher deposited under {@link #RISK_KEY}, if any. Empty
+   * until one does.
+   */
+  default Optional<RiskAssessment> risk() {
+    return get(RISK_KEY);
   }
 
   /**
