@@ -55,22 +55,31 @@ whatever record the org wants; a structured action may embed its resource.
 A well-known slot plus one good default shape, so standard policies become shippable —
 opinions, not mandates (an org with its own model deposits its own type under its own key).
 
-- `RiskLevel` — `VERY_LOW, LOW, MODERATE, HIGH, VERY_HIGH` (NIST SP 800-30's five qualitative
-  levels; declaration order is severity order).
-- `record RiskAssessment(RiskLevel likelihood, RiskLevel impact, List<String> factors)` with
-  `RiskLevel severity()` computed by the NIST-style combination matrix (the matrix is in the
-  implementation plan and is part of this ruling).
-- `RiskFactors` — String constants seeding the factor vocabulary from MCP tool annotations,
-  the closest thing agent tooling has to a standard risk vocabulary: `destructive`,
-  `irreversible`, `external-world`, `read-only`, plus `spends-money` and `touches-pii` as
-  nessy's own additions. Factors are open strings, deliberately — org vocabulary, not a sealed
+- Three axes, three types (amended 2026-08-21 — the matrix is asymmetric, so a swapped
+  likelihood/impact is a real severity bug the compiler should catch): `Likelihood`, `Impact`,
+  and `RiskLevel`, each `VERY_LOW, LOW, MODERATE, HIGH, VERY_HIGH` — NIST SP 800-30's own five
+  qualitative values on all three axes (Tables G-2/H-2/I-2), declaration order is severity
+  order. Friendlier glosses ("very unlikely", "negligible impact") live in javadoc, never in
+  identifiers.
+- `record RiskAssessment(Likelihood likelihood, Impact impact, RiskLevel risk,
+  Set<RiskFactor> factors)` — the assessor's full statement, `risk` stored (amended
+  2026-08-21). The canonical constructor is the explicit-override door: an org's assessor may
+  conclude a level the standard combination would not (deliberate elevation is legitimate).
+  `RiskAssessment.of(likelihood, impact, factors...)` is the shipped opinion: it derives `risk`
+  from the NIST-style combination matrix (the matrix is in the implementation plan and is part
+  of this ruling).
+- `record RiskFactor(String name)` — a typed, open value (value equality, deliberately unlike
+  `Key`: two modules saying "destructive" mean the same factor). `RiskFactors` holds the typed
+  constants seeding the vocabulary from MCP tool annotations: `destructive`, `irreversible`,
+  `external-world`, `read-only`, plus `spends-money` and `touches-pii` as nessy's own
+  additions. The vocabulary stays open — org factors are new `RiskFactor`s, never a sealed
   grammar.
 - `AuthzContext.RISK_KEY` (typed `RiskAssessment`) with a `risk()` convenience accessor,
   beside `PRINCIPAL_KEY`/`DECLARED_INTENT_KEY`.
 - **The threshold policy** ships as the canonical consumer:
   `RiskPolicies.threshold(RiskLevel approveAt, RiskLevel denyAt)` — severity below `approveAt`
   allows, below `denyAt` requires approval, at-or-above denies. An absent assessment fails
-  closed (Deny naming the empty slot). This is the one-line policy every deployment actually
+  closed (Deny naming the empty slot); the policy reads the stored `risk()`. This is the one-line policy every deployment actually
   wants, composable with any org's assessor enricher.
 
 ## 3. Intent reborn
