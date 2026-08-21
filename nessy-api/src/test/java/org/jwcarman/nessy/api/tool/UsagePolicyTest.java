@@ -21,11 +21,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.authorization.GrantStory;
+import org.jwcarman.nessy.api.tool.authorization.Impact;
+import org.jwcarman.nessy.api.tool.authorization.IntentPolicies;
+import org.jwcarman.nessy.api.tool.authorization.Likelihood;
+import org.jwcarman.nessy.api.tool.authorization.RiskAssessment;
+import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
+import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
 
 class UsagePolicyTest {
 
@@ -214,6 +224,150 @@ class UsagePolicyTest {
       assertThatThrownBy(() -> new PolicyDecision.Deny(null))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("reason");
+    }
+  }
+
+  @Nested
+  class All_of_composition {
+
+    private static UsagePolicy<Object> approveUnder(int limit) {
+      return UsagePolicy.of(
+          (context, action) -> {
+            int amount = context.call().arguments().get("amount").asInt();
+            return amount < limit
+                ? new PolicyDecision.Allow()
+                : new PolicyDecision.Deny("amount " + amount + " exceeds limit " + limit);
+          });
+    }
+
+    @Test
+    void allAllowIsAllowed() {
+      UsagePolicy<Object> policy = UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.allow());
+      ToolCall call = spendCall(1);
+
+      assertThat(policy.evaluate(contextFor(call), call)).isEqualTo(new PolicyDecision.Allow());
+    }
+
+    @Test
+    void theFirstDenyWinsAndItsOwnReasonSurfaces() {
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(
+              UsagePolicy.allow(), UsagePolicy.deny("first"), UsagePolicy.deny("second"));
+      ToolCall call = spendCall(1);
+
+      assertThat(policy.evaluate(contextFor(call), call))
+          .isEqualTo(new PolicyDecision.Deny("first"));
+    }
+
+    @Test
+    void aRequireApprovalWinsOverAnAllowWhenNoDenyIsPresent() {
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.requireApproval());
+      ToolCall call = spendCall(1);
+
+      assertThat(policy.evaluate(contextFor(call), call))
+          .isEqualTo(new PolicyDecision.RequireApproval());
+    }
+
+    @Test
+    void evaluatesInOrderSoALaterDenyNeverOverridesAnEarlierOne() {
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(UsagePolicy.deny("early"), UsagePolicy.requireApproval());
+      ToolCall call = spendCall(1);
+
+      assertThat(policy.evaluate(contextFor(call), call))
+          .isEqualTo(new PolicyDecision.Deny("early"));
+    }
+
+    @Test
+    void rejectsAnEmptyVarargsList() {
+      assertThatThrownBy(UsagePolicy::allOf).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsAnEmptyList() {
+      assertThatThrownBy(() -> UsagePolicy.allOf(List.<UsagePolicy<Object>>of()))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsAListContainingANullElement() {
+      List<UsagePolicy<Object>> withNull = Arrays.asList(UsagePolicy.allow(), null);
+
+      assertThatThrownBy(() -> UsagePolicy.allOf(withNull))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void theCompositeIsNeverStatic() {
+      UsagePolicy<Object> policy = UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.allow());
+
+      assertThat(policy).isNotInstanceOf(UsagePolicy.Static.class);
+    }
+
+    private record Restart(String target) {}
+
+    @Test
+    void combinesRequireDeclaredWithARiskThresholdPolicyDenyingOnTheUndeclaredIntentFirst() {
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(
+              IntentPolicies.requireDeclared(Restart.class),
+              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
+      ToolCall call = spendCall(1);
+
+      PolicyDecision decision = policy.evaluate(contextFor(call), call);
+
+      assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
+      assertThat(((PolicyDecision.Deny) decision).reason()).contains("declare-intent");
+    }
+
+    @Test
+    void combinesRequireDeclaredWithARiskThresholdPolicyDenyingOnRiskWhenIntentIsDeclared() {
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(
+              IntentPolicies.requireDeclared(Restart.class),
+              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
+      ToolCall call = spendCall(1);
+      RiskAssessment highRisk =
+          new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, RiskLevel.HIGH, Set.of());
+      AuthzContext context =
+          contextFor(call)
+              .with(AuthzContext.DECLARED_INTENT_KEY, new Restart("prod-eu"))
+              .with(AuthzContext.RISK_KEY, highRisk);
+
+      PolicyDecision decision = policy.evaluate(context, call);
+
+      assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
+      assertThat(((PolicyDecision.Deny) decision).reason()).contains("HIGH");
+    }
+
+    @Test
+    void combinesRequireDeclaredWithARiskThresholdPolicyAllowingWhenBothAreSatisfied() {
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(
+              IntentPolicies.requireDeclared(Restart.class),
+              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
+      ToolCall call = spendCall(1);
+      RiskAssessment lowRisk =
+          new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, RiskLevel.VERY_LOW, Set.of());
+      AuthzContext context =
+          contextFor(call)
+              .with(AuthzContext.DECLARED_INTENT_KEY, new Restart("prod-eu"))
+              .with(AuthzContext.RISK_KEY, lowRisk);
+
+      assertThat(policy.evaluate(context, call)).isEqualTo(new PolicyDecision.Allow());
+    }
+
+    @Test
+    void namesItsOwnClassForTheAuthorizationReport() {
+      UsagePolicy<Object> policy = UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.allow());
+      Grant_construction.Recorder tool = new Grant_construction.Recorder();
+
+      ToolGrant grant = ToolGrant.grant(tool, policy);
+
+      GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
+
+      assertThat(story.policy()).isEqualTo("AllOfPolicy");
     }
   }
 }

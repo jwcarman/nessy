@@ -27,9 +27,10 @@ import org.jwcarman.nessy.spi.intent.IntentStore;
  * AuthzContext#declaredIntent()}. Absent a declaration, the context passes through untouched: a
  * missing claim is not this enricher's failure to report, only a policy's own choice to weigh.
  *
- * <p>Genericized over the store's vocabulary only (vocabulary amendment §3) — the enricher itself
- * needs no type parameter since {@link AuthzContext#DECLARED_INTENT_KEY} holds any declaration by
- * {@link Object}.
+ * <p>Carries no type parameter of its own (vocabulary amendment §3): it deposits whatever {@link
+ * IntentStore#latest()} yields, untyped, since {@link AuthzContext#DECLARED_INTENT_KEY} holds any
+ * declaration by {@link Object}. Typed recovery is a policy's own concern, through {@link
+ * AuthzContext#declaredIntent(Class)}.
  */
 public final class IntentEnricher implements Enricher<Object> {
 

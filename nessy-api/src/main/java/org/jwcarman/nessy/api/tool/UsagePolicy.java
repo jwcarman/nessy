@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
@@ -72,6 +75,41 @@ public interface UsagePolicy<E> {
    */
   static UsagePolicy<Object> requireApproval() {
     return RequireApproval.INSTANCE;
+  }
+
+  /**
+   * Deny-biased conjunction (vocabulary amendment §3): evaluates {@code policies} in order,
+   * stopping at the first {@link PolicyDecision.Deny} and surfacing its own reason; if none deny
+   * but any returns {@link PolicyDecision.RequireApproval}, that wins; only when every policy
+   * allows does the composite allow. Closes the gap that made judging inside an enricher tempting —
+   * an org can compose canonical policies instead of writing its own conjunction each time.
+   *
+   * <p>The composite itself is never {@link Static}: its verdict depends on {@code policies} and,
+   * through them, on context and action, so it must take the chokepoint's normal fail-closed
+   * staging rather than the rung-0 fast path.
+   *
+   * @throws IllegalArgumentException if {@code policies} is empty or contains a {@code null}
+   *     element
+   */
+  static UsagePolicy<Object> allOf(List<UsagePolicy<Object>> policies) {
+    Objects.requireNonNull(policies, "policies must not be null");
+    if (policies.isEmpty()) {
+      throw new IllegalArgumentException("policies must not be empty");
+    }
+    List<UsagePolicy<Object>> ordered = new ArrayList<>(policies.size());
+    for (UsagePolicy<Object> policy : policies) {
+      if (policy == null) {
+        throw new IllegalArgumentException("policies must not contain a null element");
+      }
+      ordered.add(policy);
+    }
+    return new AllOfPolicy(List.copyOf(ordered));
+  }
+
+  /** Varargs form of {@link #allOf(List)}. */
+  static UsagePolicy<Object> allOf(UsagePolicy<Object>... policies) {
+    Objects.requireNonNull(policies, "policies must not be null");
+    return allOf(Arrays.asList(policies));
   }
 
   /**
