@@ -224,8 +224,13 @@ Ruled:
 - **`ToolGrant` becomes a final class with a private constructor** — the `grant(...)` factories
   are now the enforced-single door ("exactly one way to write it" restored to literal truth),
   the four parts stay as accessors for the report, the render function is a private captured
-  field, and `public Judged judge(AuthzContext, Object input)` is the pipeline as behavior.
-  The nested `Judgment` interface and the public `judgment` component are deleted.
+  field, and the pipeline is two methods speaking only existing vocabulary (amended 2026-08-21,
+  owner: "Judged is cute, not helpful"): `AuthzContext assemble(AuthzContext base, Object
+  input)` — bind, render the action, deposit `ACTION_KEY`, enrich — and `PolicyDecision
+  decide(AuthzContext assembled)`. No result record: the enriched context IS the carrier.
+  `Judgment`, the `judgment` component, and `Judged` are all deleted. Consequently
+  `ApprovalRequest` sheds its `action` component — `(address, call, context)` — because the
+  action lives in the context it was carrying alongside (two paths to one fact, closed).
 - **The ladder law simplifies**: "typed" stops being a rung of its own — a typed policy is one
   that reads a typed key. Stage-named fail-closed, render-once, and the Static rung-0 fast
   path are unchanged.
