@@ -88,6 +88,21 @@ class InMemoryScopedStoreTest {
     }
 
     @Test
+    void deletingAnAbsentDocumentAtVersionZeroIsANoOpSuccess() {
+      var store = new InMemoryScopedStore();
+      store.delete("state", "never-written", 0L);
+      assertThat(store.read("state", "never-written")).isEmpty();
+    }
+
+    @Test
+    void deletingAPresentDocumentAtVersionZeroThrowsConflict() {
+      var store = new InMemoryScopedStore();
+      store.write("state", "agent-a", "v1", 0L);
+      assertThatThrownBy(() -> store.delete("state", "agent-a", 0L))
+          .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
     void readingAnAbsentDocumentReturnsEmpty() {
       var store = new InMemoryScopedStore();
       assertThat(store.read("state", "unknown-agent")).isEmpty();
@@ -243,14 +258,12 @@ class InMemoryScopedStoreTest {
     void aBatchWithOneStaleOpAppliesNothing() {
       var store = new InMemoryScopedStore();
       store.write("state", "agent-a", "original", 0L);
+      List<ScopedStore.Op> ops =
+          List.of(
+              new ScopedStore.Op.AppendEntry("memory", "agent-a", 1L, "hello"),
+              new ScopedStore.Op.WriteDocument("state", "agent-a", "stale", 99L));
 
-      assertThatThrownBy(
-              () ->
-                  store.batch(
-                      List.of(
-                          new ScopedStore.Op.AppendEntry("memory", "agent-a", 1L, "hello"),
-                          new ScopedStore.Op.WriteDocument("state", "agent-a", "stale", 99L))))
-          .isInstanceOf(ConflictException.class);
+      assertThatThrownBy(() -> store.batch(ops)).isInstanceOf(ConflictException.class);
 
       assertThat(store.read("state", "agent-a").orElseThrow().payload()).isEqualTo("original");
       assertThat(store.entries("memory", "agent-a", 1L)).isEmpty();

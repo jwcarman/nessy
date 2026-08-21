@@ -50,7 +50,11 @@ public interface ScopedStore {
 
   /**
    * Deletes the document at {@code (kind, key)} under the same CAS discipline as {@link
-   * #write(String, String, String, long)}.
+   * #write(String, String, String, long)}: {@code expectedVersion} is what the caller believes is
+   * currently stored, and {@code 0} means "I believe this is absent". Deleting a document that is
+   * genuinely absent at {@code expectedVersion == 0} is therefore an idempotent success (a no-op);
+   * deleting a document that is present at {@code expectedVersion == 0} is a conflict, as is any
+   * other version mismatch (spec §4.1).
    *
    * @throws NullPointerException if {@code kind} or {@code key} is null
    * @throws ConflictException if the stored version does not match {@code expectedVersion}

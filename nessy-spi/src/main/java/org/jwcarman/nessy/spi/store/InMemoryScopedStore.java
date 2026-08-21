@@ -18,19 +18,22 @@ package org.jwcarman.nessy.spi.store;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
  * The reference {@link ScopedStore} substrate: one lock guards a document map and a journal map,
  * both keyed by {@code (kind, key)}. {@link #batch(List)} validates and applies every op against
- * private copies of both maps before publishing them, so a conflict anywhere in the batch leaves
- * the live store byte-for-byte as it was (spec §4.3) — this is a single-node, in-process reference
- * implementation, not a durable substrate.
+ * private copies of only the {@code (kind, key)} pairs the batch actually touches — snapshotted out
+ * of the live maps, mutated in isolation, merged back only on success — so a conflict anywhere in
+ * the batch leaves the live store byte-for-byte as it was (spec §4.3) without ever copying the
+ * whole store. This is a single-node, in-process reference implementation, not a durable substrate.
  */
 public final class InMemoryScopedStore implements ScopedStore {
 
@@ -110,19 +113,51 @@ public final class InMemoryScopedStore implements ScopedStore {
   public void batch(List<Op> ops) {
     Objects.requireNonNull(ops, "ops must not be null");
     synchronized (lock) {
-      Map<DocKey, Document> documentsCopy = new HashMap<>(documents);
-      Map<DocKey, NavigableMap<Long, Entry>> journalsCopy = new HashMap<>();
-      for (Map.Entry<DocKey, NavigableMap<Long, Entry>> entry : journals.entrySet()) {
-        journalsCopy.put(entry.getKey(), new TreeMap<>(entry.getValue()));
+      Set<DocKey> documentKeys = new HashSet<>();
+      Set<DocKey> journalKeys = new HashSet<>();
+      for (Op op : ops) {
+        collectTouchedKey(op, documentKeys, journalKeys);
       }
+
+      Map<DocKey, Document> documentsCopy = new HashMap<>();
+      for (DocKey docKey : documentKeys) {
+        Document current = documents.get(docKey);
+        if (current != null) {
+          documentsCopy.put(docKey, current);
+        }
+      }
+      Map<DocKey, NavigableMap<Long, Entry>> journalsCopy = new HashMap<>();
+      for (DocKey docKey : journalKeys) {
+        NavigableMap<Long, Entry> current = journals.get(docKey);
+        if (current != null) {
+          journalsCopy.put(docKey, new TreeMap<>(current));
+        }
+      }
+
       Instant now = clock.instant();
       for (Op op : ops) {
         applyOp(documentsCopy, journalsCopy, op, now);
       }
-      documents.clear();
-      documents.putAll(documentsCopy);
-      journals.clear();
-      journals.putAll(journalsCopy);
+
+      for (DocKey docKey : documentKeys) {
+        Document result = documentsCopy.get(docKey);
+        if (result == null) {
+          documents.remove(docKey);
+        } else {
+          documents.put(docKey, result);
+        }
+      }
+      for (DocKey docKey : journalKeys) {
+        journals.put(docKey, journalsCopy.get(docKey));
+      }
+    }
+  }
+
+  private void collectTouchedKey(Op op, Set<DocKey> documentKeys, Set<DocKey> journalKeys) {
+    switch (op) {
+      case Op.WriteDocument w -> documentKeys.add(new DocKey(w.kind(), w.key()));
+      case Op.DeleteDocument d -> documentKeys.add(new DocKey(d.kind(), d.key()));
+      case Op.AppendEntry a -> journalKeys.add(new DocKey(a.kind(), a.key()));
     }
   }
 
@@ -172,6 +207,11 @@ public final class InMemoryScopedStore implements ScopedStore {
     target.put(docKey, new Document(payload, expectedVersion + 1, now));
   }
 
+  /**
+   * {@code expectedVersion == 0} means "absent", symmetric with {@link #applyWrite}: deleting a
+   * genuinely absent document at {@code 0} is an idempotent no-op success; deleting a present one
+   * at {@code 0}, or any other version mismatch, is a stale-delete conflict.
+   */
   private void applyDelete(
       Map<DocKey, Document> target, String kind, String key, long expectedVersion) {
     Objects.requireNonNull(kind, "kind must not be null");
