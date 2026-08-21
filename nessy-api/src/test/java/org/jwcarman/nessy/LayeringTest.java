@@ -26,22 +26,32 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * The q8 layering, checked mechanically: core is vocabulary and SPIs; it never sees the machine.
+ * The §10.10 layering, checked mechanically: api is vocabulary, spi is seams, and neither ever sees
+ * the machine.
  */
 class LayeringTest {
 
   @Test
-  void coreNeverSeesTheMachine() {
-    assertThat(offendingFiles("org.jwcarman.nessy.agent")).isEmpty();
+  void api_never_imports_the_spi_or_the_machine() {
+    assertThat(offendingFiles("nessy-api", "org.jwcarman.nessy.spi")).isEmpty();
+    assertThat(offendingFiles("nessy-api", "org.jwcarman.nessy.agent")).isEmpty();
   }
 
-  private static List<Path> offendingFiles(String forbidden) {
-    Path root = Path.of("src", "main", "java");
+  @Test
+  void spi_never_imports_the_machine() {
+    assertThat(offendingFiles("nessy-spi", "org.jwcarman.nessy.agent")).isEmpty();
+  }
+
+  private static List<Path> offendingFiles(String module, String forbidden) {
+    List<Path> files = javaFilesIn(module);
+    assertThat(files).isNotEmpty();
+    return files.stream().filter(path -> read(path).contains(forbidden)).toList();
+  }
+
+  private static List<Path> javaFilesIn(String module) {
+    Path root = Path.of("..", module, "src", "main", "java");
     try (Stream<Path> paths = Files.walk(root)) {
-      return paths
-          .filter(path -> path.toString().endsWith(".java"))
-          .filter(path -> read(path).contains(forbidden))
-          .toList();
+      return paths.filter(path -> path.toString().endsWith(".java")).toList();
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }

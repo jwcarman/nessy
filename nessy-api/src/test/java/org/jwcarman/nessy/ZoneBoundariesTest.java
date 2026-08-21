@@ -149,8 +149,11 @@ class ZoneBoundariesTest {
 
   @Test
   void nothing_imports_internal_because_internal_is_gone() {
+    List<JavaFile> allFiles = allJavaFiles();
+    assertThat(allFiles).isNotEmpty();
+
     List<JavaFile> importers =
-        allJavaFiles().stream()
+        allFiles.stream()
             .filter(file -> file.importsPackage("org.jwcarman.nessy.internal"))
             .toList();
     assertThat(importers).isEmpty();

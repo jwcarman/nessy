@@ -56,7 +56,8 @@
   <modules>
     <module>nessy-bom</module>
     <module>nessy-durable</module>
-    <module>nessy-core</module>
+    <module>nessy-api</module>
+    <module>nessy-spi</module>
     <module>nessy-agent</module>
     <module>nessy-testing</module>
     <module>nessy-model-anthropic</module>
@@ -193,12 +194,24 @@
       </dependency>
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
-        <artifactId>nessy-core</artifactId>
+        <artifactId>nessy-api</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
-        <artifactId>nessy-core</artifactId>
+        <artifactId>nessy-api</artifactId>
+        <version>${project.version}</version>
+        <classifier>tests</classifier>
+        <type>test-jar</type>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-spi</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-spi</artifactId>
         <version>${project.version}</version>
         <classifier>tests</classifier>
         <type>test-jar</type>

@@ -36,7 +36,12 @@
         <dependencies>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-core</artifactId>
+                <artifactId>nessy-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jwcarman.nessy</groupId>
+                <artifactId>nessy-spi</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

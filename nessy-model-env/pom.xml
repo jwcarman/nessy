@@ -34,7 +34,7 @@
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-core</artifactId>
+      <artifactId>nessy-spi</artifactId>
     </dependency>
     <!-- Non-optional, on purpose: this module's whole point is that every provider rides the
          classpath so any key just works, with no per-provider dependency choice left to the

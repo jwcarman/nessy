@@ -27,8 +27,9 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>nessy-core</artifactId>
-  <name>Nessy Core</name>
+  <artifactId>nessy-api</artifactId>
+  <name>Nessy API</name>
+  <description>The vocabulary everyone shares: messages, the tool and authorization/risk grammar, turn events, and the other types every Nessy module speaks (§10.10).</description>
 
   <dependencies>
     <dependency>
@@ -83,7 +84,7 @@
                    white-box tests fail on the module path in IDEs. The
                    api/spi/internal boundary stands on package convention
                    until revisited pre-1.0. -->
-              <Automatic-Module-Name>org.jwcarman.nessy.core</Automatic-Module-Name>
+              <Automatic-Module-Name>org.jwcarman.nessy.api</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

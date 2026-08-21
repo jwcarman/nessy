@@ -34,7 +34,7 @@
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-core</artifactId>
+      <artifactId>nessy-api</artifactId>
     </dependency>
     <!-- The SDK's core artifact only: client + server + spec + stdio/HTTP transports. No Spring,
          no transport extras beyond what tools/list + tools/call need. -->

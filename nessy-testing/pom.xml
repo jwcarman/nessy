@@ -33,7 +33,7 @@
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-core</artifactId>
+      <artifactId>nessy-spi</artifactId>
     </dependency>
   </dependencies>
 

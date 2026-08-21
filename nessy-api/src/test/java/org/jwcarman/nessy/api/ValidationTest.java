@@ -19,16 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.conversation.Usage;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolSpec;
-import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
  * Pins the validating constructors on the public records.
@@ -80,63 +76,6 @@ class ValidationTest {
   }
 
   @Test
-  void a_model_settings_without_a_model_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings(null, "", 1024, Set.of(), null))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void a_model_settings_without_tokens_to_spend_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 0, Set.of(), null))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_model_settings_context_window_at_or_below_max_tokens_is_rejected() {
-    assertThatThrownBy(() -> new ModelSettings("fake-model", "", 1024, Set.of(), 1024L))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_model_settings_accepts_a_null_context_window() {
-    var settings = new ModelSettings("fake-model", "", 1024, Set.of(), null);
-
-    assertThat(settings.contextWindow()).isNull();
-  }
-
-  @Test
-  void a_model_settings_context_window_above_max_tokens_is_accepted() {
-    var settings = new ModelSettings("fake-model", "", 1024, Set.of(), 200_000L);
-
-    assertThat(settings.contextWindow()).isEqualTo(200_000L);
-  }
-
-  @Test
-  void a_model_request_without_a_model_is_rejected() {
-    Context context = Context.of(List.of());
-
-    assertThatThrownBy(
-            () -> new ModelRequest(context, "system", " ", 1024, List.of(), Set.of(), null))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_model_request_without_tokens_to_spend_is_rejected() {
-    Context context = Context.of(List.of());
-
-    assertThatThrownBy(
-            () -> new ModelRequest(context, "system", "fake-model", 0, List.of(), Set.of(), null))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void a_model_request_without_a_context_is_rejected() {
-    assertThatThrownBy(
-            () -> new ModelRequest(null, "system", "fake-model", 1024, List.of(), Set.of(), null))
-        .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
   void negative_token_counts_are_rejected() {
     assertThatThrownBy(() -> new Usage(-1, 0, 0)).isInstanceOf(IllegalArgumentException.class);
   }
@@ -151,25 +90,5 @@ class ValidationTest {
     var sum = new Usage(1, 2, 3).plus(new Usage(10, 20, 30));
 
     assertThat(sum).isEqualTo(new Usage(11, 22, 33));
-  }
-
-  @Test
-  void a_model_request_accepts_a_null_response_schema() {
-    var request =
-        new ModelRequest(
-            Context.of(List.of()), "system", "fake-model", 1024, List.of(), Set.of(), null);
-
-    assertThat(request.responseSchema()).isNull();
-  }
-
-  @Test
-  void a_model_request_carries_a_non_null_response_schema() {
-    var schema = JsonNodeFactory.instance.objectNode().put("type", "object");
-
-    var request =
-        new ModelRequest(
-            Context.of(List.of()), "system", "fake-model", 1024, List.of(), Set.of(), schema);
-
-    assertThat(request.responseSchema()).isSameAs(schema);
   }
 }
