@@ -127,7 +127,8 @@ with an approval gate — or, for Bedrock, `us.anthropic.claude-haiku-4-5-202510
 the `us` cross-region inference profile id for Claude Haiku 4.5,
 live-validated 2026-08-16).
 
-`nessy-examples/chat-cli`'s `Chat` main is this in practice: one main, no
+`ApprovalPlayground` (`nessy-agent`'s test sources, an IDE-run tinker door —
+see the Javadoc on the class itself) is this in practice: one `main`, no
 `if` branch for which provider module to import, because `select()` already
 decided both the provider and the model.
 
@@ -220,10 +221,9 @@ provider closes that client only when the provider built it itself (the
 caller built it against — the provider never closes it, since it never
 opened it either.
 
-**Explicit selection only.** Neither `EnvModelProviders` nor
-`nessy-autoconfigure` ever choose Bedrock by key presence, classpath
-presence, or any other ambient signal — `NESSY_PROVIDER=bedrock` /
-`nessy.provider=bedrock` is the only door, checked before any other
+**Explicit selection only.** `EnvModelProviders` never chooses Bedrock by
+key presence, classpath presence, or any other ambient signal —
+`NESSY_PROVIDER=bedrock` is the only door, checked before any other
 provider's candidacy is even computed. This is not an oversight: AWS
 credentials (and, on some platforms, even `AWS_REGION` itself — AWS Lambda
 sets it automatically) are ambient on a large fraction of machines, so
@@ -231,8 +231,7 @@ letting their mere presence win, or even enter a tiebreak, would silently
 hijack any application with a stray AWS profile into talking to Bedrock the
 moment `nessy-model-bedrock` rode the classpath. See
 [Switching by environment variable](#switching-by-environment-variable)
-above and Spring Boot for exactly how each door enforces
-this.
+above for exactly how that door enforces this.
 
 Capabilities in v1: text and tool calls, including parallel tool calls in
 one assistant turn (Converse already streams several `toolUse` content
@@ -276,21 +275,20 @@ ModelProvider provider =
 `XAI_API_KEY` is a first-class `EnvModelProviders` citizen — set it alone
 and `fromEnv()` wires Grok with no other code, as shown above.
 
-**OpenRouter** (validated 2026-08-16 — `openai/gpt-4o-mini` through chat-cli:
-text, an approval-gated tool round trip, and a notebook write; note
-OpenRouter model ids are vendor-prefixed slugs, so set `NESSY_MODEL`, and
-cached-token counts may read zero since usage passthrough varies by
-upstream model):
+**OpenRouter** (validated live 2026-08-16 against `openai/gpt-4o-mini`: a
+streamed text turn and an approval-gated tool round trip; note OpenRouter
+model ids are vendor-prefixed slugs, so set `NESSY_MODEL`, and cached-token
+counts may read zero since usage passthrough varies by upstream model):
 
 ```java
 ModelProvider provider =
     OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://openrouter.ai/api/v1"));
 ```
 
-**Groq** (validated 2026-08-16 — the chip company with the LPU inference
-silicon, no relation to xAI's Grok — serving open-weight models at extreme
-speed; `openai/gpt-oss-120b` through chat-cli: text, an approval-gated tool
-round trip, and a notebook write, with time-to-first-token in the tens of
+**Groq** (validated live 2026-08-16 — the chip company with the LPU
+inference silicon, no relation to xAI's Grok — serving open-weight models
+at extreme speed; `openai/gpt-oss-120b`: a streamed text turn and an
+approval-gated tool round trip, with time-to-first-token in the tens of
 milliseconds. Keys are `gsk_...` from console.groq.com. One field-tested
 quirk: a freshly minted key can intermittently 401 for a few minutes while
 it propagates across their edge — the failed request won't even appear in
@@ -301,11 +299,11 @@ ModelProvider provider =
     OpenAiModelProvider.create(c -> c.apiKey(key).baseUrl("https://api.groq.com/openai/v1"));
 ```
 
-**NVIDIA NIM** (validated 2026-08-16 — the free open-weight
-`nvidia/nemotron-3.5-lightning-30b-a3b` on NVIDIA's free developer tier,
-through chat-cli: text, an approval-gated tool round trip, and a notebook
-write — a no-cost model driving the whole loop; keys are `nvapi-...` from
-build.nvidia.com, model ids are NVIDIA's catalog ids):
+**NVIDIA NIM** (validated live 2026-08-16 against the free open-weight
+`nvidia/nemotron-3.5-lightning-30b-a3b` on NVIDIA's free developer tier: a
+streamed text turn and an approval-gated tool round trip — a no-cost model
+driving the whole loop; keys are `nvapi-...` from build.nvidia.com, model
+ids are NVIDIA's catalog ids):
 
 ```java
 ModelProvider provider =
@@ -313,8 +311,8 @@ ModelProvider provider =
 ```
 
 **Ollama** (local, no key required — any non-empty string works; validated
-2026-08-16 with `qwen3.6` through chat-cli: text, an approval-gated tool
-round trip, and notebook writes. Honest performance note: on the same
+live 2026-08-16 against `qwen3.6`: a streamed text turn and an
+approval-gated tool round trip. Honest performance note: on the same
 Apple-Silicon machine and model family, LM Studio's MLX engine was notably
 faster than Ollama's GGUF serving — both work, one waits):
 
@@ -358,14 +356,15 @@ ModelProvider provider =
     fails. Use the bare origin for `AnthropicModelProvider.baseUrl(...)`,
     and keep the `/v1` suffix for `OpenAiModelProvider.baseUrl(...)`.
 
-## Running the examples
+## Running `ApprovalPlayground`
 
-`nessy-examples/chat-cli` and `nessy-examples/scout` both build their model
-choice from `EnvModelProviders.select()`, so any of the four env setups
-above just works — set the key, run `exec:java`:
+`ApprovalPlayground` builds its model choice from `EnvModelProviders.select()`,
+so any of the four env setups above just works — set the key and run the
+class's `main` from an IDE (it carries no `@Test` methods, so surefire never
+picks it up):
 
 ```console
-$ GEMINI_API_KEY=... ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+$ GEMINI_API_KEY=... # then run ApprovalPlayground.main from the IDE
 ```
 
 xAI has no small/cheap alias, so `select()`'s built-in Grok default may not
@@ -373,8 +372,7 @@ be the model you want — name one explicitly with `NESSY_MODEL`, the same
 override described above:
 
 ```console
-$ XAI_API_KEY=... NESSY_MODEL=<your-grok-model> \
-    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+$ XAI_API_KEY=... NESSY_MODEL=<your-grok-model> # then run ApprovalPlayground.main
 ```
 
 The same `NESSY_MODEL` override reaches any OpenAI-compatible local runtime
@@ -383,20 +381,8 @@ loaded there:
 
 ```console
 $ OPENAI_API_KEY=lm-studio OPENAI_BASE_URL=http://127.0.0.1:1234/v1 \
-    NESSY_MODEL=<loaded-model> \
-    ./mvnw -q -pl nessy-examples/chat-cli -am compile exec:java
+    NESSY_MODEL=<loaded-model> # then run ApprovalPlayground.main
 ```
-
-`nessy-examples/scout` takes the same three env recipes — swap the module
-coordinate for `nessy-examples/scout` in any of the commands above.
-
-## In a Spring Boot application
-
-`nessy-autoconfigure` reads the same decision out of `nessy.provider` and
-`nessy.{anthropic,openai,gemini}.*` properties instead of environment
-variables, layered over each SDK's own `fromEnv()` resolution. See
-Spring Boot for the property table and the
-ambiguous-classpath failure mode.
 
 ## Where next
 

@@ -251,14 +251,13 @@ retry policy, and `ModelSettings.contextWindow()`, a declared-but-unconsumed
 token-budget dial reserved for a future token-aware `Memory`. Both exist in
 `nessy-spi` today; see the Javadoc until they get a home on the site.
 
-## Examples
-
-`nessy-examples` is a family of eight runnable apps — a hello-world starter, a
-CLI, an MCP toolbox import, a Spring Boot chat app with HITL, a scheduled
-agent, a queue-driven agent, a durable-parks HTTP dispatcher, and a
-subagent delegation demo. See the
-[Examples](https://jwcarman.github.io/nessy/examples/) page on the docs site
-for the full tour and run commands.
+A standalone examples module is planned but not yet in the tree.
+Until it lands, the runnable proofs live in `nessy-agent`'s test sources:
+five `*Demo` classes (`HarnessDemo`, `DurableParkDemo`, `TypedIntentDemo`,
+`GovernedTurnDemo`, `AutonomousApprovalDemo`) exercise a whole turn each
+under `./mvnw test`, and `ApprovalPlayground` is an IDE-run tinker door — a
+real provider key, a restart tool gated on human approval, typed at the
+console.
 
 ## Roadmap
 
