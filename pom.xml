@@ -347,6 +347,16 @@
                  build stays green with no API key and no network. -->
             <excludedGroups>${nessy.excludedGroups}</excludedGroups>
             <argLine>@{jacocoArgLine}</argLine>
+            <!-- The default includes, plus **/*Demo.java: the flagship Demo classes
+                 (deterministic, PumpedExecutor + scripted providers) must gate the
+                 build, not just compile. -->
+            <includes>
+              <include>**/*Test.java</include>
+              <include>**/Test*.java</include>
+              <include>**/*Tests.java</include>
+              <include>**/*TestCase.java</include>
+              <include>**/*Demo.java</include>
+            </includes>
           </configuration>
         </plugin>
       </plugins>
