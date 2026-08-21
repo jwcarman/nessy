@@ -47,6 +47,8 @@ public final class StateCodec {
   private static final String IDLE = "IDLE";
   private static final String AWAITING_MODEL = "AWAITING_MODEL";
   private static final String AWAITING_TOOLS = "AWAITING_TOOLS";
+  private static final String SIGNATURE = "signature";
+  private static final String CONTENT = "content";
 
   private final ObjectMapper mapper = new ObjectMapper();
 
@@ -109,14 +111,14 @@ public final class StateCodec {
   private ObjectNode writeMessage(Message message) {
     ObjectNode node = mapper.createObjectNode();
     node.put("role", message.role().name());
-    ArrayNode content = node.putArray("content");
+    ArrayNode content = node.putArray(CONTENT);
     message.content().forEach(b -> content.add(writeBlock(b)));
     return node;
   }
 
   private Message readMessage(JsonNode node) {
     List<ContentBlock> content = new ArrayList<>();
-    node.get("content").forEach(b -> content.add(readBlock(b)));
+    node.get(CONTENT).forEach(b -> content.add(readBlock(b)));
     return new Message(Role.valueOf(node.get("role").asText()), content);
   }
 
@@ -127,7 +129,7 @@ public final class StateCodec {
       case ThinkingBlock t -> {
         node.put("type", "thinking").put("text", t.text());
         if (t.signature() != null) {
-          node.put("signature", t.signature());
+          node.put(SIGNATURE, t.signature());
         }
       }
       case RedactedThinkingBlock(String data) ->
@@ -136,7 +138,7 @@ public final class StateCodec {
         node.put("type", "tool_use").put("id", call.id()).put("name", call.name());
         node.set("arguments", call.arguments());
         if (signature != null) {
-          node.put("signature", signature);
+          node.put(SIGNATURE, signature);
         }
       }
       case ToolResultBlock b -> {
@@ -154,14 +156,13 @@ public final class StateCodec {
       case "text" -> new TextBlock(node.get("text").asText());
       case "thinking" ->
           new ThinkingBlock(
-              node.get("text").asText(),
-              node.has("signature") ? node.get("signature").asText() : "");
+              node.get("text").asText(), node.has(SIGNATURE) ? node.get(SIGNATURE).asText() : "");
       case "redacted_thinking" -> new RedactedThinkingBlock(node.get("data").asText());
       case "tool_use" ->
           new ToolUseBlock(
               new ToolCall(
                   node.get("id").asText(), node.get("name").asText(), node.get("arguments")),
-              node.has("signature") ? node.get("signature").asText() : null);
+              node.has(SIGNATURE) ? node.get(SIGNATURE).asText() : null);
       case "image" ->
           new ImageBlock(node.get("mediaType").asText(), node.get("data").asText()); // data ↔
       // base64Data
@@ -174,7 +175,7 @@ public final class StateCodec {
     ObjectNode node = mapper.createObjectNode();
     node.put("type", "tool_result")
         .put("toolUseId", block.toolUseId())
-        .put("content", block.content())
+        .put(CONTENT, block.content())
         .put("isError", block.isError());
     return node;
   }
@@ -182,7 +183,7 @@ public final class StateCodec {
   private ToolResultBlock readResultBlock(JsonNode node) {
     return new ToolResultBlock(
         node.get("toolUseId").asText(),
-        node.get("content").asText(),
+        node.get(CONTENT).asText(),
         node.get("isError").asBoolean());
   }
 }

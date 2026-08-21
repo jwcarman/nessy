@@ -67,6 +67,9 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 /** The front doors (§7.1). Builders wire existing seams; they never own machinery. */
 public final class Nessy {
 
+  private static final String PROVIDER_MUST_NOT_BE_NULL = "provider must not be null";
+  private static final String SETTINGS_MUST_NOT_BE_NULL = "settings must not be null";
+
   private Nessy() {}
 
   public static CliBuilder cli() {
@@ -89,13 +92,13 @@ public final class Nessy {
 
     /** The model backend the scope talks to. */
     public CliBuilder provider(ModelProvider provider) {
-      this.provider = Objects.requireNonNull(provider, "provider must not be null");
+      this.provider = Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
       return this;
     }
 
     /** The model call's tuning knobs — model id, system prompt, token budget, capabilities. */
     public CliBuilder settings(ModelSettings settings) {
-      this.settings = Objects.requireNonNull(settings, "settings must not be null");
+      this.settings = Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
       return this;
     }
 
@@ -130,8 +133,8 @@ public final class Nessy {
     }
 
     public CliAgent build() {
-      Objects.requireNonNull(provider, "provider must not be null");
-      Objects.requireNonNull(settings, "settings must not be null");
+      Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
       boolean ownsExecutor = executor == null;
       ExecutorService exec = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : executor;
       Memory effectiveMemory = memory != null ? memory : new VerbatimMemory();
@@ -193,13 +196,13 @@ public final class Nessy {
 
     /** The model backend every scope talks to. */
     public AutonomousBuilder provider(ModelProvider provider) {
-      this.provider = Objects.requireNonNull(provider, "provider must not be null");
+      this.provider = Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
       return this;
     }
 
     /** The model call's tuning knobs — model id, system prompt, token budget, capabilities. */
     public AutonomousBuilder settings(ModelSettings settings) {
-      this.settings = Objects.requireNonNull(settings, "settings must not be null");
+      this.settings = Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
       return this;
     }
 
@@ -304,8 +307,8 @@ public final class Nessy {
     }
 
     public AutonomousHost build() {
-      Objects.requireNonNull(provider, "provider must not be null");
-      Objects.requireNonNull(settings, "settings must not be null");
+      Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
+      Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
       boolean ownsExecutor = executor == null;
       ExecutorService owned = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : null;
       Executor exec = ownsExecutor ? owned : executor;

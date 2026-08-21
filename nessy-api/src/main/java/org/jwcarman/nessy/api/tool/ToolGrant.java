@@ -64,9 +64,12 @@ public record ToolGrant(
     ActionContributor<?, ?> contributor,
     Judgment judgment) {
 
+  private static final String TOOL_MUST_NOT_BE_NULL = "tool must not be null";
+  private static final String POLICY_MUST_NOT_BE_NULL = "policy must not be null";
+
   public ToolGrant {
-    Objects.requireNonNull(tool, "tool must not be null");
-    Objects.requireNonNull(policy, "policy must not be null");
+    Objects.requireNonNull(tool, TOOL_MUST_NOT_BE_NULL);
+    Objects.requireNonNull(policy, POLICY_MUST_NOT_BE_NULL);
     enrichers = List.copyOf(Objects.requireNonNull(enrichers, "enrichers must not be null"));
     Objects.requireNonNull(contributor, "contributor must not be null");
     Objects.requireNonNull(judgment, "judgment must not be null");
@@ -97,12 +100,12 @@ public record ToolGrant(
    * instead (see {@link GrantStory#render()}).
    */
   private static final ActionContributor<Object, Object> DEFAULT_CONTRIBUTOR =
-      ActionContributor.named("String.valueOf", input -> String.valueOf(input));
+      ActionContributor.named("String.valueOf", String::valueOf);
 
   /** Rung 0/1: the default contributor, above. No enrichers. */
   public static ToolGrant grant(Tool<?> tool, UsagePolicy<Object> policy) {
-    Objects.requireNonNull(tool, "tool must not be null");
-    Objects.requireNonNull(policy, "policy must not be null");
+    Objects.requireNonNull(tool, TOOL_MUST_NOT_BE_NULL);
+    Objects.requireNonNull(policy, POLICY_MUST_NOT_BE_NULL);
     return new ToolGrant(
         tool,
         policy,
@@ -127,11 +130,11 @@ public record ToolGrant(
       ActionContributor<? super I, A> contributor,
       List<? extends Enricher<? super A>> enrichers,
       UsagePolicy<? super A> policy) {
-    Objects.requireNonNull(tool, "tool must not be null");
+    Objects.requireNonNull(tool, TOOL_MUST_NOT_BE_NULL);
     Objects.requireNonNull(contributor, "contributor must not be null");
     List<Enricher<? super A>> ordered =
         List.copyOf(Objects.requireNonNull(enrichers, "enrichers must not be null"));
-    Objects.requireNonNull(policy, "policy must not be null");
+    Objects.requireNonNull(policy, POLICY_MUST_NOT_BE_NULL);
     Judgment judgment =
         (context, input) -> {
           ActionOutcome<A> staged =

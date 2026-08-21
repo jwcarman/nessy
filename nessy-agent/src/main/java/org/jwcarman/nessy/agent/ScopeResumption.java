@@ -36,6 +36,9 @@ public final class ScopeResumption implements ContinuationHandler {
   public static final String TYPE = "RESUME_SCOPE";
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final String AGENT_TYPE_FIELD = "agentType";
+  private static final String AGENT_ID_FIELD = "agentId";
+  private static final String ARGUMENTS_FIELD = "arguments";
 
   private final AgentBinder binder;
 
@@ -47,12 +50,12 @@ public final class ScopeResumption implements ContinuationHandler {
     Objects.requireNonNull(address, "address must not be null");
     Objects.requireNonNull(call, "call must not be null");
     ObjectNode data = MAPPER.createObjectNode();
-    data.put("agentType", address.agentType());
-    data.put("agentId", address.agentId());
+    data.put(AGENT_TYPE_FIELD, address.agentType());
+    data.put(AGENT_ID_FIELD, address.agentId());
     ObjectNode callNode = data.putObject("call");
     callNode.put("id", call.id());
     callNode.put("name", call.name());
-    callNode.set("arguments", call.arguments());
+    callNode.set(ARGUMENTS_FIELD, call.arguments());
     return new Continuation(TYPE, data.toString());
   }
 
@@ -66,20 +69,22 @@ public final class ScopeResumption implements ContinuationHandler {
     }
     JsonNode callNode = data.get("call");
     if (callNode == null
-        || data.get("agentType") == null
-        || data.get("agentId") == null
+        || data.get(AGENT_TYPE_FIELD) == null
+        || data.get(AGENT_ID_FIELD) == null
         || callNode.get("id") == null
         || callNode.get("name") == null
-        || callNode.get("arguments") == null) {
+        || callNode.get(ARGUMENTS_FIELD) == null) {
       throw new IllegalStateException(
           "RESUME_SCOPE continuation missing required fields: " + continuation.data());
     }
     var call =
         new ToolCall(
-            callNode.get("id").asText(), callNode.get("name").asText(), callNode.get("arguments"));
+            callNode.get("id").asText(),
+            callNode.get("name").asText(),
+            callNode.get(ARGUMENTS_FIELD));
     binder.deliver(
-        AgentType.of(data.get("agentType").asText()),
-        AgentId.of(data.get("agentId").asText()),
+        AgentType.of(data.get(AGENT_TYPE_FIELD).asText()),
+        AgentId.of(data.get(AGENT_ID_FIELD).asText()),
         new AgentEvent.ToolFinished(call, DurableOutcomes.toToolOutcome(outcome)));
   }
 }

@@ -30,6 +30,8 @@ import java.util.concurrent.ConcurrentMap;
  */
 public final class InMemoryDurableComputationBackend implements DurableComputationBackend {
 
+  private static final String ID_MUST_NOT_BE_NULL = "id must not be null";
+
   private static final class Slot {
     private ComputationStatus status = ComputationStatus.PENDING;
     private Outcome outcome;
@@ -40,7 +42,7 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
 
   @Override
   public CreateResult create(ComputationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     Slot fresh = new Slot();
     Slot prior = slots.putIfAbsent(id, fresh);
     return new CreateResult(id, prior == null);
@@ -61,7 +63,7 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
 
   @Override
   public CompletionResult complete(ComputationId id, Outcome outcome) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     Objects.requireNonNull(outcome, "outcome must not be null");
     // Ruling 6: completion creates the slot when it must — an address may be handed out
     // before the slot exists, and a fast completer who arrives first simply wins.
@@ -79,7 +81,7 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
   /** An unknown id returns empty rather than throwing — contrast {@link #continuationsOf}. */
   @Override
   public Optional<ComputationStatus> status(ComputationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     Slot slot = slots.get(id);
     if (slot == null) {
       return Optional.empty();
@@ -99,7 +101,7 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
   }
 
   private Slot required(ComputationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_MUST_NOT_BE_NULL);
     Slot slot = slots.get(id);
     if (slot == null) {
       throw new IllegalArgumentException("unknown computation: " + id.value());
