@@ -24,6 +24,19 @@ work is mechanical, escalate when it is stuck or risky, and say which model was
 used and why in the ledger. Never pay Opus prices for transcription; never send
 Haiku to review concurrency.
 
+## Design authority — new concepts need a yes
+
+A NEW CONCEPT — a public type, abstraction, or vocabulary word we have not
+explicitly discussed — requires James's sign-off BEFORE it lands. Surface the
+problem and the proposed shape in conversation and wait for the yes. Burying a
+new concept in a plan or a dispatch brief does not count as discussion: call
+it out, by name, as a question. Mechanical internals (private helpers, test
+fixtures, captured fields) need no asking; anything that appears on the API
+surface or in the design vocabulary does.
+(Origin: `ToolGrant.Judgment`, invented un-discussed inside the action-wave
+plan to dodge an erasure problem — ruled a shitty design and executed in the
+context-pipeline reform.)
+
 ## Build
 
 - Full verification: `./mvnw -q clean verify` — must pass with no API key and
