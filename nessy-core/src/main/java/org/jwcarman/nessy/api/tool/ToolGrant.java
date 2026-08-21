@@ -88,15 +88,21 @@ public record ToolGrant(
   public record Judged(PolicyDecision decision, AuthzContext context, Object action) {}
 
   /**
-   * Rung 0/1: the default contributor — the approver always sees at least {@code
-   * String.valueOf(input)}. No enrichers.
+   * The default rung 0/1 contributor — the approver always sees at least {@code
+   * String.valueOf(input)}.
    */
+  private static final ActionContributor<Object, Object> DEFAULT_CONTRIBUTOR = String::valueOf;
+
+  /** Rung 0/1: the default contributor, above. No enrichers. */
   public static ToolGrant grant(Tool<?> tool, UsagePolicy<Object> policy) {
     Objects.requireNonNull(tool, "tool must not be null");
     Objects.requireNonNull(policy, "policy must not be null");
-    ActionContributor<Object, Object> defaultContributor = String::valueOf;
     return new ToolGrant(
-        tool, policy, List.of(), defaultContributor, untypedJudgment(tool, policy));
+        tool,
+        policy,
+        List.of(),
+        DEFAULT_CONTRIBUTOR,
+        untypedJudgment(tool, DEFAULT_CONTRIBUTOR, policy));
   }
 
   /** Rung 2: typed weld, no enrichers. */
@@ -146,9 +152,11 @@ public record ToolGrant(
     return new ToolGrant(tool, policy, widened, contributor, judgment);
   }
 
-  private static <T> Judgment untypedJudgment(Tool<T> tool, UsagePolicy<Object> policy) {
+  private static <T> Judgment untypedJudgment(
+      Tool<T> tool, ActionContributor<Object, Object> contributor, UsagePolicy<Object> policy) {
     return (context, input) -> {
-      Object action = stage("action stage: ", () -> String.valueOf(tool.inputType().cast(input)));
+      Object action =
+          stage("action stage: ", () -> contributor.actionOf(tool.inputType().cast(input)));
       AuthzContext enriched = context.with(AuthzContext.ACTION_KEY, action);
       PolicyDecision decision = stage("policy stage: ", () -> policy.evaluate(enriched, action));
       return new Judged(decision, enriched, action);

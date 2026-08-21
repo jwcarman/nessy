@@ -235,4 +235,22 @@ class ToolGrantTest {
         .hasMessageStartingWith("policy stage: nope")
         .hasCauseInstanceOf(IllegalStateException.class);
   }
+
+  @Test
+  void theNoEnrichersTypedDoorRejectsANullContributor() {
+    UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+
+    assertThatThrownBy(() -> ToolGrant.grant(new GreetTool(), null, policy))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("contributor");
+  }
+
+  @Test
+  void theFullyWiredTypedDoorRejectsANullContributor() {
+    UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+
+    assertThatThrownBy(() -> ToolGrant.grant(new GreetTool(), null, List.of(), policy))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("contributor");
+  }
 }

@@ -20,9 +20,9 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * One concrete, immutable, typed-key bag over the facts an authorization decision may need —
- * deliberately NOT generic over the tool's own effect type, so an {@code Enricher} or {@code
- * UsagePolicy} written against this interface composes into any grant regardless of what {@code E}
- * that grant welded.
+ * deliberately NOT generic over the grant's own action type, so an {@code Enricher} or {@code
+ * UsagePolicy} written against this interface composes into any grant regardless of what action
+ * type that grant welded.
  *
  * <p>The harness knows {@link #agentName()} and {@link #call()} before any application code runs;
  * everything else — including the well-known {@link #principal()} and {@link #declaredIntent()}

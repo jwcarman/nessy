@@ -67,8 +67,8 @@ public interface Enricher<E> {
     Objects.requireNonNull(delegate, "delegate must not be null");
     return new Enricher<>() {
       @Override
-      public AuthzContext enrich(AuthzContext context, E effect) {
-        return delegate.enrich(context, effect);
+      public AuthzContext enrich(AuthzContext context, E action) {
+        return delegate.enrich(context, action);
       }
 
       @Override

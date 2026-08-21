@@ -125,7 +125,7 @@ class RegistryToolCallExecutorTest {
 
     @Override
     public String description() {
-      return "its effect must never be rendered";
+      return "its action must never be rendered";
     }
 
     @Override
@@ -317,8 +317,13 @@ class RegistryToolCallExecutorTest {
   }
 
   @Test
-  void theStaticAllowFastPathRunsTheToolWithoutRenderingTheEffect() {
-    var registry = ToolRegistry.of(ToolGrant.grant(new EffectBlindTool(), UsagePolicy.allow()));
+  void theStaticAllowFastPathRunsTheToolWithoutRenderingTheAction() {
+    ActionContributor<EchoInput, String> mustNotRender =
+        input -> {
+          throw new AssertionError("no action may be rendered on the rung-0 fast path");
+        };
+    var registry =
+        ToolRegistry.of(ToolGrant.grant(new EffectBlindTool(), mustNotRender, UsagePolicy.allow()));
     var call =
         new ToolCall("c1", "effect_blind", JsonNodeFactory.instance.objectNode().put("value", "x"));
     var finished = run(registry, call, new RecordingTurnObserver());
