@@ -7,6 +7,13 @@ deliberately simplified to the context-and-enrichers shape recorded here).
 (extends the grant principle); judged against the mission lens in `ROADMAP.md`
 (opinions-not-mandates; every seam an escape hatch).
 
+> **Amended 2026-08-20** by `2026-08-20-action-and-tool-vocabulary.md` (binding): the effect
+> vocabulary renames to **action** (industry alignment — "effect" is the verdict in
+> XACML/IAM/Cedar), the statement's speaker moves from the tool to the grant's
+> **ActionContributor** (`EffectfulTool` and `Tool.effect` are deleted), and the enricher kit
+> (risk shape + threshold policy, intent rebirth, principal resolver) lands as first-class
+> citizens. Read this document's §0/§2/§5/§7 through that amendment.
+
 ## 0. The anchor, and the domain map
 
 **The authorization of a tool call begins with the tool's own statement of its
