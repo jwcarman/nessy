@@ -1,95 +1,185 @@
 # Observability
 
-Two independent surfaces exist today: a Micrometer `ObservationRegistry` for
-metrics and traces, and event listeners for anything else that wants to
-watch a conversation. Neither is required — both default to doing nothing.
+Three seams, three audiences. `TurnObserver` narrates one turn to whoever is
+watching it happen — a REPL, an SSE emitter. `AgentObserver` narrates the
+shell's own machine-level decisions to whoever operates the host — a metrics
+sink, an incident log. `AuthorizationReport` is neither a stream nor a
+listener; it reads a harness's grants back as a static report, because the
+report *is* the wiring. All three default to silence — a noop observer, an
+empty grant list — so watching costs nothing until something is plugged in.
 
-## Traces and metrics: `ObservationRegistry`
+## `TurnObserver` — the audience stream
 
-`HarnessConfig#observations(ObservationRegistry)` sets where loop-level
-metrics and traces go; the default is `ObservationRegistry.NOOP` — nothing
-emitted, no cost paid.
-
-```java
-Harness harness =
-    Nessy.harness(h -> h.provider(provider).observations(observationRegistry));
-```
-
-Three spans exist, named for stable metric identity, with contextual names
-and attributes following the (pre-1.0) OTel GenAI semantic conventions:
-
-| Observation | Name | Contextual name | Key attributes |
-|---|---|---|---|
-| A whole turn | `nessy.run` | `invoke_agent` | `gen_ai.conversation.id` |
-| One model call | `nessy.model.call` | `chat {model}` | `gen_ai.request.model`, token usage on completion |
-| One tool call | `nessy.tool.call` | `execute_tool {tool}` | `gen_ai.tool.name`, `gen_ai.tool.call.id`, `nessy.tool.outcome` |
-| A human approval wait | `nessy.approval.wait` | — | `gen_ai.tool.name` |
-
-`nessy.tool.outcome` is `success` or `error`, low-cardinality by
-construction. Token usage lands on the model-call observation once the
-response settles.
-
-!!! warning "No per-stage or recall spans exist yet"
-    A memory pipeline's hydration and its stages — including the summarizing
-    hydrator's own model call (see Summarizing Memory)
-    — run inside `recall`, and none of that is observed today. The three
-    spans above cover the loop's phases, not what a `AgentMemory` implementation
-    does internally to build a `Context`. A summarizing pipeline's fold call
-    genuinely spends tokens against the configured model, and that spend is
-    currently invisible to the observation registry — it's on the roadmap,
-    not shipped.
-
-## In a Spring Boot application
-
-`nessy-autoconfigure`'s `Harness` bean takes whatever `ObservationRegistry`
-bean is already in the context, if one is present
-(`ObjectProvider<ObservationRegistry>.ifAvailable(h::observations)`) —
-no application wiring required. `chat-web` dogfoods this: Boot's own
-auto-configured registry means Nessy's model-call and tool-call
-observations show up in the same trace as Boot's HTTP and JDBC spans — one
-chat turn, one trace, from the `POST` that started it down through the
-model call, the tool call, and the JDBC saves either side of it.
-
-## Everything else: event listeners
-
-`AgentConfig#listen(Class, Consumer)` and `#listenAsync(Class, Consumer,
-Consumer<Throwable>)` (also on `HarnessConfig`, seeded into every agent the
-harness builds) subscribe to the `ConversationEvent` grammar —
-`AgentTold`, `ModelResponded`, and the rest of the four settled facts the
-fold consumes. A synchronous listener that throws propagates and stops the
-emitting operation; an asynchronous one runs on a fresh virtual thread and
-reports failures to its own `onError` consumer instead.
-
-`chat-cli`'s `DemoAgent` uses this to announce token usage — a fact turn
-narration never shows — without duplicating what the console renderer
-already prints live:
+`TurnObserver` sees the live story of one turn: the model speaking and
+thinking, homework requested and decided, homework settled, the turn's
+close. It is bound per entry — the observer handed to `tell`/`resume` sees
+only the segment that call starts, and nothing after a park. An autonomous
+scope with no observer wired runs every turn against `TurnObserver.noop()`
+and loses nothing it needed.
 
 ```java
-.listen(ConversationEvent.ModelResponded.class,
-    responded -> IO.println("tokens: " + responded.usage().inputTokens() + " in / "
-        + responded.usage().outputTokens() + " out"))
+public sealed interface TurnEvent {
+  record TextDelta(String text) implements TurnEvent {}
+  record ThinkingDelta(String text) implements TurnEvent {}
+  record RedactedThinking(String data) implements TurnEvent {}
+  record ToolCallRequested(ToolCall call) implements TurnEvent {}
+  record ToolCallDecided(ToolCall call, Decision decision) implements TurnEvent {}
+  record ToolCallCompleted(ToolCall call, ToolResult result) implements TurnEvent {}
+  record ToolCallProgressed(ToolCall call, String message) implements TurnEvent {}
+  record AssistantSaid(Message message) implements TurnEvent {}
+  record TurnEnded(String failureReason) implements TurnEvent {}
+}
 ```
 
-Delivery is synchronous, in registration order: conversation-local
-subscribers first (attached at runtime via `Conversation#events()`), then
-this frozen, build-time chain.
+`AssistantSaid` is the settled sentence; the delta variants were only its
+preview. `TurnEnded.failureReason()` is `null` for a completed turn and
+carries the reason when the model call itself failed. A parked call is
+never narrated at all — parking is executor bookkeeping, indistinguishable
+from a slow call by design, and the resumption token it would carry is a
+capability that handing to every listener would turn into a shadow way to
+act on the call. `TurnEvent` narrates the model's turn, never that.
 
-## Watching one turn: `TurnObserver`
+Three ways to build one:
 
-Distinct from both of the above: `TurnObserver` narrates one segment of one
-turn — the caller of `tell`/`resume` hands one in, and it sees deltas,
-tool-requested/completed/parked events, and the turn's ending, nothing after
-a park. `TurnObserver.logging(Logger, prefix)` is the standard
-settled-facts-only narrator every hand-rolled example logger used to
-duplicate; `night-watchman`'s `Watchman` and `order-desk`'s `OrderDesk` both
-call it directly now. See Console Apps for the streaming
-renderer built on the same interface.
+- A bare lambda, when one concern covers every event: `event -> log.info("{}", event)`.
+- `TurnObserver.observe(TurnObserverCustomizer)`, composing per-variant
+  consumers — the composition-friendly rung between a lambda and a
+  subclass:
+
+  ```java
+  TurnObserver observer =
+      TurnObserver.observe(
+          o ->
+              o.onTextDelta(delta -> terminal.print(delta.text()))
+                  .onToolCallCompleted(done -> statusBar.flash(done.call().name())));
+  ```
+
+  Registering the same variant twice chains rather than replaces, so two
+  independent concerns — a journal and a renderer — can both hear the same
+  events in registration order.
+- `TurnObserver.logging(Logger, prefix)` — the standard narrator: one
+  `says:` line per non-blank `AssistantSaid`, a line each for a tool
+  requested and completed, and the turn's closing line at `INFO`, with the
+  failure reason repeated at `WARN` when the turn failed. The `prefix`
+  overload takes a `Supplier<String>` for a tag not yet known when the
+  observer is built — a correlation id minted only once a drive returns.
+
+Throw semantics are asymmetric. A throwing observer aborts the call it
+narrates on the model path — the observer is the caller's own code, so its
+exception is the caller's exception. `ToolCallProgressed` is the exception
+to the exception: a misbehaving progress narrator is logged and dropped
+rather than propagated, so a bug in a status bar can't kill a tool call that
+was otherwise succeeding. Narration is at-least-once, matching the shell's
+own retry-on-stale-save discipline: a retried apply can narrate the same
+event twice, so an observer materializing per-event UI should dedupe by the
+event's natural key.
+
+### `RelayTurnObserver` in the CLI
+
+`Nessy.cli()` builds its own `RelayTurnObserver` internally — an
+`AtomicReference<TurnObserver>` that `converse(...)` points at a fresh
+`AwaitingReply` for the duration of each call, and drops events with
+nowhere to go the rest of the time. `AwaitingReply` itself is a `TurnObserver`
+that ignores everything except `AssistantSaid` (buffered as the pending
+reply) and `TurnEnded` (which completes or fails the future `converse`
+blocks on). There is no public seam today for a `Nessy.cli()` caller to also
+attach a streaming renderer alongside it — the relay is the CLI's own
+internal wiring, not yet an exposed extension point.
+
+### The autonomous `turnObserver` seam
+
+`Nessy.autonomous()` takes a `TurnObserver` directly, wired once at
+`build()` time and shared by every scope the host serves — `AutonomousBuilder`
+carries no per-call relay, since there is no caller thread parked on any one
+turn to hand it to:
+
+```java
+AutonomousHost host =
+    Nessy.autonomous()
+        .provider(provider)
+        .settings(settings)
+        .turnObserver(TurnObserver.logging(logger, "ops"))
+        .build();
+```
+
+The default is `TurnObserver.noop()`.
+
+## `AgentObserver` — the operator stream
+
+Where `TurnObserver` narrates the model's turn, `AgentObserver` narrates
+what the shell itself decided — exactly the fact applied and the whole
+transition it produced, including the next phase:
+
+```java
+public interface AgentObserver {
+  void applied(AgentEvent event, Transition transition);
+  void ignored(AgentEvent event);
+  void renderFailed(Object observation, RuntimeException error);
+  void applyFailed(AgentEvent event, RuntimeException error);
+  void reFired(List<Effect> effects);
+  void observationRequeued(Object observation);
+}
+```
+
+- **`applied`** — the normal case: one event folded, the resulting
+  transition (commits and effects included) handed over for whoever wants
+  to build metrics or a trajectory log from it.
+- **`ignored`** — a stale or duplicate completion, discarded before
+  anything was written.
+- **`renderFailed`** — a renderer threw; the observation is discarded and
+  the scope stays idle rather than wedging on a bad render.
+- **`applyFailed`** — applying a completion threw (a malformed delivery, a
+  phase-contract violation); the event is dropped and narrated, and the
+  scope's phase is unchanged.
+- **`reFired`** — the recovery arm re-dispatched a stalled phase's
+  outstanding effects.
+- **`observationRequeued`** — an observation lost the idle race and went
+  back to the backlog.
+
+`AgentObserver.noop()` is the default everywhere a host is built without
+one, via `AutonomousBuilder#agentObserver(AgentObserver)`.
+
+**Observers narrate; they never influence.** Nothing here can change what
+the shell does — no return value feeds back into the transition, and
+nothing about authorization runs through this seam either: a grant's
+policy, its enrichers, and its rendered action are never broadcast to an
+`AgentObserver`, only their outcome shows up, folded into whichever
+`ToolResult` the applied transition already carries. A listener that could
+affect the flow would create ordering dependence between listeners and a
+shadow decision surface competing with the authorization ladder — every
+seam that is actually allowed to change behavior (memory, the state store,
+the backlog, both executors, the grants themselves) is its own interface,
+not this one.
+
+## `AuthorizationReport` — the third leg, and it isn't a stream
+
+`TurnObserver` and `AgentObserver` narrate what already happened. What
+*would* happen — which grants render an action, which enrichers run, which
+policy decides — is not a live event at all; it is read back once, statically,
+from the harness's own wiring:
+
+```java
+AuthorizationReport report = AuthorizationReport.of(grants);
+System.out.println(report.render());
+```
+
+```
+restart_prod: action(restart-statement) → intent → risk → policy (ThresholdPolicy)
+read-balance: allow()
+```
+
+`AuthorizationReport.of(...)` reads each grant's `tool()`, `policy()`,
+`enrichers()`, and `contributor().displayName()` by declaration — never by
+calling `actionOf`, `enrich`, or `evaluate` — so it cannot drift from the
+wiring it describes; there is no way for the report to say one thing while
+the executor does another. See [Authorization](../concepts/authorization.md#authorizationreport-the-report-is-the-wiring)
+for the full grammar of what a grant's story can say.
 
 ## Where next
 
-- Console Apps — `TurnObserver`, its customizer, and the
-  renderer chat-cli and scout both use.
-- Triggers — `chat-web`'s trace, end to end, across an
-  HTTP-triggered turn.
-- [Durable Computation](../concepts/durable-computation.md) — the fold and
-  the events a listener actually subscribes to.
+- [Authorization](../concepts/authorization.md) — the trust gradient
+  `ToolCallDecided` and `AuthorizationReport` both describe.
+- [Autonomous Agents](autonomous-agents.md) — `Nessy.autonomous()`'s full
+  builder surface, `turnObserver` and `agentObserver` alongside it.
+- [Durable Computation](../concepts/durable-computation.md) — the shell,
+  the fold, and the events `AgentObserver` narrates the outcome of.

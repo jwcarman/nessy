@@ -307,3 +307,14 @@ sequence of renames and interim shapes that produced it.
   in-fixture consistency policy naming both; and a declaration shaped outside
   the vocabulary is rejected by the discriminator binder itself, before the
   intent tool ever runs, with nothing stored.
+- **The docs site rebirth.** Every published page — concepts and guides
+  alike — now describes the agent-as-scope shape rather than the harness it
+  replaced: `Nessy.cli()`/`Nessy.autonomous()`, `Harness`/`Binding`, the
+  `ToolGrant` authorization ladder, `TurnObserver`/`AgentObserver`, and the
+  four native model providers plus `nessy-model-env`, each claim checked
+  against source rather than carried forward from the old narrative. The
+  closing wave rewrites Providers, MCP Clients, and Observability against
+  the current API — including two MCP examples that had drifted onto a
+  builder shape (`harness.agent(...)`, a bare `.approver(...)`) no longer in
+  the tree, now rebuilt on `Nessy.autonomous()` and `ToolGrant.grant` — and
+  sweeps the site for dead vocabulary and broken `Where next` links.

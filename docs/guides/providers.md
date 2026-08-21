@@ -400,11 +400,11 @@ ambiguous-classpath failure mode.
 
 ## Where next
 
-- Trying a Provider — the two-minute live smoke test
-  for any provider path above.
 - [Getting Started](getting-started.md) — the smallest agent, provider swap
   included.
-- Spring Boot — the same provider selection, driven by
-  `nessy.*` properties instead of environment variables.
+- [Autonomous Agents](autonomous-agents.md) — the second front door a
+  provider and `ModelSettings` build the same way.
+- [Observability](observability.md) — narrating what a provider's model
+  calls actually do, turn by turn.
 - [Durable Computation](../concepts/durable-computation.md) — what a
   `Harness` built from a provider actually gives you.

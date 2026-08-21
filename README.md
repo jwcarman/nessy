@@ -234,27 +234,22 @@ framework. The docs site page teaches the whole story; this is just the map.
 
 | Capability | Site page |
 |---|---|
-| The durable loop — a pure fold, effects, at-least-once replay | [The Durable Loop](https://jwcarman.github.io/nessy/concepts/durable-loop/) |
-| Tools and grants — structured calls, per-tool authority | [Tools and Grants](https://jwcarman.github.io/nessy/concepts/tools-and-grants/) |
-| Authorization — a ladder from a static verdict to typed effects, enrichers, and intent, with a self-documenting report | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
-| Parks and callbacks — conversations that pause and resume across processes | [Parks and Callbacks](https://jwcarman.github.io/nessy/concepts/parks-and-callbacks/) |
-| Memory and the context pipeline — what a model call actually sees | [Memory and the Pipeline](https://jwcarman.github.io/nessy/concepts/memory-and-the-pipeline/) |
-| Planning — a model-maintained task list, recalled every turn | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
-| The notebook — model-gated memory: an always-present index, bodies on demand | [Notebook](https://jwcarman.github.io/nessy/concepts/notebook/) |
-| Reflection — a critic that turns a settled conversation into a lesson the next one recalls | [Reflection](https://jwcarman.github.io/nessy/concepts/reflection/) |
-| Subagents — delegation as an ordinary tool call, with the same replay and parking guarantees | [Subagents](https://jwcarman.github.io/nessy/concepts/subagents/) |
-| Storage and JDBC dialects — five vendors, one code path | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
+| Agent as scope — a recipe bound to an id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
+| Durable computation — the shell's pure fold, effects, at-least-once replay | [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/) |
+| Tools — structured calls, sealed inputs, completion policy | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
+| Authorization — a ladder from a static verdict to typed actions, enrichers, and intent, with a self-documenting report | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
+| Intent — the claim channel a model states and an enricher may trust | [Intent](https://jwcarman.github.io/nessy/concepts/intent/) |
+| Memory — the SPI a model call's context is actually built from | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
+| Providers — four native model providers plus every OpenAI-compatible endpoint | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
 | MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
-| Console apps — a terminal REPL for any `Agent<String>` in one line | [Console Apps](https://jwcarman.github.io/nessy/guides/console-apps/) |
-| Triggers — start a turn from a person, a clock, a queue, or a webhook | [Triggers](https://jwcarman.github.io/nessy/guides/triggers/) |
-| Testing — no mocking library, ever | [Testing](https://jwcarman.github.io/nessy/guides/testing/) |
+| Autonomous agents — the posting door, approval desks, durable backends | [Autonomous Agents](https://jwcarman.github.io/nessy/guides/autonomous-agents/) |
+| Observability — turn narration, shell narration, and the authorization report | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
 
-A few seams the site doesn't have a dedicated page for yet: a cost/call
-budget (`TerminationPolicy`, the wallet guard against runaway loops), a
-`RetryingModelProvider` decorator for wrapping any `ModelProvider` with retry
-policy, and `AgentConfig#contextWindow(long)`, a declared-but-unconsumed
-token-budget dial reserved for a future token-aware `AgentMemory`. All three exist
-in `nessy-spi` today; see the Javadoc until they get a home on the site.
+A few seams the site doesn't have a dedicated page for yet: the
+`RetryingModelProvider` decorator for wrapping any `ModelProvider` with a
+retry policy, and `ModelSettings.contextWindow()`, a declared-but-unconsumed
+token-budget dial reserved for a future token-aware `Memory`. Both exist in
+`nessy-spi` today; see the Javadoc until they get a home on the site.
 
 ## Examples
 

@@ -12,16 +12,26 @@ A server offering ten tools yields ten separate grant decisions, never one
 blanket "trust this server":
 
 ```java
-try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
-  Agent<String> agent =
-      harness.agent(
-          a ->
-              a.name("researcher")
-                  .tools(
-                      ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
-                      ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval())));
+try (McpToolbox toolbox = McpToolbox.connect(transport, mapper);
+    AutonomousHost host =
+        Nessy.autonomous()
+            .provider(provider)
+            .settings(settings)
+            .grants(
+                ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
+                ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
+            .backend(new InMemoryDurableComputationBackend())
+            .approvalNotifier(pending::add)
+            .build()) {
+  host.post("agent-1", "find the cheapest flight and buy it");
 }
 ```
+
+Both resources share one `try`-with-resources on purpose: a granted `Tool`
+keeps working only as long as the session that produced it is open, and the
+host may still be running turns against it, so the toolbox must outlive
+every scope that was granted its tools — closing it early fails any
+in-flight or future call on those tools loud, not silently.
 
 `toolbox.tool(name)` fails loud — `NoSuchElementException` naming every tool
 the server actually advertised — rather than handing back `null` for a typo.
@@ -33,6 +43,28 @@ per tool, because a tool carries zero authority content on its own.
 session. A `Tool` obtained before that point keeps working as a plain Java
 reference, but calling it after the toolbox closes fails loud rather than
 swallowing the closed session.
+
+### No wrapper, no second authorization API
+
+An MCP tool is governed exactly like a hand-written one, because nothing
+about authorization lives on the `Tool` interface itself — a granted MCP
+tool rides the same `ToolGrant.grant(tool, contributor, policy)` rungs as
+any first-party tool, `ActionContributor` included:
+
+```java
+ActionContributor<JsonNode, String> PURCHASE_ACTION =
+    ActionContributor.named("purchase", in -> "purchase " + in.get("item").asText());
+
+ToolGrant.grant(toolbox.tool("purchase"), PURCHASE_ACTION, UsagePolicy.requireApproval());
+```
+
+`McpTool#execute` is always a single request/response round trip — never a
+park — so it always declares `CompletionPolicy.IMMEDIATE`, the `Tool`
+interface's own default. That means an MCP tool passes
+`ToolRegistry.limited(base, policy)`'s completion filter unconditionally,
+under any wiring: nothing about importing a remote toolbox can advertise a
+tool a host isn't equipped to run. See
+[Authorization](../concepts/authorization.md) for the whole rung ladder.
 
 ## Building the transport
 
@@ -51,42 +83,45 @@ describe, then hand the result to `connect(...)`. `connect` performs the MCP
 `initialize`/`tools/list` handshake once, up front; from then on
 `tools()`/`tool(name)` are plain in-memory lookups against that snapshot.
 
-## A worked example: Scout
+## A worked example: DeepWiki
 
-`nessy-examples/scout` researches public GitHub repositories through
-[DeepWiki](https://deepwiki.com)'s no-auth public MCP server — a terminal
-REPL agent, `chat-cli`'s exact posture, with an imported toolbox granted
-tool-by-tool:
+[DeepWiki](https://deepwiki.com) publishes a no-auth public MCP server for
+researching public GitHub repositories — a convenient real server to import
+against, since it needs no credential of its own:
 
 ```java
 try (McpToolbox toolbox =
-    McpToolbox.connect(
-        HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper)) {
-  Agent<String> agent =
-      harness.agent(
-          a ->
-              a.name("scout")
-                  .tools(
-                      ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-                      ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-                      ToolGrant.grant(
-                          toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
-                  .approver(new ConsoleApprover()));
+        McpToolbox.connect(
+            HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper);
+    AutonomousHost host =
+        Nessy.autonomous()
+            .provider(provider)
+            .settings(settings)
+            .grants(
+                ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
+                ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
+                ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
+            .backend(new InMemoryDurableComputationBackend())
+            .approvalNotifier(pending::add)
+            .build()) {
+  host.post("researcher", "what does jwcarman/nessy's harness module do?");
 }
 ```
 
-`read_wiki_structure` and `read_wiki_contents` are free — Scout can look
+`read_wiki_structure` and `read_wiki_contents` are free — the agent can look
 around and read without asking. `ask_question` is DeepWiki's own
 AI-in-the-loop tool (it burns DeepWiki's own model budget to answer), so
-it's the one gated behind `requireApproval()`: a human reads
-`effect()`'s name-plus-JSON prompt before it goes out to a remote server.
+it's the one gated behind `requireApproval()`: the `ApprovalRequest` that
+reaches `pending` carries the rendered action for a human to read before
+`host.approvals().approve(...)` lets the call out to a remote server. See
+[Autonomous Agents](autonomous-agents.md) for the rest of that flow.
 
-Scout's tool names are verified against the live server, not guessed from
-documentation. That's the covenant of importing someone else's toolbox: if
-DeepWiki ever renames or removes one of these tools, `McpToolbox#tool(String)`
-fails loud, at connect time, before the REPL ever opens — a drifted remote
-toolbox breaks the demo noisily at startup rather than silently doing the
-wrong thing mid-turn.
+Tool names granted this way are verified against the live server, not
+guessed from documentation. That's the covenant of importing someone else's
+toolbox: if DeepWiki ever renames or removes one of these tools,
+`McpToolbox#tool(String)` fails loud, at connect time, before the host ever
+takes its first observation — a drifted remote toolbox breaks the wiring
+noisily at startup rather than silently doing the wrong thing mid-turn.
 
 ## v1 boundaries
 
@@ -114,9 +149,10 @@ wrong thing mid-turn.
 
 ## Where next
 
-- Tools and Grants — the grant principle
-  `McpToolbox`-sourced tools are subject to like any other.
-- Console Apps — `ConsoleApprover`, the gate Scout's
-  `ask_question` grant routes through.
-- Planning Your Agent's Work — Scout's other
-  showcase, the plan facility, wired beside these same grants.
+- [Tools](../concepts/tools.md) — the grant principle `McpToolbox`-sourced
+  tools are subject to like any other, and `CompletionPolicy`'s filtering
+  order.
+- [Authorization](../concepts/authorization.md) — `ActionContributor`,
+  enrichers, and the policy an MCP tool's grant is judged by.
+- [Autonomous Agents](autonomous-agents.md) — the approval desk a
+  `requireApproval()` grant on an imported tool routes through.
