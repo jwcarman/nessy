@@ -36,11 +36,12 @@ import org.jwcarman.nessy.agent.ResolvingAgentBinder;
 import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.backlog.BoundedBacklog;
+import org.jwcarman.nessy.agent.backlog.InMemoryBacklogSubstrate;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.SlotApprover;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.memory.InMemoryMemorySubstrate;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
@@ -48,6 +49,7 @@ import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.InMemoryStateSubstrate;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -176,8 +178,8 @@ public final class Nessy {
     private ModelSettings settings;
     private String typeName = "autonomous";
     private List<ToolGrant> grants = List.of();
-    private Function<String, Memory> memoryFactory = id -> new VerbatimMemory();
-    private Function<String, AgentStateStore> storeFactory = id -> new InMemoryAgentStateStore();
+    private Function<String, Memory> memoryFactory = new InMemoryMemorySubstrate()::forScope;
+    private Function<String, AgentStateStore> storeFactory = new InMemoryStateSubstrate()::forScope;
     private DurableComputationBackend backend = new InMemoryDurableComputationBackend();
     private Consumer<ApprovalRequest> approvalNotifier = request -> {};
     private TurnObserver turnObserver = TurnObserver.noop();
@@ -223,8 +225,10 @@ public final class Nessy {
     }
 
     /**
-     * Builds each scope's conversation store from its raw id; default a fresh {@link
-     * VerbatimMemory}.
+     * Builds each scope's conversation store from its raw id; default a thin view — {@link
+     * InMemoryMemorySubstrate#forScope(String)} — over one shared substrate built at {@link
+     * #build()}. A factory is free to return views over any durable substrate shared across many
+     * hosts (spec §10.11) — the id is the only key, and losing a view loses nothing.
      */
     public AutonomousBuilder memoryFactory(Function<String, Memory> memoryFactory) {
       this.memoryFactory = Objects.requireNonNull(memoryFactory, "memoryFactory must not be null");
@@ -232,8 +236,10 @@ public final class Nessy {
     }
 
     /**
-     * Builds each scope's state store from its raw id; default a fresh {@link
-     * InMemoryAgentStateStore}.
+     * Builds each scope's state store from its raw id; default a thin view — {@link
+     * InMemoryStateSubstrate#forScope(String)} — over one shared substrate built at {@link
+     * #build()}. A factory is free to return views over any durable substrate shared across many
+     * hosts (spec §10.11) — the id is the only key, and losing a view loses nothing.
      */
     public AutonomousBuilder storeFactory(Function<String, AgentStateStore> storeFactory) {
       this.storeFactory = Objects.requireNonNull(storeFactory, "storeFactory must not be null");
@@ -274,7 +280,11 @@ public final class Nessy {
       return this;
     }
 
-    /** The bounded backlog's per-scope capacity (spec §11, open question 0); default 1024. */
+    /**
+     * The per-scope capacity of the one shared {@link InMemoryBacklogSubstrate} built at {@link
+     * #build()} (spec §11, open question 0); default 1024. Every scope's backlog is a thin view —
+     * {@link InMemoryBacklogSubstrate#forScope(String)} — over that shared substrate.
+     */
     public AutonomousBuilder backlogCapacity(int backlogCapacity) {
       if (backlogCapacity < 1) {
         throw new IllegalArgumentException("backlogCapacity must be at least 1");
@@ -302,6 +312,7 @@ public final class Nessy {
       var agentType = AgentType.of(typeName);
       ToolRegistry base = ToolRegistry.of(grants.toArray(ToolGrant[]::new));
       ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
+      var backlogSubstrate = new InMemoryBacklogSubstrate(backlogCapacity);
 
       Function<AgentId, AgentWiring<String>> wirings =
           agentId -> {
@@ -310,7 +321,7 @@ public final class Nessy {
             return new AgentWiring<>(
                 memory,
                 storeFactory.apply(rawId),
-                new BoundedBacklog<>(backlogCapacity),
+                backlogSubstrate.forScope(rawId),
                 text -> List.of(new TextBlock(text)),
                 new ProviderModelCallExecutor(
                     provider, settings, registry, memory, turnObserver, exec),
