@@ -40,7 +40,7 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 class CliAgentTest {
 
   @Test
-  void helloWorldEndToEnd() throws Exception {
+  void helloWorldEndToEnd() {
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -51,7 +51,7 @@ class CliAgentTest {
   }
 
   @Test
-  void twoTurnsShareOneMemory() throws Exception {
+  void twoTurnsShareOneMemory() {
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -96,7 +96,7 @@ class CliAgentTest {
   }
 
   @Test
-  void aCallerSuppliedExecutorSurvivesAgentClose() throws Exception {
+  void aCallerSuppliedExecutorSurvivesAgentClose() {
     ExecutorService callerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hi"))));
     try (var agent =
@@ -112,7 +112,7 @@ class CliAgentTest {
   }
 
   @Test
-  void twoBuildsNeverShareTheDefaultMemory() throws Exception {
+  void twoBuildsNeverShareTheDefaultMemory() {
     var firstProvider =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("one"))));
     try (var first =
@@ -131,7 +131,7 @@ class CliAgentTest {
   }
 
   @Test
-  void aToolCallingTurnRunsTheWholeLoop() throws Exception {
+  void aToolCallingTurnRunsTheWholeLoop() {
     var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
     var provider =
         new ScriptedModelProvider(
@@ -152,7 +152,7 @@ class CliAgentTest {
   }
 
   @Test
-  void aDurableOnlyToolsSpecIsAbsentFromWhatTheCliDoorShowsTheModel() throws Exception {
+  void aDurableOnlyToolsSpecIsAbsentFromWhatTheCliDoorShowsTheModel() {
     var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hi"))));
     try (var agent =
         Nessy.cli()
