@@ -107,23 +107,27 @@ public final class StateCodec {
 
   private static Phase readAwaitingTools(ObjectNode root) {
     JsonNode turnNode = Codecs.requireField(root, "assistantTurn", "awaiting-tools phase");
-    Message assistantTurn = MessageCodec.readMessageNode(requireObject(turnNode, "assistantTurn"));
-    JsonNode pendingNode = Codecs.requireField(root, "pending", "awaiting-tools phase");
+    Message assistantTurn =
+        MessageCodec.readMessageNode(Codecs.requireObject(turnNode, "assistantTurn"));
+    ArrayNode pendingNode = Codecs.requireArray(root, "pending", "awaiting-tools phase");
     Set<String> pending = new LinkedHashSet<>();
     pendingNode.forEach(n -> pending.add(n.asText()));
-    JsonNode gatheredNode = Codecs.requireField(root, "gathered", "awaiting-tools phase");
+    ArrayNode gatheredNode = Codecs.requireArray(root, "gathered", "awaiting-tools phase");
     List<ToolResultBlock> gathered = new ArrayList<>();
     for (JsonNode resultNode : gatheredNode) {
-      ContentBlock block = MessageCodec.readBlockNode(requireObject(resultNode, "gathered result"));
-      gathered.add((ToolResultBlock) block);
+      gathered.add(requireToolResultBlock(resultNode));
     }
     return new Phase.AwaitingTools(assistantTurn, pending, gathered);
   }
 
-  private static ObjectNode requireObject(JsonNode node, String owner) {
-    if (node == null || !node.isObject()) {
-      throw new IllegalArgumentException("malformed " + owner + ": expected an object");
+  private static ToolResultBlock requireToolResultBlock(JsonNode resultNode) {
+    ContentBlock block =
+        MessageCodec.readBlockNode(Codecs.requireObject(resultNode, "gathered result"));
+    if (block instanceof ToolResultBlock toolResult) {
+      return toolResult;
     }
-    return (ObjectNode) node;
+    String foundType = resultNode.path(TYPE).asText();
+    throw new IllegalArgumentException(
+        "gathered must contain only tool-result blocks; found: " + foundType);
   }
 }

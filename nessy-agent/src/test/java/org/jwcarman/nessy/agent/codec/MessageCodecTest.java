@@ -215,5 +215,37 @@ class MessageCodecTest {
       assertThatThrownBy(() -> MessageCodec.message(json))
           .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void aMessageWhoseContentIsNotAnArrayIsRejected() {
+      var json =
+          """
+          {"role":"user","content":42}
+          """;
+      assertThatThrownBy(() -> MessageCodec.message(json))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("content");
+    }
+
+    @Test
+    void aContextWhoseMessagesIsNotAnArrayIsRejected() {
+      var json =
+          """
+          {"messages":"oops"}
+          """;
+      assertThatThrownBy(() -> MessageCodec.context(json))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("messages");
+    }
+
+    @Test
+    void aThinkingBlockWithNoSignatureKeyDecodesAsUnsigned() {
+      var json =
+          """
+          {"role":"assistant","content":[{"type":"thinking","text":"x"}]}
+          """;
+      assertThat(MessageCodec.message(json))
+          .isEqualTo(new Message(Role.ASSISTANT, List.of(new ThinkingBlock("x", ""))));
+    }
   }
 }

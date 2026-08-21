@@ -148,5 +148,44 @@ class StateCodecTest {
               + ",\"pending\":[],\"gathered\":[]}";
       assertThatThrownBy(() -> StateCodec.phase(json)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void aNonToolResultBlockInGatheredIsRejectedNamingItsType() {
+      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
+      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
+      var json =
+          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
+              + MessageCodec.toJson(turn)
+              + ",\"pending\":[\"a\"],\"gathered\":[{\"type\":\"text\",\"text\":\"oops\"}]}";
+      assertThatThrownBy(() -> StateCodec.phase(json))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("text");
+    }
+
+    @Test
+    void anAwaitingToolsPayloadWithNonArrayPendingIsRejected() {
+      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
+      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
+      var json =
+          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
+              + MessageCodec.toJson(turn)
+              + ",\"pending\":\"oops\",\"gathered\":[]}";
+      assertThatThrownBy(() -> StateCodec.phase(json))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("pending");
+    }
+
+    @Test
+    void anAwaitingToolsPayloadWithNonArrayGatheredIsRejected() {
+      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
+      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
+      var json =
+          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
+              + MessageCodec.toJson(turn)
+              + ",\"pending\":[\"a\"],\"gathered\":\"oops\"}";
+      assertThatThrownBy(() -> StateCodec.phase(json))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("gathered");
+    }
   }
 }

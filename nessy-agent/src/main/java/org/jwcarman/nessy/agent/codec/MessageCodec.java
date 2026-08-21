@@ -104,10 +104,10 @@ public final class MessageCodec {
   public static Context context(String json) {
     Objects.requireNonNull(json, "json must not be null");
     ObjectNode root = Codecs.readObject(json, "context");
-    JsonNode messagesNode = Codecs.requireField(root, "messages", "context");
+    ArrayNode messagesNode = Codecs.requireArray(root, "messages", "context");
     List<Message> messages = new ArrayList<>();
     for (JsonNode node : messagesNode) {
-      messages.add(readMessage(requireObject(node, "context message")));
+      messages.add(readMessage(Codecs.requireObject(node, "context message")));
     }
     return Context.of(messages);
   }
@@ -123,10 +123,10 @@ public final class MessageCodec {
   private static Message readMessage(ObjectNode node) {
     String roleText = Codecs.requireText(node, "role", "message");
     Role role = readRole(roleText);
-    JsonNode contentNode = Codecs.requireField(node, CONTENT, "message");
+    ArrayNode contentNode = Codecs.requireArray(node, CONTENT, "message");
     List<ContentBlock> content = new ArrayList<>();
     for (JsonNode block : contentNode) {
-      content.add(readBlock(requireObject(block, "content block")));
+      content.add(readBlock(Codecs.requireObject(block, "content block")));
     }
     return new Message(role, content);
   }
@@ -242,12 +242,5 @@ public final class MessageCodec {
       throw new IllegalArgumentException(owner + " missing required field: " + name);
     }
     return field.asBoolean();
-  }
-
-  private static ObjectNode requireObject(JsonNode node, String owner) {
-    if (node == null || !node.isObject()) {
-      throw new IllegalArgumentException("malformed " + owner + ": expected an object");
-    }
-    return (ObjectNode) node;
   }
 }

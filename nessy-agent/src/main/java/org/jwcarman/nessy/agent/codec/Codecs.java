@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.codec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
@@ -50,6 +51,27 @@ final class Codecs {
   }
 
   /**
+   * The required field {@code name} on {@code node}, as an array — malformed payload otherwise. A
+   * scalar or object value for {@code name} would otherwise iterate as zero elements and read as a
+   * silent empty collection; this fails loudly instead.
+   */
+  static ArrayNode requireArray(ObjectNode node, String name, String owner) {
+    JsonNode field = node.get(name);
+    if (field == null || !field.isArray()) {
+      throw new IllegalArgumentException(owner + " field must be an array: " + name);
+    }
+    return (ArrayNode) field;
+  }
+
+  /** {@code node} as an object node, or a malformed-payload {@link IllegalArgumentException}. */
+  static ObjectNode requireObject(JsonNode node, String owner) {
+    if (node == null || !node.isObject()) {
+      throw new IllegalArgumentException("malformed " + owner + ": expected an object");
+    }
+    return (ObjectNode) node;
+  }
+
+  /**
    * {@code json} parsed as an object node, or a malformed-payload {@link IllegalArgumentException}.
    */
   static ObjectNode readObject(String json, String owner) {
@@ -59,9 +81,6 @@ final class Codecs {
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("malformed " + owner + " JSON", e);
     }
-    if (node == null || !node.isObject()) {
-      throw new IllegalArgumentException("malformed " + owner + " JSON: expected an object");
-    }
-    return (ObjectNode) node;
+    return requireObject(node, owner + " JSON");
   }
 }
