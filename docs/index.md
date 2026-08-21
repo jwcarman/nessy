@@ -4,30 +4,36 @@
 
 # Nessy
 
-> **Note.** The walkthrough and links below describe the pre-agent-as-scope
-> architecture (pre-2026-08-18); the design of record has since moved to the
-> agent-as-scope, durable-computation, and action-and-tool-vocabulary specs. A
-> rewritten docs site is pending.
+An agent harness framework for Java.
 
-Nessy is a durable agent harness framework for Java. It turns a model API into
-an agent: the effectful loop, the tool plumbing, an approval gate the model
-cannot route around, streaming as a first-class citizen, and observability
-built in rather than bolted on.
+## The elevator pitch
 
-The word "durable" is load-bearing. A conversation's history lives in a
-[`Transcript`](concepts/storage.md), not in a field on some object holding
-your process open — so a crash between turns loses nothing, and a turn that
-asks a human for approval can sit **parked** for as long as that takes,
-surviving a restart of the process that started it. Every turn folds onto the
-transcript idempotently, so re-delivering an event (a queue redelivering a
-message, a retried webhook) never double-applies it. That single property —
-replay safety — shapes every API in the framework: the loop is at-least-once
-by design, and correctness comes from the fold, not from careful
-once-only delivery.
+An agent, in Nessy, is a recipe bound to a scope. The recipe is an
+`AgentType` — system prompt, tools, model, wiring — compiled once into a
+`Harness` and shared by every scope that uses it. The scope is an `AgentId`
+— a plain string wrapped in a record, naming one conversation, one tenant,
+one ticket, whatever your domain calls a "who." `harness.bind(id)` straps
+the two together into a `Binding`, and an agent instance is built fresh over
+that binding on demand — cheap to build, safe to discard, and never trusted
+to hold state across a crash. History and phase live in durable stores keyed
+by the id, not in the instance. See
+[Agent as Scope](concepts/agent-as-scope.md) for the whole model.
 
-## An agent in about twenty lines
+**Prior art, in one paragraph.** Agent-as-scope is the virtual-actor model
+with one deliberate deviation: `(AgentType, AgentId)` plays the role of
+Orleans' `(grain type, grain key)`, and a binding is a grain activation
+*minus* the single-activation guarantee — safety comes from an optimistic
+version check and at-least-once idempotence instead, which is what lets any
+node in a cluster answer for any scope. On the durable side, a parked tool
+call is what Restate or DBOS would call a durable promise. And a host — the
+process-level assembly of harnesses, dispatch, and delivery doors — agrees
+with MCP's own architecture noun for the same role.
 
-Export a key and run — this one calls a real model:
+## Two doors
+
+Both doors below are built the same way: a `ModelProvider`, a
+`ModelSettings`, and a `Nessy` builder. Export a key and the first one makes
+a real call:
 
 ```bash
 export ANTHROPIC_API_KEY=...
@@ -57,42 +63,85 @@ try (CliAgent agent = Nessy.cli().provider(provider).settings(settings).tools(ne
 }
 ```
 
-The wiring itself — provider, settings, `Nessy.cli()`, `converse` — is about
-ten lines; `AddTool` is another dozen, and it's the part that changes from
-agent to agent.
+`Nessy.cli()` is the interactive front door: one scope for the process, one
+turn at a time, the caller's thread parks on the reply — the shape a REPL or
+a one-shot script both want. `.tools(Tool<?>...)` grants each tool an
+answered-allow policy for you; reach for `ToolGrant.grant(...)` directly, as
+below, when a tool needs a real authority rule instead.
 
-`Nessy.cli()` opens the interactive front door: one scope for the process,
-one turn at a time, the caller's thread parks on the reply. `Memory` here is
-the config's default — an in-memory `Memory` — swapped for a durable one
-only when you ask.
+For a host that keeps running without a human driving each turn, there's a
+second front door — `Nessy.autonomous()` — built the same way, but posting
+observations instead of blocking calls, and fronting whatever a tool's
+policy decides needs a human with an `ApprovalDesk`:
 
-See [Providers](guides/providers.md) for OpenAI, Gemini, the
-switch-by-environment-variable helper, and the OpenAI-compatible services
-(Grok, OpenRouter, Ollama, LM Studio) `OpenAiModelProvider` also reaches.
+```java
+var pending = new LinkedBlockingQueue<ApprovalRequest>();
+
+try (AutonomousHost host =
+    Nessy.autonomous()
+        .provider(provider)
+        .settings(settings)
+        .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+        .backend(new InMemoryDurableComputationBackend())
+        .approvalNotifier(pending::add)
+        .build()) {
+
+    host.post("ops", "restart prod-1");
+
+    ApprovalRequest request = pending.take();
+    host.approvals().approve(request.address().approval());
+}
+```
+
+`post(agentId, observation)` enqueues one fact for that scope and returns
+immediately. If `RestartTool`'s grant requires approval, the call suspends
+on a durable slot and `approvalNotifier` fires once with the
+`ApprovalRequest` that `host.approvals().approve(...)` or `.deny(...)`
+decides. Whether that slot survives a restart of the process that opened it
+depends on the durable computation backend in play — the in-memory one shown
+here does not, a durable implementation does.
+
+See [Getting Started](guides/getting-started.md) for the CLI door walked
+through line by line.
+
+## The module map
+
+Four modules, each with a persona in mind:
+
+| Module | Depends on | Who compiles against it |
+|---|---|---|
+| `nessy-durable` | — | the durable-computation primitive everything else builds on |
+| `nessy-api` | `nessy-durable` | tool, policy, and enricher authors — the shared vocabulary: `Tool`, `ToolGrant`, messages, the authorization grammar |
+| `nessy-spi` | `nessy-api` | adapter authors — a custom `Memory`, `IntentStore`, or approver |
+| `nessy-agent` | `nessy-api`, `nessy-spi` | application builders — the machine, both host doors, and the shipped kit (`VerbatimMemory`, the in-memory substrates) |
+
+A model provider module (`nessy-model-anthropic`, `nessy-model-openai`,
+`nessy-model-gemini`, `nessy-model-bedrock`, or `nessy-model-env` to pick
+between them from the environment) sits alongside `nessy-agent` in every
+application's dependency list.
 
 ## Where to go next
 
 <div class="grid cards" markdown>
 
-- **[Concepts](concepts/durable-loop.md)**
+- **[Agent as Scope](concepts/agent-as-scope.md)**
 
-    The vocabulary: the durable loop, tools and grants, parks and callbacks,
-    the memory pipeline, planning, the notebook, reflection, subagents, and
-    storage.
+    The core model: phases that carry their own data, the decide-commit-
+    save-dispatch transition, and why recovery is `drive()`'s second arm
+    rather than a separate code path.
 
-- **[Guides](guides/getting-started.md)**
+- **[The Four Tiers](concepts/the-four-tiers.md)**
 
-    Task-shaped walkthroughs: getting started, providers, durable persistence,
-    console apps, MCP clients, [testing](guides/testing.md), and more.
+    Substrate, host, harness, binding — how the pieces above compose, and
+    what makes a binding cheap enough to throw away.
 
-- **[Examples](examples/index.md)**
+- **[Memory](concepts/memory.md)**
 
-    A tour of the shipped example modules — `hello` through `newsroom` —
-    what each one teaches.
+    The `Memory` SPI, `VerbatimMemory`, and what "the memory owns history"
+    means for a model call.
 
-- **[Reference](reference/configuration.md)**
+- **[Getting Started](guides/getting-started.md)**
 
-    Configuration properties, the storage TCK, the changelog, and the source
-    tree.
+    The CLI door, explained line by line.
 
 </div>

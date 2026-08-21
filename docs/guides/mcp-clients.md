@@ -1,10 +1,5 @@
 # MCP Clients
 
-> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
-> and is retained as historical reference. The design of record is the agent-as-scope,
-> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
-> rewritten docs site is pending.
-
 `nessy-tool-mcp` turns an MCP server's tools into plain Nessy `Tool<JsonNode>`
 instances. `McpToolbox` opens a server; each tool it hands back is granted the
 same way a hand-written `Tool` is — named individually, paired with its own
@@ -119,9 +114,9 @@ wrong thing mid-turn.
 
 ## Where next
 
-- [Tools and Grants](../concepts/tools-and-grants.md) — the grant principle
+- Tools and Grants — the grant principle
   `McpToolbox`-sourced tools are subject to like any other.
-- [Console Apps](console-apps.md) — `ConsoleApprover`, the gate Scout's
+- Console Apps — `ConsoleApprover`, the gate Scout's
   `ask_question` grant routes through.
-- [Planning Your Agent's Work](planning-your-agents-work.md) — Scout's other
+- Planning Your Agent's Work — Scout's other
   showcase, the plan facility, wired beside these same grants.

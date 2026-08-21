@@ -1,10 +1,5 @@
 # Getting Started
 
-> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
-> and is retained as historical reference. The design of record is the agent-as-scope,
-> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
-> rewritten docs site is pending.
-
 An `Agent<I>` is a reusable identity — a model, a system prompt, a set of granted
 tools — built once from a `Harness` and then told things. This page builds the
 smallest one that actually calls a tool, against a real model, then points at
@@ -64,14 +59,14 @@ A few things worth naming:
 
 - `.name("adder")` is not a label. It's the durable stamp every parked call
   and every callback door checks a resolution against — see
-  [The Durable Loop](../concepts/durable-loop.md).
+  The Durable Loop.
 - `.tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))` is the whole
   capability story: a tool the model can see is one this call explicitly
   granted, with a policy (`allow()` here; `requireApproval()` gates it
-  instead) — see [Tools and Grants](../concepts/tools-and-grants.md).
+  instead) — see Tools and Grants.
 - `AgentMemory` isn't set here, so the config's default applies: an in-memory
   pipeline over the transcript. It disappears when the process does — see
-  [Durable Persistence](durable-persistence.md) for the version that
+  Durable Persistence for the version that
   doesn't.
 - `agent.converse().tell(...)` returns a `RunOutcome`, either `Completed` or
   `Parked`.
@@ -86,7 +81,7 @@ providers with no other change to this shape; `EnvModelProviders.fromEnv()`
 A one-shot `tell` proves the wiring works, but a real agent holds a
 conversation. `nessy-console`'s `ConsoleRepl` turns any `Agent<String>` into a
 terminal chat loop in a few lines, streaming, spinner, and approval prompts
-included — see [Console Apps](console-apps.md).
+included — see Console Apps.
 
 ## Surviving a restart
 
@@ -94,13 +89,13 @@ Everything above dies with the JVM: `ConversationStore.inMemory()` and
 `Transcript.inMemory()` are the harness's defaults precisely because they
 need no setup. Swapping in `nessy-jdbc` makes the same conversation survive a
 crash or a restart with no change to the agent's own shape — see
-[Durable Persistence](durable-persistence.md).
+Durable Persistence.
 
 ## Where next
 
-- [Testing](testing.md) — running this same shape with no key at all,
+- Testing — running this same shape with no key at all,
   against `ScriptedModelProvider`.
-- [Console Apps](console-apps.md) — turning an `Agent<String>` into an
+- Console Apps — turning an `Agent<String>` into an
   interactive terminal REPL.
-- [The Durable Loop](../concepts/durable-loop.md) — the fold, `Awaited`, and
+- The Durable Loop — the fold, `Awaited`, and
   why every API here is built for at-least-once delivery.

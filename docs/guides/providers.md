@@ -1,10 +1,5 @@
 # Providers
 
-> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
-> and is retained as historical reference. The design of record is the agent-as-scope,
-> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
-> rewritten docs site is pending.
-
 `Nessy.harness(h -> h.provider(provider))` takes any `ModelProvider`. Four native modules ship
 today — `nessy-model-anthropic`, `nessy-model-openai`, `nessy-model-gemini`,
 and `nessy-model-bedrock` — and a fifth, `nessy-model-env`, picks between
@@ -236,7 +231,7 @@ letting their mere presence win, or even enter a tiebreak, would silently
 hijack any application with a stray AWS profile into talking to Bedrock the
 moment `nessy-model-bedrock` rode the classpath. See
 [Switching by environment variable](#switching-by-environment-variable)
-above and [Spring Boot](spring-boot.md) for exactly how each door enforces
+above and Spring Boot for exactly how each door enforces
 this.
 
 Capabilities in v1: text and tool calls, including parallel tool calls in
@@ -400,16 +395,16 @@ coordinate for `nessy-examples/scout` in any of the commands above.
 `nessy-autoconfigure` reads the same decision out of `nessy.provider` and
 `nessy.{anthropic,openai,gemini}.*` properties instead of environment
 variables, layered over each SDK's own `fromEnv()` resolution. See
-[Spring Boot](spring-boot.md) for the property table and the
+Spring Boot for the property table and the
 ambiguous-classpath failure mode.
 
 ## Where next
 
-- [Trying a Provider](trying-a-provider.md) — the two-minute live smoke test
+- Trying a Provider — the two-minute live smoke test
   for any provider path above.
 - [Getting Started](getting-started.md) — the smallest agent, provider swap
   included.
-- [Spring Boot](spring-boot.md) — the same provider selection, driven by
+- Spring Boot — the same provider selection, driven by
   `nessy.*` properties instead of environment variables.
-- [The Durable Loop](../concepts/durable-loop.md) — what a `Harness` built
+- The Durable Loop — what a `Harness` built
   from a provider actually gives you.

@@ -1,10 +1,5 @@
 # Observability
 
-> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
-> and is retained as historical reference. The design of record is the agent-as-scope,
-> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
-> rewritten docs site is pending.
-
 Two independent surfaces exist today: a Micrometer `ObservationRegistry` for
 metrics and traces, and event listeners for anything else that wants to
 watch a conversation. Neither is required — both default to doing nothing.
@@ -36,7 +31,7 @@ response settles.
 
 !!! warning "No per-stage or recall spans exist yet"
     A memory pipeline's hydration and its stages — including the summarizing
-    hydrator's own model call (see [Summarizing Memory](summarizing-memory.md))
+    hydrator's own model call (see Summarizing Memory)
     — run inside `recall`, and none of that is observed today. The three
     spans above cover the loop's phases, not what a `AgentMemory` implementation
     does internally to build a `Context`. A summarizing pipeline's fold call
@@ -87,14 +82,14 @@ tool-requested/completed/parked events, and the turn's ending, nothing after
 a park. `TurnObserver.logging(Logger, prefix)` is the standard
 settled-facts-only narrator every hand-rolled example logger used to
 duplicate; `night-watchman`'s `Watchman` and `order-desk`'s `OrderDesk` both
-call it directly now. See [Console Apps](console-apps.md) for the streaming
+call it directly now. See Console Apps for the streaming
 renderer built on the same interface.
 
 ## Where next
 
-- [Console Apps](console-apps.md) — `TurnObserver`, its customizer, and the
+- Console Apps — `TurnObserver`, its customizer, and the
   renderer chat-cli and scout both use.
-- [Triggers](triggers.md) — `chat-web`'s trace, end to end, across an
+- Triggers — `chat-web`'s trace, end to end, across an
   HTTP-triggered turn.
-- [The Durable Loop](../concepts/durable-loop.md) — the fold and the events
+- The Durable Loop — the fold and the events
   a listener actually subscribes to.

@@ -76,33 +76,19 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Concepts:
-      - The Durable Loop: concepts/durable-loop.md
-      - Tools and Grants: concepts/tools-and-grants.md
+      - Agent as Scope: concepts/agent-as-scope.md
+      - The Four Tiers: concepts/the-four-tiers.md
+      - Durable Computation: concepts/durable-computation.md
+      - Tools: concepts/tools.md
       - Authorization: concepts/authorization.md
-      - Parks and Callbacks: concepts/parks-and-callbacks.md
-      - Memory and the Pipeline: concepts/memory-and-the-pipeline.md
-      - Planning: concepts/planning.md
-      - The Notebook: concepts/notebook.md
-      - Reflection: concepts/reflection.md
-      - Subagents: concepts/subagents.md
-      - Storage: concepts/storage.md
-      - Nessy and the 12-Factor Agents: concepts/twelve-factor-agents.md
+      - Intent: concepts/intent.md
+      - Memory: concepts/memory.md
   - Guides:
       - Getting Started: guides/getting-started.md
+      - Autonomous Agents: guides/autonomous-agents.md
       - Providers: guides/providers.md
-      - Trying a Provider: guides/trying-a-provider.md
-      - Durable Persistence: guides/durable-persistence.md
-      - Console Apps: guides/console-apps.md
       - MCP Clients: guides/mcp-clients.md
-      - Planning Your Agent's Work: guides/planning-your-agents-work.md
-      - Summarizing Memory: guides/summarizing-memory.md
-      - Triggers: guides/triggers.md
       - Observability: guides/observability.md
-      - Spring Boot: guides/spring-boot.md
-      - Testing: guides/testing.md
-  - Examples: examples/index.md
   - Reference:
-      - Configuration: reference/configuration.md
-      - TCK: reference/tck.md
       - Changelog: https://github.com/jwcarman/nessy/blob/main/CHANGELOG.md
       - Javadoc (source): https://github.com/jwcarman/nessy
