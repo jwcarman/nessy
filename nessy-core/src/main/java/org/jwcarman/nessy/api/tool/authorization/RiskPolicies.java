@@ -50,21 +50,41 @@ public final class RiskPolicies {
     if (approveAt.compareTo(denyAt) > 0) {
       throw new IllegalArgumentException("approveAt must not exceed denyAt");
     }
-    return UsagePolicy.of(
-        (context, action) -> {
-          Optional<RiskAssessment> assessment = context.risk();
-          if (assessment.isEmpty()) {
-            return new PolicyDecision.Deny("no risk assessment deposited under RISK_KEY");
-          }
-          RiskLevel severity = assessment.get().severity();
-          if (severity.compareTo(approveAt) < 0) {
-            return new PolicyDecision.Allow();
-          }
-          if (severity.compareTo(denyAt) < 0) {
-            return new PolicyDecision.RequireApproval();
-          }
-          return new PolicyDecision.Deny(
-              "risk severity " + severity + " meets or exceeds threshold " + denyAt);
-        });
+    return new ThresholdPolicy(approveAt, denyAt);
+  }
+
+  /**
+   * The policy {@link #threshold(RiskLevel, RiskLevel)} returns — a named class, not a bare lambda,
+   * so {@link AuthorizationReport} reports it as {@code policy (ThresholdPolicy)} rather than an
+   * unreadable synthetic lambda class name (design of record 2026-08-16-authorization §8).
+   * Package-private: {@link #threshold(RiskLevel, RiskLevel)} is the only supported way to obtain
+   * one.
+   */
+  static final class ThresholdPolicy implements UsagePolicy<Object> {
+
+    private final RiskLevel approveAt;
+    private final RiskLevel denyAt;
+
+    ThresholdPolicy(RiskLevel approveAt, RiskLevel denyAt) {
+      this.approveAt = approveAt;
+      this.denyAt = denyAt;
+    }
+
+    @Override
+    public PolicyDecision evaluate(AuthzContext context, Object action) {
+      Optional<RiskAssessment> assessment = context.risk();
+      if (assessment.isEmpty()) {
+        return new PolicyDecision.Deny("no risk assessment deposited under RISK_KEY");
+      }
+      RiskLevel severity = assessment.get().severity();
+      if (severity.compareTo(approveAt) < 0) {
+        return new PolicyDecision.Allow();
+      }
+      if (severity.compareTo(denyAt) < 0) {
+        return new PolicyDecision.RequireApproval();
+      }
+      return new PolicyDecision.Deny(
+          "risk severity " + severity + " meets or exceeds threshold " + denyAt);
+    }
   }
 }

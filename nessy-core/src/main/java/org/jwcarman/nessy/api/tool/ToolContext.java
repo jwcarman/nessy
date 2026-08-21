@@ -27,9 +27,9 @@ public record ToolContext(ToolCall call, ToolEventListener events, CallAddress a
   }
 
   /**
-   * Reports progress from inside a long-running tool. The framework supplies both ids — a tool
-   * cannot know its provider-assigned call id, and no longer needs to (spec §2: nothing untrusted
-   * arrives, so there is nothing to distrust).
+   * Reports progress from inside a long-running tool. {@link ToolEvent.Progress} carries only
+   * {@code message} — no call or provider id travels with it, so a tool reporting progress has
+   * nothing to distrust because there is nothing untrusted to carry (spec §2).
    */
   public void progress(String message) {
     events.on(new ToolEvent.Progress(message));

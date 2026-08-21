@@ -19,8 +19,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
+import org.jwcarman.nessy.api.tool.authorization.GrantStory;
 
 /**
  * A capability and the authority to use it, declared together: which {@link Tool} an agent may
@@ -89,9 +91,13 @@ public record ToolGrant(
 
   /**
    * The default rung 0/1 contributor — the approver always sees at least {@code
-   * String.valueOf(input)}.
+   * String.valueOf(input)}. Named so {@link AuthorizationReport} reports it honestly as {@code
+   * action(String.valueOf)} rather than conflating "the framework's own default" with "a custom
+   * contributor the caller simply forgot to name" — the latter reports as {@code action(unnamed)}
+   * instead (see {@link GrantStory#render()}).
    */
-  private static final ActionContributor<Object, Object> DEFAULT_CONTRIBUTOR = String::valueOf;
+  private static final ActionContributor<Object, Object> DEFAULT_CONTRIBUTOR =
+      ActionContributor.named("String.valueOf", input -> String.valueOf(input));
 
   /** Rung 0/1: the default contributor, above. No enrichers. */
   public static ToolGrant grant(Tool<?> tool, UsagePolicy<Object> policy) {
@@ -128,9 +134,17 @@ public record ToolGrant(
     Objects.requireNonNull(policy, "policy must not be null");
     Judgment judgment =
         (context, input) -> {
-          I typed = tool.inputType().cast(input);
-          A action = stage("action stage: ", () -> contributor.actionOf(typed));
-          AuthzContext enriched = context.with(AuthzContext.ACTION_KEY, action);
+          ActionOutcome<A> staged =
+              stage(
+                  "action stage: ",
+                  () -> {
+                    I typed = tool.inputType().cast(input);
+                    A rendered = contributor.actionOf(typed);
+                    return new ActionOutcome<>(
+                        rendered, context.with(AuthzContext.ACTION_KEY, rendered));
+                  });
+          A action = staged.action();
+          AuthzContext enriched = staged.context();
           int index = 0;
           for (Enricher<? super A> enricher : ordered) {
             AuthzContext previous = enriched;
@@ -155,13 +169,30 @@ public record ToolGrant(
   private static <T> Judgment untypedJudgment(
       Tool<T> tool, ActionContributor<Object, Object> contributor, UsagePolicy<Object> policy) {
     return (context, input) -> {
-      Object action =
-          stage("action stage: ", () -> contributor.actionOf(tool.inputType().cast(input)));
-      AuthzContext enriched = context.with(AuthzContext.ACTION_KEY, action);
+      ActionOutcome<Object> staged =
+          stage(
+              "action stage: ",
+              () -> {
+                Object rendered = contributor.actionOf(tool.inputType().cast(input));
+                return new ActionOutcome<>(
+                    rendered, context.with(AuthzContext.ACTION_KEY, rendered));
+              });
+      Object action = staged.action();
+      AuthzContext enriched = staged.context();
       PolicyDecision decision = stage("policy stage: ", () -> policy.evaluate(enriched, action));
       return new Judged(decision, enriched, action);
     };
   }
+
+  /**
+   * The action stage's own outcome — the rendered action alongside the context it was deposited
+   * into under {@link AuthzContext#ACTION_KEY} — held together so both the cast and the deposit run
+   * inside the same {@link #stage} call: a wrong-typed {@code input} or a {@code null} action
+   * (which {@link AuthzContext#with} itself refuses) both fail closed naming the action stage, not
+   * a bare {@code ClassCastException} or {@code NullPointerException} escaping the chokepoint
+   * unnamed.
+   */
+  private record ActionOutcome<A>(A action, AuthzContext context) {}
 
   /**
    * Runs {@code action}; a {@code RuntimeException} it throws is caught and rethrown as an {@link

@@ -53,7 +53,11 @@ public final class ToolConfig<T> {
     this.name = kebabCase(inputType.getSimpleName());
   }
 
-  /** Overrides the default kebab-case name derived from the input record's simple name. */
+  /**
+   * Overrides the default kebab-case name derived from the input record's simple name. A blank name
+   * is rejected at {@link #finish()} time, mirroring {@link #description(String)}'s own blank
+   * guard.
+   */
   public ToolConfig<T> name(String name) {
     this.name = Objects.requireNonNull(name, "name must not be null");
     return this;
@@ -101,6 +105,9 @@ public final class ToolConfig<T> {
    * ToolCustomizer)}, once {@code customize} has returned.
    */
   Tool<T> finish() {
+    if (name.isBlank()) {
+      throw new IllegalStateException("name must not be blank");
+    }
     if (description == null || description.isBlank()) {
       throw new IllegalStateException("description must be provided — it is written for the model");
     }

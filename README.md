@@ -88,6 +88,10 @@ try (AutonomousHost host =
         .provider(provider)
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+        // In-memory backend/store — durable only for this process's lifetime; swap for a
+        // durable backend/store in production so a suspended approval survives a restart.
+        .backend(new InMemoryDurableComputationBackend())
+        .storeFactory(id -> new InMemoryAgentStateStore())
         .approvalNotifier(pending::add)
         .build()) {
 
@@ -103,8 +107,10 @@ immediately; the scope drains it, and if `RestartTool`'s grant requires
 approval, the call suspends on a durable slot and `approvalNotifier` fires
 once with the `ApprovalRequest` — `request.address().approval()` is the slot
 id `host.approvals().approve(...)`/`.deny(..., reason)` decides. Nothing here
-holds a thread open waiting; the slot outlives a restart of the process that
-opened it. See
+holds a thread open waiting; whether the slot outlives a restart of the
+process that opened it depends on the `.backend(...)`/`.storeFactory(...)`
+supplied above — the in-memory ones shown here do not, a durable
+implementation does. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
 the docs site for the rest of the walkthrough.
 

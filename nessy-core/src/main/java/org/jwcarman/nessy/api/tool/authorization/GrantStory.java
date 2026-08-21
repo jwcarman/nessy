@@ -32,8 +32,10 @@ import java.util.Optional;
  *     verdict — the ladder law's rung-0 skip, honestly reflected: no action is ever rendered for
  *     this grant, and any enrichers it happens to carry never run, regardless of what the wiring
  *     lists
- * @param actionContributor the contributor's own {@code displayName()}, empty for the default,
- *     anonymous contributor
+ * @param actionContributor the contributor's own {@code displayName()} — empty only for a custom
+ *     contributor the caller never named; the framework's own default contributor ({@code
+ *     ToolGrant}'s {@code String.valueOf}) always carries a name of its own and is never the reason
+ *     this is empty
  * @param enrichers the enricher display names, in wiring order — empty whenever {@code
  *     actionRendered} is {@code false}
  * @param policy a human-readable identity for the grant's policy
@@ -53,9 +55,12 @@ public record GrantStory(
   }
 
   /**
-   * Renders this story as one line: {@code "name: action(<displayName|default>) → enricher → ... →
+   * Renders this story as one line: {@code "name: action(<displayName|unnamed>) → enricher → ... →
    * policy (identity)"} for an evaluated grant, or plainly {@code "name: identity"} for a rung-0
-   * grant that never renders an action at all.
+   * grant that never renders an action at all. {@code unnamed} appears only when the grant's own
+   * contributor is a bare, undecorated lambda the caller never wrapped in {@code
+   * ActionContributor.named(...)} — the framework's own default contributor always renders as
+   * {@code action(String.valueOf)} instead.
    */
   public String render() {
     if (!actionRendered) {
@@ -64,7 +69,7 @@ public record GrantStory(
     StringBuilder line =
         new StringBuilder(toolName)
             .append(": action(")
-            .append(actionContributor.orElse("default"))
+            .append(actionContributor.orElse("unnamed"))
             .append(')');
     for (String enricher : enrichers) {
       line.append(" → ").append(enricher);

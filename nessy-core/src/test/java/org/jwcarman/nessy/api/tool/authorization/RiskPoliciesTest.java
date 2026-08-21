@@ -55,7 +55,7 @@ class RiskPoliciesTest {
   class Threshold_semantics {
 
     @Test
-    void a_severity_below_approve_at_is_allowed() {
+    void aSeverityBelowApproveAtIsAllowed() {
       UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.VERY_LOW);
 
@@ -63,7 +63,7 @@ class RiskPoliciesTest {
     }
 
     @Test
-    void a_severity_at_approve_at_requires_approval() {
+    void aSeverityAtApproveAtRequiresApproval() {
       UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.LOW);
 
@@ -71,7 +71,7 @@ class RiskPoliciesTest {
     }
 
     @Test
-    void a_severity_just_below_deny_at_requires_approval() {
+    void aSeverityJustBelowDenyAtRequiresApproval() {
       UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.MODERATE);
 
@@ -79,7 +79,7 @@ class RiskPoliciesTest {
     }
 
     @Test
-    void a_severity_at_deny_at_is_denied_naming_the_severity_and_threshold() {
+    void aSeverityAtDenyAtIsDeniedNamingTheSeverityAndThreshold() {
       UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.HIGH);
 
@@ -91,7 +91,7 @@ class RiskPoliciesTest {
     }
 
     @Test
-    void a_severity_above_deny_at_is_denied() {
+    void aSeverityAboveDenyAtIsDenied() {
       UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.VERY_HIGH);
 
@@ -99,7 +99,7 @@ class RiskPoliciesTest {
     }
 
     @Test
-    void an_absent_risk_assessment_fails_closed_with_a_deny_naming_the_missing_slot() {
+    void anAbsentRiskAssessmentFailsClosedWithADenyNamingTheMissingSlot() {
       UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.HIGH);
       AuthzContext context = freshContext();
 
@@ -111,7 +111,7 @@ class RiskPoliciesTest {
     }
 
     @Test
-    void equal_approve_and_deny_at_leaves_no_approval_band_so_that_severity_denies_outright() {
+    void equalApproveAndDenyAtLeavesNoApprovalBandSoThatSeverityDeniesOutright() {
       UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.MODERATE);
       AuthzContext atThreshold = contextWithSeverity(RiskLevel.MODERATE);
       AuthzContext belowThreshold = contextWithSeverity(RiskLevel.LOW);

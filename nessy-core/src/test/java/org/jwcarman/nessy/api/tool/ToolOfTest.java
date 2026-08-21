@@ -74,6 +74,20 @@ class ToolOfTest {
 
       assertThat(tool.name()).isEqualTo("open-account");
     }
+
+    @Test
+    void a_blank_explicit_name_is_rejected_at_finish_time() {
+      assertThatThrownBy(
+              () ->
+                  Tool.of(
+                      CreateAccount.class,
+                      t ->
+                          t.name("   ")
+                              .description("Create a new bank account.")
+                              .executes(cmd -> "ok")))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("name must not be blank");
+    }
   }
 
   @Nested

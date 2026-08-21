@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class RiskAssessmentTest {
 
@@ -117,6 +119,50 @@ class RiskAssessmentTest {
           new RiskAssessment(RiskLevel.VERY_HIGH, RiskLevel.VERY_LOW, List.of());
 
       assertThat(assessment.severity()).isEqualTo(RiskLevel.VERY_LOW);
+    }
+  }
+
+  @Nested
+  class The_entire_severity_matrix {
+
+    /**
+     * Every cell of the NIST SP 800-30 Table I-2 shaped matrix (task brief's normative table, rows
+     * likelihood, columns impact) — transcribed from the spec, not read back from {@link
+     * RiskAssessment#severity()}'s own implementation.
+     */
+    @ParameterizedTest(name = "likelihood={0}, impact={1} -> severity={2}")
+    @CsvSource({
+      "VERY_LOW, VERY_LOW,  VERY_LOW",
+      "VERY_LOW, LOW,       VERY_LOW",
+      "VERY_LOW, MODERATE,  VERY_LOW",
+      "VERY_LOW, HIGH,      LOW",
+      "VERY_LOW, VERY_HIGH, LOW",
+      "LOW,      VERY_LOW,  VERY_LOW",
+      "LOW,      LOW,       LOW",
+      "LOW,      MODERATE,  LOW",
+      "LOW,      HIGH,      LOW",
+      "LOW,      VERY_HIGH, MODERATE",
+      "MODERATE, VERY_LOW,  VERY_LOW",
+      "MODERATE, LOW,       LOW",
+      "MODERATE, MODERATE,  MODERATE",
+      "MODERATE, HIGH,      MODERATE",
+      "MODERATE, VERY_HIGH, HIGH",
+      "HIGH,     VERY_LOW,  VERY_LOW",
+      "HIGH,     LOW,       LOW",
+      "HIGH,     MODERATE,  MODERATE",
+      "HIGH,     HIGH,      HIGH",
+      "HIGH,     VERY_HIGH, VERY_HIGH",
+      "VERY_HIGH, VERY_LOW,  VERY_LOW",
+      "VERY_HIGH, LOW,       LOW",
+      "VERY_HIGH, MODERATE,  MODERATE",
+      "VERY_HIGH, HIGH,      VERY_HIGH",
+      "VERY_HIGH, VERY_HIGH, VERY_HIGH",
+    })
+    void combinesLikelihoodAndImpactAccordingToTheNormativeMatrix(
+        RiskLevel likelihood, RiskLevel impact, RiskLevel expectedSeverity) {
+      RiskAssessment assessment = new RiskAssessment(likelihood, impact, List.of());
+
+      assertThat(assessment.severity()).isEqualTo(expectedSeverity);
     }
   }
 }

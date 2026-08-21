@@ -33,7 +33,7 @@ class EnrichersTest {
   }
 
   @Test
-  void principal_deposits_the_resolved_value_under_principal_key() {
+  void principalDepositsTheResolvedValueUnderPrincipalKey() {
     Enricher<Object> enricher = Enrichers.principal(() -> "ada");
 
     AuthzContext enriched = enricher.enrich(freshContext(), null);
@@ -42,7 +42,7 @@ class EnrichersTest {
   }
 
   @Test
-  void principal_never_mutates_the_context_it_was_given() {
+  void principalNeverMutatesTheContextItWasGiven() {
     Enricher<Object> enricher = Enrichers.principal(() -> "ada");
     AuthzContext context = freshContext();
 
@@ -52,14 +52,14 @@ class EnrichersTest {
   }
 
   @Test
-  void principal_reports_itself_as_named_principal() {
+  void principalReportsItselfAsNamedPrincipal() {
     Enricher<Object> enricher = Enrichers.principal(() -> "ada");
 
     assertThat(enricher.displayName()).contains("principal");
   }
 
   @Test
-  void principal_calls_the_resolver_fresh_on_every_enrichment() {
+  void principalCallsTheResolverFreshOnEveryEnrichment() {
     AtomicInteger calls = new AtomicInteger();
     Enricher<Object> enricher = Enrichers.principal(() -> "principal-" + calls.incrementAndGet());
 
@@ -71,7 +71,7 @@ class EnrichersTest {
   }
 
   @Test
-  void principal_rejects_a_null_resolver() {
+  void principalRejectsANullResolver() {
     assertThatThrownBy(() -> Enrichers.principal(null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("resolver");

@@ -195,6 +195,19 @@ class AuthorizationReportTest {
     }
 
     @Test
+    void names_the_real_risk_policies_threshold_policy_by_its_own_class_too() {
+      ToolGrant thresholdGrant =
+          ToolGrant.grant(
+              new TransferTool(),
+              NAMED_TRANSFER_ACTION,
+              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
+
+      GrantStory story = AuthorizationReport.of(List.of(thresholdGrant)).grants().getFirst();
+
+      assertThat(story.policy()).isEqualTo("ThresholdPolicy");
+    }
+
+    @Test
     void renders_the_whole_story_as_one_arrow_chain() {
       AuthorizationReport report = AuthorizationReport.of(List.of(grant));
 
@@ -209,14 +222,30 @@ class AuthorizationReportTest {
   class An_anonymous_contributor {
 
     @Test
-    void reports_the_default_placeholder_when_the_contributor_carries_no_display_name() {
+    void reports_unnamed_when_a_custom_contributor_carries_no_display_name() {
       ToolGrant grant =
           ToolGrant.grant(new TransferTool(), TRANSFER_ACTION, new RiskThresholdPolicy());
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
       assertThat(story.actionContributor()).isEmpty();
-      assertThat(story.render()).startsWith("transfer: action(default)");
+      assertThat(story.render()).startsWith("transfer: action(unnamed)");
+    }
+  }
+
+  @Nested
+  class The_untyped_doors_default_contributor {
+
+    @Test
+    void reports_its_own_string_value_of_display_name_not_the_unnamed_placeholder() {
+      ToolGrant grant =
+          ToolGrant.grant(
+              new ClockTool(), UsagePolicy.of((context, action) -> new PolicyDecision.Allow()));
+
+      GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
+
+      assertThat(story.actionContributor()).contains("String.valueOf");
+      assertThat(story.render()).startsWith("clock: action(String.valueOf)");
     }
   }
 

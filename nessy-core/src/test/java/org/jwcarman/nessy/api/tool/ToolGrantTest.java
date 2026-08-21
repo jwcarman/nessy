@@ -253,4 +253,27 @@ class ToolGrantTest {
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("contributor");
   }
+
+  @Test
+  void aContributorReturningNullFailsClosedNamingTheActionStage() {
+    ActionContributor<GreetInput, String> returnsNull = input -> null;
+    UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+    ToolGrant grant = ToolGrant.grant(new GreetTool(), returnsNull, List.of(), policy);
+    AuthzContext context = AuthzContext.of("agent", callFor("greet"));
+
+    assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageStartingWith("action stage: ");
+  }
+
+  @Test
+  void aWrongTypedInputFailsClosedNamingTheActionStage() {
+    UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+    ToolGrant grant = ToolGrant.grant(new GreetTool(), GREETING, List.of(), policy);
+    AuthzContext context = AuthzContext.of("agent", callFor("greet"));
+
+    assertThatThrownBy(() -> grant.judgment().decide(context, "not a GreetInput"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageStartingWith("action stage: ");
+  }
 }

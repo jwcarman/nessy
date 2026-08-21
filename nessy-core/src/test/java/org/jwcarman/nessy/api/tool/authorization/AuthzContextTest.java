@@ -116,4 +116,17 @@ class AuthzContextTest {
       assertThat(context.declaredIntent(String.class)).contains("read-only");
     }
   }
+
+  @Nested
+  class Action_sugar {
+
+    @Test
+    void action_typed_recovery_hits_on_a_matching_class_token_and_misses_on_a_mismatched_one() {
+      AuthzContext context = freshContext().with(AuthzContext.ACTION_KEY, "transfer 5 dollars");
+
+      assertThat(context.action()).contains("transfer 5 dollars");
+      assertThat(context.action(String.class)).contains("transfer 5 dollars");
+      assertThat(context.action(Integer.class)).isEmpty();
+    }
+  }
 }

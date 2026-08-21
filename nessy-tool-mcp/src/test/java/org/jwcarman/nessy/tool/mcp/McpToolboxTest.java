@@ -30,13 +30,18 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolEventListener;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 class McpToolboxTest {
 
@@ -224,6 +229,35 @@ class McpToolboxTest {
 
         assertThat(result.isError()).isFalse();
         assertThat(result.content()).contains("YWJj").contains("image/png");
+      }
+    }
+  }
+
+  @Nested
+  class Governance_without_a_wrapper {
+
+    /**
+     * Spec §0's claim that a third-party tool is governable via {@code ToolGrant} alone, no wrapper
+     * class of nessy's own: {@link McpTool} (obtained here through {@link McpToolbox#tool(String)},
+     * package-private and never subclassed by this test) goes straight into {@code ToolGrant.grant}
+     * with an {@link ActionContributor} that states the call and a pinned {@code deny} policy.
+     */
+    @Test
+    void governs_a_fetched_mcp_tool_directly_with_no_wrapper_class() {
+      try (McpTestServer fixture =
+          McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"))) {
+        Tool<JsonNode> tool = fixture.tool("echo");
+        JsonNode arguments = echoArguments("hi there");
+        ActionContributor<JsonNode, String> statement =
+            ActionContributor.named("mcp-statement", args -> tool.name() + " " + args);
+        ToolGrant grant = ToolGrant.grant(tool, statement, UsagePolicy.deny("pinned"));
+        ToolCall call = new ToolCall("call-1", "echo", arguments);
+        AuthzContext context = AuthzContext.of("test-agent", call);
+
+        ToolGrant.Judged judged = grant.judgment().decide(context, arguments);
+
+        assertThat(judged.action()).isEqualTo("echo " + arguments);
+        assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("pinned"));
       }
     }
   }

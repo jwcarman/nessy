@@ -105,6 +105,11 @@ public interface AuthzContext {
     return get(ACTION_KEY);
   }
 
+  /** {@link #action()}, recovered by class token: empty on a miss as well as an absence. */
+  default <A> Optional<A> action(Class<A> type) {
+    return action().filter(type::isInstance).map(type::cast);
+  }
+
   /**
    * The risk assessment a risk-assessing enricher deposited under {@link #RISK_KEY}, if any. Empty
    * until one does.

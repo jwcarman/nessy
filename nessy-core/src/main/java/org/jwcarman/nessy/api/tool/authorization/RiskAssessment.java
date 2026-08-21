@@ -24,8 +24,8 @@ import java.util.Objects;
  * under its own {@link Key}; this is the opinionated default that makes {@link RiskPolicies}
  * shippable out of the box.
  *
- * @param likelihood how probable the assessed effect is
- * @param impact how severe the assessed effect would be if it occurred
+ * @param likelihood how probable the assessed action is
+ * @param impact how severe the assessed action would be if it occurred
  * @param factors the open-vocabulary reasons behind the assessment (see {@link RiskFactors})
  */
 public record RiskAssessment(RiskLevel likelihood, RiskLevel impact, List<String> factors) {
