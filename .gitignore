@@ -13,3 +13,4 @@ site/
 
 # Agent worktrees — never committed
 .claude/worktrees/
+.worktrees/
