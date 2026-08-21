@@ -126,10 +126,10 @@ public final class StateCodec {
     ObjectNode node = mapper.createObjectNode();
     switch (block) {
       case TextBlock(String text) -> node.put("type", "text").put("text", text);
-      case ThinkingBlock t -> {
-        node.put("type", "thinking").put("text", t.text());
-        if (t.signature() != null) {
-          node.put(SIGNATURE, t.signature());
+      case ThinkingBlock(String text, String signature) -> {
+        node.put("type", "thinking").put("text", text);
+        if (signature != null) {
+          node.put(SIGNATURE, signature);
         }
       }
       case RedactedThinkingBlock(String data) ->

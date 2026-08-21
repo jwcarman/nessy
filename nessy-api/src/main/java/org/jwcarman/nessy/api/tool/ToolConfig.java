@@ -117,11 +117,14 @@ public final class ToolConfig<T> {
           "tool '%s' must declare exactly one handler door (executes/executes/defers), found %d"
               .formatted(name, handlerCount));
     }
-    CompletionPolicy completion =
-        explicitCompletion != null
-            ? explicitCompletion
-            : deferStarter != null ? CompletionPolicy.DURABLE : CompletionPolicy.IMMEDIATE;
-    return new ConfiguredTool<>(name, description, inputType, buildExecutor(), completion);
+    return new ConfiguredTool<>(name, description, inputType, buildExecutor(), completionPolicy());
+  }
+
+  private CompletionPolicy completionPolicy() {
+    if (explicitCompletion != null) {
+      return explicitCompletion;
+    }
+    return deferStarter != null ? CompletionPolicy.DURABLE : CompletionPolicy.IMMEDIATE;
   }
 
   private int countHandlers() {

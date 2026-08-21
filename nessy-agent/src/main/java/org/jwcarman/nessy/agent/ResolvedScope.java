@@ -16,14 +16,14 @@
 package org.jwcarman.nessy.agent;
 
 /**
- * Binds a scope coordinate to its live instance (spec §4.3 amendment, extending the binder
- * principle): whoever implements this provably holds — or can construct — the scope's {@link
- * DefaultAgent}, exactly as {@link AgentBinder} does for ordinary delivery. The result is exposed
- * as {@link ResolvedScope} — the operations a resolver's callers actually need — rather than {@code
- * DefaultAgent<?>}, so the contract carries no generic wildcard.
+ * The two operations an {@link AgentResolver} caller needs from a resolved scope's live instance:
+ * deliver an event, or re-dispatch outstanding effects. Erasing {@link DefaultAgent}'s observation
+ * type here — rather than exposing it as {@code DefaultAgent<?>} — keeps the resolver's contract
+ * free of a generic wildcard it has no use for.
  */
-@FunctionalInterface
-public interface AgentResolver {
+public interface ResolvedScope {
 
-  ResolvedScope resolve(AgentType type, AgentId id);
+  void deliver(AgentEvent event);
+
+  void redispatch();
 }
