@@ -114,6 +114,33 @@ class ToolRegistryTest {
     }
   }
 
+  static final class AwaitableOnlyTool implements Tool<Named> {
+    @Override
+    public String name() {
+      return "awaitable_only";
+    }
+
+    @Override
+    public String description() {
+      return "Needs process-local async completion, but not a durable slot";
+    }
+
+    @Override
+    public Class<Named> inputType() {
+      return Named.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(Named input, ToolContext context) {
+      return Awaited.ready(ToolResult.ok(input.value()));
+    }
+
+    @Override
+    public CompletionPolicy requiredCompletion() {
+      return CompletionPolicy.AWAITABLE;
+    }
+  }
+
   private final ToolRegistry registry = ToolRegistry.of(new GreetTool());
 
   private static ToolCall greetCall(String name) {
@@ -164,6 +191,17 @@ class ToolRegistryTest {
       assertThat(limited.specs()).isNotEmpty();
       assertThat(limited.specs()).noneMatch(spec -> spec.name().equals("durable_only"));
       assertThat(limited.specs()).anyMatch(spec -> spec.name().equals("greet"));
+    }
+
+    @Test
+    void limitedShowsAToolWhoseRequirementExactlyMatchesTheWiring() {
+      ToolRegistry base = ToolRegistry.of(new GreetTool(), new AwaitableOnlyTool());
+
+      ToolRegistry limited = ToolRegistry.limited(base, CompletionPolicy.AWAITABLE);
+
+      assertThat(limited.find("awaitable_only")).isPresent();
+      assertThat(limited.specs()).isNotEmpty();
+      assertThat(limited.specs()).anyMatch(spec -> spec.name().equals("awaitable_only"));
     }
   }
 

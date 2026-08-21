@@ -39,6 +39,14 @@ public interface ToolRegistry {
     return DefaultToolRegistry.of(grants);
   }
 
+  /**
+   * The zero-tool registry — also resolves the empty-varargs ambiguity between the two {@code of}
+   * overloads.
+   */
+  static ToolRegistry empty() {
+    return DefaultToolRegistry.of();
+  }
+
   Optional<ToolGrant> find(String name);
 
   /** Every grant, registration-ordered. */
@@ -50,27 +58,34 @@ public interface ToolRegistry {
   /**
    * Filtering precedes failing (spec §4.3): a view hiding every grant whose tool requires more
    * completion capability than {@code policy} offers — the model never sees what the wiring cannot
-   * honor.
+   * honor. {@code base} and {@code policy} are both fixed, so the filtered grants and specs are
+   * computed once here rather than on every {@link #find}/{@link #grants}/{@link #specs} call
+   * ({@link DefaultToolRegistry} precomputes its own {@code specs} for the same reason: {@link
+   * Tool#spec()} runs reflective schema generation, and {@code specs()} is called on every model
+   * round-trip).
    */
   static ToolRegistry limited(ToolRegistry base, CompletionPolicy policy) {
     Objects.requireNonNull(base, "base must not be null");
     Objects.requireNonNull(policy, "policy must not be null");
+    List<ToolGrant> filteredGrants =
+        base.grants().stream()
+            .filter(g -> g.tool().requiredCompletion().compareTo(policy) <= 0)
+            .toList();
+    List<ToolSpec> filteredSpecs = filteredGrants.stream().map(g -> g.tool().spec()).toList();
     return new ToolRegistry() {
       @Override
       public Optional<ToolGrant> find(String name) {
-        return base.find(name).filter(g -> g.tool().requiredCompletion().compareTo(policy) <= 0);
+        return filteredGrants.stream().filter(g -> g.tool().name().equals(name)).findFirst();
       }
 
       @Override
       public List<ToolGrant> grants() {
-        return base.grants().stream()
-            .filter(g -> g.tool().requiredCompletion().compareTo(policy) <= 0)
-            .toList();
+        return filteredGrants;
       }
 
       @Override
       public List<ToolSpec> specs() {
-        return grants().stream().map(g -> g.tool().spec()).toList();
+        return filteredSpecs;
       }
     };
   }

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.tool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 
@@ -64,7 +65,10 @@ public record ToolGrant(
   /**
    * The grant's welded pipeline, assembled where the types are live so the chokepoint needs no
    * unchecked cast: bind the input by class token, render the effect, run the enrichers in order,
-   * and let the policy judge. Throws propagate — the chokepoint fails them closed.
+   * and let the policy judge. A {@code RuntimeException} escaping any one stage is caught and
+   * rethrown as an {@link IllegalStateException} whose message names the stage that broke ("effect
+   * stage: ", "enricher stage «name»: ", "policy stage: ") and carries the original as its cause —
+   * the chokepoint fails closed on the stage name alone, never on a bare throw.
    */
   @FunctionalInterface
   public interface Judgment {
@@ -91,17 +95,30 @@ public record ToolGrant(
       List<? extends Enricher<? super E>> enrichers,
       UsagePolicy<? super E> policy) {
     Objects.requireNonNull(tool, "tool must not be null");
-    List<Enricher<? super E>> ordered = List.copyOf(enrichers);
+    List<Enricher<? super E>> ordered =
+        List.copyOf(Objects.requireNonNull(enrichers, "enrichers must not be null"));
     Objects.requireNonNull(policy, "policy must not be null");
     Judgment judgment =
         (context, input) -> {
           I typed = tool.inputType().cast(input);
-          E effect = tool.effect(typed);
+          E effect = stage("effect stage: ", () -> tool.effect(typed));
           AuthzContext enriched = context;
+          int index = 0;
           for (Enricher<? super E> enricher : ordered) {
-            enriched = enricher.enrich(enriched, effect);
+            AuthzContext previous = enriched;
+            E renderedEffect = effect;
+            String label = enricher.displayName().orElse("#" + index);
+            enriched =
+                stage(
+                    "enricher stage " + label + ": ",
+                    () -> enricher.enrich(previous, renderedEffect));
+            index++;
           }
-          return new Judged(policy.evaluate(enriched, effect), enriched, effect);
+          AuthzContext finalContext = enriched;
+          E finalEffect = effect;
+          PolicyDecision decision =
+              stage("policy stage: ", () -> policy.evaluate(finalContext, finalEffect));
+          return new Judged(decision, finalContext, finalEffect);
         };
     List<Enricher<?>> widened = new ArrayList<>(ordered);
     return new ToolGrant(tool, policy, widened, judgment);
@@ -109,8 +126,23 @@ public record ToolGrant(
 
   private static <T> Judgment untypedJudgment(Tool<T> tool, UsagePolicy<Object> policy) {
     return (context, input) -> {
-      Object effect = tool.effect(tool.inputType().cast(input));
-      return new Judged(policy.evaluate(context, effect), context, effect);
+      Object effect = stage("effect stage: ", () -> tool.effect(tool.inputType().cast(input)));
+      PolicyDecision decision = stage("policy stage: ", () -> policy.evaluate(context, effect));
+      return new Judged(decision, context, effect);
     };
+  }
+
+  /**
+   * Runs {@code action}; a {@code RuntimeException} it throws is caught and rethrown as an {@link
+   * IllegalStateException} whose message is {@code stagePrefix} plus the original's own message (or
+   * its class name, if the message is {@code null}), with the original set as cause.
+   */
+  private static <R> R stage(String stagePrefix, Supplier<R> action) {
+    try {
+      return action.get();
+    } catch (RuntimeException e) {
+      String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+      throw new IllegalStateException(stagePrefix + detail, e);
+    }
   }
 }
