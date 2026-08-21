@@ -40,8 +40,10 @@ public final class DefaultAgent<O> implements Agent<O> {
   public DefaultAgent(Harness<O> harness, Binding<O> binding) {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     this.binding = Objects.requireNonNull(binding, "binding must not be null");
-    this.model = harness.modelExecutor(binding);
-    this.tools = harness.toolExecutor(binding);
+    this.model =
+        Objects.requireNonNull(harness.modelExecutor(binding), "modelExecutor must not be null");
+    this.tools =
+        Objects.requireNonNull(harness.toolExecutor(binding), "toolExecutor must not be null");
   }
 
   @Override

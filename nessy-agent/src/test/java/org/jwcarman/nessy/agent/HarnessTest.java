@@ -30,12 +30,14 @@ import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
+import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryStateSubstrate;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.Memory;
 
 class HarnessTest {
@@ -272,6 +274,44 @@ class HarnessTest {
                       null))
           .isInstanceOf(NullPointerException.class);
     }
+
+    @Test
+    void constructingADefaultAgentWithAModelExecutorFactoryThatReturnsNullFailsLoudly() {
+      Harness<String> harness =
+          harness(
+              TYPE,
+              RENDERER,
+              OBSERVER,
+              STALENESS_POLICY,
+              id -> MEMORY,
+              id -> STORE,
+              id -> BACKLOG,
+              b -> null,
+              b -> TOOLS);
+      Binding<String> binding = harness.bind(AgentId.of("a"));
+
+      assertThatThrownBy(() -> new DefaultAgent<>(harness, binding))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void constructingADefaultAgentWithAToolExecutorFactoryThatReturnsNullFailsLoudly() {
+      Harness<String> harness =
+          harness(
+              TYPE,
+              RENDERER,
+              OBSERVER,
+              STALENESS_POLICY,
+              id -> MEMORY,
+              id -> STORE,
+              id -> BACKLOG,
+              b -> MODEL,
+              b -> null);
+      Binding<String> binding = harness.bind(AgentId.of("a"));
+
+      assertThatThrownBy(() -> new DefaultAgent<>(harness, binding))
+          .isInstanceOf(NullPointerException.class);
+    }
   }
 
   @Nested
@@ -340,7 +380,47 @@ class HarnessTest {
     }
 
     @Test
-    void theHarnessSharedCollaboratorsAreTheSameReferenceAcrossBindings() {
+    void
+        theModelExecutorFactoryIsInvokedFreshOnEveryBindAndReceivesTheSameCapturedRegistryEachTime() {
+      Object registry = new Object();
+      List<Object> receivedByFactory = new ArrayList<>();
+      List<ModelCallExecutor> produced = new ArrayList<>();
+      Harness<String> harness =
+          harness(
+              TYPE,
+              RENDERER,
+              OBSERVER,
+              STALENESS_POLICY,
+              id -> MEMORY,
+              id -> STORE,
+              id -> BACKLOG,
+              b -> {
+                receivedByFactory.add(registry);
+                ModelCallExecutor fresh =
+                    new ModelCallExecutor() {
+                      @Override
+                      public void callModel(Sink sink) {}
+                    };
+                produced.add(fresh);
+                return fresh;
+              },
+              b -> TOOLS);
+
+      harness.modelExecutor(harness.bind(AgentId.of("a")));
+      harness.modelExecutor(harness.bind(AgentId.of("b")));
+
+      assertThat(produced).hasSize(2);
+      assertThat(produced.get(0)).isNotSameAs(produced.get(1));
+      assertThat(receivedByFactory).isNotEmpty();
+      assertThat(receivedByFactory).allMatch(o -> o == registry);
+    }
+
+    @Test
+    void
+        theToolExecutorFactoryIsInvokedFreshOnEveryBindAndReceivesTheSameCapturedRegistryEachTime() {
+      Object registry = new Object();
+      List<Object> receivedByFactory = new ArrayList<>();
+      List<ToolCallExecutor> produced = new ArrayList<>();
       Harness<String> harness =
           harness(
               TYPE,
@@ -351,45 +431,24 @@ class HarnessTest {
               id -> STORE,
               id -> BACKLOG,
               b -> MODEL,
-              b -> TOOLS);
-
-      harness.bind(AgentId.of("a"));
-      harness.bind(AgentId.of("b"));
-
-      assertThat(harness.renderer()).isSameAs(RENDERER);
-      assertThat(harness.observer()).isSameAs(OBSERVER);
-      assertThat(harness.stalenessPolicy()).isSameAs(STALENESS_POLICY);
-    }
-
-    @Test
-    void theToolAndModelExecutorFactoriesSeeTheSameCapturedCollaboratorAcrossBindings() {
-      Object registry = new Object();
-      List<Object> seen = new ArrayList<>();
-      Harness<String> harness =
-          harness(
-              TYPE,
-              RENDERER,
-              OBSERVER,
-              STALENESS_POLICY,
-              id -> MEMORY,
-              id -> STORE,
-              id -> BACKLOG,
               b -> {
-                seen.add(registry);
-                return MODEL;
-              },
-              b -> {
-                seen.add(registry);
-                return TOOLS;
+                receivedByFactory.add(registry);
+                ToolCallExecutor fresh =
+                    new ToolCallExecutor() {
+                      @Override
+                      public void executeTool(ToolCall call, Sink sink) {}
+                    };
+                produced.add(fresh);
+                return fresh;
               });
 
-      harness.modelExecutor(harness.bind(AgentId.of("a")));
       harness.toolExecutor(harness.bind(AgentId.of("a")));
-      harness.modelExecutor(harness.bind(AgentId.of("b")));
       harness.toolExecutor(harness.bind(AgentId.of("b")));
 
-      assertThat(seen).isNotEmpty();
-      assertThat(seen).allMatch(o -> o == registry);
+      assertThat(produced).hasSize(2);
+      assertThat(produced.get(0)).isNotSameAs(produced.get(1));
+      assertThat(receivedByFactory).isNotEmpty();
+      assertThat(receivedByFactory).allMatch(o -> o == registry);
     }
   }
 }

@@ -47,7 +47,7 @@ public final class Harness<O> {
   private final Function<Binding<O>, ModelCallExecutor> modelExecutorFactory;
   private final Function<Binding<O>, ToolCallExecutor> toolExecutorFactory;
 
-  Harness(
+  private Harness(
       AgentType type,
       ObservationRenderer<O> renderer,
       AgentObserver observer,
@@ -74,9 +74,9 @@ public final class Harness<O> {
   }
 
   /**
-   * The one door onto this package-private constructor: {@link org.jwcarman.nessy.agent.host.Nessy}
-   * is the harness's only compiler — the two host builders are the doors, not this factory, so this
-   * stays a plain composition point rather than growing fluent setters of its own.
+   * The one caller of this private constructor: {@link org.jwcarman.nessy.agent.host.Nessy} is the
+   * harness's only compiler — the two host builders are the doors, not this factory, so this stays
+   * a plain composition point rather than growing fluent setters of its own.
    */
   public static <O> Harness<O> of(
       AgentType type,

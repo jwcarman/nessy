@@ -236,6 +236,9 @@ public final class Nessy {
      * InMemoryMemorySubstrate#forScope(String)} — over one shared substrate built at {@link
      * #build()}. A factory is free to return views over any durable substrate shared across many
      * hosts (spec §10.11) — the id is the only key, and losing a view loses nothing.
+     *
+     * <p>Invoked once per delivery — the factory MUST return a view over shared state, never
+     * freshly-created state; there is no per-id cache behind it.
      */
     public AutonomousBuilder memoryFactory(Function<String, Memory> memoryFactory) {
       this.memoryFactory = Objects.requireNonNull(memoryFactory, "memoryFactory must not be null");
@@ -247,6 +250,9 @@ public final class Nessy {
      * InMemoryStateSubstrate#forScope(String)} — over one shared substrate built at {@link
      * #build()}. A factory is free to return views over any durable substrate shared across many
      * hosts (spec §10.11) — the id is the only key, and losing a view loses nothing.
+     *
+     * <p>Invoked once per delivery — the factory MUST return a view over shared state, never
+     * freshly-created state; there is no per-id cache behind it.
      */
     public AutonomousBuilder storeFactory(Function<String, AgentStateStore> storeFactory) {
       this.storeFactory = Objects.requireNonNull(storeFactory, "storeFactory must not be null");
