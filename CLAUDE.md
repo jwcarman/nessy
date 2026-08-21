@@ -41,6 +41,12 @@ context-pipeline reform.)
 
 - Full verification: `./mvnw -q clean verify` — must pass with no API key and
   no model-provider network access, always.
+- **Build economics**: `clean verify` on the whole reactor is the FINAL GATE,
+  run ONCE per task before its last commit — never per step. While iterating,
+  use warm scoped builds: `./mvnw -q -pl <module> -am test` (no `clean`).
+  Never run two Maven processes concurrently in one worktree (they collide on
+  `target/`). Parallel reactor builds (`-T 1C`) are permitted once verified
+  green in a worktree.
 - Before every commit: `./mvnw license:format -Plicense && ./mvnw spotless:apply`.
 - Live (token-spending) tests: excluded by default; run with
   `./mvnw test -Dnessy.excludedGroups=`.
