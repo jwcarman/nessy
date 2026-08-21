@@ -196,11 +196,25 @@ sequence of renames and interim shapes that produced it.
   connection metadata, never assumed. `nessy-tck` publishes the contract test
   for every SPI seam as an abstract JUnit 5 class, run once in-memory and once
   per vendor against `nessy-jdbc`.
+- **Core dissolves — `nessy-api` and `nessy-spi` become modules.** The
+  distillation left `nessy-core` containing only `api.**` and `spi.**` —
+  nothing remained to be "core," so the module dissolves into what it
+  already was: no rename, an evaporation. `nessy-api` is the vocabulary
+  everyone shares — messages, the tool and authorization/risk grammar, turn
+  events, `Awaited`, `CallAddress`, `CompletionPolicy`, `ToolEvent`,
+  `Intent` — and depends on `nessy-durable` and Jackson alone. `nessy-spi`
+  is the seams an outsider implements without ever knowing the machine —
+  the model provider SPI, `Memory`, `IntentStore`, and the approver trio
+  (`Approver`/`Adjudication`/`ApprovalRequest`) — and depends on `nessy-api`.
+  Tool, policy, and enricher authors compile against `nessy-api` alone;
+  adapter authors against `nessy-spi`; application builders against
+  `nessy-agent`, which carries both transitively along with the machine
+  itself.
 - **Time-ordered identifiers.** Conversation and park identifiers are
   UUIDv7, generated via java-uuid-generator — sortable by creation time,
   index-friendly for a durable store.
 - **Observability.** Micrometer `Observation` instrumentation covers model
-  calls, tool executions, and the loop's own turns; `nessy-core` logs
+  calls, tool executions, and the loop's own turns; `nessy-api` logs
   through `org.slf4j:slf4j-api`, leaving the binding to the application.
 - **Termination and retry seams.** `TerminationPolicy` is a per-agent
   cost/call budget guarding against a runaway loop; `RetryingModelProvider`

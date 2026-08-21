@@ -40,7 +40,7 @@ consumer:
 </dependency>
 ```
 
-`nessy-tck` brings only `nessy-core`, `junit-jupiter-api`, and `assertj-core`
+`nessy-tck` brings only `nessy-spi`, `junit-jupiter-api`, and `assertj-core`
 — no test engine. Your own POM already carries `junit-jupiter-engine` (or
 `junit-platform-launcher`) for its own tests to run at all, and that engine
 is what actually executes the contracts once extended.

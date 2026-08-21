@@ -137,18 +137,29 @@ actually needs:
 </dependencyManagement>
 ```
 
+Tool, policy, and enricher authors compile against `nessy-api` alone; adapter
+authors — a custom `Memory`, `IntentStore`, or approver — add `nessy-spi`; an
+application just building an agent depends on `nessy-agent`, which pulls both
+in.
+
 ```xml
 <dependencies>
-  <!-- The durable computation primitive — nessy-core and nessy-agent both build on this. -->
+  <!-- The durable computation primitive — nessy-api and nessy-agent both build on this. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-durable</artifactId>
   </dependency>
 
-  <!-- The core API: Tool, ToolGrant, UsagePolicy, the authorization chokepoint. -->
+  <!-- The shared vocabulary: Tool, ToolGrant, UsagePolicy, the authorization chokepoint. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-core</artifactId>
+    <artifactId>nessy-api</artifactId>
+  </dependency>
+
+  <!-- Outsider seams: the model provider SPI, Memory, IntentStore, the approver trio. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-spi</artifactId>
   </dependency>
 
   <!-- The agent runtime and both front doors: Nessy.cli() and Nessy.autonomous(). -->
@@ -226,7 +237,7 @@ budget (`TerminationPolicy`, the wallet guard against runaway loops), a
 `RetryingModelProvider` decorator for wrapping any `ModelProvider` with retry
 policy, and `AgentConfig#contextWindow(long)`, a declared-but-unconsumed
 token-budget dial reserved for a future token-aware `AgentMemory`. All three exist
-in `nessy-core` today; see the Javadoc until they get a home on the site.
+in `nessy-spi` today; see the Javadoc until they get a home on the site.
 
 ## Examples
 
