@@ -198,3 +198,34 @@ chokepoint, demos move their effect overrides to grant contributors), (4) risk +
 (5) `Tool.of`, (6) intent rebirth + the governed-turn flagship (intent declared, risk assessed,
 threshold policy requires approval, desk approves, tool runs — the whole gate in one narrated
 demo through the autonomous host).
+
+## 8. The context is the pipeline (ratified 2026-08-21)
+
+The action wave left a contradiction standing: the action is deposited under `ACTION_KEY`
+(facts are keys — agent-as-scope §4.2) AND threaded as a typed parameter through
+`Enricher<A>`/`UsagePolicy<A>` — two paths to one fact, the §10.8 disease, and the sole reason
+the grant grammar was riddled with wildcards and needed a stored `Judgment` closure to survive
+erasure. The evidence that the parameter was vestigial: every shipped policy
+(`ThresholdPolicy`, `RequireDeclaredPolicy`, the canonical statics) ignores it and reads keys.
+
+Ruled:
+
+- **The pipeline is monomorphic.** `Enricher { AuthzContext enrich(AuthzContext context); }`
+  and `UsagePolicy { PolicyDecision evaluate(AuthzContext context); }` — no type parameters,
+  no wildcards, anywhere. An `AuthzContext` goes through; the policy reads it.
+- **The action travels only as the key.** The contributor renders it (still typed `<I, A>` at
+  the production site, welded to the tool's input inside the grant factory — the one place
+  generics remain live), it enters the bag under `ACTION_KEY` before enrichers run, and
+  consumers recover it with `context.action(Class)`.
+- **The compile-time weld is traded away, eyes open**: an action-aware enricher or policy that
+  finds the slot empty or mistyped fails closed on its own terms (deny naming the absent/wrong
+  fact) — a runtime `Optional` miss instead of a compile error. The grant author writes both
+  sides; the loss is small and the wildcard tax it paid for was not.
+- **`ToolGrant` becomes a final class with a private constructor** — the `grant(...)` factories
+  are now the enforced-single door ("exactly one way to write it" restored to literal truth),
+  the four parts stay as accessors for the report, the render function is a private captured
+  field, and `public Judged judge(AuthzContext, Object input)` is the pipeline as behavior.
+  The nested `Judgment` interface and the public `judgment` component are deleted.
+- **The ladder law simplifies**: "typed" stops being a rung of its own — a typed policy is one
+  that reads a typed key. Stage-named fail-closed, render-once, and the Static rung-0 fast
+  path are unchanged.
