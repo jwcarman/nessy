@@ -24,14 +24,14 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * public door for asking whether a policy is one of the two canonical statics without being able to
  * name which.
  */
-final class Allow implements UsagePolicy<Object>, UsagePolicy.Static {
+final class Allow implements UsagePolicy, UsagePolicy.Static {
 
   static final Allow INSTANCE = new Allow();
 
   private Allow() {}
 
   @Override
-  public PolicyDecision evaluate(AuthzContext context, Object action) {
+  public PolicyDecision evaluate(AuthzContext context) {
     return decision();
   }
 

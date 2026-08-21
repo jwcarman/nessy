@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.tool.authorization;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -127,6 +128,42 @@ class AuthzContextTest {
       assertThat(context.action()).contains("transfer 5 dollars");
       assertThat(context.action(String.class)).contains("transfer 5 dollars");
       assertThat(context.action(Integer.class)).isEmpty();
+    }
+  }
+
+  @Nested
+  class General_typed_read {
+
+    private static final Key<Object> COLOR = new Key<>(Object.class, "color");
+
+    @Test
+    void a_matching_class_token_narrows_to_the_deposited_value() {
+      AuthzContext context = freshContext().with(COLOR, "blue");
+
+      assertThat(context.get(COLOR, String.class)).contains("blue");
+    }
+
+    @Test
+    void a_deposit_present_under_the_wrong_type_narrows_to_empty() {
+      AuthzContext context = freshContext().with(COLOR, "blue");
+
+      assertThat(context.get(COLOR, Integer.class)).isEmpty();
+    }
+
+    @Test
+    void an_absent_key_narrows_to_empty_too() {
+      AuthzContext context = freshContext();
+
+      assertThat(context.get(COLOR, String.class)).isEmpty();
+    }
+
+    @Test
+    void narrowing_compiles_under_a_non_object_bound_key_like_risk_key() {
+      RiskAssessment assessment =
+          new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, RiskLevel.HIGH, Set.of());
+      AuthzContext context = freshContext().with(AuthzContext.RISK_KEY, assessment);
+
+      assertThat(context.get(AuthzContext.RISK_KEY, RiskAssessment.class)).contains(assessment);
     }
   }
 }

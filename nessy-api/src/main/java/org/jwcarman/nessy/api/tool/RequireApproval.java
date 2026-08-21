@@ -32,14 +32,14 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * this one — {@code AuthorizationReport} instead compares a policy against the canonical instance
  * {@link UsagePolicy#requireApproval()} returns.
  */
-final class RequireApproval implements UsagePolicy<Object> {
+final class RequireApproval implements UsagePolicy {
 
   static final RequireApproval INSTANCE = new RequireApproval();
 
   private RequireApproval() {}
 
   @Override
-  public PolicyDecision evaluate(AuthzContext context, Object action) {
+  public PolicyDecision evaluate(AuthzContext context) {
     return new PolicyDecision.RequireApproval();
   }
 }

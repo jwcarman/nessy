@@ -34,26 +34,26 @@ class EnrichersTest {
 
   @Test
   void principalDepositsTheResolvedValueUnderPrincipalKey() {
-    Enricher<Object> enricher = Enrichers.principal(() -> "ada");
+    Enricher enricher = Enrichers.principal(() -> "ada");
 
-    AuthzContext enriched = enricher.enrich(freshContext(), null);
+    AuthzContext enriched = enricher.enrich(freshContext());
 
     assertThat(enriched.get(AuthzContext.PRINCIPAL_KEY)).contains("ada");
   }
 
   @Test
   void principalNeverMutatesTheContextItWasGiven() {
-    Enricher<Object> enricher = Enrichers.principal(() -> "ada");
+    Enricher enricher = Enrichers.principal(() -> "ada");
     AuthzContext context = freshContext();
 
-    enricher.enrich(context, null);
+    enricher.enrich(context);
 
     assertThat(context.principal()).isEmpty();
   }
 
   @Test
   void principalReportsItselfAsNamedPrincipal() {
-    Enricher<Object> enricher = Enrichers.principal(() -> "ada");
+    Enricher enricher = Enrichers.principal(() -> "ada");
 
     assertThat(enricher.displayName()).contains("principal");
   }
@@ -61,10 +61,10 @@ class EnrichersTest {
   @Test
   void principalCallsTheResolverFreshOnEveryEnrichment() {
     AtomicInteger calls = new AtomicInteger();
-    Enricher<Object> enricher = Enrichers.principal(() -> "principal-" + calls.incrementAndGet());
+    Enricher enricher = Enrichers.principal(() -> "principal-" + calls.incrementAndGet());
 
-    AuthzContext first = enricher.enrich(freshContext(), null);
-    AuthzContext second = enricher.enrich(freshContext(), null);
+    AuthzContext first = enricher.enrich(freshContext());
+    AuthzContext second = enricher.enrich(freshContext());
 
     assertThat(first.get(AuthzContext.PRINCIPAL_KEY)).contains("principal-1");
     assertThat(second.get(AuthzContext.PRINCIPAL_KEY)).contains("principal-2");

@@ -353,9 +353,9 @@ class RegistryToolCallExecutorTest {
 
   @Test
   void aThrowingPolicyFailsClosed() {
-    UsagePolicy<Object> boomingPolicy =
+    UsagePolicy boomingPolicy =
         UsagePolicy.of(
-            (context, action) -> {
+            context -> {
               throw new RuntimeException("boom");
             });
     var registry = ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), boomingPolicy));
@@ -388,8 +388,8 @@ class RegistryToolCallExecutorTest {
           requests.add(request);
           return new Adjudication.Granted();
         };
-    Enricher<Object> principalEnricher =
-        Enricher.named("principal", (ctx, action) -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
+    Enricher principalEnricher =
+        Enricher.named("principal", ctx -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
     ActionContributor<EchoInput, String> stringValueOf = String::valueOf;
     var registry =
         ToolRegistry.of(
@@ -403,7 +403,7 @@ class RegistryToolCallExecutorTest {
     assertThat(requests).hasSize(1);
     var request = requests.getFirst();
     assertThat(request.address()).isEqualTo(new CallAddress("cli", "cli", "c1"));
-    assertThat(request.action()).isEqualTo("EchoInput[value=hi]");
+    assertThat(request.context().action()).contains("EchoInput[value=hi]");
     assertThat(request.context().agentName()).isEqualTo("cli");
     assertThat(request.context().principal()).contains("ada");
     assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("echo: hi")));

@@ -44,7 +44,7 @@ public final class RiskPolicies {
    *
    * @throws IllegalArgumentException if {@code approveAt} is more severe than {@code denyAt}
    */
-  public static UsagePolicy<Object> threshold(RiskLevel approveAt, RiskLevel denyAt) {
+  public static UsagePolicy threshold(RiskLevel approveAt, RiskLevel denyAt) {
     Objects.requireNonNull(approveAt, "approveAt must not be null");
     Objects.requireNonNull(denyAt, "denyAt must not be null");
     if (approveAt.compareTo(denyAt) > 0) {
@@ -60,7 +60,7 @@ public final class RiskPolicies {
    * Package-private: {@link #threshold(RiskLevel, RiskLevel)} is the only supported way to obtain
    * one.
    */
-  static final class ThresholdPolicy implements UsagePolicy<Object> {
+  static final class ThresholdPolicy implements UsagePolicy {
 
     private final RiskLevel approveAt;
     private final RiskLevel denyAt;
@@ -71,7 +71,7 @@ public final class RiskPolicies {
     }
 
     @Override
-    public PolicyDecision evaluate(AuthzContext context, Object action) {
+    public PolicyDecision evaluate(AuthzContext context) {
       Optional<RiskAssessment> assessment = context.risk();
       if (assessment.isEmpty()) {
         return new PolicyDecision.Deny("no risk assessment deposited under RISK_KEY");

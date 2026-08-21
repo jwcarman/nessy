@@ -38,7 +38,7 @@ public final class IntentPolicies {
    * <p>This reads the context on every call — deliberately not a {@link UsagePolicy.Static}, since
    * its verdict depends on whatever the intent enricher deposited.
    */
-  public static UsagePolicy<Object> requireDeclared(Class<?> vocabulary) {
+  public static UsagePolicy requireDeclared(Class<?> vocabulary) {
     Objects.requireNonNull(vocabulary, "vocabulary must not be null");
     return new RequireDeclaredPolicy(vocabulary);
   }
@@ -50,7 +50,7 @@ public final class IntentPolicies {
    * {@link RiskPolicies}'s own threshold policy). Package-private: {@link #requireDeclared(Class)}
    * is the only supported way to obtain one.
    */
-  static final class RequireDeclaredPolicy implements UsagePolicy<Object> {
+  static final class RequireDeclaredPolicy implements UsagePolicy {
 
     private final Class<?> vocabulary;
 
@@ -59,7 +59,7 @@ public final class IntentPolicies {
     }
 
     @Override
-    public PolicyDecision evaluate(AuthzContext context, Object action) {
+    public PolicyDecision evaluate(AuthzContext context) {
       return context
           .declaredIntent(vocabulary)
           .<PolicyDecision>map(declared -> new PolicyDecision.Allow())

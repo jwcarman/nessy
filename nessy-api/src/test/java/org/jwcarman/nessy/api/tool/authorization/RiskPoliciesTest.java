@@ -57,34 +57,34 @@ class RiskPoliciesTest {
 
     @Test
     void aSeverityBelowApproveAtIsAllowed() {
-      UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
+      UsagePolicy policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.VERY_LOW);
 
-      assertThat(policy.evaluate(context, CALL)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(context)).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void aSeverityAtApproveAtRequiresApproval() {
-      UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
+      UsagePolicy policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.LOW);
 
-      assertThat(policy.evaluate(context, CALL)).isEqualTo(new PolicyDecision.RequireApproval());
+      assertThat(policy.evaluate(context)).isEqualTo(new PolicyDecision.RequireApproval());
     }
 
     @Test
     void aSeverityJustBelowDenyAtRequiresApproval() {
-      UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
+      UsagePolicy policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.MODERATE);
 
-      assertThat(policy.evaluate(context, CALL)).isEqualTo(new PolicyDecision.RequireApproval());
+      assertThat(policy.evaluate(context)).isEqualTo(new PolicyDecision.RequireApproval());
     }
 
     @Test
     void aSeverityAtDenyAtIsDeniedNamingTheSeverityAndThreshold() {
-      UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
+      UsagePolicy policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.HIGH);
 
-      PolicyDecision decision = policy.evaluate(context, CALL);
+      PolicyDecision decision = policy.evaluate(context);
 
       assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
       String reason = ((PolicyDecision.Deny) decision).reason();
@@ -93,18 +93,18 @@ class RiskPoliciesTest {
 
     @Test
     void aSeverityAboveDenyAtIsDenied() {
-      UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
+      UsagePolicy policy = RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH);
       AuthzContext context = contextWithSeverity(RiskLevel.VERY_HIGH);
 
-      assertThat(policy.evaluate(context, CALL)).isInstanceOf(PolicyDecision.Deny.class);
+      assertThat(policy.evaluate(context)).isInstanceOf(PolicyDecision.Deny.class);
     }
 
     @Test
     void anAbsentRiskAssessmentFailsClosedWithADenyNamingTheMissingSlot() {
-      UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.HIGH);
+      UsagePolicy policy = RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.HIGH);
       AuthzContext context = freshContext();
 
-      PolicyDecision decision = policy.evaluate(context, CALL);
+      PolicyDecision decision = policy.evaluate(context);
 
       assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
       String reason = ((PolicyDecision.Deny) decision).reason();
@@ -113,12 +113,12 @@ class RiskPoliciesTest {
 
     @Test
     void equalApproveAndDenyAtLeavesNoApprovalBandSoThatSeverityDeniesOutright() {
-      UsagePolicy<Object> policy = RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.MODERATE);
+      UsagePolicy policy = RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.MODERATE);
       AuthzContext atThreshold = contextWithSeverity(RiskLevel.MODERATE);
       AuthzContext belowThreshold = contextWithSeverity(RiskLevel.LOW);
 
-      assertThat(policy.evaluate(atThreshold, CALL)).isInstanceOf(PolicyDecision.Deny.class);
-      assertThat(policy.evaluate(belowThreshold, CALL)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(atThreshold)).isInstanceOf(PolicyDecision.Deny.class);
+      assertThat(policy.evaluate(belowThreshold)).isEqualTo(new PolicyDecision.Allow());
     }
   }
 }

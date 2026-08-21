@@ -54,31 +54,30 @@ class UsagePolicyTest {
 
     @Test
     void allowAlwaysAllows() {
-      UsagePolicy<Object> policy = UsagePolicy.allow();
+      UsagePolicy policy = UsagePolicy.allow();
       ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(contextFor(call), call)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(contextFor(call))).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void denyAlwaysDeniesWithTheSameReason() {
-      UsagePolicy<Object> policy = UsagePolicy.deny("no budget");
+      UsagePolicy policy = UsagePolicy.deny("no budget");
       ToolCall first = spendCall(1);
       ToolCall second = spendCall(999);
 
-      assertThat(policy.evaluate(contextFor(first), first))
+      assertThat(policy.evaluate(contextFor(first)))
           .isEqualTo(new PolicyDecision.Deny("no budget"));
-      assertThat(policy.evaluate(contextFor(second), second))
+      assertThat(policy.evaluate(contextFor(second)))
           .isEqualTo(new PolicyDecision.Deny("no budget"));
     }
 
     @Test
     void requireApprovalAlwaysDefers() {
-      UsagePolicy<Object> policy = UsagePolicy.requireApproval();
+      UsagePolicy policy = UsagePolicy.requireApproval();
       ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(contextFor(call), call))
-          .isEqualTo(new PolicyDecision.RequireApproval());
+      assertThat(policy.evaluate(contextFor(call))).isEqualTo(new PolicyDecision.RequireApproval());
     }
 
     @Test
@@ -96,9 +95,9 @@ class UsagePolicyTest {
      * parameter (design of record 2026-08-16-authorization §5's migration: today's two-arg policies
      * become context-reading lambdas).
      */
-    private static UsagePolicy<Object> approveUnder(int limit) {
+    private static UsagePolicy approveUnder(int limit) {
       return UsagePolicy.of(
-          (context, action) -> {
+          context -> {
             int amount = context.call().arguments().get("amount").asInt();
             return amount < limit
                 ? new PolicyDecision.Allow()
@@ -108,18 +107,18 @@ class UsagePolicyTest {
 
     @Test
     void aCallUnderTheLimitIsAllowed() {
-      UsagePolicy<Object> policy = approveUnder(100);
+      UsagePolicy policy = approveUnder(100);
       ToolCall call = spendCall(50);
 
-      assertThat(policy.evaluate(contextFor(call), call)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(contextFor(call))).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void aCallAtOrOverTheLimitIsDenied() {
-      UsagePolicy<Object> policy = approveUnder(100);
+      UsagePolicy policy = approveUnder(100);
       ToolCall call = spendCall(100);
 
-      assertThat(policy.evaluate(contextFor(call), call))
+      assertThat(policy.evaluate(contextFor(call)))
           .isEqualTo(new PolicyDecision.Deny("amount 100 exceeds limit 100"));
     }
   }
@@ -158,7 +157,7 @@ class UsagePolicyTest {
 
     @Test
     void grantRejectsANullTool() {
-      UsagePolicy<Object> policy = UsagePolicy.allow();
+      UsagePolicy policy = UsagePolicy.allow();
 
       assertThatThrownBy(() -> ToolGrant.grant(null, policy))
           .isInstanceOf(NullPointerException.class)
@@ -177,7 +176,7 @@ class UsagePolicyTest {
     @Test
     void grantStatesTheToolAndPolicyItWasGiven() {
       Recorder tool = new Recorder();
-      UsagePolicy<Object> policy = UsagePolicy.requireApproval();
+      UsagePolicy policy = UsagePolicy.requireApproval();
 
       ToolGrant grant = ToolGrant.grant(tool, policy);
 
@@ -186,31 +185,14 @@ class UsagePolicyTest {
     }
   }
 
+  /**
+   * {@code ToolGrant} is a final class with a private constructor (action-wave spec §8) — the
+   * {@code grant(...)} factories, exercised in {@link Grant_construction}, are the only supported
+   * door, so there is no raw constructor left to pin here. What remains is {@link PolicyDecision}'s
+   * own validation.
+   */
   @Nested
   class Validation {
-
-    private static final ActionContributor<Object, Object> DEFAULT_CONTRIBUTOR = String::valueOf;
-    private static final ToolGrant.Judgment NOOP_JUDGMENT = (context, input) -> null;
-
-    @Test
-    void aGrantRejectsANullTool() {
-      UsagePolicy<Object> policy = UsagePolicy.allow();
-
-      assertThatThrownBy(
-              () -> new ToolGrant(null, policy, List.of(), DEFAULT_CONTRIBUTOR, NOOP_JUDGMENT))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("tool");
-    }
-
-    @Test
-    void aGrantRejectsANullPolicy() {
-      Grant_construction.Recorder tool = new Grant_construction.Recorder();
-
-      assertThatThrownBy(
-              () -> new ToolGrant(tool, null, List.of(), DEFAULT_CONTRIBUTOR, NOOP_JUDGMENT))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("policy");
-    }
 
     @Test
     void aDenyDecisionRejectsABlankReason() {
@@ -232,47 +214,43 @@ class UsagePolicyTest {
 
     @Test
     void allAllowIsAllowed() {
-      UsagePolicy<Object> policy =
-          UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
+      UsagePolicy policy = UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
       ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(contextFor(call), call)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(contextFor(call))).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void theFirstDenyWinsAndItsOwnReasonSurfaces() {
-      UsagePolicy<Object> policy =
+      UsagePolicy policy =
           UsagePolicy.allOf(
               List.of(UsagePolicy.allow(), UsagePolicy.deny("first"), UsagePolicy.deny("second")));
       ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(contextFor(call), call))
-          .isEqualTo(new PolicyDecision.Deny("first"));
+      assertThat(policy.evaluate(contextFor(call))).isEqualTo(new PolicyDecision.Deny("first"));
     }
 
     @Test
     void aRequireApprovalWinsOverAnAllowWhenNoDenyIsPresent() {
-      UsagePolicy<Object> policy =
+      UsagePolicy policy =
           UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.requireApproval()));
       ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(contextFor(call), call))
-          .isEqualTo(new PolicyDecision.RequireApproval());
+      assertThat(policy.evaluate(contextFor(call))).isEqualTo(new PolicyDecision.RequireApproval());
     }
 
     @Test
     void evaluatesInOrderSoALaterDenyNeverOverridesAnEarlierOne() {
-      UsagePolicy<Object> policy =
+      UsagePolicy policy =
           UsagePolicy.allOf(List.of(UsagePolicy.deny("early"), UsagePolicy.requireApproval()));
       ToolCall call = spendCall(1);
 
-      assertThat(policy.evaluate(contextFor(call), call))
-          .isEqualTo(new PolicyDecision.Deny("early"));
+      assertThat(policy.evaluate(contextFor(call))).isEqualTo(new PolicyDecision.Deny("early"));
     }
 
     @Test
     void rejectsAnEmptyList() {
-      List<UsagePolicy<Object>> empty = List.of();
+      List<UsagePolicy> empty = List.of();
 
       assertThatThrownBy(() -> UsagePolicy.allOf(empty))
           .isInstanceOf(IllegalArgumentException.class);
@@ -280,7 +258,7 @@ class UsagePolicyTest {
 
     @Test
     void rejectsAListContainingANullElement() {
-      List<UsagePolicy<Object>> withNull = Arrays.asList(UsagePolicy.allow(), null);
+      List<UsagePolicy> withNull = Arrays.asList(UsagePolicy.allow(), null);
 
       assertThatThrownBy(() -> UsagePolicy.allOf(withNull))
           .isInstanceOf(IllegalArgumentException.class);
@@ -288,8 +266,7 @@ class UsagePolicyTest {
 
     @Test
     void theCompositeIsNeverStatic() {
-      UsagePolicy<Object> policy =
-          UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
+      UsagePolicy policy = UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
 
       assertThat(policy).isNotInstanceOf(UsagePolicy.Static.class);
     }
@@ -298,14 +275,14 @@ class UsagePolicyTest {
 
     @Test
     void combinesRequireDeclaredWithARiskThresholdPolicyDenyingOnTheUndeclaredIntentFirst() {
-      UsagePolicy<Object> policy =
+      UsagePolicy policy =
           UsagePolicy.allOf(
               List.of(
                   IntentPolicies.requireDeclared(Restart.class),
                   RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
       ToolCall call = spendCall(1);
 
-      PolicyDecision decision = policy.evaluate(contextFor(call), call);
+      PolicyDecision decision = policy.evaluate(contextFor(call));
 
       assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
       assertThat(((PolicyDecision.Deny) decision).reason()).contains("declare-intent");
@@ -313,7 +290,7 @@ class UsagePolicyTest {
 
     @Test
     void combinesRequireDeclaredWithARiskThresholdPolicyDenyingOnRiskWhenIntentIsDeclared() {
-      UsagePolicy<Object> policy =
+      UsagePolicy policy =
           UsagePolicy.allOf(
               List.of(
                   IntentPolicies.requireDeclared(Restart.class),
@@ -326,7 +303,7 @@ class UsagePolicyTest {
               .with(AuthzContext.DECLARED_INTENT_KEY, new Restart("prod-eu"))
               .with(AuthzContext.RISK_KEY, highRisk);
 
-      PolicyDecision decision = policy.evaluate(context, call);
+      PolicyDecision decision = policy.evaluate(context);
 
       assertThat(decision).isInstanceOf(PolicyDecision.Deny.class);
       assertThat(((PolicyDecision.Deny) decision).reason()).contains("HIGH");
@@ -334,7 +311,7 @@ class UsagePolicyTest {
 
     @Test
     void combinesRequireDeclaredWithARiskThresholdPolicyAllowingWhenBothAreSatisfied() {
-      UsagePolicy<Object> policy =
+      UsagePolicy policy =
           UsagePolicy.allOf(
               List.of(
                   IntentPolicies.requireDeclared(Restart.class),
@@ -347,13 +324,12 @@ class UsagePolicyTest {
               .with(AuthzContext.DECLARED_INTENT_KEY, new Restart("prod-eu"))
               .with(AuthzContext.RISK_KEY, lowRisk);
 
-      assertThat(policy.evaluate(context, call)).isEqualTo(new PolicyDecision.Allow());
+      assertThat(policy.evaluate(context)).isEqualTo(new PolicyDecision.Allow());
     }
 
     @Test
     void namesItsOwnClassForTheAuthorizationReport() {
-      UsagePolicy<Object> policy =
-          UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
+      UsagePolicy policy = UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
       Grant_construction.Recorder tool = new Grant_construction.Recorder();
 
       ToolGrant grant = ToolGrant.grant(tool, policy);

@@ -115,19 +115,18 @@ class TypedIntentDemo {
   private static final ActionContributor<RestartInput, String> RESTART_ACTION =
       ActionContributor.named("restart-statement", in -> "restart " + in.target());
 
-  private static Enricher<Object> riskAssessor(Likelihood likelihood, Impact impact) {
+  private static Enricher riskAssessor(Likelihood likelihood, Impact impact) {
     RiskAssessment assessment = RiskAssessment.of(likelihood, impact, RiskFactors.DESTRUCTIVE);
-    return Enricher.named(
-        "risk", (context, action) -> context.with(AuthzContext.RISK_KEY, assessment));
+    return Enricher.named("risk", context -> context.with(AuthzContext.RISK_KEY, assessment));
   }
 
   /**
    * The org's own consistency check (vocabulary amendment §3): declared target must match acted
    * target.
    */
-  private static UsagePolicy<Object> consistencyPolicy() {
-    return UsagePolicy.<Object>of(
-        (context, action) -> {
+  private static UsagePolicy consistencyPolicy() {
+    return UsagePolicy.of(
+        context -> {
           Optional<OpsIntent> declared = context.declaredIntent(OpsIntent.class);
           if (declared.isEmpty()) {
             return new PolicyDecision.Allow();
@@ -150,8 +149,8 @@ class TypedIntentDemo {
   }
 
   private static ToolGrant restartGrant(
-      IntentStore<OpsIntent> intentStore, Enricher<Object> riskAssessor, boolean checkConsistency) {
-    List<UsagePolicy<Object>> policies =
+      IntentStore<OpsIntent> intentStore, Enricher riskAssessor, boolean checkConsistency) {
+    List<UsagePolicy> policies =
         checkConsistency
             ? List.of(
                 IntentPolicies.requireDeclared(OpsIntent.class),
