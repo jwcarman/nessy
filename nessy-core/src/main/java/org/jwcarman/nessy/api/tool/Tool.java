@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 
@@ -31,6 +32,24 @@ import org.jwcarman.nessy.api.CompletionPolicy;
  * @param <T> the record this tool's arguments arrive in
  */
 public interface Tool<T> {
+
+  /**
+   * Composes a first-party tool from per-door customization: {@code customizer} fills in a live
+   * {@link ToolConfig}, then this factory turns it into the finished {@link Tool}. No public {@code
+   * build()} survives here; the factory is the only place a {@link ToolConfig} ever turns into a
+   * {@link Tool} (design of record 2026-08-16 §1, amended 2026-08-20 §5) — mirroring {@link
+   * org.jwcarman.nessy.api.turn.TurnObserver#observe(org.jwcarman.nessy.api.turn.TurnObserverCustomizer)}.
+   *
+   * @param inputType the record this tool's arguments arrive in; also drives its default name
+   * @param customizer fills in the tool's name, description, and exactly one handler door
+   */
+  static <T> Tool<T> of(Class<T> inputType, ToolCustomizer<T> customizer) {
+    Objects.requireNonNull(inputType, "inputType must not be null");
+    Objects.requireNonNull(customizer, "customizer must not be null");
+    ToolConfig<T> config = new ToolConfig<>(inputType);
+    customizer.customize(config);
+    return config.finish();
+  }
 
   /** What the model calls it. Must be unique within a registry. */
   String name();
