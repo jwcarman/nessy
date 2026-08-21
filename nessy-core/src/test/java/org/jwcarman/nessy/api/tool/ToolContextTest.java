@@ -21,19 +21,18 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.event.ToolProgress;
 
 class ToolContextTest {
 
   @Test
-  void progress_emits_with_the_frameworks_own_ids() {
-    List<Object> heard = new ArrayList<>();
+  void progress_reaches_the_listener_as_tool_event_progress() {
+    List<ToolEvent> heard = new ArrayList<>();
     ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
     ToolContext context =
         new ToolContext(call, heard::add, new CallAddress("test-agent", "test-scope", call.id()));
 
     context.progress("halfway");
 
-    assertThat(heard).containsExactly(new ToolProgress("c1", "halfway"));
+    assertThat(heard).containsExactly(new ToolEvent.Progress("halfway"));
   }
 }

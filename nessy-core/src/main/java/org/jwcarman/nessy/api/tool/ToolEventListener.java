@@ -13,15 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.event;
+package org.jwcarman.nessy.api.tool;
 
-import java.util.Objects;
+/** The audience a tool speaks to mid-execution. */
+@FunctionalInterface
+public interface ToolEventListener {
 
-/** A long-running tool reporting from inside its own execution. */
-public record ToolProgress(String toolCallId, String message) {
+  void on(ToolEvent event);
 
-  public ToolProgress {
-    Objects.requireNonNull(toolCallId, "toolCallId must not be null");
-    Objects.requireNonNull(message, "message must not be null");
+  /** The absent audience: accepts everything, tells no one. */
+  static ToolEventListener noop() {
+    return event -> {};
   }
 }

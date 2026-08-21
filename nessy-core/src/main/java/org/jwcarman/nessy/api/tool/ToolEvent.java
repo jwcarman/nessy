@@ -13,15 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.event;
+package org.jwcarman.nessy.api.tool;
 
-/** The emit-only face of the listener registry. Anything holding one may announce; nothing more. */
-public interface EventEmitter {
+/** What a tool may tell the harness mid-execution — sealed: every event is harness-interpreted. */
+public sealed interface ToolEvent {
 
-  void emit(Object event);
+  /** A progress heartbeat from inside a long-running tool. */
+  record Progress(String message) implements ToolEvent {
 
-  /** An emitter that discards everything — for wiring that needs a sink but never inspects it. */
-  static EventEmitter noop() {
-    return event -> {};
+    public Progress {
+      if (message == null || message.isBlank()) {
+        throw new IllegalArgumentException("message must not be blank");
+      }
+    }
   }
 }

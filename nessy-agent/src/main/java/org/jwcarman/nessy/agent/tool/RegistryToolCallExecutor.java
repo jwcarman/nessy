@@ -32,12 +32,12 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.event.ToolProgress;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolEvent;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -181,7 +181,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {
     T typed = tool.inputType().cast(input);
-    ToolContext context = new ToolContext(call, event -> narrateProgress(call, event), address);
+    ToolContext context = new ToolContext(call, event -> narrate(call, event), address);
     return switch (tool.execute(typed, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
@@ -192,16 +192,14 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   /**
-   * A {@link ToolContext}'s own {@code progress} emits a {@link ToolProgress} record; that is the
-   * one shape worth reading a message out of. Anything else falls back to {@code
-   * String.valueOf(event)} rather than being dropped.
+   * Narrates a tool's {@link ToolEvent} onto the turn. The sealed switch is the compile-time
+   * contract — a new {@link ToolEvent} variant fails this build until it is handled here.
    */
-  private void narrateProgress(ToolCall call, Object event) {
-    String message =
-        event instanceof ToolProgress(var _, String progressMessage)
-            ? progressMessage
-            : String.valueOf(event);
-    turn.on(new TurnEvent.ToolCallProgressed(call, message));
+  private void narrate(ToolCall call, ToolEvent event) {
+    switch (event) {
+      case ToolEvent.Progress(String message) ->
+          turn.on(new TurnEvent.ToolCallProgressed(call, message));
+    }
   }
 
   private ToolOutcome failed(ToolCall call, String message) {

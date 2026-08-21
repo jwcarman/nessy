@@ -16,11 +16,9 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.event.EventEmitter;
-import org.jwcarman.nessy.api.event.ToolProgress;
 
 /** What a tool learns about the invocation it is serving. */
-public record ToolContext(ToolCall call, EventEmitter events, CallAddress address) {
+public record ToolContext(ToolCall call, ToolEventListener events, CallAddress address) {
 
   public ToolContext {
     Objects.requireNonNull(call, "call must not be null");
@@ -34,6 +32,6 @@ public record ToolContext(ToolCall call, EventEmitter events, CallAddress addres
    * arrives, so there is nothing to distrust).
    */
   public void progress(String message) {
-    events.emit(new ToolProgress(call.id(), message));
+    events.on(new ToolEvent.Progress(message));
   }
 }
