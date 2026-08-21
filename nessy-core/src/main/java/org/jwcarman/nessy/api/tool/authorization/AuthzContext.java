@@ -44,6 +44,13 @@ public interface AuthzContext {
    */
   Key<Object> DECLARED_INTENT_KEY = new Key<>(Object.class, "declaredIntent");
 
+  /**
+   * The well-known slot a grant's judgment deposits its rendered action into, before any enricher
+   * runs (action-wave spec §1) — every enricher can read the action either as its own typed
+   * parameter or, generically, through {@link #action()}.
+   */
+  Key<Object> ACTION_KEY = new Key<>(Object.class, "action");
+
   /** The agent that owns the grant being evaluated. */
   String agentName();
 
@@ -80,6 +87,15 @@ public interface AuthzContext {
   /** {@link #declaredIntent()}, recovered by class token: empty on a miss as well as an absence. */
   default <T> Optional<T> declaredIntent(Class<T> type) {
     return declaredIntent().filter(type::isInstance).map(type::cast);
+  }
+
+  /**
+   * The grant's own rendered action for this call (action-wave spec §1) — deposited under {@link
+   * #ACTION_KEY} before any enricher runs, so every enricher sees it here too, not only as its own
+   * typed parameter.
+   */
+  default Optional<Object> action() {
+    return get(ACTION_KEY);
   }
 
   /**

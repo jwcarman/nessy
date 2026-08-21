@@ -22,7 +22,7 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.EffectfulTool;
+import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -33,15 +33,15 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 
 /**
  * Pins {@link AuthorizationReport} against known wiring (design of record 2026-08-16-authorization
- * §8): a rung-0 grant, whose story must honestly say it renders no effect and runs no enrichers,
- * and a fully-wired rung-3 grant, whose story must name its typed effect and its enrichers in
- * order.
+ * §8, amended by action-wave spec §1): a rung-0 grant, whose story must honestly say it renders no
+ * action and runs no enrichers, and a fully-wired rung-3 grant, whose story must name its
+ * contributor's display name and its enrichers in order.
  */
 class AuthorizationReportTest {
 
   record ClockInput() {}
 
-  /** An untyped rung-0/1 tool — no effect statement worth naming, only {@code toString}. */
+  /** An untyped rung-0/1 tool — no action statement worth naming, only the default contributor. */
   static final class ClockTool implements Tool<ClockInput> {
 
     @Override
@@ -67,10 +67,10 @@ class AuthorizationReportTest {
 
   record TransferInput(String accountId, int cents) {}
 
-  record TransferEffect(String accountId, int cents) {}
+  record TransferAction(String accountId, int cents) {}
 
-  /** A typed tool whose effect a rung-3 grant welds through enrichers to a named policy. */
-  static final class TransferTool implements EffectfulTool<TransferInput, TransferEffect> {
+  /** A typed tool whose action a rung-3 grant welds through enrichers to a named policy. */
+  static final class TransferTool implements Tool<TransferInput> {
 
     @Override
     public String name() {
@@ -88,27 +88,30 @@ class AuthorizationReportTest {
     }
 
     @Override
-    public TransferEffect effect(TransferInput input) {
-      throw new AssertionError("building a report must never render an effect");
-    }
-
-    @Override
     public Awaited<ToolResult> execute(TransferInput input, ToolContext context) {
       return Awaited.ready(ToolResult.ok("transferred"));
     }
   }
 
+  private static final ActionContributor<TransferInput, TransferAction> TRANSFER_ACTION =
+      input -> {
+        throw new AssertionError("building a report must never render an action");
+      };
+
+  private static final ActionContributor<TransferInput, TransferAction> NAMED_TRANSFER_ACTION =
+      ActionContributor.named("transfer-action", TRANSFER_ACTION);
+
   /** A named policy class — its report identity is its own simple name, no field to declare. */
-  static final class RiskThresholdPolicy implements UsagePolicy<TransferEffect> {
+  static final class RiskThresholdPolicy implements UsagePolicy<TransferAction> {
 
     @Override
-    public PolicyDecision evaluate(AuthzContext context, TransferEffect effect) {
+    public PolicyDecision evaluate(AuthzContext context, TransferAction action) {
       throw new AssertionError("building a report must never evaluate a policy");
     }
   }
 
-  private static Enricher<TransferEffect> explodingEnricher(String failureMessage) {
-    return (context, effect) -> {
+  private static Enricher<TransferAction> explodingEnricher(String failureMessage) {
+    return (context, action) -> {
       throw new AssertionError(failureMessage);
     };
   }
@@ -119,14 +122,14 @@ class AuthorizationReportTest {
     private final ToolGrant grant = ToolGrant.grant(new ClockTool(), UsagePolicy.allow());
 
     @Test
-    void reports_no_effect_rendering_and_no_enrichers() {
+    void reports_no_action_rendering_and_no_enrichers() {
       AuthorizationReport report = AuthorizationReport.of(List.of(grant));
 
       GrantStory story = report.grants().getFirst();
 
       assertThat(story.toolName()).isEqualTo("clock");
-      assertThat(story.effectRendered()).isFalse();
-      assertThat(story.effectType()).isEmpty();
+      assertThat(story.actionRendered()).isFalse();
+      assertThat(story.actionContributor()).isEmpty();
       assertThat(story.enrichers()).isEmpty();
       assertThat(story.policy()).isEqualTo("allow()");
     }
@@ -144,12 +147,13 @@ class AuthorizationReportTest {
       ToolGrant staticWithEnrichers =
           ToolGrant.grant(
               new TransferTool(),
+              TRANSFER_ACTION,
               List.of(explodingEnricher("a static policy's grant must never run an enricher")),
               UsagePolicy.allow());
 
       GrantStory story = AuthorizationReport.of(List.of(staticWithEnrichers)).grants().getFirst();
 
-      assertThat(story.effectRendered()).isFalse();
+      assertThat(story.actionRendered()).isFalse();
       assertThat(story.enrichers()).isEmpty();
     }
   }
@@ -160,18 +164,19 @@ class AuthorizationReportTest {
     private final ToolGrant grant =
         ToolGrant.grant(
             new TransferTool(),
+            NAMED_TRANSFER_ACTION,
             List.of(
-                Enricher.named("principal", (context, effect) -> context),
-                (context, effect) -> context),
+                Enricher.named("principal", (context, action) -> context),
+                (context, action) -> context),
             new RiskThresholdPolicy());
 
     @Test
-    void names_its_typed_effect() {
+    void names_its_action_contributor() {
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
       assertThat(story.toolName()).isEqualTo("transfer");
-      assertThat(story.effectRendered()).isTrue();
-      assertThat(story.effectType()).contains("TransferEffect");
+      assertThat(story.actionRendered()).isTrue();
+      assertThat(story.actionContributor()).contains("transfer-action");
     }
 
     @Test
@@ -195,7 +200,23 @@ class AuthorizationReportTest {
 
       assertThat(report.render())
           .isEqualTo(
-              "transfer:  TransferEffect → principal → enricher 2 → policy (RiskThresholdPolicy)");
+              "transfer: action(transfer-action) → principal → enricher 2 → policy"
+                  + " (RiskThresholdPolicy)");
+    }
+  }
+
+  @Nested
+  class An_anonymous_contributor {
+
+    @Test
+    void reports_the_default_placeholder_when_the_contributor_carries_no_display_name() {
+      ToolGrant grant =
+          ToolGrant.grant(new TransferTool(), TRANSFER_ACTION, new RiskThresholdPolicy());
+
+      GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
+
+      assertThat(story.actionContributor()).isEmpty();
+      assertThat(story.render()).startsWith("transfer: action(default)");
     }
   }
 
@@ -205,7 +226,8 @@ class AuthorizationReportTest {
     @Test
     void orders_grants_by_tool_name_regardless_of_wiring_order() {
       ToolGrant transfer =
-          ToolGrant.grant(new TransferTool(), List.of(), new RiskThresholdPolicy());
+          ToolGrant.grant(
+              new TransferTool(), TRANSFER_ACTION, List.of(), new RiskThresholdPolicy());
       ToolGrant clock = ToolGrant.grant(new ClockTool(), UsagePolicy.allow());
 
       AuthorizationReport report = AuthorizationReport.of(List.of(transfer, clock));
@@ -218,7 +240,8 @@ class AuthorizationReportTest {
     @Test
     void render_joins_every_story_one_per_line() {
       ToolGrant transfer =
-          ToolGrant.grant(new TransferTool(), List.of(), new RiskThresholdPolicy());
+          ToolGrant.grant(
+              new TransferTool(), TRANSFER_ACTION, List.of(), new RiskThresholdPolicy());
       ToolGrant clock = ToolGrant.grant(new ClockTool(), UsagePolicy.allow());
 
       AuthorizationReport report = AuthorizationReport.of(List.of(transfer, clock));
@@ -240,12 +263,12 @@ class AuthorizationReportTest {
     }
 
     @Test
-    void require_approval_still_renders_an_effect_since_it_is_not_a_static_verdict() {
+    void require_approval_still_renders_an_action_since_it_is_not_a_static_verdict() {
       ToolGrant grant = ToolGrant.grant(new ClockTool(), UsagePolicy.requireApproval());
 
       GrantStory story = AuthorizationReport.of(List.of(grant)).grants().getFirst();
 
-      assertThat(story.effectRendered()).isTrue();
+      assertThat(story.actionRendered()).isTrue();
     }
 
     @Test
@@ -263,7 +286,7 @@ class AuthorizationReportTest {
 
     @Test
     void a_bare_enricher_lambda_carries_no_display_name_by_default() {
-      Enricher<Object> bare = (context, effect) -> context;
+      Enricher<Object> bare = (context, action) -> context;
 
       assertThat(bare.displayName()).isEmpty();
     }
@@ -273,7 +296,7 @@ class AuthorizationReportTest {
       Key<String> seen = new Key<>(String.class, "seen");
       ToolCall call = new ToolCall("c1", "clock", JsonNodeFactory.instance.objectNode());
       AuthzContext context = AuthzContext.of("test-agent", call);
-      Enricher<Object> delegate = (ctx, effect) -> ctx.with(seen, "yes");
+      Enricher<Object> delegate = (ctx, action) -> ctx.with(seen, "yes");
       Enricher<Object> named = Enricher.named("marker", delegate);
 
       AuthzContext extended = named.enrich(context, "irrelevant");

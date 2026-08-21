@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -77,16 +78,14 @@ class AutonomousApprovalDemo {
     }
 
     @Override
-    public Object effect(RestartInput input) {
-      return "restart " + input.target();
-    }
-
-    @Override
     public Awaited<ToolResult> execute(RestartInput input, ToolContext context) {
       // Immediate! The approval gate is the wait, not the tool itself.
       return Awaited.ready(ToolResult.ok("restarted " + input.target()));
     }
   }
+
+  private static final ActionContributor<RestartInput, String> RESTART_ACTION =
+      input -> "restart " + input.target();
 
   @Test
   void anApprovalParksTheTurnAndTheDeskResumesIt() {
@@ -109,7 +108,8 @@ class AutonomousApprovalDemo {
             .type("ops")
             .provider(provider)
             .settings(TestSettings.settings())
-            .grants(ToolGrant.grant(new RestartTool(), UsagePolicy.requireApproval()))
+            .grants(
+                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(
                 id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
@@ -174,7 +174,8 @@ class AutonomousApprovalDemo {
             .type("ops")
             .provider(provider)
             .settings(TestSettings.settings())
-            .grants(ToolGrant.grant(new RestartTool(), UsagePolicy.requireApproval()))
+            .grants(
+                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(
                 id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))

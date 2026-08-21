@@ -23,7 +23,7 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * own canonical factory name ({@code requireApproval()}) rather than an unreadable synthetic lambda
  * token — the same motivation {@link Allow} and {@link Deny} already have. Deliberately does NOT
  * implement {@link UsagePolicy.Static}: unlike those two, its verdict still needs the tool's
- * rendered effect and the assembled context handed to the approver (design §9), so it must not take
+ * rendered action and the assembled context handed to the approver (design §9), so it must not take
  * the chokepoint's rung-0 fast path (see {@link UsagePolicy.Static}'s own javadoc).
  *
  * <p>Package-private: nothing outside {@code org.jwcarman.nessy.api.tool} may name this type
@@ -39,7 +39,7 @@ final class RequireApproval implements UsagePolicy<Object> {
   private RequireApproval() {}
 
   @Override
-  public PolicyDecision evaluate(AuthzContext context, Object effect) {
+  public PolicyDecision evaluate(AuthzContext context, Object action) {
     return new PolicyDecision.RequireApproval();
   }
 }

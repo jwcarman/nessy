@@ -160,7 +160,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       }
       decision = judged.decision();
       context = judged.context();
-      effect = judged.effect();
+      effect = judged.action();
     }
     return switch (decision) {
       case PolicyDecision.Allow ignored -> run(grant.tool(), input, call, address);

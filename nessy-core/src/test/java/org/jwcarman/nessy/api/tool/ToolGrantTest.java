@@ -30,7 +30,7 @@ class ToolGrantTest {
 
   record GreetInput(String name) {}
 
-  static final class GreetTool implements EffectfulTool<GreetInput, String> {
+  static final class GreetTool implements Tool<GreetInput> {
     @Override
     public String name() {
       return "greet";
@@ -47,25 +47,23 @@ class ToolGrantTest {
     }
 
     @Override
-    public String effect(GreetInput input) {
-      return "greet " + input.name();
-    }
-
-    @Override
     public Awaited<ToolResult> execute(GreetInput input, ToolContext context) {
       return Awaited.ready(ToolResult.ok("hi"));
     }
   }
 
-  static final class ThrowingEffectTool implements EffectfulTool<GreetInput, String> {
+  private static final ActionContributor<GreetInput, String> GREETING =
+      input -> "greet " + input.name();
+
+  static final class ThrowingActionTool implements Tool<GreetInput> {
     @Override
     public String name() {
-      return "throws_on_effect";
+      return "throws_on_action";
     }
 
     @Override
     public String description() {
-      return "always fails rendering its effect";
+      return "always fails rendering its action";
     }
 
     @Override
@@ -74,48 +72,65 @@ class ToolGrantTest {
     }
 
     @Override
-    public String effect(GreetInput input) {
-      throw new IllegalArgumentException("boom");
-    }
-
-    @Override
     public Awaited<ToolResult> execute(GreetInput input, ToolContext context) {
       return Awaited.ready(ToolResult.ok("hi"));
     }
   }
+
+  private static final ActionContributor<GreetInput, String> THROWING_CONTRIBUTOR =
+      input -> {
+        throw new IllegalArgumentException("boom");
+      };
 
   private static ToolCall callFor(String name) {
     return new ToolCall("c1", name, JsonNodeFactory.instance.objectNode());
   }
 
   @Test
-  void theWeldedJudgmentRunsEnrichersThenPolicyOverTheTypedEffect() {
-    Key<String> seen = new Key<>(String.class, "seenEffect");
-    EffectfulTool<GreetInput, String> tool = new GreetTool();
-    Enricher<String> recorder = (context, effect) -> context.with(seen, effect);
+  void theWeldedJudgmentRunsEnrichersThenPolicyOverTheContributedAction() {
+    Key<String> seen = new Key<>(String.class, "seenAction");
+    Tool<GreetInput> tool = new GreetTool();
+    Enricher<String> recorder = (context, action) -> context.with(seen, action);
     UsagePolicy<String> policy =
         UsagePolicy.of(
-            (context, effect) ->
+            (context, action) ->
                 new PolicyDecision.Deny("saw " + context.get(seen).orElse("nothing")));
-    ToolGrant grant = ToolGrant.grant(tool, List.of(recorder), policy);
+    ToolGrant grant = ToolGrant.grant(tool, GREETING, List.of(recorder), policy);
 
     ToolGrant.Judged judged =
         grant.judgment().decide(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
 
     assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("saw greet Ada"));
-    assertThat(judged.effect()).isEqualTo("greet Ada");
+    assertThat(judged.action()).isEqualTo("greet Ada");
     assertThat(judged.context().get(seen)).contains("greet Ada");
+  }
+
+  private static final Key<String> SAW_VIA_ACTION = new Key<>(String.class, "sawViaAction");
+
+  @Test
+  void theActionIsDepositedUnderTheActionKeyBeforeEnrichersRun() {
+    Tool<GreetInput> tool = new GreetTool();
+    Enricher<String> readsActionFromContext =
+        (context, action) -> context.with(SAW_VIA_ACTION, (String) context.action().orElse(null));
+    UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+    ToolGrant grant = ToolGrant.grant(tool, GREETING, List.of(readsActionFromContext), policy);
+
+    ToolGrant.Judged judged =
+        grant.judgment().decide(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+
+    assertThat(judged.context().get(SAW_VIA_ACTION)).contains("greet Ada");
+    assertThat(judged.context().action()).contains("greet Ada");
   }
 
   @Test
   void enrichersRunInOrderEachThreadingTheContextItWasHandedIntoTheNext() {
-    Key<String> seen = new Key<>(String.class, "seenEffect");
-    EffectfulTool<GreetInput, String> tool = new GreetTool();
-    Enricher<String> first = (context, effect) -> context.with(seen, effect);
+    Key<String> seen = new Key<>(String.class, "seenAction");
+    Tool<GreetInput> tool = new GreetTool();
+    Enricher<String> first = (context, action) -> context.with(seen, action);
     Enricher<String> second =
-        (context, effect) -> context.with(seen, context.get(seen).orElse("") + "|B");
-    UsagePolicy<String> policy = UsagePolicy.of((context, effect) -> new PolicyDecision.Allow());
-    ToolGrant grant = ToolGrant.grant(tool, List.of(first, second), policy);
+        (context, action) -> context.with(seen, context.get(seen).orElse("") + "|B");
+    UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+    ToolGrant grant = ToolGrant.grant(tool, GREETING, List.of(first, second), policy);
 
     ToolGrant.Judged judged =
         grant.judgment().decide(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
@@ -124,33 +139,62 @@ class ToolGrantTest {
   }
 
   @Test
-  void theUntypedDoorJudgesOverTheToolsOwnEffect() {
+  void theTypedNoEnrichersDoorWeldsTheContributorWithoutRunningAnyEnricher() {
+    Tool<GreetInput> tool = new GreetTool();
+    UsagePolicy<String> policy =
+        UsagePolicy.of((context, action) -> new PolicyDecision.Deny("saw " + action));
+    ToolGrant grant = ToolGrant.grant(tool, GREETING, policy);
+
+    ToolGrant.Judged judged =
+        grant.judgment().decide(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+
+    assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("saw greet Ada"));
+    assertThat(judged.action()).isEqualTo("greet Ada");
+    assertThat(grant.enrichers()).isEmpty();
+  }
+
+  @Test
+  void theUntypedDoorJudgesOverTheDefaultContributorsStringValueOf() {
     ToolGrant grant = ToolGrant.grant(new GreetTool(), UsagePolicy.deny("no"));
 
     ToolGrant.Judged judged =
         grant.judgment().decide(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
 
     assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("no"));
+    assertThat(judged.action()).isEqualTo(String.valueOf(new GreetInput("Ada")));
   }
 
   @Test
-  void aThrowingEffectFailsClosedNamingTheEffectStage() {
-    ToolGrant grant = ToolGrant.grant(new ThrowingEffectTool(), List.of(), UsagePolicy.allow());
-    AuthzContext context = AuthzContext.of("agent", callFor("throws_on_effect"));
+  void theUntypedDoorsDefaultContributorDepositsUnderTheActionKeyToo() {
+    ToolGrant grant = ToolGrant.grant(new GreetTool(), UsagePolicy.requireApproval());
+
+    ToolGrant.Judged judged =
+        grant.judgment().decide(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+
+    assertThat(judged.context().action()).contains(String.valueOf(new GreetInput("Ada")));
+  }
+
+  @Test
+  void aThrowingContributorFailsClosedNamingTheActionStage() {
+    ToolGrant grant =
+        ToolGrant.grant(
+            new ThrowingActionTool(), THROWING_CONTRIBUTOR, List.of(), UsagePolicy.allow());
+    AuthzContext context = AuthzContext.of("agent", callFor("throws_on_action"));
 
     assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageStartingWith("effect stage: boom")
+        .hasMessageStartingWith("action stage: boom")
         .hasCauseInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aThrowingEnricherFailsClosedNamingTheEnricherStage() {
     Enricher<String> boom =
-        (context, effect) -> {
+        (context, action) -> {
           throw new IllegalStateException("kaboom");
         };
-    ToolGrant grant = ToolGrant.grant(new GreetTool(), List.of(boom), UsagePolicy.allow());
+    ToolGrant grant =
+        ToolGrant.grant(new GreetTool(), GREETING, List.of(boom), UsagePolicy.allow());
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
 
     assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
@@ -164,10 +208,11 @@ class ToolGrantTest {
     Enricher<String> boom =
         Enricher.named(
             "quota-check",
-            (context, effect) -> {
+            (context, action) -> {
               throw new IllegalStateException("kaboom");
             });
-    ToolGrant grant = ToolGrant.grant(new GreetTool(), List.of(boom), UsagePolicy.allow());
+    ToolGrant grant =
+        ToolGrant.grant(new GreetTool(), GREETING, List.of(boom), UsagePolicy.allow());
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
 
     assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
@@ -179,10 +224,10 @@ class ToolGrantTest {
   void aThrowingPolicyFailsClosedNamingThePolicyStage() {
     UsagePolicy<String> boom =
         UsagePolicy.of(
-            (context, effect) -> {
+            (context, action) -> {
               throw new IllegalStateException("nope");
             });
-    ToolGrant grant = ToolGrant.grant(new GreetTool(), List.of(), boom);
+    ToolGrant grant = ToolGrant.grant(new GreetTool(), GREETING, List.of(), boom);
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
 
     assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))

@@ -27,29 +27,29 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  *
  * <p>{@code evaluate} must be pure: no I/O, no mutation, nothing beyond a function of its two
  * arguments — the final {@link AuthzContext} an ordered chain of enrichers assembled, and the
- * tool's own rendered effect. The executor may call it from any thread and treats an escaping
+ * grant's own rendered action. The executor may call it from any thread and treats an escaping
  * {@code RuntimeException} as a {@link PolicyDecision.Deny} naming the policy stage — a broken
  * policy fails closed rather than becoming an allow.
  *
- * <p>{@code E} is the effect type this policy judges. A grant welds it to the tool's own {@code
- * EffectfulTool<I, E>} at compile time (rung 2); every accepting site takes {@code UsagePolicy<?
- * super E>}, so the canonical {@link #allow()}, {@link #deny(String)}, and {@link
+ * <p>{@code E} is the action type this policy judges. A grant welds it to its own {@link
+ * ActionContributor}'s {@code A} at compile time (rung 2); every accepting site takes {@code
+ * UsagePolicy<? super E>}, so the canonical {@link #allow()}, {@link #deny(String)}, and {@link
  * #requireApproval()} — all {@code UsagePolicy<Object>} — terminate any grant regardless of what it
  * welded.
  *
- * @param <E> the effect type this policy judges
+ * @param <E> the action type this policy judges
  */
 public interface UsagePolicy<E> {
 
-  /** Decides {@code call}'s fate, purely from the final context and the tool's rendered effect. */
-  PolicyDecision evaluate(AuthzContext context, E effect);
+  /** Decides {@code call}'s fate, purely from the final context and the grant's rendered action. */
+  PolicyDecision evaluate(AuthzContext context, E action);
 
   /**
    * Every call proceeds; the approver is never consulted. Always the same canonical instance — the
    * identity {@code org.jwcarman.nessy.AgentConfig}'s own approver-defaulting check compares a
    * grant's policy against to tell "no approval path can exist here" from an opaque custom policy
-   * that might. Its verdict never depends on context or effect, so the chokepoint fast-paths it
-   * (ladder-law rung 0): no effect rendered, no context assembled, no enrichers run.
+   * that might. Its verdict never depends on context or action, so the chokepoint fast-paths it
+   * (ladder-law rung 0): no action rendered, no context assembled, no enrichers run.
    */
   static UsagePolicy<Object> allow() {
     return Allow.INSTANCE;
@@ -57,7 +57,7 @@ public interface UsagePolicy<E> {
 
   /**
    * Every call is refused, with the same reason each time. Like {@link #allow()}, its verdict never
-   * depends on context or effect, so it shares the same rung-0 fast path.
+   * depends on context or action, so it shares the same rung-0 fast path.
    */
   static UsagePolicy<Object> deny(String reason) {
     return new Deny(reason);
@@ -66,7 +66,7 @@ public interface UsagePolicy<E> {
   /**
    * Every call defers to the approver — unlike {@link #allow()}, which never asks. Context-blind
    * like the other two canonical factories, but NOT rung-0: the approver still needs to see the
-   * tool's rendered effect and the assembled context (design §9), so this does not fast-path them
+   * grant's rendered action and the assembled context (design §9), so this does not fast-path them
    * away. A context-aware policy may return {@link PolicyDecision.RequireApproval} conditionally
    * instead of using this factory at all — it pays the assembly cost either way.
    */
@@ -75,16 +75,16 @@ public interface UsagePolicy<E> {
   }
 
   /**
-   * Pins the effect type {@code E} at the call site for a rung-1 lambda reading {@link
+   * Pins the action type {@code E} at the call site for a rung-1 lambda reading {@link
    * AuthzContext#call()}/{@link AuthzContext#state()} — {@code UsagePolicy.<Foo>of((context,
-   * effect) -> ...)} where target-type inference alone would otherwise leave {@code E} ambiguous.
+   * action) -> ...)} where target-type inference alone would otherwise leave {@code E} ambiguous.
    */
   static <E> UsagePolicy<E> of(UsagePolicy<E> policy) {
     return Objects.requireNonNull(policy, "policy must not be null");
   }
 
   /**
-   * Marker for a policy whose verdict never depends on context or effect — implemented ONLY by
+   * Marker for a policy whose verdict never depends on context or action — implemented ONLY by
    * {@code Allow} and {@code Deny}, the two canonical statics (both package-private top-level
    * classes beside this interface, reachable only through {@link #allow()} and {@link
    * #deny(String)}), and sealed shut to exactly those two. The chokepoint checks for this rather
@@ -92,10 +92,10 @@ public interface UsagePolicy<E> {
    * singleton across every reason.
    *
    * <p>This is deliberately closed, not an extension point: the chokepoint's rung-0 fast path skips
-   * {@link #evaluate}'s own fail-closed staging entirely (no effect rendered, no context assembled,
+   * {@link #evaluate}'s own fail-closed staging entirely (no action rendered, no context assembled,
    * no enrichers run — nothing there to catch a throw), so a third {@code Static} implementor would
    * bypass fail-closed staging outright, and if its {@link #decision()} ever returned {@link
-   * PolicyDecision.RequireApproval} the executor would have no context or effect to hand the
+   * PolicyDecision.RequireApproval} the executor would have no context or action to hand the
    * approver at all. {@link #requireApproval()} does not implement this marker for exactly that
    * reason.
    */

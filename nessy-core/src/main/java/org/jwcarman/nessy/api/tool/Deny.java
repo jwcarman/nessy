@@ -20,7 +20,7 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 /**
  * What {@link UsagePolicy#deny(String)} returns: a fresh instance per reason (the reason varies, so
  * unlike {@link Allow} there is no single shared singleton), but always {@link UsagePolicy.Static}
- * — its verdict is fixed at construction, never a function of context or effect. Package-private
+ * — its verdict is fixed at construction, never a function of context or action. Package-private
  * for the same reason {@link Allow} is: nothing outside {@code org.jwcarman.nessy.api.tool} may
  * name this type directly, only reach it through {@link UsagePolicy#deny(String)}.
  */
@@ -33,7 +33,7 @@ final class Deny implements UsagePolicy<Object>, UsagePolicy.Static {
   }
 
   @Override
-  public PolicyDecision evaluate(AuthzContext context, Object effect) {
+  public PolicyDecision evaluate(AuthzContext context, Object action) {
     return decision;
   }
 

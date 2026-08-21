@@ -152,23 +152,6 @@ class McpToolboxTest {
   }
 
   @Nested
-  class Effect {
-
-    @Test
-    void effect_renders_the_tool_name_plus_compact_single_line_json_of_the_arguments() {
-      try (McpTestServer fixture =
-          McpTestServer.open(echoTool(), (exchange, request) -> textResult("ok"))) {
-        Tool<JsonNode> tool = fixture.tool("echo");
-        JsonNode arguments = echoArguments("hi there");
-
-        Object described = tool.effect(arguments);
-
-        assertThat(described).isEqualTo("echo {\"message\":\"hi there\"}");
-      }
-    }
-  }
-
-  @Nested
   class Execution {
 
     @Test

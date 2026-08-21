@@ -33,8 +33,8 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.CallAddress;
-import org.jwcarman.nessy.api.tool.EffectfulTool;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -51,7 +51,7 @@ class RegistryToolCallExecutorTest {
 
   record EchoInput(String value) {}
 
-  static final class EchoTool implements EffectfulTool<EchoInput, String> {
+  static final class EchoTool implements Tool<EchoInput> {
     @Override
     public String name() {
       return "echo";
@@ -65,11 +65,6 @@ class RegistryToolCallExecutorTest {
     @Override
     public Class<EchoInput> inputType() {
       return EchoInput.class;
-    }
-
-    @Override
-    public String effect(EchoInput input) {
-      return String.valueOf(input);
     }
 
     @Override
@@ -136,11 +131,6 @@ class RegistryToolCallExecutorTest {
     @Override
     public Class<EchoInput> inputType() {
       return EchoInput.class;
-    }
-
-    @Override
-    public Object effect(EchoInput input) {
-      throw new AssertionError("effect must never be rendered on the rung-0 fast path");
     }
 
     @Override
@@ -345,10 +335,14 @@ class RegistryToolCallExecutorTest {
         };
     Enricher<Object> principalEnricher =
         Enricher.named("principal", (ctx, effect) -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
+    ActionContributor<EchoInput, String> stringValueOf = String::valueOf;
     var registry =
         ToolRegistry.of(
             ToolGrant.grant(
-                new EchoTool(), List.of(principalEnricher), UsagePolicy.requireApproval()));
+                new EchoTool(),
+                stringValueOf,
+                List.of(principalEnricher),
+                UsagePolicy.requireApproval()));
     var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
     var finished = runWithApprover(registry, call, new RecordingTurnObserver(), recordingApprover);
     assertThat(requests).hasSize(1);

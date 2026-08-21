@@ -23,6 +23,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import org.jwcarman.nessy.agent.spi.ApprovalRequest;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
+import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -66,15 +67,13 @@ public final class ApprovalPlayground {
     }
 
     @Override
-    public Object effect(RestartInput input) {
-      return "restart " + input.target();
-    }
-
-    @Override
     public Awaited<ToolResult> execute(RestartInput input, ToolContext context) {
       return Awaited.ready(ToolResult.ok("restarted " + input.target()));
     }
   }
+
+  private static final ActionContributor<RestartInput, String> RESTART_ACTION =
+      input -> "restart " + input.target();
 
   private ApprovalPlayground() {}
 
@@ -88,7 +87,8 @@ public final class ApprovalPlayground {
             .type("playground")
             .provider(selection.provider())
             .settings(settings)
-            .grants(ToolGrant.grant(new RestartTool(), UsagePolicy.requireApproval()))
+            .grants(
+                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
             .approvalNotifier(pending::add)
             .turnObserver(event -> System.out.println("  [turn] " + event))
             .build()) {

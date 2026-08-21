@@ -79,14 +79,6 @@ final class McpTool implements Tool<JsonNode> {
     return JsonNode.class;
   }
 
-  /**
-   * The tool name plus compact single-line JSON of the arguments — an approval prompt you can skim.
-   */
-  @Override
-  public String effect(JsonNode input) {
-    return name() + " " + input;
-  }
-
   /** Overridden with the server's advertised {@code inputSchema}, not one derived from a record. */
   @Override
   public ToolSpec spec() {

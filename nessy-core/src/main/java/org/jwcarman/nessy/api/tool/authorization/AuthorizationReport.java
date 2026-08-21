@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.api.tool.authorization;
 
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -24,7 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.tool.EffectfulTool;
+import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -34,10 +32,11 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
  * An agent's authorization story, generated from its own grants' wiring — never a second place to
  * declare anything, and never a call that perturbs evaluation (design of record
  * 2026-08-16-authorization §8: "the report is the wiring"). Building one reads {@link
- * ToolGrant#tool()}, {@link ToolGrant#policy()}, and {@link ToolGrant#enrichers()} — reflectively,
- * where needed, to name an {@link EffectfulTool}'s own effect type — and never calls {@link
- * Tool#effect}, {@link Enricher#enrich}, or {@link UsagePolicy#evaluate}. Since it cannot drift
- * from the wiring it reads, it is the audit surface's own raw material.
+ * ToolGrant#tool()}, {@link ToolGrant#policy()}, {@link ToolGrant#enrichers()}, and {@link
+ * ToolGrant#contributor()}'s own {@link ActionContributor#displayName()} — by declaration, never by
+ * reflection over an erased lambda (action-wave spec §1) — and never calls {@link
+ * ActionContributor#actionOf}, {@link Enricher#enrich}, or {@link UsagePolicy#evaluate}. Since it
+ * cannot drift from the wiring it reads, it is the audit surface's own raw material.
  */
 public final class AuthorizationReport {
 
@@ -71,20 +70,21 @@ public final class AuthorizationReport {
   }
 
   /**
-   * Reads one grant's story. {@code effectRendered} mirrors the chokepoint's own rung-0 test
+   * Reads one grant's story. {@code actionRendered} mirrors the chokepoint's own rung-0 test
    * ({@code policy instanceof UsagePolicy.Static}) exactly (design §1): when a grant's policy is a
-   * canonical static verdict, the executor never renders an effect and never runs an enricher for
+   * canonical static verdict, the executor never renders an action and never runs an enricher for
    * it, no matter what the grant's own {@code enrichers()} list happens to hold — so this reports
    * that list as empty too, honest about what actually runs rather than what is merely declared.
    */
   private static GrantStory story(ToolGrant grant) {
     Tool<?> tool = grant.tool();
     UsagePolicy<?> policy = grant.policy();
-    boolean effectRendered = !(policy instanceof UsagePolicy.Static);
-    Optional<String> effectType = effectRendered ? effectTypeName(tool) : Optional.empty();
-    List<String> enricherNames = effectRendered ? enricherNames(grant.enrichers()) : List.of();
+    boolean actionRendered = !(policy instanceof UsagePolicy.Static);
+    Optional<String> contributorName =
+        actionRendered ? grant.contributor().displayName() : Optional.empty();
+    List<String> enricherNames = actionRendered ? enricherNames(grant.enrichers()) : List.of();
     return new GrantStory(
-        tool.name(), effectRendered, effectType, enricherNames, policySummary(policy));
+        tool.name(), actionRendered, contributorName, enricherNames, policySummary(policy));
   }
 
   private static List<String> enricherNames(List<Enricher<?>> enrichers) {
@@ -94,29 +94,6 @@ public final class AuthorizationReport {
       names.add(enrichers.get(i).displayName().orElseGet(() -> "enricher " + position));
     }
     return names;
-  }
-
-  /**
-   * The effect type an {@link EffectfulTool} statically welds, resolved by reflection over the
-   * concrete tool's own directly-implemented generic interfaces — never by calling {@link
-   * Tool#effect}, which would perturb evaluation. Empty for an untyped {@link Tool} and for an
-   * {@link EffectfulTool} whose {@code E} could not be resolved this way (for example, one welded
-   * indirectly through a generic superclass rather than declared directly on the concrete class).
-   */
-  private static Optional<String> effectTypeName(Tool<?> tool) {
-    if (!(tool instanceof EffectfulTool<?, ?>)) {
-      return Optional.empty();
-    }
-    for (Type genericInterface : tool.getClass().getGenericInterfaces()) {
-      if (genericInterface instanceof ParameterizedType parameterized
-          && parameterized.getRawType() == EffectfulTool.class) {
-        Type effectType = parameterized.getActualTypeArguments()[1];
-        if (effectType instanceof Class<?> effectClass) {
-          return Optional.of(effectClass.getSimpleName());
-        }
-      }
-    }
-    return Optional.empty();
   }
 
   /**

@@ -47,11 +47,6 @@ class ToolRegistryTest {
     }
 
     @Override
-    public String effect(Greet input) {
-      return "greet(" + input.name() + ")";
-    }
-
-    @Override
     public Awaited<ToolResult> execute(Greet input, ToolContext context) {
       return Awaited.ready(ToolResult.ok("Hello, " + input.name()));
     }

@@ -31,7 +31,7 @@ final class Allow implements UsagePolicy<Object>, UsagePolicy.Static {
   private Allow() {}
 
   @Override
-  public PolicyDecision evaluate(AuthzContext context, Object effect) {
+  public PolicyDecision evaluate(AuthzContext context, Object action) {
     return decision();
   }
 
