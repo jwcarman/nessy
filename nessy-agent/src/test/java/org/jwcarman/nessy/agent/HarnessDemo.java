@@ -35,11 +35,11 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /** Throwaway demo — not part of the suite's contract. Prints a whole turn. */
-class WiringDemo {
+class HarnessDemo {
 
   @Test
   void aWholeTurnNarrated() {
-    // ---- collaborators: plain construction, any order, no binding step ----
+    // ---- collaborators: plain construction, any order ----
     var pump = new PumpedExecutor();
     var memory = new RecordingMemory();
     var store = new InMemoryAgentStateStore();
@@ -88,19 +88,20 @@ class WiringDemo {
           public void observationRequeued(Object observation) {}
         };
 
-    // ---- the wiring: one record, ten slots ----
-    var agent =
-        new DefaultAgent<>(
-            new AgentWiring<>(
-                memory,
-                store,
-                backlog,
-                text -> List.of(new TextBlock(text)),
-                model,
-                tools,
-                narrator,
-                false,
-                StalenessPolicy.never()));
+    // ---- the harness: the recipe, id-free — and one bind stamps this scope's handles ----
+    var harness =
+        Harness.<String>of(
+            AgentType.of("demo"),
+            text -> List.of(new TextBlock(text)),
+            narrator,
+            false,
+            StalenessPolicy.never(),
+            rawId -> memory,
+            rawId -> store,
+            rawId -> backlog,
+            binding -> model,
+            binding -> tools);
+    var agent = new DefaultAgent<>(harness, harness.bind(AgentId.of("demo-scope")));
 
     // ---- script the world ----
     var lookup =

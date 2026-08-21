@@ -27,6 +27,7 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.RecordingAgentObserver;
+import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
@@ -61,17 +62,16 @@ class DefaultAgentRedispatchTest {
     var tools = new CountingToolCallExecutor();
     var observer = new RecordingAgentObserver();
     var agent =
-        new DefaultAgent<>(
-            new AgentWiring<>(
-                new VerbatimMemory(),
-                store,
-                new NoopBacklog(),
-                text -> List.of(new TextBlock(text)),
-                model,
-                tools,
-                observer,
-                false,
-                StalenessPolicy.never()));
+        TestAgents.<String>wired(
+            new VerbatimMemory(),
+            store,
+            new NoopBacklog(),
+            text -> List.of(new TextBlock(text)),
+            model,
+            tools,
+            observer,
+            false,
+            StalenessPolicy.never());
 
     agent.redispatch();
 
@@ -88,17 +88,16 @@ class DefaultAgentRedispatchTest {
     var tools = new CountingToolCallExecutor();
     var observer = new RecordingAgentObserver();
     var agent =
-        new DefaultAgent<>(
-            new AgentWiring<>(
-                new VerbatimMemory(),
-                store,
-                new NoopBacklog(),
-                text -> List.of(new TextBlock(text)),
-                model,
-                tools,
-                observer,
-                false,
-                StalenessPolicy.never()));
+        TestAgents.<String>wired(
+            new VerbatimMemory(),
+            store,
+            new NoopBacklog(),
+            text -> List.of(new TextBlock(text)),
+            model,
+            tools,
+            observer,
+            false,
+            StalenessPolicy.never());
 
     agent.redispatch();
 

@@ -18,37 +18,48 @@ package org.jwcarman.nessy.agent;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
+import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.message.ContentBlock;
 
 /**
  * The shell: load–handle–save–dispatch with a retry (§3.4). No concurrency machinery — the store's
- * version CAS is the only lock (§3.2), and executors deliver on their own stacks (§4).
+ * version CAS is the only lock (§3.2), and executors deliver on their own stacks (§4). Bound to one
+ * scope at construction (§10.11): {@code harness} carries every id-free collaborator, {@code
+ * binding} the thin, id-specific handles — instances are cheap, transient, and interchangeable
+ * (§4.3).
  */
 public final class DefaultAgent<O> implements Agent<O> {
 
-  private final AgentWiring<O> wiring;
+  private final Harness<O> harness;
+  private final Binding<O> binding;
+  private final ModelCallExecutor model;
+  private final ToolCallExecutor tools;
 
-  public DefaultAgent(AgentWiring<O> wiring) {
-    this.wiring = Objects.requireNonNull(wiring, "wiring must not be null");
+  public DefaultAgent(Harness<O> harness, Binding<O> binding) {
+    this.harness = Objects.requireNonNull(harness, "harness must not be null");
+    this.binding = Objects.requireNonNull(binding, "binding must not be null");
+    this.model = harness.modelExecutor(binding);
+    this.tools = harness.toolExecutor(binding);
   }
 
   @Override
   public void observe(O observation) {
-    wiring.backlog().add(observation);
+    binding.backlog().add(observation);
     drive();
   }
 
   @Override
   public void drive() {
-    State state = wiring.store().load();
+    State state = binding.store().load();
     if (state.phase() instanceof Phase.Idle) {
       drain();
       return;
     }
     if (isStale(state)) {
       List<Effect> outstanding = state.phase().outstandingEffects();
-      wiring.observer().reFired(outstanding);
+      harness.observer().reFired(outstanding);
       outstanding.forEach(this::dispatch); // §6.1 — the re-fire arm
     }
   }
@@ -66,7 +77,7 @@ public final class DefaultAgent<O> implements Agent<O> {
       } catch (StaleStateException e) {
         // another writer advanced the scope — re-handle against what it left behind
       } catch (RuntimeException e) {
-        wiring
+        harness
             .observer()
             .applyFailed(event, e); // narrate-and-drop: the shell manufactures no events
         return;
@@ -75,40 +86,40 @@ public final class DefaultAgent<O> implements Agent<O> {
   }
 
   private void applyOnce(AgentEvent event) {
-    applyOnce(wiring.store().load(), event);
+    applyOnce(binding.store().load(), event);
   }
 
   private void applyOnce(State state, AgentEvent event) {
     Transition t = state.phase().handle(event); // decide before committing
     if (t.isIgnored()) {
-      wiring.observer().ignored(event);
+      harness.observer().ignored(event);
       return;
     }
-    t.commit().forEach(wiring.memory()::remember); // commit before dispatch
-    wiring.store().save(new State(t.next(), state.version()));
-    wiring.observer().applied(event, t);
+    t.commit().forEach(binding.memory()::remember); // commit before dispatch
+    binding.store().save(new State(t.next(), state.version()));
+    harness.observer().applied(event, t);
     t.effects().forEach(this::dispatch);
-    if (t.next() instanceof Phase.Idle && wiring.drainOnIdle()) {
+    if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
       drive(); // §3.1 — the autonomous wiring's drain executor
     }
   }
 
   private void drain() {
     while (true) {
-      State state = wiring.store().load();
+      State state = binding.store().load();
       if (!(state.phase() instanceof Phase.Idle)) {
         return;
       }
-      Optional<O> next = wiring.backlog().poll();
+      Optional<O> next = binding.backlog().poll();
       if (next.isEmpty()) {
         return;
       }
       O observation = next.get();
       List<ContentBlock> content;
       try {
-        content = wiring.renderer().render(observation);
+        content = harness.renderer().render(observation);
       } catch (RuntimeException e) {
-        wiring.observer().renderFailed(observation, e); // discard; stay idle; keep draining
+        harness.observer().renderFailed(observation, e); // discard; stay idle; keep draining
         continue;
       }
       if (content.isEmpty()) {
@@ -117,8 +128,8 @@ public final class DefaultAgent<O> implements Agent<O> {
       try {
         applyOnce(state, new AgentEvent.Observed(content));
       } catch (StaleStateException e) {
-        wiring.backlog().add(observation); // lost race → back to the backlog (§3.3)
-        wiring.observer().observationRequeued(observation);
+        binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
+        harness.observer().observationRequeued(observation);
       }
     }
   }
@@ -136,7 +147,7 @@ public final class DefaultAgent<O> implements Agent<O> {
    * commit a stale response into a later turn.
    */
   void redispatch() {
-    State state = wiring.store().load();
+    State state = binding.store().load();
     if (state.phase() instanceof Phase.Idle) {
       return;
     }
@@ -144,18 +155,18 @@ public final class DefaultAgent<O> implements Agent<O> {
         state.phase().outstandingEffects().stream()
             .filter(effect -> effect instanceof Effect.ExecuteTool)
             .toList();
-    wiring.observer().reFired(outstanding);
+    harness.observer().reFired(outstanding);
     outstanding.forEach(this::dispatch);
   }
 
   private boolean isStale(State state) {
-    return wiring.stalenessPolicy().isStale(state.phase(), wiring.store().lastSaved());
+    return harness.stalenessPolicy().isStale(state.phase(), binding.store().lastSaved());
   }
 
   private void dispatch(Effect effect) {
     switch (effect) {
-      case Effect.CallModel ignored -> wiring.model().callModel(this::deliver);
-      case Effect.ExecuteTool(var call) -> wiring.tools().executeTool(call, this::deliver);
+      case Effect.CallModel ignored -> model.callModel(this::deliver);
+      case Effect.ExecuteTool(var call) -> tools.executeTool(call, this::deliver);
     }
   }
 }

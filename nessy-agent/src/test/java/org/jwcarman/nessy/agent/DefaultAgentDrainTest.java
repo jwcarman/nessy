@@ -26,6 +26,7 @@ import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
+import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 
@@ -38,22 +39,21 @@ class DefaultAgentDrainTest {
     // both apply against the shared store, and this test quietly proves interchangeability.
     var f = new AgentFixture();
     var poisoned =
-        new DefaultAgent<>(
-            new AgentWiring<>(
-                f.memory,
-                f.store,
-                f.backlog,
-                text -> {
-                  if (text.startsWith("bad")) {
-                    throw new IllegalArgumentException("unrenderable");
-                  }
-                  return List.of(new TextBlock(text));
-                },
-                f.model,
-                f.tools,
-                f.observer,
-                false,
-                StalenessPolicy.never()));
+        TestAgents.<String>wired(
+            f.memory,
+            f.store,
+            f.backlog,
+            text -> {
+              if (text.startsWith("bad")) {
+                throw new IllegalArgumentException("unrenderable");
+              }
+              return List.of(new TextBlock(text));
+            },
+            f.model,
+            f.tools,
+            f.observer,
+            false,
+            StalenessPolicy.never());
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     f.backlogQueue.add("bad-observation");
     f.backlogQueue.add("good-observation");
@@ -90,8 +90,8 @@ class DefaultAgentDrainTest {
             return Optional.of("hello");
           }
         };
-    var wiring =
-        new AgentWiring<String>(
+    var agent =
+        TestAgents.<String>wired(
             new RecordingMemory(),
             store,
             racingBacklog,
@@ -101,7 +101,6 @@ class DefaultAgentDrainTest {
             new RecordingObserver(),
             false,
             StalenessPolicy.never());
-    var agent = new DefaultAgent<>(wiring);
     agent.drive();
     assertThat(addedBack).containsExactly("hello");
     assertThat(store.load().phase()).isEqualTo(new Phase.AwaitingModel());
@@ -112,17 +111,16 @@ class DefaultAgentDrainTest {
     var f = new AgentFixture();
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     var poisoned =
-        new DefaultAgent<>(
-            new AgentWiring<>(
-                f.memory,
-                f.store,
-                f.backlog,
-                text -> text.equals("declined") ? List.of() : List.of(new TextBlock(text)),
-                f.model,
-                f.tools,
-                f.observer,
-                false,
-                StalenessPolicy.never()));
+        TestAgents.<String>wired(
+            f.memory,
+            f.store,
+            f.backlog,
+            text -> text.equals("declined") ? List.of() : List.of(new TextBlock(text)),
+            f.model,
+            f.tools,
+            f.observer,
+            false,
+            StalenessPolicy.never());
     f.backlogQueue.add("declined");
     f.backlogQueue.add("good-observation");
     poisoned.drive();

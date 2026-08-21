@@ -71,9 +71,10 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final AgentId id;
   private final TurnObserver turn;
   private final Executor executor;
-  private final ObjectMapper mapper = new ObjectMapper();
   private final DeferredToolCallPolicy deferredToolCallPolicy;
   private final Approver approver;
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private static final String PARKING_UNAVAILABLE =
       "deferred execution is unavailable in this wiring; the desk arrives with the autonomous host";
@@ -176,7 +177,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   private <T> Object convert(ToolCall call, Tool<T> tool) {
-    return mapper.convertValue(call.arguments(), tool.inputType());
+    return MAPPER.convertValue(call.arguments(), tool.inputType());
   }
 
   private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {

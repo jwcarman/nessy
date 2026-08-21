@@ -34,6 +34,7 @@ import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
@@ -123,24 +124,18 @@ class DurableParkDemo {
     // a FRESH DefaultAgent over the shared world, every time anyone needs one
     Supplier<DefaultAgent<String>> agents =
         () ->
-            new DefaultAgent<>(
-                new AgentWiring<>(
-                    memory,
-                    store,
-                    backlog,
-                    text -> List.of(new TextBlock(text)),
-                    new ProviderModelCallExecutor(
-                        provider, TestSettings.settings(), registry, memory, narrator, pump),
-                    new RegistryToolCallExecutor(
-                        registry,
-                        type,
-                        id,
-                        narrator,
-                        pump,
-                        new SlotDeferredToolCallPolicy(backend)),
-                    AgentObserver.noop(),
-                    false,
-                    StalenessPolicy.never()));
+            TestAgents.<String>wired(
+                memory,
+                store,
+                backlog,
+                text -> List.of(new TextBlock(text)),
+                new ProviderModelCallExecutor(
+                    provider, TestSettings.settings(), registry, memory, narrator, pump),
+                new RegistryToolCallExecutor(
+                    registry, type, id, narrator, pump, new SlotDeferredToolCallPolicy(backend)),
+                AgentObserver.noop(),
+                false,
+                StalenessPolicy.never());
 
     dispatcher.register(
         ScopeResumption.TYPE, new ScopeResumption((t, i, event) -> agents.get().deliver(event)));

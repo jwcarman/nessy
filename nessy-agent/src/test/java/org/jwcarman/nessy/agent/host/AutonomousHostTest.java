@@ -100,4 +100,42 @@ class AutonomousHostTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("backlogCapacity must be at least 1");
   }
+
+  /**
+   * There is no per-id wiring cache any more (§10.11): {@code agentFor(id)} binds a fresh handle
+   * from the shared substrate on every call. This is the reform's whole point in one test — two
+   * deliveries to the same scope, each through a brand-new binding, still see each other's history
+   * because the substrate underneath persists it, not the (deleted) cache.
+   */
+  @Test
+  void aSecondPostToTheSameScopeSeesTheFirstPostsHistoryEvenThoughEveryDeliveryBindsAFreshHandle() {
+    var pump = new PumpedExecutor();
+    var provider =
+        new ScriptedModelProvider(
+            List.of(
+                List.of(new ModelEvent.TextChunk("first reply")),
+                List.of(new ModelEvent.TextChunk("second reply"))));
+    ConcurrentMap<String, Memory> captured = new ConcurrentHashMap<>();
+
+    var host =
+        Nessy.autonomous()
+            .provider(provider)
+            .settings(TestSettings.settings())
+            .executor(pump)
+            .memoryFactory(id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory()))
+            .build();
+
+    host.post("scope-1", "first message");
+    pump.pumpUntilQuiet();
+    host.post("scope-1", "second message");
+    pump.pumpUntilQuiet();
+
+    List<Message> messages = captured.get("scope-1").recall().messages();
+    assertThat(messages).isNotEmpty();
+    assertThat(messages)
+        .anyMatch(m -> m.content().contains(new TextBlock("first message")))
+        .anyMatch(m -> m.content().contains(new TextBlock("first reply")))
+        .anyMatch(m -> m.content().contains(new TextBlock("second message")))
+        .anyMatch(m -> m.content().contains(new TextBlock("second reply")));
+  }
 }

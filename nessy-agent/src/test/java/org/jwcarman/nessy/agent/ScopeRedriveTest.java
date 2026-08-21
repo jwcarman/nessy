@@ -38,6 +38,7 @@ import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
@@ -132,18 +133,17 @@ class ScopeRedriveTest {
 
     Supplier<DefaultAgent<String>> agents =
         () ->
-            new DefaultAgent<>(
-                new AgentWiring<>(
-                    memory,
-                    store,
-                    backlog,
-                    text -> List.of(new TextBlock(text)),
-                    new ProviderModelCallExecutor(
-                        provider, TestSettings.settings(), registry, memory, narrator, pump),
-                    counting,
-                    AgentObserver.noop(),
-                    false,
-                    StalenessPolicy.never()));
+            TestAgents.<String>wired(
+                memory,
+                store,
+                backlog,
+                text -> List.of(new TextBlock(text)),
+                new ProviderModelCallExecutor(
+                    provider, TestSettings.settings(), registry, memory, narrator, pump),
+                counting,
+                AgentObserver.noop(),
+                false,
+                StalenessPolicy.never());
 
     List<String> seen = new ArrayList<>();
     AgentResolver resolver =

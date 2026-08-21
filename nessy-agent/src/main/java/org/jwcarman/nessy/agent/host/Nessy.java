@@ -30,8 +30,9 @@ import java.util.function.Function;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentResolver;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.AgentWiring;
+import org.jwcarman.nessy.agent.Binding;
 import org.jwcarman.nessy.agent.DefaultAgent;
+import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.ResolvingAgentBinder;
 import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.ScopeResumption;
@@ -141,19 +142,25 @@ public final class Nessy {
       ToolRegistry limited = ToolRegistry.limited(registry, CompletionPolicy.AWAITABLE);
       var agentId = AgentId.of(id);
       var agentType = AgentType.of(typeName);
-      var wiring =
-          new AgentWiring<String>(
-              effectiveMemory,
-              new InMemoryAgentStateStore(),
-              inMemoryBacklog(),
+      var store = new InMemoryAgentStateStore();
+      var backlog = inMemoryBacklog();
+      Harness<String> harness =
+          Harness.of(
+              agentType,
               text -> List.of(new TextBlock(text)),
-              new ProviderModelCallExecutor(
-                  provider, settings, limited, effectiveMemory, relay, exec),
-              new RegistryToolCallExecutor(limited, agentType, agentId, relay, exec),
               new TurnNarrationAdapter(relay),
               false,
-              StalenessPolicy.never());
-      return new CliAgent(new DefaultAgent<>(wiring), relay, exec, ownsExecutor);
+              StalenessPolicy.never(),
+              rawId -> effectiveMemory,
+              rawId -> store,
+              rawId -> backlog,
+              binding ->
+                  new ProviderModelCallExecutor(
+                      provider, settings, limited, binding.memory(), relay, exec),
+              binding ->
+                  new RegistryToolCallExecutor(limited, agentType, binding.id(), relay, exec));
+      Binding<String> binding = harness.bind(agentId);
+      return new CliAgent(new DefaultAgent<>(harness, binding), relay, exec, ownsExecutor);
     }
 
     private static Backlog<String> inMemoryBacklog() {
@@ -314,29 +321,28 @@ public final class Nessy {
       ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
       var backlogSubstrate = new InMemoryBacklogSubstrate(backlogCapacity);
 
-      Function<AgentId, AgentWiring<String>> wirings =
-          agentId -> {
-            String rawId = agentId.value();
-            Memory memory = memoryFactory.apply(rawId);
-            return new AgentWiring<>(
-                memory,
-                storeFactory.apply(rawId),
-                backlogSubstrate.forScope(rawId),
-                text -> List.of(new TextBlock(text)),
-                new ProviderModelCallExecutor(
-                    provider, settings, registry, memory, turnObserver, exec),
-                new RegistryToolCallExecutor(
-                    registry,
-                    agentType,
-                    agentId,
-                    turnObserver,
-                    exec,
-                    new SlotDeferredToolCallPolicy(backend),
-                    new SlotApprover(backend, approvalNotifier)),
-                agentObserver,
-                true,
-                stalenessPolicy);
-          };
+      Harness<String> harness =
+          Harness.of(
+              agentType,
+              text -> List.of(new TextBlock(text)),
+              agentObserver,
+              true,
+              stalenessPolicy,
+              memoryFactory,
+              storeFactory,
+              backlogSubstrate::forScope,
+              binding ->
+                  new ProviderModelCallExecutor(
+                      provider, settings, registry, binding.memory(), turnObserver, exec),
+              binding ->
+                  new RegistryToolCallExecutor(
+                      registry,
+                      agentType,
+                      binding.id(),
+                      turnObserver,
+                      exec,
+                      new SlotDeferredToolCallPolicy(backend),
+                      new SlotApprover(backend, approvalNotifier)));
 
       var dispatcher = new ContinuationDispatcher();
       var hostRef = new AtomicReference<AutonomousHost>();
@@ -353,7 +359,7 @@ public final class Nessy {
 
       var approvals = new ApprovalDesk(backend, dispatcher);
       var completions = new CompletionDesk(backend, dispatcher);
-      var host = new AutonomousHost(owned, approvals, completions, wirings);
+      var host = new AutonomousHost(owned, approvals, completions, harness);
       hostRef.set(host);
       return host;
     }

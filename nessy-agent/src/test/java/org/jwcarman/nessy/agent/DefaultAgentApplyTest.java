@@ -29,6 +29,7 @@ import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
+import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -183,8 +184,8 @@ class DefaultAgentApplyTest {
             return Optional.ofNullable(queue.poll());
           }
         };
-    var wiring =
-        new AgentWiring<String>(
+    var agent =
+        TestAgents.<String>wired(
             new RecordingMemory(),
             store,
             backlog,
@@ -194,7 +195,6 @@ class DefaultAgentApplyTest {
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());
-    var agent = new DefaultAgent<>(wiring);
     agent.observe("hi");
     assertThat(versionsAtCall).isNotEmpty();
     assertThat(versionsAtCall.getFirst()).isEqualTo(1L); // post-save version, not the loaded 0

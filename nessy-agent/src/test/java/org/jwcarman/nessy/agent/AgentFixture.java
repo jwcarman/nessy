@@ -54,18 +54,19 @@ final class AgentFixture {
 
   AgentFixture(AgentStateStore store, boolean drainOnIdle, StalenessPolicy stalenessPolicy) {
     this.store = store;
-    this.agent =
-        new DefaultAgent<>(
-            new AgentWiring<>(
-                memory,
-                store,
-                backlog,
-                text -> List.of(new TextBlock(text)),
-                model,
-                tools,
-                observer,
-                drainOnIdle,
-                stalenessPolicy));
+    Harness<String> harness =
+        Harness.of(
+            AgentType.of("fixture"),
+            text -> List.of(new TextBlock(text)),
+            observer,
+            drainOnIdle,
+            stalenessPolicy,
+            rawId -> memory,
+            rawId -> store,
+            rawId -> backlog,
+            binding -> model,
+            binding -> tools);
+    this.agent = new DefaultAgent<>(harness, harness.bind(AgentId.of("fixture-scope")));
   }
 
   AgentFixture(AgentStateStore store, boolean drainOnIdle) {
