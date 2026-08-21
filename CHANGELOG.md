@@ -256,3 +256,28 @@ sequence of renames and interim shapes that produced it.
   `newsroom` (the subagent delegation demo: a `writer` delegates research to
   a `researcher` it defines inline, with a real Postgres-backed restart
   scene).
+- **The four tiers: substrate, host, harness, binding (§10.11).** `Harness<O>`
+  (id-free, immortal, one per `AgentType`) and `Binding<O>` (a thin, id-specific
+  handle stamped fresh per delivery) replace `AgentWiring`, deleted — a
+  ten-component positional record hand-built in demos. `DefaultAgent` now takes
+  `(Harness<O>, Binding<O>)` and builds its per-scope model/tool executors from
+  the harness's factories; `Harness.of(...)` is the construction door, since a
+  package-private canonical constructor can't cross the `agent.host` package the
+  builders live in. `AutonomousHost` drops its `ConcurrentMap<AgentId,
+  AgentWiring>` cache entirely: `agentFor(id)` binds a fresh handle on every
+  call, correct only because the state behind it is shared, not per-binding.
+  `InMemoryStateSubstrate`, `InMemoryMemorySubstrate`, and
+  `InMemoryBacklogSubstrate` are that shared underlay — one thread-safe object
+  per substrate, with `forScope(id)` handing back a thin view rather than a
+  copy, so losing a handle loses nothing. `Nessy.autonomous()`'s
+  `memoryFactory`/`storeFactory` default to a shared substrate's `forScope` and
+  are invoked once per delivery; a caller-supplied factory carries the same
+  obligation — return a view over shared state, never freshly-created state.
+- **`StalenessPolicy` names the §6.1 judgment.** `StalenessPolicy.isStale(Phase,
+  Instant lastSaved)` replaces `AgentWiring`'s `staleThreshold`/`Clock` pair;
+  the clock leaves the machine and the policy owns time, via canonical
+  `after(Duration)`, `after(Duration, Clock)`, and `never()`. `Nessy.cli()`
+  wires `never()`, dropping an arbitrary 5-minute ceiling that made no sense
+  for a foreground REPL; `Nessy.autonomous()` gets `.staleness(StalenessPolicy)`
+  in place of the old `staleThreshold(Duration)`/`clock(Clock)` pair, defaulting
+  to `after(Duration.ofMinutes(5))`.

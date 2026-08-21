@@ -88,10 +88,10 @@ try (AutonomousHost host =
         .provider(provider)
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-        // In-memory backend/store — durable only for this process's lifetime; swap for a
-        // durable backend/store in production so a suspended approval survives a restart.
+        // The default backend and the default memoryFactory/storeFactory are in-memory —
+        // durable only for this process's lifetime. Swap in a durable backend and durable
+        // factories in production so a suspended approval survives a restart.
         .backend(new InMemoryDurableComputationBackend())
-        .storeFactory(id -> new InMemoryAgentStateStore())
         .approvalNotifier(pending::add)
         .build()) {
 
@@ -108,11 +108,21 @@ approval, the call suspends on a durable slot and `approvalNotifier` fires
 once with the `ApprovalRequest` — `request.address().approval()` is the slot
 id `host.approvals().approve(...)`/`.deny(..., reason)` decides. Nothing here
 holds a thread open waiting; whether the slot outlives a restart of the
-process that opened it depends on the `.backend(...)`/`.storeFactory(...)`
-supplied above — the in-memory ones shown here do not, a durable
-implementation does. See
+process that opened it depends on the `.backend(...)` and the
+`.memoryFactory(...)`/`.storeFactory(...)` supplied above — the in-memory ones
+shown here do not, a durable implementation does. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
 the docs site for the rest of the walkthrough.
+
+Under both front doors, an agent is assembled in four tiers: a **substrate**
+holds the durable state (in-memory here, JDBC or another durable backend in
+production) and can be shared across many hosts; a **host** is one process's
+assembly around a substrate — the doors, desks, and dispatcher shown above; a
+**harness** is a recipe compiled once per agent type, holding the model-call
+and tool-call machinery; and a **binding** straps one scope's id to that
+harness for the length of a single delivery. `storeFactory`/`memoryFactory`
+each hand back a thin view over the shared substrate rather than fresh state,
+which is what makes a scope's history survive from one delivery to the next.
 
 ## Install
 
