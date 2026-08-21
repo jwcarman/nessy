@@ -33,7 +33,10 @@
   <description>The five-minute promise: one tool, one turn, no key required with --scripted</description>
 
   <properties>
-    <!-- Examples are never published: no jar, sources, or javadoc leaves this module. -->
+    <!-- Examples are never published: this module's own maven.deploy.skip keeps the deploy
+         goal from running here, and the aggregator's maven.source.skip/maven.javadoc.skip/
+         gpg.skip keep the release profile's source jar, javadoc jar, and signing step off this
+         module too. -->
     <maven.deploy.skip>true</maven.deploy.skip>
     <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
     <!-- Opts back into exec:java, which the root pom defaults off (see its own comment) — this is

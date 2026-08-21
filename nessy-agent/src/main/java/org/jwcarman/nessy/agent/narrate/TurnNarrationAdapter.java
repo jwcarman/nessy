@@ -35,6 +35,12 @@ import org.slf4j.LoggerFactory;
  * assistant commits become AssistantSaid; landing on Idle ends the turn, with the failure reason
  * taken from ModelFinished(Failed) when that is what ended it. TurnEnded carries only the failure
  * reason; null means completed (distillation, 2026-08-20).
+ *
+ * <p>"Observers never influence" (§8) extends to their own failures: {@link #applied} guards every
+ * {@link TurnObserver#on} call individually, so a throwing {@code TurnObserver} loses only the one
+ * event it choked on — the shell's own commit already landed before {@code applied} ever runs, and
+ * a narration exception must not stop the remaining commits from narrating or the turn from being
+ * declared over. A throwing observer is logged and dropped, never rethrown.
  */
 public final class TurnNarrationAdapter implements AgentObserver {
 
@@ -50,15 +56,28 @@ public final class TurnNarrationAdapter implements AgentObserver {
   public void applied(AgentEvent event, Transition transition) {
     for (Message committed : transition.commit()) {
       if (committed.role() == Role.ASSISTANT) {
-        turn.on(new TurnEvent.AssistantSaid(committed));
+        narrate(new TurnEvent.AssistantSaid(committed));
       }
     }
     if (transition.next() instanceof Phase.Idle) {
       if (event instanceof AgentEvent.ModelFinished(ModelOutcome.Failed(String reason))) {
-        turn.on(new TurnEvent.TurnEnded(reason));
+        narrate(new TurnEvent.TurnEnded(reason));
       } else {
-        turn.on(new TurnEvent.TurnEnded(null));
+        narrate(new TurnEvent.TurnEnded(null));
       }
+    }
+  }
+
+  /**
+   * {@link TurnObserver#on}, guarded: a throwing observer is logged and dropped rather than
+   * propagated, so one bad narration can never abort the apply path that is already committed by
+   * the time this runs.
+   */
+  private void narrate(TurnEvent event) {
+    try {
+      turn.on(event);
+    } catch (RuntimeException e) {
+      log.warn("turn observer threw narrating {}; event dropped", event, e);
     }
   }
 

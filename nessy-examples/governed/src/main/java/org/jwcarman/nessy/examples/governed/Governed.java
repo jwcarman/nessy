@@ -17,10 +17,12 @@ package org.jwcarman.nessy.examples.governed;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.agent.host.AutonomousHost;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.agent.intent.InMemoryIntentStore;
@@ -62,18 +64,35 @@ public final class Governed {
   private static final ActionContributor<RestartInput, String> RESTART_ACTION =
       ActionContributor.named("restart-statement", in -> "restart " + in.target());
 
+  /**
+   * What the scripted run observed, for {@code GovernedTest} to assert on beyond the sentinel: the
+   * bounce's denial message, the target the model declared, and the final line {@link #main}
+   * prints.
+   */
+  record Result(String bounceMessage, String declaredTarget, String sentinel) {}
+
   private Governed() {}
 
+  /**
+   * Same convention as {@code hello} and {@code approvals}: {@code --scripted} runs the
+   * deterministic arc explicitly. Governed has no interactive mode yet, so any other invocation —
+   * including no arguments at all — still runs the scripted arc, but says so first rather than
+   * silently substituting for a door that doesn't exist yet.
+   */
   public static void main(String[] args) throws InterruptedException {
-    System.out.println(run());
+    if (!Arrays.asList(args).contains("--scripted")) {
+      System.out.println("governed has no interactive mode yet; running the scripted arc.");
+    }
+    System.out.println(run().sentinel());
   }
 
   /**
-   * The whole narrated run, factored out so {@code GovernedTest} can assert on exactly the line
-   * {@link #main} prints. The final checkpoint synchronizes on {@link TurnEvent.TurnEnded} — the
-   * autonomous host's default {@code agentObserver} narrates it on the turn observer.
+   * The whole narrated run, factored out so {@code GovernedTest} can assert on the checkpoints
+   * {@link #main} only prints. The final checkpoint synchronizes on {@link TurnEvent.TurnEnded} —
+   * the autonomous host's default {@code agentObserver} narrates it on the turn observer. Every
+   * wait is bounded: a hung host fails loudly with a named timeout instead of hanging the build.
    */
-  static String run() throws InterruptedException {
+  static Result run() throws InterruptedException {
     IntentStore<OpsIntent> intentStore = new InMemoryIntentStore<>();
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
@@ -99,13 +118,16 @@ public final class Governed {
       System.out.println("== posting: please restart prod-eu ==");
       host.post(SCOPE_ID, "please restart prod-eu");
 
-      TurnEvent.ToolCallCompleted bounce = toolCompletions.take();
+      TurnEvent.ToolCallCompleted bounce =
+          await(toolCompletions, "the bounced restart's completion");
       System.out.println("bounce: " + bounce.result().content());
 
-      toolCompletions.take();
-      System.out.println("declared: " + intentStore.latest().orElseThrow());
+      await(toolCompletions, "the declare-intent completion");
+      OpsIntent declared = intentStore.latest().orElseThrow();
+      System.out.println("declared: " + declared);
+      String declaredTarget = declared instanceof Restart(String target, _) ? target : null;
 
-      ApprovalRequest request = approvalRequests.take();
+      ApprovalRequest request = await(approvalRequests, "the approval request");
       System.out.println(
           "parked: slot="
               + request.address().approval().value()
@@ -115,11 +137,12 @@ public final class Governed {
       host.approvals().approve(request.address().approval());
       System.out.println("approved");
 
-      TurnEvent.ToolCallCompleted completed = toolCompletions.take();
+      TurnEvent.ToolCallCompleted completed =
+          await(toolCompletions, "the approved restart's completion");
       System.out.println("completion: " + completed.result().content());
 
-      completions.take();
-      return "GOVERNED TURN COMPLETE";
+      await(completions, "the turn to end");
+      return new Result(bounce.result().content(), declaredTarget, "GOVERNED TURN COMPLETE");
     }
   }
 
@@ -139,6 +162,18 @@ public final class Governed {
     RiskAssessment assessment =
         RiskAssessment.of(Likelihood.HIGH, Impact.HIGH, RiskFactors.DESTRUCTIVE);
     return Enricher.named("risk", context -> context.with(AuthzContext.RISK_KEY, assessment));
+  }
+
+  /**
+   * A bounded {@link BlockingQueue#take()}: 30 seconds, then a loud {@link IllegalStateException}
+   * naming what never arrived, rather than a hang a CI run has to time out on its own.
+   */
+  private static <T> T await(BlockingQueue<T> queue, String what) throws InterruptedException {
+    T value = queue.poll(30, TimeUnit.SECONDS);
+    if (value == null) {
+      throw new IllegalStateException("timed out waiting for " + what);
+    }
+    return value;
   }
 
   private static ScriptedModelProvider scriptedProvider() {

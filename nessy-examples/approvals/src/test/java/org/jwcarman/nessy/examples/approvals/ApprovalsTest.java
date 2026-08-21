@@ -18,17 +18,21 @@ package org.jwcarman.nessy.examples.approvals;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 /**
  * Approvals is its own test: the scripted arc needs no key and no console input, so the offline
- * default build can run it directly.
+ * default build can run it directly. {@code @Timeout} is the backstop behind {@code
+ * Approvals.await}'s own 30-second bound — this test fails loudly rather than hanging a build if
+ * that bound is ever bypassed.
  */
+@Timeout(60)
 class ApprovalsTest {
 
   @Test
   void the_scripted_restart_parks_then_completes_once_approved() throws InterruptedException {
     String line = Approvals.runScripted();
 
-    assertThat(line).isEqualTo("APPROVED AND COMPLETE");
+    assertThat(line).isEqualTo("Restarted prod-eu. (APPROVED AND COMPLETE)");
   }
 }

@@ -22,7 +22,9 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
+import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -32,6 +34,7 @@ import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -66,7 +69,7 @@ class AutonomousHostTest {
   }
 
   @Test
-  void aDefaultBuiltHostNarratesAssistantSaidAndTurnEndedForACompletedTurn() {
+  void aDefaultBuiltHostNarratesExactlyOneAssistantSaidAndOneTurnEndedForACompletedTurn() {
     var pump = new PumpedExecutor();
     var provider =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
@@ -84,10 +87,87 @@ class AutonomousHostTest {
     pump.pumpUntilQuiet();
 
     List<TurnEvent> events = observer.events();
+    assertThat(events).isNotEmpty();
+
+    List<TurnEvent> assistantSaid =
+        events.stream().filter(TurnEvent.AssistantSaid.class::isInstance).toList();
+    assertThat(assistantSaid).isNotEmpty().hasSize(1);
+
+    List<TurnEvent> turnEnded =
+        events.stream().filter(TurnEvent.TurnEnded.class::isInstance).toList();
+    assertThat(turnEnded).isNotEmpty().hasSize(1);
+  }
+
+  /**
+   * A caller-supplied {@code agentObserver} replaces the default {@link
+   * org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter} wiring wholesale (Nessy.java's own
+   * setter promise): {@code AssistantSaid}/{@code TurnEnded} do not narrate on the turn observer
+   * unless the supplied observer narrates them itself. {@code events} still isn't empty — the model
+   * and tool executors narrate deltas and tool events directly, independent of {@code
+   * agentObserver} — so the {@code noneMatch} below can't pass vacuously (S5841).
+   */
+  @Test
+  void aSuppliedAgentObserverReplacesTheDefaultNarrationWiringWholesale() {
+    var pump = new PumpedExecutor();
+    var provider =
+        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var observer = new RecordingTurnObserver();
+
+    var host =
+        Nessy.autonomous()
+            .provider(provider)
+            .settings(TestSettings.settings())
+            .executor(pump)
+            .turnObserver(observer)
+            .agentObserver(AgentObserver.noop())
+            .build();
+
+    host.post("scope-1", "hello");
+    pump.pumpUntilQuiet();
+
+    List<TurnEvent> events = observer.events();
+    assertThat(events).isNotEmpty();
     assertThat(events)
-        .isNotEmpty()
-        .anyMatch(TurnEvent.AssistantSaid.class::isInstance)
-        .anyMatch(TurnEvent.TurnEnded.class::isInstance);
+        .noneMatch(TurnEvent.AssistantSaid.class::isInstance)
+        .noneMatch(TurnEvent.TurnEnded.class::isInstance);
+  }
+
+  /**
+   * The fix for a real stall (found reviewing narration): before this, {@link
+   * org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter#applied} let a throwing observer escape,
+   * which aborted {@code DefaultAgent.applyOnce} before it dispatched the transition's effects —
+   * the scope's saved phase and its dispatched effects fell out of step, and nothing but the
+   * staleness recovery arm, minutes later, would have re-fired them. A throwing {@code
+   * onAssistantSaid} must not stop the model-call effect from dispatching, so the scope still
+   * settles on {@link Phase.Idle} in the same pump.
+   */
+  @Test
+  void aThrowingTurnObserverDoesNotStallTheScopesEffectsOrCompletion() {
+    var pump = new PumpedExecutor();
+    var provider =
+        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    ConcurrentMap<String, AgentStateStore> stores = new ConcurrentHashMap<>();
+    TurnObserver throwing =
+        event -> {
+          if (event instanceof TurnEvent.AssistantSaid) {
+            throw new RuntimeException("narration boom");
+          }
+        };
+
+    var host =
+        Nessy.autonomous()
+            .provider(provider)
+            .settings(TestSettings.settings())
+            .executor(pump)
+            .storeFactory(
+                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .turnObserver(throwing)
+            .build();
+
+    host.post("scope-1", "hello");
+    pump.pumpUntilQuiet();
+
+    assertThat(stores.get("scope-1").load().phase()).isEqualTo(new Phase.Idle());
   }
 
   @Test

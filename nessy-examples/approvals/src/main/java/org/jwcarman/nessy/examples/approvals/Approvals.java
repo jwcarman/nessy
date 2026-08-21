@@ -25,8 +25,10 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.agent.host.AutonomousHost;
 import org.jwcarman.nessy.agent.host.Nessy;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
@@ -69,13 +71,17 @@ public final class Approvals {
    * {@link #main} prints. Synchronizes on {@link TurnEvent.TurnEnded} — the autonomous host's
    * default {@code agentObserver} narrates it (and {@link TurnEvent.AssistantSaid}) on the turn
    * observer, so no extra wiring is needed beyond {@link Nessy.AutonomousBuilder#turnObserver}.
+   * Every wait is bounded: a hung host fails loudly with a named timeout instead of hanging the
+   * build.
    */
   static String runScripted() throws InterruptedException {
     ModelProvider provider = scriptedProvider();
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<ApprovalRequest> requests = new LinkedBlockingQueue<>();
+    BlockingQueue<TurnEvent.AssistantSaid> replies = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
-    TurnObserver observer = TurnObserver.observe(o -> o.onTurnEnded(completions::add));
+    TurnObserver observer =
+        TurnObserver.observe(o -> o.onAssistantSaid(replies::add).onTurnEnded(completions::add));
 
     try (AutonomousHost host =
         Nessy.autonomous()
@@ -91,12 +97,19 @@ public final class Approvals {
       System.out.println("== posting: please restart prod-eu ==");
       host.post(SCOPE_ID, "please restart prod-eu");
 
-      ApprovalRequest request = requests.take();
+      ApprovalRequest request = await(requests, "the approval request");
       System.out.println("== approving " + request.address().approval().value() + " ==");
       host.approvals().approve(request.address().approval());
 
-      completions.take();
-      return "APPROVED AND COMPLETE";
+      // The tool-use ask commits to memory alongside its result once the call resolves — both
+      // land only after approval, the ask first, then the model's final reply.
+      await(replies, "the model's tool-use ask");
+      TurnEvent.AssistantSaid said = await(replies, "the model's reply");
+      await(completions, "the turn to end");
+      String reply =
+          said.message().content().getFirst() instanceof TextBlock(String text) ? text : "";
+      System.out.println("reply: " + reply);
+      return reply + " (APPROVED AND COMPLETE)";
     }
   }
 
@@ -166,5 +179,17 @@ public final class Approvals {
       }
     }
     return false;
+  }
+
+  /**
+   * A bounded {@link BlockingQueue#take()}: 30 seconds, then a loud {@link IllegalStateException}
+   * naming what never arrived, rather than a hang a CI run has to time out on its own.
+   */
+  private static <T> T await(BlockingQueue<T> queue, String what) throws InterruptedException {
+    T value = queue.poll(30, TimeUnit.SECONDS);
+    if (value == null) {
+      throw new IllegalStateException("timed out waiting for " + what);
+    }
+    return value;
   }
 }

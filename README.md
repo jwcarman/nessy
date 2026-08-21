@@ -144,7 +144,7 @@ public API only — no key, no network, scripted providers throughout:
 ./mvnw -q -pl nessy-examples/approvals -am compile exec:java -Dexec.args=--scripted
 
 # governed: the full gate — declared intent, risk threshold, one narrated turn
-./mvnw -q -pl nessy-examples/governed -am compile exec:java
+./mvnw -q -pl nessy-examples/governed -am compile exec:java -Dexec.args=--scripted
 ```
 
 ## Install

@@ -33,8 +33,13 @@
   <description>Runnable, consumer-perspective examples against the current API</description>
 
   <properties>
-    <!-- Examples are never published: no jar, sources, or javadoc leaves this module. -->
+    <!-- Examples are never published: maven.deploy.skip keeps the deploy goal from running, and
+         maven.source.skip/maven.javadoc.skip/gpg.skip keep the release profile's source jar,
+         javadoc jar, and signing step from running against this module or any of its children. -->
     <maven.deploy.skip>true</maven.deploy.skip>
+    <maven.source.skip>true</maven.source.skip>
+    <maven.javadoc.skip>true</maven.javadoc.skip>
+    <gpg.skip>true</gpg.skip>
   </properties>
 
   <modules>
