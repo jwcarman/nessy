@@ -180,8 +180,10 @@ class ToolGrantTest {
         ToolGrant.grant(
             new ThrowingActionTool(), THROWING_CONTRIBUTOR, List.of(), UsagePolicy.allow());
     AuthzContext context = AuthzContext.of("agent", callFor("throws_on_action"));
+    var judgment = grant.judgment();
+    var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
+    assertThatThrownBy(() -> judgment.decide(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("action stage: boom")
         .hasCauseInstanceOf(IllegalArgumentException.class);
@@ -196,8 +198,10 @@ class ToolGrantTest {
     ToolGrant grant =
         ToolGrant.grant(new GreetTool(), GREETING, List.of(boom), UsagePolicy.allow());
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
+    var judgment = grant.judgment();
+    var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
+    assertThatThrownBy(() -> judgment.decide(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("enricher stage #0: kaboom")
         .hasCauseInstanceOf(IllegalStateException.class);
@@ -214,8 +218,10 @@ class ToolGrantTest {
     ToolGrant grant =
         ToolGrant.grant(new GreetTool(), GREETING, List.of(boom), UsagePolicy.allow());
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
+    var judgment = grant.judgment();
+    var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
+    assertThatThrownBy(() -> judgment.decide(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("enricher stage quota-check: kaboom");
   }
@@ -229,8 +235,10 @@ class ToolGrantTest {
             });
     ToolGrant grant = ToolGrant.grant(new GreetTool(), GREETING, List.of(), boom);
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
+    var judgment = grant.judgment();
+    var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
+    assertThatThrownBy(() -> judgment.decide(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("policy stage: nope")
         .hasCauseInstanceOf(IllegalStateException.class);
@@ -239,8 +247,9 @@ class ToolGrantTest {
   @Test
   void theNoEnrichersTypedDoorRejectsANullContributor() {
     UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+    var tool = new GreetTool();
 
-    assertThatThrownBy(() -> ToolGrant.grant(new GreetTool(), null, policy))
+    assertThatThrownBy(() -> ToolGrant.grant(tool, null, policy))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("contributor");
   }
@@ -248,8 +257,9 @@ class ToolGrantTest {
   @Test
   void theFullyWiredTypedDoorRejectsANullContributor() {
     UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
+    var tool = new GreetTool();
 
-    assertThatThrownBy(() -> ToolGrant.grant(new GreetTool(), null, List.of(), policy))
+    assertThatThrownBy(() -> ToolGrant.grant(tool, null, List.of(), policy))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("contributor");
   }
@@ -260,8 +270,10 @@ class ToolGrantTest {
     UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
     ToolGrant grant = ToolGrant.grant(new GreetTool(), returnsNull, List.of(), policy);
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
+    var judgment = grant.judgment();
+    var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judgment().decide(context, new GreetInput("Ada")))
+    assertThatThrownBy(() -> judgment.decide(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("action stage: ");
   }
@@ -271,8 +283,9 @@ class ToolGrantTest {
     UsagePolicy<String> policy = UsagePolicy.of((context, action) -> new PolicyDecision.Allow());
     ToolGrant grant = ToolGrant.grant(new GreetTool(), GREETING, List.of(), policy);
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
+    var judgment = grant.judgment();
 
-    assertThatThrownBy(() -> grant.judgment().decide(context, "not a GreetInput"))
+    assertThatThrownBy(() -> judgment.decide(context, "not a GreetInput"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("action stage: ");
   }

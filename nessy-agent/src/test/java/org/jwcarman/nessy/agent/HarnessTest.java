@@ -110,19 +110,22 @@ class HarnessTest {
 
     @Test
     void bindingRequiresMemory() {
-      assertThatThrownBy(() -> new Binding<>(AgentId.of("a"), null, STORE, BACKLOG))
+      var id = AgentId.of("a");
+      assertThatThrownBy(() -> new Binding<>(id, null, STORE, BACKLOG))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void bindingRequiresAStore() {
-      assertThatThrownBy(() -> new Binding<>(AgentId.of("a"), MEMORY, null, BACKLOG))
+      var id = AgentId.of("a");
+      assertThatThrownBy(() -> new Binding<>(id, MEMORY, null, BACKLOG))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void bindingRequiresABacklog() {
-      assertThatThrownBy(() -> new Binding<>(AgentId.of("a"), MEMORY, STORE, null))
+      var id = AgentId.of("a");
+      assertThatThrownBy(() -> new Binding<>(id, MEMORY, STORE, null))
           .isInstanceOf(NullPointerException.class);
     }
 

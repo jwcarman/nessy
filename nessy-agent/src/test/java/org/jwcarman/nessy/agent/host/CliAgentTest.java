@@ -76,7 +76,8 @@ class CliAgentTest {
                 List.of(new ModelEvent.TextChunk("late answer")),
                 List.of(new ModelEvent.TextChunk("fresh answer"))));
     try (var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build()) {
-      assertThatThrownBy(() -> agent.converse("first", Duration.ofMillis(100)))
+      var shortTimeout = Duration.ofMillis(100);
+      assertThatThrownBy(() -> agent.converse("first", shortTimeout))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("timed out");
       assertThatThrownBy(() -> agent.converse("second"))

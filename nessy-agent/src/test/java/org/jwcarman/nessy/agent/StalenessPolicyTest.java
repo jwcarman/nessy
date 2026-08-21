@@ -83,7 +83,8 @@ class StalenessPolicyTest {
   @Test
   void aNegativeThresholdIsRejected() {
     var clock = new TestClock(T0);
-    assertThatThrownBy(() -> StalenessPolicy.after(Duration.ofSeconds(-1), clock))
+    var negative = Duration.ofSeconds(-1);
+    assertThatThrownBy(() -> StalenessPolicy.after(negative, clock))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("threshold must not be negative");
   }
