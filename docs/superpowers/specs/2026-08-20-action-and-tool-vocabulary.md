@@ -213,6 +213,11 @@ Ruled:
 - **The pipeline is monomorphic.** `Enricher { AuthzContext enrich(AuthzContext context); }`
   and `UsagePolicy { PolicyDecision evaluate(AuthzContext context); }` — no type parameters,
   no wildcards, anywhere. An `AuthzContext` goes through; the policy reads it.
+- **The typed read is one general primitive** (ratified 2026-08-21):
+  `<S extends T> Optional<S> get(Key<T> key, Class<S> type)` on `AuthzContext` — the deposit,
+  narrowed by class token; a non-instance or an absence are both `empty` (fail-closed on the
+  reader's own terms). The `action(Class)`/`principal(Class)`/`declaredIntent(Class)`
+  conveniences are sugar over it.
 - **The action travels only as the key.** The contributor renders it (still typed `<I, A>` at
   the production site, welded to the tool's input inside the grant factory — the one place
   generics remain live), it enters the bag under `ACTION_KEY` before enrichers run, and
