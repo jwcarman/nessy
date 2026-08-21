@@ -17,28 +17,31 @@ package org.jwcarman.nessy.agent.intent;
 
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.intent.Intent;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.spi.intent.IntentStore;
 
 /**
- * Reads the {@link IntentStore} this enricher was built over and deposits its latest {@link Intent}
+ * Reads the {@link IntentStore} this enricher was built over and deposits its latest declaration
  * under {@link AuthzContext#DECLARED_INTENT_KEY} — the claim a policy may read back through {@link
  * AuthzContext#declaredIntent()}. Absent a declaration, the context passes through untouched: a
  * missing claim is not this enricher's failure to report, only a policy's own choice to weigh.
+ *
+ * <p>Genericized over the store's vocabulary only (vocabulary amendment §3) — the enricher itself
+ * needs no type parameter since {@link AuthzContext#DECLARED_INTENT_KEY} holds any declaration by
+ * {@link Object}.
  */
 public final class IntentEnricher implements Enricher<Object> {
 
-  private final IntentStore store;
+  private final IntentStore<?> store;
 
-  public IntentEnricher(IntentStore store) {
+  public IntentEnricher(IntentStore<?> store) {
     this.store = Objects.requireNonNull(store, "store must not be null");
   }
 
   @Override
   public AuthzContext enrich(AuthzContext context, Object action) {
-    Optional<Intent> declared = store.latest();
+    Optional<?> declared = store.latest();
     return declared
         .map(intent -> context.with(AuthzContext.DECLARED_INTENT_KEY, intent))
         .orElse(context);

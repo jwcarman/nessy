@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.intent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
@@ -33,50 +34,92 @@ class IntentToolTest {
   private static ToolContext freshContext() {
     var call =
         new ToolCall(
-            "c0", "declare-intent", JsonNodeFactory.instance.objectNode().put("intent", "x"));
+            "c0", "declare-intent", JsonNodeFactory.instance.objectNode().put("declaration", "x"));
     return new ToolContext(call, ToolEventListener.noop(), new CallAddress("ops", "prod-eu", "c0"));
   }
 
-  @Test
-  void itIsNamedDeclareIntent() {
-    var tool = new IntentTool(new InMemoryIntentStore());
+  @Nested
+  class TheFreeformTier {
 
-    assertThat(tool.name()).isEqualTo("declare-intent");
+    @Test
+    void itIsNamedDeclareIntent() {
+      var tool = IntentTool.freeform(new InMemoryIntentStore<>());
+
+      assertThat(tool.name()).isEqualTo("declare-intent");
+    }
+
+    @Test
+    void itsDescriptionTellsTheModelToDeclareBeforeActing() {
+      var tool = IntentTool.freeform(new InMemoryIntentStore<>());
+
+      assertThat(tool.description())
+          .isEqualTo("Declare what you are about to do and why, before using any other tool.");
+    }
+
+    @Test
+    void itRequiresOnlyImmediateCompletion() {
+      var tool = IntentTool.freeform(new InMemoryIntentStore<>());
+
+      assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.IMMEDIATE);
+    }
+
+    @Test
+    void executingDeclaresTheDeclarationIntoTheStore() {
+      var store = new InMemoryIntentStore<Intent>();
+      var tool = IntentTool.freeform(store);
+
+      tool.execute(new Intent("restart prod-eu to clear the stuck deploy"), freshContext());
+
+      assertThat(store.latest()).contains(new Intent("restart prod-eu to clear the stuck deploy"));
+    }
+
+    @Test
+    void executingReturnsAnImmediatelyReadyOkResult() {
+      var tool = IntentTool.freeform(new InMemoryIntentStore<>());
+
+      Awaited<ToolResult> outcome = tool.execute(new Intent("restart prod-eu"), freshContext());
+
+      assertThat(outcome).isEqualTo(Awaited.ready(ToolResult.ok("intent recorded")));
+    }
   }
 
-  @Test
-  void itsDescriptionTellsTheModelToDeclareBeforeActing() {
-    var tool = new IntentTool(new InMemoryIntentStore());
+  @Nested
+  class ASealedVocabulary {
 
-    assertThat(tool.description())
-        .isEqualTo("Declare what you are about to do and why, before using any other tool.");
-  }
+    sealed interface Vocabulary permits Restart, Shutdown {}
 
-  @Test
-  void itRequiresOnlyImmediateCompletion() {
-    var tool = new IntentTool(new InMemoryIntentStore());
+    record Restart(String host) implements Vocabulary {}
 
-    assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.IMMEDIATE);
-  }
+    record Shutdown(String reason) implements Vocabulary {}
 
-  @Test
-  void executingRecordsTheDeclarationIntoTheStore() {
-    var store = new InMemoryIntentStore();
-    var tool = new IntentTool(store);
+    @Test
+    void itsDescriptionPointsAtTheDefinedIntentShapes() {
+      var tool = new IntentTool<>(Vocabulary.class, new InMemoryIntentStore<Vocabulary>());
 
-    tool.execute(
-        new IntentTool.DeclareIntent("restart prod-eu to clear the stuck deploy"), freshContext());
+      assertThat(tool.description())
+          .isEqualTo(
+              "Declare what you are about to do, using one of the defined intent shapes, before"
+                  + " using any other tool.");
+    }
 
-    assertThat(store.latest()).contains(new Intent("restart prod-eu to clear the stuck deploy"));
-  }
+    @Test
+    void itsSpecCarriesAOneOfSchemaOverThePermittedShapes() {
+      var tool = new IntentTool<>(Vocabulary.class, new InMemoryIntentStore<Vocabulary>());
 
-  @Test
-  void executingReturnsAnImmediatelyReadyOkResult() {
-    var tool = new IntentTool(new InMemoryIntentStore());
+      var schema = tool.spec().inputSchema();
 
-    Awaited<ToolResult> outcome =
-        tool.execute(new IntentTool.DeclareIntent("restart prod-eu"), freshContext());
+      assertThat(schema.has("oneOf")).isTrue();
+      assertThat(schema.get("oneOf")).hasSize(2);
+    }
 
-    assertThat(outcome).isEqualTo(Awaited.ready(ToolResult.ok("intent recorded")));
+    @Test
+    void executingBindsTheTypedDeclarationIntoTheStore() {
+      var store = new InMemoryIntentStore<Vocabulary>();
+      var tool = new IntentTool<>(Vocabulary.class, store);
+
+      tool.execute(new Restart("prod-eu"), freshContext());
+
+      assertThat(store.latest()).contains(new Restart("prod-eu"));
+    }
   }
 }

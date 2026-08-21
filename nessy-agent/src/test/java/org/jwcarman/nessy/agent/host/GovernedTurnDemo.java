@@ -107,7 +107,8 @@ class GovernedTurnDemo {
         "risk", (context, action) -> context.with(AuthzContext.RISK_KEY, assessment));
   }
 
-  private static ToolGrant restartGrant(IntentStore intentStore, Enricher<Object> riskAssessor) {
+  private static ToolGrant restartGrant(
+      IntentStore<Intent> intentStore, Enricher<Object> riskAssessor) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_STATEMENT,
@@ -117,7 +118,7 @@ class GovernedTurnDemo {
   }
 
   private static ToolGrant restartGrant(
-      IntentStore intentStore, List<Enricher<? super String>> enrichers) {
+      IntentStore<Intent> intentStore, List<Enricher<? super String>> enrichers) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_STATEMENT,
@@ -131,7 +132,7 @@ class GovernedTurnDemo {
         "declare-intent",
         JsonNodeFactory.instance
             .objectNode()
-            .put("intent", "restart prod-eu to clear the stuck deploy"));
+            .put("declaration", "restart prod-eu to clear the stuck deploy"));
   }
 
   private static ToolCall restartCall() {
@@ -146,7 +147,7 @@ class GovernedTurnDemo {
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new InMemoryIntentStore();
+    var intentStore = new InMemoryIntentStore<Intent>();
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -160,7 +161,7 @@ class GovernedTurnDemo {
             .provider(provider)
             .settings(TestSettings.settings())
             .grants(
-                ToolGrant.grant(new IntentTool(intentStore), UsagePolicy.allow()),
+                ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(
@@ -228,7 +229,7 @@ class GovernedTurnDemo {
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new InMemoryIntentStore();
+    var intentStore = new InMemoryIntentStore<Intent>();
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -242,7 +243,7 @@ class GovernedTurnDemo {
             .provider(provider)
             .settings(TestSettings.settings())
             .grants(
-                ToolGrant.grant(new IntentTool(intentStore), UsagePolicy.allow()),
+                ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(
@@ -277,7 +278,7 @@ class GovernedTurnDemo {
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new InMemoryIntentStore();
+    var intentStore = new InMemoryIntentStore<Intent>();
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -291,7 +292,7 @@ class GovernedTurnDemo {
             .provider(provider)
             .settings(TestSettings.settings())
             .grants(
-                ToolGrant.grant(new IntentTool(intentStore), UsagePolicy.allow()),
+                ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(
                     intentStore,
                     List.of(new IntentEnricher(intentStore), Enrichers.principal(() -> "jcarman"))))

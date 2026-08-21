@@ -16,19 +16,21 @@
 package org.jwcarman.nessy.spi.intent;
 
 import java.util.Optional;
-import org.jwcarman.nessy.api.intent.Intent;
 import org.jwcarman.nessy.spi.Memory;
 
 /**
  * The claim channel's own stash: pre-scoped, like {@link Memory} — no id parameter anywhere
  * (agent-as-scope §3.5). One store answers for exactly one scope; the wiring that builds a scope is
  * the one place that decides which store instance that is.
+ *
+ * @param <T> the declared-intent vocabulary this store holds — the freeform {@code Intent} record,
+ *     or an organization's own sealed vocabulary (vocabulary amendment §3)
  */
-public interface IntentStore {
+public interface IntentStore<T> {
 
-  /** Records {@code intent} as the latest declaration, last write wins. */
-  void record(Intent intent);
+  /** Declares {@code declaration} as the latest, last write wins. */
+  void declare(T declaration);
 
-  /** The most recently recorded declaration, or empty if none was ever declared. */
-  Optional<Intent> latest();
+  /** The most recently declared value, or empty if none was ever declared. */
+  Optional<T> latest();
 }

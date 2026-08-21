@@ -34,15 +34,15 @@ class IntentEnricherTest {
 
   @Test
   void itIsNamedIntentForTheAuthorizationReport() {
-    var enricher = new IntentEnricher(new InMemoryIntentStore());
+    var enricher = new IntentEnricher(new InMemoryIntentStore<Intent>());
 
     assertThat(enricher.displayName()).contains("intent");
   }
 
   @Test
   void itDepositsTheLatestDeclarationWhenOneWasRecorded() {
-    var store = new InMemoryIntentStore();
-    store.record(new Intent("restart prod-eu to clear the stuck deploy"));
+    var store = new InMemoryIntentStore<Intent>();
+    store.declare(new Intent("restart prod-eu to clear the stuck deploy"));
     var enricher = new IntentEnricher(store);
 
     AuthzContext enriched = enricher.enrich(freshContext(), "restart prod-eu");
@@ -53,7 +53,7 @@ class IntentEnricherTest {
 
   @Test
   void itLeavesTheContextUntouchedWhenNoDeclarationWasEverRecorded() {
-    var enricher = new IntentEnricher(new InMemoryIntentStore());
+    var enricher = new IntentEnricher(new InMemoryIntentStore<Intent>());
     var context = freshContext();
 
     AuthzContext enriched = enricher.enrich(context, "restart prod-eu");

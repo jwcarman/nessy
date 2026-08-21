@@ -24,26 +24,26 @@ class InMemoryIntentStoreTest {
 
   @Test
   void anUnwrittenStoreHoldsNoDeclaration() {
-    var store = new InMemoryIntentStore();
+    var store = new InMemoryIntentStore<Intent>();
 
     assertThat(store.latest()).isEmpty();
   }
 
   @Test
   void aRecordedDeclarationIsRecoverable() {
-    var store = new InMemoryIntentStore();
+    var store = new InMemoryIntentStore<Intent>();
 
-    store.record(new Intent("restart prod-eu to clear the stuck deploy"));
+    store.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
     assertThat(store.latest()).contains(new Intent("restart prod-eu to clear the stuck deploy"));
   }
 
   @Test
   void aSecondRecordingReplacesTheFirstLastWriteWins() {
-    var store = new InMemoryIntentStore();
+    var store = new InMemoryIntentStore<Intent>();
 
-    store.record(new Intent("first declaration"));
-    store.record(new Intent("second declaration"));
+    store.declare(new Intent("first declaration"));
+    store.declare(new Intent("second declaration"));
 
     assertThat(store.latest()).contains(new Intent("second declaration"));
   }
