@@ -1223,8 +1223,20 @@ law:
 
 **`AgentWiring` dies as a public surface.** It was a ten-component positional record hand-built
 in demos — connascence of position in the shell's own front door. The shell becomes
-`DefaultAgent(harness, binding)`; the only public assembly doors are the builders (dsl-coherence
-law), and nothing outside the machine composes a shell's collaborators by hand again.
+`DefaultAgent(harness, binding)`; the *user-facing* assembly doors are the host builders
+(dsl-coherence law). Amended at execution (2026-08-21): the machine keeps one composition point
+of its own — `Harness.of(...)`, a single static factory — because the builders live in the host
+package and Java offers no cross-package package-private door; it is the machine's internal
+seam, deliberately unpleasant to hand-call, and applications are expected to arrive through the
+builders. The claim is thus narrowed from "nothing outside the machine can compose" to "nothing
+outside the machine is meant to compose, and no fluent surface invites it."
+
+**Ruled at final review (2026-08-21):** the in-memory substrates grow by one entry per distinct
+scope id ever touched and never evict — a deliberate single-node/bounded-population posture,
+stated in their javadoc; eviction remains a future seam. And the layering sentence "api depends
+on nothing internal" is precise as follows: `nessy-api` and `nessy-spi` may import
+`org.jwcarman.nessy.durable` (the primitive sits BELOW api in the stack); they never import each
+other upward nor the machine.
 
 **The staleness policy** (§6.1's judgment, named): `StalenessPolicy.isStale(Phase, Instant
 lastSaved)` with canonical `after(Duration)`, `after(Duration, Clock)`, and `never()`. The
