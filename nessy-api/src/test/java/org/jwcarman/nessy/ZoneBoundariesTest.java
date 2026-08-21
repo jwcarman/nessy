@@ -22,7 +22,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -36,43 +35,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 class ZoneBoundariesTest {
 
   private static final Path SOURCE_ROOT = Path.of("src", "main", "java");
-
-  /** The only api types allowed to reach into internal machinery, and why. */
-  private static final Set<String> SANCTIONED_API_TO_INTERNAL_IMPORTS = Set.of();
-
-  /**
-   * The only root-package files allowed to reach into internal machinery, and why: each assembles a
-   * {@link org.jwcarman.nessy.internal.ConversationLoop} (or, for {@code Conversation.java}, drives
-   * one) — the cutover left no {@code spi}-level engine interface to mediate that construction, so
-   * the facade reaches into {@code internal} directly, deliberately, at exactly these sites. {@code
-   * Harness.java} joins the set with the unified drive (design 2026-08-12): {@code resume} drives
-   * the same {@link org.jwcarman.nessy.internal.ConversationLoop} {@code AgentAssembly} wires
-   * through to it, rather than mediating through a {@code spi}-level type that does not exist.
-   * {@code SubagentAssembly.java} joins the set with the sonar sweep's Monster Class split
-   * (2026-08): the sole root-package user of {@code
-   * org.jwcarman.nessy.internal.subagent.AgentTools}. {@code AgentAssembly.java} joins the set with
-   * the dsl-coherence generation's own S6539 split (2026-08-16): {@code AgentConfig}'s
-   * runtime-assembly machinery — the loop/executor construction that reaches {@link
-   * org.jwcarman.nessy.internal.ConversationLoop} — moved wholesale into its own collaborator
-   * class, carrying that same sanctioned dependency with it; {@code AgentConfig.java} itself no
-   * longer imports {@code internal} at all.
-   */
-  private static final Set<String> SANCTIONED_ROOT_TO_INTERNAL_IMPORTS =
-      Set.of(
-          "Agent.java",
-          "AgentAssembly.java",
-          "Conversation.java",
-          "Harness.java",
-          "SubagentAssembly.java");
-
-  /**
-   * The only spi types allowed to reach into internal machinery, and why: each is an executor
-   * living at the seam between the loop and its performances, and each needs exactly one internal
-   * helper — {@code ProviderModelCallExecutor} the {@code LoopObservations} span helpers, {@code
-   * GatedToolCallExecutor} both {@code LoopObservations} and the shared {@code ToolInvoker}.
-   */
-  private static final Set<String> SANCTIONED_SPI_TO_INTERNAL_IMPORTS =
-      Set.of("ProviderModelCallExecutor.java", "GatedToolCallExecutor.java");
 
   /** The api-to-spi ban, covering the top-level spi zone. */
   @ParameterizedTest(name = "no file under api imports {0}")
@@ -101,11 +63,6 @@ class ZoneBoundariesTest {
   private static List<JavaFile> filesUnder(String segment) {
     String prefix = segment + "/";
     return allJavaFiles().stream().filter(file -> file.relativePath().startsWith(prefix)).toList();
-  }
-
-  /** Files directly in {@code org/jwcarman/nessy/}, not in any of its sub-packages. */
-  private static List<JavaFile> rootPackageFiles() {
-    return allJavaFiles().stream().filter(file -> !file.relativePath().contains("/")).toList();
   }
 
   private static List<JavaFile> allJavaFiles() {

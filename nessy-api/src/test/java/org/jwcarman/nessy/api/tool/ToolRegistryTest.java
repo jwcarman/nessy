@@ -18,8 +18,6 @@ package org.jwcarman.nessy.api.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -137,12 +135,6 @@ class ToolRegistryTest {
   }
 
   private final ToolRegistry registry = ToolRegistry.of(new GreetTool());
-
-  private static ToolCall greetCall(String name) {
-    ObjectNode args = JsonNodeFactory.instance.objectNode();
-    args.put("name", name);
-    return new ToolCall("c1", "greet", args);
-  }
 
   @Nested
   class Lookup {
