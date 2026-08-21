@@ -1,5 +1,14 @@
 # Durable Computation and Agent Execution Specification
 
+> **Storage supersession — 2026-08-21.** `2026-08-21-scoped-store-design.md` (the storage
+> kernel) supersedes this document's storage *mechanics*: §9 (backend SPI as an adapter
+> surface), §17–§22 (SQL reference, continuation table, outbox tables, SQL await/completion,
+> outbox worker SQL), and §29–§30 (backend architecture rule, capability abstraction).
+> Computations are now a kernel recipe (`kind=computation`), the outbox is `batch([flip,
+> enqueue])` over the kernel, and adapters implement `ScopedStore` — never this spec's SPI.
+> The semantic law below — one flip, atomic await, deterministic identity, idempotent
+> completion, continuations as data, the delivery model — remains fully binding.
+
 > **Reconciliation preamble (binding) — 2026-08-20.** This document entered the repository as a
 > companion to `2026-08-18-agent-as-scope-design.md`, which remains the design of record where the
 > two overlap. This preamble governs the body below.
