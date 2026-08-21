@@ -47,36 +47,24 @@ class AddTool implements Tool<Add> {
 }
 
 AnthropicModelProvider provider = AnthropicModelProvider.fromEnv();
+ModelSettings settings = new ModelSettings(
+    "claude-haiku-4-5-20251001", "You are a terse assistant.", 1024, Set.of(), null);
 
-Agent<String> agent =
-    Nessy.harness(h -> h.provider(provider))
-        .agent(
-            a ->
-                a.name("adder")
-                    .model("claude-haiku-4-5-20251001")
-                    .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
-
-StringBuilder text = new StringBuilder();
-RunOutcome outcome =
-    agent
-        .converse()
-        .tell(
-            "what is 2+2?",
-            TurnObserver.observe(o -> o.onTextDelta(delta -> text.append(delta.text()))));
-
-System.out.println(text + " (" + outcome.state().status() + ")");
-// The answer is 4. (COMPLETE)
+try (CliAgent agent = Nessy.cli().provider(provider).settings(settings).tools(new AddTool()).build()) {
+    String reply = agent.converse("what is 2+2?");
+    System.out.println(reply);
+    // The answer is 4.
+}
 ```
 
-The wiring itself — provider, harness, agent, `tell` — is about twenty lines;
-`AddTool` is another dozen, and it's the part that changes from agent to
-agent.
+The wiring itself — provider, settings, `Nessy.cli()`, `converse` — is about
+ten lines; `AddTool` is another dozen, and it's the part that changes from
+agent to agent.
 
-`.name("adder")` isn't decoration — every agent identifies itself, and that
-identity is what a [parked callback](concepts/parks-and-callbacks.md) checks
-before letting a resume through. `AgentMemory` here is the config's default —
-an in-memory [pipeline](concepts/memory-and-the-pipeline.md) over the
-transcript — swapped for a durable one only when you ask.
+`Nessy.cli()` opens the interactive front door: one scope for the process,
+one turn at a time, the caller's thread parks on the reply. `Memory` here is
+the config's default — an in-memory `Memory` — swapped for a durable one
+only when you ask.
 
 See [Providers](guides/providers.md) for OpenAI, Gemini, the
 switch-by-environment-variable helper, and the OpenAI-compatible services

@@ -15,6 +15,14 @@ against any shipped version, because none exists. This section describes the
 framework's current shape, once, in its final vocabulary, rather than the
 sequence of renames and interim shapes that produced it.
 
+> **Note.** Much of the narrative below predates the agent-as-scope rebuild
+> and was superseded on 2026-08-20 — `Nessy.harness`/`Agent#converse().tell()`,
+> `ParkToken`, planning, the notebook, and reflection among them. The design
+> of record is now the agent-as-scope, durable-computation, and
+> action-and-tool-vocabulary specs; the entries added for the 2026-08-20
+> waves (the doors, the action wave) describe the current shape and are
+> called out as such below.
+
 ### Added
 
 - **The front door.** `Nessy.harness(HarnessCustomizer)` builds a `Harness` —

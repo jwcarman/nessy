@@ -46,25 +46,14 @@ class AddTool implements Tool<Add> {
 }
 
 AnthropicModelProvider provider = AnthropicModelProvider.fromEnv();
+ModelSettings settings = new ModelSettings(
+    "claude-haiku-4-5-20251001", "You are a terse assistant.", 1024, Set.of(), null);
 
-Agent<String> agent =
-    Nessy.harness(h -> h.provider(provider))
-        .agent(
-            a ->
-                a.name("adder")
-                    .model("claude-haiku-4-5-20251001")
-                    .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
-
-StringBuilder text = new StringBuilder();
-RunOutcome outcome =
-    agent
-        .converse()
-        .tell(
-            "what is 2+2?",
-            TurnObserver.observe(o -> o.onTextDelta(delta -> text.append(delta.text()))));
-
-text.toString(); // "The answer is 4."
-outcome.state().status(); // ConversationStatus.COMPLETE
+try (CliAgent agent = Nessy.cli().provider(provider).settings(settings).tools(new AddTool()).build()) {
+    String reply = agent.converse("what is 2+2?");
+    System.out.println(reply);
+    // The answer is 4.
+}
 ```
 
 `OPENAI_API_KEY` and `OpenAiModelProvider.fromEnv()` are the one-line swap for
@@ -73,22 +62,51 @@ OpenAI instead, with nothing else about the shape above changing.
 set and picks the provider for you, so an application switches providers by
 switching an environment variable, not its code.
 
-`Nessy.harness(HarnessCustomizer)` is the only front door — a customizer
-lambda over a `HarnessConfig`, a config rather than a builder: fluent setters,
-no `build()` to call yourself. The provider is the harness's one required
-thing, and `HarnessConfig` validates it the instant the customizer lambda
-returns — one rule, checked in one place, everywhere a harness gets built.
-`Agent<I>` is a configured, reusable handle over its input vocabulary `I`;
-`converse()` opens a conversation and returns a `Conversation<I>`, whose
-`tell(I, TurnObserver)` narrates the model's prose and tool activity live as
-`TurnEvent`s and returns a `RunOutcome` — `Completed` or `Parked` — carrying
-the settled `ConversationState`. Every config default already works: in-memory
-conversation store, in-memory `AgentMemory`, an allow-all approver (replace it
-before you point real tools at anything), no-op observations. The smallest
-useful agent is a provider and a model name. See
+`Nessy.cli()` is the interactive front door: one scope for the process, one
+turn at a time, the caller's thread parks on the reply — the shape a REPL or
+a one-shot script both want. `CliAgent#converse(String)` sends one line and
+blocks for the answer; `.tools(Tool<?>...)` grants each tool an answered-allow
+policy for you (reach for `ToolGrant.grant(...)` directly, as in the capability
+table below, when a tool needs real authority rules). Every config default
+already works: an in-memory `Memory`, a fresh virtual-thread executor the
+`try`-with-resources closes for you. The smallest useful agent is a provider,
+`ModelSettings`, and nothing else.
+
+For a host that keeps running without a human driving each turn, there's a
+second front door — `Nessy.autonomous()` — built the same way, but posting
+observations instead of blocking calls, and fronted by an `ApprovalDesk` for
+whatever a tool's policy decides needs a human. `RestartTool` here is an
+ordinary `Tool<RestartInput>`, shaped just like `AddTool` above, granted
+`UsagePolicy.requireApproval()` instead of `allow()` and an `ActionContributor`
+(`RESTART_ACTION`) stating what the call will do:
+
+```java
+var pending = new LinkedBlockingQueue<ApprovalRequest>();
+
+try (AutonomousHost host =
+    Nessy.autonomous()
+        .provider(provider)
+        .settings(settings)
+        .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+        .approvalNotifier(pending::add)
+        .build()) {
+
+    host.post("ops", "restart prod-1");
+
+    ApprovalRequest request = pending.take();
+    host.approvals().approve(request.address().approval());
+}
+```
+
+`post(agentId, observation)` enqueues one fact for that scope and returns
+immediately; the scope drains it, and if `RestartTool`'s grant requires
+approval, the call suspends on a durable slot and `approvalNotifier` fires
+once with the `ApprovalRequest` — `request.address().approval()` is the slot
+id `host.approvals().approve(...)`/`.deny(..., reason)` decides. Nothing here
+holds a thread open waiting; the slot outlives a restart of the process that
+opened it. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
-the docs site for the rest of the walkthrough — typed agents, talking back and
-forth, surviving a restart.
+the docs site for the rest of the walkthrough.
 
 ## Install
 
@@ -115,16 +133,22 @@ actually needs:
 
 ```xml
 <dependencies>
-  <!-- The core API and loop — every application needs this. -->
+  <!-- The durable computation primitive — nessy-core and nessy-agent both build on this. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-durable</artifactId>
+  </dependency>
+
+  <!-- The core API: Tool, ToolGrant, UsagePolicy, the authorization chokepoint. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-core</artifactId>
   </dependency>
 
-  <!-- Spring Boot: one starter wires autoconfiguration for you. -->
+  <!-- The agent runtime and both front doors: Nessy.cli() and Nessy.autonomous(). -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-spring-boot-starter</artifactId>
+    <artifactId>nessy-agent</artifactId>
   </dependency>
 
   <!-- A model provider — pick one (or more). -->
@@ -153,31 +177,11 @@ actually needs:
     <artifactId>nessy-model-env</artifactId>
   </dependency>
 
-  <!-- Optional: an SGR-styled terminal REPL for any Agent<String>, one line to run. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-console</artifactId>
-  </dependency>
-
   <!-- ScriptedModelProvider: the offline, no-key test double — see the docs
        site's Testing guide. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-testing</artifactId>
-    <scope>test</scope>
-  </dependency>
-
-  <!-- Durable conversations and parks across a restart. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-jdbc</artifactId>
-  </dependency>
-
-  <!-- Optional: certify your own ConversationStore/Parks/Transcript/SummaryStore
-       implementation against the same contracts nessy-jdbc must pass. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-tck</artifactId>
     <scope>test</scope>
   </dependency>
 
