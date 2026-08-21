@@ -133,7 +133,7 @@ class TypedIntentDemo {
             return new PolicyDecision.Allow();
           }
           return switch (declared.get()) {
-            case Restart(String target, var _) -> {
+            case Restart(String target, _) -> {
               String rendered = context.action(String.class).orElse("");
               yield rendered.contains(target)
                   ? new PolicyDecision.Allow()
@@ -144,7 +144,7 @@ class TypedIntentDemo {
                           + rendered
                           + "\"");
             }
-            case Diagnose ignored -> new PolicyDecision.Allow();
+            case Diagnose _ -> new PolicyDecision.Allow();
           };
         });
   }
