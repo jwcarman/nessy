@@ -31,6 +31,7 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
+import org.jwcarman.nessy.api.tool.SealedInputs;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -177,7 +178,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   private <T> Object convert(ToolCall call, Tool<T> tool) {
-    return MAPPER.convertValue(call.arguments(), tool.inputType());
+    return SealedInputs.isSealedInput(tool.inputType())
+        ? SealedInputs.bind(tool.inputType(), call.arguments(), MAPPER)
+        : MAPPER.convertValue(call.arguments(), tool.inputType());
   }
 
   private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {

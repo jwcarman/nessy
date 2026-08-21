@@ -117,6 +117,39 @@ class RegistryToolCallExecutorTest {
     }
   }
 
+  sealed interface Command permits Ping, Pong {}
+
+  record Ping(String note) implements Command {}
+
+  record Pong(String note) implements Command {}
+
+  static final class DeclareTool implements Tool<Command> {
+    @Override
+    public String name() {
+      return "declare";
+    }
+
+    @Override
+    public String description() {
+      return "declares a command";
+    }
+
+    @Override
+    public Class<Command> inputType() {
+      return Command.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(Command input, ToolContext context) {
+      return Awaited.ready(
+          ToolResult.ok(
+              switch (input) {
+                case Ping ping -> "ping:" + ping.note();
+                case Pong pong -> "pong:" + pong.note();
+              }));
+    }
+  }
+
   static final class ActionBlindTool implements Tool<EchoInput> {
     @Override
     public String name() {
@@ -173,6 +206,23 @@ class RegistryToolCallExecutorTest {
     var finished = run(ToolRegistry.of(new ParkingTool()), call, new RecordingTurnObserver());
     var failed = (ToolOutcome.Failed) finished.outcome();
     assertThat(failed.error().message()).contains("deferred execution is unavailable");
+  }
+
+  @Test
+  void aSealedInputToolBindsAGoodDeclarationAndRuns() {
+    var arguments = JsonNodeFactory.instance.objectNode().put("type", "Ping").put("note", "hi");
+    var call = new ToolCall("c1", "declare", arguments);
+    var finished = run(ToolRegistry.of(new DeclareTool()), call, new RecordingTurnObserver());
+    assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("ping:hi")));
+  }
+
+  @Test
+  void aSealedInputToolFailsInBandNamingAllLegalTypesForAnUnknownDeclaration() {
+    var arguments = JsonNodeFactory.instance.objectNode().put("type", "Bogus").put("note", "hi");
+    var call = new ToolCall("c1", "declare", arguments);
+    var finished = run(ToolRegistry.of(new DeclareTool()), call, new RecordingTurnObserver());
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).contains("Ping").contains("Pong");
   }
 
   @Test

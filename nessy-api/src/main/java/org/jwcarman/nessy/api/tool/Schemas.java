@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.victools.jsonschema.generator.FieldScope;
 import com.github.victools.jsonschema.generator.OptionPreset;
@@ -38,7 +40,44 @@ public final class Schemas {
   private Schemas() {}
 
   public static ObjectNode of(Class<?> inputType) {
+    if (inputType.isInterface() && inputType.isSealed()) {
+      return sealedInterfaceSchema(inputType);
+    }
     return GENERATOR.generateSchema(inputType);
+  }
+
+  /**
+   * A sealed interface's schema is a {@code oneOf} over its permitted records, each carrying a
+   * required const discriminator property {@code "type"} holding the record's simple name — the
+   * shape {@link SealedInputs#bind} reads back. One level of sealing is the contract; a nested
+   * sealed member is left to victools' default handling.
+   */
+  private static ObjectNode sealedInterfaceSchema(Class<?> sealedType) {
+    ArrayNode oneOf = JsonNodeFactory.instance.arrayNode();
+    for (Class<?> permitted : sealedType.getPermittedSubclasses()) {
+      oneOf.add(
+          withTypeDiscriminator(GENERATOR.generateSchema(permitted), permitted.getSimpleName()));
+    }
+    ObjectNode schema = JsonNodeFactory.instance.objectNode();
+    schema.set("oneOf", oneOf);
+    return schema;
+  }
+
+  private static ObjectNode withTypeDiscriminator(ObjectNode recordSchema, String typeName) {
+    ObjectNode properties = (ObjectNode) recordSchema.get("properties");
+    if (properties == null) {
+      properties = JsonNodeFactory.instance.objectNode();
+      recordSchema.set("properties", properties);
+    }
+    properties.set("type", JsonNodeFactory.instance.objectNode().put("const", typeName));
+
+    ArrayNode required =
+        recordSchema.has("required")
+            ? (ArrayNode) recordSchema.get("required")
+            : JsonNodeFactory.instance.arrayNode();
+    required.add("type");
+    recordSchema.set("required", required);
+    return recordSchema;
   }
 
   private static SchemaGenerator generator() {
