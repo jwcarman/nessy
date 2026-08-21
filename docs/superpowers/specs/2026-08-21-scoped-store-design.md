@@ -95,7 +95,10 @@ symmetric noun pair is deliberate. `Op` members follow sealed-grammar etiquette
 1. **CAS law.** `write` with `expectedVersion == 0` creates the document at
    version 1; a document already present is a conflict. `write` with
    `expectedVersion == v` succeeds iff the stored version is `v`, storing at
-   `v + 1`. `delete` requires the same match. Any miss throws
+   `v + 1`. `delete` requires the same match, with one symmetry:
+   `delete` with `expectedVersion == 0` against an absent document is a no-op
+   success ("I believe it is absent" — satisfied), while against a present
+   document it conflicts. Any miss throws
    `ConflictException`. There are no locks, no waits, no partial states.
 2. **Journal law.** Sequences start at 1. `append(kind, key, expectedSeq, …)`
    creates the entry at exactly `expectedSeq`; an entry already at that seq is
