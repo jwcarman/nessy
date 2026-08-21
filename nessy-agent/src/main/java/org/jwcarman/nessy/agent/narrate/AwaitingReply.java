@@ -47,7 +47,9 @@ public final class AwaitingReply implements TurnObserver {
           reply.complete(lastAssistantText);
         }
       }
-      default -> {}
+      default -> {
+        // every other TurnEvent is narration only — this adapter cares about the reply alone
+      }
     }
   }
 

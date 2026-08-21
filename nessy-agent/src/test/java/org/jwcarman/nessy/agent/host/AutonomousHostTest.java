@@ -57,8 +57,8 @@ class AutonomousHostTest {
     Memory memory = captured.get("scope-1");
     assertThat(memory).isNotNull();
     List<Message> messages = memory.recall().messages();
-    assertThat(messages).isNotEmpty();
     assertThat(messages)
+        .isNotEmpty()
         .anyMatch(m -> m.content().contains(new TextBlock("hello")))
         .anyMatch(m -> m.content().contains(new TextBlock("hello back")));
   }
@@ -89,10 +89,12 @@ class AutonomousHostTest {
     List<Message> aMessages = captured.get("a").recall().messages();
     List<Message> bMessages = captured.get("b").recall().messages();
 
-    assertThat(aMessages).isNotEmpty();
-    assertThat(aMessages).allMatch(m -> !m.content().contains(new TextBlock("hello from b")));
-    assertThat(bMessages).isNotEmpty();
-    assertThat(bMessages).allMatch(m -> !m.content().contains(new TextBlock("hello from a")));
+    assertThat(aMessages)
+        .isNotEmpty()
+        .allMatch(m -> !m.content().contains(new TextBlock("hello from b")));
+    assertThat(bMessages)
+        .isNotEmpty()
+        .allMatch(m -> !m.content().contains(new TextBlock("hello from a")));
   }
 
   /**
@@ -139,8 +141,8 @@ class AutonomousHostTest {
     List<ModelRequest> requests = provider.requests();
     assertThat(requests).hasSize(2);
     List<Message> secondHostMessages = requests.get(1).context().messages();
-    assertThat(secondHostMessages).isNotEmpty();
     assertThat(secondHostMessages)
+        .isNotEmpty()
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
 
     long versionAfterHostOnesTurn = storesOne.get("shared-scope").load().version();
@@ -191,8 +193,8 @@ class AutonomousHostTest {
     pump.pumpUntilQuiet();
 
     List<Message> messages = captured.get("scope-1").recall().messages();
-    assertThat(messages).isNotEmpty();
     assertThat(messages)
+        .isNotEmpty()
         .anyMatch(m -> m.content().contains(new TextBlock("first message")))
         .anyMatch(m -> m.content().contains(new TextBlock("first reply")))
         .anyMatch(m -> m.content().contains(new TextBlock("second message")))

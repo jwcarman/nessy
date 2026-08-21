@@ -45,7 +45,9 @@ class HarnessTest {
   private static final Memory MEMORY =
       new Memory() {
         @Override
-        public void remember(Message message) {}
+        public void remember(Message message) {
+          // fixture only: this memory never needs to recall what it was told
+        }
 
         @Override
         public Context recall() {
@@ -56,7 +58,9 @@ class HarnessTest {
   private static final Backlog<String> BACKLOG =
       new Backlog<>() {
         @Override
-        public void add(String observation) {}
+        public void add(String observation) {
+          // fixture only: this backlog never needs to hold what it was given
+        }
 
         @Override
         public Optional<String> poll() {
@@ -106,19 +110,22 @@ class HarnessTest {
 
     @Test
     void bindingRequiresMemory() {
-      assertThatThrownBy(() -> new Binding<>(AgentId.of("a"), null, STORE, BACKLOG))
+      var id = AgentId.of("a");
+      assertThatThrownBy(() -> new Binding<>(id, null, STORE, BACKLOG))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void bindingRequiresAStore() {
-      assertThatThrownBy(() -> new Binding<>(AgentId.of("a"), MEMORY, null, BACKLOG))
+      var id = AgentId.of("a");
+      assertThatThrownBy(() -> new Binding<>(id, MEMORY, null, BACKLOG))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void bindingRequiresABacklog() {
-      assertThatThrownBy(() -> new Binding<>(AgentId.of("a"), MEMORY, STORE, null))
+      var id = AgentId.of("a");
+      assertThatThrownBy(() -> new Binding<>(id, MEMORY, STORE, null))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -399,7 +406,9 @@ class HarnessTest {
                 ModelCallExecutor fresh =
                     new ModelCallExecutor() {
                       @Override
-                      public void callModel(Sink sink) {}
+                      public void callModel(Sink sink) {
+                        // fixture only: this test cares about factory freshness, not model output
+                      }
                     };
                 produced.add(fresh);
                 return fresh;
@@ -411,8 +420,7 @@ class HarnessTest {
 
       assertThat(produced).hasSize(2);
       assertThat(produced.get(0)).isNotSameAs(produced.get(1));
-      assertThat(receivedByFactory).isNotEmpty();
-      assertThat(receivedByFactory).allMatch(o -> o == registry);
+      assertThat(receivedByFactory).isNotEmpty().allMatch(o -> o == registry);
     }
 
     @Test
@@ -436,7 +444,9 @@ class HarnessTest {
                 ToolCallExecutor fresh =
                     new ToolCallExecutor() {
                       @Override
-                      public void executeTool(ToolCall call, Sink sink) {}
+                      public void executeTool(ToolCall call, Sink sink) {
+                        // fixture only: this test cares about factory freshness, not tool output
+                      }
                     };
                 produced.add(fresh);
                 return fresh;
@@ -447,8 +457,7 @@ class HarnessTest {
 
       assertThat(produced).hasSize(2);
       assertThat(produced.get(0)).isNotSameAs(produced.get(1));
-      assertThat(receivedByFactory).isNotEmpty();
-      assertThat(receivedByFactory).allMatch(o -> o == registry);
+      assertThat(receivedByFactory).isNotEmpty().allMatch(o -> o == registry);
     }
   }
 }

@@ -55,8 +55,8 @@ public sealed interface Phase {
         case AgentEvent.Observed(var content) ->
             Transition.to(new AwaitingModel(), new Effect.CallModel())
                 .commit(Message.user(content));
-        case AgentEvent.ModelFinished ignored -> Transition.ignore();
-        case AgentEvent.ToolFinished ignored -> Transition.ignore();
+        case AgentEvent.ModelFinished _ -> Transition.ignore();
+        case AgentEvent.ToolFinished _ -> Transition.ignore();
       };
     }
 
@@ -80,9 +80,9 @@ public sealed interface Phase {
                         calls.stream().map(ToolCall::id).collect(Collectors.toUnmodifiableSet()),
                         List.of()))
                 .emit(calls.stream().map(Effect.ExecuteTool::new).map(Effect.class::cast).toList());
-        case AgentEvent.ModelFinished(ModelOutcome.Failed ignored) -> Transition.to(new Idle());
-        case AgentEvent.ToolFinished ignored -> Transition.ignore();
-        case AgentEvent.Observed ignored ->
+        case AgentEvent.ModelFinished(ModelOutcome.Failed _) -> Transition.to(new Idle());
+        case AgentEvent.ToolFinished _ -> Transition.ignore();
+        case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
       };
     }
@@ -134,8 +134,8 @@ public sealed interface Phase {
           }
           yield Transition.to(new AwaitingTools(assistantTurn, left, all));
         }
-        case AgentEvent.ModelFinished ignored -> Transition.ignore();
-        case AgentEvent.Observed ignored ->
+        case AgentEvent.ModelFinished _ -> Transition.ignore();
+        case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
       };
     }
@@ -144,7 +144,7 @@ public sealed interface Phase {
     public List<Effect> outstandingEffects() {
       var byId = new HashMap<String, ToolCall>();
       for (var block : assistantTurn.content()) {
-        if (block instanceof ToolUseBlock(ToolCall call, String ignoredSignature)) {
+        if (block instanceof ToolUseBlock(ToolCall call, String _)) {
           byId.put(call.id(), call);
         }
       }

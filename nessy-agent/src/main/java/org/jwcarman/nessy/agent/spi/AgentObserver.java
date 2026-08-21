@@ -51,22 +51,34 @@ public interface AgentObserver {
   static AgentObserver noop() {
     return new AgentObserver() {
       @Override
-      public void applied(AgentEvent event, Transition transition) {}
+      public void applied(AgentEvent event, Transition transition) {
+        // deliberately silent: the noop observer narrates nothing
+      }
 
       @Override
-      public void ignored(AgentEvent event) {}
+      public void ignored(AgentEvent event) {
+        // deliberately silent: the noop observer narrates nothing
+      }
 
       @Override
-      public void renderFailed(Object observation, RuntimeException error) {}
+      public void renderFailed(Object observation, RuntimeException error) {
+        // deliberately silent: the noop observer narrates nothing
+      }
 
       @Override
-      public void applyFailed(AgentEvent event, RuntimeException error) {}
+      public void applyFailed(AgentEvent event, RuntimeException error) {
+        // deliberately silent: the noop observer narrates nothing
+      }
 
       @Override
-      public void reFired(List<Effect> effects) {}
+      public void reFired(List<Effect> effects) {
+        // deliberately silent: the noop observer narrates nothing
+      }
 
       @Override
-      public void observationRequeued(Object observation) {}
+      public void observationRequeued(Object observation) {
+        // deliberately silent: the noop observer narrates nothing
+      }
     };
   }
 }

@@ -28,16 +28,24 @@ public final class RecordingAgentObserver implements AgentObserver {
   private final List<List<Effect>> reFiredCalls = new ArrayList<>();
 
   @Override
-  public void applied(AgentEvent event, Transition transition) {}
+  public void applied(AgentEvent event, Transition transition) {
+    // silent no-op: only reFired is recorded
+  }
 
   @Override
-  public void ignored(AgentEvent event) {}
+  public void ignored(AgentEvent event) {
+    // silent no-op: only reFired is recorded
+  }
 
   @Override
-  public void renderFailed(Object observation, RuntimeException error) {}
+  public void renderFailed(Object observation, RuntimeException error) {
+    // silent no-op: only reFired is recorded
+  }
 
   @Override
-  public void applyFailed(AgentEvent event, RuntimeException error) {}
+  public void applyFailed(AgentEvent event, RuntimeException error) {
+    // silent no-op: only reFired is recorded
+  }
 
   @Override
   public void reFired(List<Effect> effects) {
@@ -45,7 +53,9 @@ public final class RecordingAgentObserver implements AgentObserver {
   }
 
   @Override
-  public void observationRequeued(Object observation) {}
+  public void observationRequeued(Object observation) {
+    // silent no-op: only reFired is recorded
+  }
 
   public List<List<Effect>> reFiredCalls() {
     return List.copyOf(reFiredCalls);

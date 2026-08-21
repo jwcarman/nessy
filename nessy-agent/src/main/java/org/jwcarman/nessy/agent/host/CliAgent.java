@@ -63,9 +63,12 @@ public final class CliAgent implements AutoCloseable {
     return waiter.await(timeout);
   }
 
-  /** True once the last turn started has settled, or no turn has started yet. */
-  boolean lastTurnDone() {
-    return current == null || current.isDone();
+  /**
+   * The last turn started, if any — package-visible so a test can await its settling directly.
+   * {@code null} until the first turn begins.
+   */
+  synchronized AwaitingReply current() {
+    return current;
   }
 
   @Override

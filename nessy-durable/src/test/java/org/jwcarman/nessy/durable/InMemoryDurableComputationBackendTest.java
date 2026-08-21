@@ -115,29 +115,29 @@ class InMemoryDurableComputationBackendTest {
 
   @Test
   void completingAnUnknownIdBirthsTheSlotAlreadyTerminal() {
-    var backend = new InMemoryDurableComputationBackend();
+    var localBackend = new InMemoryDurableComputationBackend();
     var id = ComputationId.of("tool:t:a:c9");
-    assertThat(backend.complete(id, new Outcome.Success("early")))
+    assertThat(localBackend.complete(id, new Outcome.Success("early")))
         .isEqualTo(CompletionResult.COMPLETED);
-    assertThat(backend.status(id)).contains(ComputationStatus.SUCCEEDED);
+    assertThat(localBackend.status(id)).contains(ComputationStatus.SUCCEEDED);
   }
 
   @Test
   void createAfterAnEarlyCompletionFindsTheSlotAndAwaitAnswersAlreadyCompleted() {
-    var backend = new InMemoryDurableComputationBackend();
+    var localBackend = new InMemoryDurableComputationBackend();
     var id = ComputationId.of("tool:t:a:c9");
-    backend.complete(id, new Outcome.Success("early"));
-    assertThat(backend.create(id).created()).isFalse();
-    assertThat(backend.await(id, new Continuation("T", "{}")))
+    localBackend.complete(id, new Outcome.Success("early"));
+    assertThat(localBackend.create(id).created()).isFalse();
+    assertThat(localBackend.await(id, new Continuation("T", "{}")))
         .isEqualTo(new AwaitResult.AlreadyCompleted(new Outcome.Success("early")));
   }
 
   @Test
   void anEarlyCompletionStillFlipsOnlyOnce() {
-    var backend = new InMemoryDurableComputationBackend();
+    var localBackend = new InMemoryDurableComputationBackend();
     var id = ComputationId.of("tool:t:a:c9");
-    backend.complete(id, new Outcome.Success("early"));
-    assertThat(backend.complete(id, new Outcome.Failure("late")))
+    localBackend.complete(id, new Outcome.Success("early"));
+    assertThat(localBackend.complete(id, new Outcome.Failure("late")))
         .isEqualTo(CompletionResult.ALREADY_TERMINAL);
   }
 

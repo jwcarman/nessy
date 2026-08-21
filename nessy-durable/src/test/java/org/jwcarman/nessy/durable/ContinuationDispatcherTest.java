@@ -63,6 +63,9 @@ class ContinuationDispatcherTest {
 
   @Test
   void anEmptyListFiresNothing() {
+    List<Delivery> seen = new ArrayList<>();
+    dispatcher.register("A", (c, o) -> seen.add(new Delivery(c, o)));
     dispatcher.fire(List.of(), new Outcome.Success("v"));
+    assertThat(seen).isEmpty();
   }
 }

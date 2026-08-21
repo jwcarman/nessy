@@ -108,7 +108,9 @@ class DefaultAgentRedispatchTest {
 
   private static final class NoopBacklog implements Backlog<String> {
     @Override
-    public void add(String observation) {}
+    public void add(String observation) {
+      // fixture only: this backlog never needs to hold what it was given
+    }
 
     @Override
     public Optional<String> poll() {

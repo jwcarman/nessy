@@ -43,10 +43,6 @@ public final class InMemoryMemorySubstrate {
     return new View(id);
   }
 
-  private List<Message> messagesFor(String id) {
-    return scopes.computeIfAbsent(id, key -> new ArrayList<>());
-  }
-
   private final class View implements Memory {
 
     private final String id;
@@ -55,10 +51,14 @@ public final class InMemoryMemorySubstrate {
       this.id = id;
     }
 
+    private List<Message> messages() {
+      return scopes.computeIfAbsent(id, key -> new ArrayList<>());
+    }
+
     @Override
     public void remember(Message message) {
       Objects.requireNonNull(message, "message must not be null");
-      List<Message> messages = messagesFor(id);
+      List<Message> messages = messages();
       synchronized (messages) {
         messages.add(message);
       }
@@ -66,7 +66,7 @@ public final class InMemoryMemorySubstrate {
 
     @Override
     public Context recall() {
-      List<Message> messages = messagesFor(id);
+      List<Message> messages = messages();
       synchronized (messages) {
         return Context.of(List.copyOf(messages));
       }

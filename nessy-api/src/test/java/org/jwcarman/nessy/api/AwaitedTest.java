@@ -28,7 +28,7 @@ class AwaitedTest {
     String resolved =
         switch (awaited) {
           case Awaited.Ready<String>(String value) -> value;
-          case Awaited.Deferred<String> ignored -> "deferred";
+          case Awaited.Deferred<String> _ -> "deferred";
         };
 
     assertThat(resolved).isEqualTo("done");

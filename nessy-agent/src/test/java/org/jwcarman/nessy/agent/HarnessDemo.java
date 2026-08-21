@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.agent;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -76,16 +78,24 @@ class HarnessDemo {
           }
 
           @Override
-          public void renderFailed(Object o, RuntimeException e) {}
+          public void renderFailed(Object o, RuntimeException e) {
+            // deliberately silent: the demo narrator ignores render failures
+          }
 
           @Override
-          public void applyFailed(AgentEvent e, RuntimeException x) {}
+          public void applyFailed(AgentEvent e, RuntimeException x) {
+            // deliberately silent: the demo narrator ignores apply failures
+          }
 
           @Override
-          public void reFired(List<Effect> effects) {}
+          public void reFired(List<Effect> effects) {
+            // deliberately silent: the demo narrator ignores re-fires
+          }
 
           @Override
-          public void observationRequeued(Object observation) {}
+          public void observationRequeued(Object observation) {
+            // deliberately silent: the demo narrator ignores requeues
+          }
         };
 
     // ---- the harness: the recipe, id-free — and one bind stamps this scope's handles ----
@@ -141,5 +151,9 @@ class HarnessDemo {
                         + m.role()
                         + ": "
                         + m.content().stream().map(b -> b.getClass().getSimpleName()).toList()));
+
+    // ---- the turn actually finished, and the model's recollections were captured ----
+    assertThat(store.load().phase()).isInstanceOf(Phase.Idle.class);
+    assertThat(memory.remembered()).isNotEmpty();
   }
 }

@@ -305,8 +305,10 @@ class ToolOfTest {
                           cmd -> {
                             throw new IllegalArgumentException("boom");
                           }));
+      var command = new CreateAccount("ann");
+      var context = noopContext();
 
-      assertThatThrownBy(() -> tool.execute(new CreateAccount("ann"), noopContext()))
+      assertThatThrownBy(() -> tool.execute(command, context))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("boom");
     }

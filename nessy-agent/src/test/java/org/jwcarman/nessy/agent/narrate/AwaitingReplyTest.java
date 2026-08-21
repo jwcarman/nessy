@@ -39,7 +39,8 @@ class AwaitingReplyTest {
   void aFailedTurnThrowsWithItsReason() {
     var waiter = new AwaitingReply();
     waiter.on(new TurnEvent.TurnEnded("overloaded"));
-    assertThatThrownBy(() -> waiter.await(Duration.ofSeconds(1)))
+    var timeout = Duration.ofSeconds(1);
+    assertThatThrownBy(() -> waiter.await(timeout))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("overloaded");
   }
@@ -47,7 +48,8 @@ class AwaitingReplyTest {
   @Test
   void aTurnThatNeverEndsTimesOut() {
     var waiter = new AwaitingReply();
-    assertThatThrownBy(() -> waiter.await(Duration.ofMillis(50)))
+    var timeout = Duration.ofMillis(50);
+    assertThatThrownBy(() -> waiter.await(timeout))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("timed out");
   }

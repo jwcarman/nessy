@@ -54,11 +54,6 @@ public final class InMemoryStateSubstrate {
     return new View(id);
   }
 
-  private AtomicReference<Slot> slotFor(String id) {
-    return slots.computeIfAbsent(
-        id, key -> new AtomicReference<>(new Slot(State.initial(), clock.instant())));
-  }
-
   private final class View implements AgentStateStore {
 
     private final String id;
@@ -67,21 +62,26 @@ public final class InMemoryStateSubstrate {
       this.id = id;
     }
 
+    private AtomicReference<Slot> slot() {
+      return slots.computeIfAbsent(
+          id, key -> new AtomicReference<>(new Slot(State.initial(), clock.instant())));
+    }
+
     @Override
     public State load() {
-      return slotFor(id).get().state();
+      return slot().get().state();
     }
 
     @Override
     public Instant lastSaved() {
-      return slotFor(id).get().savedAt();
+      return slot().get().savedAt();
     }
 
     @Override
     public void save(State state) {
       Objects.requireNonNull(state, "state must not be null");
       State next = new State(state.phase(), state.version() + 1);
-      AtomicReference<Slot> slot = slotFor(id);
+      AtomicReference<Slot> slot = slot();
       while (true) {
         Slot stored = slot.get();
         if (stored.state().version() != state.version()) {

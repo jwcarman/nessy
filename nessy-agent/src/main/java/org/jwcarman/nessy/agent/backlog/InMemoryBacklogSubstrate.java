@@ -51,10 +51,6 @@ public final class InMemoryBacklogSubstrate {
     return new View(id);
   }
 
-  private Deque<String> queueFor(String id) {
-    return scopes.computeIfAbsent(id, key -> new ArrayDeque<>());
-  }
-
   private final class View implements Backlog<String> {
 
     private final String id;
@@ -63,10 +59,14 @@ public final class InMemoryBacklogSubstrate {
       this.id = id;
     }
 
+    private Deque<String> queue() {
+      return scopes.computeIfAbsent(id, key -> new ArrayDeque<>());
+    }
+
     @Override
     public void add(String observation) {
       Objects.requireNonNull(observation, "observation must not be null");
-      Deque<String> queue = queueFor(id);
+      Deque<String> queue = queue();
       synchronized (queue) {
         if (queue.size() >= capacity) {
           throw new IllegalStateException("backlog full (capacity " + capacity + ")");
@@ -77,7 +77,7 @@ public final class InMemoryBacklogSubstrate {
 
     @Override
     public Optional<String> poll() {
-      Deque<String> queue = queueFor(id);
+      Deque<String> queue = queue();
       synchronized (queue) {
         return Optional.ofNullable(queue.poll());
       }

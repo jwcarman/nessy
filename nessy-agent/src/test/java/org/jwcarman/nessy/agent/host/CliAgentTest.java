@@ -40,7 +40,7 @@ import org.jwcarman.nessy.spi.model.ModelEvent;
 class CliAgentTest {
 
   @Test
-  void helloWorldEndToEnd() throws Exception {
+  void helloWorldEndToEnd() {
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -51,7 +51,7 @@ class CliAgentTest {
   }
 
   @Test
-  void twoTurnsShareOneMemory() throws Exception {
+  void twoTurnsShareOneMemory() {
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -67,7 +67,7 @@ class CliAgentTest {
   }
 
   @Test
-  void aBusySecondTurnIsRefusedAndItsLateReplyIsNeverMisattributed() throws Exception {
+  void aBusySecondTurnIsRefusedAndItsLateReplyIsNeverMisattributed() {
     var gate = new CountDownLatch(1);
     var provider =
         new LatchedModelProvider(
@@ -76,7 +76,8 @@ class CliAgentTest {
                 List.of(new ModelEvent.TextChunk("late answer")),
                 List.of(new ModelEvent.TextChunk("fresh answer"))));
     try (var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build()) {
-      assertThatThrownBy(() -> agent.converse("first", Duration.ofMillis(100)))
+      var shortTimeout = Duration.ofMillis(100);
+      assertThatThrownBy(() -> agent.converse("first", shortTimeout))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("timed out");
       assertThatThrownBy(() -> agent.converse("second"))
@@ -88,15 +89,12 @@ class CliAgentTest {
     }
   }
 
-  private static void awaitLastTurnDone(CliAgent agent) throws InterruptedException {
-    var deadline = System.currentTimeMillis() + 5_000;
-    while (!agent.lastTurnDone() && System.currentTimeMillis() < deadline) {
-      Thread.sleep(10);
-    }
+  private static void awaitLastTurnDone(CliAgent agent) {
+    agent.current().await(Duration.ofSeconds(5));
   }
 
   @Test
-  void aCallerSuppliedExecutorSurvivesAgentClose() throws Exception {
+  void aCallerSuppliedExecutorSurvivesAgentClose() {
     ExecutorService callerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hi"))));
     try (var agent =
@@ -112,7 +110,7 @@ class CliAgentTest {
   }
 
   @Test
-  void twoBuildsNeverShareTheDefaultMemory() throws Exception {
+  void twoBuildsNeverShareTheDefaultMemory() {
     var firstProvider =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("one"))));
     try (var first =
@@ -131,7 +129,7 @@ class CliAgentTest {
   }
 
   @Test
-  void aToolCallingTurnRunsTheWholeLoop() throws Exception {
+  void aToolCallingTurnRunsTheWholeLoop() {
     var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
     var provider =
         new ScriptedModelProvider(
@@ -152,7 +150,7 @@ class CliAgentTest {
   }
 
   @Test
-  void aDurableOnlyToolsSpecIsAbsentFromWhatTheCliDoorShowsTheModel() throws Exception {
+  void aDurableOnlyToolsSpecIsAbsentFromWhatTheCliDoorShowsTheModel() {
     var provider = new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hi"))));
     try (var agent =
         Nessy.cli()
@@ -165,9 +163,10 @@ class CliAgentTest {
 
     List<ToolSpec> specs = provider.requests().getFirst().tools();
 
-    assertThat(specs).isNotEmpty();
-    assertThat(specs).noneMatch(spec -> spec.name().equals("durable_only"));
-    assertThat(specs).anyMatch(spec -> spec.name().equals("echo"));
+    assertThat(specs)
+        .isNotEmpty()
+        .noneMatch(spec -> spec.name().equals("durable_only"))
+        .anyMatch(spec -> spec.name().equals("echo"));
   }
 
   record EchoInput(String value) {}
