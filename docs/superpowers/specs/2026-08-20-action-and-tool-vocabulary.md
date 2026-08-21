@@ -128,9 +128,11 @@ constrains the model):**
   no declaration of that type on the context → `Deny` with a message telling the model to use
   the declare tool first — the in-band denial doubles as the teaching loop.
 - **Policies gain the composition the enricher chain always had:**
-  `UsagePolicy.allOf(policies...)` — evaluate in order; the first `Deny` wins; else any
-  `RequireApproval` wins; else `Allow`. Deny-biased, boringly predictable, never `Static`, and
-  rejects an empty list. This closes the gap that made judgment-in-enrichers tempting.
+  `UsagePolicy.allOf(List<UsagePolicy<Object>>)` — evaluate in order; the first `Deny` wins;
+  else any `RequireApproval` wins; else `Allow`. Deny-biased, boringly predictable, never
+  `Static`, and rejects an empty list. List-only by ruling (2026-08-21, at execution): a
+  generic-varargs overload carries an unadjudicatable heap-pollution warning, and both
+  silencers are against house law. This closes the gap that made judgment-in-enrichers tempting.
 - **Consistency checking is the payoff.** A typed declaration lets an org policy pattern-match
   the declared intent against the rendered action (declared `Restart("prod-eu")` vs an action
   touching `prod-us` → deny naming the mismatch) — the prompt-injection tripwire upgraded from
