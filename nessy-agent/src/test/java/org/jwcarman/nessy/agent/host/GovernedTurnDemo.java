@@ -139,7 +139,7 @@ class GovernedTurnDemo {
   }
 
   @Test
-  void the_model_declares_intent_then_the_risky_restart_parks_for_approval_and_completes() {
+  void theModelDeclaresIntentThenTheRiskyRestartParksForApprovalAndCompletes() {
     var pump = new PumpedExecutor();
     var backend = new InMemoryDurableComputationBackend();
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
@@ -222,7 +222,7 @@ class GovernedTurnDemo {
   }
 
   @Test
-  void a_very_high_severity_is_denied_in_band_before_any_approver_is_asked() {
+  void aVeryHighSeverityIsDeniedInBandBeforeAnyApproverIsAsked() {
     var pump = new PumpedExecutor();
     var backend = new InMemoryDurableComputationBackend();
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
@@ -265,12 +265,13 @@ class GovernedTurnDemo {
       ToolResultBlock restartResult = (ToolResultBlock) transcript.get(4).content().getFirst();
       System.out.println("restart result: " + restartResult);
       assertThat(restartResult.isError()).isTrue();
-      assertThat(restartResult.content()).contains("VERY_HIGH");
+      assertThat(restartResult.content())
+          .contains("risk severity VERY_HIGH meets or exceeds threshold VERY_HIGH");
     }
   }
 
   @Test
-  void with_no_risk_assessor_wired_the_threshold_fails_closed() {
+  void withNoRiskAssessorWiredTheThresholdFailsClosed() {
     var pump = new PumpedExecutor();
     var backend = new InMemoryDurableComputationBackend();
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();

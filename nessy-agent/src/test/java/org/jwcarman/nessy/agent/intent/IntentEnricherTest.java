@@ -32,14 +32,14 @@ class IntentEnricherTest {
   }
 
   @Test
-  void it_is_named_intent_for_the_authorization_report() {
+  void itIsNamedIntentForTheAuthorizationReport() {
     var enricher = new IntentEnricher(new InMemoryIntentStore());
 
     assertThat(enricher.displayName()).contains("intent");
   }
 
   @Test
-  void it_deposits_the_latest_declaration_when_one_was_recorded() {
+  void itDepositsTheLatestDeclarationWhenOneWasRecorded() {
     var store = new InMemoryIntentStore();
     store.record(new Intent("restart prod-eu to clear the stuck deploy"));
     var enricher = new IntentEnricher(store);
@@ -51,7 +51,7 @@ class IntentEnricherTest {
   }
 
   @Test
-  void it_leaves_the_context_untouched_when_no_declaration_was_ever_recorded() {
+  void itLeavesTheContextUntouchedWhenNoDeclarationWasEverRecorded() {
     var enricher = new IntentEnricher(new InMemoryIntentStore());
     var context = freshContext();
 

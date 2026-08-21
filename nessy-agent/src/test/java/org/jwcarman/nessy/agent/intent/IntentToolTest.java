@@ -37,14 +37,14 @@ class IntentToolTest {
   }
 
   @Test
-  void it_is_named_declare_intent() {
+  void itIsNamedDeclareIntent() {
     var tool = new IntentTool(new InMemoryIntentStore());
 
     assertThat(tool.name()).isEqualTo("declare-intent");
   }
 
   @Test
-  void its_description_tells_the_model_to_declare_before_acting() {
+  void itsDescriptionTellsTheModelToDeclareBeforeActing() {
     var tool = new IntentTool(new InMemoryIntentStore());
 
     assertThat(tool.description())
@@ -52,14 +52,14 @@ class IntentToolTest {
   }
 
   @Test
-  void it_requires_only_immediate_completion() {
+  void itRequiresOnlyImmediateCompletion() {
     var tool = new IntentTool(new InMemoryIntentStore());
 
     assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.IMMEDIATE);
   }
 
   @Test
-  void executing_records_the_declaration_into_the_store() {
+  void executingRecordsTheDeclarationIntoTheStore() {
     var store = new InMemoryIntentStore();
     var tool = new IntentTool(store);
 
@@ -70,7 +70,7 @@ class IntentToolTest {
   }
 
   @Test
-  void executing_returns_an_immediately_ready_ok_result() {
+  void executingReturnsAnImmediatelyReadyOkResult() {
     var tool = new IntentTool(new InMemoryIntentStore());
 
     Awaited<ToolResult> outcome =

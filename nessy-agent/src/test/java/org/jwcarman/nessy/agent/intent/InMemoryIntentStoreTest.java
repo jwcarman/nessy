@@ -22,14 +22,14 @@ import org.junit.jupiter.api.Test;
 class InMemoryIntentStoreTest {
 
   @Test
-  void an_unwritten_store_holds_no_declaration() {
+  void anUnwrittenStoreHoldsNoDeclaration() {
     var store = new InMemoryIntentStore();
 
     assertThat(store.latest()).isEmpty();
   }
 
   @Test
-  void a_recorded_declaration_is_recoverable() {
+  void aRecordedDeclarationIsRecoverable() {
     var store = new InMemoryIntentStore();
 
     store.record(new Intent("restart prod-eu to clear the stuck deploy"));
@@ -38,7 +38,7 @@ class InMemoryIntentStoreTest {
   }
 
   @Test
-  void a_second_recording_replaces_the_first_last_write_wins() {
+  void aSecondRecordingReplacesTheFirstLastWriteWins() {
     var store = new InMemoryIntentStore();
 
     store.record(new Intent("first declaration"));

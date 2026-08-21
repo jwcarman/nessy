@@ -23,21 +23,21 @@ import org.junit.jupiter.api.Test;
 class IntentTest {
 
   @Test
-  void a_declaration_is_recoverable_verbatim() {
+  void aDeclarationIsRecoverableVerbatim() {
     var intent = new Intent("restart prod-eu to clear the stuck deploy");
 
     assertThat(intent.declaration()).isEqualTo("restart prod-eu to clear the stuck deploy");
   }
 
   @Test
-  void a_blank_declaration_is_rejected() {
+  void aBlankDeclarationIsRejected() {
     assertThatThrownBy(() -> new Intent("   "))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("declaration");
   }
 
   @Test
-  void a_null_declaration_is_rejected() {
+  void aNullDeclarationIsRejected() {
     assertThatThrownBy(() -> new Intent(null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("declaration");
