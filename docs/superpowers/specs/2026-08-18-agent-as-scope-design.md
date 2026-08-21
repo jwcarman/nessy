@@ -1189,6 +1189,59 @@ Chain: `durable ← api ← spi ← agent`. Personas: tool/policy/enricher autho
 `nessy-api` alone; adapter authors against `nessy-spi`; app builders against `nessy-agent`.
 The layering guards become per-module Maven law and keep their source-scanning enforcement.
 
+### 10.11 The four tiers — substrate, host, harness, binding
+
+Ruled 2026-08-21 (owner, conversation). The runtime decomposes into four tiers, and the words are
+law:
+
+> **substrate** ← **host** ← **harness** ← **binding** ← the agent.
+
+- **Substrate** — the shared durable underlay: the durable-computation backend, state storage,
+  memory storage, backlog storage. Passive, storage-shaped, and **possibly shared across many
+  hosts** — a JDBC substrate serving ten nodes is the designed deployment; the in-memory
+  substrate is the degenerate single-node case of the same concept. In-memory implementations
+  are reshaped accordingly: one shared substrate object per host, with **per-id handles as thin
+  views** — a handle holds a reference and an id, never the data. Losing a handle loses nothing.
+- **Host** — one process's assembly around a substrate (§7): the harnesses, the continuation
+  dispatcher and its registrations, the desks (stateless verbs over the backend — which is why
+  an approval clicked on node B resumes a scope parked by node A), the executor pool, and the
+  delivery doors. Born and dies with its process. Today's autonomous host is deliberately
+  single-type; the multi-type upgrade is a `Map<AgentType, Harness>` plus resolver routing —
+  the binder/resolver seams already carry `AgentType` in anticipation, and the subagent story
+  (§4.4) walks through that door.
+- **Harness** — the recipe compiled, one per `AgentType`, id-free and immortal: the model-call
+  and tool-call machinery (with ONE shared `ObjectMapper` — never per-scope), the registry with
+  its precomputed specs, observers, renderer, posture flags, the staleness policy. §1.1 said the
+  `AgentType` is the recipe's name; the `Harness` is the recipe made runnable. The framework's
+  own noun lands on a concrete type: a harness is an agent with the scope left blank.
+- **Binding** — `harness.bind(id)`: the scope strapped in. A small value of thin handles
+  (`id`, memory, store, backlog) plus the transient `DefaultAgent` over it, stamped fresh per
+  delivery at negligible cost. Deliberately named *binding*, not *activation*: the virtual-actor
+  word would promise at-most-one live instance, and this design's whole point is that it
+  promises no such thing — the store's version CAS is the only lock, racing bindings are legal
+  and absorbed (§3.2).
+
+**`AgentWiring` dies as a public surface.** It was a ten-component positional record hand-built
+in demos — connascence of position in the shell's own front door. The shell becomes
+`DefaultAgent(harness, binding)`; the only public assembly doors are the builders (dsl-coherence
+law), and nothing outside the machine composes a shell's collaborators by hand again.
+
+**The staleness policy** (§6.1's judgment, named): `StalenessPolicy.isStale(Phase, Instant
+lastSaved)` with canonical `after(Duration)`, `after(Duration, Clock)`, and `never()`. The
+`Clock` leaves the machine — the policy owns time. Phase-awareness is the point: a scope quiet
+because its calls are suspended on approval slots is quiet on purpose, and a policy may say so;
+open question 3 lands here when it lands, as an implementation rather than new surface.
+
+**Vocabulary and prior art** (the gloss that buys a newcomer the model in one paragraph):
+agent-as-scope is the virtual-actor model with one deliberate deviation — `(AgentType, AgentId)`
+is Orleans' `(grain type, grain key)`, the binding is a grain activation *minus the
+single-activation guarantee* (we buy safety with CAS and at-least-once idempotence instead,
+which is what lets any node answer), the substrate is grain storage. On the durable side: a slot
+is what Restate/DBOS call a durable promise, the deterministic `ComputationId` is an idempotency
+key, and the umbrella term elsewhere is durable *execution* where this design says durable
+computation. "Host" agrees with MCP's own architecture noun. The desk and the doors are nessy's
+own words, doing voice work; the precision terms around them are the industry's.
+
 ## 11. Open questions
 
 0. ~~Backlog backpressure for the autonomous host~~ — **closed** (ruled 2026-08-20): the
