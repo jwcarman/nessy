@@ -65,7 +65,7 @@ class RiskAssessmentTest {
   class Severity_matrix_boundary_cells {
 
     @Test
-    void very_low_likelihood_and_very_low_impact_combine_to_very_low() {
+    void veryLowLikelihoodAndVeryLowImpactCombineToVeryLow() {
       RiskAssessment assessment =
           new RiskAssessment(RiskLevel.VERY_LOW, RiskLevel.VERY_LOW, List.of());
 
@@ -73,7 +73,7 @@ class RiskAssessmentTest {
     }
 
     @Test
-    void moderate_likelihood_and_moderate_impact_combine_to_moderate() {
+    void moderateLikelihoodAndModerateImpactCombineToModerate() {
       RiskAssessment assessment =
           new RiskAssessment(RiskLevel.MODERATE, RiskLevel.MODERATE, List.of());
 
@@ -81,14 +81,14 @@ class RiskAssessmentTest {
     }
 
     @Test
-    void high_likelihood_and_high_impact_combine_to_high() {
+    void highLikelihoodAndHighImpactCombineToHigh() {
       RiskAssessment assessment = new RiskAssessment(RiskLevel.HIGH, RiskLevel.HIGH, List.of());
 
       assertThat(assessment.severity()).isEqualTo(RiskLevel.HIGH);
     }
 
     @Test
-    void very_high_likelihood_and_high_impact_combine_to_very_high() {
+    void veryHighLikelihoodAndHighImpactCombineToVeryHigh() {
       RiskAssessment assessment =
           new RiskAssessment(RiskLevel.VERY_HIGH, RiskLevel.HIGH, List.of());
 
@@ -96,7 +96,7 @@ class RiskAssessmentTest {
     }
 
     @Test
-    void high_likelihood_and_very_high_impact_combine_to_very_high() {
+    void highLikelihoodAndVeryHighImpactCombineToVeryHigh() {
       RiskAssessment assessment =
           new RiskAssessment(RiskLevel.HIGH, RiskLevel.VERY_HIGH, List.of());
 
@@ -104,7 +104,7 @@ class RiskAssessmentTest {
     }
 
     @Test
-    void very_low_likelihood_and_very_high_impact_combine_to_low() {
+    void veryLowLikelihoodAndVeryHighImpactCombineToLow() {
       RiskAssessment assessment =
           new RiskAssessment(RiskLevel.VERY_LOW, RiskLevel.VERY_HIGH, List.of());
 
@@ -112,7 +112,7 @@ class RiskAssessmentTest {
     }
 
     @Test
-    void very_high_likelihood_and_very_low_impact_combine_to_very_low() {
+    void veryHighLikelihoodAndVeryLowImpactCombineToVeryLow() {
       RiskAssessment assessment =
           new RiskAssessment(RiskLevel.VERY_HIGH, RiskLevel.VERY_LOW, List.of());
 

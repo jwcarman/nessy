@@ -16,8 +16,10 @@
 package org.jwcarman.nessy.api.tool.authorization;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
@@ -54,5 +56,24 @@ class EnrichersTest {
     Enricher<Object> enricher = Enrichers.principal(() -> "ada");
 
     assertThat(enricher.displayName()).contains("principal");
+  }
+
+  @Test
+  void principal_calls_the_resolver_fresh_on_every_enrichment() {
+    AtomicInteger calls = new AtomicInteger();
+    Enricher<Object> enricher = Enrichers.principal(() -> "principal-" + calls.incrementAndGet());
+
+    AuthzContext first = enricher.enrich(freshContext(), null);
+    AuthzContext second = enricher.enrich(freshContext(), null);
+
+    assertThat(first.get(AuthzContext.PRINCIPAL_KEY)).contains("principal-1");
+    assertThat(second.get(AuthzContext.PRINCIPAL_KEY)).contains("principal-2");
+  }
+
+  @Test
+  void principal_rejects_a_null_resolver() {
+    assertThatThrownBy(() -> Enrichers.principal(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("resolver");
   }
 }
