@@ -70,17 +70,18 @@ public final class Governed {
 
   /**
    * The whole narrated run, factored out so {@code GovernedTest} can assert on exactly the line
-   * {@link #main} prints.
+   * {@link #main} prints. The final checkpoint synchronizes on {@link TurnEvent.TurnEnded} — the
+   * autonomous host's default {@code agentObserver} narrates it on the turn observer.
    */
   static String run() throws InterruptedException {
     IntentStore<OpsIntent> intentStore = new InMemoryIntentStore<>();
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
-    BlockingQueue<TurnEvent.TextDelta> replies = new LinkedBlockingQueue<>();
+    BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
     BlockingQueue<ApprovalRequest> approvalRequests = new LinkedBlockingQueue<>();
     TurnObserver observer =
         TurnObserver.observe(
-            o -> o.onToolCallCompleted(toolCompletions::add).onTextDelta(replies::add));
+            o -> o.onToolCallCompleted(toolCompletions::add).onTurnEnded(completions::add));
 
     try (AutonomousHost host =
         Nessy.autonomous()
@@ -117,8 +118,7 @@ public final class Governed {
       TurnEvent.ToolCallCompleted completed = toolCompletions.take();
       System.out.println("completion: " + completed.result().content());
 
-      TurnEvent.TextDelta reply = replies.take();
-      System.out.println("reply: " + reply.text());
+      completions.take();
       return "GOVERNED TURN COMPLETE";
     }
   }

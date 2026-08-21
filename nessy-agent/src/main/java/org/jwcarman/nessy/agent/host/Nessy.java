@@ -180,7 +180,9 @@ public final class Nessy {
     private DurableComputationBackend backend = new InMemoryDurableComputationBackend();
     private Consumer<ApprovalRequest> approvalNotifier = request -> {};
     private TurnObserver turnObserver = TurnObserver.noop();
-    private AgentObserver agentObserver = AgentObserver.noop();
+    // null until the caller sets one — build() defaults it to a TurnNarrationAdapter over
+    // turnObserver, so AssistantSaid/TurnEnded narrate the way the CLI door always has.
+    private AgentObserver agentObserver;
     private Executor executor;
     private int backlogCapacity = 1024;
     private StalenessPolicy stalenessPolicy = StalenessPolicy.after(Duration.ofMinutes(5));
@@ -270,7 +272,10 @@ public final class Nessy {
 
     /**
      * The shell-failure narration seam: {@code applyFailed}, {@code renderFailed}, {@code reFired},
-     * and {@code observationRequeued} land here; default keeps {@link AgentObserver#noop()}.
+     * and {@code observationRequeued} land here. Defaults to a {@link TurnNarrationAdapter} over
+     * the turn observer, so {@code AssistantSaid}/{@code TurnEnded} narrate — the posture the CLI
+     * door has always had; supplying your own observer here replaces that wiring entirely, so an
+     * override that still wants those events narrated must wrap {@link TurnObserver} itself.
      */
     public AutonomousBuilder agentObserver(AgentObserver agentObserver) {
       this.agentObserver = Objects.requireNonNull(agentObserver, "agentObserver must not be null");
@@ -320,12 +325,14 @@ public final class Nessy {
           memoryFactory != null ? memoryFactory : new InMemoryMemorySubstrate()::forScope;
       Function<String, AgentStateStore> effectiveStoreFactory =
           storeFactory != null ? storeFactory : new InMemoryStateSubstrate()::forScope;
+      AgentObserver effectiveAgentObserver =
+          agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
 
       Harness<String> harness =
           Harness.of(
               agentType,
               text -> List.of(new TextBlock(text)),
-              agentObserver,
+              effectiveAgentObserver,
               true,
               stalenessPolicy,
               effectiveMemoryFactory,

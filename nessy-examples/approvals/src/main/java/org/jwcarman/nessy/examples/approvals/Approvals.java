@@ -66,18 +66,16 @@ public final class Approvals {
 
   /**
    * The whole scripted arc, factored out so {@code ApprovalsTest} can assert on exactly the line
-   * {@link #main} prints. Synchronizes on the model's own reply text — the last event the scripted
-   * turn narrates — rather than a turn-boundary event, since the autonomous host narrates deltas
-   * and tool events on {@link TurnObserver} directly but leaves turn-boundary narration ({@link
-   * TurnEvent.AssistantSaid}, {@link TurnEvent.TurnEnded}) to a caller-supplied {@code
-   * AgentObserver}, which this demo has no need to wire.
+   * {@link #main} prints. Synchronizes on {@link TurnEvent.TurnEnded} — the autonomous host's
+   * default {@code agentObserver} narrates it (and {@link TurnEvent.AssistantSaid}) on the turn
+   * observer, so no extra wiring is needed beyond {@link Nessy.AutonomousBuilder#turnObserver}.
    */
   static String runScripted() throws InterruptedException {
     ModelProvider provider = scriptedProvider();
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<ApprovalRequest> requests = new LinkedBlockingQueue<>();
-    BlockingQueue<TurnEvent.TextDelta> replies = new LinkedBlockingQueue<>();
-    TurnObserver observer = TurnObserver.observe(o -> o.onTextDelta(replies::add));
+    BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
+    TurnObserver observer = TurnObserver.observe(o -> o.onTurnEnded(completions::add));
 
     try (AutonomousHost host =
         Nessy.autonomous()
@@ -97,8 +95,7 @@ public final class Approvals {
       System.out.println("== approving " + request.address().approval().value() + " ==");
       host.approvals().approve(request.address().approval());
 
-      TurnEvent.TextDelta reply = replies.take();
-      System.out.println("reply: " + reply.text());
+      completions.take();
       return "APPROVED AND COMPLETE";
     }
   }
@@ -118,7 +115,9 @@ public final class Approvals {
             .approvalNotifier(request -> printRequest(request, pending))
             .turnObserver(
                 TurnObserver.observe(
-                    o -> o.onTextDelta(delta -> System.out.println("says: " + delta.text()))))
+                    o ->
+                        o.onAssistantSaid(
+                            said -> System.out.println("says: " + said.message().content()))))
             .build()) {
       var console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
       System.out.println("say something ('approve', 'deny <reason>', 'quit'):");

@@ -26,10 +26,12 @@ import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
+import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
@@ -61,6 +63,31 @@ class AutonomousHostTest {
         .isNotEmpty()
         .anyMatch(m -> m.content().contains(new TextBlock("hello")))
         .anyMatch(m -> m.content().contains(new TextBlock("hello back")));
+  }
+
+  @Test
+  void aDefaultBuiltHostNarratesAssistantSaidAndTurnEndedForACompletedTurn() {
+    var pump = new PumpedExecutor();
+    var provider =
+        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    var observer = new RecordingTurnObserver();
+
+    var host =
+        Nessy.autonomous()
+            .provider(provider)
+            .settings(TestSettings.settings())
+            .executor(pump)
+            .turnObserver(observer)
+            .build();
+
+    host.post("scope-1", "hello");
+    pump.pumpUntilQuiet();
+
+    List<TurnEvent> events = observer.events();
+    assertThat(events)
+        .isNotEmpty()
+        .anyMatch(TurnEvent.AssistantSaid.class::isInstance)
+        .anyMatch(TurnEvent.TurnEnded.class::isInstance);
   }
 
   @Test
