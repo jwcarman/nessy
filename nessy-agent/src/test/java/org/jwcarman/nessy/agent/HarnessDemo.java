@@ -78,16 +78,24 @@ class HarnessDemo {
           }
 
           @Override
-          public void renderFailed(Object o, RuntimeException e) {}
+          public void renderFailed(Object o, RuntimeException e) {
+            // deliberately silent: the demo narrator ignores render failures
+          }
 
           @Override
-          public void applyFailed(AgentEvent e, RuntimeException x) {}
+          public void applyFailed(AgentEvent e, RuntimeException x) {
+            // deliberately silent: the demo narrator ignores apply failures
+          }
 
           @Override
-          public void reFired(List<Effect> effects) {}
+          public void reFired(List<Effect> effects) {
+            // deliberately silent: the demo narrator ignores re-fires
+          }
 
           @Override
-          public void observationRequeued(Object observation) {}
+          public void observationRequeued(Object observation) {
+            // deliberately silent: the demo narrator ignores requeues
+          }
         };
 
     // ---- the harness: the recipe, id-free — and one bind stamps this scope's handles ----

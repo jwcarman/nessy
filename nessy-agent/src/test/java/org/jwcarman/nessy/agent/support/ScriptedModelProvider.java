@@ -47,7 +47,9 @@ public final class ScriptedModelProvider implements ModelProvider {
       }
 
       @Override
-      public void close() {}
+      public void close() {
+        // no resources to release: events are already materialized
+      }
     };
   }
 

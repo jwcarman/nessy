@@ -45,7 +45,9 @@ class HarnessTest {
   private static final Memory MEMORY =
       new Memory() {
         @Override
-        public void remember(Message message) {}
+        public void remember(Message message) {
+          // fixture only: this memory never needs to recall what it was told
+        }
 
         @Override
         public Context recall() {
@@ -56,7 +58,9 @@ class HarnessTest {
   private static final Backlog<String> BACKLOG =
       new Backlog<>() {
         @Override
-        public void add(String observation) {}
+        public void add(String observation) {
+          // fixture only: this backlog never needs to hold what it was given
+        }
 
         @Override
         public Optional<String> poll() {
@@ -399,7 +403,9 @@ class HarnessTest {
                 ModelCallExecutor fresh =
                     new ModelCallExecutor() {
                       @Override
-                      public void callModel(Sink sink) {}
+                      public void callModel(Sink sink) {
+                        // fixture only: this test cares about factory freshness, not model output
+                      }
                     };
                 produced.add(fresh);
                 return fresh;
@@ -436,7 +442,9 @@ class HarnessTest {
                 ToolCallExecutor fresh =
                     new ToolCallExecutor() {
                       @Override
-                      public void executeTool(ToolCall call, Sink sink) {}
+                      public void executeTool(ToolCall call, Sink sink) {
+                        // fixture only: this test cares about factory freshness, not tool output
+                      }
                     };
                 produced.add(fresh);
                 return fresh;
