@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.message.ContentBlock;
  * binding} the thin, id-specific handles — instances are cheap, transient, and interchangeable
  * (§4.3).
  */
-public final class DefaultAgent<O> implements Agent<O>, ResolvedScope {
+public final class DefaultAgent<O> implements Agent<O> {
 
   private final Harness<O> harness;
   private final Binding<O> binding;
@@ -71,8 +71,7 @@ public final class DefaultAgent<O> implements Agent<O>, ResolvedScope {
    * (§4). Completions that lose the version race re-handle against fresh state until applied or
    * ignored (§3.4).
    */
-  @Override
-  public void deliver(AgentEvent event) {
+  void deliver(AgentEvent event) {
     while (true) {
       try {
         applyOnce(event);
@@ -153,8 +152,7 @@ public final class DefaultAgent<O> implements Agent<O>, ResolvedScope {
    * ModelFinished} response carries no correlation id — re-firing {@code CallModel} from here could
    * commit a stale response into a later turn.
    */
-  @Override
-  public void redispatch() {
+  void redispatch() {
     State state = binding.store().load();
     if (state.phase() instanceof Phase.Idle) {
       return;

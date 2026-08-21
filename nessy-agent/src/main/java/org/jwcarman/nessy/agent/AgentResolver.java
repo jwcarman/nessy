@@ -18,12 +18,10 @@ package org.jwcarman.nessy.agent;
 /**
  * Binds a scope coordinate to its live instance (spec §4.3 amendment, extending the binder
  * principle): whoever implements this provably holds — or can construct — the scope's {@link
- * DefaultAgent}, exactly as {@link AgentBinder} does for ordinary delivery. The result is exposed
- * as {@link ResolvedScope} — the operations a resolver's callers actually need — rather than {@code
- * DefaultAgent<?>}, so the contract carries no generic wildcard.
+ * DefaultAgent}, exactly as {@link AgentBinder} does for ordinary delivery.
  */
 @FunctionalInterface
 public interface AgentResolver {
 
-  ResolvedScope resolve(AgentType type, AgentId id);
+  DefaultAgent<?> resolve(AgentType type, AgentId id);
 }

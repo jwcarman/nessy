@@ -122,7 +122,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           switch (execute(call)) {
             case ToolExecution.Immediate(ToolOutcome outcome) ->
                 sink.deliver(new AgentEvent.ToolFinished(call, outcome));
-            case ToolExecution.Deferred(var _) -> {
+            case ToolExecution.Deferred(_) -> {
               // suspended into its slot: nothing delivered, nothing narrated (§4.3) — the
               // completion re-enters through the slot's registered continuation
             }

@@ -29,32 +29,31 @@ import java.util.Objects;
  * share a type and a name. A key is meant to be referenced as the one static constant both the
  * depositing enricher and the reading policy import, not reconstructed ad hoc — value equality
  * would only invite accidental collisions between unrelated modules that happened to pick the same
- * name. This is a {@code record} for its free constructor/accessors only; {@code equals}/{@code
- * hashCode} are overridden back to identity to preserve that guarantee.
+ * name.
  *
- * @param type the class token values deposited under this key are checked-cast against on the way
- *     out
- * @param name a human-readable label — for diagnostics only; identity, not this, drives equality
  * @param <T> the type of value this key looks up
  */
-public record Key<T>(Class<T> type, String name) {
+public final class Key<T> {
 
-  public Key {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(name, "name must not be null");
+  private final Class<T> type;
+  private final String name;
+
+  public Key(Class<T> type, String name) {
+    this.type = Objects.requireNonNull(type, "type must not be null");
+    this.name = Objects.requireNonNull(name, "name must not be null");
     if (name.isBlank()) {
       throw new IllegalArgumentException("name must not be blank");
     }
   }
 
-  @Override
-  public boolean equals(Object other) {
-    return this == other;
+  /** The class token values deposited under this key are checked-cast against on the way out. */
+  public Class<T> type() {
+    return type;
   }
 
-  @Override
-  public int hashCode() {
-    return System.identityHashCode(this);
+  /** A human-readable label — for diagnostics only; identity, not this, drives equality. */
+  public String name() {
+    return name;
   }
 
   @Override
