@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CompletionPolicy;
 
 /**
  * Something the model can ask the harness to do.
@@ -66,5 +67,15 @@ public interface Tool<T> {
   /** The wire description derived from {@link #inputType()}. */
   default ToolSpec spec() {
     return new ToolSpec(name(), description(), Schemas.of(inputType()));
+  }
+
+  /**
+   * The strongest completion semantics this tool needs (durable spec §14). A tool that answers
+   * through a durable slot — an approval, a callback, a job — declares {@code DURABLE} so a wiring
+   * that cannot suspend never shows it to the model at all (spec §4.3: filtering precedes failing).
+   * The loud in-band failure remains the backstop for tools that under-declare.
+   */
+  default CompletionPolicy requiredCompletion() {
+    return CompletionPolicy.IMMEDIATE;
   }
 }

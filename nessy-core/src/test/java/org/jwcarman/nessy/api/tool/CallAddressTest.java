@@ -16,24 +16,23 @@
 package org.jwcarman.nessy.api.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.event.ToolProgress;
+import org.jwcarman.nessy.durable.ComputationId;
 
-class ToolContextTest {
+class CallAddressTest {
 
   @Test
-  void progress_emits_with_the_frameworks_own_ids() {
-    List<Object> heard = new ArrayList<>();
-    ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
-    ToolContext context =
-        new ToolContext(call, heard::add, new CallAddress("test-agent", "test-scope", call.id()));
+  void theTwoDerivationsAreTheOnlyPlaceTheFormulasLive() {
+    var address = new CallAddress("ops", "prod-1", "c42");
+    assertThat(address.approval()).isEqualTo(ComputationId.of("approval:ops:prod-1:c42"));
+    assertThat(address.execution()).isEqualTo(ComputationId.of("tool:ops:prod-1:c42"));
+  }
 
-    context.progress("halfway");
-
-    assertThat(heard).containsExactly(new ToolProgress("c1", "halfway"));
+  @Test
+  void blankCoordinatesAreRefused() {
+    assertThatThrownBy(() -> new CallAddress(" ", "a", "c"))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

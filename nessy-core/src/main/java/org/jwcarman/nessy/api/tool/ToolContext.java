@@ -20,11 +20,12 @@ import org.jwcarman.nessy.api.event.EventEmitter;
 import org.jwcarman.nessy.api.event.ToolProgress;
 
 /** What a tool learns about the invocation it is serving. */
-public record ToolContext(ToolCall call, EventEmitter events) {
+public record ToolContext(ToolCall call, EventEmitter events, CallAddress address) {
 
   public ToolContext {
     Objects.requireNonNull(call, "call must not be null");
     Objects.requireNonNull(events, "events must not be null");
+    Objects.requireNonNull(address, "address must not be null");
   }
 
   /**

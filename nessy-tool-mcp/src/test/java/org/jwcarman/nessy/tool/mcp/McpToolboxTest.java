@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.event.EventEmitter;
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -69,7 +70,9 @@ class McpToolboxTest {
   }
 
   private static ToolContext contextFor(JsonNode arguments) {
-    return new ToolContext(new ToolCall("call-1", "echo", arguments), EventEmitter.noop());
+    ToolCall call = new ToolCall("call-1", "echo", arguments);
+    return new ToolContext(
+        call, EventEmitter.noop(), new CallAddress("test-agent", "test-scope", call.id()));
   }
 
   private static ToolResult readyResult(Awaited<ToolResult> awaited) {

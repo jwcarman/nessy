@@ -29,6 +29,7 @@ import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.event.ToolProgress;
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -46,6 +47,7 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private final ToolRegistry registry;
+  private final AgentId id;
   private final TurnObserver turn;
   private final Executor executor;
   private final ObjectMapper mapper = new ObjectMapper();
@@ -66,7 +68,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       Executor executor,
       DeferredCallPolicy deferredCallPolicy) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
-    Objects.requireNonNull(id, "id must not be null");
+    this.id = Objects.requireNonNull(id, "id must not be null");
     this.turn = Objects.requireNonNull(turn, "turn must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
     this.deferredCallPolicy =
@@ -103,7 +105,9 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private <T> ToolExecution invoke(Tool<T> tool, ToolCall call) {
     T input = mapper.convertValue(call.arguments(), tool.inputType());
-    ToolContext context = new ToolContext(call, event -> narrateProgress(call, event));
+    // Task 3 replaces this stamp with the real AgentType
+    CallAddress address = new CallAddress(id.value(), id.value(), call.id());
+    ToolContext context = new ToolContext(call, event -> narrateProgress(call, event), address);
     return switch (tool.execute(input, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
