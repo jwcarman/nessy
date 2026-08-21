@@ -106,8 +106,11 @@ constrains the model):**
   and the model must declare within it. Typing sharpens the claim's *structure*, never its
   *trustworthiness* — the §7 trust table stands.
 - **One generic kit carries both.** `IntentStore<T>` / `InMemoryIntentStore<T>` /
-  `IntentTool<T>` / `IntentEnricher<T>`; the freeform tier is the pre-built `T = Intent`
-  instance. The store's write verb renames `record(T)` → `declare(T)` (the old name collided
+  `IntentTool<T>`; the freeform tier is the pre-built `T = Intent` instance. `IntentEnricher`
+  itself stays unparameterized over an `IntentStore<?>` (amended at execution, 2026-08-21): it
+  deposits whatever `latest()` yields under the untyped `DECLARED_INTENT_KEY`, so a type
+  parameter would bind nothing — a phantom generic. Policies recover the type with
+  `declaredIntent(Class)`. The store's write verb renames `record(T)` → `declare(T)` (the old name collided
   with the `record` keyword — S6213 — and "declare" is the domain word anyway).
 - **The schema is the constraint.** `Schemas` learns sealed interfaces: the wire schema is a
   `oneOf` over the permitted records, each carrying a required const discriminator property
