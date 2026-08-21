@@ -163,9 +163,10 @@ class CliAgentTest {
 
     List<ToolSpec> specs = provider.requests().getFirst().tools();
 
-    assertThat(specs).isNotEmpty();
-    assertThat(specs).noneMatch(spec -> spec.name().equals("durable_only"));
-    assertThat(specs).anyMatch(spec -> spec.name().equals("echo"));
+    assertThat(specs)
+        .isNotEmpty()
+        .noneMatch(spec -> spec.name().equals("durable_only"))
+        .anyMatch(spec -> spec.name().equals("echo"));
   }
 
   record EchoInput(String value) {}

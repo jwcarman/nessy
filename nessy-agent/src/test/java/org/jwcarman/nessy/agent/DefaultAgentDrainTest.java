@@ -127,9 +127,10 @@ class DefaultAgentDrainTest {
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).isEmpty();
     var remembered = f.memory.remembered();
-    assertThat(remembered).isNotEmpty();
-    assertThat(remembered).contains(Message.user(List.of(new TextBlock("good-observation"))));
-    assertThat(remembered).doesNotContain(Message.user(List.of(new TextBlock("declined"))));
+    assertThat(remembered)
+        .isNotEmpty()
+        .contains(Message.user(List.of(new TextBlock("good-observation"))))
+        .doesNotContain(Message.user(List.of(new TextBlock("declined"))));
   }
 
   @Test

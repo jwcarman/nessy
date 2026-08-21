@@ -420,8 +420,7 @@ class HarnessTest {
 
       assertThat(produced).hasSize(2);
       assertThat(produced.get(0)).isNotSameAs(produced.get(1));
-      assertThat(receivedByFactory).isNotEmpty();
-      assertThat(receivedByFactory).allMatch(o -> o == registry);
+      assertThat(receivedByFactory).isNotEmpty().allMatch(o -> o == registry);
     }
 
     @Test
@@ -458,8 +457,7 @@ class HarnessTest {
 
       assertThat(produced).hasSize(2);
       assertThat(produced.get(0)).isNotSameAs(produced.get(1));
-      assertThat(receivedByFactory).isNotEmpty();
-      assertThat(receivedByFactory).allMatch(o -> o == registry);
+      assertThat(receivedByFactory).isNotEmpty().allMatch(o -> o == registry);
     }
   }
 }
