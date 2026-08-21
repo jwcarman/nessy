@@ -43,6 +43,11 @@ on top, not as the current API:
 - **The tool event channel is sealed.** `sealed interface ToolEvent` (today just
   `Progress(String message)`), delivered through `ToolEventListener`, replaces
   `EventEmitter.emit(Object)` and the untyped `ToolProgress` wire record.
+- **Sealed vocabularies now render as `oneOf` schemas.** `Schemas.of` renders a sealed
+  interface's permitted records as a `oneOf` schema with a nessy-bound const `"type"`
+  discriminator on each branch, and `SealedInputs.bind` reads it back — no
+  `@JsonTypeInfo`/`@JsonSubTypes` wiring needed, superseding the "Jackson wiring" claim
+  below.
 
 Every claim above was checked against the current `nessy-core`/`nessy-agent` source.
 The rest of this page — the ladder shape, the sealed three-outcome decision vocabulary,

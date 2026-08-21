@@ -30,15 +30,19 @@ import org.jwcarman.nessy.api.tool.ToolSpec;
  *
  * <p>{@code ToolSpec.inputSchema()} is already a JSON Schema object built by the caller, not a Java
  * type to introspect, so there is no generation step here — only a field-by-field copy of {@code
- * properties}, {@code required}, and {@code $defs} onto the SDK's builder. A type referenced by
- * more than one property is hoisted into {@code $defs} and pointed at with {@code $ref}; drop
- * {@code $defs} and those references resolve to nothing, so it is copied across verbatim.
+ * properties}, {@code required}, {@code $defs}, and {@code oneOf} onto the SDK's builder. A type
+ * referenced by more than one property is hoisted into {@code $defs} and pointed at with {@code
+ * $ref}; drop {@code $defs} and those references resolve to nothing, so it is copied across
+ * verbatim. A sealed vocabulary's schema carries its branches under {@code oneOf} instead of {@code
+ * properties}; drop it and the branches vanish, leaving Anthropic an empty schema, so it is copied
+ * across verbatim too.
  */
 public final class AnthropicSchemas {
 
   private static final String PROPERTIES = "properties";
   private static final String REQUIRED = "required";
   private static final String DEFS = "$defs";
+  private static final String ONE_OF = "oneOf";
 
   private AnthropicSchemas() {}
 
@@ -64,6 +68,11 @@ public final class AnthropicSchemas {
     var definitions = schema.get(DEFS);
     if (definitions != null) {
       inputSchema.putAdditionalProperty(DEFS, JsonValue.fromJsonNode(definitions));
+    }
+
+    var oneOf = schema.get(ONE_OF);
+    if (oneOf != null) {
+      inputSchema.putAdditionalProperty(ONE_OF, JsonValue.fromJsonNode(oneOf));
     }
     return inputSchema.build();
   }

@@ -20,11 +20,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.tool.Schemas;
+import org.jwcarman.nessy.api.tool.ToolSpec;
 
 class AnthropicSchemasTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  sealed interface Vocabulary permits Restart, Shutdown {}
+
+  record Restart(String host) implements Vocabulary {}
+
+  record Shutdown(String reason) implements Vocabulary {}
 
   @Test
   void properties_are_copied_onto_the_input_schema() {
@@ -105,5 +114,22 @@ class AnthropicSchemasTest {
     var inputSchema = AnthropicSchemas.toInputSchema(schema);
 
     assertThat(inputSchema._additionalProperties()).doesNotContainKey("$defs");
+  }
+
+  @Test
+  void a_sealed_vocabularys_oneOf_branches_survive_adaptation() {
+    ObjectNode schema = Schemas.of(Vocabulary.class);
+    ToolSpec spec = new ToolSpec("restart_or_shutdown", "Restarts or shuts down a host", schema);
+
+    var inputSchema = AnthropicSchemas.toInputSchema(spec.inputSchema());
+
+    var additionalProperties = inputSchema._additionalProperties();
+    assertThat(additionalProperties).containsKey("oneOf");
+    JsonNode oneOf = additionalProperties.get("oneOf").convert(JsonNode.class);
+    assertThat(oneOf).hasSize(2);
+
+    var typeConsts = new ArrayList<String>();
+    oneOf.forEach(branch -> typeConsts.add(branch.at("/properties/type/const").asText()));
+    assertThat(typeConsts).containsExactlyInAnyOrder("Restart", "Shutdown");
   }
 }

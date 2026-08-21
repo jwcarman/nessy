@@ -44,7 +44,7 @@ public final class Schemas {
   private Schemas() {}
 
   public static ObjectNode of(Class<?> inputType) {
-    if (inputType.isInterface() && inputType.isSealed()) {
+    if (SealedInputs.isSealedInput(inputType)) {
       return sealedInterfaceSchema(inputType);
     }
     return GENERATOR.generateSchema(inputType);

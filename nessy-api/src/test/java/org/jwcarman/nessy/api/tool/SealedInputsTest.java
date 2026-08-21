@@ -33,6 +33,10 @@ class SealedInputsTest {
 
   record NotSealed(String value) {}
 
+  sealed interface CollidingVocabulary permits CollidingType {}
+
+  record CollidingType(String type) implements CollidingVocabulary {}
+
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   @Test
@@ -107,6 +111,17 @@ class SealedInputsTest {
             .set("host", JsonNodeFactory.instance.objectNode().put("nested", "not-a-string"));
 
     assertThatThrownBy(() -> SealedInputs.bind(Vocabulary.class, arguments, MAPPER))
-        .isInstanceOf(RuntimeException.class);
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("host");
+  }
+
+  @Test
+  void bind_refuses_a_matched_record_that_declares_its_own_type_component() {
+    ObjectNode arguments = JsonNodeFactory.instance.objectNode().put("type", "CollidingType");
+
+    assertThatThrownBy(() -> SealedInputs.bind(CollidingVocabulary.class, arguments, MAPPER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CollidingType")
+        .hasMessageContaining("type");
   }
 }

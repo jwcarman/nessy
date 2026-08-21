@@ -119,6 +119,7 @@ class SchemasTest {
 
       assertThat(schema.get("$schema").asText())
           .isEqualTo(SchemaVersion.DRAFT_2020_12.getIdentifier());
+      assertThat(schema.get("oneOf")).hasSize(2);
       for (JsonNode branch : schema.get("oneOf")) {
         assertThat(branch.has("$schema")).isFalse();
       }

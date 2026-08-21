@@ -282,7 +282,9 @@ class UsagePolicyTest {
 
     @Test
     void rejectsAnEmptyList() {
-      assertThatThrownBy(() -> UsagePolicy.allOf(List.<UsagePolicy<Object>>of()))
+      List<UsagePolicy<Object>> empty = List.of();
+
+      assertThatThrownBy(() -> UsagePolicy.allOf(empty))
           .isInstanceOf(IllegalArgumentException.class);
     }
 

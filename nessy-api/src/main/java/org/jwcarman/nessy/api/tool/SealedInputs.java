@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Arrays;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The discriminator binder for sealed-interface tool inputs (vocabulary amendment §3, 2026-08-21).
@@ -50,6 +51,12 @@ public final class SealedInputs {
    * mapper. Missing/unknown "type" → IllegalArgumentException whose message lists the legal type
    * names; a body that fails to bind into the matched record surfaces the mapper's own exception.
    * The returned value is checked by token against the matched permitted class.
+   *
+   * <p>Defense in depth: if the matched record itself declares a component named {@code "type"},
+   * this fails loudly with an IllegalArgumentException naming the record and the collision, rather
+   * than silently stripping the caller's "type" value out of the arguments before binding — {@link
+   * Schemas} already refuses to generate a schema for such a record, but a caller that hand-builds
+   * arguments (bypassing schema generation) must not be able to reach the silent-strip path.
    */
   public static <T> T bind(Class<T> sealedType, JsonNode arguments, ObjectMapper mapper) {
     Class<?>[] permitted = sealedType.getPermittedSubclasses();
@@ -63,6 +70,12 @@ public final class SealedInputs {
               + (requestedType == null ? "<missing>" : requestedType)
               + "; expected one of: "
               + legalTypeNames(permitted));
+    }
+    if (declaresATypeComponent(matched)) {
+      throw new IllegalArgumentException(
+          "vocabulary record "
+              + matched.getSimpleName()
+              + " declares a component named \"type\", which collides with the discriminator");
     }
     // matched != null implies arguments.isObject() was true above, so this cast is safe.
     ObjectNode remainder = ((ObjectNode) arguments).deepCopy();
@@ -78,6 +91,10 @@ public final class SealedInputs {
       }
     }
     return null;
+  }
+
+  private static boolean declaresATypeComponent(Class<?> matched) {
+    return Stream.of(matched.getRecordComponents()).anyMatch(c -> c.getName().equals("type"));
   }
 
   private static String legalTypeNames(Class<?>[] permitted) {

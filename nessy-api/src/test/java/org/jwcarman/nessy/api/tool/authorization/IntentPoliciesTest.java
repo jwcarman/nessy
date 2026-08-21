@@ -47,7 +47,7 @@ class IntentPoliciesTest {
   class Require_declared {
 
     @Test
-    void denies_when_no_declaration_is_present() {
+    void deniesWhenNoDeclarationIsPresent() {
       UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
 
       PolicyDecision decision = policy.evaluate(freshContext(), CALL);
@@ -58,7 +58,7 @@ class IntentPoliciesTest {
     }
 
     @Test
-    void denies_when_the_declaration_on_the_context_is_the_wrong_type() {
+    void deniesWhenTheDeclarationOnTheContextIsTheWrongType() {
       UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
       AuthzContext context =
           freshContext().with(AuthzContext.DECLARED_INTENT_KEY, new OtherIntent("note"));
@@ -71,7 +71,7 @@ class IntentPoliciesTest {
     }
 
     @Test
-    void allows_when_a_declaration_of_the_right_type_is_present() {
+    void allowsWhenADeclarationOfTheRightTypeIsPresent() {
       UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
       AuthzContext context =
           freshContext().with(AuthzContext.DECLARED_INTENT_KEY, new Restart("prod-eu"));
@@ -91,7 +91,7 @@ class IntentPoliciesTest {
   class Report_rendering {
 
     @Test
-    void names_its_own_class_for_the_authorization_report() {
+    void namesItsOwnClassForTheAuthorizationReport() {
       ToolGrant grant =
           ToolGrant.grant(new NoOpTool(), IntentPolicies.requireDeclared(Restart.class));
 
