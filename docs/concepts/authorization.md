@@ -16,9 +16,10 @@ Five words carry the whole design, from least to most trusted:
   context: a risk level, a resolved principal, a quota check.
 - **Judgment** — the pure act of deciding, from the assembled facts alone;
   its verdict is a `PolicyDecision`: allow, deny, or require approval.
-- **Adjudication** — what a human or an external system decides once the
-  policy asks — including its most interesting state, `Suspended`: not decided
-  yet, parked in a durable slot.
+- **Adjudication** — the stage a call enters only when judgment's verdict is
+  require approval: a human or an external system decides — `Granted`,
+  `Refused`, or its most interesting state, `Suspended`: not decided yet,
+  parked in a durable slot.
 
 Each stage only ever adds information; nothing downstream can widen what an
 upstream stage already narrowed.
