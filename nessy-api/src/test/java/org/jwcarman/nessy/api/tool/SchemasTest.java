@@ -16,10 +16,12 @@
 package org.jwcarman.nessy.api.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.victools.jsonschema.generator.SchemaVersion;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -38,6 +40,10 @@ class SchemasTest {
   record Restart(@JsonPropertyDescription("Target host") String host) implements Vocabulary {}
 
   record Shutdown(Optional<String> reason) implements Vocabulary {}
+
+  sealed interface CollidingVocabulary permits CollidingType {}
+
+  record CollidingType(String type) implements CollidingVocabulary {}
 
   @Test
   void components_become_properties() {
@@ -105,6 +111,25 @@ class SchemasTest {
 
       assertThat(restartBranch.get("properties").has("host")).isTrue();
       assertThat(requiredNames(restartBranch)).contains("host");
+    }
+
+    @Test
+    void the_root_carries_schema_and_no_branch_does() {
+      ObjectNode schema = Schemas.of(Vocabulary.class);
+
+      assertThat(schema.get("$schema").asText())
+          .isEqualTo(SchemaVersion.DRAFT_2020_12.getIdentifier());
+      for (JsonNode branch : schema.get("oneOf")) {
+        assertThat(branch.has("$schema")).isFalse();
+      }
+    }
+
+    @Test
+    void a_record_declaring_its_own_type_component_fails_loudly_at_schema_time() {
+      assertThatThrownBy(() -> Schemas.of(CollidingVocabulary.class))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("CollidingType")
+          .hasMessageContaining("type");
     }
 
     private ObjectNode branchNamed(ObjectNode schema, String typeName) {

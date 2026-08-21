@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,11 +28,14 @@ import com.github.victools.jsonschema.module.jackson.JacksonModule;
 import java.util.Optional;
 
 /**
- * Turns a record into the JSON Schema a model needs to call it.
+ * Turns a record — or a sealed interface of records — into the JSON Schema a model needs to call
+ * it.
  *
  * <p>The record is the single source of truth. Its components become the schema's properties and
  * {@code @JsonPropertyDescription} becomes the text the model reads. Nobody hand-writes JSON
- * Schema, so it cannot drift from the code.
+ * Schema, so it cannot drift from the code. A sealed interface's schema is a {@code oneOf} over its
+ * permitted records, each gaining a required const {@code "type"} discriminator (see {@link
+ * SealedInputs}).
  */
 public final class Schemas {
 
@@ -51,23 +55,42 @@ public final class Schemas {
    * required const discriminator property {@code "type"} holding the record's simple name — the
    * shape {@link SealedInputs#bind} reads back. One level of sealing is the contract; a nested
    * sealed member is left to victools' default handling.
+   *
+   * <p>Per JSON Schema 2020-12 §8.1.1, {@code "$schema"} is a root-only keyword — victools stamps
+   * it onto every schema it generates, so each branch has it stripped before joining the {@code
+   * oneOf}, and the composed root carries the one legitimate {@code "$schema"}.
    */
   private static ObjectNode sealedInterfaceSchema(Class<?> sealedType) {
     ArrayNode oneOf = JsonNodeFactory.instance.arrayNode();
     for (Class<?> permitted : sealedType.getPermittedSubclasses()) {
-      oneOf.add(
-          withTypeDiscriminator(GENERATOR.generateSchema(permitted), permitted.getSimpleName()));
+      ObjectNode branch =
+          withTypeDiscriminator(GENERATOR.generateSchema(permitted), permitted.getSimpleName());
+      branch.remove("$schema");
+      oneOf.add(branch);
     }
     ObjectNode schema = JsonNodeFactory.instance.objectNode();
+    schema.put("$schema", SchemaVersion.DRAFT_2020_12.getIdentifier());
     schema.set("oneOf", oneOf);
     return schema;
   }
 
+  /**
+   * Injects the const {@code "type"} discriminator into one permitted record's schema. A record
+   * that declares its own {@code type} component collides with the discriminator and fails loudly
+   * at schema-generation time rather than being silently overwritten (and later silently stripped
+   * to {@code null} by {@link SealedInputs#bind}).
+   */
   private static ObjectNode withTypeDiscriminator(ObjectNode recordSchema, String typeName) {
     ObjectNode properties = (ObjectNode) recordSchema.get("properties");
     if (properties == null) {
       properties = JsonNodeFactory.instance.objectNode();
       recordSchema.set("properties", properties);
+    }
+    if (properties.has("type")) {
+      throw new IllegalArgumentException(
+          "vocabulary record "
+              + typeName
+              + " declares a component named \"type\", which collides with the discriminator");
     }
     properties.set("type", JsonNodeFactory.instance.objectNode().put("const", typeName));
 
@@ -75,9 +98,20 @@ public final class Schemas {
         recordSchema.has("required")
             ? (ArrayNode) recordSchema.get("required")
             : JsonNodeFactory.instance.arrayNode();
-    required.add("type");
+    if (!containsText(required, "type")) {
+      required.add("type");
+    }
     recordSchema.set("required", required);
     return recordSchema;
+  }
+
+  private static boolean containsText(ArrayNode array, String text) {
+    for (JsonNode element : array) {
+      if (element.asText().equals(text)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static SchemaGenerator generator() {

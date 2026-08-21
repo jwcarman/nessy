@@ -85,4 +85,28 @@ class SealedInputsTest {
         .hasMessageContaining("Restart")
         .hasMessageContaining("Shutdown");
   }
+
+  @Test
+  void bind_matches_the_type_name_case_sensitively() {
+    ObjectNode arguments =
+        JsonNodeFactory.instance.objectNode().put("type", "restart").put("host", "prod-eu");
+
+    assertThatThrownBy(() -> SealedInputs.bind(Vocabulary.class, arguments, MAPPER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("restart")
+        .hasMessageContaining("Restart")
+        .hasMessageContaining("Shutdown");
+  }
+
+  @Test
+  void bind_surfaces_the_mappers_error_when_the_body_cannot_bind_into_the_matched_record() {
+    ObjectNode arguments =
+        JsonNodeFactory.instance
+            .objectNode()
+            .put("type", "Restart")
+            .set("host", JsonNodeFactory.instance.objectNode().put("nested", "not-a-string"));
+
+    assertThatThrownBy(() -> SealedInputs.bind(Vocabulary.class, arguments, MAPPER))
+        .isInstanceOf(RuntimeException.class);
+  }
 }

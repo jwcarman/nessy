@@ -35,20 +35,25 @@ public final class SealedInputs {
 
   private SealedInputs() {}
 
-  /** True when the class is a sealed interface nessy binds by discriminator. */
+  /**
+   * True when the class is a sealed interface nessy binds by discriminator. Sealed abstract classes
+   * are deliberately excluded — the vocabulary is interface-only, matching {@link Schemas}'
+   * sealed-interface schema support.
+   */
   public static boolean isSealedInput(Class<?> type) {
     return type.isInterface() && type.isSealed();
   }
 
   /**
-   * Reads "type", matches a permitted record's simple name, binds the remaining properties into
-   * that record via the supplied mapper. Missing/unknown "type" → IllegalArgumentException whose
-   * message lists the legal type names. The returned value is checked by token against the matched
-   * permitted class.
+   * Reads "type", matches a permitted record's simple name (case-sensitively — exactly the const
+   * written into the schema), binds the remaining properties into that record via the supplied
+   * mapper. Missing/unknown "type" → IllegalArgumentException whose message lists the legal type
+   * names; a body that fails to bind into the matched record surfaces the mapper's own exception.
+   * The returned value is checked by token against the matched permitted class.
    */
   public static <T> T bind(Class<T> sealedType, JsonNode arguments, ObjectMapper mapper) {
     Class<?>[] permitted = sealedType.getPermittedSubclasses();
-    String requestedType = arguments.path("type").asText(null);
+    String requestedType = arguments.isObject() ? arguments.path("type").asText(null) : null;
     Class<?> matched = requestedType == null ? null : matching(permitted, requestedType);
     if (matched == null) {
       throw new IllegalArgumentException(
@@ -59,7 +64,8 @@ public final class SealedInputs {
               + "; expected one of: "
               + legalTypeNames(permitted));
     }
-    ObjectNode remainder = arguments.deepCopy();
+    // matched != null implies arguments.isObject() was true above, so this cast is safe.
+    ObjectNode remainder = ((ObjectNode) arguments).deepCopy();
     remainder.remove("type");
     Object bound = mapper.convertValue(remainder, matched);
     return sealedType.cast(bound);
