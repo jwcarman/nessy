@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
@@ -25,7 +26,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * already-terminal answer.
  */
 @FunctionalInterface
-public interface DeferredCallPolicy {
+public interface DeferredToolCallPolicy {
 
-  ToolExecution onDeferred(ToolCall call);
+  ToolExecution onDeferred(ToolCall call, CallAddress address);
 }

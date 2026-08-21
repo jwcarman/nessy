@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.Continuation;
@@ -38,7 +39,7 @@ class ScopeResumptionTest {
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("action", "go"));
   private static final Continuation CONTINUATION =
-      ScopeResumption.continuationFor(AgentType.of("approver"), AgentId.of("demo"), CALL);
+      ScopeResumption.continuationFor(new CallAddress("approver", "demo", "c1"), CALL);
 
   @Test
   void aSuccessRoundTripsIntoAReturnedToolFinished() {

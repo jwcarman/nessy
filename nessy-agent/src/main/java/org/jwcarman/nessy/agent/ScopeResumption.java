@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.ContinuationHandler;
@@ -42,13 +43,12 @@ public final class ScopeResumption implements ContinuationHandler {
     this.binder = Objects.requireNonNull(binder, "binder must not be null");
   }
 
-  public static Continuation continuationFor(AgentType type, AgentId id, ToolCall call) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(id, "id must not be null");
+  public static Continuation continuationFor(CallAddress address, ToolCall call) {
+    Objects.requireNonNull(address, "address must not be null");
     Objects.requireNonNull(call, "call must not be null");
     ObjectNode data = MAPPER.createObjectNode();
-    data.put("agentType", type.name());
-    data.put("agentId", id.value());
+    data.put("agentType", address.agentType());
+    data.put("agentId", address.agentId());
     ObjectNode callNode = data.putObject("call");
     callNode.put("id", call.id());
     callNode.put("name", call.name());

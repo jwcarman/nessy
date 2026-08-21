@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.AgentWiring;
 import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
@@ -55,6 +56,7 @@ public final class Nessy {
     private ModelSettings settings;
     private Memory memory;
     private String id = "cli";
+    private String typeName = "cli";
     private List<Tool<?>> tools = List.of();
     private ExecutorService executor;
 
@@ -82,6 +84,12 @@ public final class Nessy {
       return this;
     }
 
+    /** The recipe's name — the first coordinate of every durable address. */
+    public CliBuilder type(String typeName) {
+      this.typeName = Objects.requireNonNull(typeName, "typeName must not be null");
+      return this;
+    }
+
     /** The tools the model may call during a turn. */
     public CliBuilder tools(Tool<?>... tools) {
       this.tools = List.of(Objects.requireNonNull(tools, "tools must not be null"));
@@ -103,6 +111,7 @@ public final class Nessy {
       var relay = new RelayTurnObserver();
       ToolRegistry registry = ToolRegistry.of(tools.toArray(Tool[]::new));
       var agentId = AgentId.of(id);
+      var agentType = AgentType.of(typeName);
       var wiring =
           new AgentWiring<String>(
               effectiveMemory,
@@ -111,7 +120,7 @@ public final class Nessy {
               text -> List.of(new TextBlock(text)),
               new ProviderModelCallExecutor(
                   provider, settings, registry, effectiveMemory, relay, exec),
-              new RegistryToolCallExecutor(registry, agentId, relay, exec),
+              new RegistryToolCallExecutor(registry, agentType, agentId, relay, exec),
               new TurnNarrationAdapter(relay),
               false,
               Duration.ofMinutes(5),

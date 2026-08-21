@@ -16,12 +16,11 @@
 package org.jwcarman.nessy.agent.durable;
 
 import java.util.Objects;
-import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DurableOutcomes;
 import org.jwcarman.nessy.agent.ScopeResumption;
-import org.jwcarman.nessy.agent.spi.DeferredCallPolicy;
+import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.AwaitResult;
 import org.jwcarman.nessy.durable.ComputationId;
@@ -34,24 +33,19 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
  * deterministic id is the one handle per question. Completion-capability secrets (durable spec §9,
  * "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
  */
-public final class SlotDeferredCallPolicy implements DeferredCallPolicy {
+public final class SlotDeferredToolCallPolicy implements DeferredToolCallPolicy {
 
   private final DurableComputationBackend backend;
-  private final AgentType type;
-  private final AgentId id;
 
-  public SlotDeferredCallPolicy(DurableComputationBackend backend, AgentType type, AgentId id) {
+  public SlotDeferredToolCallPolicy(DurableComputationBackend backend) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
-    this.type = Objects.requireNonNull(type, "type must not be null");
-    this.id = Objects.requireNonNull(id, "id must not be null");
   }
 
   @Override
-  public ToolExecution onDeferred(ToolCall call) {
-    ComputationId slotId =
-        ComputationId.of("tool:%s:%s:%s".formatted(type.name(), id.value(), call.id()));
+  public ToolExecution onDeferred(ToolCall call, CallAddress address) {
+    ComputationId slotId = address.execution();
     backend.create(slotId);
-    return switch (backend.await(slotId, ScopeResumption.continuationFor(type, id, call))) {
+    return switch (backend.await(slotId, ScopeResumption.continuationFor(address, call))) {
       case AwaitResult.AlreadyCompleted(var outcome) ->
           new ToolExecution.Immediate(DurableOutcomes.toToolOutcome(outcome));
       case AwaitResult.Registered() -> new ToolExecution.Deferred(slotId);

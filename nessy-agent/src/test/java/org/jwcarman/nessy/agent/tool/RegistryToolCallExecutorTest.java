@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -86,7 +87,8 @@ class RegistryToolCallExecutorTest {
   private AgentEvent.ToolFinished run(
       ToolRegistry registry, ToolCall call, RecordingTurnObserver turn) {
     var pump = new PumpedExecutor();
-    var executor = new RegistryToolCallExecutor(registry, AgentId.of("cli"), turn, pump);
+    var executor =
+        new RegistryToolCallExecutor(registry, AgentType.of("cli"), AgentId.of("cli"), turn, pump);
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();
@@ -189,10 +191,12 @@ class RegistryToolCallExecutorTest {
     var executor =
         new RegistryToolCallExecutor(
             ToolRegistry.of(new ParkingTool()),
+            AgentType.of("cli"),
             AgentId.of("cli"),
             turn,
             pump,
-            parkedCall -> new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")));
+            (parkedCall, address) ->
+                new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")));
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();

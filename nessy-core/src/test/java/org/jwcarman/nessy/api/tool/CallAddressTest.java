@@ -35,4 +35,16 @@ class CallAddressTest {
     assertThatThrownBy(() -> new CallAddress(" ", "a", "c"))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void aBlankAgentIdIsRefused() {
+    assertThatThrownBy(() -> new CallAddress("ops", " ", "c"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void aBlankCallIdIsRefused() {
+    assertThatThrownBy(() -> new CallAddress("ops", "a", " "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

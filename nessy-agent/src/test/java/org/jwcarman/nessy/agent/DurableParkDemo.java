@@ -27,7 +27,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
-import org.jwcarman.nessy.agent.durable.SlotDeferredCallPolicy;
+import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
@@ -135,10 +135,11 @@ class DurableParkDemo {
                         provider, TestSettings.settings(), registry, memory, narrator, pump),
                     new RegistryToolCallExecutor(
                         registry,
+                        type,
                         id,
                         narrator,
                         pump,
-                        new SlotDeferredCallPolicy(backend, type, id)),
+                        new SlotDeferredToolCallPolicy(backend)),
                     AgentObserver.noop(),
                     false,
                     Duration.ofMinutes(5),
