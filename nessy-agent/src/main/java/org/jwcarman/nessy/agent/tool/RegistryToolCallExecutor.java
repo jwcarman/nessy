@@ -47,10 +47,22 @@ import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 
 /**
- * The registry tool executor (§4.3): find, bind, execute, deliver. What happens when a tool defers
- * is the wiring's {@link DeferredToolCallPolicy}: the default (5-arg constructor) fails loudly
- * in-band — a deferred turn wedges a conversation — while a durable wiring suspends the call into a
- * slot. A suspended call delivers nothing and narrates nothing.
+ * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
+ * authorization chokepoint. Every call passes its grant's {@link ToolGrant#judgment()} before the
+ * tool ever runs: a {@link UsagePolicy.Static} grant (Allow/Deny) takes the rung-0 fast path — no
+ * effect rendered, no context assembled — while every other grant renders the effect, runs its
+ * enrichers, and lets the policy judge. A {@code RuntimeException} escaping any of that is caught
+ * and turned into a fail-closed denial whose message names the stage that broke. {@link
+ * PolicyDecision.Deny} and a refused {@link Adjudication} both deliver in-band, narrated, so the
+ * model reads the reason and reacts; {@link PolicyDecision.Allow} and a granted {@link
+ * Adjudication} run the tool. {@link PolicyDecision.RequireApproval} routes to the wiring's {@link
+ * Approver} — the default (5- and 6-arg constructors) refuses loudly in-band, since approval is a
+ * capability of the wiring, not a right of every deployment.
+ *
+ * <p>What happens when a tool defers is the wiring's {@link DeferredToolCallPolicy}: the default
+ * (5-arg constructor) fails loudly in-band — a deferred turn wedges a conversation — while a
+ * durable wiring suspends the call into a slot. A suspended call, whether from a deferred tool or a
+ * suspended {@link Adjudication}, delivers nothing and narrates nothing.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 

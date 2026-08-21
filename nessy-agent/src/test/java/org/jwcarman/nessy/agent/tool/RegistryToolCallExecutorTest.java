@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -33,6 +34,7 @@ import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.EffectfulTool;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -40,6 +42,8 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.durable.ComputationId;
 
@@ -47,7 +51,7 @@ class RegistryToolCallExecutorTest {
 
   record EchoInput(String value) {}
 
-  static final class EchoTool implements Tool<EchoInput> {
+  static final class EchoTool implements EffectfulTool<EchoInput, String> {
     @Override
     public String name() {
       return "echo";
@@ -61,6 +65,11 @@ class RegistryToolCallExecutorTest {
     @Override
     public Class<EchoInput> inputType() {
       return EchoInput.class;
+    }
+
+    @Override
+    public String effect(EchoInput input) {
+      return String.valueOf(input);
     }
 
     @Override
@@ -334,14 +343,20 @@ class RegistryToolCallExecutorTest {
           requests.add(request);
           return new Adjudication.Granted();
         };
-    var registry = ToolRegistry.of(ToolGrant.grant(new EchoTool(), UsagePolicy.requireApproval()));
+    Enricher<Object> principalEnricher =
+        Enricher.named("principal", (ctx, effect) -> ctx.with(AuthzContext.PRINCIPAL_KEY, "ada"));
+    var registry =
+        ToolRegistry.of(
+            ToolGrant.grant(
+                new EchoTool(), List.of(principalEnricher), UsagePolicy.requireApproval()));
     var call = new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
     var finished = runWithApprover(registry, call, new RecordingTurnObserver(), recordingApprover);
     assertThat(requests).hasSize(1);
     var request = requests.getFirst();
     assertThat(request.address()).isEqualTo(new CallAddress("cli", "cli", "c1"));
-    assertThat(request.effect()).isNotNull();
+    assertThat(request.effect()).isEqualTo("EchoInput[value=hi]");
     assertThat(request.context().agentName()).isEqualTo("cli");
+    assertThat(request.context().principal()).contains("ada");
     assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("echo: hi")));
   }
 
@@ -384,5 +399,16 @@ class RegistryToolCallExecutorTest {
     pump.pumpUntilQuiet();
     assertThat(delivered).isEmpty();
     assertThat(turn.events()).isEmpty();
+  }
+
+  @Test
+  void theDefaultApproverRefusesLoudly() {
+    var registry =
+        ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), UsagePolicy.requireApproval()));
+    var call =
+        new ToolCall("c1", "never_run", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var finished = run(registry, call, new RecordingTurnObserver());
+    var failed = (ToolOutcome.Failed) finished.outcome();
+    assertThat(failed.error().message()).isEqualTo(RegistryToolCallExecutor.APPROVAL_UNAVAILABLE);
   }
 }

@@ -24,7 +24,14 @@ public sealed interface Adjudication {
   record Granted() implements Adjudication {}
 
   /** Do not run it; the reason goes in-band so the model reads it and reacts. */
-  record Refused(String reason) implements Adjudication {}
+  record Refused(String reason) implements Adjudication {
+
+    public Refused {
+      if (reason == null || reason.isBlank()) {
+        throw new IllegalArgumentException("reason must not be blank");
+      }
+    }
+  }
 
   /** The question is open in a durable slot; the call suspends. */
   record Suspended(ComputationId slot) implements Adjudication {}
