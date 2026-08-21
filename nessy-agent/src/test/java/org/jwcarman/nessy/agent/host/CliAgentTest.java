@@ -67,7 +67,7 @@ class CliAgentTest {
   }
 
   @Test
-  void aBusySecondTurnIsRefusedAndItsLateReplyIsNeverMisattributed() throws Exception {
+  void aBusySecondTurnIsRefusedAndItsLateReplyIsNeverMisattributed() {
     var gate = new CountDownLatch(1);
     var provider =
         new LatchedModelProvider(
@@ -88,11 +88,8 @@ class CliAgentTest {
     }
   }
 
-  private static void awaitLastTurnDone(CliAgent agent) throws InterruptedException {
-    var deadline = System.currentTimeMillis() + 5_000;
-    while (!agent.lastTurnDone() && System.currentTimeMillis() < deadline) {
-      Thread.sleep(10);
-    }
+  private static void awaitLastTurnDone(CliAgent agent) {
+    agent.current().await(Duration.ofSeconds(5));
   }
 
   @Test
