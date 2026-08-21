@@ -21,10 +21,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * Captures everything handed to it, so tests can assert on it. Wire it up as a declared listener —
- * {@code .listen(Object.class, recorder)} on a {@link org.jwcarman.nessy.HarnessConfig}/{@link
- * org.jwcarman.nessy.AgentConfig} — or as a conversation-local subscription via {@code
- * Conversation#events()}.
+ * Captures everything handed to it, so tests can assert on it — a general-purpose recording {@link
+ * Consumer} for any listener-shaped seam.
  */
 public final class RecordingSubscriber implements Consumer<Object> {
 

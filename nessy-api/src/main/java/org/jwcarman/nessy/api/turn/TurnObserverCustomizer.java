@@ -19,8 +19,8 @@ package org.jwcarman.nessy.api.turn;
  * The DSL-idiom name (design of record 2026-08-16 §1) for what {@link
  * TurnObserver#observe(TurnObserverCustomizer)} hands a lambda: a {@link TurnObserverConfig} to
  * fill in. A named functional interface rather than a bare {@code Consumer<TurnObserverConfig>} —
- * matching {@link org.jwcarman.nessy.HarnessCustomizer} and every other named customizer in this
- * codebase.
+ * matching {@link org.jwcarman.nessy.api.tool.ToolCustomizer} and every other named customizer in
+ * this codebase.
  */
 @FunctionalInterface
 public interface TurnObserverCustomizer {

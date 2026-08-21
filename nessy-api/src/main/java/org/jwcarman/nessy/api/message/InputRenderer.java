@@ -21,14 +21,12 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Renders one application-typed input, {@code I}, into the {@link ContentBlock}s a {@code tell}
- * puts on the wire. Typing lives in the facade's generics and ends here — everything downstream
- * (the sealed {@link org.jwcarman.nessy.api.ConversationEvent} grammar, the fold, the loop) only
- * ever sees content blocks.
+ * Renders one application-typed input, {@code I}, into {@link ContentBlock}s. Typing lives in the
+ * caller's generics and ends here — everything downstream of a renderer only ever sees content
+ * blocks.
  *
- * <p>A renderer that returns {@code null} or an empty list, or that throws, fails the {@code tell}
- * call outright rather than degrading silently — see {@code Conversation#tell} for the exact
- * contract.
+ * <p>A renderer that returns {@code null} or an empty list, or that throws, fails the delivery
+ * outright rather than degrading silently.
  *
  * @param <I> the input vocabulary this renderer knows how to render
  */

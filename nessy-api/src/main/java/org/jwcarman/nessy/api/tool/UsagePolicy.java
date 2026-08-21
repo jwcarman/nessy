@@ -76,7 +76,7 @@ public interface UsagePolicy<E> {
 
   /**
    * Pins the action type {@code E} at the call site for a rung-1 lambda reading {@link
-   * AuthzContext#call()}/{@link AuthzContext#state()} — {@code UsagePolicy.<Foo>of((context,
+   * AuthzContext#call()} and the context's typed keys — {@code UsagePolicy.<Foo>of((context,
    * action) -> ...)} where target-type inference alone would otherwise leave {@code E} ambiguous.
    */
   static <E> UsagePolicy<E> of(UsagePolicy<E> policy) {

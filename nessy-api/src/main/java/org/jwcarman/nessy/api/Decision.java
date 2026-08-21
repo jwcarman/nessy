@@ -16,10 +16,9 @@
 package org.jwcarman.nessy.api;
 
 /**
- * The answer to an approval question.
- *
- * <p>Lives in {@code api} rather than {@code api.approval} so {@link ConversationEvent} can
- * reference it without the api package depending on the approval package.
+ * The answer to an approval question — the payload an approval slot completes with (agent-as-scope
+ * spec, §4.3 amendment): the desk records the adjudication as a {@code Decision}, and the gate
+ * reads it back on re-drive.
  */
 public sealed interface Decision {
 
