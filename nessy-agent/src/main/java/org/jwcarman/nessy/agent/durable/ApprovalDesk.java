@@ -26,9 +26,10 @@ import org.jwcarman.nessy.durable.Outcome;
 /**
  * The approve/deny doors (§4.3), addressed by the computation's own deterministic identity — the
  * desk holds no state of its own, because the backend is the state. Re-drives re-derive the same
- * id, so there is exactly one handle per question, ever. Unknown ids and second decisions are
- * refused loudly by the backend's own vocabulary. Completion-capability secrets (durable spec §9,
- * "MAY be secured separately") arrive with the out-of-process doors in Plan 5.
+ * id, so there is exactly one handle per question, ever. Second decisions are refused loudly by the
+ * backend's own vocabulary; a decision on a never-created id births the slot already decided
+ * (durable ruling 6). Completion-capability secrets (durable spec §9, "MAY be secured separately")
+ * arrive with the out-of-process doors in Plan 5.
  *
  * <p>Complete-then-fire, at-least-once (plan decision 3): a handler throw during fire propagates
  * with the slot already terminal — the lazy re-drive floor covers delivery, and the Plan-5 outbox
