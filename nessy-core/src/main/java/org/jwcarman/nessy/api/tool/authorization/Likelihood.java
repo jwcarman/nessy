@@ -16,26 +16,25 @@
 package org.jwcarman.nessy.api.tool.authorization;
 
 /**
- * NIST SP 800-30's five qualitative risk levels — declaration order is severity order, so ordinal
- * comparison ({@link #compareTo}) is a legitimate way to compare two levels. This is solely the
- * conclusion/severity axis (action-wave spec §2, amended 2026-08-21): the assessor's stored
- * conclusion, whether derived from {@link Likelihood} and {@link Impact} via {@link
- * RiskAssessment#of} or deliberately overridden via {@link RiskAssessment}'s canonical constructor.
+ * NIST SP 800-30 Table G-2's five qualitative likelihood values — declaration order is severity
+ * order, so ordinal comparison ({@link #compareTo}) is a legitimate way to compare two likelihoods.
+ * Kept as its own type (action-wave spec §2, amended 2026-08-21) so a swapped likelihood/impact
+ * argument is a compile error, not a silent severity bug.
  */
-public enum RiskLevel {
+public enum Likelihood {
 
-  /** Very unlikely / negligible. */
+  /** Very unlikely to occur. */
   VERY_LOW,
 
-  /** Unlikely / limited. */
+  /** Unlikely to occur. */
   LOW,
 
-  /** Somewhat likely / serious. */
+  /** Somewhat likely to occur. */
   MODERATE,
 
-  /** Likely / severe. */
+  /** Likely to occur. */
   HIGH,
 
-  /** Almost certain / catastrophic. */
+  /** Almost certain to occur. */
   VERY_HIGH
 }

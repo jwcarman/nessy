@@ -18,17 +18,17 @@ package org.jwcarman.nessy.api.tool.authorization;
 /**
  * Seed vocabulary for {@link RiskAssessment#factors()} — the closest thing agent tooling has to a
  * standard risk vocabulary, drawn from MCP tool annotations plus nessy's own additions. Factors are
- * open strings, deliberately: this is a starting vocabulary, not a sealed grammar — an org adds its
- * own alongside these.
+ * open {@link RiskFactor} values, deliberately: this is a starting vocabulary, not a sealed grammar
+ * — an org adds its own {@code RiskFactor}s alongside these.
  */
 public final class RiskFactors {
 
-  public static final String DESTRUCTIVE = "destructive";
-  public static final String IRREVERSIBLE = "irreversible";
-  public static final String EXTERNAL_WORLD = "external-world";
-  public static final String READ_ONLY = "read-only";
-  public static final String SPENDS_MONEY = "spends-money";
-  public static final String TOUCHES_PII = "touches-pii";
+  public static final RiskFactor DESTRUCTIVE = new RiskFactor("destructive");
+  public static final RiskFactor IRREVERSIBLE = new RiskFactor("irreversible");
+  public static final RiskFactor EXTERNAL_WORLD = new RiskFactor("external-world");
+  public static final RiskFactor READ_ONLY = new RiskFactor("read-only");
+  public static final RiskFactor SPENDS_MONEY = new RiskFactor("spends-money");
+  public static final RiskFactor TOUCHES_PII = new RiskFactor("touches-pii");
 
   private RiskFactors() {}
 }

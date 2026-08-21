@@ -18,8 +18,8 @@ package org.jwcarman.nessy.api.tool.authorization;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,93 +32,129 @@ class RiskAssessmentTest {
 
     @Test
     void rejectsANullLikelihood() {
-      assertThatThrownBy(() -> new RiskAssessment(null, RiskLevel.LOW, List.of()))
+      assertThatThrownBy(() -> new RiskAssessment(null, Impact.LOW, RiskLevel.LOW, Set.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("likelihood");
     }
 
     @Test
     void rejectsANullImpact() {
-      assertThatThrownBy(() -> new RiskAssessment(RiskLevel.LOW, null, List.of()))
+      assertThatThrownBy(() -> new RiskAssessment(Likelihood.LOW, null, RiskLevel.LOW, Set.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("impact");
     }
 
     @Test
+    void rejectsANullRisk() {
+      assertThatThrownBy(() -> new RiskAssessment(Likelihood.LOW, Impact.LOW, null, Set.of()))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("risk");
+    }
+
+    @Test
     void rejectsNullFactors() {
-      assertThatThrownBy(() -> new RiskAssessment(RiskLevel.LOW, RiskLevel.LOW, null))
+      assertThatThrownBy(() -> new RiskAssessment(Likelihood.LOW, Impact.LOW, RiskLevel.LOW, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("factors");
     }
 
     @Test
-    void copiesTheFactorsListSoTheCallerCannotMutateItAfterConstruction() {
-      List<String> factors = new ArrayList<>();
+    void copiesTheFactorsSetSoTheCallerCannotMutateItAfterConstruction() {
+      Set<RiskFactor> factors = new LinkedHashSet<>();
       factors.add(RiskFactors.DESTRUCTIVE);
-      RiskAssessment assessment = new RiskAssessment(RiskLevel.LOW, RiskLevel.LOW, factors);
+      RiskAssessment assessment =
+          new RiskAssessment(Likelihood.LOW, Impact.LOW, RiskLevel.LOW, factors);
 
       factors.add(RiskFactors.IRREVERSIBLE);
 
       assertThat(assessment.factors()).containsExactly(RiskFactors.DESTRUCTIVE);
     }
+
+    @Test
+    void dedupsDuplicateFactorsViaSetCopyOf() {
+      Set<RiskFactor> factors = new LinkedHashSet<>();
+      factors.add(new RiskFactor("destructive"));
+      factors.add(new RiskFactor("destructive"));
+
+      RiskAssessment assessment =
+          new RiskAssessment(Likelihood.LOW, Impact.LOW, RiskLevel.LOW, factors);
+
+      assertThat(assessment.factors()).containsExactly(RiskFactors.DESTRUCTIVE);
+    }
+
+    @Test
+    void theCanonicalConstructorStoresAContradictingOverrideVerbatim() {
+      RiskAssessment assessment =
+          new RiskAssessment(Likelihood.VERY_LOW, Impact.VERY_LOW, RiskLevel.VERY_HIGH, Set.of());
+
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.VERY_HIGH);
+    }
   }
 
   @Nested
-  class Severity_matrix_boundary_cells {
+  class Risk_factor_value_equality {
+
+    @Test
+    void twoRiskFactorsWithTheSameNameAreEqual() {
+      assertThat(new RiskFactor("destructive")).isEqualTo(new RiskFactor("destructive"));
+    }
+
+    @Test
+    void twoRiskFactorsWithDifferentNamesAreNotEqual() {
+      assertThat(new RiskFactor("destructive")).isNotEqualTo(new RiskFactor("irreversible"));
+    }
+  }
+
+  @Nested
+  class Of_severity_matrix_boundary_cells {
 
     @Test
     void veryLowLikelihoodAndVeryLowImpactCombineToVeryLow() {
-      RiskAssessment assessment =
-          new RiskAssessment(RiskLevel.VERY_LOW, RiskLevel.VERY_LOW, List.of());
+      RiskAssessment assessment = RiskAssessment.of(Likelihood.VERY_LOW, Impact.VERY_LOW);
 
-      assertThat(assessment.severity()).isEqualTo(RiskLevel.VERY_LOW);
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.VERY_LOW);
     }
 
     @Test
     void moderateLikelihoodAndModerateImpactCombineToModerate() {
-      RiskAssessment assessment =
-          new RiskAssessment(RiskLevel.MODERATE, RiskLevel.MODERATE, List.of());
+      RiskAssessment assessment = RiskAssessment.of(Likelihood.MODERATE, Impact.MODERATE);
 
-      assertThat(assessment.severity()).isEqualTo(RiskLevel.MODERATE);
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.MODERATE);
     }
 
     @Test
     void highLikelihoodAndHighImpactCombineToHigh() {
-      RiskAssessment assessment = new RiskAssessment(RiskLevel.HIGH, RiskLevel.HIGH, List.of());
+      RiskAssessment assessment = RiskAssessment.of(Likelihood.HIGH, Impact.HIGH);
 
-      assertThat(assessment.severity()).isEqualTo(RiskLevel.HIGH);
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.HIGH);
     }
 
     @Test
     void veryHighLikelihoodAndHighImpactCombineToVeryHigh() {
-      RiskAssessment assessment =
-          new RiskAssessment(RiskLevel.VERY_HIGH, RiskLevel.HIGH, List.of());
+      RiskAssessment assessment = RiskAssessment.of(Likelihood.VERY_HIGH, Impact.HIGH);
 
-      assertThat(assessment.severity()).isEqualTo(RiskLevel.VERY_HIGH);
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.VERY_HIGH);
     }
 
     @Test
     void highLikelihoodAndVeryHighImpactCombineToVeryHigh() {
-      RiskAssessment assessment =
-          new RiskAssessment(RiskLevel.HIGH, RiskLevel.VERY_HIGH, List.of());
+      RiskAssessment assessment = RiskAssessment.of(Likelihood.HIGH, Impact.VERY_HIGH);
 
-      assertThat(assessment.severity()).isEqualTo(RiskLevel.VERY_HIGH);
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.VERY_HIGH);
     }
 
     @Test
     void veryLowLikelihoodAndVeryHighImpactCombineToLow() {
-      RiskAssessment assessment =
-          new RiskAssessment(RiskLevel.VERY_LOW, RiskLevel.VERY_HIGH, List.of());
+      RiskAssessment assessment = RiskAssessment.of(Likelihood.VERY_LOW, Impact.VERY_HIGH);
 
-      assertThat(assessment.severity()).isEqualTo(RiskLevel.LOW);
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.LOW);
     }
 
     @Test
     void veryHighLikelihoodAndVeryLowImpactCombineToVeryLow() {
-      RiskAssessment assessment =
-          new RiskAssessment(RiskLevel.VERY_HIGH, RiskLevel.VERY_LOW, List.of());
+      RiskAssessment assessment = RiskAssessment.of(Likelihood.VERY_HIGH, Impact.VERY_LOW);
 
-      assertThat(assessment.severity()).isEqualTo(RiskLevel.VERY_LOW);
+      assertThat(assessment.risk()).isEqualTo(RiskLevel.VERY_LOW);
     }
   }
 
@@ -128,9 +164,9 @@ class RiskAssessmentTest {
     /**
      * Every cell of the NIST SP 800-30 Table I-2 shaped matrix (task brief's normative table, rows
      * likelihood, columns impact) — transcribed from the spec, not read back from {@link
-     * RiskAssessment#severity()}'s own implementation.
+     * RiskAssessment#of}'s own implementation.
      */
-    @ParameterizedTest(name = "likelihood={0}, impact={1} -> severity={2}")
+    @ParameterizedTest(name = "likelihood={0}, impact={1} -> risk={2}")
     @CsvSource({
       "VERY_LOW, VERY_LOW,  VERY_LOW",
       "VERY_LOW, LOW,       VERY_LOW",
@@ -159,10 +195,10 @@ class RiskAssessmentTest {
       "VERY_HIGH, VERY_HIGH, VERY_HIGH",
     })
     void combinesLikelihoodAndImpactAccordingToTheNormativeMatrix(
-        RiskLevel likelihood, RiskLevel impact, RiskLevel expectedSeverity) {
-      RiskAssessment assessment = new RiskAssessment(likelihood, impact, List.of());
+        Likelihood likelihood, Impact impact, RiskLevel expectedRisk) {
+      RiskAssessment assessment = RiskAssessment.of(likelihood, impact);
 
-      assertThat(assessment.severity()).isEqualTo(expectedSeverity);
+      assertThat(assessment.risk()).isEqualTo(expectedRisk);
     }
   }
 }

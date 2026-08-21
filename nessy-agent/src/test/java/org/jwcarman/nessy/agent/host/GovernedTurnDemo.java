@@ -48,6 +48,8 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.tool.authorization.Enrichers;
+import org.jwcarman.nessy.api.tool.authorization.Impact;
+import org.jwcarman.nessy.api.tool.authorization.Likelihood;
 import org.jwcarman.nessy.api.tool.authorization.RiskAssessment;
 import org.jwcarman.nessy.api.tool.authorization.RiskFactors;
 import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
@@ -99,9 +101,8 @@ class GovernedTurnDemo {
   private static final ActionContributor<RestartInput, String> RESTART_STATEMENT =
       ActionContributor.named("restart-statement", in -> "restart " + in.target());
 
-  private static Enricher<Object> riskAssessor(RiskLevel likelihood, RiskLevel impact) {
-    RiskAssessment assessment =
-        new RiskAssessment(likelihood, impact, List.of(RiskFactors.DESTRUCTIVE));
+  private static Enricher<Object> riskAssessor(Likelihood likelihood, Impact impact) {
+    RiskAssessment assessment = RiskAssessment.of(likelihood, impact, RiskFactors.DESTRUCTIVE);
     return Enricher.named(
         "risk", (context, action) -> context.with(AuthzContext.RISK_KEY, assessment));
   }
@@ -160,7 +161,7 @@ class GovernedTurnDemo {
             .settings(TestSettings.settings())
             .grants(
                 ToolGrant.grant(new IntentTool(intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore, riskAssessor(RiskLevel.HIGH, RiskLevel.HIGH)))
+                restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(
                 id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
@@ -194,8 +195,7 @@ class GovernedTurnDemo {
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
       assertThat(request.context().principal()).contains("jcarman");
       assertThat(request.context().risk())
-          .contains(
-              new RiskAssessment(RiskLevel.HIGH, RiskLevel.HIGH, List.of(RiskFactors.DESTRUCTIVE)));
+          .contains(RiskAssessment.of(Likelihood.HIGH, Impact.HIGH, RiskFactors.DESTRUCTIVE));
 
       System.out.println("== the desk approves; the scope resumes ==");
       host.approvals().approve(slot);
@@ -243,7 +243,7 @@ class GovernedTurnDemo {
             .settings(TestSettings.settings())
             .grants(
                 ToolGrant.grant(new IntentTool(intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore, riskAssessor(RiskLevel.VERY_HIGH, RiskLevel.VERY_HIGH)))
+                restartGrant(intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(
                 id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))

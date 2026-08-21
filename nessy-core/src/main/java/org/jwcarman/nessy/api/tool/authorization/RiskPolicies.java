@@ -21,7 +21,7 @@ import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 
 /**
- * Canonical {@link UsagePolicy} factories that judge {@link RiskAssessment#severity()} (action-wave
+ * Canonical {@link UsagePolicy} factories that judge {@link RiskAssessment#risk()} (action-wave
  * spec §2) — the one-line policy every deployment actually wants, composable with any org's own
  * risk-assessing {@link Enricher}.
  */
@@ -76,7 +76,7 @@ public final class RiskPolicies {
       if (assessment.isEmpty()) {
         return new PolicyDecision.Deny("no risk assessment deposited under RISK_KEY");
       }
-      RiskLevel severity = assessment.get().severity();
+      RiskLevel severity = assessment.get().risk();
       if (severity.compareTo(approveAt) < 0) {
         return new PolicyDecision.Allow();
       }

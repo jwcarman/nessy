@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
@@ -36,7 +36,8 @@ class RiskPoliciesTest {
   }
 
   private static AuthzContext contextWithSeverity(RiskLevel severity) {
-    RiskAssessment assessment = new RiskAssessment(severity, severity, List.of());
+    RiskAssessment assessment =
+        new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, severity, Set.of());
     return freshContext().with(AuthzContext.RISK_KEY, assessment);
   }
 
