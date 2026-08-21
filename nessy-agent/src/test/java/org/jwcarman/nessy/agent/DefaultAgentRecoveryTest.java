@@ -42,7 +42,7 @@ class DefaultAgentRecoveryTest {
   private static AgentFixture stalled(Phase phase, TestClock clock) {
     var store = new InMemoryAgentStateStore(clock);
     store.save(new State(phase, 0L));
-    return new AgentFixture(store, false, THRESHOLD, clock);
+    return new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
   }
 
   @Test
@@ -97,7 +97,7 @@ class DefaultAgentRecoveryTest {
   void aStaleIdleScopeJustDrains() {
     var clock = new TestClock(T0);
     var store = new InMemoryAgentStateStore(clock);
-    var f = new AgentFixture(store, false, THRESHOLD, clock);
+    var f = new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     f.backlogQueue.add("waiting");
     clock.advance(Duration.ofHours(1));

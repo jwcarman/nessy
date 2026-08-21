@@ -17,8 +17,6 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -73,8 +71,7 @@ class DefaultAgentRedispatchTest {
                 tools,
                 observer,
                 false,
-                Duration.ofMinutes(5),
-                Clock.systemUTC()));
+                StalenessPolicy.never()));
 
     agent.redispatch();
 
@@ -101,8 +98,7 @@ class DefaultAgentRedispatchTest {
                 tools,
                 observer,
                 false,
-                Duration.ofMinutes(5),
-                Clock.systemUTC()));
+                StalenessPolicy.never()));
 
     agent.redispatch();
 

@@ -18,8 +18,6 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.time.Clock;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -195,8 +193,7 @@ class DefaultAgentApplyTest {
             (call, sink) -> {},
             AgentObserver.noop(),
             false,
-            Duration.ofMinutes(5),
-            Clock.systemUTC());
+            StalenessPolicy.never());
     var agent = new DefaultAgent<>(wiring);
     agent.observe("hi");
     assertThat(versionsAtCall).isNotEmpty();

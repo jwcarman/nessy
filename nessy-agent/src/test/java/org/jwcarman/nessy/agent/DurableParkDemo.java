@@ -18,8 +18,6 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.time.Clock;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -142,8 +140,7 @@ class DurableParkDemo {
                         new SlotDeferredToolCallPolicy(backend)),
                     AgentObserver.noop(),
                     false,
-                    Duration.ofMinutes(5),
-                    Clock.systemUTC()));
+                    StalenessPolicy.never()));
 
     dispatcher.register(
         ScopeResumption.TYPE, new ScopeResumption((t, i, event) -> agents.get().deliver(event)));

@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.agent.host;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -36,6 +35,7 @@ import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.ResolvingAgentBinder;
 import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.ScopeResumption;
+import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.backlog.BoundedBacklog;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
@@ -150,8 +150,7 @@ public final class Nessy {
               new RegistryToolCallExecutor(limited, agentType, agentId, relay, exec),
               new TurnNarrationAdapter(relay),
               false,
-              Duration.ofMinutes(5),
-              Clock.systemUTC());
+              StalenessPolicy.never());
       return new CliAgent(new DefaultAgent<>(wiring), relay, exec, ownsExecutor);
     }
 
@@ -185,8 +184,7 @@ public final class Nessy {
     private AgentObserver agentObserver = AgentObserver.noop();
     private Executor executor;
     private int backlogCapacity = 1024;
-    private Duration staleThreshold = Duration.ofMinutes(5);
-    private Clock clock = Clock.systemUTC();
+    private StalenessPolicy stalenessPolicy = StalenessPolicy.after(Duration.ofMinutes(5));
 
     /**
      * The recipe's name — the first coordinate of every durable address; default {@code
@@ -286,18 +284,12 @@ public final class Nessy {
     }
 
     /**
-     * How long a quiet phase must age before the recovery arm re-fires it (§6.1); default 5
-     * minutes.
+     * The §6.1 judgment: when a quiet phase counts as dead enough for the recovery arm to re-fire
+     * it; default {@code after(Duration.ofMinutes(5))}.
      */
-    public AutonomousBuilder staleThreshold(Duration staleThreshold) {
-      this.staleThreshold =
-          Objects.requireNonNull(staleThreshold, "staleThreshold must not be null");
-      return this;
-    }
-
-    /** The clock every scope's staleness check reads; default system UTC. */
-    public AutonomousBuilder clock(Clock clock) {
-      this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    public AutonomousBuilder staleness(StalenessPolicy stalenessPolicy) {
+      this.stalenessPolicy =
+          Objects.requireNonNull(stalenessPolicy, "stalenessPolicy must not be null");
       return this;
     }
 
@@ -332,8 +324,7 @@ public final class Nessy {
                     new SlotApprover(backend, approvalNotifier)),
                 agentObserver,
                 true,
-                staleThreshold,
-                clock);
+                stalenessPolicy);
           };
 
       var dispatcher = new ContinuationDispatcher();

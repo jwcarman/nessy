@@ -17,8 +17,6 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -55,8 +53,7 @@ class DefaultAgentDrainTest {
                 f.tools,
                 f.observer,
                 false,
-                Duration.ofMinutes(5),
-                Clock.systemUTC()));
+                StalenessPolicy.never()));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     f.backlogQueue.add("bad-observation");
     f.backlogQueue.add("good-observation");
@@ -103,8 +100,7 @@ class DefaultAgentDrainTest {
             (call, sink) -> {},
             new RecordingObserver(),
             false,
-            Duration.ofMinutes(5),
-            Clock.systemUTC());
+            StalenessPolicy.never());
     var agent = new DefaultAgent<>(wiring);
     agent.drive();
     assertThat(addedBack).containsExactly("hello");
@@ -126,8 +122,7 @@ class DefaultAgentDrainTest {
                 f.tools,
                 f.observer,
                 false,
-                Duration.ofMinutes(5),
-                Clock.systemUTC()));
+                StalenessPolicy.never()));
     f.backlogQueue.add("declined");
     f.backlogQueue.add("good-observation");
     poisoned.drive();

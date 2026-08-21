@@ -16,8 +16,6 @@
 package org.jwcarman.nessy.agent;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import java.time.Clock;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -102,8 +100,7 @@ class WiringDemo {
                 tools,
                 narrator,
                 false,
-                Duration.ofMinutes(5),
-                Clock.systemUTC()));
+                StalenessPolicy.never()));
 
     // ---- script the world ----
     var lookup =

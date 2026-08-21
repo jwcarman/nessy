@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.agent;
 
-import java.time.Clock;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -54,7 +52,7 @@ final class AgentFixture {
   final AgentStateStore store;
   final DefaultAgent<String> agent;
 
-  AgentFixture(AgentStateStore store, boolean drainOnIdle, Duration staleThreshold, Clock clock) {
+  AgentFixture(AgentStateStore store, boolean drainOnIdle, StalenessPolicy stalenessPolicy) {
     this.store = store;
     this.agent =
         new DefaultAgent<>(
@@ -67,12 +65,11 @@ final class AgentFixture {
                 tools,
                 observer,
                 drainOnIdle,
-                staleThreshold,
-                clock));
+                stalenessPolicy));
   }
 
   AgentFixture(AgentStateStore store, boolean drainOnIdle) {
-    this(store, drainOnIdle, Duration.ofMinutes(5), Clock.systemUTC());
+    this(store, drainOnIdle, StalenessPolicy.never());
   }
 
   AgentFixture() {

@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.agent;
 
-import java.time.Clock;
-import java.time.Duration;
 import java.util.Objects;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -39,8 +37,7 @@ public record AgentWiring<O>(
     ToolCallExecutor tools,
     AgentObserver observer,
     boolean drainOnIdle,
-    Duration staleThreshold,
-    Clock clock) {
+    StalenessPolicy stalenessPolicy) {
 
   public AgentWiring {
     Objects.requireNonNull(memory, "memory must not be null");
@@ -50,7 +47,6 @@ public record AgentWiring<O>(
     Objects.requireNonNull(model, "model must not be null");
     Objects.requireNonNull(tools, "tools must not be null");
     Objects.requireNonNull(observer, "observer must not be null");
-    Objects.requireNonNull(staleThreshold, "staleThreshold must not be null");
-    Objects.requireNonNull(clock, "clock must not be null");
+    Objects.requireNonNull(stalenessPolicy, "stalenessPolicy must not be null");
   }
 }

@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.agent;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -47,7 +46,7 @@ public final class DefaultAgent<O> implements Agent<O> {
       drain();
       return;
     }
-    if (isStale()) {
+    if (isStale(state)) {
       List<Effect> outstanding = state.phase().outstandingEffects();
       wiring.observer().reFired(outstanding);
       outstanding.forEach(this::dispatch); // §6.1 — the re-fire arm
@@ -149,9 +148,8 @@ public final class DefaultAgent<O> implements Agent<O> {
     outstanding.forEach(this::dispatch);
   }
 
-  private boolean isStale() {
-    Duration age = Duration.between(wiring.store().lastSaved(), wiring.clock().instant());
-    return age.compareTo(wiring.staleThreshold()) >= 0;
+  private boolean isStale(State state) {
+    return wiring.stalenessPolicy().isStale(state.phase(), wiring.store().lastSaved());
   }
 
   private void dispatch(Effect effect) {
