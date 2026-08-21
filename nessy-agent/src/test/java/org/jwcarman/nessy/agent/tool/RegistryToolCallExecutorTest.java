@@ -403,7 +403,7 @@ class RegistryToolCallExecutorTest {
     assertThat(requests).hasSize(1);
     var request = requests.getFirst();
     assertThat(request.address()).isEqualTo(new CallAddress("cli", "cli", "c1"));
-    assertThat(request.action()).isEqualTo("EchoInput[value=hi]");
+    assertThat(request.context().action()).contains("EchoInput[value=hi]");
     assertThat(request.context().agentName()).isEqualTo("cli");
     assertThat(request.context().principal()).contains("ada");
     assertThat(finished.outcome()).isEqualTo(new ToolOutcome.Returned(ToolResult.ok("echo: hi")));

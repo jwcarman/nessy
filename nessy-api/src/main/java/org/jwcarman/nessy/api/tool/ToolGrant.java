@@ -36,8 +36,13 @@ import org.jwcarman.nessy.api.tool.authorization.GrantStory;
  * (action-wave spec §8): "exactly one way to write it" is now literal, not merely a convention a
  * public canonical constructor could still be bypassed around. No bare grant, no derived floor, no
  * re-dressing an existing grant with a different policy — a grant does not exist until its
- * authority is answered. {@link #judge(AuthzContext, Object)} is the pipeline as behavior; the
- * factories build it where the types are still live so the pipeline itself stays monomorphic (no
+ * authority is answered. The pipeline is two methods speaking only existing vocabulary (amended
+ * 2026-08-21, owner: "Judged is cute, not helpful"): {@link #assemble(AuthzContext, Object)} binds
+ * the input, renders the action, deposits it under {@link AuthzContext#ACTION_KEY}, and runs the
+ * enrichers in order, returning the enriched context; {@link #decide(AuthzContext)} lets the policy
+ * judge that context. No result record — the assembled context IS the carrier, read back by the
+ * caller with {@link AuthzContext#action()} and its own typed keys. The factories build the
+ * rendering function where the types are still live so the pipeline itself stays monomorphic (no
  * wildcards on {@link Enricher} or {@link UsagePolicy} anywhere) and the executor needs no
  * unchecked cast.
  *
@@ -102,27 +107,24 @@ public final class ToolGrant {
     return contributor;
   }
 
-  /** What judging produced: the verdict plus the final context and rendered action (design §9). */
-  public record Judged(PolicyDecision decision, AuthzContext context, Object action) {}
-
   /**
-   * The grant's welded pipeline, run as behavior rather than a stored closure: render the action,
-   * deposit it under {@link AuthzContext#ACTION_KEY}, run the enrichers in order, and let the
-   * policy judge. A {@code RuntimeException} escaping any one stage is caught and rethrown as an
-   * {@link IllegalStateException} whose message names the stage that broke ("action stage: ",
-   * "enricher stage «name»: ", "policy stage: ") and carries the original as its cause — the
+   * Binds {@code input} by the tool's own class token, renders the action, deposits it under {@link
+   * AuthzContext#ACTION_KEY}, and runs the enrichers in order over the growing context — returning
+   * the fully enriched context, the sole carrier {@link #decide(AuthzContext)} and the caller both
+   * read back from. A {@code RuntimeException} escaping the action render or any enricher is caught
+   * and rethrown as an {@link IllegalStateException} whose message names the stage that broke
+   * ("action stage: ", "enricher stage «name»: ") and carries the original as its cause — the
    * chokepoint fails closed on the stage name alone, never on a bare throw.
    */
-  public Judged judge(AuthzContext context, Object input) {
-    Objects.requireNonNull(context, "context must not be null");
-    ActionOutcome staged =
+  public AuthzContext assemble(AuthzContext base, Object input) {
+    Objects.requireNonNull(base, "base must not be null");
+    AuthzContext enriched =
         stage(
             "action stage: ",
             () -> {
               Object rendered = renderAction.apply(input);
-              return new ActionOutcome(rendered, context.with(AuthzContext.ACTION_KEY, rendered));
+              return base.with(AuthzContext.ACTION_KEY, rendered);
             });
-    AuthzContext enriched = staged.context();
     int index = 0;
     for (Enricher enricher : enrichers) {
       AuthzContext previous = enriched;
@@ -130,9 +132,18 @@ public final class ToolGrant {
       enriched = stage("enricher stage " + label + ": ", () -> enricher.enrich(previous));
       index++;
     }
-    AuthzContext finalContext = enriched;
-    PolicyDecision decision = stage("policy stage: ", () -> policy.evaluate(finalContext));
-    return new Judged(decision, finalContext, staged.action());
+    return enriched;
+  }
+
+  /**
+   * Lets the policy judge {@code assembled} — the context {@link #assemble(AuthzContext, Object)}
+   * produced. A {@code RuntimeException} escaping the policy is caught and rethrown as an {@link
+   * IllegalStateException} whose message names the policy stage ("policy stage: ") and carries the
+   * original as its cause.
+   */
+  public PolicyDecision decide(AuthzContext assembled) {
+    Objects.requireNonNull(assembled, "assembled must not be null");
+    return stage("policy stage: ", () -> policy.evaluate(assembled));
   }
 
   /**
@@ -174,16 +185,6 @@ public final class ToolGrant {
         input -> contributor.actionOf(tool.inputType().cast(input));
     return new ToolGrant(tool, policy, new ArrayList<>(enrichers), contributor, renderAction);
   }
-
-  /**
-   * The action stage's own outcome — the rendered action alongside the context it was deposited
-   * into under {@link AuthzContext#ACTION_KEY} — held together so both the cast and the deposit run
-   * inside the same {@link #stage} call: a wrong-typed {@code input} or a {@code null} action
-   * (which {@link AuthzContext#with} itself refuses) both fail closed naming the action stage, not
-   * a bare {@code ClassCastException} or {@code NullPointerException} escaping the chokepoint
-   * unnamed.
-   */
-  private record ActionOutcome(Object action, AuthzContext context) {}
 
   /**
    * Runs {@code action}; a {@code RuntimeException} it throws is caught and rethrown as an {@link

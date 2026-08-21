@@ -87,7 +87,7 @@ class ToolGrantTest {
   }
 
   @Test
-  void theWeldedJudgmentRunsEnrichersThenPolicyOverTheContributedAction() {
+  void assembleThenDecideRunsEnrichersThenPolicyOverTheContributedAction() {
     Key<String> seen = new Key<>(String.class, "seenAction");
     Tool<GreetInput> tool = new GreetTool();
     Enricher recorder = context -> context.with(seen, context.action(String.class).orElse(null));
@@ -96,12 +96,13 @@ class ToolGrantTest {
             context -> new PolicyDecision.Deny("saw " + context.get(seen).orElse("nothing")));
     ToolGrant grant = ToolGrant.grant(tool, GREETING, List.of(recorder), policy);
 
-    ToolGrant.Judged judged =
-        grant.judge(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    AuthzContext assembled =
+        grant.assemble(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    PolicyDecision decision = grant.decide(assembled);
 
-    assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("saw greet Ada"));
-    assertThat(judged.action()).isEqualTo("greet Ada");
-    assertThat(judged.context().get(seen)).contains("greet Ada");
+    assertThat(decision).isEqualTo(new PolicyDecision.Deny("saw greet Ada"));
+    assertThat(assembled.action()).contains("greet Ada");
+    assertThat(assembled.get(seen)).contains("greet Ada");
   }
 
   private static final Key<String> SAW_VIA_ACTION = new Key<>(String.class, "sawViaAction");
@@ -114,11 +115,11 @@ class ToolGrantTest {
     UsagePolicy policy = UsagePolicy.of(context -> new PolicyDecision.Allow());
     ToolGrant grant = ToolGrant.grant(tool, GREETING, List.of(readsActionFromContext), policy);
 
-    ToolGrant.Judged judged =
-        grant.judge(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    AuthzContext assembled =
+        grant.assemble(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
 
-    assertThat(judged.context().get(SAW_VIA_ACTION)).contains("greet Ada");
-    assertThat(judged.context().action()).contains("greet Ada");
+    assertThat(assembled.get(SAW_VIA_ACTION)).contains("greet Ada");
+    assertThat(assembled.action()).contains("greet Ada");
   }
 
   @Test
@@ -130,10 +131,10 @@ class ToolGrantTest {
     UsagePolicy policy = UsagePolicy.of(context -> new PolicyDecision.Allow());
     ToolGrant grant = ToolGrant.grant(tool, GREETING, List.of(first, second), policy);
 
-    ToolGrant.Judged judged =
-        grant.judge(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    AuthzContext assembled =
+        grant.assemble(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
 
-    assertThat(judged.context().get(seen)).contains("greet Ada|B");
+    assertThat(assembled.get(seen)).contains("greet Ada|B");
   }
 
   @Test
@@ -144,11 +145,12 @@ class ToolGrantTest {
             context -> new PolicyDecision.Deny("saw " + context.action(String.class).orElse("")));
     ToolGrant grant = ToolGrant.grant(tool, GREETING, policy);
 
-    ToolGrant.Judged judged =
-        grant.judge(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    AuthzContext assembled =
+        grant.assemble(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    PolicyDecision decision = grant.decide(assembled);
 
-    assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("saw greet Ada"));
-    assertThat(judged.action()).isEqualTo("greet Ada");
+    assertThat(decision).isEqualTo(new PolicyDecision.Deny("saw greet Ada"));
+    assertThat(assembled.action()).contains("greet Ada");
     assertThat(grant.enrichers()).isEmpty();
   }
 
@@ -156,21 +158,22 @@ class ToolGrantTest {
   void theUntypedDoorJudgesOverTheDefaultContributorsStringValueOf() {
     ToolGrant grant = ToolGrant.grant(new GreetTool(), UsagePolicy.deny("no"));
 
-    ToolGrant.Judged judged =
-        grant.judge(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    AuthzContext assembled =
+        grant.assemble(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    PolicyDecision decision = grant.decide(assembled);
 
-    assertThat(judged.decision()).isEqualTo(new PolicyDecision.Deny("no"));
-    assertThat(judged.action()).isEqualTo(String.valueOf(new GreetInput("Ada")));
+    assertThat(decision).isEqualTo(new PolicyDecision.Deny("no"));
+    assertThat(assembled.action()).contains(String.valueOf(new GreetInput("Ada")));
   }
 
   @Test
   void theUntypedDoorsDefaultContributorDepositsUnderTheActionKeyToo() {
     ToolGrant grant = ToolGrant.grant(new GreetTool(), UsagePolicy.requireApproval());
 
-    ToolGrant.Judged judged =
-        grant.judge(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
+    AuthzContext assembled =
+        grant.assemble(AuthzContext.of("agent", callFor("greet")), new GreetInput("Ada"));
 
-    assertThat(judged.context().action()).contains(String.valueOf(new GreetInput("Ada")));
+    assertThat(assembled.action()).contains(String.valueOf(new GreetInput("Ada")));
   }
 
   @Test
@@ -181,7 +184,7 @@ class ToolGrantTest {
     AuthzContext context = AuthzContext.of("agent", callFor("throws_on_action"));
     var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judge(context, input))
+    assertThatThrownBy(() -> grant.assemble(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("action stage: boom")
         .hasCauseInstanceOf(IllegalArgumentException.class);
@@ -198,7 +201,7 @@ class ToolGrantTest {
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
     var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judge(context, input))
+    assertThatThrownBy(() -> grant.assemble(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("enricher stage #0: kaboom")
         .hasCauseInstanceOf(IllegalStateException.class);
@@ -217,7 +220,7 @@ class ToolGrantTest {
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
     var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judge(context, input))
+    assertThatThrownBy(() -> grant.assemble(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("enricher stage quota-check: kaboom");
   }
@@ -231,9 +234,9 @@ class ToolGrantTest {
             });
     ToolGrant grant = ToolGrant.grant(new GreetTool(), GREETING, List.of(), boom);
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
-    var input = new GreetInput("Ada");
+    AuthzContext assembled = grant.assemble(context, new GreetInput("Ada"));
 
-    assertThatThrownBy(() -> grant.judge(context, input))
+    assertThatThrownBy(() -> grant.decide(assembled))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("policy stage: nope")
         .hasCauseInstanceOf(IllegalStateException.class);
@@ -267,7 +270,7 @@ class ToolGrantTest {
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
     var input = new GreetInput("Ada");
 
-    assertThatThrownBy(() -> grant.judge(context, input))
+    assertThatThrownBy(() -> grant.assemble(context, input))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("action stage: ");
   }
@@ -278,7 +281,7 @@ class ToolGrantTest {
     ToolGrant grant = ToolGrant.grant(new GreetTool(), GREETING, List.of(), policy);
     AuthzContext context = AuthzContext.of("agent", callFor("greet"));
 
-    assertThatThrownBy(() -> grant.judge(context, "not a GreetInput"))
+    assertThatThrownBy(() -> grant.assemble(context, "not a GreetInput"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageStartingWith("action stage: ");
   }

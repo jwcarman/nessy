@@ -187,7 +187,6 @@ class GovernedTurnDemo {
       ApprovalRequest request = requests.getFirst();
       System.out.println("approval request context: " + request.context());
       assertThat(request.address().approval()).isEqualTo(slot);
-      assertThat(request.action()).isEqualTo("restart prod-eu");
       assertThat(request.context().action()).contains("restart prod-eu");
       assertThat(request.context().declaredIntent())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
