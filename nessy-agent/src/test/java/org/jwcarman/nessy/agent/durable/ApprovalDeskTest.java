@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.agent.spi.Adjudication;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
@@ -29,6 +29,9 @@ import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
 
+/**
+ * The approve/deny door: two decisions, one vocabulary — {@code Decision} (spec §4.3 amendment).
+ */
 class ApprovalDeskTest {
 
   private record Fired(Continuation continuation, Outcome outcome) {}
@@ -38,54 +41,40 @@ class ApprovalDeskTest {
   private final List<Fired> fired = new ArrayList<>();
   private final ApprovalDesk desk = new ApprovalDesk(backend, dispatcher);
 
-  private static final ComputationId SLOT = ComputationId.of("tool:t:a:c1");
-  private static final Continuation RESUME = new Continuation("RESUME", "{}");
+  private static final ComputationId SLOT = ComputationId.of("approval:t:a:c1");
+  private static final Continuation REDRIVE = new Continuation("REDRIVE_SCOPE", "{}");
 
   private void park() {
-    dispatcher.register("RESUME", (c, o) -> fired.add(new Fired(c, o)));
+    dispatcher.register("REDRIVE_SCOPE", (c, o) -> fired.add(new Fired(c, o)));
     backend.create(SLOT);
-    backend.await(SLOT, RESUME);
+    backend.await(SLOT, REDRIVE);
   }
 
   @Test
-  void anApprovalCompletesTheSlotAndFiresTheContinuation() {
+  void approvingCompletesTheSlotWithAllowAndFiresContinuations() {
     park();
-    desk.approve(SLOT, ToolResult.ok("approved"));
-    assertThat(fired)
-        .containsExactly(new Fired(RESUME, new Outcome.Success(ToolResult.ok("approved"))));
+    desk.approve(SLOT);
+    assertThat(backend.status(SLOT)).contains(ComputationStatus.SUCCEEDED);
+    assertThat(fired).hasSize(1);
+    assertThat(DurableDecisions.toAdjudication(fired.get(0).outcome(), SLOT))
+        .isEqualTo(new Adjudication.Granted());
   }
 
   @Test
-  void aDenialFiresAFailure() {
+  void denyingCompletesTheSlotWithTheDenyDecision() {
     park();
-    desk.deny(SLOT, "too risky");
-    assertThat(fired).containsExactly(new Fired(RESUME, new Outcome.Failure("too risky")));
+    desk.deny(SLOT, "no");
+    assertThat(fired).hasSize(1);
+    assertThat(DurableDecisions.toAdjudication(fired.get(0).outcome(), SLOT))
+        .isEqualTo(new Adjudication.Refused("no"));
   }
 
   @Test
-  void approvingAnUnknownIdBirthsTheSlotAlreadyApprovedAndFiresNothing() {
-    var ghost = ComputationId.of("ghost");
-    desk.approve(ghost, ToolResult.ok("x"));
-    assertThat(backend.status(ghost)).contains(ComputationStatus.SUCCEEDED);
-    assertThat(fired).isEmpty();
-  }
-
-  @Test
-  void aSecondDecisionIsRefusedAsAlreadyDecided() {
+  void aSecondDecisionIsRefusedLoudly() {
     park();
-    desk.approve(SLOT, ToolResult.ok("approved"));
-    var again = ToolResult.ok("again");
-    assertThatThrownBy(() -> desk.approve(SLOT, again))
+    desk.approve(SLOT);
+    assertThatThrownBy(() -> desk.deny(SLOT, "no"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("already decided");
-  }
-
-  @Test
-  void thereIsExactlyOneHandlePerQuestion() {
-    // the deterministic id IS the handle: a re-derived id equals the original — no siblings exist
-    park();
-    var reDerived = ComputationId.of("tool:t:a:c1");
-    desk.approve(reDerived, ToolResult.ok("approved via the re-derived handle"));
-    assertThat(fired).hasSize(1);
   }
 }

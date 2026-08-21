@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.durable;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.CompletionResult;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
@@ -23,44 +24,39 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
 
 /**
- * The approve/deny door (§4.3 amendment), addressed by the computation's own deterministic identity
- * — the desk holds no state of its own, because the backend is the state. Re-drives re-derive the
- * same id, so there is exactly one handle per question, ever. Second decisions are refused loudly
- * by the backend's own vocabulary; a decision on a never-created id births the slot already decided
- * (durable ruling 6). Completion-capability secrets (durable spec §9, "MAY be secured separately")
- * arrive with the out-of-process doors in Plan 5.
+ * The result door (§4.3 amendment): completes {@code tool:} slots — "what did it return?" — with a
+ * {@code ToolResult}, addressed by the call's own deterministic identity. The desk holds no state
+ * of its own, because the backend is the state. Re-drives re-derive the same id, so there is
+ * exactly one handle per question, ever.
  *
  * <p>Complete-then-fire, at-least-once (plan decision 3): a handler throw during fire propagates
  * with the slot already terminal — the lazy re-drive floor covers delivery, and the Plan-5 outbox
  * is the prompt-delivery upgrade.
  */
-public final class ApprovalDesk {
+public final class CompletionDesk {
 
   private final DurableComputationBackend backend;
   private final ContinuationDispatcher dispatcher;
 
-  public ApprovalDesk(DurableComputationBackend backend, ContinuationDispatcher dispatcher) {
+  public CompletionDesk(DurableComputationBackend backend, ContinuationDispatcher dispatcher) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher must not be null");
   }
 
-  /**
-   * The decision is a fact: {@code Success(Decision)} — answering "no" is a successful
-   * adjudication.
-   */
-  public void approve(ComputationId id) {
-    decide(id, DurableDecisions.granted());
+  public void complete(ComputationId id, ToolResult result) {
+    Objects.requireNonNull(result, "result must not be null");
+    finish(id, new Outcome.Success(result));
   }
 
-  public void deny(ComputationId id, String reason) {
+  public void fail(ComputationId id, String reason) {
     Objects.requireNonNull(reason, "reason must not be null");
-    decide(id, DurableDecisions.denied(reason));
+    finish(id, new Outcome.Failure(reason));
   }
 
-  private void decide(ComputationId id, Outcome outcome) {
+  private void finish(ComputationId id, Outcome outcome) {
     Objects.requireNonNull(id, "id must not be null");
     if (backend.complete(id, outcome) == CompletionResult.ALREADY_TERMINAL) {
-      throw new IllegalStateException("already decided: " + id.value());
+      throw new IllegalStateException("already completed: " + id.value());
     }
     dispatcher.fire(backend.continuationsOf(id), outcome);
   }

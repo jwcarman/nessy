@@ -124,6 +124,18 @@ public final class DefaultAgent<O> implements Agent<O> {
     }
   }
 
+  /**
+   * The redrive door (spec §4.3 amendment): re-dispatch this scope's outstanding effects
+   * unconditionally — a decided approval is not gated by staleness. At-least-once, same semantics
+   * as the §6.1 recovery arm; ToolCallId dedup absorbs any duplicate completion.
+   */
+  void redispatch() {
+    State state = wiring.store().load();
+    List<Effect> outstanding = state.phase().outstandingEffects();
+    wiring.observer().reFired(outstanding);
+    outstanding.forEach(this::dispatch);
+  }
+
   private boolean isStale() {
     Duration age = Duration.between(wiring.store().lastSaved(), wiring.clock().instant());
     return age.compareTo(wiring.staleThreshold()) >= 0;
