@@ -281,3 +281,29 @@ sequence of renames and interim shapes that produced it.
   for a foreground REPL; `Nessy.autonomous()` gets `.staleness(StalenessPolicy)`
   in place of the old `staleThreshold(Duration)`/`clock(Clock)` pair, defaulting
   to `after(Duration.ofMinutes(5))`.
+- **Typed intent: an organization's own sealed vocabulary rides the same kit
+  (vocabulary amendment §3).** `Schemas` shapes a sealed interface's wire
+  schema as a `oneOf` over its permitted records, each carrying a required
+  const `"type"` discriminator; `SealedInputs` reads `"type"`, matches it
+  against `getPermittedSubclasses()` by simple name, and binds the remainder
+  into that record — a missing or unknown `"type"` fails in-band naming every
+  legal type, before the tool that owns the input ever runs.
+  `RegistryToolCallExecutor` routes a sealed `inputType()` through
+  `SealedInputs.bind`, else falls through to the existing mapper path.
+  `IntentStore<T>`/`InMemoryIntentStore<T>`/`IntentTool<T>` carry both tiers
+  of the vocabulary on one generic kit: `IntentStore#declare(T)` (renamed
+  from `record(T)`) and `IntentTool#inputType()` returning the vocabulary
+  itself, so a sealed vocabulary rides the `oneOf` schema and discriminator
+  binder with zero extra code — `IntentTool.freeform(store)` keeps the
+  pre-built `T = Intent` tier. `IntentPolicies.requireDeclared(Class<?>)`
+  denies unless a same-typed declaration is on the context, teaching the
+  model to declare before it acts; `UsagePolicy.allOf(List<UsagePolicy<Object>>)`
+  composes policies deny-biased, in order — first `Deny` wins, otherwise any
+  `RequireApproval` wins, otherwise allow. `TypedIntentDemo` plays all three
+  arcs end to end against an in-fixture `OpsIntent` vocabulary: an undeclared
+  restart is denied in-band, teaching the model to declare, and the retried,
+  now-risky restart parks for a human and completes once approved; a
+  declared target that disagrees with the attempted one is denied by an
+  in-fixture consistency policy naming both; and a declaration shaped outside
+  the vocabulary is rejected by the discriminator binder itself, before the
+  intent tool ever runs, with nothing stored.

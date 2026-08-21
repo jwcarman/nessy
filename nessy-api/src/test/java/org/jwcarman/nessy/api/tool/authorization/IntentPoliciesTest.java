@@ -80,7 +80,7 @@ class IntentPoliciesTest {
     }
 
     @Test
-    void is_never_static() {
+    void aRequireDeclaredPolicyIsNeverStatic() {
       UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
 
       assertThat(policy).isNotInstanceOf(UsagePolicy.Static.class);
