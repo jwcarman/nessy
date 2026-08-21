@@ -309,10 +309,11 @@ Dies: `InMemoryStateSubstrate`, `InMemoryMemorySubstrate`,
 `InMemoryBacklogSubstrate`, `InMemoryAgentStateStore`, `InMemoryIntentStore`,
 `InMemoryDurableComputationBackend`, and the builder's `storeFactory` seam.
 
-Arrives: `ScopedStore` + `ConflictException` (spi), `InMemoryScopedStore`
-(nessy-agent, the default substrate — one map, one lock, CAS parity with the
-contract), the recipes, and one builder seam: `.store(ScopedStore)` (default
-`InMemoryScopedStore`).
+Arrives: `ScopedStore` + `ConflictException` + `InMemoryScopedStore` (all in
+`nessy-spi` — the reference substrate travels with the contract, a documented
+exception in the spirit of the old backend ruling, so feature jars test
+against it without depending on `nessy-agent`), the recipes, and one builder
+seam: `.store(ScopedStore)` (default `InMemoryScopedStore`).
 
 Survives as override seams: `.memoryFactory(…)` (custom `Memory`),
 `.backend(…)` (foreign durable engines). The scope engine, phases, CAS
