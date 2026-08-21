@@ -65,7 +65,9 @@ class InMemoryBacklogSubstrateTest {
   void addingANullObservationIsRejected() {
     var substrate = new InMemoryBacklogSubstrate(2);
     var view = substrate.forScope("scope-a");
-    assertThatThrownBy(() -> view.add(null)).isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> view.add(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("observation must not be null");
   }
 
   @Test

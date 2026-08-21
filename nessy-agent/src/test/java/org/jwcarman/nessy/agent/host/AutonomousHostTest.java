@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
+import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -96,7 +98,11 @@ class AutonomousHostTest {
   /**
    * F3: the default memoryFactory/storeFactory substrates are built inside {@code build()}, not
    * once in field initializers — so two {@code build()} calls from the SAME builder each get their
-   * own fresh default substrates and don't leak history between hosts.
+   * own fresh default substrates and don't leak history between hosts. Memory independence is read
+   * straight off the model requests (defaults left untouched); store independence is read off
+   * captured stores installed through {@code storeFactory} — the cheapest honest window onto
+   * otherwise-opaque default substrate state — and pins that a second host's first delivery to a
+   * scope starts from a fresh, unadvanced version, not one built on top of the first host's saves.
    */
   @Test
   void twoBuildCallsFromOneBuilderDoNotShareDefaultSubstrateState() {
@@ -108,13 +114,25 @@ class AutonomousHostTest {
 
     var builder = Nessy.autonomous().provider(provider).settings(TestSettings.settings());
 
+    ConcurrentMap<String, AgentStateStore> storesOne = new ConcurrentHashMap<>();
     var pumpOne = new PumpedExecutor();
-    var hostOne = builder.executor(pumpOne).build();
+    var hostOne =
+        builder
+            .executor(pumpOne)
+            .storeFactory(
+                id -> storesOne.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .build();
     hostOne.post("shared-scope", "message one");
     pumpOne.pumpUntilQuiet();
 
+    ConcurrentMap<String, AgentStateStore> storesTwo = new ConcurrentHashMap<>();
     var pumpTwo = new PumpedExecutor();
-    var hostTwo = builder.executor(pumpTwo).build();
+    var hostTwo =
+        builder
+            .executor(pumpTwo)
+            .storeFactory(
+                id -> storesTwo.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .build();
     hostTwo.post("shared-scope", "message two");
     pumpTwo.pumpUntilQuiet();
 
@@ -124,6 +142,14 @@ class AutonomousHostTest {
     assertThat(secondHostMessages).isNotEmpty();
     assertThat(secondHostMessages)
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
+
+    long versionAfterHostOnesTurn = storesOne.get("shared-scope").load().version();
+    long versionAfterHostTwosTurn = storesTwo.get("shared-scope").load().version();
+    assertThat(versionAfterHostTwosTurn)
+        .as(
+            "host two's scope should run the same number of transitions as host one's, from a"
+                + " fresh version, not one already advanced by host one's saves")
+        .isEqualTo(versionAfterHostOnesTurn);
   }
 
   @Test
