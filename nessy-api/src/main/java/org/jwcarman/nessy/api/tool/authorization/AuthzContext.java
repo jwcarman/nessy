@@ -45,9 +45,8 @@ public interface AuthzContext {
   Key<Object> DECLARED_INTENT_KEY = new Key<>(Object.class, "declaredIntent");
 
   /**
-   * The well-known slot a grant's judgment deposits its rendered action into, before any enricher
-   * runs (action-wave spec §1) — every enricher can read the action either as its own typed
-   * parameter or, generically, through {@link #action()}.
+   * The slot the grant's assemble deposits its rendered action into, before any enricher runs
+   * (action-wave spec §1, amended §8).
    */
   Key<Object> ACTION_KEY = new Key<>(Object.class, "action");
 
@@ -109,8 +108,7 @@ public interface AuthzContext {
 
   /**
    * The grant's own rendered action for this call (action-wave spec §1) — deposited under {@link
-   * #ACTION_KEY} before any enricher runs, so every enricher sees it here too, not only as its own
-   * typed parameter.
+   * #ACTION_KEY} before any enricher runs, so every enricher and the policy read it here.
    */
   default Optional<Object> action() {
     return get(ACTION_KEY);

@@ -21,9 +21,9 @@ import java.util.Optional;
 /**
  * The impure gathering stage: deposits assessments into the context before the {@code UsagePolicy}
  * judges (design of record 2026-08-16-authorization §4, amended by action-wave spec §1). A grant
- * wires these as an ordered list; each receives the previous enricher's own context and the grant's
- * rendered action, and returns the next context — {@link AuthzContext#with} functionally, so
- * nothing upstream ever sees a later enricher's deposit.
+ * wires these as an ordered list; each receives the previous enricher's own context and returns the
+ * next context — {@link AuthzContext#with} functionally, so nothing upstream ever sees a later
+ * enricher's deposit.
  *
  * <p>Enrichers MAY do I/O — a principal exchange, a risk service call, a quota read — the policy
  * stays pure so all of that impurity belongs here instead.
