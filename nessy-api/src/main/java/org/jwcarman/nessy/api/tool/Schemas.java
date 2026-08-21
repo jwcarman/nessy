@@ -39,6 +39,8 @@ import java.util.Optional;
  */
 public final class Schemas {
 
+  private static final String REQUIRED = "required";
+
   private static final SchemaGenerator GENERATOR = generator();
 
   private Schemas() {}
@@ -95,13 +97,13 @@ public final class Schemas {
     properties.set("type", JsonNodeFactory.instance.objectNode().put("const", typeName));
 
     ArrayNode required =
-        recordSchema.has("required")
-            ? (ArrayNode) recordSchema.get("required")
+        recordSchema.has(REQUIRED)
+            ? (ArrayNode) recordSchema.get(REQUIRED)
             : JsonNodeFactory.instance.arrayNode();
     if (!containsText(required, "type")) {
       required.add("type");
     }
-    recordSchema.set("required", required);
+    recordSchema.set(REQUIRED, required);
     return recordSchema;
   }
 

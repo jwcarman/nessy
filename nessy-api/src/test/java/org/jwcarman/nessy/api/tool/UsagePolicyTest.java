@@ -230,16 +230,6 @@ class UsagePolicyTest {
   @Nested
   class All_of_composition {
 
-    private static UsagePolicy<Object> approveUnder(int limit) {
-      return UsagePolicy.of(
-          (context, action) -> {
-            int amount = context.call().arguments().get("amount").asInt();
-            return amount < limit
-                ? new PolicyDecision.Allow()
-                : new PolicyDecision.Deny("amount " + amount + " exceeds limit " + limit);
-          });
-    }
-
     @Test
     void allAllowIsAllowed() {
       UsagePolicy<Object> policy =

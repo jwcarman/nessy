@@ -117,8 +117,7 @@ class GovernedTurnDemo {
         RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
   }
 
-  private static ToolGrant restartGrant(
-      IntentStore<Intent> intentStore, List<Enricher<? super String>> enrichers) {
+  private static ToolGrant restartGrant(List<Enricher<? super String>> enrichers) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_STATEMENT,
@@ -294,7 +293,6 @@ class GovernedTurnDemo {
             .grants(
                 ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(
-                    intentStore,
                     List.of(new IntentEnricher(intentStore), Enrichers.principal(() -> "jcarman"))))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(
