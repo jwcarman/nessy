@@ -167,6 +167,39 @@
     <!-- nessy-examples are console demo apps where stdout/stderr IS the product;
          excluded from analysis rather than suppressing individual S106 issues. -->
     <sonar.exclusions>nessy-examples/**</sonar.exclusions>
+
+    <!-- Accepted findings — review-ruled, recorded in docs/superpowers ledgers.
+         Config documents them; code never suppresses. -->
+    <sonar.issue.ignore.multicriteria>e1,e2,e3,e4,e5,e6</sonar.issue.ignore.multicriteria>
+
+    <!-- e1: demos are narrated tests, deliberately named, explicitly in
+         surefire's includes. -->
+    <sonar.issue.ignore.multicriteria.e1.ruleKey>java:S3577</sonar.issue.ignore.multicriteria.e1.ruleKey>
+    <sonar.issue.ignore.multicriteria.e1.resourceKey>**/*Demo.java</sonar.issue.ignore.multicriteria.e1.resourceKey>
+
+    <!-- e2: the 10-arg composition point is ruled (spec
+         docs/superpowers/specs/2026-08-18-agent-as-scope-design.md §10.11
+         amendment); a parameter object would reintroduce positional hazards. -->
+    <sonar.issue.ignore.multicriteria.e2.ruleKey>java:S107</sonar.issue.ignore.multicriteria.e2.ruleKey>
+    <sonar.issue.ignore.multicriteria.e2.resourceKey>**/Harness.java</sonar.issue.ignore.multicriteria.e2.resourceKey>
+
+    <!-- e3: wildcard is correct; any fix forces machine doors public (review
+         ruling). -->
+    <sonar.issue.ignore.multicriteria.e3.ruleKey>java:S1452</sonar.issue.ignore.multicriteria.e3.ruleKey>
+    <sonar.issue.ignore.multicriteria.e3.resourceKey>**/AgentResolver.java</sonar.issue.ignore.multicriteria.e3.resourceKey>
+
+    <!-- e4: record semantics would contradict the documented identity-equality
+         design. -->
+    <sonar.issue.ignore.multicriteria.e4.ruleKey>java:S6206</sonar.issue.ignore.multicriteria.e4.ruleKey>
+    <sonar.issue.ignore.multicriteria.e4.resourceKey>**/Key.java</sonar.issue.ignore.multicriteria.e4.resourceKey>
+
+    <!-- e5: deliberate phantom-typed ADT marker. -->
+    <sonar.issue.ignore.multicriteria.e5.ruleKey>java:S2326</sonar.issue.ignore.multicriteria.e5.ruleKey>
+    <sonar.issue.ignore.multicriteria.e5.resourceKey>**/Awaited.java</sonar.issue.ignore.multicriteria.e5.resourceKey>
+
+    <!-- e6: JVM main signature. -->
+    <sonar.issue.ignore.multicriteria.e6.ruleKey>java:S1172</sonar.issue.ignore.multicriteria.e6.ruleKey>
+    <sonar.issue.ignore.multicriteria.e6.resourceKey>**/ApprovalPlayground.java</sonar.issue.ignore.multicriteria.e6.resourceKey>
   </properties>
 
   <dependencyManagement>

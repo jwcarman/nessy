@@ -80,7 +80,7 @@ public sealed interface Phase {
                         calls.stream().map(ToolCall::id).collect(Collectors.toUnmodifiableSet()),
                         List.of()))
                 .emit(calls.stream().map(Effect.ExecuteTool::new).map(Effect.class::cast).toList());
-        case AgentEvent.ModelFinished(ModelOutcome.Failed _) -> Transition.to(new Idle());
+        case AgentEvent.ModelFinished(_) -> Transition.to(new Idle());
         case AgentEvent.ToolFinished _ -> Transition.ignore();
         case AgentEvent.Observed _ ->
             throw new IllegalStateException("observations absorb only at Idle");
@@ -144,7 +144,7 @@ public sealed interface Phase {
     public List<Effect> outstandingEffects() {
       var byId = new HashMap<String, ToolCall>();
       for (var block : assistantTurn.content()) {
-        if (block instanceof ToolUseBlock(ToolCall call, String _)) {
+        if (block instanceof ToolUseBlock(ToolCall call, _)) {
           byId.put(call.id(), call);
         }
       }

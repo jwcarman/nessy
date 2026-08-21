@@ -45,9 +45,8 @@ public interface AuthzContext {
   Key<Object> DECLARED_INTENT_KEY = new Key<>(Object.class, "declaredIntent");
 
   /**
-   * The well-known slot a grant's judgment deposits its rendered action into, before any enricher
-   * runs (action-wave spec §1) — every enricher can read the action either as its own typed
-   * parameter or, generically, through {@link #action()}.
+   * The slot the grant's assemble deposits its rendered action into, before any enricher runs
+   * (action-wave spec §1, amended §8).
    */
   Key<Object> ACTION_KEY = new Key<>(Object.class, "action");
 
@@ -67,6 +66,17 @@ public interface AuthzContext {
   /** Whatever an enricher deposited under {@code key}, or empty if nothing did. */
   <T> Optional<T> get(Key<T> key);
 
+  /**
+   * {@link #get(Key)}, narrowed by class token: the deposit under {@code key}, recovered only if it
+   * is an instance of {@code type}. A non-instance and an absence are both {@link Optional#empty()}
+   * — a reader fails closed on its own terms either way, with no distinction between "nothing was
+   * deposited" and "something else was." {@link #action(Class)}, {@link #principal(Class)}, and
+   * {@link #declaredIntent(Class)} are all sugar over this for their own well-known keys.
+   */
+  default <T, S extends T> Optional<S> get(Key<T> key, Class<S> type) {
+    return get(key).filter(type::isInstance).map(type::cast);
+  }
+
   /** A new context, functionally extended with {@code key} bound to {@code value}. */
   <T> AuthzContext with(Key<T> key, T value);
 
@@ -80,7 +90,7 @@ public interface AuthzContext {
 
   /** {@link #principal()}, recovered by class token: empty on a miss as well as an absence. */
   default <P> Optional<P> principal(Class<P> type) {
-    return principal().filter(type::isInstance).map(type::cast);
+    return get(PRINCIPAL_KEY, type);
   }
 
   /**
@@ -93,13 +103,12 @@ public interface AuthzContext {
 
   /** {@link #declaredIntent()}, recovered by class token: empty on a miss as well as an absence. */
   default <T> Optional<T> declaredIntent(Class<T> type) {
-    return declaredIntent().filter(type::isInstance).map(type::cast);
+    return get(DECLARED_INTENT_KEY, type);
   }
 
   /**
    * The grant's own rendered action for this call (action-wave spec §1) — deposited under {@link
-   * #ACTION_KEY} before any enricher runs, so every enricher sees it here too, not only as its own
-   * typed parameter.
+   * #ACTION_KEY} before any enricher runs, so every enricher and the policy read it here.
    */
   default Optional<Object> action() {
     return get(ACTION_KEY);
@@ -107,7 +116,7 @@ public interface AuthzContext {
 
   /** {@link #action()}, recovered by class token: empty on a miss as well as an absence. */
   default <A> Optional<A> action(Class<A> type) {
-    return action().filter(type::isInstance).map(type::cast);
+    return get(ACTION_KEY, type);
   }
 
   /**

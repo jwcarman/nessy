@@ -45,7 +45,7 @@ class IntentEnricherTest {
     store.declare(new Intent("restart prod-eu to clear the stuck deploy"));
     var enricher = new IntentEnricher(store);
 
-    AuthzContext enriched = enricher.enrich(freshContext(), "restart prod-eu");
+    AuthzContext enriched = enricher.enrich(freshContext());
 
     assertThat(enriched.declaredIntent())
         .contains(new Intent("restart prod-eu to clear the stuck deploy"));
@@ -56,7 +56,7 @@ class IntentEnricherTest {
     var enricher = new IntentEnricher(new InMemoryIntentStore<Intent>());
     var context = freshContext();
 
-    AuthzContext enriched = enricher.enrich(context, "restart prod-eu");
+    AuthzContext enriched = enricher.enrich(context);
 
     assertThat(enriched.declaredIntent()).isEmpty();
     assertThat(enriched).isEqualTo(context);

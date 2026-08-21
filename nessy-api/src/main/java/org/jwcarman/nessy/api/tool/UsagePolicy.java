@@ -27,24 +27,21 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * authority chokepoint, before the tool ever runs and before the approver is ever asked. The model
  * has no say in the outcome — it only ever sees the result, allowed, denied, or approved.
  *
- * <p>{@code evaluate} must be pure: no I/O, no mutation, nothing beyond a function of its two
- * arguments — the final {@link AuthzContext} an ordered chain of enrichers assembled, and the
- * grant's own rendered action. The executor may call it from any thread and treats an escaping
- * {@code RuntimeException} as a {@link PolicyDecision.Deny} naming the policy stage — a broken
- * policy fails closed rather than becoming an allow.
+ * <p>{@code evaluate} must be pure: no I/O, no mutation, nothing beyond a function of its one
+ * argument — the final {@link AuthzContext} an ordered chain of enrichers assembled. The executor
+ * may call it from any thread and treats an escaping {@code RuntimeException} as a {@link
+ * PolicyDecision.Deny} naming the policy stage — a broken policy fails closed rather than becoming
+ * an allow.
  *
- * <p>{@code E} is the action type this policy judges. A grant welds it to its own {@link
- * ActionContributor}'s {@code A} at compile time (rung 2); every accepting site takes {@code
- * UsagePolicy<? super E>}, so the canonical {@link #allow()}, {@link #deny(String)}, and {@link
- * #requireApproval()} — all {@code UsagePolicy<Object>} — terminate any grant regardless of what it
- * welded.
- *
- * @param <E> the action type this policy judges
+ * <p>The pipeline is monomorphic (action-wave spec §8): no type parameter here or on {@link
+ * org.jwcarman.nessy.api.tool.authorization.Enricher}. The action travels only as {@link
+ * AuthzContext#ACTION_KEY}; an action-aware policy recovers it with {@link
+ * AuthzContext#action(Class)} and fails closed on its own terms if the slot is empty or mistyped.
  */
-public interface UsagePolicy<E> {
+public interface UsagePolicy {
 
-  /** Decides {@code call}'s fate, purely from the final context and the grant's rendered action. */
-  PolicyDecision evaluate(AuthzContext context, E action);
+  /** Decides {@code call}'s fate, purely from the final context. */
+  PolicyDecision evaluate(AuthzContext context);
 
   /**
    * Every call proceeds; the approver is never consulted. Always the same canonical instance — the
@@ -53,7 +50,7 @@ public interface UsagePolicy<E> {
    * that might. Its verdict never depends on context or action, so the chokepoint fast-paths it
    * (ladder-law rung 0): no action rendered, no context assembled, no enrichers run.
    */
-  static UsagePolicy<Object> allow() {
+  static UsagePolicy allow() {
     return Allow.INSTANCE;
   }
 
@@ -61,7 +58,7 @@ public interface UsagePolicy<E> {
    * Every call is refused, with the same reason each time. Like {@link #allow()}, its verdict never
    * depends on context or action, so it shares the same rung-0 fast path.
    */
-  static UsagePolicy<Object> deny(String reason) {
+  static UsagePolicy deny(String reason) {
     return new Deny(reason);
   }
 
@@ -72,7 +69,7 @@ public interface UsagePolicy<E> {
    * away. A context-aware policy may return {@link PolicyDecision.RequireApproval} conditionally
    * instead of using this factory at all — it pays the assembly cost either way.
    */
-  static UsagePolicy<Object> requireApproval() {
+  static UsagePolicy requireApproval() {
     return RequireApproval.INSTANCE;
   }
 
@@ -90,13 +87,13 @@ public interface UsagePolicy<E> {
    * @throws IllegalArgumentException if {@code policies} is empty or contains a {@code null}
    *     element
    */
-  static UsagePolicy<Object> allOf(List<UsagePolicy<Object>> policies) {
+  static UsagePolicy allOf(List<UsagePolicy> policies) {
     Objects.requireNonNull(policies, "policies must not be null");
     if (policies.isEmpty()) {
       throw new IllegalArgumentException("policies must not be empty");
     }
-    List<UsagePolicy<Object>> ordered = new ArrayList<>(policies.size());
-    for (UsagePolicy<Object> policy : policies) {
+    List<UsagePolicy> ordered = new ArrayList<>(policies.size());
+    for (UsagePolicy policy : policies) {
       if (policy == null) {
         throw new IllegalArgumentException("policies must not contain a null element");
       }
@@ -106,11 +103,11 @@ public interface UsagePolicy<E> {
   }
 
   /**
-   * Pins the action type {@code E} at the call site for a rung-1 lambda reading {@link
-   * AuthzContext#call()} and the context's typed keys — {@code UsagePolicy.<Foo>of((context,
-   * action) -> ...)} where target-type inference alone would otherwise leave {@code E} ambiguous.
+   * Pins the target type at the call site for a rung-1 lambda reading {@link AuthzContext#call()}
+   * and the context's typed keys — {@code UsagePolicy.of((context) -> ...)} where target-type
+   * inference alone would otherwise leave the lambda ambiguous.
    */
-  static <E> UsagePolicy<E> of(UsagePolicy<E> policy) {
+  static UsagePolicy of(UsagePolicy policy) {
     return Objects.requireNonNull(policy, "policy must not be null");
   }
 

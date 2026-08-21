@@ -21,29 +21,28 @@ import java.util.Optional;
 /**
  * The impure gathering stage: deposits assessments into the context before the {@code UsagePolicy}
  * judges (design of record 2026-08-16-authorization §4, amended by action-wave spec §1). A grant
- * wires these as an ordered list; each receives the previous enricher's own context and the grant's
- * rendered action, and returns the next context — {@link AuthzContext#with} functionally, so
- * nothing upstream ever sees a later enricher's deposit.
+ * wires these as an ordered list; each receives the previous enricher's own context and returns the
+ * next context — {@link AuthzContext#with} functionally, so nothing upstream ever sees a later
+ * enricher's deposit.
  *
  * <p>Enrichers MAY do I/O — a principal exchange, a risk service call, a quota read — the policy
  * stays pure so all of that impurity belongs here instead.
  *
- * <p><strong>Variance is the reuse story:</strong> a grant accepts {@code Enricher<? super E>}, so
- * an action-blind decorator written once as {@code Enricher<Object>} (quota, tier, principal
- * exchange) composes into any grant, while an action-aware assessor types itself to its own {@code
- * E} and the compiler welds it only to grants whose contributor renders that same action.
+ * <p>The pipeline is monomorphic (action-wave spec §8): no type parameter here or on {@link
+ * org.jwcarman.nessy.api.tool.UsagePolicy}. The action travels only as {@link
+ * AuthzContext#ACTION_KEY}, deposited before any enricher runs; an action-aware enricher recovers
+ * it with {@link AuthzContext#action(Class)} and fails closed on its own terms if the slot is empty
+ * or mistyped.
  *
  * <p>A throwing enricher fails the whole call closed: the chokepoint turns it into a {@code Deny}
  * naming the enricher stage, never lets the exception escape into the conversation loop, and never
  * lets a broken enricher become an allow.
- *
- * @param <E> the action type this enricher reads
  */
 @FunctionalInterface
-public interface Enricher<E> {
+public interface Enricher {
 
   /** Returns the next context — {@code context} functionally extended, never mutated. */
-  AuthzContext enrich(AuthzContext context, E action);
+  AuthzContext enrich(AuthzContext context);
 
   /**
    * A human-readable label for this enricher, read by {@link AuthorizationReport} (design §8) —
@@ -59,16 +58,16 @@ public interface Enricher<E> {
    * Wraps {@code delegate} so it reports {@code displayName} to {@link AuthorizationReport} —
    * decoration only, {@link #enrich} still delegates through unchanged.
    */
-  static <E> Enricher<E> named(String displayName, Enricher<E> delegate) {
+  static Enricher named(String displayName, Enricher delegate) {
     Objects.requireNonNull(displayName, "displayName must not be null");
     if (displayName.isBlank()) {
       throw new IllegalArgumentException("displayName must not be blank");
     }
     Objects.requireNonNull(delegate, "delegate must not be null");
-    return new Enricher<>() {
+    return new Enricher() {
       @Override
-      public AuthzContext enrich(AuthzContext context, E action) {
-        return delegate.enrich(context, action);
+      public AuthzContext enrich(AuthzContext context) {
+        return delegate.enrich(context);
       }
 
       @Override

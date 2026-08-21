@@ -29,19 +29,19 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * <p>Deliberately does not implement {@link UsagePolicy.Static}: its verdict depends on {@code
  * policies}, and through them on context and action.
  */
-final class AllOfPolicy implements UsagePolicy<Object> {
+final class AllOfPolicy implements UsagePolicy {
 
-  private final List<UsagePolicy<Object>> policies;
+  private final List<UsagePolicy> policies;
 
-  AllOfPolicy(List<UsagePolicy<Object>> policies) {
+  AllOfPolicy(List<UsagePolicy> policies) {
     this.policies = policies;
   }
 
   @Override
-  public PolicyDecision evaluate(AuthzContext context, Object action) {
+  public PolicyDecision evaluate(AuthzContext context) {
     boolean anyRequireApproval = false;
-    for (UsagePolicy<Object> policy : policies) {
-      PolicyDecision decision = policy.evaluate(context, action);
+    for (UsagePolicy policy : policies) {
+      PolicyDecision decision = policy.evaluate(context);
       if (decision instanceof PolicyDecision.Deny) {
         return decision;
       }

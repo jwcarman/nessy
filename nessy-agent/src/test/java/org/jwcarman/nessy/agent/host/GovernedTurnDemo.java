@@ -101,14 +101,12 @@ class GovernedTurnDemo {
   private static final ActionContributor<RestartInput, String> RESTART_STATEMENT =
       ActionContributor.named("restart-statement", in -> "restart " + in.target());
 
-  private static Enricher<Object> riskAssessor(Likelihood likelihood, Impact impact) {
+  private static Enricher riskAssessor(Likelihood likelihood, Impact impact) {
     RiskAssessment assessment = RiskAssessment.of(likelihood, impact, RiskFactors.DESTRUCTIVE);
-    return Enricher.named(
-        "risk", (context, action) -> context.with(AuthzContext.RISK_KEY, assessment));
+    return Enricher.named("risk", context -> context.with(AuthzContext.RISK_KEY, assessment));
   }
 
-  private static ToolGrant restartGrant(
-      IntentStore<Intent> intentStore, Enricher<Object> riskAssessor) {
+  private static ToolGrant restartGrant(IntentStore<Intent> intentStore, Enricher riskAssessor) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_STATEMENT,
@@ -117,8 +115,7 @@ class GovernedTurnDemo {
         RiskPolicies.threshold(RiskLevel.MODERATE, RiskLevel.VERY_HIGH));
   }
 
-  private static ToolGrant restartGrant(
-      IntentStore<Intent> intentStore, List<Enricher<? super String>> enrichers) {
+  private static ToolGrant restartGrant(List<Enricher> enrichers) {
     return ToolGrant.grant(
         new RestartTool(),
         RESTART_STATEMENT,
@@ -190,7 +187,6 @@ class GovernedTurnDemo {
       ApprovalRequest request = requests.getFirst();
       System.out.println("approval request context: " + request.context());
       assertThat(request.address().approval()).isEqualTo(slot);
-      assertThat(request.action()).isEqualTo("restart prod-eu");
       assertThat(request.context().action()).contains("restart prod-eu");
       assertThat(request.context().declaredIntent())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
@@ -294,7 +290,6 @@ class GovernedTurnDemo {
             .grants(
                 ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(
-                    intentStore,
                     List.of(new IntentEnricher(intentStore), Enrichers.principal(() -> "jcarman"))))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .storeFactory(

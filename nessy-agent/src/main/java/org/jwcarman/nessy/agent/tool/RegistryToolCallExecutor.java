@@ -49,11 +49,12 @@ import org.jwcarman.nessy.spi.approval.Approver;
 
 /**
  * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
- * authorization chokepoint. Every call passes its grant's {@link ToolGrant#judgment()} before the
- * tool ever runs: a {@link UsagePolicy.Static} grant (Allow/Deny) takes the rung-0 fast path — no
- * action rendered, no context assembled — while every other grant renders the action, runs its
- * enrichers, and lets the policy judge. A {@code RuntimeException} escaping any of that is caught
- * and turned into a fail-closed denial whose message names the stage that broke. {@link
+ * authorization chokepoint. Every call passes its grant's {@link ToolGrant#assemble(AuthzContext,
+ * Object)} and {@link ToolGrant#decide(AuthzContext)} before the tool ever runs: a {@link
+ * UsagePolicy.Static} grant (Allow/Deny) takes the rung-0 fast path — no action rendered, no
+ * context assembled — while every other grant renders the action, runs its enrichers, and lets the
+ * policy judge the assembled context. A {@code RuntimeException} escaping any of that is caught and
+ * turned into a fail-closed denial whose message names the stage that broke. {@link
  * PolicyDecision.Deny} and a refused {@link Adjudication} both deliver in-band, narrated, so the
  * model reads the reason and reacts; {@link PolicyDecision.Allow} and a granted {@link
  * Adjudication} run the tool. {@link PolicyDecision.RequireApproval} routes to the wiring's {@link
@@ -148,27 +149,23 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     Object input = convert(call, grant.tool());
     CallAddress address = new CallAddress(type.name(), id.value(), call.id());
     PolicyDecision decision;
-    AuthzContext context = null;
-    Object action = null;
+    AuthzContext assembled = null;
     if (grant.policy() instanceof UsagePolicy.Static fixed) {
       decision = fixed.decision(); // rung 0: no action rendered, no context assembled
     } else {
-      ToolGrant.Judged judged;
       try {
-        judged = grant.judgment().decide(AuthzContext.of(type.name(), call), input);
+        assembled = grant.assemble(AuthzContext.of(type.name(), call), input);
+        decision = grant.decide(assembled);
       } catch (RuntimeException e) {
         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         return new ToolExecution.Immediate(failed(call, "authorization failed: " + message));
       }
-      decision = judged.decision();
-      context = judged.context();
-      action = judged.action();
     }
     return switch (decision) {
       case PolicyDecision.Allow _ -> run(grant.tool(), input, call, address);
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
       case PolicyDecision.RequireApproval _ ->
-          switch (approver.adjudicate(new ApprovalRequest(address, call, action, context))) {
+          switch (approver.adjudicate(new ApprovalRequest(address, call, assembled))) {
             case Adjudication.Granted _ -> run(grant.tool(), input, call, address);
             case Adjudication.Refused(String reason) ->
                 new ToolExecution.Immediate(failed(call, reason));

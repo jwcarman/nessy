@@ -78,7 +78,7 @@ public final class AuthorizationReport {
    */
   private static GrantStory story(ToolGrant grant) {
     Tool<?> tool = grant.tool();
-    UsagePolicy<?> policy = grant.policy();
+    UsagePolicy policy = grant.policy();
     boolean actionRendered = !(policy instanceof UsagePolicy.Static);
     Optional<String> contributorName =
         actionRendered ? grant.contributor().displayName() : Optional.empty();
@@ -87,7 +87,7 @@ public final class AuthorizationReport {
         tool.name(), actionRendered, contributorName, enricherNames, policySummary(policy));
   }
 
-  private static List<String> enricherNames(List<Enricher<?>> enrichers) {
+  private static List<String> enricherNames(List<Enricher> enrichers) {
     List<String> names = new ArrayList<>();
     for (int i = 0; i < enrichers.size(); i++) {
       int position = i + 1;
@@ -111,7 +111,7 @@ public final class AuthorizationReport {
    * the singleton {@link UsagePolicy#requireApproval()} always returns is itself the only handle
    * this report needs.
    */
-  private static String policySummary(UsagePolicy<?> policy) {
+  private static String policySummary(UsagePolicy policy) {
     if (policy instanceof UsagePolicy.Static staticPolicy) {
       return switch (staticPolicy.decision()) {
         case PolicyDecision.Allow _ -> "allow()";

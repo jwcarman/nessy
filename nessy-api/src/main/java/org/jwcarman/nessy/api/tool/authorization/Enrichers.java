@@ -31,9 +31,9 @@ public final class Enrichers {
    * Deposits {@code resolver}'s result under {@link AuthzContext#PRINCIPAL_KEY}; named "principal"
    * for {@link AuthorizationReport}.
    */
-  public static Enricher<Object> principal(Supplier<?> resolver) {
+  public static Enricher principal(Supplier<?> resolver) {
     Objects.requireNonNull(resolver, "resolver must not be null");
     return Enricher.named(
-        "principal", (context, action) -> context.with(AuthzContext.PRINCIPAL_KEY, resolver.get()));
+        "principal", context -> context.with(AuthzContext.PRINCIPAL_KEY, resolver.get()));
   }
 }

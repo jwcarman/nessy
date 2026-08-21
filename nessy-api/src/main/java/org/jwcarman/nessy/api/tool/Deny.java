@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * for the same reason {@link Allow} is: nothing outside {@code org.jwcarman.nessy.api.tool} may
  * name this type directly, only reach it through {@link UsagePolicy#deny(String)}.
  */
-final class Deny implements UsagePolicy<Object>, UsagePolicy.Static {
+final class Deny implements UsagePolicy, UsagePolicy.Static {
 
   private final PolicyDecision decision;
 
@@ -33,7 +33,7 @@ final class Deny implements UsagePolicy<Object>, UsagePolicy.Static {
   }
 
   @Override
-  public PolicyDecision evaluate(AuthzContext context, Object action) {
+  public PolicyDecision evaluate(AuthzContext context) {
     return decision;
   }
 

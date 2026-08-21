@@ -21,16 +21,18 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
 /**
- * Everything the adjudicating party sees (authorization design §9): the rendered action and the
- * assembled context, never less.
+ * Everything the adjudicating party sees (authorization design §9): the assembled context, never
+ * less. The rendered action is not a component of its own — it lives IN {@code context} (§8,
+ * amended 2026-08-21: "two paths to one fact, closed"), so the approver reads it, and everything
+ * else an enricher deposited (principal, risk, declared intent), off {@code context} — {@link
+ * AuthzContext#action()}, {@link AuthzContext#principal()}, {@link AuthzContext#risk()}, {@link
+ * AuthzContext#declaredIntent()}.
  */
-public record ApprovalRequest(
-    CallAddress address, ToolCall call, Object action, AuthzContext context) {
+public record ApprovalRequest(CallAddress address, ToolCall call, AuthzContext context) {
 
   public ApprovalRequest {
     Objects.requireNonNull(address, "address must not be null");
     Objects.requireNonNull(call, "call must not be null");
-    Objects.requireNonNull(action, "action must not be null");
     Objects.requireNonNull(context, "context must not be null");
   }
 }
