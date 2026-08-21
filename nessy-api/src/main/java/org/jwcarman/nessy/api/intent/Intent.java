@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent.intent;
+package org.jwcarman.nessy.api.intent;
 
 /**
  * The model's own untrusted claim of what it is about to do and why (authorization design §7): a

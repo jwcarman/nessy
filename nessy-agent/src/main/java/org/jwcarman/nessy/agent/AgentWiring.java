@@ -20,11 +20,11 @@ import java.time.Duration;
 import java.util.Objects;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.spi.Memory;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.spi.Memory;
 
 /**
  * Everything a shell needs, pre-scoped (§3.5), plus the two host knobs: who executes the drain

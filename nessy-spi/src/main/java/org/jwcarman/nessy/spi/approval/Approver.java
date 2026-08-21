@@ -13,20 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent.intent;
-
-import java.util.Optional;
+package org.jwcarman.nessy.spi.approval;
 
 /**
- * The claim channel's own stash: pre-scoped, like {@link org.jwcarman.nessy.agent.spi.Memory} — no
- * id parameter anywhere (agent-as-scope §3.5). One store answers for exactly one scope; the wiring
- * that builds a scope is the one place that decides which store instance that is.
+ * What a wiring does when the policy says RequireApproval (spec §4.3 amendment): the rendezvous
+ * approver blocks a human-present channel; the slot-backed approver suspends into the durable
+ * backend; the default refuses loudly in-band — approval is a capability of the wiring, not a right
+ * of every deployment.
  */
-public interface IntentStore {
-
-  /** Records {@code intent} as the latest declaration, last write wins. */
-  void record(Intent intent);
-
-  /** The most recently recorded declaration, or empty if none was ever declared. */
-  Optional<Intent> latest();
+@FunctionalInterface
+public interface Approver {
+  Adjudication adjudicate(ApprovalRequest request);
 }

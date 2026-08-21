@@ -45,9 +45,7 @@ import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
-import org.jwcarman.nessy.agent.spi.ApprovalRequest;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.spi.Memory;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
@@ -60,6 +58,8 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
+import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 

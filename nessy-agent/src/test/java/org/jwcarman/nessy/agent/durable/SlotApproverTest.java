@@ -22,8 +22,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.spi.Adjudication;
-import org.jwcarman.nessy.agent.spi.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
@@ -31,6 +29,8 @@ import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
+import org.jwcarman.nessy.spi.approval.Adjudication;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 
 /** The slot-backed adjudicator: the approval slot IS the fact (spec §4.3 amendment). */
 class SlotApproverTest {

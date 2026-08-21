@@ -17,8 +17,10 @@ package org.jwcarman.nessy.agent.intent;
 
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.intent.Intent;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 
 /**
  * Reads the {@link IntentStore} this enricher was built over and deposits its latest {@link Intent}

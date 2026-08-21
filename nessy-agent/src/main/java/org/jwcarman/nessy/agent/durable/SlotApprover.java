@@ -18,13 +18,13 @@ package org.jwcarman.nessy.agent.durable;
 import java.util.Objects;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.agent.ScopeRedrive;
-import org.jwcarman.nessy.agent.spi.Adjudication;
-import org.jwcarman.nessy.agent.spi.ApprovalRequest;
-import org.jwcarman.nessy.agent.spi.Approver;
 import org.jwcarman.nessy.durable.AwaitResult;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.CreateResult;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
+import org.jwcarman.nessy.spi.approval.Adjudication;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.approval.Approver;
 
 /**
  * The slot-backed adjudicator (spec §4.3 amendment): the approval slot IS the fact — absent means

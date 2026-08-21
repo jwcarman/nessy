@@ -18,9 +18,9 @@ package org.jwcarman.nessy.agent.memory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.agent.spi.Memory;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.spi.Memory;
 
 /**
  * Remembers everything, verbatim, in order — the cli() default (§7.1). Thread-safe because

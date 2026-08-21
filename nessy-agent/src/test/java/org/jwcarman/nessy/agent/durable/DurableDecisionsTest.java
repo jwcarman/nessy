@@ -19,10 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.spi.Adjudication;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.spi.approval.Adjudication;
 
 /** The one mapping from a durable outcome to the approval grammar (spec §4.3 amendment). */
 class DurableDecisionsTest {

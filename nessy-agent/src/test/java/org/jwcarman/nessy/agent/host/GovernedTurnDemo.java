@@ -24,18 +24,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.intent.InMemoryIntentStore;
-import org.jwcarman.nessy.agent.intent.Intent;
 import org.jwcarman.nessy.agent.intent.IntentEnricher;
-import org.jwcarman.nessy.agent.intent.IntentStore;
 import org.jwcarman.nessy.agent.intent.IntentTool;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.spi.ApprovalRequest;
 import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
+import org.jwcarman.nessy.api.intent.Intent;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
@@ -57,6 +55,8 @@ import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 
 /**

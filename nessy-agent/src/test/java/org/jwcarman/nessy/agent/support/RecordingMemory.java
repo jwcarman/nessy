@@ -17,9 +17,9 @@ package org.jwcarman.nessy.agent.support;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.nessy.agent.spi.Memory;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.spi.Memory;
 
 /** Remembers in order; recall is an executor concern the shell never touches. */
 public final class RecordingMemory implements Memory {

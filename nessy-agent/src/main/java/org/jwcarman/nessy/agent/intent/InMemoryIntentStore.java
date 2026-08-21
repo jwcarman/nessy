@@ -17,6 +17,8 @@ package org.jwcarman.nessy.agent.intent;
 
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.intent.Intent;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 
 /**
  * The in-process {@link IntentStore}: one declaration held for the life of the process, last write

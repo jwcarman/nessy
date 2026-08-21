@@ -25,9 +25,6 @@ import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ToolOutcome;
-import org.jwcarman.nessy.agent.spi.Adjudication;
-import org.jwcarman.nessy.agent.spi.ApprovalRequest;
-import org.jwcarman.nessy.agent.spi.Approver;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -46,6 +43,9 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.spi.approval.Adjudication;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.approval.Approver;
 
 class RegistryToolCallExecutorTest {
 

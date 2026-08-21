@@ -17,9 +17,11 @@ package org.jwcarman.nessy.agent.intent;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.intent.Intent;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.intent.IntentStore;
 
 /**
  * The claim channel's own tool (authorization design §7): the model declares what it is about to do

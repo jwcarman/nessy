@@ -24,9 +24,6 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
-import org.jwcarman.nessy.agent.spi.Adjudication;
-import org.jwcarman.nessy.agent.spi.ApprovalRequest;
-import org.jwcarman.nessy.agent.spi.Approver;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -45,6 +42,9 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.approval.Adjudication;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.approval.Approver;
 
 /**
  * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
