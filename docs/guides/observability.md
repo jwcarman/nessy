@@ -91,5 +91,5 @@ renderer built on the same interface.
   renderer chat-cli and scout both use.
 - Triggers — `chat-web`'s trace, end to end, across an
   HTTP-triggered turn.
-- The Durable Loop — the fold and the events
-  a listener actually subscribes to.
+- [Durable Computation](../concepts/durable-computation.md) — the fold and
+  the events a listener actually subscribes to.

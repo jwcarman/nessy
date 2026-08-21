@@ -1,101 +1,134 @@
 # Getting Started
 
-An `Agent<I>` is a reusable identity — a model, a system prompt, a set of granted
-tools — built once from a `Harness` and then told things. This page builds the
-smallest one that actually calls a tool, against a real model, then points at
-the next few steps: an interactive console, and a restart that doesn't lose
-anything.
+This page installs Nessy, builds the smallest agent that actually calls a
+tool against a real model, and points at what to read next.
 
-## The shape
+## Install
 
-Every agent starts the same way: a `ModelProvider` builds a `Harness`, the
-harness builds an `Agent`, and the agent is told things through a
-`Conversation`. Export a key and this one makes a real call:
+Nessy has not yet made a public release to Maven Central: build locally
+(`./mvnw install`) and depend on `0.1.0-SNAPSHOT`. Every module shares
+`groupId` `org.jwcarman.nessy`.
+
+Import the BOM to align versions:
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-bom</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+```
+
+Then pick the artifacts the application actually needs. An application
+building an agent depends on `nessy-agent`, which pulls in `nessy-api` (the
+shared vocabulary — `Tool`, `ToolGrant`) and `nessy-spi` (the seams an
+outsider implements — a model provider, `Memory`) for free:
+
+```xml
+<dependencies>
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-agent</artifactId>
+  </dependency>
+
+  <!-- A model provider — pick one. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-model-anthropic</artifactId>
+  </dependency>
+</dependencies>
+```
+
+`nessy-model-openai`, `nessy-model-gemini`, and `nessy-model-bedrock` are the
+other providers; `nessy-model-env` picks whichever key the environment has
+set, so an application switches providers by switching an environment
+variable rather than its code. Tool, policy, and enricher authors compile
+against `nessy-api` alone; adapter authors — a custom `Memory` or approver —
+add `nessy-spi`.
+
+## The smallest agent
+
+Export a key:
 
 ```bash
 export ANTHROPIC_API_KEY=...
 ```
 
+`Nessy.cli()` is the interactive front door — one scope for the process, one
+turn at a time, the caller's thread parks on the reply. A tool built with
+`Tool.of` is three lines: an input record, a description, and a handler.
+
 ```java
 record Add(int left, int right) {}
 
-class AddTool implements Tool<Add> {
-    public String name() { return "add"; }
-    public String description() { return "Adds two integers"; }
-    public Class<Add> inputType() { return Add.class; }
-
-    public Awaited<ToolResult> execute(Add input, ToolContext context) {
-        return Awaited.ready(ToolResult.ok(String.valueOf(input.left() + input.right())));
-    }
-}
+Tool<Add> addTool =
+    Tool.of(Add.class, t -> t.description("Adds two integers")
+        .executes(cmd -> cmd.left() + cmd.right()));
 
 AnthropicModelProvider provider = AnthropicModelProvider.fromEnv();
+ModelSettings settings = new ModelSettings(
+    "claude-haiku-4-5-20251001", "You are a terse assistant.", 1024, Set.of(), null);
 
-Agent<String> agent =
-    Nessy.harness(h -> h.provider(provider))
-        .agent(
-            a ->
-                a.name("adder")
-                    .model("claude-haiku-4-5-20251001")
-                    .tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow())));
-
-StringBuilder text = new StringBuilder();
-RunOutcome outcome =
-    agent
-        .converse()
-        .tell(
-            "what is 2+2?",
-            TurnObserver.observe(o -> o.onTextDelta(delta -> text.append(delta.text()))));
-
-System.out.println(text + " (" + outcome.state().status() + ")");
-// The answer is 4. (COMPLETE)
+try (CliAgent agent =
+    Nessy.cli().provider(provider).settings(settings).tools(addTool).build()) {
+  String reply = agent.converse("what is 2+2?");
+  System.out.println(reply);
+  // The answer is 4.
+}
 ```
 
-The wiring itself — provider, harness, agent, `tell` — is about twenty lines.
-`AddTool` is another dozen, and it's the part that changes from agent to
-agent; the wiring around it barely does.
+`.tools(Tool<?>...)` grants each tool `UsagePolicy.allow()` for you — reach
+for `ToolGrant.grant(...)` directly when a tool needs real authority rules;
+see [Authorization](../concepts/authorization.md). Every other config
+default already works here: an in-memory `Memory`, a fresh virtual-thread
+executor the `try`-with-resources closes. The smallest useful agent is a
+provider, `ModelSettings`, and nothing else.
 
-A few things worth naming:
+`OPENAI_API_KEY` and `OpenAiModelProvider.fromEnv()` are the one-line swap
+for OpenAI, with nothing else about the shape changing.
+`EnvModelProviders.fromEnv()` (from `nessy-model-env`) reads whichever key is
+set and picks the provider for you — see [Providers](providers.md).
 
-- `.name("adder")` is not a label. It's the durable stamp every parked call
-  and every callback door checks a resolution against — see
-  The Durable Loop.
-- `.tools(ToolGrant.grant(new AddTool(), UsagePolicy.allow()))` is the whole
-  capability story: a tool the model can see is one this call explicitly
-  granted, with a policy (`allow()` here; `requireApproval()` gates it
-  instead) — see Tools and Grants.
-- `AgentMemory` isn't set here, so the config's default applies: an in-memory
-  pipeline over the transcript. It disappears when the process does — see
-  Durable Persistence for the version that
-  doesn't.
-- `agent.converse().tell(...)` returns a `RunOutcome`, either `Completed` or
-  `Parked`.
+## Converse
 
-`OPENAI_API_KEY` and `OpenAiModelProvider.fromEnv()` swap
-providers with no other change to this shape; `EnvModelProviders.fromEnv()`
-(from `nessy-model-env`) picks whichever key is set for you — see
-[Providers](providers.md).
+`CliAgent#converse(String)` sends one line and blocks for the answer, which
+is what makes it the shape a REPL or a one-shot script both want:
 
-## Talking back and forth
+```java
+System.out.println(agent.converse("and what about 10+32?"));
+// The answer is 42.
+```
 
-A one-shot `tell` proves the wiring works, but a real agent holds a
-conversation. `nessy-console`'s `ConsoleRepl` turns any `Agent<String>` into a
-terminal chat loop in a few lines, streaming, spinner, and approval prompts
-included — see Console Apps.
+Each call to `converse` is a full turn: the model sees the whole
+conversation so far, including the first exchange, because `Memory` recalls
+it. A still-in-flight turn refuses a new line rather than interleaving with
+it — call `converse` again once the previous one returns.
 
-## Surviving a restart
+## Verify it against the real CLI test
 
-Everything above dies with the JVM: `ConversationStore.inMemory()` and
-`Transcript.inMemory()` are the harness's defaults precisely because they
-need no setup. Swapping in `nessy-jdbc` makes the same conversation survive a
-crash or a restart with no change to the agent's own shape — see
-Durable Persistence.
+`CliLiveSmokeTest` in `nessy-agent` runs exactly this shape against whatever
+provider key is set in the environment, and is excluded from the default
+build so a keyless `./mvnw verify` never touches the network. Point one of
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, or
+`XAI_API_KEY` at a real key and run:
+
+```bash
+./mvnw test -pl nessy-agent -Dtest=CliLiveSmokeTest -Dnessy.excludedGroups=
+```
 
 ## Where next
 
-- Testing — running this same shape with no key at all,
-  against `ScriptedModelProvider`.
-- Console Apps — turning an `Agent<String>` into an
-  interactive terminal REPL.
-- The Durable Loop — the fold, `Awaited`, and
-  why every API here is built for at-least-once delivery.
+- [Autonomous Agents](autonomous-agents.md) — the second front door, for a
+  host that keeps running without a human driving each turn, with an
+  `ApprovalDesk` for whatever a tool's policy sends to a human.
+- [Durable Computation](../concepts/durable-computation.md) — the slot
+  primitive both front doors are built on, and why a parked call survives
+  the instance that opened it.
+- [The Four Tiers](../concepts/the-four-tiers.md) — how a substrate, a host,
+  a harness, and a binding compose into the agent this page just built.

@@ -406,5 +406,5 @@ ambiguous-classpath failure mode.
   included.
 - Spring Boot — the same provider selection, driven by
   `nessy.*` properties instead of environment variables.
-- The Durable Loop — what a `Harness` built
-  from a provider actually gives you.
+- [Durable Computation](../concepts/durable-computation.md) — what a
+  `Harness` built from a provider actually gives you.
