@@ -1,5 +1,10 @@
 # Subagents
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 A subagent call is a tool call whose work is another agent's conversation.
 That single sentence buys the whole feature: everything Nessy already
 guarantees about tool calls — at-least-once replay, parking, durable

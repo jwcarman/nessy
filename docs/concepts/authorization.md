@@ -1,5 +1,54 @@
 # Authorization
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
+## What changed (2026-08-20)
+
+The grammar below partially survives; read it as history with these corrections layered
+on top, not as the current API:
+
+- **Effect became action.** In every mainstream authorization model — XACML, AWS IAM,
+  Cedar — "effect" already names the *verdict* (`Effect: Allow | Deny`), so Nessy's own
+  "the tool's effect" read backwards. `Tool<I>.effect(I)` and `EffectfulTool<I, E>` are
+  both deleted; a `Tool` is now just name, description, `inputType()`, `execute(...)`,
+  and `requiredCompletion()` — authorization no longer appears in the tool API at all,
+  so a third-party (MCP) tool is governable without wrapping it in a class.
+- **The speaker moved to the grant.** Authorization now begins with the grant's own
+  statement of the action, not the tool's: `ActionContributor<I, A>` (`A actionOf(I
+  input)`) is welded in at `ToolGrant.grant(tool, contributor, enrichers, policy)`
+  (a no-enricher door, `grant(tool, contributor, policy)`, and the untyped rung-0/1
+  door, `grant(tool, policy)`, using the default contributor `String::valueOf`, round
+  out the ladder). The rendered action is deposited under the well-known
+  `AuthzContext.ACTION_KEY` before any enricher runs, so every enricher can read it
+  either as its own typed parameter or generically via `context.action()`.
+- **A standard risk shape shipped.** `RiskLevel` (`VERY_LOW`…`VERY_HIGH`, NIST SP
+  800-30's five qualitative levels), `RiskAssessment(likelihood, impact, factors)` with
+  a computed `severity()`, and `AuthzContext.RISK_KEY` back the canonical
+  `RiskPolicies.threshold(approveAt, denyAt)` policy — severity below `approveAt`
+  allows, up to `denyAt` requires approval, at or above denies; an absent assessment
+  fails closed.
+- **The principal kit arrived.** `Enrichers.principal(Supplier<?> resolver)` is a named
+  enricher depositing a resolved identity under `PRINCIPAL_KEY` — the slot existed
+  before this wave, the factory did not.
+- **The intent tool was rebuilt** in `org.jwcarman.nessy.agent.intent`
+  (`Intent`, `IntentStore`, `IntentTool`, `IntentEnricher`) against the current
+  agent-as-scope machine — not through the `AgentConfig.intent(...)` door this page
+  still describes below, which no longer exists.
+- **`Tool.of(Class<T>, ToolCustomizer<T>)`** composes a first-party tool from a
+  customizer (`executes(...)`/`defers(...)` handler doors) — a three-line tool no
+  longer needs a class.
+- **The tool event channel is sealed.** `sealed interface ToolEvent` (today just
+  `Progress(String message)`), delivered through `ToolEventListener`, replaces
+  `EventEmitter.emit(Object)` and the untyped `ToolProgress` wire record.
+
+Every claim above was checked against the current `nessy-core`/`nessy-agent` source.
+The rest of this page — the ladder shape, the sealed three-outcome decision vocabulary,
+enrichers, the fail-closed table, the XACML bridge — still holds in spirit even where
+the exact types below have moved on.
+
 Every tool call an agent makes passes through one chokepoint before it runs. What that
 chokepoint knows, and how rigorously it judges, is a ladder you climb one rung at a
 time — and a rung you never climb costs nothing.

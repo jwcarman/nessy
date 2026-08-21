@@ -1,5 +1,10 @@
 # Getting Started
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 An `Agent<I>` is a reusable identity — a model, a system prompt, a set of granted
 tools — built once from a `Harness` and then told things. This page builds the
 smallest one that actually calls a tool, against a real model, then points at

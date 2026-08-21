@@ -47,39 +47,88 @@ sequence of renames and interim shapes that produced it.
   most one of each outstanding at a time.
 - **Tools and grants.** `Tool<I>` is a name, a description, an `inputType()`
   whose JSON Schema the model sees without being hand-written, an
-  `effect(I input)` statement of what the call will do, and an
-  `execute(I, ToolContext)`. `ToolGrant.grant(...)` is the one way a tool
-  reaches an agent, so a tool's authority is stated at the grant line, not
-  buried in the tool's own code.
+  `execute(I, ToolContext)`, and a `requiredCompletion()` declaring the
+  strongest completion semantics the tool needs. `ToolGrant.grant(...)` is
+  the one way a tool reaches an agent, so a tool's authority is stated at
+  the grant line, not buried in the tool's own code. `Tool.of(Class<T>,
+  ToolCustomizer<T>)` composes a first-party tool from a customizer —
+  `executes(Function<T,?>)`, `executes(BiFunction<T,ToolContext,?>)`, or
+  `defers(BiConsumer<T,ToolContext>)` (which sets `DURABLE` automatically)
+  — so a three-line tool needs no class.
 - **Authorization: a ladder from a static verdict to a typed, enriched
-  decision.** `UsagePolicy<E>.evaluate(AuthzContext, E)` is the tool call
-  executor's one authority chokepoint, consulted before the tool runs and
-  before the approver is ever asked; the decision vocabulary is always the
-  same sealed three, `Allow`, `Deny(reason)`, `RequireApproval`. Rigor rises
-  in rungs, and a grant that never climbs past one costs nothing for the
-  rungs above it: rung 0 is `UsagePolicy.allow()`/`.deny(reason)` —
-  canonical statics that skip effect rendering, context assembly, and every
-  enricher entirely; rung 1 is a lambda reading `AuthzContext.call()`/
-  `.state()`; rung 2 welds a tool's typed `EffectfulTool<I, E>` effect to
-  its policy at compile time via `ToolGrant.grant(tool, List.of(), policy)`;
-  rung 3 runs an ordered `Enricher<? super E>` list — `(context, effect) ->
-  context`, the same shape as a policy's own `(context, effect) ->
-  decision`, said twice — depositing assessments (a principal exchange, a
-  risk score, a quota read; I/O welcome) before the policy judges. A
-  throwing effect, enricher, policy, or principal resolver each denies that
-  one call closed, naming the stage that broke, never an escaped exception
-  and never an allow. `spi.intent`'s `declare_intent`/`clear_intent` tools
-  and `AgentConfig.intent(Class<?>)` let a model state an untrusted claim of
-  what it's about to do, read back via `AuthzContext.declaredIntent()`; the
-  vocabulary is an ordinary tool input type nessy validates no further than
-  null and a repeat-call guard, catching a bad fit only at the same
-  fail-closed call time every tool call already gets.
-  `AgentConfig.principal(Function<ConversationId, ?>)` feeds
-  `AuthzContext.principal()`, an agent-level resolver seam over any
-  principal shape — nessy defines the slot, never the type. `Agent#
-  authorizationReport()` renders every grant's own story — effect type,
-  enricher names in order, policy identity — read straight from the wiring,
-  so it can never drift from what actually runs.
+  decision — action, not effect.** `UsagePolicy<A>.evaluate(AuthzContext, A)`
+  is the tool call executor's one authority chokepoint, consulted before the
+  tool runs and before the approver is ever asked; the decision vocabulary is
+  always the same sealed three, `Allow`, `Deny(reason)`, `RequireApproval`.
+  Authorization begins with the **grant's** statement of the action, not the
+  tool's: in every mainstream authorization model (XACML, AWS IAM, Cedar)
+  "effect" already names the verdict, so nessy's own vocabulary renamed its
+  "effect" to "action" and moved the speaker off the tool — `EffectfulTool`
+  and `Tool.effect(T)` are deleted, and a third-party tool is governable with
+  no wrapping. Rigor rises in rungs, and a grant that never climbs past one
+  costs nothing for the rungs above it: rung 0 is `UsagePolicy.allow()`/
+  `.deny(reason)` — canonical statics that skip action rendering, context
+  assembly, and every enricher entirely; rung 1 is a lambda reading
+  `AuthzContext.call()`; rung 2 welds an `ActionContributor<I, A>` (`A
+  actionOf(I input)`) to the policy at compile time via
+  `ToolGrant.grant(tool, contributor, policy)`; rung 3 adds an ordered
+  `Enricher<? super A>` list — `(context, action) -> context`, the same
+  shape as a policy's own `(context, action) -> decision`, said twice — via
+  `ToolGrant.grant(tool, contributor, enrichers, policy)`, depositing
+  assessments (a principal exchange, a risk score, a quota read; I/O
+  welcome) before the policy judges. The rendered action is deposited under
+  the well-known `AuthzContext.ACTION_KEY` before any enricher runs. A
+  throwing action contributor, enricher, policy, or principal resolver each
+  denies that one call closed, naming the stage that broke, never an
+  escaped exception and never an allow.
+- **The standard risk shape and the principal kit.** `RiskLevel`
+  (`VERY_LOW`…`VERY_HIGH`, NIST SP 800-30's five qualitative levels),
+  `RiskAssessment(likelihood, impact, factors)` with a computed
+  `severity()`, `RiskFactors`' open string vocabulary (`destructive`,
+  `irreversible`, `external-world`, `read-only`, `spends-money`,
+  `touches-pii`), and `AuthzContext.RISK_KEY` back the canonical
+  `RiskPolicies.threshold(approveAt, denyAt)` policy — severity below
+  `approveAt` allows, up to `denyAt` requires approval, at or above denies;
+  an absent assessment fails closed. `Enrichers.principal(Supplier<?>
+  resolver)` is a named enricher depositing a resolved identity under
+  `AuthzContext.PRINCIPAL_KEY` — nessy still never imposes an identity
+  shape.
+- **Intent, reborn.** Only `AuthzContext.DECLARED_INTENT_KEY` survived an
+  earlier distillation; the declaration tool is rebuilt against the current
+  machine in `org.jwcarman.nessy.agent.intent`: `Intent(String
+  declaration)`, the `IntentStore` SPI (`record(Intent)`/`latest()`, with an
+  `InMemoryIntentStore` reference implementation), `IntentTool` (the model's
+  claim channel, always allowed by design), and `IntentEnricher` (deposits
+  the latest declaration under `DECLARED_INTENT_KEY`). The claim stays
+  untrusted by definition; policies weigh it accordingly.
+- **The sealed tool-event channel.** `sealed interface ToolEvent` (today
+  just `Progress(String message)`) delivered through `ToolEventListener`
+  replaces `EventEmitter.emit(Object)` and the untyped `ToolProgress` wire
+  record — an open-ended, `String.valueOf`-falling-back channel in an
+  otherwise sealed-grammar codebase. `ToolContext.progress(String)` is
+  unchanged as the speaker's own door; `ToolProgress.toolCallId` dissolves,
+  since the executor already holds the call.
+- **The doors: authorization moves to the executor, approval becomes a fact
+  on a durable slot.** The chokepoint now sits in the tool call executor
+  itself, ahead of both the durable backend and the approver, so a call is
+  judged once regardless of which node picks it up. Adjudication is no
+  longer an in-memory wait: `SlotApprover` opens a durable computation slot
+  per call via `CallAddress.approval()`/`.execution()` (`CallAddress
+  (agentType, agentId, callId)`), registers a `REDRIVE_SCOPE` continuation
+  (`ScopeRedrive`) to resume the owning scope, and returns
+  `Adjudication.Suspended` until a human answers — the approval itself
+  becomes a fact recorded on that slot, not a callback held open in a
+  process. `SlotDeferredToolCallPolicy` gives a tool's own `Awaited.Deferred`
+  the same treatment for execution. Two desks — an `ApprovalDesk` and a
+  `CompletionDesk` — front these slots. `CompletionPolicy` (`IMMEDIATE`,
+  `AWAITABLE`, `DURABLE`) declares, per tool, the strongest completion
+  semantics it needs, and a wiring that cannot suspend filters a `DURABLE`
+  tool out of what the model even sees rather than failing loud later.
+  `BoundedBacklog<O>` caps how many pending observations an agent scope
+  will queue before rejecting more. `Nessy.autonomous()` opens the builder
+  for a host that drives agent scopes without a human at a keyboard driving
+  each `tell` — observations arrive, `Agent#drive()` makes progress, and the
+  approval/completion desks are how a human re-enters the loop.
 - **Approval and the `Approver` seam.** `Approver.allowAll()`,
   `.denyAll(reason)`, and `.parkAll()` cover the common cases; a custom
   `Approver` decides per `ApprovalRequest` and may itself park, deferring

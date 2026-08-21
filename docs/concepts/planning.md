@@ -1,5 +1,10 @@
 # Planning
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 Give the model a plan — not one written for it, but a task list the model itself creates
 and maintains through a tool, that then appears in its context on every model call,
 unconditionally, for as long as it has tasks. This fixes a specific failure mode:

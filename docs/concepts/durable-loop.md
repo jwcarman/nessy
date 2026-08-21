@@ -1,5 +1,10 @@
 # The Durable Loop
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 A **harness** is the model-independent runtime an agent runs inside — everything that
 stays the same when you swap the model or the prompt. An **agent** is an identity: a
 model binding, a system prompt, granted tools, declared authority, all running inside a

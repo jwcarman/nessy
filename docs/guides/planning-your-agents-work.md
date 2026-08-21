@@ -1,5 +1,10 @@
 # Planning Your Agent's Work
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 Long-horizon work has a specific failure mode: an agent grinding on step 2
 forgets step 4. The plan facility fixes it by giving the model a task list it
 writes itself, through a tool, that then rides every subsequent recall as

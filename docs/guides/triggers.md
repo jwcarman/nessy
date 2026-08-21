@@ -1,5 +1,10 @@
 # Triggers
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 A conversation doesn't care who starts a turn. `agent.converse().tell(...)`
 looks the same whether the caller is a person at a keyboard, a browser
 request, a cron firing, or a message landing on a queue — the durable inbox

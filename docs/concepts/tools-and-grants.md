@@ -1,5 +1,30 @@
 # Tools and Grants
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
+## What changed (2026-08-20)
+
+The grant principle below still holds; the vocabulary partially moved on:
+
+- **Effect became action, and `EffectfulTool` is gone.** `Tool<I>.effect(I input)` and
+  `EffectfulTool<I, E>` are both deleted — a `Tool` is name, description,
+  `inputType()`, `execute(...)`, and `requiredCompletion()`, nothing more.
+  Authorization no longer lives on the tool interface; the grant states the action
+  instead. See [Authorization](authorization.md) for the full account.
+- **`ToolGrant.grant(tool, contributor, enrichers, policy)`** welds tool, `ActionContributor`,
+  enrichers, and policy together (plus a no-enricher door and the untyped rung-0/1
+  door); it replaces the `grant(EffectfulTool<I,E> tool, List<Enricher>, UsagePolicy)`
+  shape shown below.
+- **`Tool.of(Class<T>, ToolCustomizer<T>)`** is now the config-factory route to a
+  first-party tool — `executes(...)`/`defers(...)` handler doors, no class required
+  for a three-line tool like `AddTool` below.
+
+The rest of this page — the grant principle, the ladder, the MCP import story — still
+holds in spirit even where the exact types have moved on.
+
 A **tool** is something the model can ask the harness to do: a name, a sentence
 explaining when to use it, a record describing its arguments, and a method that runs.
 The JSON Schema the model sees is derived from `inputType()` rather than written by

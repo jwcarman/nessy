@@ -1,5 +1,10 @@
 # Storage
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 Restart survival rests on eight storage SPIs — `ConversationStore`, `Parks`,
 `Transcript`, `SummaryStore`, `PlanStore`, `Notebook`, `SubagentLinks`, `IntentStore` —
 each with a zero-configuration in-memory default and a `nessy-jdbc` implementation

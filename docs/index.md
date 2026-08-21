@@ -4,6 +4,11 @@
 
 # Nessy
 
+> **Note.** The walkthrough and links below describe the pre-agent-as-scope
+> architecture (pre-2026-08-18); the design of record has since moved to the
+> agent-as-scope, durable-computation, and action-and-tool-vocabulary specs. A
+> rewritten docs site is pending.
+
 Nessy is a durable agent harness framework for Java. It turns a model API into
 an agent: the effectful loop, the tool plumbing, an approval gate the model
 cannot route around, streaming as a first-class citizen, and observability

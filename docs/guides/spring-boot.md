@@ -1,5 +1,10 @@
 # Spring Boot
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 `nessy-spring-boot-starter` (plus `nessy-autoconfigure`, both in the BOM)
 wires the durable stack by classpath: add a jar, get a bean, keep writing
 your own agent. The starter itself ships no code of its own — every class an

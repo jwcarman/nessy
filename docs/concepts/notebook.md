@@ -1,5 +1,10 @@
 # The Notebook
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 "Remember this for me." The notebook gives the model a place to write durable notes about
 whoever or whatever it's working with — a user's preferences, a project's stakeholders, a
 fact worth not asking for twice — and a disciplined way to bring them back: a compact

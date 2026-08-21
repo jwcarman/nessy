@@ -1,5 +1,10 @@
 # Providers
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 `Nessy.harness(h -> h.provider(provider))` takes any `ModelProvider`. Four native modules ship
 today — `nessy-model-anthropic`, `nessy-model-openai`, `nessy-model-gemini`,
 and `nessy-model-bedrock` — and a fifth, `nessy-model-env`, picks between

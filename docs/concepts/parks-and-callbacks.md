@@ -1,5 +1,10 @@
 # Parks and Callbacks
 
+> **Superseded.** This page describes the pre-agent-as-scope architecture (pre-2026-08-18)
+> and is retained as historical reference. The design of record is the agent-as-scope,
+> durable-computation, and action-and-tool-vocabulary specs (2026-08-18 and 2026-08-20). A
+> rewritten docs site is pending.
+
 A conversation is a plain serializable record and a durable inbox, so it can run on
 **any node**, be driven by whatever process gets to it next, and pick up a wait that
 started days ago and a process ago. When a tool (or an approver) must outlive the
