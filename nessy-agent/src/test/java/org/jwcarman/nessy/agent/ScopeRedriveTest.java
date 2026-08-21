@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
@@ -147,7 +148,12 @@ class ScopeRedriveTest {
                     Duration.ofMinutes(5),
                     Clock.systemUTC()));
 
-    AgentResolver resolver = (t, i) -> agents.get();
+    List<String> seen = new ArrayList<>();
+    AgentResolver resolver =
+        (t, i) -> {
+          seen.add(t.name() + "/" + i.value());
+          return agents.get();
+        };
 
     agents.get().observe("please restart prod");
     pump.pumpUntilQuiet();
@@ -164,6 +170,7 @@ class ScopeRedriveTest {
 
     assertThat(counting.invocations).isEqualTo(2);
     assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+    assertThat(seen).containsExactly("approver/demo");
   }
 
   @Test
@@ -171,6 +178,17 @@ class ScopeRedriveTest {
     AgentResolver resolver = (t, i) -> null;
     var redrive = new ScopeRedrive(resolver);
     var continuation = new Continuation("REDRIVE_SCOPE", "{");
+    var outcome = DurableDecisions.granted();
+
+    assertThatThrownBy(() -> redrive.completed(continuation, outcome))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void aRedriveContinuationMissingTheAgentIdFailsLoudlyNotWithAnNpe() {
+    AgentResolver resolver = (t, i) -> null;
+    var redrive = new ScopeRedrive(resolver);
+    var continuation = new Continuation("REDRIVE_SCOPE", "{\"agentType\":\"a\"}");
     var outcome = DurableDecisions.granted();
 
     assertThatThrownBy(() -> redrive.completed(continuation, outcome))
