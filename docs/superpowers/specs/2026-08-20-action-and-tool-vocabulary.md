@@ -112,7 +112,9 @@ var tool = Tool.of(CreateAccount.class, t -> t
   deferring door returns `Awaited.deferred()` and sets `requiredCompletion() = DURABLE`
   automatically, so a deferring tool cannot forget to declare itself.
 - Return rendering: a `String` passes through as `ToolResult.ok`; a `ToolResult` passes as-is;
-  anything else JSON-serializes. A thrown exception is the existing in-band failure.
+  `null` renders as `ToolResult.ok("done")` (ratified 2026-08-21 at the final review — a
+  side-effecting handler with nothing to say gets an honest acknowledgment, not the string
+  "null"); anything else JSON-serializes. A thrown exception is the existing in-band failure.
 - `requires(CompletionPolicy)` overrides the completion requirement.
 - The verb is `executes`, never `action` — the tool *executes*, the grant states the *action*,
   the policy renders a *decision*. Three words, three concepts.
