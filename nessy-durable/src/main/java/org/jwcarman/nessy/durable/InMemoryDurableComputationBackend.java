@@ -111,9 +111,9 @@ public final class InMemoryDurableComputationBackend implements DurableComputati
 
   private static ComputationStatus statusOf(Outcome outcome) {
     return switch (outcome) {
-      case Outcome.Success ignored -> ComputationStatus.SUCCEEDED;
-      case Outcome.Failure ignored -> ComputationStatus.FAILED;
-      case Outcome.Cancelled ignored -> ComputationStatus.CANCELLED;
+      case Outcome.Success _ -> ComputationStatus.SUCCEEDED;
+      case Outcome.Failure _ -> ComputationStatus.FAILED;
+      case Outcome.Cancelled _ -> ComputationStatus.CANCELLED;
     };
   }
 }

@@ -122,7 +122,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           switch (execute(call)) {
             case ToolExecution.Immediate(ToolOutcome outcome) ->
                 sink.deliver(new AgentEvent.ToolFinished(call, outcome));
-            case ToolExecution.Deferred(var computation) -> {
+            case ToolExecution.Deferred(var _) -> {
               // suspended into its slot: nothing delivered, nothing narrated (§4.3) — the
               // completion re-enters through the slot's registered continuation
             }
@@ -164,11 +164,11 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       action = judged.action();
     }
     return switch (decision) {
-      case PolicyDecision.Allow ignored -> run(grant.tool(), input, call, address);
+      case PolicyDecision.Allow _ -> run(grant.tool(), input, call, address);
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
-      case PolicyDecision.RequireApproval ignored ->
+      case PolicyDecision.RequireApproval _ ->
           switch (approver.adjudicate(new ApprovalRequest(address, call, action, context))) {
-            case Adjudication.Granted granted -> run(grant.tool(), input, call, address);
+            case Adjudication.Granted _ -> run(grant.tool(), input, call, address);
             case Adjudication.Refused(String reason) ->
                 new ToolExecution.Immediate(failed(call, reason));
             case Adjudication.Suspended(var slot) -> new ToolExecution.Deferred(slot);
@@ -188,7 +188,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
         yield new ToolExecution.Immediate(new ToolOutcome.Returned(value));
       }
-      case Awaited.Deferred<ToolResult> ignored -> deferredToolCallPolicy.onDeferred(call, address);
+      case Awaited.Deferred<ToolResult> _ -> deferredToolCallPolicy.onDeferred(call, address);
     };
   }
 

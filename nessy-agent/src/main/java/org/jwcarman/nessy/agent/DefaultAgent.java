@@ -77,7 +77,7 @@ public final class DefaultAgent<O> implements Agent<O>, ResolvedScope {
       try {
         applyOnce(event);
         return;
-      } catch (StaleStateException e) {
+      } catch (StaleStateException _) {
         // another writer advanced the scope — re-handle against what it left behind
       } catch (RuntimeException e) {
         harness
@@ -117,23 +117,27 @@ public final class DefaultAgent<O> implements Agent<O>, ResolvedScope {
       if (next.isEmpty()) {
         return;
       }
-      O observation = next.get();
-      List<ContentBlock> content;
-      try {
-        content = harness.renderer().render(observation);
-      } catch (RuntimeException e) {
-        harness.observer().renderFailed(observation, e); // discard; stay idle; keep draining
-        continue;
-      }
-      if (content.isEmpty()) {
-        continue; // an empty render is a decline — skip, keep draining (§3.7)
-      }
-      try {
-        applyOnce(state, new AgentEvent.Observed(content));
-      } catch (StaleStateException e) {
-        binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
-        harness.observer().observationRequeued(observation);
-      }
+      drainOne(state, next.get());
+    }
+  }
+
+  /** One backlog observation's whole drain attempt: render, apply, or discard (§3.7, §3.3). */
+  private void drainOne(State state, O observation) {
+    List<ContentBlock> content;
+    try {
+      content = harness.renderer().render(observation);
+    } catch (RuntimeException e) {
+      harness.observer().renderFailed(observation, e); // discard; stay idle; keep draining
+      return;
+    }
+    if (content.isEmpty()) {
+      return; // an empty render is a decline — skip, keep draining (§3.7)
+    }
+    try {
+      applyOnce(state, new AgentEvent.Observed(content));
+    } catch (StaleStateException _) {
+      binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
+      harness.observer().observationRequeued(observation);
     }
   }
 
@@ -169,7 +173,7 @@ public final class DefaultAgent<O> implements Agent<O>, ResolvedScope {
 
   private void dispatch(Effect effect) {
     switch (effect) {
-      case Effect.CallModel ignored -> model.callModel(this::deliver);
+      case Effect.CallModel _ -> model.callModel(this::deliver);
       case Effect.ExecuteTool(var call) -> tools.executeTool(call, this::deliver);
     }
   }

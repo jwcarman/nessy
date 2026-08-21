@@ -68,7 +68,7 @@ class InMemoryStateSubstrateTest {
             try {
               view.save(new State(new Phase.AwaitingModel(), 0L));
               return true;
-            } catch (StaleStateException e) {
+            } catch (StaleStateException _) {
               return false;
             }
           });

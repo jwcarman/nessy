@@ -123,7 +123,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
             blocks.add(new ToolUseBlock(call, signature));
             calls.add(call);
           }
-          case ModelEvent.TurnEnded ignored -> {
+          case ModelEvent.TurnEnded _ -> {
             // usage metrics ride the observability design, not this plan
           }
         }

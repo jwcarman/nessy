@@ -57,8 +57,8 @@ public final class StateCodec {
     ObjectNode root = mapper.createObjectNode();
     root.put("version", state.version());
     switch (state.phase()) {
-      case Phase.Idle ignored -> root.put(PHASE, IDLE);
-      case Phase.AwaitingModel ignored -> root.put(PHASE, AWAITING_MODEL);
+      case Phase.Idle _ -> root.put(PHASE, IDLE);
+      case Phase.AwaitingModel _ -> root.put(PHASE, AWAITING_MODEL);
       case Phase.AwaitingTools(
               Message turn,
               Set<String> pending,

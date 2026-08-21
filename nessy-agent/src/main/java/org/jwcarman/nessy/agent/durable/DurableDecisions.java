@@ -46,7 +46,7 @@ public final class DurableDecisions {
     Objects.requireNonNull(outcome, "outcome must not be null");
     Objects.requireNonNull(slot, "slot must not be null");
     return switch (outcome) {
-      case Outcome.Success(Decision.Allow ignored) -> new Adjudication.Granted();
+      case Outcome.Success(Decision.Allow _) -> new Adjudication.Granted();
       case Outcome.Success(Decision.Deny(String reason)) -> new Adjudication.Refused(reason);
       case Outcome.Success(Object value) ->
           new Adjudication.Refused(
