@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
@@ -104,12 +103,6 @@ public interface UsagePolicy<E> {
       ordered.add(policy);
     }
     return new AllOfPolicy(List.copyOf(ordered));
-  }
-
-  /** Varargs form of {@link #allOf(List)}. */
-  static UsagePolicy<Object> allOf(UsagePolicy<Object>... policies) {
-    Objects.requireNonNull(policies, "policies must not be null");
-    return allOf(Arrays.asList(policies));
   }
 
   /**

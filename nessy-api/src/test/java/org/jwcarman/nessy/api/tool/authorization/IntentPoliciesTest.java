@@ -78,6 +78,13 @@ class IntentPoliciesTest {
 
       assertThat(policy.evaluate(context, CALL)).isEqualTo(new PolicyDecision.Allow());
     }
+
+    @Test
+    void is_never_static() {
+      UsagePolicy<Object> policy = IntentPolicies.requireDeclared(Restart.class);
+
+      assertThat(policy).isNotInstanceOf(UsagePolicy.Static.class);
+    }
   }
 
   @Nested

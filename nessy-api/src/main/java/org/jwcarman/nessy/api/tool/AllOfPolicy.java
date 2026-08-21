@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * AuthorizationReport} reports it as {@code policy (AllOfPolicy)} rather than an unreadable
  * synthetic lambda class name — the same motivation {@link Allow} and {@link Deny} are named types
  * (design of record 2026-08-16-authorization §8). Package-private: {@link UsagePolicy#allOf(List)}
- * and its varargs overload are the only supported way to obtain one.
+ * is the only supported way to obtain one.
  *
  * <p>Deliberately does not implement {@link UsagePolicy.Static}: its verdict depends on {@code
  * policies}, and through them on context and action.

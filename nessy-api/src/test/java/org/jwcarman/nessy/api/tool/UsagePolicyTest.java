@@ -242,7 +242,8 @@ class UsagePolicyTest {
 
     @Test
     void allAllowIsAllowed() {
-      UsagePolicy<Object> policy = UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.allow());
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
       ToolCall call = spendCall(1);
 
       assertThat(policy.evaluate(contextFor(call), call)).isEqualTo(new PolicyDecision.Allow());
@@ -252,7 +253,7 @@ class UsagePolicyTest {
     void theFirstDenyWinsAndItsOwnReasonSurfaces() {
       UsagePolicy<Object> policy =
           UsagePolicy.allOf(
-              UsagePolicy.allow(), UsagePolicy.deny("first"), UsagePolicy.deny("second"));
+              List.of(UsagePolicy.allow(), UsagePolicy.deny("first"), UsagePolicy.deny("second")));
       ToolCall call = spendCall(1);
 
       assertThat(policy.evaluate(contextFor(call), call))
@@ -262,7 +263,7 @@ class UsagePolicyTest {
     @Test
     void aRequireApprovalWinsOverAnAllowWhenNoDenyIsPresent() {
       UsagePolicy<Object> policy =
-          UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.requireApproval());
+          UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.requireApproval()));
       ToolCall call = spendCall(1);
 
       assertThat(policy.evaluate(contextFor(call), call))
@@ -272,16 +273,11 @@ class UsagePolicyTest {
     @Test
     void evaluatesInOrderSoALaterDenyNeverOverridesAnEarlierOne() {
       UsagePolicy<Object> policy =
-          UsagePolicy.allOf(UsagePolicy.deny("early"), UsagePolicy.requireApproval());
+          UsagePolicy.allOf(List.of(UsagePolicy.deny("early"), UsagePolicy.requireApproval()));
       ToolCall call = spendCall(1);
 
       assertThat(policy.evaluate(contextFor(call), call))
           .isEqualTo(new PolicyDecision.Deny("early"));
-    }
-
-    @Test
-    void rejectsAnEmptyVarargsList() {
-      assertThatThrownBy(UsagePolicy::allOf).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -300,7 +296,8 @@ class UsagePolicyTest {
 
     @Test
     void theCompositeIsNeverStatic() {
-      UsagePolicy<Object> policy = UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.allow());
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
 
       assertThat(policy).isNotInstanceOf(UsagePolicy.Static.class);
     }
@@ -311,8 +308,9 @@ class UsagePolicyTest {
     void combinesRequireDeclaredWithARiskThresholdPolicyDenyingOnTheUndeclaredIntentFirst() {
       UsagePolicy<Object> policy =
           UsagePolicy.allOf(
-              IntentPolicies.requireDeclared(Restart.class),
-              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
+              List.of(
+                  IntentPolicies.requireDeclared(Restart.class),
+                  RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
       ToolCall call = spendCall(1);
 
       PolicyDecision decision = policy.evaluate(contextFor(call), call);
@@ -325,8 +323,9 @@ class UsagePolicyTest {
     void combinesRequireDeclaredWithARiskThresholdPolicyDenyingOnRiskWhenIntentIsDeclared() {
       UsagePolicy<Object> policy =
           UsagePolicy.allOf(
-              IntentPolicies.requireDeclared(Restart.class),
-              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
+              List.of(
+                  IntentPolicies.requireDeclared(Restart.class),
+                  RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
       ToolCall call = spendCall(1);
       RiskAssessment highRisk =
           new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, RiskLevel.HIGH, Set.of());
@@ -345,8 +344,9 @@ class UsagePolicyTest {
     void combinesRequireDeclaredWithARiskThresholdPolicyAllowingWhenBothAreSatisfied() {
       UsagePolicy<Object> policy =
           UsagePolicy.allOf(
-              IntentPolicies.requireDeclared(Restart.class),
-              RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH));
+              List.of(
+                  IntentPolicies.requireDeclared(Restart.class),
+                  RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
       ToolCall call = spendCall(1);
       RiskAssessment lowRisk =
           new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, RiskLevel.VERY_LOW, Set.of());
@@ -360,7 +360,8 @@ class UsagePolicyTest {
 
     @Test
     void namesItsOwnClassForTheAuthorizationReport() {
-      UsagePolicy<Object> policy = UsagePolicy.allOf(UsagePolicy.allow(), UsagePolicy.allow());
+      UsagePolicy<Object> policy =
+          UsagePolicy.allOf(List.of(UsagePolicy.allow(), UsagePolicy.allow()));
       Grant_construction.Recorder tool = new Grant_construction.Recorder();
 
       ToolGrant grant = ToolGrant.grant(tool, policy);
