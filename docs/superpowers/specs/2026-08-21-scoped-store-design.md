@@ -194,6 +194,12 @@ internal vocabulary the desks and dispatcher speak, with the kernel recipe
 implementation. The builder's `backend(…)` seam survives for genuinely foreign
 engines (Restate, Temporal); nobody implements it to get a database.
 
+Retention: terminal `computation` documents are never reaped by the recipe.
+In-memory this mirrors the old map's behavior; a durable adapter deployment
+needs a retention story (age-out of terminal documents by `updatedAt`) before
+tables grow without bound — ruled to land with the first durable adapter,
+alongside the outbox.
+
 ### 6.6 Outbox (specified now; lands with the first durable adapter)
 Document-per-item under `kind=outbox`, UUIDv7 keys (oldest-first scan for
 free), payload `{ computationId, continuation, attempts, leasedUntil }`.
@@ -319,7 +325,10 @@ against it without depending on `nessy-agent`), the recipes, and one builder
 seam: `.store(ScopedStore)` (default `InMemoryScopedStore`).
 
 Survives as override seams: `.memoryFactory(…)` (custom `Memory`),
-`.backend(…)` (foreign durable engines). The scope engine, phases, CAS
+`.backend(…)` (foreign durable engines). The `.store(…)` seam lives on the
+autonomous builder only: the CLI door is **ephemeral by design** (in-process,
+one sitting, `StalenessPolicy.never()`) and builds its own discarded kernel —
+it deliberately exposes no store seam. The scope engine, phases, CAS
 discipline, desks, dispatcher, doors: untouched — this reform is entirely
 below the waterline of the agent-as-scope design.
 
