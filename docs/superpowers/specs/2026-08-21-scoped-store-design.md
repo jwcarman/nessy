@@ -108,28 +108,16 @@ public interface Codec<T> {
   byte[] encode(T value);
   T decode(byte[] bytes);
 
-  default Codec<T> then(Codec<byte[]> next) { ... }  // typed composition
-
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) { ... }
 }
 ```
 
-A codec binds a subject type to the substrate's native tongue, bytes — and a
-**transform is just a `Codec<byte[]>`**: gzip, encryption, any byte↔byte link.
-`then` chains them: encode runs left-to-right, decode right-to-left, for free.
-The second type parameter a fully general `Codec<I,O>` would carry is phantom
-at every consumer seam (the output is always bytes), so it is baked in — the
-same phantom-generic ruling as the context-pipeline reform; widening to
-`Codec<I,O>` remains the strict generalization if a future feature needs typed
-intermediate stages. `Codec.json` binds straight to UTF-8 JSON bytes via the
-caller's mapper (tolerant, user modules flow through; sealed vocabularies bind
-the `SealedInputs` way — discriminator from permitted subclasses — so user
-types never need annotations; UTF-8 is an internal detail). Each recipe takes
-an optional `Codec<T>` for its stored shape, defaulting to `Codec.json` for
-user shapes and the nessy-owned binding for core types. Enterprise
-encryption-at-rest in one line: `Codec.json(mapper, type).then(gzip).then(aes)`
-— the links are user-authored per the patterns-not-products ruling. Use sites
-never see a wildcard.
+`Codec.json` is the default for user-defined types: tolerant Jackson binding,
+UTF-8, the caller's mapper (so user-registered modules flow through). It binds
+sealed vocabularies the `SealedInputs` way — discriminator from the permitted
+subclasses — so user types never need annotations. Each recipe takes an
+optional `Codec<T>` for its stored shape, defaulting to the nessy-owned
+binding for core types.
 
 One conflict signal, same package:
 
@@ -329,30 +317,11 @@ sanctioned homes, neither shipped by Nessy:
   backend-agnostic; payloads transform passing through, metadata (`kind`,
   `key`, seq, version, timestamps) stays plaintext.
 
-Nessy's core ships no cryptography and mandates no envelope format. Amended
-ruling (2026-08-21): encryption-at-rest DOES ship — later, as the optional
-feature jar **`nessy-crypto`** *(designed, on the roadmap)* — because nonce
-discipline and envelope versioning are exactly the parts a bring-your-own
-implementation gets catastrophically wrong. Its designed shape: `AesCodec
-implements Codec<byte[]>` over plain JCA (AES-GCM, fresh nonce per encode, no
-new dependencies), envelope `[version | key-id | nonce | ciphertext+tag]`, and
-a two-method key seam —
-
-```java
-public interface KeySource {
-  KeyRef current();               // (keyId, SecretKey) — encrypt with this
-  SecretKey byId(String keyId);   // decrypt whatever the row names
-}
-```
-
-— so rotation is "change what `current()` returns" and old rows keep
-decrypting. Deployments back `KeySource` with env, Vault, or KMS. Design fact
-that makes this safe: **nothing in the substrate design depends on
-payload-byte determinism** — CAS compares versions, dedup runs on ids inside
-decoded payloads — so a random-nonce `encode` is fully conformant. Until the
-jar lands, the `byte[]` contract guarantees any user-authored wrapper composes
-cleanly, and databases' native at-rest encryption (TDE, KMS) remains the
-zero-code alternative below the seam.
+Nessy ships no cryptography and mandates no envelope format — key management,
+algorithms, and payload envelopes belong to the deployment. The `byte[]`
+contract is the enterprise encryption-at-rest story: it guarantees any such
+wrapper composes cleanly, and databases' native at-rest encryption (TDE, KMS)
+remains the zero-code alternative below the seam.
 
 ## 8. JDBC reference schema
 
