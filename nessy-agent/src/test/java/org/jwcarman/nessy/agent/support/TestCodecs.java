@@ -43,4 +43,30 @@ public final class TestCodecs {
       }
     };
   }
+
+  /**
+   * A UTF-8 {@code Codec<String>} whose {@code decode} throws a {@link RuntimeException} carrying
+   * {@code message} for exactly the element whose plain-text value is {@code poisonValue}; every
+   * other element decodes normally. Backs the poison-decode contract test: {@code
+   * SubstrateBacklog#poll()} must remove the poison element from the queue before decoding it, so
+   * the exception propagates without starving the elements behind it.
+   */
+  public static Codec<String> poisonOnDecode(String message, String poisonValue) {
+    Codec<String> plain = utf8String();
+    return new Codec<>() {
+      @Override
+      public byte[] encode(String value) {
+        return plain.encode(value);
+      }
+
+      @Override
+      public String decode(byte[] bytes) {
+        String decoded = plain.decode(bytes);
+        if (decoded.equals(poisonValue)) {
+          throw new RuntimeException(message);
+        }
+        return decoded;
+      }
+    };
+  }
 }

@@ -36,6 +36,10 @@ class CodecTest {
 
   record Shutdown(String reason) implements Vocabulary {}
 
+  sealed interface CollidingVocabulary permits Ev {}
+
+  record Ev(String type, String body) implements CollidingVocabulary {}
+
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   /** Appends {@code marker} to the bytes it sees on encode, strips it back off on decode. */
@@ -68,7 +72,7 @@ class CodecTest {
   class PlainRecords {
 
     @Test
-    void json_round_trips_a_plain_record() {
+    void jsonRoundTripsAPlainRecord() {
       Codec<Address> codec = Codec.json(MAPPER, Address.class);
       Address original = new Address("Columbus", "OH");
 
@@ -78,7 +82,7 @@ class CodecTest {
     }
 
     @Test
-    void json_encodes_utf8_bytes() {
+    void jsonEncodesUtf8Bytes() {
       Codec<Address> codec = Codec.json(MAPPER, Address.class);
       Address original = new Address("Columbus", "OH");
 
@@ -88,7 +92,7 @@ class CodecTest {
     }
 
     @Test
-    void malformed_bytes_are_rejected_naming_the_offense() {
+    void malformedBytesAreRejectedNamingTheOffense() {
       Codec<Address> codec = Codec.json(MAPPER, Address.class);
       byte[] malformed = "not json at all {".getBytes(UTF_8);
 
@@ -98,7 +102,7 @@ class CodecTest {
     }
 
     @Test
-    void a_null_value_on_encode_throws_npe_with_a_message() {
+    void aNullValueOnEncodeThrowsNpeWithAMessage() {
       Codec<Address> codec = Codec.json(MAPPER, Address.class);
       assertThatThrownBy(() -> codec.encode(null))
           .isInstanceOf(NullPointerException.class)
@@ -106,7 +110,7 @@ class CodecTest {
     }
 
     @Test
-    void null_bytes_on_decode_throw_npe_with_a_message() {
+    void nullBytesOnDecodeThrowNpeWithAMessage() {
       Codec<Address> codec = Codec.json(MAPPER, Address.class);
       assertThatThrownBy(() -> codec.decode(null))
           .isInstanceOf(NullPointerException.class)
@@ -118,7 +122,7 @@ class CodecTest {
   class SealedVocabularies {
 
     @Test
-    void json_round_trips_one_member_of_a_sealed_vocabulary_via_the_class_token() {
+    void jsonRoundTripsOneMemberOfASealedVocabularyViaTheClassToken() {
       Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
       Vocabulary original = new Restart("prod-eu");
 
@@ -128,7 +132,7 @@ class CodecTest {
     }
 
     @Test
-    void json_round_trips_a_different_member_of_the_same_sealed_vocabulary() {
+    void jsonRoundTripsADifferentMemberOfTheSameSealedVocabulary() {
       Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
       Vocabulary original = new Shutdown("maintenance");
 
@@ -138,7 +142,7 @@ class CodecTest {
     }
 
     @Test
-    void unknown_discriminator_is_rejected_naming_it() {
+    void unknownDiscriminatorIsRejectedNamingIt() {
       Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
       byte[] bytes = "{\"type\":\"Reboot\",\"host\":\"prod-eu\"}".getBytes(UTF_8);
 
@@ -146,13 +150,24 @@ class CodecTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Reboot");
     }
+
+    @Test
+    void encodingARecordThatDeclaresItsOwnTypeComponentIsRejectedNamingItAndWritesNothing() {
+      Codec<CollidingVocabulary> codec = Codec.json(MAPPER, CollidingVocabulary.class);
+      Ev original = new Ev("user-value", "payload");
+
+      assertThatThrownBy(() -> codec.encode(original))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Ev")
+          .hasMessageContaining("type");
+    }
   }
 
   @Nested
   class ThenOrder {
 
     @Test
-    void encode_passes_through_the_appended_transform_last() {
+    void encodePassesThroughTheAppendedTransformLast() {
       MarkerCodec marker = new MarkerCodec((byte) '!');
       Codec<Address> plain = Codec.json(MAPPER, Address.class);
       Codec<Address> withMarker = plain.then(marker);
@@ -167,7 +182,7 @@ class CodecTest {
     }
 
     @Test
-    void decode_passes_through_the_appended_transform_first() {
+    void decodePassesThroughTheAppendedTransformFirst() {
       MarkerCodec marker = new MarkerCodec((byte) '!');
       Codec<Address> plain = Codec.json(MAPPER, Address.class);
       Codec<Address> withMarker = plain.then(marker);
@@ -182,7 +197,7 @@ class CodecTest {
     }
 
     @Test
-    void a_stacked_chain_encodes_a_then_b_and_decodes_b_then_a() {
+    void aStackedChainEncodesAThenBAndDecodesBThenA() {
       MarkerCodec a = new MarkerCodec((byte) 'a');
       MarkerCodec b = new MarkerCodec((byte) 'b');
       Codec<Address> plain = Codec.json(MAPPER, Address.class);
@@ -208,7 +223,7 @@ class CodecTest {
     }
 
     @Test
-    void malformed_bytes_through_the_chain_are_rejected_naming_the_offense() {
+    void malformedBytesThroughTheChainAreRejectedNamingTheOffense() {
       MarkerCodec marker = new MarkerCodec((byte) '!');
       Codec<Address> chained = Codec.json(MAPPER, Address.class).then(marker);
       byte[] malformed = marker.encode("not json at all {".getBytes(UTF_8));
@@ -219,7 +234,7 @@ class CodecTest {
     }
 
     @Test
-    void unknown_discriminator_through_the_chain_is_rejected_naming_it() {
+    void unknownDiscriminatorThroughTheChainIsRejectedNamingIt() {
       MarkerCodec marker = new MarkerCodec((byte) '!');
       Codec<Vocabulary> chained = Codec.json(MAPPER, Vocabulary.class).then(marker);
       byte[] bytes = marker.encode("{\"type\":\"Reboot\",\"host\":\"prod-eu\"}".getBytes(UTF_8));
@@ -242,7 +257,7 @@ class CodecTest {
     record Diagnose(String target) implements Ops {}
 
     @Test
-    void encoding_a_class_reached_only_through_a_nested_sealed_interface_fails_loudly() {
+    void encodingAClassReachedOnlyThroughANestedSealedInterfaceFailsLoudly() {
       Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
       Diagnose notADirectPermittedSubclass = new Diagnose("prod-eu");
 
@@ -253,13 +268,23 @@ class CodecTest {
     }
 
     @Test
-    void encoding_a_directly_permitted_record_of_the_same_nested_vocabulary_still_round_trips() {
+    void encodingADirectlyPermittedRecordOfTheSameNestedVocabularyStillRoundTrips() {
       Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
       Vocabulary original = new Restart("prod-eu");
 
       Vocabulary decoded = codec.decode(codec.encode(original));
 
       assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void decodingADiscriminatorThatMatchesANonRecordPermitFailsLoudlyNamingItRatherThanNpe() {
+      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
+      byte[] bytes = "{\"type\":\"Ops\",\"target\":\"prod-eu\"}".getBytes(UTF_8);
+
+      assertThatThrownBy(() -> codec.decode(bytes))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Ops");
     }
   }
 }

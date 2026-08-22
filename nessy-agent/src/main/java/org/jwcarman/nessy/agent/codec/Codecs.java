@@ -25,11 +25,11 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.Objects;
 
 /**
- * Internal storage machinery: the mapper-binding boundary every codec that renders the
- * string-payload substrate's JSON relies on (spec §7). Public so recipes outside the {@code codec}
- * package (e.g. {@code org.jwcarman.nessy.agent.durable.OutcomeCodec}) can reuse the same
- * tolerant-read/exception conventions instead of duplicating them; still not API vocabulary —
- * nessy-owned types carry their own Jackson annotations (spec §7), this class carries none.
+ * Internal storage machinery: the mapper-binding boundary every codec that renders the byte-payload
+ * substrate's JSON relies on (spec §7). Public so recipes outside the {@code codec} package (e.g.
+ * {@code org.jwcarman.nessy.agent.durable.OutcomeCodec}) can reuse the same tolerant-read/exception
+ * conventions instead of duplicating them; still not API vocabulary — nessy-owned types carry their
+ * own Jackson annotations (spec §7), this class carries none.
  *
  * <p>Reads are tolerant: unknown fields are ignored. Any {@link JsonProcessingException} — a parse
  * failure, an unresolved discriminator, a canonical-constructor invariant rejecting the payload —
@@ -61,8 +61,19 @@ public final class Codecs {
    * NON_EMPTY} (or any other omit-if-default policy) would otherwise survive the copy and drop
    * empty collections from the wire — {@code SubstrateComputations#create}'s empty {@code
    * continuations} array, most sharply, since the very next {@code await} then fails to parse the
-   * document it just wrote. Root wrapping is pinned off both directions for the same reason: it is
-   * a presentation preference, not a format the stored bytes can float on.
+   * document it just wrote. {@code WRITE_EMPTY_JSON_ARRAYS} is pinned {@code true} for the same
+   * reason: a per-type {@code configOverride} on the caller's mapper can still ask for {@code
+   * NON_EMPTY} on a specific class, and the pin alone does not out-rank that override — see {@code
+   * OutcomeCodec.SlotDocumentWire#continuations}, which carries its own
+   * {@code @JsonInclude(ALWAYS)} to close that route. Root wrapping is pinned off both directions
+   * for the same reason: it is a presentation preference, not a format the stored bytes can float
+   * on.
+   *
+   * <p>What the pin does <em>not</em> defend against: a caller mapper with {@code
+   * MapperFeature.USE_ANNOTATIONS} disabled, a caller-installed {@code setVisibility} override, or
+   * {@code WRITE_SINGLE_ELEM_ARRAYS_UNWRAPPED} enabled. These disable binding wholesale rather than
+   * merely omitting empty values, so they are not format-critical settings this pin can restore —
+   * they fail loudly at read time instead, and that failure is the caller's own foot.
    */
   public static ObjectMapper copyAndPin(ObjectMapper mapper) {
     Objects.requireNonNull(mapper, "mapper must not be null");
@@ -73,6 +84,7 @@ public final class Codecs {
         .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
         .setPropertyInclusion(
             JsonInclude.Value.construct(JsonInclude.Include.ALWAYS, JsonInclude.Include.ALWAYS))
+        .configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, true)
         .configure(SerializationFeature.WRAP_ROOT_VALUE, false)
         .configure(DeserializationFeature.UNWRAP_ROOT_VALUE, false)
         .deactivateDefaultTyping();

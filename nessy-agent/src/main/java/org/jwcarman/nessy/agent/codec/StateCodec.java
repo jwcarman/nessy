@@ -21,10 +21,10 @@ import java.util.Objects;
 import org.jwcarman.nessy.agent.Phase;
 
 /**
- * Internal storage machinery: renders {@link Phase} to and from the JSON the string-payload
- * substrate persists as the {@code state} document's payload (spec §7). Not API vocabulary — the
- * scope version lives in the substrate's own document version (see the {@code state} recipe), not
- * in this payload.
+ * Internal storage machinery: renders {@link Phase} to and from the JSON the byte-payload substrate
+ * persists as the {@code state} document's payload (spec §7). Not API vocabulary — the scope
+ * version lives in the substrate's own document version (see the {@code state} recipe), not in this
+ * payload.
  *
  * <p>{@link Phase} carries its own Jackson annotations (spec §7); this codec is the mapper-binding
  * boundary. {@code AwaitingTools} round-trips through its canonical constructor, so its

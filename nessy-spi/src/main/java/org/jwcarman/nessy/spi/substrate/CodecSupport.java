@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.stream.Stream;
 import org.jwcarman.nessy.api.tool.SealedInputs;
 
 /**
@@ -131,6 +132,12 @@ final class CodecSupport {
                 + runtimeType.getSimpleName()
                 + ": not a direct permitted subclass of "
                 + type.getSimpleName());
+      }
+      if (Stream.of(runtimeType.getRecordComponents()).anyMatch(c -> c.getName().equals("type"))) {
+        throw new IllegalArgumentException(
+            "vocabulary record "
+                + runtimeType.getSimpleName()
+                + " declares a component named \"type\", which collides with the discriminator");
       }
       JsonNode tree = mapper.valueToTree(value);
       if (!(tree instanceof ObjectNode objectNode)) {

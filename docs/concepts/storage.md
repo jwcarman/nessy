@@ -217,12 +217,15 @@ Two horror stories are why the pin exists, not a hypothetical:
   wire — and the very next `await` would fail to parse the document it
   just wrote, because the field it needs is simply missing.
 
-The pinned copy feeds every recipe default codec, `SealedInputs` binding,
-`Schemas` generation, and tool-result rendering. Model-provider wire
-mappers are exempt — they serve vendor protocol contracts, not user data,
-and build from the same copy-and-pin path with their format pinned by the
-vendor instead. Static mappers are forbidden anywhere in this path; a
-mapper is always threaded in, never ambient.
+The pinned copy feeds every recipe default codec and `SealedInputs`
+binding. `Schemas` generation and tool-result rendering are not threaded
+through it: `Schemas.of` takes no mapper argument at all, and
+`ConfiguredTool` renders a plain (non-`ToolResult`) return value through
+its own private static `ObjectMapper`. Both are named surfaces still to
+thread — parked, not forgotten — rather than already-closed doors. Model-
+provider wire mappers are exempt from the pin by design — they serve
+vendor protocol contracts, not user data, and build from the same
+copy-and-pin path with their format pinned by the vendor instead.
 
 ## The annotations law
 

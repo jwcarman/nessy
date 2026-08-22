@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
@@ -142,6 +143,43 @@ class SlotApproverTest {
 
     nonEmptyBackend.complete(ADDRESS.approval(), DurableDecisions.granted());
     Adjudication decided = nonEmptyApprover.adjudicate(request);
+
+    assertThat(decided).isEqualTo(new Adjudication.Granted());
+  }
+
+  /**
+   * Final review round: two more pin-bypass routes to the same parks-break corruption. A caller
+   * mapper can configure {@code NON_EMPTY} on {@code List.class} specifically via {@code
+   * configOverride} — which {@code setPropertyInclusion}'s global {@code ALWAYS} does not out-rank
+   * — and can separately disable {@code WRITE_EMPTY_JSON_ARRAYS}. Closing only one of the two
+   * routes still drops the empty {@code continuations} array; both {@code Codecs#copyAndPin}'s
+   * {@code WRITE_EMPTY_JSON_ARRAYS} pin and {@code OutcomeCodec.SlotDocumentWire#continuations}'s
+   * per-field {@code @JsonInclude(ALWAYS)} are required together to survive this combination.
+   */
+  @Test
+  void aParkRoundTripSurvivesAUserMapperWithBothAListConfigOverrideAndEmptyArraysDisabled() {
+    ObjectMapper userMapper = new ObjectMapper();
+    userMapper
+        .configOverride(List.class)
+        .setInclude(
+            JsonInclude.Value.construct(
+                JsonInclude.Include.NON_EMPTY, JsonInclude.Include.NON_EMPTY));
+    userMapper.configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, false);
+    ObjectMapper pinned = Codecs.copyAndPin(userMapper);
+    SubstrateComputations hostileBackend =
+        new SubstrateComputations(new InMemorySubstrate(), pinned);
+    List<ApprovalRequest> hostileNotified = new ArrayList<>();
+    ScopeRedrive hostileScopeRedrive = new ScopeRedrive((type, id) -> null, pinned);
+    SlotApprover hostileApprover =
+        new SlotApprover(hostileBackend, hostileNotified::add, hostileScopeRedrive);
+    ApprovalRequest request = requestFor(ADDRESS);
+
+    Adjudication adjudication = hostileApprover.adjudicate(request);
+
+    assertThat(adjudication).isEqualTo(new Adjudication.Suspended(ADDRESS.approval()));
+
+    hostileBackend.complete(ADDRESS.approval(), DurableDecisions.granted());
+    Adjudication decided = hostileApprover.adjudicate(request);
 
     assertThat(decided).isEqualTo(new Adjudication.Granted());
   }

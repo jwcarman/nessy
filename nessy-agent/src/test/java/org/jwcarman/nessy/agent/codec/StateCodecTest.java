@@ -75,6 +75,34 @@ class StateCodecTest {
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
+    /**
+     * Final review round (T3): the exact-shape golden for a populated {@code AwaitingTools} phase —
+     * pinned so a future change to field order, discriminator spelling, or inclusion behavior fails
+     * loudly here rather than only in a round-trip test blind to the wire shape itself.
+     */
+    @Test
+    void aPopulatedAwaitingToolsPhaseRendersTheExactPinnedJsonShape() {
+      var callA = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
+      var callB = new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
+      var turn =
+          Message.assistant(
+              List.of(new ToolUseBlock(callA, "sig-a"), new ToolUseBlock(callB, null)));
+      var phase =
+          new Phase.AwaitingTools(
+              turn, Set.of("a", "b"), List.of(new ToolResultBlock("z", "already gathered", false)));
+
+      String json = CODEC.toJson(phase);
+
+      assertThat(json)
+          .isEqualTo(
+              "{\"type\":\"awaiting-tools\",\"assistantTurn\":{\"role\":\"assistant\","
+                  + "\"content\":[{\"type\":\"tool-use\",\"id\":\"a\",\"name\":\"lookup\","
+                  + "\"arguments\":{},\"signature\":\"sig-a\"},{\"type\":\"tool-use\",\"id\":\"b\","
+                  + "\"name\":\"restart\",\"arguments\":{}}]},\"pending\":[\"a\",\"b\"],"
+                  + "\"gathered\":[{\"type\":\"tool-result\",\"toolUseId\":\"z\","
+                  + "\"content\":\"already gathered\",\"isError\":false}]}");
+    }
+
     @Test
     void pendingIdsSerializeInSortedOrder() {
       var callB = new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());

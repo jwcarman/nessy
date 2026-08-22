@@ -23,7 +23,7 @@ import org.jwcarman.nessy.api.message.Message;
 
 /**
  * Internal storage machinery: renders the {@link Message}/{@link Context} vocabulary to and from
- * the JSON the string-payload substrate persists (spec §7). Not API vocabulary — nothing here is
+ * the JSON the byte-payload substrate persists (spec §7). Not API vocabulary — nothing here is
  * meant to be called outside the recipes that back {@code Memory} and friends.
  *
  * <p>{@link Message}, {@link Context}, and every {@code ContentBlock} carry their own Jackson

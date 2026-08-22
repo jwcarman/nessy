@@ -162,6 +162,76 @@ class SubstrateBacklogTest {
     assertThat(backlog.poll()).contains(note);
   }
 
+  /**
+   * Final review round (T1): negative coverage for the hand-written envelope parser's malformed-
+   * payload branches. Each seeds the substrate directly with a payload {@code readQueue} cannot
+   * parse and asserts {@code poll()} fails loudly rather than silently misreading it.
+   */
+  @Test
+  void pollRejectsAPayloadThatIsNotAnArrayAtAll() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "not an array".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  @Test
+  void pollRejectsAnUnquotedElement() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "[abc]".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  @Test
+  void pollRejectsAnEmptyEnvelopeThatIsNotTheEmptyArrayLiteral() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  @Test
+  void pollRejectsAnEnvelopeMissingItsClosingBracket() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "[\"abc\"".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  /**
+   * Final review round (T2): the poison-decode contract. A codec that throws on decode still lets
+   * {@code poll()} remove the element from the queue before decoding is attempted — the exception
+   * propagates, but the element is gone, so a second {@code poll()} reaches the next element (or
+   * empty) rather than looping forever on the same poison element.
+   */
+  @Test
+  void pollConsumesAPoisonElementBeforePropagatingItsDecodeFailureThenReachesTheNextElement() {
+    Codec<String> poisonOnFirst = TestCodecs.poisonOnDecode("boom", "a");
+    var backlog = new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, poisonOnFirst);
+    backlog.add("a");
+    backlog.add("b");
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("boom");
+
+    assertThat(backlog.poll()).contains("b");
+    assertThat(backlog.poll()).isEmpty();
+  }
+
   private static byte[] racedInDocument(String... elements) {
     List<String> base64 =
         List.of(elements).stream()

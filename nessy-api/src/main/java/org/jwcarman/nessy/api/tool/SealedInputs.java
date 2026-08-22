@@ -18,6 +18,7 @@ package org.jwcarman.nessy.api.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -71,7 +72,7 @@ public final class SealedInputs {
               + "; expected one of: "
               + legalTypeNames(permitted));
     }
-    if (declaresATypeComponent(matched)) {
+    if (declaresATypeComponent(sealedType, matched)) {
       throw new IllegalArgumentException(
           "vocabulary record "
               + matched.getSimpleName()
@@ -93,8 +94,17 @@ public final class SealedInputs {
     return null;
   }
 
-  private static boolean declaresATypeComponent(Class<?> matched) {
-    return Stream.of(matched.getRecordComponents()).anyMatch(c -> c.getName().equals("type"));
+  private static boolean declaresATypeComponent(Class<?> sealedType, Class<?> matched) {
+    RecordComponent[] components = matched.getRecordComponents();
+    if (components == null) {
+      throw new IllegalArgumentException(
+          "permitted type "
+              + matched.getSimpleName()
+              + " of sealed vocabulary "
+              + sealedType.getSimpleName()
+              + " is not a record");
+    }
+    return Stream.of(components).anyMatch(c -> c.getName().equals("type"));
   }
 
   private static String legalTypeNames(Class<?>[] permitted) {

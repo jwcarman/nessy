@@ -32,7 +32,7 @@ import org.jwcarman.nessy.durable.Outcome;
 
 /**
  * Internal storage machinery: renders the {@code computation} document — {@code {status, outcome?,
- * continuations[]}} (substrate spec §6.5) — to and from the JSON the string-payload substrate
+ * continuations[]}} (substrate spec §6.5) — to and from the JSON the byte-payload substrate
  * persists. Not API vocabulary; only {@link SubstrateComputations} calls this.
  *
  * <p>{@link Outcome}, {@link Decision}, and {@link ToolResult} live in {@code nessy-durable} and
@@ -143,7 +143,7 @@ final class OutcomeCodec {
   private record SlotDocumentWire(
       ComputationStatus status,
       @JsonInclude(JsonInclude.Include.NON_NULL) OutcomeWire outcome,
-      List<ContinuationWire> continuations) {
+      @JsonInclude(JsonInclude.Include.ALWAYS) List<ContinuationWire> continuations) {
 
     SlotDocumentWire {
       Objects.requireNonNull(status, "status must not be null");
