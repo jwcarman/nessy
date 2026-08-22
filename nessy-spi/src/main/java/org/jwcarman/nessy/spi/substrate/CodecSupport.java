@@ -46,7 +46,7 @@ final class CodecSupport {
    * would for any Jackson caller).
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
-    return new PlainJsonCodec<>(mapper, type);
+    return new JsonCodec<>(mapper, type);
   }
 
   /** {@link Codec#then(Codec)}'s composed codec. */
@@ -79,12 +79,12 @@ final class CodecSupport {
    * this layer owns is the boundary: a Jackson checked exception never leaks past it, translated
    * into an {@link IllegalArgumentException} naming the offense.
    */
-  private static final class PlainJsonCodec<T> implements Codec<T> {
+  private static final class JsonCodec<T> implements Codec<T> {
 
     private final ObjectMapper mapper;
     private final Class<T> type;
 
-    private PlainJsonCodec(ObjectMapper mapper, Class<T> type) {
+    private JsonCodec(ObjectMapper mapper, Class<T> type) {
       this.mapper = mapper;
       this.type = type;
     }
