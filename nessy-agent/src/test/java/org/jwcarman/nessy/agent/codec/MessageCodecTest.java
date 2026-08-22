@@ -108,6 +108,44 @@ class MessageCodecTest {
   }
 
   @Nested
+  class GoldenShapes {
+
+    @Test
+    void anImageBlockEmitsTheExactGoldenShape() {
+      var block = new ImageBlock("image/png", "aGk=");
+      assertThat(Codecs.write(block))
+          .isEqualTo("{\"type\":\"image\",\"mediaType\":\"image/png\",\"base64Data\":\"aGk=\"}");
+    }
+
+    @Test
+    void aToolResultBlockEmitsTheExactGoldenShape() {
+      var block = new ToolResultBlock("call-1", "42", false);
+      assertThat(Codecs.write(block))
+          .isEqualTo(
+              "{\"type\":\"tool-result\",\"toolUseId\":\"call-1\",\"content\":\"42\","
+                  + "\"isError\":false}");
+    }
+
+    @Test
+    void aSignedToolUseBlockEmitsTheExactGoldenShape() {
+      var block = new ToolUseBlock(lookupCall(), "sig-xyz");
+      assertThat(Codecs.write(block))
+          .isEqualTo(
+              "{\"type\":\"tool-use\",\"id\":\"call-1\",\"name\":\"lookup\","
+                  + "\"arguments\":{\"q\":\"x\"},\"signature\":\"sig-xyz\"}");
+    }
+
+    @Test
+    void anUnsignedToolUseBlockEmitsNoSignatureKey() {
+      var block = new ToolUseBlock(lookupCall());
+      assertThat(Codecs.write(block))
+          .isEqualTo(
+              "{\"type\":\"tool-use\",\"id\":\"call-1\",\"name\":\"lookup\","
+                  + "\"arguments\":{\"q\":\"x\"}}");
+    }
+  }
+
+  @Nested
   class Roles {
 
     @Test

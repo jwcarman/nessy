@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.durable;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,6 +42,13 @@ import org.jwcarman.nessy.durable.Outcome;
  * closed-vocabulary door — a {@code Success} outcome whose payload is neither {@link ToolResult}
  * nor {@link Decision} is rejected here, before any write.
  *
+ * <p>The wire vocabulary this codec owns, a compatibility surface once emitted: an {@code outcome}
+ * carries a {@code "type"} discriminator naming it {@code success}, {@code failure}, or {@code
+ * cancelled}; a {@code success} outcome's {@code payload} carries its own {@code "type"}
+ * discriminator naming it {@code tool-result}, {@code allow}, or {@code deny}. An absent {@code
+ * outcome} (the {@code PENDING} case) omits the key entirely, matching the hand-rolled codec this
+ * one replaced.
+ *
  * <p>Reads are tolerant: unknown fields are ignored. Malformed JSON or an unrecognized
  * discriminator fails loudly with an {@link IllegalArgumentException} naming the offense.
  */
@@ -49,6 +57,7 @@ final class OutcomeCodec {
   private static final String TYPE = "type";
   private static final String OUTCOME = "outcome";
   private static final String PAYLOAD = "payload";
+  private static final String CONTINUATIONS = "continuations";
 
   private static final String TYPE_SUCCESS = "success";
   private static final String TYPE_FAILURE = "failure";
@@ -90,6 +99,7 @@ final class OutcomeCodec {
   static SlotDocument document(String json) {
     Objects.requireNonNull(json, "json must not be null");
     JsonNode root = Codecs.readTree(json, "computation slot");
+    Codecs.requireArray(root, CONTINUATIONS, "computation slot");
     requireKnownOutcomeVocabulary(root.get(OUTCOME));
     return Codecs.bind(root, SlotDocumentWire.class, "computation slot").toDomain();
   }
@@ -126,7 +136,9 @@ final class OutcomeCodec {
   }
 
   private record SlotDocumentWire(
-      ComputationStatus status, OutcomeWire outcome, List<ContinuationWire> continuations) {
+      ComputationStatus status,
+      @JsonInclude(JsonInclude.Include.NON_NULL) OutcomeWire outcome,
+      List<ContinuationWire> continuations) {
 
     SlotDocumentWire {
       Objects.requireNonNull(status, "status must not be null");

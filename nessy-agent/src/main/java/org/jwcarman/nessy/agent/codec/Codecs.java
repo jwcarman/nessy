@@ -63,17 +63,6 @@ public final class Codecs {
     }
   }
 
-  /**
-   * {@code json} bound to {@code type}, or a malformed-payload {@link IllegalArgumentException}.
-   */
-  public static <T> T read(String json, Class<T> type, String owner) {
-    try {
-      return MAPPER.readValue(json, type);
-    } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException("malformed " + owner + " JSON: " + rootMessage(e), e);
-    }
-  }
-
   /** {@code value} rendered to JSON, or an encoding-failure {@link IllegalArgumentException}. */
   public static String write(Object value) {
     try {
@@ -92,6 +81,19 @@ public final class Codecs {
   public static void requireArrayIfPresent(JsonNode root, String name, String owner) {
     JsonNode field = root.get(name);
     if (field != null && !field.isArray()) {
+      throw new IllegalArgumentException(owner + " field must be an array: " + name);
+    }
+  }
+
+  /**
+   * {@code root}'s field {@code name} must be present and a JSON array — malformed payload
+   * otherwise (missing or wrong-typed). A scalar or object value for {@code name}, or an absent
+   * key, would otherwise fail deep inside binding with a message that may not name the field; this
+   * fails loudly and names it up front.
+   */
+  public static void requireArray(JsonNode root, String name, String owner) {
+    JsonNode field = root.get(name);
+    if (field == null || !field.isArray()) {
       throw new IllegalArgumentException(owner + " field must be an array: " + name);
     }
   }

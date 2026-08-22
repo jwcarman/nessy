@@ -107,6 +107,10 @@ public sealed interface Phase {
     }
   }
 
+  /**
+   * @param pending the still-outstanding tool-call ids; normalized to a sorted, unmodifiable set so
+   *     wire serialization is deterministic without codec-side sorting
+   */
   record AwaitingTools(Message assistantTurn, Set<String> pending, List<ToolResultBlock> gathered)
       implements Phase {
 

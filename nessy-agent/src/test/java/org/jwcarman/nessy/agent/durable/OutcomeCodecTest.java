@@ -115,6 +115,80 @@ class OutcomeCodecTest {
   }
 
   @Nested
+  class GoldenShapes {
+
+    @Test
+    void aToolResultSuccessEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.SUCCEEDED, new Outcome.Success(ToolResult.ok("42")), List.of());
+
+      assertThat(OutcomeCodec.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
+                  + "{\"type\":\"tool-result\",\"content\":\"42\",\"isError\":false}},"
+                  + "\"continuations\":[]}");
+    }
+
+    @Test
+    void anAllowDecisionSuccessEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.SUCCEEDED, new Outcome.Success(Decision.allow()), List.of());
+
+      assertThat(OutcomeCodec.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
+                  + "{\"type\":\"allow\"}},\"continuations\":[]}");
+    }
+
+    @Test
+    void aDenyDecisionSuccessEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.SUCCEEDED, new Outcome.Success(new Decision.Deny("no")), List.of());
+
+      assertThat(OutcomeCodec.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
+                  + "{\"type\":\"deny\",\"reason\":\"no\"}},\"continuations\":[]}");
+    }
+
+    @Test
+    void aFailureEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(ComputationStatus.FAILED, new Outcome.Failure("boom"), List.of());
+
+      assertThat(OutcomeCodec.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"FAILED\",\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"},"
+                  + "\"continuations\":[]}");
+    }
+
+    @Test
+    void aCancellationEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(ComputationStatus.CANCELLED, new Outcome.Cancelled("meh"), List.of());
+
+      assertThat(OutcomeCodec.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"CANCELLED\",\"outcome\":{\"type\":\"cancelled\",\"reason\":\"meh\"},"
+                  + "\"continuations\":[]}");
+    }
+
+    @Test
+    void aPendingDocumentEmitsTheExactGoldenShapeWithNoOutcomeKey() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.PENDING, null, List.of(new Continuation("TIMER", "{}")));
+
+      assertThat(OutcomeCodec.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"PENDING\",\"continuations\":[{\"type\":\"TIMER\",\"data\":\"{}\"}]}");
+    }
+  }
+
+  @Nested
   class RejectedPayloads {
 
     @Test
