@@ -41,8 +41,8 @@ class SubstrateBacklogTest {
   void aNonPositiveCapacityIsRejected() {
     Substrate store = new InMemorySubstrate();
     Codec<String> codec = TestCodecs.utf8String();
-    assertThatThrownBy(
-            () -> new SubstrateBacklog<>(store, "agent-a", 0, codec, TestMappers.plainlyPinned()))
+    ObjectMapper mapper = TestMappers.plainlyPinned();
+    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, codec, mapper))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
