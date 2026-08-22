@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.codec;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -55,6 +56,13 @@ public final class Codecs {
    * is a compatibility surface and cannot float on presentation preferences. {@code
    * FAIL_ON_EMPTY_BEANS} is also disabled on the copy so a zero-component wire record (e.g. an
    * outcome variant with no payload) still renders rather than throwing.
+   *
+   * <p>Serialization inclusion is pinned to {@code ALWAYS}: a caller mapper configured for {@code
+   * NON_EMPTY} (or any other omit-if-default policy) would otherwise survive the copy and drop
+   * empty collections from the wire — {@code StoredComputations#create}'s empty {@code
+   * continuations} array, most sharply, since the very next {@code await} then fails to parse the
+   * document it just wrote. Root wrapping is pinned off both directions for the same reason: it is
+   * a presentation preference, not a format the stored bytes can float on.
    */
   public static ObjectMapper copyAndPin(ObjectMapper mapper) {
     Objects.requireNonNull(mapper, "mapper must not be null");
@@ -63,6 +71,10 @@ public final class Codecs {
         .setPropertyNamingStrategy(PropertyNamingStrategies.LOWER_CAMEL_CASE)
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
+        .setPropertyInclusion(
+            JsonInclude.Value.construct(JsonInclude.Include.ALWAYS, JsonInclude.Include.ALWAYS))
+        .configure(SerializationFeature.WRAP_ROOT_VALUE, false)
+        .configure(DeserializationFeature.UNWRAP_ROOT_VALUE, false)
         .deactivateDefaultTyping();
   }
 

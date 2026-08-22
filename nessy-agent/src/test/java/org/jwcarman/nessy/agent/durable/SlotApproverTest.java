@@ -17,12 +17,15 @@ package org.jwcarman.nessy.agent.durable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.ScopeRedrive;
+import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -111,5 +114,34 @@ class SlotApproverTest {
 
     assertThat(adjudication).isEqualTo(new Adjudication.Granted());
     assertThat(notified).isEmpty();
+  }
+
+  /**
+   * Fix round 1 (task 3 review): {@code copyAndPin} did not pin serialization inclusion, so a
+   * caller mapper configured with {@code NON_EMPTY} dropped the empty {@code continuations} array
+   * {@link StoredComputations#create} writes — the very next {@code await} then failed to parse its
+   * own just-written document. A full park round trip through a backend built from such a mapper is
+   * the regression guard.
+   */
+  @Test
+  void aParkRoundTripSurvivesAUserMapperConfiguredForNonEmptyInclusion() {
+    ObjectMapper userMapper =
+        new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
+    ObjectMapper pinned = Codecs.copyAndPin(userMapper);
+    StoredComputations nonEmptyBackend = new StoredComputations(new InMemorySubstrate(), pinned);
+    List<ApprovalRequest> nonEmptyNotified = new ArrayList<>();
+    ScopeRedrive nonEmptyScopeRedrive = new ScopeRedrive((type, id) -> null, pinned);
+    SlotApprover nonEmptyApprover =
+        new SlotApprover(nonEmptyBackend, nonEmptyNotified::add, nonEmptyScopeRedrive);
+    ApprovalRequest request = requestFor(ADDRESS);
+
+    Adjudication adjudication = nonEmptyApprover.adjudicate(request);
+
+    assertThat(adjudication).isEqualTo(new Adjudication.Suspended(ADDRESS.approval()));
+
+    nonEmptyBackend.complete(ADDRESS.approval(), DurableDecisions.granted());
+    Adjudication decided = nonEmptyApprover.adjudicate(request);
+
+    assertThat(decided).isEqualTo(new Adjudication.Granted());
   }
 }
