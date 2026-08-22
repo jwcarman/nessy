@@ -1,7 +1,12 @@
-# ScopedStore — the storage kernel
+# Substrate — the storage SPI
 
 **Date:** 2026-08-21
 **Status:** Ratified (James, in conversation, 2026-08-21)
+**Naming ruling (2026-08-21, later the same day):** the SPI was born `ScopedStore`,
+but nothing in its API says "scope" — scope is a recipe convention, not a
+substrate concept. Renamed `Substrate`: the four-tiers vocabulary already calls
+this tier the substrate, and the type now *is* the tier's storage face. The
+"storage kernel" nickname is retired; prose says "the substrate."
 **Amends:** `2026-08-18-agent-as-scope-design.md` (the substrate tier's storage face)
 **Supersedes:** `2026-08-20-durable-computation.md` §9 (backend SPI), §17–§22 (SQL
 reference, continuation table, outbox tables, SQL await/completion, outbox worker
@@ -30,18 +35,18 @@ That per-concern architecture taxes every axis at once:
 - **Transaction cost.** Atomicity across stores requires cross-SPI unit-of-work
   machinery nobody wants to design.
 
-The kernel replaces all of it with the two primitives every database is
+The substrate replaces all of it with the two primitives every database is
 secretly made of — a **document store** (the page store) and a **journal** (the
 WAL) — plus one **atomic batch** across them. Storage design ends there;
 everything else is a recipe.
 
-## 2. The kernel in one paragraph
+## 2. The substrate in one paragraph
 
-`ScopedStore` holds two shapes. **Documents** are mutable current-truth:
+`Substrate` holds two shapes. **Documents** are mutable current-truth:
 read / write-CAS / delete / keys, addressed by `(kind, key)`. The **journal** is
 immutable history: append / read-from, addressed by `(kind, key, seq)`. **batch**
 applies a list of document writes, document deletes, and journal appends
-all-or-nothing. Payloads are opaque strings (JSON by convention — the kernel
+all-or-nothing. Payloads are opaque strings (JSON by convention — the substrate
 never parses them). The store is the lock: every mutation carries a CAS
 expectation, and a miss is a conflict, never a wait. Seven methods, two tables,
 and an adapter that implements them gets the entire system — state,
@@ -49,10 +54,10 @@ transcripts, intent, backlogs, durable computations, the outbox.
 
 ## 3. SPI definition
 
-Package `org.jwcarman.nessy.spi.store`, module `nessy-spi`.
+Package `org.jwcarman.nessy.spi.substrate`, module `nessy-spi`.
 
 ```java
-public interface ScopedStore {
+public interface Substrate {
 
   // documents — mutable current-truth
   Optional<Document> read(String kind, String key);
@@ -103,7 +108,7 @@ symmetric noun pair is deliberate. `Op` members follow sealed-grammar etiquette
 2. **Journal law.** Sequences start at 1. `append(kind, key, expectedSeq, …)`
    creates the entry at exactly `expectedSeq`; an entry already at that seq is
    a conflict (the caller re-reads the head and retries). Entries are never
-   rewritten and never deleted — the kernel has **no destructive journal
+   rewritten and never deleted — the substrate has **no destructive journal
    operation** (compaction is a sidecar, §6.7; retention is an ops concern,
    archived by `appendedAt` — S3 is the ruled archival tier).
 3. **Batch law.** `batch` applies its ops atomically: all succeed or none
@@ -113,8 +118,8 @@ symmetric noun pair is deliberate. `Op` members follow sealed-grammar etiquette
 4. **`keys` law.** Ascending lexicographic key order, at most `limit` results,
    `limit >= 1`. Because reserved queue kinds use UUIDv7 keys, key order is
    creation order — fairness for workers, free.
-5. **Opacity.** Payloads are non-null strings the kernel never inspects. JSON
-   is the house convention; the kernel contract says "string".
+5. **Opacity.** Payloads are non-null strings the substrate never inspects. JSON
+   is the house convention; the substrate contract says "string".
 6. **Time.** `updatedAt`/`appendedAt` come from the adapter's single time
    source. A shared-database adapter MUST use database server time
    (`CURRENT_TIMESTAMP`), not per-host clocks — staleness decisions read these
@@ -148,10 +153,10 @@ Layout rules, normative:
 
 ## 6. Recipes
 
-Recipes are library code over the kernel. They own serialization (§7); the
-kernel sees strings. Domain interfaces (`Memory`, `IntentStore`, `Backlog`,
+Recipes are library code over the substrate. They own serialization (§7); the
+substrate sees strings. Domain interfaces (`Memory`, `IntentStore`, `Backlog`,
 `DurableComputationBackend`) survive as **vocabulary and override seams** —
-floor, not ceiling — with kernel recipes as their default implementations.
+floor, not ceiling — with substrate recipes as their default implementations.
 
 ### 6.1 State
 `kind=state`, one document per scope. **The document version IS the scope
@@ -189,7 +194,7 @@ onto CAS:
   Unknown id → create already-terminal (ruling 6); conflict → retry.
 
 `DurableComputationBackend` is **no longer an adapter SPI** — it remains as the
-internal vocabulary the desks and dispatcher speak, with the kernel recipe
+internal vocabulary the desks and dispatcher speak, with the substrate recipe
 (`StoredComputations`, in `nessy-agent`) as its default and only shipped
 implementation. The builder's `backend(…)` seam survives for genuinely foreign
 engines (Restate, Temporal); nobody implements it to get a database.
@@ -216,7 +221,7 @@ by construction. The worker: `keys("outbox", n)` → CAS-lease (`leasedUntil`)
 - In-process deployments keep direct dispatch (complete → nudge); the poll is
   the recovery net. A Postgres adapter may swap the worker's scan for
   `SKIP LOCKED`/`LISTEN-NOTIFY` — the override seam is the worker, never the
-  kernel.
+  substrate.
 
 ### 6.7 Summarization sidecar (future, shape ruled now)
 Summarization never rewrites the transcript. A `kind=summary` document holds
@@ -226,7 +231,7 @@ hears about it.
 
 ## 7. The serialization seam
 
-Payload rendering lives in recipes, not the kernel, and is the one real
+Payload rendering lives in recipes, not the substrate, and is the one real
 engineering lift here:
 
 - Recipes serialize with Jackson to plain JSON — **zero Jackson annotations on
@@ -278,9 +283,9 @@ expressions on `version`/attribute-absence for CAS, `TransactWriteItems` for
 `batch` (25-op ceiling, far above our 2–3). Honesty: `kind` as partition key
 puts each kind in one partition (~1000 writes/sec ceiling) — irrelevant at
 control-plane volume; if ever needed, the adapter write-shards
-(`outbox#0..3`) internally with no kernel API change.
+(`outbox#0..3`) internally with no substrate API change.
 
-## 10. What the kernel is not
+## 10. What the substrate is not
 
 - **No queue primitive.** A queue is an access pattern composed of documents +
   batch + polling, not a fourth storage shape. The atomic-with-the-flip
@@ -292,7 +297,7 @@ control-plane volume; if ever needed, the adapter write-shards
 - **No truncate, no TTL.** The journal is immutable truth; summarization is a
   sidecar; retention is ops (archive by `appendedAt`).
 - **No querying into payloads.** Reporting/BI reads the database directly if
-  it must; the kernel contract stays string-in, string-out.
+  it must; the substrate contract stays string-in, string-out.
 - **Database-as-queue is the design, not a compromise.** Transactional enqueue
   is the point; control-plane volume is the workload; brokers (RabbitMQ et al.)
   attach *downstream of the outbox* as relays, never instead of it.
@@ -303,7 +308,7 @@ Because a feature is now recipes + a kind string, features ship as optional
 artifacts with zero storage footprint unless used:
 
 - **`nessy-intent`** (this branch): `IntentTool`, `IntentEnricher`,
-  `IntentPolicies`, `IntentStore`, `Intent`, and the kernel-backed store
+  `IntentPolicies`, `IntentStore`, `Intent`, and the substrate-backed store
   recipe move out of api/spi/agent into their own module (depends on
   `nessy-api` + `nessy-spi`). The governed example gains the dependency.
 - **Notebook, fact journal, trajectory** (future): same pattern — own jar, own
@@ -318,23 +323,23 @@ Dies: `InMemoryStateSubstrate`, `InMemoryMemorySubstrate`,
 `InMemoryBacklogSubstrate`, `InMemoryAgentStateStore`, `InMemoryIntentStore`,
 `InMemoryDurableComputationBackend`, and the builder's `storeFactory` seam.
 
-Arrives: `ScopedStore` + `ConflictException` + `InMemoryScopedStore` (all in
+Arrives: `Substrate` + `ConflictException` + `InMemorySubstrate` (all in
 `nessy-spi` — the reference substrate travels with the contract, a documented
 exception in the spirit of the old backend ruling, so feature jars test
 against it without depending on `nessy-agent`), the recipes, and one builder
-seam: `.store(ScopedStore)` (default `InMemoryScopedStore`).
+seam: `.substrate(Substrate)` (default `InMemorySubstrate`).
 
 Survives as override seams: `.memoryFactory(…)` (custom `Memory`),
-`.backend(…)` (foreign durable engines). The `.store(…)` seam lives on the
+`.backend(…)` (foreign durable engines). The `.substrate(…)` seam lives on the
 autonomous builder only: the CLI door is **ephemeral by design** (in-process,
-one sitting, `StalenessPolicy.never()`) and builds its own discarded kernel —
+one sitting, `StalenessPolicy.never()`) and builds its own discarded substrate —
 it deliberately exposes no store seam. The scope engine, phases, CAS
 discipline, desks, dispatcher, doors: untouched — this reform is entirely
 below the waterline of the agent-as-scope design.
 
 ## 13. Sequencing
 
-1. **This branch:** kernel + in-memory substrate + recipes (state, memory,
+1. **This branch:** substrate + in-memory substrate + recipes (state, memory,
    backlog, computations) + intent extraction to `nessy-intent` + the deaths
    in §12 + docs. Outbox and summary are specified, not built.
 2. **JDBC adapter:** one class, two tables, the TCK reuse question, and the
@@ -345,4 +350,4 @@ below the waterline of the agent-as-scope design.
 
 The broader API reduction pass (kill list, demotions, toString collapse)
 remains a separate piece awaiting James's cut of the audit buckets; this spec
-executes only the reductions the kernel itself causes.
+executes only the reductions the substrate itself causes.
