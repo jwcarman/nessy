@@ -129,6 +129,49 @@ The delivery worker, per delivery:
   the worker after commit; polling is the recovery net, never the happy-path
   latency.
 
+## 5a. The approval gate (ruled 2026-08-22, closing the grant gap)
+
+The policy runs **inline, exactly once, before the tool ever gets a chance to
+do anything** — approval is a gate in a forward-moving sequence, never a state
+downstream code reconstructs.
+
+```
+ExecuteTool
+  → policy (inline)
+      Allow           → proceed to the tool call
+      Deny            → ToolFinished(Failed), inline
+      RequireApproval → ask the Approver, inline
+          immediate Decision → proceed / fail — no computation involved
+          approver parks     → create the approval computation whose
+                               CONTINUATION carries the tool call itself
+                               {routing, invocation id, call name + args};
+                               suspend
+grant → complete(approval, allow) → delivery{destination: that continuation}
+      → the worker reads the continuation — it HAS the call — and dispatches
+        it directly; no fold read, no re-derivation, no policy
+deny  → delivery → fold-advances ToolFinished(Failed)
+```
+
+- **The continuation is the work order.** `ApprovalRequest` already hands the
+  approver `(address, call, context)`; the call riding the approval
+  continuation is the same data taking one more step. The reply-to of a grant
+  is the dispatcher, with the work attached.
+- **Consumption is atomic in both arms**: an immediate tool's delivery is
+  consumed by the result's own fold-advance batch (run tool, then
+  `[journal appends, state CAS, delete delivery]`); a durable-completing
+  tool's delivery transfers ownership in one batch
+  (`[create tool computation, delete delivery]`) before external dispatch.
+  Invariant 5 holds at every committed point.
+- **Nothing re-enters the gate.** The staleness redrive never re-emits
+  `ExecuteTool` for a call that has gone durable (either computation present —
+  both deadline-governed); liveness past the gate belongs to the reaper, per
+  the §6 ownership split. The only legitimate gate re-entry is a crash
+  *before* the approval computation commits, which the deterministic id makes
+  an idempotent no-op.
+- Because the sequence only moves forward, "granted" needs no durable marker:
+  a granted call is simply *work in flight*, owned by its delivery or its
+  tool computation.
+
 ## 6. Retry, deadlines, and the reaper
 
 - **`RetrySemantics`** (`RETRYABLE` / `NON_RETRYABLE`) is declared at tool
@@ -191,4 +234,6 @@ runtime, complete in a fresh one, fold advances in a third); concurrent
 completion (one winner); duplicate outbox delivery (reducer absorbs, delivery
 consumed once); retry identity (same `ToolInvocationId` across redispatch);
 non-retryable timeout traveling the normal pipeline; deadline-less
-computations never reaped.
+computations never reaped; the full grant arc end-to-end (park → grant →
+tool executes without any policy re-ask → result folds), including grant
+survival across a process loss between completion and dispatch.
