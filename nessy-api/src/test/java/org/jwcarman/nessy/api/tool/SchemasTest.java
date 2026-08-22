@@ -58,6 +58,30 @@ class SchemasTest {
 
   record CollidingType(String type) implements CollidingVocabulary {}
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Clean.class, name = "Clean"),
+    @JsonSubTypes.Type(value = CollidingSecondBranch.class, name = "CollidingSecondBranch")
+  })
+  sealed interface TwoBranchCollidingVocabulary permits Clean, CollidingSecondBranch {}
+
+  record Clean(String value) implements TwoBranchCollidingVocabulary {}
+
+  record CollidingSecondBranch(String type) implements TwoBranchCollidingVocabulary {}
+
+  record NestedTarget(String name) {}
+
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = RestartTarget.class, name = "Restart"),
+    @JsonSubTypes.Type(value = ShutdownTarget.class, name = "Shutdown")
+  })
+  sealed interface VocabularyWithSharedNestedRecord permits RestartTarget, ShutdownTarget {}
+
+  record RestartTarget(NestedTarget target) implements VocabularyWithSharedNestedRecord {}
+
+  record ShutdownTarget(NestedTarget target) implements VocabularyWithSharedNestedRecord {}
+
   @Test
   void components_become_properties() {
     ObjectNode schema = Schemas.of(ReadFile.class);
@@ -162,6 +186,51 @@ class SchemasTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("CollidingType")
           .hasMessageContaining("type");
+    }
+
+    @Test
+    void a_two_branch_vocabularys_colliding_second_branch_fails_loudly_naming_it() {
+      assertThatThrownBy(() -> Schemas.of(TwoBranchCollidingVocabulary.class))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("CollidingSecondBranch")
+          .hasMessageContaining("type");
+    }
+
+    @Test
+    void two_branches_sharing_a_nested_record_carry_one_shared_defs_entry_at_the_root() {
+      ObjectNode schema = Schemas.of(VocabularyWithSharedNestedRecord.class);
+
+      assertThat(schema.has("$defs")).isTrue();
+      assertThat(schema.get("$defs").has("NestedTarget")).isTrue();
+      for (JsonNode branch : schema.get("oneOf")) {
+        assertThat(branch.has("$defs")).isFalse();
+      }
+    }
+
+    @Test
+    void every_ref_in_a_shared_nested_record_schema_resolves_against_the_root() {
+      ObjectNode schema = Schemas.of(VocabularyWithSharedNestedRecord.class);
+
+      List<String> refs = new ArrayList<>();
+      collectRefs(schema, refs);
+
+      assertThat(refs).isNotEmpty();
+      for (String ref : refs) {
+        assertThat(ref).startsWith("#/");
+        assertThat(schema.at(ref.substring(1)).isMissingNode()).isFalse();
+      }
+    }
+
+    private void collectRefs(JsonNode node, List<String> refs) {
+      if (node.isObject()) {
+        JsonNode ref = node.get("$ref");
+        if (ref != null) {
+          refs.add(ref.asText());
+        }
+        node.fields().forEachRemaining(entry -> collectRefs(entry.getValue(), refs));
+      } else if (node.isArray()) {
+        node.forEach(child -> collectRefs(child, refs));
+      }
     }
 
     private ObjectNode branchNamed(ObjectNode schema, String typeName) {

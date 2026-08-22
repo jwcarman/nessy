@@ -49,6 +49,8 @@ public final class Schemas {
   private static final String ANY_OF = "anyOf";
   private static final String ONE_OF = "oneOf";
   private static final String ALL_OF = "allOf";
+  private static final String DEFS = "$defs";
+  private static final String SCHEMA_KEYWORD = "$schema";
   private static final String TYPE_CONST_POINTER = "/properties/type/const";
 
   private static final SchemaGenerator GENERATOR = generator();
@@ -70,24 +72,39 @@ public final class Schemas {
    * discriminator-tagged mutually exclusive branches, so it is renamed here. A sealed interface
    * with exactly one permitted record collapses to a single flat schema (no combinator at all);
    * that case is wrapped into a one-branch {@code oneOf} for a uniform shape.
+   *
+   * <p>Two branches that share a nested record type get one shared {@code $defs} entry and a {@code
+   * $ref} into it, sitting at the document root alongside {@code anyOf} — dropping it while
+   * rebuilding the composed root would hand the model a dangling {@code $ref} with nothing to
+   * resolve against, so every root-level key victools attached (at minimum {@code $defs}) is
+   * carried onto the new root. The single-permit fallback path can carry its own nested {@code
+   * $defs} too (victools attaches it to whatever object it generates the schema into); that has to
+   * be lifted out of the wrapped branch and up to the new root before wrapping, since a {@code
+   * $ref} is always resolved against the true document root, never against whichever branch object
+   * happens to hold it.
    */
   private static ObjectNode sealedInterfaceSchema(Class<?> sealedType) {
     requireJacksonPolymorphismAnnotations(sealedType);
     ObjectNode generated = GENERATOR.generateSchema(sealedType);
     JsonNode combinator = generated.remove(ANY_OF);
+    ObjectNode schema = JsonNodeFactory.instance.objectNode();
+    schema.put(SCHEMA_KEYWORD, SchemaVersion.DRAFT_2020_12.getIdentifier());
     ArrayNode branches;
     if (combinator instanceof ArrayNode existing) {
       branches = existing;
+      generated.remove(SCHEMA_KEYWORD);
+      schema.setAll(generated);
     } else {
-      requireNoTypeCollision(generated, sealedType);
-      generated.remove("$schema");
+      generated.remove(SCHEMA_KEYWORD);
+      JsonNode defs = generated.remove(DEFS);
+      if (defs != null) {
+        schema.set(DEFS, defs);
+      }
       branches = JsonNodeFactory.instance.arrayNode().add(generated);
     }
     for (JsonNode branch : branches) {
       requireNoTypeCollision(branch, sealedType);
     }
-    ObjectNode schema = JsonNodeFactory.instance.objectNode();
-    schema.put("$schema", SchemaVersion.DRAFT_2020_12.getIdentifier());
     schema.set(ONE_OF, branches);
     return schema;
   }

@@ -61,15 +61,21 @@ public interface Codec<T> {
   }
 
   /**
-   * A tolerant UTF-8 JSON codec for {@code type}, bound through {@code mapper}. When {@code type}
-   * is a sealed interface (spec §3), encoding adds a {@code "type"} discriminator naming the
-   * concrete permitted record's simple name, and decoding matches that discriminator back to its
-   * record before binding the remainder. Jackson's checked exceptions never leak past this
-   * boundary: malformed bytes, an unknown discriminator, or a shape mismatch all surface as {@link
-   * IllegalArgumentException} naming the offense. Encoding a value whose runtime class is not a
-   * direct permitted subclass of {@code type} (e.g. a member reached through a nested sealed
-   * vocabulary) is rejected the same way, naming the class and the vocabulary, rather than writing
-   * a discriminator decoding could never match back.
+   * A tolerant UTF-8 JSON codec for {@code type}, bound through {@code mapper}. A plain
+   * (non-sealed) type binds through {@code readValue}/{@code writeValueAsBytes} directly. A sealed
+   * interface {@code type} carrying its own {@code @JsonTypeInfo} (the standard annotation, e.g. so
+   * the same vocabulary also rides a tool input's schema/binding — spec §3, json-repeal 2026-08-22)
+   * defers wholly to Jackson's own polymorphic machinery: the discriminator property and its
+   * per-record values come from {@code @JsonSubTypes}, exactly as Jackson would bind them anywhere
+   * else. An <em>unannotated</em> sealed interface still binds through a {@code "type"}
+   * discriminator naming the concrete permitted record's simple name, matched back against {@link
+   * Class#getPermittedSubclasses()} — a temporary interim for stores that have not yet annotated
+   * their vocabulary, dying with json-repeal task 2. Jackson's checked exceptions never leak past
+   * this boundary: malformed bytes, an unknown discriminator, or a shape mismatch all surface as
+   * {@link IllegalArgumentException} naming the offense. On the unannotated path, encoding a value
+   * whose runtime class is not a direct permitted subclass of {@code type} (e.g. a member reached
+   * through a nested sealed vocabulary) is rejected the same way, naming the class and the
+   * vocabulary, rather than writing a discriminator decoding could never match back.
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
     Objects.requireNonNull(mapper, "mapper must not be null");
