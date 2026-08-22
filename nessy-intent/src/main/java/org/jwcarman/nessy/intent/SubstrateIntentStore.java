@@ -15,14 +15,11 @@
  */
 package org.jwcarman.nessy.intent;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.tool.SealedInputs;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -31,35 +28,47 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * agentId}, holding the latest declaration — last write wins via a read-then-CAS retry loop, the
  * same read-decide-CAS shape the substrate's other recipes ride.
  *
- * <p>The stored payload rides the same discriminator convention {@link IntentTool} binds sealed
- * vocabularies through ({@link SealedInputs}): a sealed vocabulary's declaration is rendered with a
- * {@code "type"} discriminator naming the declared record, and read back through the vocabulary
- * class token via {@link SealedInputs#bind}. The freeform {@link Intent} tier — and any other plain
- * record vocabulary — round-trips as an ordinary JSON object, no discriminator involved.
+ * <p>The stored shape is a {@link Codec}{@code <T>} (spec §3, §7): the {@link
+ * #SubstrateIntentStore(Substrate, String, Class, ObjectMapper)} constructor defaults it to {@link
+ * Codec#json(ObjectMapper, Class)}, which rides the same discriminator convention {@link
+ * IntentTool} binds sealed vocabularies through ({@link SealedInputs}) — a sealed vocabulary's
+ * declaration is rendered with a {@code "type"} discriminator naming the declared record, and read
+ * back through the vocabulary class token; the freeform {@link Intent} tier — and any other plain
+ * record vocabulary — round-trips as an ordinary JSON object, no discriminator involved. {@link
+ * #SubstrateIntentStore(Substrate, String, Codec)} accepts a caller-supplied codec directly — a
+ * transform chained on with {@link Codec#then(Codec)} (encryption, compression) or a test probe.
  *
  * @param <T> the declared-intent vocabulary this store holds
  */
-public final class StoredIntentStore<T> implements IntentStore<T> {
+public final class SubstrateIntentStore<T> implements IntentStore<T> {
 
   private static final String KIND = "intent";
 
   private final Substrate store;
   private final String agentId;
-  private final Class<T> vocabulary;
-  private final ObjectMapper mapper;
+  private final Codec<T> codec;
 
-  public StoredIntentStore(
+  /** Defaults the stored shape to {@link Codec#json(ObjectMapper, Class)} over {@code mapper}. */
+  public SubstrateIntentStore(
       Substrate store, String agentId, Class<T> vocabulary, ObjectMapper mapper) {
+    this(
+        store,
+        agentId,
+        Codec.json(
+            Objects.requireNonNull(mapper, "mapper must not be null"),
+            Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
+  }
+
+  public SubstrateIntentStore(Substrate store, String agentId, Codec<T> codec) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
-    this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.codec = Objects.requireNonNull(codec, "codec must not be null");
   }
 
   @Override
   public void declare(T declaration) {
     Objects.requireNonNull(declaration, "declaration must not be null");
-    byte[] payload = toJson(declaration).getBytes(StandardCharsets.UTF_8);
+    byte[] payload = codec.encode(declaration);
     while (true) {
       Optional<Substrate.Document> doc = store.read(KIND, agentId);
       long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
@@ -74,33 +83,6 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
 
   @Override
   public Optional<T> latest() {
-    return store
-        .read(KIND, agentId)
-        .map(doc -> fromJson(new String(doc.payload(), StandardCharsets.UTF_8)));
-  }
-
-  private String toJson(T declaration) {
-    ObjectNode node = (ObjectNode) mapper.valueToTree(declaration);
-    if (SealedInputs.isSealedInput(vocabulary)) {
-      node.put("type", declaration.getClass().getSimpleName());
-    }
-    try {
-      return mapper.writeValueAsString(node);
-    } catch (JsonProcessingException e) {
-      throw new IllegalStateException("unwritable intent payload", e);
-    }
-  }
-
-  private T fromJson(String payload) {
-    JsonNode node;
-    try {
-      node = mapper.readTree(payload);
-    } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException("malformed intent payload", e);
-    }
-    if (SealedInputs.isSealedInput(vocabulary)) {
-      return SealedInputs.bind(vocabulary, node, mapper);
-    }
-    return mapper.convertValue(node, vocabulary);
+    return store.read(KIND, agentId).map(doc -> codec.decode(doc.payload()));
   }
 }

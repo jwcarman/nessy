@@ -59,7 +59,7 @@ public final class Codecs {
    *
    * <p>Serialization inclusion is pinned to {@code ALWAYS}: a caller mapper configured for {@code
    * NON_EMPTY} (or any other omit-if-default policy) would otherwise survive the copy and drop
-   * empty collections from the wire — {@code StoredComputations#create}'s empty {@code
+   * empty collections from the wire — {@code SubstrateComputations#create}'s empty {@code
    * continuations} array, most sharply, since the very next {@code await} then fails to parse the
    * document it just wrote. Root wrapping is pinned off both directions for the same reason: it is
    * a presentation preference, not a format the stored bytes can float on.

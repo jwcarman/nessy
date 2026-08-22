@@ -38,10 +38,10 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.memory.StoredMemory;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -190,7 +190,7 @@ class AutonomousHostTest {
     pump.pumpUntilQuiet();
 
     var scopeOneState =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "scope-1", Clock.systemUTC(), TestMappers.plainlyPinned());
     assertThat(scopeOneState.load().phase()).isEqualTo(new Phase.Idle());
   }
@@ -269,10 +269,10 @@ class AutonomousHostTest {
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
 
     var stateOne =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrateOne, "shared-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
     var stateTwo =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrateTwo, "shared-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
     long versionAfterHostOnesTurn = stateOne.load().version();
     long versionAfterHostTwosTurn = stateTwo.load().version();
@@ -334,9 +334,9 @@ class AutonomousHostTest {
    * The substrate reform's whole point (spec §12): durability lives in the {@link Substrate}, not
    * in any object graph the builder happens to wire together. Neither {@code memoryFactory} nor
    * {@code storeFactory} is overridden here — the host uses its default {@code id -> new
-   * StoredMemory(substrate, id)} recipe over the one substrate this test supplies — so the only
+   * SubstrateMemory(substrate, id)} recipe over the one substrate this test supplies — so the only
    * thing tying the two deliveries together is the shared {@link Substrate}. Proof is read back
-   * through a SECOND, independently-constructed {@code StoredMemory} over that same substrate: a
+   * through a SECOND, independently-constructed {@code SubstrateMemory} over that same substrate: a
    * fresh recipe instance, never touched by the host, still recalls both turns.
    */
   @Test
@@ -365,7 +365,7 @@ class AutonomousHostTest {
     // a fresh recipe instance the host never held a reference to — the substrate, not the object
     // graph, is what makes this see both turns
     var secondBindingOverTheSameStore =
-        new StoredMemory(substrate, "scope-1", TestMappers.plainlyPinned());
+        new SubstrateMemory(substrate, "scope-1", TestMappers.plainlyPinned());
     List<Message> messages = secondBindingOverTheSameStore.recall().messages();
     assertThat(messages)
         .isNotEmpty()

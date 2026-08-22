@@ -25,8 +25,8 @@ import java.util.Optional;
 import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.backlog.StoredBacklog;
-import org.jwcarman.nessy.agent.memory.StoredMemory;
+import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
@@ -34,7 +34,7 @@ import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -71,7 +71,7 @@ class HarnessTest {
       };
 
   private static final AgentStateStore STORE =
-      new StoredAgentStateStore(
+      new SubstrateAgentStateStore(
           new InMemorySubstrate(),
           "harness-fixture",
           Clock.systemUTC(),
@@ -340,11 +340,11 @@ class HarnessTest {
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              id -> new StoredMemory(substrate, id, TestMappers.plainlyPinned()),
+              id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
-                  new StoredAgentStateStore(
+                  new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id -> new StoredBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
+              id -> new SubstrateBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
               b -> MODEL,
               b -> TOOLS);
 
@@ -374,11 +374,11 @@ class HarnessTest {
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              id -> new StoredMemory(substrate, id, TestMappers.plainlyPinned()),
+              id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
               id ->
-                  new StoredAgentStateStore(
+                  new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id -> new StoredBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
+              id -> new SubstrateBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
               b -> MODEL,
               b -> TOOLS);
 

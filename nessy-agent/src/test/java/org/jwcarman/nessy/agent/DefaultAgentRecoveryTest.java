@@ -23,7 +23,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.ContentBlock;
@@ -43,7 +43,7 @@ class DefaultAgentRecoveryTest {
 
   private static AgentFixture stalled(Phase phase, TestClock clock) {
     var store =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             new InMemorySubstrate(clock), "agent", clock, TestMappers.plainlyPinned());
     store.save(new State(phase, 0L));
     return new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
@@ -101,7 +101,7 @@ class DefaultAgentRecoveryTest {
   void aStaleIdleScopeJustDrains() {
     var clock = new TestClock(T0);
     var store =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             new InMemorySubstrate(clock), "agent", clock, TestMappers.plainlyPinned());
     var f = new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));

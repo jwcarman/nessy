@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
@@ -78,7 +78,7 @@ final class AgentFixture {
 
   AgentFixture() {
     this(
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             new InMemorySubstrate(),
             "fixture-scope",
             Clock.systemUTC(),

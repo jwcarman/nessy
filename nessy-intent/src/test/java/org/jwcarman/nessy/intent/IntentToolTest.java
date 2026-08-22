@@ -51,7 +51,7 @@ class IntentToolTest {
     void itIsNamedDeclareIntent() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
 
       assertThat(tool.name()).isEqualTo("declare-intent");
     }
@@ -60,7 +60,7 @@ class IntentToolTest {
     void itsDescriptionTellsTheModelToDeclareBeforeActing() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
 
       assertThat(tool.description())
           .isEqualTo("Declare what you are about to do and why, before using any other tool.");
@@ -70,14 +70,15 @@ class IntentToolTest {
     void itRequiresOnlyImmediateCompletion() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
 
       assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.IMMEDIATE);
     }
 
     @Test
     void executingDeclaresTheDeclarationIntoTheStore() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
+      var store =
+          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
       var tool = IntentTool.freeform(store);
 
       tool.execute(new Intent("restart prod-eu to clear the stuck deploy"), freshContext());
@@ -89,7 +90,7 @@ class IntentToolTest {
     void executingReturnsAnImmediatelyReadyOkResult() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
+              new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER));
 
       Awaited<ToolResult> outcome = tool.execute(new Intent("restart prod-eu"), freshContext());
 
@@ -111,7 +112,7 @@ class IntentToolTest {
       var tool =
           new IntentTool<>(
               Vocabulary.class,
-              new StoredIntentStore<>(
+              new SubstrateIntentStore<>(
                   new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER));
 
       assertThat(tool.description())
@@ -125,7 +126,7 @@ class IntentToolTest {
       var tool =
           new IntentTool<>(
               Vocabulary.class,
-              new StoredIntentStore<>(
+              new SubstrateIntentStore<>(
                   new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER));
 
       var schema = tool.spec().inputSchema();
@@ -137,7 +138,7 @@ class IntentToolTest {
     @Test
     void executingBindsTheTypedDeclarationIntoTheStore() {
       var store =
-          new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER);
+          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Vocabulary.class, MAPPER);
       var tool = new IntentTool<>(Vocabulary.class, store);
 
       tool.execute(new Restart("prod-eu"), freshContext());

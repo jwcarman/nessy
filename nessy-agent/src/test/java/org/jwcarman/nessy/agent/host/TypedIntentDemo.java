@@ -25,9 +25,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.durable.StoredComputations;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -57,7 +57,7 @@ import org.jwcarman.nessy.intent.IntentEnricher;
 import org.jwcarman.nessy.intent.IntentPolicies;
 import org.jwcarman.nessy.intent.IntentStore;
 import org.jwcarman.nessy.intent.IntentTool;
-import org.jwcarman.nessy.intent.StoredIntentStore;
+import org.jwcarman.nessy.intent.SubstrateIntentStore;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -174,13 +174,14 @@ class TypedIntentDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
-        new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
+        new SubstrateIntentStore<>(
+            substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
 
     var firstAttempt =
         new ToolCall(
@@ -266,13 +267,14 @@ class TypedIntentDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
-        new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
+        new SubstrateIntentStore<>(
+            substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
 
     var declareCall =
         new ToolCall(
@@ -330,13 +332,14 @@ class TypedIntentDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
-        new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
+        new SubstrateIntentStore<>(
+            substrate, "prod-eu", OpsIntent.class, TestMappers.plainlyPinned());
 
     var unrepresentableDeclare =
         new ToolCall(

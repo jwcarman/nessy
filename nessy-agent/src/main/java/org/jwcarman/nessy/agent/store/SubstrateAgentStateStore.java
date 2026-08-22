@@ -20,8 +20,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.codec.StateCodec;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -30,38 +32,53 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * The document version IS the scope version — no separate version field rides in the payload — so
  * {@link #save(State)} is a direct CAS write and a lost race surfaces as {@link
  * Substrate.Document}'s version disagreeing with what the caller believed it held.
+ *
+ * <p>The stored shape is a {@link Codec}{@code <}{@link Phase}{@code >} (spec §3, §7): the {@link
+ * #SubstrateAgentStateStore(Substrate, String, Clock, ObjectMapper)} constructor defaults it to the
+ * {@link StateCodec} binding; {@link #SubstrateAgentStateStore(Substrate, String, Clock, Codec)}
+ * accepts a caller-supplied codec directly — a transform chained on with {@link Codec#then(Codec)}
+ * (encryption, compression) or a test probe.
  */
-public final class StoredAgentStateStore implements AgentStateStore {
+public final class SubstrateAgentStateStore implements AgentStateStore {
 
   private static final String KIND = "state";
 
   private final Substrate store;
   private final String agentId;
   private final Instant birth;
-  private final StateCodec codec;
+  private final Codec<Phase> codec;
 
-  public StoredAgentStateStore(Substrate store, String agentId, Clock clock, ObjectMapper mapper) {
+  /** Defaults the stored shape to the {@link StateCodec} binding over {@code mapper}. */
+  public SubstrateAgentStateStore(
+      Substrate store, String agentId, Clock clock, ObjectMapper mapper) {
+    this(
+        store,
+        agentId,
+        clock,
+        new StateCodecAdapter(
+            new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"))));
+  }
+
+  public SubstrateAgentStateStore(
+      Substrate store, String agentId, Clock clock, Codec<Phase> codec) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.birth = Objects.requireNonNull(clock, "clock must not be null").instant();
-    this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
+    this.codec = Objects.requireNonNull(codec, "codec must not be null");
   }
 
   @Override
   public State load() {
     return store
         .read(KIND, agentId)
-        .map(
-            doc ->
-                new State(
-                    codec.phase(new String(doc.payload(), StandardCharsets.UTF_8)), doc.version()))
+        .map(doc -> new State(codec.decode(doc.payload()), doc.version()))
         .orElseGet(State::initial);
   }
 
   @Override
   public void save(State state) {
     Objects.requireNonNull(state, "state must not be null");
-    byte[] payload = codec.toJson(state.phase()).getBytes(StandardCharsets.UTF_8);
+    byte[] payload = codec.encode(state.phase());
     try {
       store.write(KIND, agentId, payload, state.version());
     } catch (ConflictException e) {
@@ -73,5 +90,28 @@ public final class StoredAgentStateStore implements AgentStateStore {
   @Override
   public Instant lastSaved() {
     return store.read(KIND, agentId).map(Substrate.Document::updatedAt).orElse(birth);
+  }
+
+  /**
+   * Adapts {@link StateCodec}'s String-JSON binding to the byte-oriented {@link Codec} seam —
+   * internal, not a new public type (spec §3, §7).
+   */
+  private static final class StateCodecAdapter implements Codec<Phase> {
+
+    private final StateCodec codec;
+
+    private StateCodecAdapter(StateCodec codec) {
+      this.codec = codec;
+    }
+
+    @Override
+    public byte[] encode(Phase phase) {
+      return codec.toJson(phase).getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Override
+    public Phase decode(byte[] bytes) {
+      return codec.phase(new String(bytes, StandardCharsets.UTF_8));
+    }
   }
 }

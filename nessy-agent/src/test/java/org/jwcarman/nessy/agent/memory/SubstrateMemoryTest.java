@@ -19,29 +19,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
+import org.jwcarman.nessy.agent.support.MarkerBytesCodec;
 import org.jwcarman.nessy.agent.support.RaceOnceOnAppendSubstrate;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
-class StoredMemoryTest {
+class SubstrateMemoryTest {
 
   private static final MessageCodec CODEC = new MessageCodec(new ObjectMapper());
 
   @Test
   void aFreshMemoryRecallsAnEmptyContext() {
-    var memory = new StoredMemory(new InMemorySubstrate(), "agent-a", TestMappers.plainlyPinned());
+    var memory =
+        new SubstrateMemory(new InMemorySubstrate(), "agent-a", TestMappers.plainlyPinned());
     assertThat(memory.recall().messages()).isEmpty();
   }
 
   @Test
   void rememberedMessagesRecallInOrderAcrossTwoInstancesSharingOneSubstrate() {
     Substrate store = new InMemorySubstrate();
-    var writer = new StoredMemory(store, "agent-a", TestMappers.plainlyPinned());
-    var reader = new StoredMemory(store, "agent-a", TestMappers.plainlyPinned());
+    var writer = new SubstrateMemory(store, "agent-a", TestMappers.plainlyPinned());
+    var reader = new SubstrateMemory(store, "agent-a", TestMappers.plainlyPinned());
 
     writer.remember(Message.user("first"));
     writer.remember(Message.user("second"));
@@ -56,11 +60,29 @@ class StoredMemoryTest {
     byte[] competitor =
         CODEC.toJson(Message.user("stole the slot")).getBytes(StandardCharsets.UTF_8);
     Substrate racing = new RaceOnceOnAppendSubstrate(delegate, competitor);
-    var memory = new StoredMemory(racing, "agent-a", TestMappers.plainlyPinned());
+    var memory = new SubstrateMemory(racing, "agent-a", TestMappers.plainlyPinned());
 
     memory.remember(Message.user("mine"));
 
     assertThat(memory.recall().messages())
         .containsExactly(Message.user("stole the slot"), Message.user("mine"));
+  }
+
+  @Nested
+  class ACustomCodec {
+
+    @Test
+    void isHonoredByBothWritesAndReads() {
+      Substrate substrate = new InMemorySubstrate();
+      Codec<Message> codec =
+          Codec.json(TestMappers.plainlyPinned(), Message.class).then(new MarkerBytesCodec());
+      var memory = new SubstrateMemory(substrate, "agent-a", codec);
+
+      memory.remember(Message.user("mine"));
+
+      byte[] rawPayload = substrate.entries("memory", "agent-a", 1).getFirst().payload();
+      assertThat(MarkerBytesCodec.isMarked(rawPayload)).isTrue();
+      assertThat(memory.recall().messages()).containsExactly(Message.user("mine"));
+    }
   }
 }

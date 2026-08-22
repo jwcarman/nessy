@@ -29,14 +29,14 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.DurableDecisions;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.durable.StoredComputations;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -104,9 +104,9 @@ class ScopeRedriveTest {
     var memory = new VerbatimMemory();
     var substrate = new InMemorySubstrate();
     var store =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "demo", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var narrator = new RecordingTurnObserver();
     var type = AgentType.of("approver");
     var id = AgentId.of("demo");

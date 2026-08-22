@@ -26,7 +26,7 @@ import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.RecordingAgentObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -61,7 +61,7 @@ class DefaultAgentRedispatchTest {
   @Test
   void anIdleScopeNarratesNothingAndDispatchesNothingOnRedispatch() {
     var store =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var model = new CountingModelCallExecutor();
     var tools = new CountingToolCallExecutor();
@@ -88,7 +88,7 @@ class DefaultAgentRedispatchTest {
   @Test
   void anAwaitingModelScopeDispatchesNothingBecauseCallModelIsFilteredOut() {
     var store =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     store.save(new State(new Phase.AwaitingModel(), store.load().version()));
     var model = new CountingModelCallExecutor();

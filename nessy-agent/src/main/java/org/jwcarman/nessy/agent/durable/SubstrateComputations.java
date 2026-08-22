@@ -43,15 +43,26 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  *
  * <p>{@code DurableComputationBackend} is no longer an adapter SPI (substrate spec §6.5); this is
  * its default and only shipped implementation. {@link OutcomeCodec} renders the payloads.
+ *
+ * <p><b>No public {@code Codec<T>} parameter here, by design.</b> Every other recipe's stored shape
+ * is a user- or nessy-owned type the caller could reasonably swap a binding for; this recipe's
+ * document is not — {@link OutcomeCodec}'s wire vocabulary is a closed, hand-translated shape over
+ * {@link Outcome}, whose {@code Success} payload is itself a closed vocabulary ({@link
+ * org.jwcarman.nessy.api.tool.ToolResult}, {@link org.jwcarman.nessy.api.Decision}) validated
+ * before any write (spec §7). Opening a codec seam here would let a caller substitute a binding
+ * that disagrees with that closed-vocabulary check, or that the desks and the durable spec's
+ * semantic law (one flip, atomic await, idempotent completion) never anticipated. {@link
+ * OutcomeCodec} stays internal and unparameterized; only the outer shape (bytes in, bytes out
+ * through the substrate) is the seam.
  */
-public final class StoredComputations implements DurableComputationBackend {
+public final class SubstrateComputations implements DurableComputationBackend {
 
   private static final String KIND = "computation";
 
   private final Substrate store;
   private final OutcomeCodec codec;
 
-  public StoredComputations(Substrate store, ObjectMapper mapper) {
+  public SubstrateComputations(Substrate store, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.codec = new OutcomeCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
   }

@@ -33,8 +33,8 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class SlotDeferredToolCallPolicyTest {
 
-  private final StoredComputations backend =
-      new StoredComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
+  private final SubstrateComputations backend =
+      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
   private final ScopeResumption scopeResumption =
       new ScopeResumption((type, id, event) -> {}, TestMappers.plainlyPinned());
   private final SlotDeferredToolCallPolicy policy =

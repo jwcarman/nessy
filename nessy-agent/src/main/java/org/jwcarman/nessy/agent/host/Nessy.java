@@ -36,21 +36,21 @@ import org.jwcarman.nessy.agent.ResolvingAgentBinder;
 import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.backlog.StoredBacklog;
+import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.SlotApprover;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.durable.StoredComputations;
-import org.jwcarman.nessy.agent.memory.StoredMemory;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -160,8 +160,8 @@ public final class Nessy {
       var agentId = AgentId.of(id);
       var agentType = AgentType.of(typeName);
       Substrate substrate = new InMemorySubstrate();
-      var store = new StoredAgentStateStore(substrate, id, Clock.systemUTC(), pinned);
-      var backlog = new StoredBacklog(substrate, id, 1024, pinned);
+      var store = new SubstrateAgentStateStore(substrate, id, Clock.systemUTC(), pinned);
+      var backlog = new SubstrateBacklog(substrate, id, 1024, pinned);
       Harness<String> harness =
           Harness.of(
               agentType,
@@ -240,7 +240,7 @@ public final class Nessy {
 
     /**
      * Builds each scope's conversation store from its raw id; default {@code id -> new
-     * StoredMemory(substrate, id)} — a view over the one {@link Substrate} every scope shares
+     * SubstrateMemory(substrate, id)} — a view over the one {@link Substrate} every scope shares
      * (§6.2). The substrate IS the shared state now; a factory is a view over it by construction,
      * never freshly-created state of its own. A factory is free to return views over any durable
      * memory shared across many hosts (spec §10.11) — the id is the only key, and losing a view
@@ -266,9 +266,10 @@ public final class Nessy {
     }
 
     /**
-     * The shared durable computation backend behind both desks; default {@link StoredComputations}
-     * over this builder's {@link #substrate(Substrate)}. Override for a genuinely foreign engine
-     * (Restate, Temporal) — nobody implements this seam to get a database (spec §6.5).
+     * The shared durable computation backend behind both desks; default {@link
+     * SubstrateComputations} over this builder's {@link #substrate(Substrate)}. Override for a
+     * genuinely foreign engine (Restate, Temporal) — nobody implements this seam to get a database
+     * (spec §6.5).
      */
     public AutonomousBuilder backend(DurableComputationBackend backend) {
       this.backend = Objects.requireNonNull(backend, "backend must not be null");
@@ -353,13 +354,13 @@ public final class Nessy {
       Function<String, Memory> effectiveMemoryFactory =
           memoryFactory != null
               ? memoryFactory
-              : id -> new StoredMemory(effectiveSubstrate, id, pinned);
+              : id -> new SubstrateMemory(effectiveSubstrate, id, pinned);
       Function<String, AgentStateStore> effectiveStoreFactory =
-          id -> new StoredAgentStateStore(effectiveSubstrate, id, Clock.systemUTC(), pinned);
+          id -> new SubstrateAgentStateStore(effectiveSubstrate, id, Clock.systemUTC(), pinned);
       Function<String, Backlog<String>> effectiveBacklogFactory =
-          id -> new StoredBacklog(effectiveSubstrate, id, backlogCapacity, pinned);
+          id -> new SubstrateBacklog(effectiveSubstrate, id, backlogCapacity, pinned);
       DurableComputationBackend effectiveBackend =
-          backend != null ? backend : new StoredComputations(effectiveSubstrate, pinned);
+          backend != null ? backend : new SubstrateComputations(effectiveSubstrate, pinned);
       AgentObserver effectiveAgentObserver =
           agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
 

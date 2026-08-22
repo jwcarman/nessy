@@ -28,12 +28,12 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.durable.StoredComputations;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -95,9 +95,9 @@ class DurableParkDemo {
     var memory = new VerbatimMemory();
     var substrate = new InMemorySubstrate();
     var store =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "demo", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var dispatcher = new ContinuationDispatcher();
     var desk = new CompletionDesk(backend, dispatcher);
     var narrator = new RecordingTurnObserver();

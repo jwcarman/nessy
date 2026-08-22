@@ -42,8 +42,8 @@ class SlotApproverTest {
 
   private static final CallAddress ADDRESS = new CallAddress("test-agent-type", "a1", "c1");
 
-  private final StoredComputations backend =
-      new StoredComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
+  private final SubstrateComputations backend =
+      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
   private final List<ApprovalRequest> notified = new ArrayList<>();
   private final ScopeRedrive scopeRedrive =
       new ScopeRedrive((type, id) -> null, TestMappers.plainlyPinned());
@@ -119,16 +119,17 @@ class SlotApproverTest {
   /**
    * Fix round 1 (task 3 review): {@code copyAndPin} did not pin serialization inclusion, so a
    * caller mapper configured with {@code NON_EMPTY} dropped the empty {@code continuations} array
-   * {@link StoredComputations#create} writes — the very next {@code await} then failed to parse its
-   * own just-written document. A full park round trip through a backend built from such a mapper is
-   * the regression guard.
+   * {@link SubstrateComputations#create} writes — the very next {@code await} then failed to parse
+   * its own just-written document. A full park round trip through a backend built from such a
+   * mapper is the regression guard.
    */
   @Test
   void aParkRoundTripSurvivesAUserMapperConfiguredForNonEmptyInclusion() {
     ObjectMapper userMapper =
         new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
     ObjectMapper pinned = Codecs.copyAndPin(userMapper);
-    StoredComputations nonEmptyBackend = new StoredComputations(new InMemorySubstrate(), pinned);
+    SubstrateComputations nonEmptyBackend =
+        new SubstrateComputations(new InMemorySubstrate(), pinned);
     List<ApprovalRequest> nonEmptyNotified = new ArrayList<>();
     ScopeRedrive nonEmptyScopeRedrive = new ScopeRedrive((type, id) -> null, pinned);
     SlotApprover nonEmptyApprover =

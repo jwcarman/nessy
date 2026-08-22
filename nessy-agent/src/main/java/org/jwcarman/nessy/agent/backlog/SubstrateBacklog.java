@@ -34,7 +34,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * queue is rejected with an {@link IllegalStateException}, the bound the deleted {@code
  * BoundedBacklog} used to enforce (spec §12).
  */
-public final class StoredBacklog implements Backlog<String> {
+public final class SubstrateBacklog implements Backlog<String> {
 
   private static final String KIND = "backlog";
 
@@ -43,7 +43,7 @@ public final class StoredBacklog implements Backlog<String> {
   private final int capacity;
   private final ObjectMapper mapper;
 
-  public StoredBacklog(Substrate store, String agentId, int capacity, ObjectMapper mapper) {
+  public SubstrateBacklog(Substrate store, String agentId, int capacity, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     if (capacity < 1) {

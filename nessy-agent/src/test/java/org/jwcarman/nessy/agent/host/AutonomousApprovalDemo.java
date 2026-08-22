@@ -24,9 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.durable.StoredComputations;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -95,9 +95,9 @@ class AutonomousApprovalDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
@@ -162,9 +162,9 @@ class AutonomousApprovalDemo {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
     var prodEuState =
-        new StoredAgentStateStore(
+        new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =

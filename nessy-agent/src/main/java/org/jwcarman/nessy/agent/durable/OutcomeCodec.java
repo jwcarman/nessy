@@ -33,7 +33,7 @@ import org.jwcarman.nessy.durable.Outcome;
 /**
  * Internal storage machinery: renders the {@code computation} document — {@code {status, outcome?,
  * continuations[]}} (substrate spec §6.5) — to and from the JSON the string-payload substrate
- * persists. Not API vocabulary; only {@link StoredComputations} calls this.
+ * persists. Not API vocabulary; only {@link SubstrateComputations} calls this.
  *
  * <p>{@link Outcome}, {@link Decision}, and {@link ToolResult} live in {@code nessy-durable} and
  * {@code nessy-api} respectively and stay Jackson-free by design ({@code nessy-durable} carries no

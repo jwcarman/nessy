@@ -38,8 +38,8 @@ class IntentEnricherTest {
     return AuthzContext.of("ops", call);
   }
 
-  private static StoredIntentStore<Intent> freshStore() {
-    return new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
+  private static SubstrateIntentStore<Intent> freshStore() {
+    return new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
   }
 
   @Test

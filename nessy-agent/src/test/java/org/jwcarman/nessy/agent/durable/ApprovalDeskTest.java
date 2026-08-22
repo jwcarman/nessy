@@ -37,8 +37,8 @@ class ApprovalDeskTest {
 
   private record Fired(Continuation continuation, Outcome outcome) {}
 
-  private final StoredComputations backend =
-      new StoredComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
+  private final SubstrateComputations backend =
+      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
   private final ContinuationDispatcher dispatcher = new ContinuationDispatcher();
   private final List<Fired> fired = new ArrayList<>();
   private final ApprovalDesk desk = new ApprovalDesk(backend, dispatcher);
