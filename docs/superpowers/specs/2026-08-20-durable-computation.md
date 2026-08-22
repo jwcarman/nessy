@@ -1,6 +1,6 @@
 # Durable Computation and Agent Execution Specification
 
-> **Parcel supersession — 2026-08-22.** `2026-08-22-durable-parcels-design.md`
+> **Parcel supersession — 2026-08-22.** `2026-08-22-durable-deliveries-design.md`
 > reshapes the execution semantics: `await()` and §12 are retired (the
 > continuation travels with `create`), preamble ruling 6 is reversed
 > (completion never creates records; presence means pending), ruling 4 is
