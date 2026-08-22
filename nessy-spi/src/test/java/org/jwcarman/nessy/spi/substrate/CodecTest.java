@@ -47,6 +47,20 @@ class CodecTest {
 
   record UnannotatedRestart(String host) implements UnannotatedVocabulary {}
 
+  /**
+   * Carries no Jackson annotations of its own — {@link
+   * #jsonRoundTripsThroughAMapperRegisteredMixIn} registers {@link MixInVocabularyPolymorphism} on
+   * a fresh mapper via {@code addMixIn} instead, proving {@code Codec.json}'s construction-time
+   * guard asks the mapper (mix-ins included), not raw reflection on the class itself.
+   */
+  sealed interface MixInVocabulary permits MixInRestart {}
+
+  record MixInRestart(String host) implements MixInVocabulary {}
+
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({@JsonSubTypes.Type(value = MixInRestart.class, name = "MixInRestart")})
+  interface MixInVocabularyPolymorphism {}
+
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
   @JsonSubTypes({@JsonSubTypes.Type(value = Ev.class, name = "Ev")})
   sealed interface CollidingVocabulary permits Ev {}
@@ -182,6 +196,24 @@ class CodecTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Ev")
           .hasMessageContaining("type");
+    }
+
+    /**
+     * The construction-time guard asks {@code mapper} itself (via its {@code
+     * AnnotationIntrospector}), not raw reflection on {@code @JsonTypeInfo} — so a vocabulary with
+     * zero annotations of its own, but a polymorphism mix-in registered on the mapper, is accepted
+     * and round-trips exactly like a directly-annotated one would.
+     */
+    @Test
+    void aVocabularyAnnotatedOnlyThroughAMapperRegisteredMixInIsAcceptedAndRoundTrips() {
+      ObjectMapper mixInMapper = new ObjectMapper();
+      mixInMapper.addMixIn(MixInVocabulary.class, MixInVocabularyPolymorphism.class);
+      Codec<MixInVocabulary> codec = Codec.json(mixInMapper, MixInVocabulary.class);
+      MixInVocabulary original = new MixInRestart("prod-eu");
+
+      MixInVocabulary decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
     }
   }
 
