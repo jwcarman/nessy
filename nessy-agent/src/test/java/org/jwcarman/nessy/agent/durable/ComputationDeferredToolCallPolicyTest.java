@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.PendingComputation;
 import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -49,18 +50,34 @@ class ComputationDeferredToolCallPolicyTest {
   void aFirstDeferralCreatesTheComputationAndSuspends() {
     assertThat(
             policy.onDeferred(
-                CALL, ADDRESS, INVOCATION, RetrySemantics.NON_RETRYABLE, Optional.empty()))
+                CALL,
+                ADDRESS,
+                INVOCATION,
+                RetrySemantics.NON_RETRYABLE,
+                Optional.empty(),
+                Optional.empty()))
         .isEqualTo(new ToolExecution.Deferred(COMPUTATION));
     assertThat(backend.find(COMPUTATION)).isPresent();
   }
 
   @Test
   void aReDriveFindsTheExistingComputationAndStaysSuspended() {
-    policy.onDeferred(CALL, ADDRESS, INVOCATION, RetrySemantics.NON_RETRYABLE, Optional.empty());
+    policy.onDeferred(
+        CALL,
+        ADDRESS,
+        INVOCATION,
+        RetrySemantics.NON_RETRYABLE,
+        Optional.empty(),
+        Optional.empty());
 
     assertThat(
             policy.onDeferred(
-                CALL, ADDRESS, INVOCATION, RetrySemantics.NON_RETRYABLE, Optional.empty()))
+                CALL,
+                ADDRESS,
+                INVOCATION,
+                RetrySemantics.NON_RETRYABLE,
+                Optional.empty(),
+                Optional.empty()))
         .isEqualTo(new ToolExecution.Deferred(COMPUTATION));
 
     PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
@@ -69,7 +86,13 @@ class ComputationDeferredToolCallPolicyTest {
 
   @Test
   void theReturnAddressCarriesTheAgentCoordinateAndTheCall() {
-    policy.onDeferred(CALL, ADDRESS, INVOCATION, RetrySemantics.NON_RETRYABLE, Optional.empty());
+    policy.onDeferred(
+        CALL,
+        ADDRESS,
+        INVOCATION,
+        RetrySemantics.NON_RETRYABLE,
+        Optional.empty(),
+        Optional.empty());
 
     PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
     ScopeRouting.Routing routing =
@@ -83,7 +106,8 @@ class ComputationDeferredToolCallPolicyTest {
 
   @Test
   void theRetrySemanticsRidesTheReturnAddress() {
-    policy.onDeferred(CALL, ADDRESS, INVOCATION, RetrySemantics.RETRYABLE, Optional.empty());
+    policy.onDeferred(
+        CALL, ADDRESS, INVOCATION, RetrySemantics.RETRYABLE, Optional.empty(), Optional.empty());
 
     PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
     ScopeRouting.Routing routing =
@@ -96,7 +120,12 @@ class ComputationDeferredToolCallPolicyTest {
     Instant before = Instant.now();
 
     policy.onDeferred(
-        CALL, ADDRESS, INVOCATION, RetrySemantics.RETRYABLE, Optional.of(Duration.ofMinutes(5)));
+        CALL,
+        ADDRESS,
+        INVOCATION,
+        RetrySemantics.RETRYABLE,
+        Optional.of(Duration.ofMinutes(5)),
+        Optional.empty());
 
     PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
     assertThat(pending.deadline()).isPresent();
@@ -105,9 +134,40 @@ class ComputationDeferredToolCallPolicyTest {
 
   @Test
   void noDeclaredTimeoutLeavesTheComputationDeadlineLess() {
-    policy.onDeferred(CALL, ADDRESS, INVOCATION, RetrySemantics.NON_RETRYABLE, Optional.empty());
+    policy.onDeferred(
+        CALL,
+        ADDRESS,
+        INVOCATION,
+        RetrySemantics.NON_RETRYABLE,
+        Optional.empty(),
+        Optional.empty());
 
     PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
     assertThat(pending.deadline()).isEmpty();
+  }
+
+  @Test
+  void pendingComputationFindsAPendingApproval() {
+    assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
+
+    backend.create(
+        ADDRESS.approval(), INVOCATION, new Continuation("SCOPE_RESUME", "{}"), Optional.empty());
+
+    assertThat(policy.pendingComputation(ADDRESS)).contains(ADDRESS.approval());
+  }
+
+  @Test
+  void pendingComputationFindsAnInFlightToolComputation() {
+    assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
+
+    policy.onDeferred(
+        CALL,
+        ADDRESS,
+        INVOCATION,
+        RetrySemantics.NON_RETRYABLE,
+        Optional.empty(),
+        Optional.empty());
+
+    assertThat(policy.pendingComputation(ADDRESS)).contains(ADDRESS.execution());
   }
 }

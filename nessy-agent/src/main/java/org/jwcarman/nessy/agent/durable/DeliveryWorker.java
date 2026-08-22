@@ -24,6 +24,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.AgentBinder;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -74,11 +76,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p>An approval's {@code Allow} decision is not a completion — the tool has not run yet, so there
  * is no {@code ToolFinished} for the reducer to fold. That case dispatches the call directly
- * through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool} — the post-gate
- * door — using the {@code CallAddress}/{@code ToolInvocationId} the grant's own continuation
- * carries. Re-entering the gate from the top (the old {@code ScopeRedrive} unconditional re-fire,
- * retired: nothing routes through it in production anymore) would re-run policy and re-ask the
- * approver on every grant (spec §5a).
+ * through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} — the
+ * post-gate door — using the {@code CallAddress}/{@code ToolInvocationId} the grant's own
+ * continuation carries. Re-entering the gate from the top (the old {@code ScopeRedrive}
+ * unconditional re-fire, retired: nothing routes through it in production anymore) would re-run
+ * policy and re-ask the approver on every grant (spec §5a).
  *
  * <p>One heartbeat thread per host, started by the host and stopped on {@link #close()}; {@link
  * #nudge()} runs an immediate, synchronous drain after every completion — the heartbeat is the
@@ -92,7 +94,7 @@ import org.slf4j.LoggerFactory;
  * special timeout path. An overdue {@link RetrySemantics#RETRYABLE} computation gets its deadline
  * CAS-bumped (a lost CAS means another worker already won the bump, or already completed it — this
  * worker backs off) and is redispatched through {@link
- * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool}, the same {@code
+ * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow}, the same {@code
  * ToolInvocationId} the computation already carries.
  *
  * <p>The journal writes go straight through the {@code Substrate} the {@code memory} recipe defines
@@ -123,6 +125,18 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   private final DurableComputationBackend computations;
   private final ObjectMapper mapper;
   private final Thread heartbeat;
+
+  /**
+   * The grant arm's single-winner mechanism (spec §5a invariant 5, fix round 2 item (c)): a bare
+   * key set, {@code add} as the claim, {@code remove} as the release. In-process only — this is NOT
+   * a substrate write, and does not protect against a second {@code DeliveryWorker} instance in a
+   * different process racing the same delivery; it exists specifically to serialize THIS worker's
+   * own {@link #nudge()} against its own heartbeat thread, the exact race a version-bump alone
+   * cannot close (a second racer reading after the first's bump sees an ordinary document at a
+   * newer version, indistinguishable from "untouched," and bumps it again just as validly).
+   */
+  private final Set<String> claiming = ConcurrentHashMap.newKeySet();
+
   private volatile boolean closed;
 
   public DeliveryWorker(
@@ -229,7 +243,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     AgentId id = AgentId.of(routing.agentId());
     Optional<ToolOutcome> toolOutcome = toToolOutcome(delivery.outcome());
     if (toolOutcome.isEmpty()) {
-      deliverGrant(key, doc.get().version(), type, id, routing);
+      deliverGrant(key, type, id, routing);
       return;
     }
     deliverCompletion(type, id, routing.call().id(), toolOutcome.get(), key);
@@ -245,59 +259,53 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * to re-enter {@code RegistryToolCallExecutor}'s gate from the top, re-asking the approver on
    * every grant.
    *
-   * <p><b>Ownership at every committed point (spec §5a invariant 5):</b> the tool runs
-   * SYNCHRONOUSLY, on this sweep's own thread, before any write — the outcome decides which batch
-   * to commit, exactly as spec §5a requires ("consumed by the result's own fold-advance batch" /
-   * "one batch [create tool computation, delete delivery]"). An immediate outcome's grant delivery
-   * is consumed by {@link #foldGrantedResult}'s own batch — the journal appends, the state CAS, and
-   * this delivery's removal, all in the one {@link Substrate#batch}, the same shape {@link
-   * #deliverCompletion} uses. A deferred outcome has already made itself durable inside {@link
-   * ComputationDeferredToolCallPolicy#onDeferred} (a standalone, CAS-idempotent write) by the time
-   * this method sees {@link ToolExecution.Deferred}; the one crash window that write leaves open —
-   * computation durably created, this delivery not yet deleted — is closed not by a second
-   * substrate write joining the same batch (the {@link
-   * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy} contract persists synchronously and does
-   * not hand back an unexecuted op to batch), but by the presence check below: this method never
-   * re-dispatches into a tool computation that already exists for this exact {@code ComputationId}
-   * — a retry of THIS delivery after that crash finds the computation present and only deletes the
-   * now-redundant delivery, so the external side effect this call's tool may have started is never
-   * re-triggered by delivery replay (deterministic ids, submit-once discipline — spec §2).
-   * Composing the create and the delete into one literal {@link Substrate#batch} call remains open
-   * for a follow-up; the presence-check guard below closes the actual correctness risk (duplicate
-   * dispatch / an orphaned delivery) that composing the batch would also have closed.
+   * <p><b>Transfer-then-dispatch (spec §5a invariant 5):</b> {@link #claiming} is the single-winner
+   * mechanism — see its own javadoc for why a version-bump alone is not enough. Only the claim's
+   * winner dispatches. An immediate outcome's grant delivery is then consumed by {@link
+   * #foldGrantedResult}'s own batch — journal appends, state CAS, and the delivery's removal at the
+   * current version, the same shape {@link #deliverCompletion} uses. A deferred outcome's transfer
+   * — {@code [create tool computation, delete delivery]} — is composed into ONE {@link
+   * Substrate#batch} by {@link ComputationDeferredToolCallPolicy#onDeferred} via the {@code
+   * alsoCommit} door, BEFORE the tool's {@code execute()} that started it ever returns control here
+   * — so there is no window where the computation exists and this delivery still does, or where a
+   * real completion could ever find this delivery left over to reprocess (spec §5a invariant 5,
+   * closed at every committed point).
    */
-  private void deliverGrant(
-      String key, long version, AgentType type, AgentId id, ScopeRouting.Routing routing) {
+  private void deliverGrant(String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
+    if (!claiming.add(key)) {
+      return; // another drain in THIS process (nudge racing the heartbeat) already owns this key
+    }
+    try {
+      deliverClaimedGrant(key, type, id, routing);
+    } finally {
+      claiming.remove(key);
+    }
+  }
+
+  private void deliverClaimedGrant(
+      String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
+    Optional<Substrate.Document> fresh = store.read(OUTBOX_KIND, key);
+    if (fresh.isEmpty()) {
+      return; // already delivered by another drain
+    }
+    long currentVersion = fresh.get().version();
+
     CallAddress address =
         new CallAddress(
             routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
     ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
-    ComputationId toolId = address.execution();
-
-    if (computations.find(toolId).isPresent()) {
-      // a prior (crashed) attempt already transferred this grant into a durable tool computation —
-      // this delivery is now redundant; consume it without re-running the tool (idempotent replay)
-      deleteDeliveryIfPresent(key, version);
-      return;
-    }
+    Substrate.Op deleteOp = new Substrate.Op.DeleteDocument(OUTBOX_KIND, key, currentVersion);
 
     ToolCallExecutor executor = harness.toolExecutor(harness.bind(id));
-    ToolExecution result = executor.executeGrantedToolNow(routing.call(), address, invocation);
+    ToolExecution result =
+        executor.executeGrantedToolNow(routing.call(), address, invocation, Optional.of(deleteOp));
     switch (result) {
       case ToolExecution.Immediate(ToolOutcome outcome) ->
-          foldGrantedResult(type, id, routing.call(), outcome, key, version);
-      case ToolExecution.Deferred(_) ->
-          // onDeferred already made the tool computation durable (see javadoc above); the grant
-          // delivery's job is done
-          deleteDeliveryIfPresent(key, version);
-    }
-  }
-
-  private void deleteDeliveryIfPresent(String key, long version) {
-    try {
-      store.delete(OUTBOX_KIND, key, version);
-    } catch (ConflictException _) {
-      // another drain already delivered this delivery
+          foldGrantedResult(type, id, routing.call(), outcome, key);
+      case ToolExecution.Deferred(_) -> {
+        // the transfer batch already committed [create tool computation, delete delivery] inside
+        // onDeferred, using the deleteOp above — nothing left to do here
+      }
     }
   }
 
@@ -305,15 +313,12 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * The immediate arm of a grant (spec §5a): the tool already ran, synchronously, and its outcome
    * is in hand — so the grant delivery is consumed by the RESULT's own fold-advance batch, the same
    * shape {@link #deliverCompletion} uses, sourced from a directly-computed outcome instead of a
-   * decoded outbox document, and deleting the GRANT delivery (not re-deriving a completion one).
+   * decoded outbox document, and deleting the GRANT delivery (not re-deriving a completion one) at
+   * whatever version it currently reads at — always the claimed one, since {@link #deliverGrant}
+   * claims before ever reaching here.
    */
   private void foldGrantedResult(
-      AgentType type,
-      AgentId id,
-      ToolCall call,
-      ToolOutcome outcome,
-      String deliveryKey,
-      long deliveryVersion) {
+      AgentType type, AgentId id, ToolCall call, ToolOutcome outcome, String deliveryKey) {
     requirePlainSubstrateMemory(id);
     while (true) {
       Optional<Substrate.Document> deliveryDoc = store.read(OUTBOX_KIND, deliveryKey);
@@ -451,14 +456,29 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   /**
    * {@code RETRYABLE} overdue: CAS-bump the deadline, then redispatch the same {@code
    * ToolInvocationId} through {@link
-   * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool} — the post-gate door, since
-   * this call already cleared the gate when it first deferred (spec §5a, §6). A lost CAS means
-   * another worker already bumped or completed this computation first; this sweep backs off rather
-   * than double-dispatching.
+   * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} — the post-gate door,
+   * synchronously on this sweep's own thread, since this call already cleared the gate when it
+   * first deferred (spec §5a, §6). A lost CAS on the bump means another worker already bumped or
+   * completed this computation first; this sweep backs off rather than double-dispatching.
+   *
+   * <p>F2: a {@code RETRYABLE} tool that answers immediately on redispatch ({@link Awaited.Ready})
+   * must not orphan its own computation — an unbounded reaper loop and an ever-growing computation
+   * table otherwise, since nothing would ever delete it. The immediate outcome is completed
+   * straight into the pipeline here — {@code computations.complete(id, outcome)} then {@link
+   * #nudge()} — exactly as the normal delivery arm folds any other completion.
    */
   private void reapRetryable(
       String key, long version, PendingDocument pending, ScopeRouting.Routing routing) {
-    Instant bumped = Instant.now().plus(routing.timeout().orElse(Duration.ZERO));
+    Duration timeout =
+        routing
+            .timeout()
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "a RETRYABLE overdue computation had a deadline but no timeout on its"
+                            + " continuation — invariant violated: a deadline implies a timeout"
+                            + " (durable-deliveries spec §6)"));
+    Instant bumped = Instant.now().plus(timeout);
     byte[] payload =
         codec
             .toJson(
@@ -470,22 +490,26 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     } catch (ConflictException _) {
       return; // another worker's bump or completion won the race
     }
-    AgentType type = AgentType.of(routing.agentType());
-    AgentId agentId = AgentId.of(routing.agentId());
     CallAddress address =
         new CallAddress(
             routing.agentType(),
             routing.agentId(),
             pending.invocation().responseId(),
             routing.call().id());
-    Binding<O> binding = harness.bind(agentId);
-    harness
-        .toolExecutor(binding)
-        .executeGrantedTool(
-            routing.call(),
-            address,
-            pending.invocation(),
-            event -> binder.deliver(type, agentId, event));
+    Binding<O> binding = harness.bind(AgentId.of(routing.agentId()));
+    ToolExecution result =
+        harness
+            .toolExecutor(binding)
+            .executeGrantedToolNow(routing.call(), address, pending.invocation(), Optional.empty());
+    switch (result) {
+      case ToolExecution.Immediate(ToolOutcome outcome) -> {
+        computations.complete(ComputationId.of(key), DurableOutcomes.toOutcome(outcome));
+        nudge(); // the result rides the normal delivery pipeline into the fold (spec §6)
+      }
+      case ToolExecution.Deferred(_) -> {
+        // re-parked; already durable via its own create() inside onDeferred
+      }
+    }
   }
 
   /**

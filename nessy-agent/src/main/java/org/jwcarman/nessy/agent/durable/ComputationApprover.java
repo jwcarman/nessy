@@ -45,9 +45,9 @@ import org.jwcarman.nessy.spi.approval.Approver;
  * (presence-means-pending leaves no residue to read here) — that redrive used to reach this class,
  * find absence, and treat it as a fresh ask, re-creating and re-notifying. It no longer reaches
  * here: {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s gate checks {@link
- * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#isPending} on the TOOL computation id first
- * (a grant that ran to a durable tool leaves that id present) and absorbs there, before this
- * approver — or the tool — ever runs again.
+ * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#pendingComputation} on the TOOL computation
+ * id first (a grant that ran to a durable tool leaves that id present) and absorbs there, before
+ * this approver — or the tool — ever runs again.
  *
  * <p>{@code invocation}'s {@code responseId} component is the real, committed {@code
  * ModelResponseId} — read off the address the gate stamps before the approval is ever asked

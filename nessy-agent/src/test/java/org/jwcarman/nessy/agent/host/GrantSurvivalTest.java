@@ -174,4 +174,131 @@ class GrantSurvivalTest {
     assertThat(transcript.get(2).content())
         .contains(new ToolResultBlock("c1", "restarted prod-eu", false));
   }
+
+  static final class DeferredRestartTool implements Tool<RestartInput> {
+    @Override
+    public String name() {
+      return "restart_prod";
+    }
+
+    @Override
+    public String description() {
+      return "restarts production; requires human approval; answers durably";
+    }
+
+    @Override
+    public Class<RestartInput> inputType() {
+      return RestartInput.class;
+    }
+
+    @Override
+    public CompletionPolicy requiredCompletion() {
+      return CompletionPolicy.DURABLE;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(RestartInput input, ToolContext context) {
+      return Awaited.deferred();
+    }
+  }
+
+  /**
+   * The deferred shape of the grant arm, end-to-end through real host machinery (spec §5a
+   * transfer-then-dispatch): the granted tool genuinely defers, so the grant's transfer batch is
+   * {@code [create tool computation, delete delivery]} rather than the immediate arm's fold-advance
+   * batch. The eventual answer arrives through the normal completion door — {@link
+   * org.jwcarman.nessy.agent.durable.CompletionDesk}, addressed by the SAME deterministic {@code
+   * ComputationId} the approval request's own address derives — and folds through host B exactly
+   * like any other durable completion.
+   */
+  @Test
+  @Timeout(30)
+  void theDeferredGrantArmTransfersThenDispatchesAndTheEventualAnswerFolds()
+      throws InterruptedException {
+    var substrate = new InMemorySubstrate();
+    var mapper = TestMappers.plainlyPinned();
+    var call =
+        new ToolCall(
+            "c1", "restart_prod", JsonNodeFactory.instance.objectNode().put("target", "prod-eu"));
+
+    var pumpA = new PumpedExecutor();
+    var providerA =
+        new ScriptedModelProvider(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
+    var requestsA = new CopyOnWriteArrayList<ApprovalRequest>();
+
+    ApprovalRequest firstAsk;
+    try (var hostA =
+        Nessy.autonomous()
+            .type("ops")
+            .provider(providerA)
+            .settings(TestSettings.settings())
+            .grants(
+                ToolGrant.grant(
+                    new DeferredRestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+            .substrate(substrate)
+            .approvalNotifier(requestsA::add)
+            .executor(pumpA)
+            .build()) {
+
+      hostA.post("prod-eu", "please restart prod-eu");
+      pumpA.pumpUntilQuiet();
+      assertThat(requestsA).hasSize(1);
+      firstAsk = requestsA.getFirst();
+
+      var backendOverSameSubstrate = new SubstrateComputations(substrate, mapper);
+      backendOverSameSubstrate.complete(firstAsk.address().approval(), DurableDecisions.granted());
+    }
+    // hostA never nudged its own worker — the grant survives purely as substrate state.
+
+    var pumpB = new PumpedExecutor();
+    var providerB =
+        new ScriptedModelProvider(
+            List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
+    var requestsB = new CopyOnWriteArrayList<ApprovalRequest>();
+    var toolComputation = firstAsk.address().execution();
+
+    try (var hostB =
+        Nessy.autonomous()
+            .type("ops")
+            .provider(providerB)
+            .settings(TestSettings.settings())
+            .grants(
+                ToolGrant.grant(
+                    new DeferredRestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+            .substrate(substrate)
+            .approvalNotifier(requestsB::add)
+            .executor(pumpB)
+            .build()) {
+
+      // Host B's own heartbeat picks up the grant, transfers it (create tool computation, delete
+      // delivery — one batch), and dispatches the tool, which defers again — durably, this time.
+      long transferDeadline = System.currentTimeMillis() + 20_000;
+      while (substrate.read("computation", toolComputation.value()).isEmpty()
+          && System.currentTimeMillis() < transferDeadline) {
+        Thread.sleep(50);
+        pumpB.pumpUntilQuiet();
+      }
+      assertThat(substrate.read("computation", toolComputation.value())).isPresent();
+      assertThat(substrate.keys("outbox", 10)).isEmpty(); // the grant delivery is gone
+      assertThat(requestsB).isEmpty(); // no re-ask
+
+      // The eventual external answer arrives through the normal completion door.
+      hostB.completions().complete(toolComputation, ToolResult.ok("restarted prod-eu"));
+
+      long foldDeadline = System.currentTimeMillis() + 20_000;
+      var state = new SubstrateAgentStateStore(substrate, "prod-eu", Clock.systemUTC(), mapper);
+      while (!(state.load().phase() instanceof Phase.Idle)
+          && System.currentTimeMillis() < foldDeadline) {
+        Thread.sleep(50);
+        pumpB.pumpUntilQuiet();
+      }
+      assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+    }
+
+    var memory = new SubstrateMemory(substrate, "prod-eu", mapper);
+    List<Message> transcript = memory.recall().messages();
+    assertThat(transcript).hasSizeGreaterThanOrEqualTo(3);
+    assertThat(transcript.get(2).content())
+        .contains(new ToolResultBlock("c1", "restarted prod-eu", false));
+  }
 }

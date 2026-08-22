@@ -53,6 +53,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -116,6 +117,49 @@ class ReaperTest {
     }
   }
 
+  /**
+   * Parks on the first invocation, answers {@link Awaited#ready} on every subsequent one — F2: a
+   * {@code RETRYABLE} tool that answers immediately on redispatch must not orphan its own
+   * computation.
+   */
+  private static final class RecordingParkThenReadyTool implements Tool<NoInput> {
+    private final List<ToolInvocationId> invocations = new CopyOnWriteArrayList<>();
+
+    @Override
+    public String name() {
+      return "durable_op";
+    }
+
+    @Override
+    public String description() {
+      return "parks once, then answers immediately on redispatch";
+    }
+
+    @Override
+    public Class<NoInput> inputType() {
+      return NoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+      invocations.add(context.invocationId());
+      if (invocations.size() == 1) {
+        return Awaited.deferred();
+      }
+      return Awaited.ready(ToolResult.ok("done"));
+    }
+
+    @Override
+    public RetrySemantics retrySemantics() {
+      return RetrySemantics.RETRYABLE;
+    }
+
+    @Override
+    public Optional<Duration> timeout() {
+      return Optional.of(Duration.ofMillis(1));
+    }
+  }
+
   private static final class QueueBacklog implements Backlog<String> {
     private final java.util.Deque<String> queue = new java.util.ArrayDeque<>();
 
@@ -139,7 +183,7 @@ class ReaperTest {
       PumpedExecutor pump) {}
 
   /** A very long poll interval: the heartbeat thread never fires on its own in these tests. */
-  private static World worldFor(RecordingParkingTool tool, Substrate substrate) {
+  private static World worldFor(Tool<NoInput> tool, Substrate substrate) {
     var mapper = TestMappers.plainlyPinned();
     var memory = new SubstrateMemory(substrate, "test-scope", mapper);
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
@@ -271,5 +315,37 @@ class ReaperTest {
 
     assertThat(tool.invocations).hasSize(2);
     assertThat(Set.copyOf(tool.invocations)).hasSize(1); // still the same invocation id
+  }
+
+  /**
+   * F2: a {@code RETRYABLE} tool answering immediately on redispatch must not orphan its own
+   * computation — the reaper completes it straight into the pipeline instead of leaving it behind
+   * for an unbounded reap loop and an ever-growing computation table.
+   */
+  @Test
+  void aRetryableToolThatAnswersImmediatelyOnRedispatchConsumesItsOwnComputation()
+      throws InterruptedException {
+    var tool = new RecordingParkThenReadyTool();
+    var world = worldFor(tool, new InMemorySubstrate());
+
+    world.agent().observe("go");
+    world.pump().pumpUntilQuiet();
+    assertThat(tool.invocations).hasSize(1);
+    Thread.sleep(5); // let the 1ms timeout genuinely elapse
+
+    var computations = new SubstrateComputations(world.substrate(), TestMappers.plainlyPinned());
+    String key = world.substrate().keys("computation", 10).getFirst();
+
+    world.worker().reapOnce(); // redispatches; the tool answers Ready this time
+    world.pump().pumpUntilQuiet();
+
+    assertThat(tool.invocations).hasSize(2);
+    assertThat(computations.find(ComputationId.of(key))).isEmpty(); // consumed, not orphaned
+    assertThat(world.store().load().phase()).isEqualTo(new Phase.Idle());
+
+    world.worker().reapOnce(); // nothing left to reap
+    world.pump().pumpUntilQuiet();
+
+    assertThat(tool.invocations).hasSize(2); // not invoked a third time
   }
 }

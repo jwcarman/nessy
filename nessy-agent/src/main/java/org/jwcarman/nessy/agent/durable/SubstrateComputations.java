@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.durable;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -82,17 +83,56 @@ public final class SubstrateComputations implements DurableComputationBackend {
       ToolInvocationId invocation,
       Continuation returnAddress,
       Optional<Instant> deadline) {
+    return create(id, invocation, returnAddress, deadline, List.of());
+  }
+
+  /**
+   * The T2/T3-sanctioned ops seam (durable-deliveries spec §5a invariant 5): {@code alsoCommit}
+   * rides the SAME {@link Substrate#batch} as the computation's own creation — the grant arm's
+   * transfer-then-dispatch shape composes this with a grant delivery's {@code DeleteDocument} so
+   * the two either both land or neither does. Package-visible only: {@code alsoCommit} carries raw
+   * {@link Substrate.Op}s, meaningless to a foreign {@link DurableComputationBackend}, so this
+   * never becomes part of that public seam.
+   */
+  CreateResult create(
+      ComputationId id,
+      ToolInvocationId invocation,
+      Continuation returnAddress,
+      Optional<Instant> deadline,
+      List<Substrate.Op> alsoCommit) {
+    Objects.requireNonNull(id, ID_NULL_MESSAGE);
+    Objects.requireNonNull(invocation, "invocation must not be null");
+    Objects.requireNonNull(returnAddress, "returnAddress must not be null");
+    Objects.requireNonNull(deadline, "deadline must not be null");
+    Objects.requireNonNull(alsoCommit, "alsoCommit must not be null");
+    List<Substrate.Op> ops = new ArrayList<>(alsoCommit.size() + 1);
+    ops.add(createOp(id, invocation, returnAddress, deadline));
+    ops.addAll(alsoCommit);
+    try {
+      store.batch(ops);
+      return new CreateResult(id, true);
+    } catch (ConflictException _) {
+      return new CreateResult(id, false);
+    }
+  }
+
+  /**
+   * The bare {@code WriteDocument} op for {@code id}'s creation, unexecuted — the other half of the
+   * ops seam: a caller composing its own batch (spec §5a's transfer-then-dispatch) reads this, adds
+   * whatever else must land atomically alongside it, and commits the batch itself.
+   */
+  Substrate.Op createOp(
+      ComputationId id,
+      ToolInvocationId invocation,
+      Continuation returnAddress,
+      Optional<Instant> deadline) {
     Objects.requireNonNull(id, ID_NULL_MESSAGE);
     Objects.requireNonNull(invocation, "invocation must not be null");
     Objects.requireNonNull(returnAddress, "returnAddress must not be null");
     Objects.requireNonNull(deadline, "deadline must not be null");
     String payload = codec.toJson(new PendingDocument(invocation, returnAddress, deadline));
-    try {
-      store.write(COMPUTATION_KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
-      return new CreateResult(id, true);
-    } catch (ConflictException _) {
-      return new CreateResult(id, false);
-    }
+    return new WriteDocument(
+        COMPUTATION_KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
   }
 
   @Override

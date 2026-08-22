@@ -358,7 +358,7 @@ class RegistryToolCallExecutorTest {
             AgentId.of("cli"),
             turn,
             pump,
-            (parkedCall, address, invocation, retrySemantics, timeout) ->
+            (parkedCall, address, invocation, retrySemantics, timeout, alsoCommit) ->
                 new ToolExecution.Deferred(ComputationId.of("tool:test:cli:r1:c1")),
             TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
@@ -378,7 +378,7 @@ class RegistryToolCallExecutorTest {
   }
 
   private DeferredToolCallPolicy neverParks() {
-    return (parkedCall, address, invocation, retrySemantics, timeout) -> {
+    return (parkedCall, address, invocation, retrySemantics, timeout, alsoCommit) -> {
       throw new AssertionError("no tool in this test defers");
     };
   }

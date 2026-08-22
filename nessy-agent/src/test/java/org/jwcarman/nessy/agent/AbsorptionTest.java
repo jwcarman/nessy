@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -47,6 +48,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
@@ -100,6 +102,16 @@ class AbsorptionTest {
     }
   }
 
+  private static final class CountingRequireApprovalPolicy implements UsagePolicy {
+    final AtomicInteger evaluations = new AtomicInteger();
+
+    @Override
+    public PolicyDecision evaluate(AuthzContext context) {
+      evaluations.incrementAndGet();
+      return new PolicyDecision.RequireApproval();
+    }
+  }
+
   @Test
   void aStalenessRedriveOverAPendingApprovalAndAGrantedInFlightToolAbsorbsBoth() {
     var mapper = TestMappers.plainlyPinned();
@@ -111,7 +123,8 @@ class AbsorptionTest {
     var approver = new ComputationApprover(backend, notifications::add, mapper);
     var deferredPolicy = new ComputationDeferredToolCallPolicy(backend, mapper);
     var tool = new RecordingTool();
-    var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
+    var policy = new CountingRequireApprovalPolicy();
+    var registry = ToolRegistry.of(ToolGrant.grant(tool, policy));
     var pump = new PumpedExecutor();
     var narrator = new RecordingTurnObserver();
 
@@ -164,5 +177,10 @@ class AbsorptionTest {
 
     assertThat(notifications).hasSize(1); // c1's first ask only — never a second, never for c2
     assertThat(tool.invocations).hasValue(0); // neither call ever reached the tool
+    // F3: the policy itself is not re-evaluated on the redrive that lands while c1's approval is
+    // still pending — a non-constant policy that flipped to Allow between the two redrives must
+    // not get the chance to double-execute the tool. Evaluated once, for c1's first (fresh) ask;
+    // c2 never reaches the policy at all, since its work is already durably in flight.
+    assertThat(policy.evaluations).hasValue(1);
   }
 }

@@ -20,7 +20,9 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ToolInvocationId;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * What a wiring does when a tool defers (spec §4.3). {@link ToolExecution.Deferred} means the call
@@ -34,6 +36,13 @@ import org.jwcarman.nessy.durable.ToolInvocationId;
  * stamp its deadline: {@code invocation} carries the real, committed {@code ModelResponseId} paired
  * with the call's id; {@code retrySemantics} and {@code timeout} come straight from the tool's
  * {@code Tool#retrySemantics()}/{@code Tool#timeout()}.
+ *
+ * <p>{@code alsoCommit} is the grant arm's transfer-then-dispatch door (spec §5a invariant 5): when
+ * present, an implementation that can (a {@link Substrate}-backed one) must commit it in the SAME
+ * atomic batch as the computation's own creation — a grant delivery's own removal, riding alongside
+ * so the two either both land or neither does. Every non-grant dispatch passes {@link
+ * Optional#empty()}; an implementation with nothing to batch into (a foreign engine) is free to
+ * ignore it, at the cost of the atomicity guarantee this door exists to close.
  */
 @FunctionalInterface
 public interface DeferredToolCallPolicy {
@@ -43,20 +52,22 @@ public interface DeferredToolCallPolicy {
       CallAddress address,
       ToolInvocationId invocation,
       RetrySemantics retrySemantics,
-      Optional<Duration> timeout);
+      Optional<Duration> timeout,
+      Optional<Substrate.Op> alsoCommit);
 
   /**
-   * Ownership-split absorption (durable-deliveries spec §5a, §6): true when {@code address}'s tool
-   * computation is already durably pending — the work is in flight, dispatched by an earlier pass
-   * through this exact gate. The gate checks this BEFORE running the tool or asking the policy at
-   * all, so a staleness redrive that reaches a call whose work has already gone durable absorbs
-   * silently: no external re-dispatch, no re-run of the tool's own side effect, no second approval
-   * ask (the approver is never even reached). The default answers {@code false} — a wiring with
-   * nothing durable to check has nothing to absorb; {@link
+   * Ownership-split absorption (durable-deliveries spec §5a, §6): the id of whichever computation —
+   * approval or execution — is already durably pending for {@code address}, if either is. The gate
+   * checks this BEFORE running the tool, assembling enrichers, or asking the policy at all, so a
+   * staleness redrive that reaches a call whose ask is still pending, or whose work has already
+   * gone durable, absorbs silently: no re-run of enrichers or policy (a non-constant policy that
+   * would now decide {@code Allow} never gets the chance to double-execute), no re-run of the
+   * tool's own side effect, no second approval ask (the approver is never even reached). The
+   * default answers empty — a wiring with nothing durable to check has nothing to absorb; {@link
    * org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy} is the one implementation
    * that answers meaningfully.
    */
-  default boolean isPending(CallAddress address) {
-    return false;
+  default Optional<ComputationId> pendingComputation(CallAddress address) {
+    return Optional.empty();
   }
 }

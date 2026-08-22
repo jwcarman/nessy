@@ -57,7 +57,8 @@ final class ScopeRouting {
    */
   static Continuation continuationFor(
       ObjectMapper mapper, String agentType, String agentId, String responseId, ToolCall call) {
-    return continuationFor(mapper, agentType, agentId, responseId, call, null, Optional.empty());
+    return writeCommon(
+        mapper, agentType, agentId, responseId, call, Optional.empty(), Optional.empty());
   }
 
   /**
@@ -75,6 +76,22 @@ final class ScopeRouting {
       ToolCall call,
       RetrySemantics retrySemantics,
       Optional<Duration> timeout) {
+    return writeCommon(
+        mapper, agentType, agentId, responseId, call, Optional.of(retrySemantics), timeout);
+  }
+
+  /**
+   * No null sentinels: the approval door's absent {@code retrySemantics} is {@link
+   * Optional#empty()}.
+   */
+  private static Continuation writeCommon(
+      ObjectMapper mapper,
+      String agentType,
+      String agentId,
+      String responseId,
+      ToolCall call,
+      Optional<RetrySemantics> retrySemantics,
+      Optional<Duration> timeout) {
     ObjectNode data = mapper.createObjectNode();
     data.put(AGENT_TYPE_FIELD, agentType);
     data.put(AGENT_ID_FIELD, agentId);
@@ -83,9 +100,7 @@ final class ScopeRouting {
     callNode.put(CALL_ID_FIELD, call.id());
     callNode.put(CALL_NAME_FIELD, call.name());
     callNode.set(ARGUMENTS_FIELD, call.arguments());
-    if (retrySemantics != null) {
-      data.put(RETRY_SEMANTICS_FIELD, retrySemantics.name());
-    }
+    retrySemantics.ifPresent(r -> data.put(RETRY_SEMANTICS_FIELD, r.name()));
     timeout.ifPresent(t -> data.put(TIMEOUT_MILLIS_FIELD, t.toMillis()));
     return new Continuation(TYPE, data.toString());
   }

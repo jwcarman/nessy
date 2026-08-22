@@ -15,10 +15,12 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
+import java.util.Optional;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.ToolInvocationId;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * Tool execution: async by contract. The sink is handed per dispatch, lives one dispatch, and is
@@ -32,33 +34,31 @@ public interface ToolCallExecutor {
   void executeTool(ToolCall call, ModelResponseId responseId, Sink sink);
 
   /**
-   * The post-gate door (durable-deliveries spec §5a, §6): dispatches {@code call} straight to the
-   * tool with an already-known {@code address}/{@code invocation}, skipping the policy/approval
-   * gate entirely. Used only where the gate has already run for this exact invocation — a granted
-   * approval's tool call, or the reaper's redispatch of a {@code RETRYABLE} overdue computation —
-   * never for a fresh dispatch. The default falls back to a fresh, gate-checked dispatch (correct
-   * for any {@link ToolCallExecutor} that has no gate to skip, e.g. test doubles); {@link
-   * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} is the one implementation that actually
-   * bypasses its gate here.
-   */
-  default void executeGrantedTool(
-      ToolCall call, CallAddress address, ToolInvocationId invocation, Sink sink) {
-    executeTool(call, ModelResponseId.of(invocation.responseId()), sink);
-  }
-
-  /**
    * The synchronous post-gate door (durable-deliveries spec §5a invariant 5): runs {@code call}
-   * straight to the tool, skipping the policy/approval gate exactly like {@link
-   * #executeGrantedTool}, but on the CALLING thread and returning the {@link ToolExecution}
-   * directly instead of delivering asynchronously. {@link
-   * org.jwcarman.nessy.agent.durable.DeliveryWorker}'s grant arm needs the outcome in hand before
-   * it decides which atomic batch to commit — an immediate outcome rides the result's own
-   * fold-advance batch, a deferred one means the durable computation is already the owner — so this
-   * is the one door that may not hand off to an executor. The default throws: only {@link
-   * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} implements this meaningfully.
+   * straight to the tool, skipping the policy/approval gate entirely, on the CALLING thread,
+   * returning the {@link ToolExecution} directly rather than delivering asynchronously. Used only
+   * where the gate has already run for this exact invocation — a granted approval's tool call, or
+   * the reaper's redispatch of a {@code RETRYABLE} overdue computation — never for a fresh
+   * dispatch. Callers need the outcome in hand, synchronously, before they decide what to commit:
+   * {@link org.jwcarman.nessy.agent.durable.DeliveryWorker}'s grant arm decides which atomic batch
+   * to build from it, and the reaper decides whether to fold an immediate answer straight into the
+   * pipeline (spec §6) rather than leave its computation orphaned.
+   *
+   * <p>{@code alsoCommit} is the transfer-then-dispatch door (spec §5a invariant 5): when present
+   * and the invocation defers, an implementation that can must commit {@code alsoCommit} in the
+   * SAME atomic batch as the durable computation's own creation — BEFORE the tool's {@code
+   * execute()} is ever called, so the transfer is what claims the work, not a side effect of having
+   * run it. This is simultaneously the crash-safety property (a crash before the batch commits
+   * leaves nothing to duplicate) and the single-winner property (two concurrent claimants racing
+   * the same batch leave exactly one committed). The default throws: only {@link
+   * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} implements this meaningfully, and
+   * nothing calls it on a {@link ToolCallExecutor} without a gate to skip.
    */
   default ToolExecution executeGrantedToolNow(
-      ToolCall call, CallAddress address, ToolInvocationId invocation) {
+      ToolCall call,
+      CallAddress address,
+      ToolInvocationId invocation,
+      Optional<Substrate.Op> alsoCommit) {
     throw new UnsupportedOperationException(
         "this ToolCallExecutor does not support synchronous granted execution");
   }
