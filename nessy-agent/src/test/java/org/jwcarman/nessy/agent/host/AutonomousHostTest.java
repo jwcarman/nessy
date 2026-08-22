@@ -37,6 +37,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
@@ -419,6 +420,95 @@ class AutonomousHostTest {
         .isNotEmpty()
         .anyMatch(m -> m.content().contains(new TextBlock("message one")))
         .anyMatch(m -> m.content().contains(new TextBlock("reply one")));
+  }
+
+  /**
+   * Task 5 (bytes-and-codecs): observations are typed — {@code Nessy.autonomous(Class)} opens the
+   * typed door, the backlog codec defaults to {@code Codec.json(pinned, observationType)} (spec
+   * §6.4).
+   */
+  @Nested
+  class TypedObservations {
+
+    record Note(String text, int priority) {}
+
+    /**
+     * The headline claim: a typed observation posted while its scope is busy sits in the {@code
+     * backlog} document — not drained, not lost — and is still there for a SECOND host, built later
+     * over the same substrate, knowing nothing about the first. Host A primes the scope busy with
+     * one observation (drained synchronously into an {@code AwaitingModel} turn its own, never-
+     * pumped executor leaves permanently stuck) then posts the record under test, which {@code
+     * drive()} declines to drain because the scope isn't {@code Idle}. Host A is then abandoned.
+     * Host B — a fresh host, fresh executor, fresh provider — is built over that same {@link
+     * Substrate} with a staleness policy that treats the stuck phase as stale immediately, so one
+     * {@code drive()} call re-fires host A's stranded model call; that turn's completion lands the
+     * scope back at {@code Idle}, which (by the recipe's own {@code drainOnIdle} wiring) triggers
+     * the backlog drain that finally renders the pending {@code Note} — round-tripped through the
+     * queue's {@code Codec<Note>} — and drives its own scripted turn.
+     */
+    @Test
+    void aTypedRecordObservationSurvivesTheBacklogAcrossHostsAndDrivesAScriptedTurnOnHostB() {
+      var substrate = new InMemorySubstrate();
+      var scopeId = "scope-1";
+
+      var pumpA = new PumpedExecutor();
+      var providerA =
+          new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply to prime"))));
+      var hostA =
+          Nessy.autonomous(Note.class)
+              .provider(providerA)
+              .settings(TestSettings.settings())
+              .executor(pumpA)
+              .substrate(substrate)
+              .renderer(note -> List.of(new TextBlock(note.text())))
+              .build();
+
+      // Primes the scope busy: drained synchronously (Idle -> AwaitingModel) as part of post()
+      // itself, dispatching a model-call effect onto pumpA — never pumped below, so host A's turn
+      // never completes and the scope is left stuck at AwaitingModel.
+      hostA.post(scopeId, new Note("prime", 1));
+
+      var pending = new Note("check the oven", 3);
+      // The scope isn't Idle any more, so drive() declines to drain this one — it sits in the
+      // backlog document, the claim under test.
+      hostA.post(scopeId, pending);
+      // hostA is abandoned here: pumpA is never pumped.
+
+      var pumpB = new PumpedExecutor();
+      var providerB =
+          new ScriptedModelProvider(
+              List.of(
+                  List.of(new ModelEvent.TextChunk("reply to prime")),
+                  List.of(new ModelEvent.TextChunk("reply to pending"))));
+      var hostB =
+          Nessy.autonomous(Note.class)
+              .provider(providerB)
+              .settings(TestSettings.settings())
+              .executor(pumpB)
+              .substrate(substrate)
+              .renderer(note -> List.of(new TextBlock(note.text())))
+              .staleness((phase, lastSaved) -> true)
+              .build();
+
+      // No new observation posted on host B — drive() alone re-fires host A's stuck turn; its
+      // completion then drains the pending Note by the recipe's own drainOnIdle wiring.
+      hostB.agentFor(AgentId.of(scopeId)).drive();
+      pumpB.pumpUntilQuiet();
+
+      var memory = new SubstrateMemory(substrate, scopeId, TestMappers.plainlyPinned());
+      List<Message> messages = memory.recall().messages();
+      assertThat(messages)
+          .isNotEmpty()
+          .anyMatch(m -> m.content().contains(new TextBlock("prime")))
+          .anyMatch(m -> m.content().contains(new TextBlock("reply to prime")))
+          .anyMatch(m -> m.content().contains(new TextBlock("check the oven")))
+          .anyMatch(m -> m.content().contains(new TextBlock("reply to pending")));
+
+      var state =
+          new SubstrateAgentStateStore(
+              substrate, scopeId, Clock.systemUTC(), TestMappers.plainlyPinned());
+      assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+    }
   }
 
   /**

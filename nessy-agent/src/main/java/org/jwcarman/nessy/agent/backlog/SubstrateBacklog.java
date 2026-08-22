@@ -19,43 +19,54 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * The {@code backlog} recipe (substrate spec §6.4): one document per scope, keyed by {@code
- * agentId}, holding the pending observations as a plain JSON array of strings — no codec involved,
- * just Jackson. An absent document reads as an empty queue; the document is created lazily on the
- * first {@link #add(String)}. {@code add}/{@code poll} are read-mutate-CAS-retry loops; a full
+ * agentId}, holding the pending observations as a JSON array of strings — each element the base64
+ * of one observation's {@link Codec#encode(Object)}, uniform regardless of what {@code codec}
+ * actually is. An absent document reads as an empty queue; the document is created lazily on the
+ * first {@link #add(Object)}. {@code add}/{@code poll} are read-mutate-CAS-retry loops; a full
  * queue is rejected with an {@link IllegalStateException}, the bound the deleted {@code
  * BoundedBacklog} used to enforce (spec §12).
+ *
+ * <p>The outer array-of-strings envelope is structural, not domain, JSON — it is bound through a
+ * plain, un-pinned {@link ObjectMapper} private to this class, never the caller's mapper; only the
+ * elements' meaning is caller-controlled, through {@code codec}.
+ *
+ * @param <O> the observation vocabulary this backlog holds
  */
-public final class SubstrateBacklog implements Backlog<String> {
+public final class SubstrateBacklog<O> implements Backlog<O> {
 
   private static final String KIND = "backlog";
+  private static final ObjectMapper ENVELOPE_MAPPER = new ObjectMapper();
 
   private final Substrate store;
   private final String agentId;
   private final int capacity;
-  private final ObjectMapper mapper;
+  private final Codec<O> codec;
 
-  public SubstrateBacklog(Substrate store, String agentId, int capacity, ObjectMapper mapper) {
+  public SubstrateBacklog(Substrate store, String agentId, int capacity, Codec<O> codec) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     if (capacity < 1) {
       throw new IllegalArgumentException("capacity must be at least 1: " + capacity);
     }
     this.capacity = capacity;
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.codec = Objects.requireNonNull(codec, "codec must not be null");
   }
 
   @Override
-  public void add(String observation) {
+  public void add(O observation) {
     Objects.requireNonNull(observation, "observation must not be null");
+    String encoded = Base64.getEncoder().encodeToString(codec.encode(observation));
     while (true) {
       Optional<Substrate.Document> doc = store.read(KIND, agentId);
       List<String> queue =
@@ -64,7 +75,7 @@ public final class SubstrateBacklog implements Backlog<String> {
       if (queue.size() >= capacity) {
         throw new IllegalStateException("backlog full (capacity " + capacity + ")");
       }
-      queue.add(observation);
+      queue.add(encoded);
       long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
       try {
         store.write(
@@ -77,7 +88,7 @@ public final class SubstrateBacklog implements Backlog<String> {
   }
 
   @Override
-  public Optional<String> poll() {
+  public Optional<O> poll() {
     while (true) {
       Optional<Substrate.Document> doc = store.read(KIND, agentId);
       if (doc.isEmpty()) {
@@ -91,7 +102,7 @@ public final class SubstrateBacklog implements Backlog<String> {
       try {
         store.write(
             KIND, agentId, writeQueue(queue).getBytes(StandardCharsets.UTF_8), doc.get().version());
-        return Optional.of(head);
+        return Optional.of(codec.decode(Base64.getDecoder().decode(head)));
       } catch (ConflictException e) {
         // another writer changed the queue between our read and our write; retry
       }
@@ -100,7 +111,7 @@ public final class SubstrateBacklog implements Backlog<String> {
 
   private List<String> readQueue(String payload) {
     try {
-      String[] values = mapper.readValue(payload, String[].class);
+      String[] values = ENVELOPE_MAPPER.readValue(payload, String[].class);
       return new ArrayList<>(List.of(values));
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("malformed backlog payload", e);
@@ -109,7 +120,7 @@ public final class SubstrateBacklog implements Backlog<String> {
 
   private String writeQueue(List<String> queue) {
     try {
-      return mapper.writeValueAsString(queue);
+      return ENVELOPE_MAPPER.writeValueAsString(queue);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("unwritable backlog payload", e);
     }

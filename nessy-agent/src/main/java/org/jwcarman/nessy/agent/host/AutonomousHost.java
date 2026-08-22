@@ -31,12 +31,12 @@ import org.jwcarman.nessy.agent.durable.CompletionDesk;
  * memory/store/backlog factories is what makes a stateless resolve correct — two binds for the same
  * id see the same world.
  */
-public final class AutonomousHost implements AutoCloseable {
+public final class AutonomousHost<O> implements AutoCloseable {
 
   private final ExecutorService owned;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
-  private final Harness<String> harness;
+  private final Harness<O> harness;
 
   /**
    * {@code owned} is null when the caller supplied its own executor — {@link #close()} then does
@@ -46,7 +46,7 @@ public final class AutonomousHost implements AutoCloseable {
       ExecutorService owned,
       ApprovalDesk approvals,
       CompletionDesk completions,
-      Harness<String> harness) {
+      Harness<O> harness) {
     this.owned = owned;
     this.approvals = Objects.requireNonNull(approvals, "approvals must not be null");
     this.completions = Objects.requireNonNull(completions, "completions must not be null");
@@ -54,8 +54,8 @@ public final class AutonomousHost implements AutoCloseable {
   }
 
   /** One observation through the front door; the scope drains it at Idle (spec §3.3). */
-  public void post(String agentId, String text) {
-    agentFor(AgentId.of(agentId)).observe(text);
+  public void post(String agentId, O observation) {
+    agentFor(AgentId.of(agentId)).observe(observation);
   }
 
   public ApprovalDesk approvals() {
@@ -66,7 +66,7 @@ public final class AutonomousHost implements AutoCloseable {
     return completions;
   }
 
-  DefaultAgent<String> agentFor(AgentId id) {
+  DefaultAgent<O> agentFor(AgentId id) {
     return new DefaultAgent<>(harness, harness.bind(id));
   }
 

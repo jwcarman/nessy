@@ -35,6 +35,7 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -344,7 +345,7 @@ class HarnessTest {
               id ->
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id -> new SubstrateBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
+              id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               b -> MODEL,
               b -> TOOLS);
 
@@ -378,7 +379,7 @@ class HarnessTest {
               id ->
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id -> new SubstrateBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
+              id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
               b -> MODEL,
               b -> TOOLS);
 

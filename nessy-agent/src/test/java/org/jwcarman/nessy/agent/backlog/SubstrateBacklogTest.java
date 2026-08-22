@@ -18,10 +18,16 @@ package org.jwcarman.nessy.agent.backlog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
+import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -30,21 +36,21 @@ class SubstrateBacklogTest {
   @Test
   void aNonPositiveCapacityIsRejected() {
     Substrate store = new InMemorySubstrate();
-    assertThatThrownBy(() -> new SubstrateBacklog(store, "agent-a", 0, TestMappers.plainlyPinned()))
+    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, TestCodecs.utf8String()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aFreshBacklogPollsEmpty() {
     var backlog =
-        new SubstrateBacklog(new InMemorySubstrate(), "agent-a", 2, TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
     assertThat(backlog.poll()).isEmpty();
   }
 
   @Test
   void addedObservationsPollInFifoOrder() {
     var backlog =
-        new SubstrateBacklog(new InMemorySubstrate(), "agent-a", 3, TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, TestCodecs.utf8String());
     backlog.add("a");
     backlog.add("b");
     backlog.add("c");
@@ -57,7 +63,7 @@ class SubstrateBacklogTest {
   @Test
   void addBeyondCapacityThrowsTheRejection() {
     var backlog =
-        new SubstrateBacklog(new InMemorySubstrate(), "agent-a", 2, TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
     backlog.add("a");
     backlog.add("b");
     assertThatThrownBy(() -> backlog.add("c"))
@@ -68,7 +74,7 @@ class SubstrateBacklogTest {
   @Test
   void pollingFreesCapacity() {
     var backlog =
-        new SubstrateBacklog(new InMemorySubstrate(), "agent-a", 2, TestMappers.plainlyPinned());
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
     backlog.add("a");
     backlog.add("b");
     assertThat(backlog.poll()).contains("a");
@@ -81,8 +87,8 @@ class SubstrateBacklogTest {
   @Test
   void twoViewsOverOneSubstrateShareTheQueue() {
     Substrate store = new InMemorySubstrate();
-    var writer = new SubstrateBacklog(store, "agent-a", 4, TestMappers.plainlyPinned());
-    var reader = new SubstrateBacklog(store, "agent-a", 4, TestMappers.plainlyPinned());
+    var writer = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
+    var reader = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
 
     writer.add("first");
     writer.add("second");
@@ -95,9 +101,8 @@ class SubstrateBacklogTest {
   @Test
   void addRetriesAfterLosingAWriteConflictAndTheElementStillLands() {
     Substrate raceStore =
-        new RaceOnceOnWriteSubstrate(
-            new InMemorySubstrate(), "[\"raced-in\"]".getBytes(StandardCharsets.UTF_8));
-    var backlog = new SubstrateBacklog(raceStore, "agent-a", 2, TestMappers.plainlyPinned());
+        new RaceOnceOnWriteSubstrate(new InMemorySubstrate(), racedInDocument("raced-in"));
+    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 2, TestCodecs.utf8String());
 
     backlog.add("mine");
 
@@ -109,20 +114,62 @@ class SubstrateBacklogTest {
   @Test
   void pollRetriesAfterLosingAWriteConflictAndStillRemovesExactlyItsElement() {
     Substrate substrate = new InMemorySubstrate();
-    var seeded = new SubstrateBacklog(substrate, "agent-a", 3, TestMappers.plainlyPinned());
+    var seeded = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
     seeded.add("a");
     seeded.add("b");
 
-    Substrate raceStore =
-        new RaceOnceOnWriteSubstrate(
-            substrate, "[\"a\",\"b\",\"c\"]".getBytes(StandardCharsets.UTF_8));
-    var backlog = new SubstrateBacklog(raceStore, "agent-a", 3, TestMappers.plainlyPinned());
+    Substrate raceStore = new RaceOnceOnWriteSubstrate(substrate, racedInDocument("a", "b", "c"));
+    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 3, TestCodecs.utf8String());
 
     assertThat(backlog.poll()).contains("a");
 
-    var reader = new SubstrateBacklog(substrate, "agent-a", 3, TestMappers.plainlyPinned());
+    var reader = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
     assertThat(reader.poll()).contains("b");
     assertThat(reader.poll()).contains("c");
     assertThat(reader.poll()).isEmpty();
+  }
+
+  /**
+   * Spec §6.4: the stored document is a JSON array whose elements are the base64 of each
+   * observation's {@code codec.encode(o)} — uniform regardless of what the codec's shape actually
+   * is. Proven here with a record-typed backlog: the raw substrate document is read directly,
+   * asserted to be base64 (not the record's plain JSON), and decoded back through the codec to the
+   * original record.
+   */
+  @Test
+  void aRecordTypedBacklogStoresBase64OfTheEncodedElementsInTheRawDocument()
+      throws JsonProcessingException {
+    record Note(String text, int priority) {}
+
+    Substrate substrate = new InMemorySubstrate();
+    ObjectMapper mapper = TestMappers.plainlyPinned();
+    Codec<Note> codec = Codec.json(mapper, Note.class);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 4, codec);
+
+    var note = new Note("check the oven", 3);
+    backlog.add(note);
+
+    Substrate.Document doc = substrate.read("backlog", "agent-a").orElseThrow();
+    String rawJson = new String(doc.payload(), StandardCharsets.UTF_8);
+    assertThat(rawJson).doesNotContain("check the oven");
+
+    String[] elements = TestMappers.plainlyPinned().readValue(rawJson, String[].class);
+    assertThat(elements).isNotEmpty().hasSize(1);
+    byte[] decodedBytes = Base64.getDecoder().decode(elements[0]);
+    Note decodedNote = codec.decode(decodedBytes);
+    assertThat(decodedNote).isEqualTo(note);
+
+    assertThat(backlog.poll()).contains(note);
+  }
+
+  private static byte[] racedInDocument(String... elements) {
+    List<String> base64 =
+        List.of(elements).stream()
+            .map(e -> Base64.getEncoder().encodeToString(e.getBytes(StandardCharsets.UTF_8)))
+            .toList();
+    return TestMappers.plainlyPinned()
+        .valueToTree(base64)
+        .toString()
+        .getBytes(StandardCharsets.UTF_8);
   }
 }
