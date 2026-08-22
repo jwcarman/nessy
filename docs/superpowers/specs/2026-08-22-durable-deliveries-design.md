@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-22
 **Status:** Ratified (James, in conversation, 2026-08-22)
-**Naming ruling (2026-08-22, same day):** "delivery" was the teaching metaphor and
+**Naming ruling (2026-08-22, same day):** "parcel" was the teaching metaphor and
 never ratified vocabulary — retired. The thing is a **delivery** (destination +
 outcome, pending in the outbox); the worker is the **DeliveryWorker**. The
 ratified nouns were already sufficient: outbox (the place), delivery (the
