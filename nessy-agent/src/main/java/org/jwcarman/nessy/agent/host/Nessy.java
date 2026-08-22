@@ -205,7 +205,7 @@ public final class Nessy {
       var agentType = AgentType.of(typeName);
       Substrate substrate = new InMemorySubstrate();
       var store = new SubstrateAgentStateStore(substrate, id, Clock.systemUTC(), pinned);
-      var backlog = new SubstrateBacklog<>(substrate, id, 1024, STRING_CODEC);
+      var backlog = new SubstrateBacklog<>(substrate, id, 1024, STRING_CODEC, pinned);
       Harness<String> harness =
           Harness.of(
               agentType,
@@ -432,7 +432,7 @@ public final class Nessy {
       Function<String, Backlog<O>> effectiveBacklogFactory =
           id ->
               new SubstrateBacklog<>(
-                  effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec);
+                  effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec, pinned);
       DurableComputationBackend effectiveBackend =
           backend != null ? backend : new SubstrateComputations(effectiveSubstrate, pinned);
       AgentObserver effectiveAgentObserver =

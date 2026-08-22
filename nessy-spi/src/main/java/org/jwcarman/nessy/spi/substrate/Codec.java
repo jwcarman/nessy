@@ -27,11 +27,11 @@ import java.util.Objects;
  *
  * <p>{@link #json(ObjectMapper, Class)} is the default binding for user-defined shapes: tolerant
  * UTF-8 JSON via the caller's mapper, so user-registered modules flow through untouched — this
- * layer neither constructs nor mutates the mapper it is given. Plain types bind through {@code
- * readValue}/{@code writeValueAsBytes}; sealed interface types bind through a {@code "type"}
- * discriminator matched against {@link Class#getPermittedSubclasses()} — a temporary inline
- * mechanism (json-repeal task 2 replaces it with the same standard Jackson annotations tool inputs
- * now bind through).
+ * layer neither constructs nor mutates the mapper it is given. Every type binds through {@code
+ * readValue}/{@code writeValueAsBytes} directly, one plain path (substrate spec §3, §7, the
+ * 2026-08-22 repeal); a sealed interface type rides Jackson's own polymorphic machinery via its own
+ * {@code @JsonTypeInfo}/{@code @JsonSubTypes} annotations — the same annotations tool inputs bind
+ * through — so the schema shown to a model and the bytes a store persists agree by construction.
  */
 public interface Codec<T> {
 
@@ -63,19 +63,20 @@ public interface Codec<T> {
   /**
    * A tolerant UTF-8 JSON codec for {@code type}, bound through {@code mapper}. A plain
    * (non-sealed) type binds through {@code readValue}/{@code writeValueAsBytes} directly. A sealed
-   * interface {@code type} carrying its own {@code @JsonTypeInfo} (the standard annotation, e.g. so
-   * the same vocabulary also rides a tool input's schema/binding — spec §3, json-repeal 2026-08-22)
-   * defers wholly to Jackson's own polymorphic machinery: the discriminator property and its
-   * per-record values come from {@code @JsonSubTypes}, exactly as Jackson would bind them anywhere
-   * else. An <em>unannotated</em> sealed interface still binds through a {@code "type"}
-   * discriminator naming the concrete permitted record's simple name, matched back against {@link
-   * Class#getPermittedSubclasses()} — a temporary interim for stores that have not yet annotated
-   * their vocabulary, dying with json-repeal task 2. Jackson's checked exceptions never leak past
-   * this boundary: malformed bytes, an unknown discriminator, or a shape mismatch all surface as
-   * {@link IllegalArgumentException} naming the offense. On the unannotated path, encoding a value
-   * whose runtime class is not a direct permitted subclass of {@code type} (e.g. a member reached
-   * through a nested sealed vocabulary) is rejected the same way, naming the class and the
-   * vocabulary, rather than writing a discriminator decoding could never match back.
+   * interface {@code type} must already carry {@code @JsonTypeInfo}/{@code @JsonSubTypes} (the
+   * standard annotations, e.g. so the same vocabulary also rides a tool input's schema/binding —
+   * spec §3, json-repeal 2026-08-22); this call rejects an unannotated sealed {@code type} with an
+   * {@link IllegalArgumentException} naming the exact annotations to add, before any write — plain
+   * Jackson would otherwise encode an unannotated sealed value with no discriminator at all,
+   * producing bytes nothing could ever decode back. An annotated sealed {@code type} defers wholly
+   * to Jackson's own polymorphic machinery: the discriminator property and its per-record values
+   * come from {@code @JsonSubTypes}, exactly as Jackson would bind them anywhere else. Jackson's
+   * checked exceptions never leak past this boundary: malformed bytes, an unknown discriminator, or
+   * a shape mismatch all surface as {@link IllegalArgumentException} naming the offense. A
+   * permitted record that declares its own component sharing the discriminator's property name is
+   * also rejected before any write, naming the record and the property — Jackson itself does not
+   * protect against that collision (verified empirically: it silently duplicates the key on encode
+   * and lets the record's own value win over the discriminator on decode).
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
     Objects.requireNonNull(mapper, "mapper must not be null");

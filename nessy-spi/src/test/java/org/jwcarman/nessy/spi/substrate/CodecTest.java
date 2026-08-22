@@ -19,6 +19,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,12 +32,23 @@ class CodecTest {
 
   record Address(String city, String state) {}
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Shutdown.class, name = "Shutdown")
+  })
   sealed interface Vocabulary permits Restart, Shutdown {}
 
   record Restart(String host) implements Vocabulary {}
 
   record Shutdown(String reason) implements Vocabulary {}
 
+  sealed interface UnannotatedVocabulary permits UnannotatedRestart {}
+
+  record UnannotatedRestart(String host) implements UnannotatedVocabulary {}
+
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({@JsonSubTypes.Type(value = Ev.class, name = "Ev")})
   sealed interface CollidingVocabulary permits Ev {}
 
   record Ev(String type, String body) implements CollidingVocabulary {}
@@ -152,7 +165,16 @@ class CodecTest {
     }
 
     @Test
-    void encodingARecordThatDeclaresItsOwnTypeComponentIsRejectedNamingItAndWritesNothing() {
+    void anUnannotatedSealedTypeIsRejectedAtConstructionNamingTheAnnotationsToAdd() {
+      assertThatThrownBy(() -> Codec.json(MAPPER, UnannotatedVocabulary.class))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("UnannotatedVocabulary")
+          .hasMessageContaining("JsonTypeInfo")
+          .hasMessageContaining("JsonSubTypes");
+    }
+
+    @Test
+    void anAnnotatedRecordDeclaringItsOwnTypeComponentIsRejectedNamingItAndWritesNothing() {
       Codec<CollidingVocabulary> codec = Codec.json(MAPPER, CollidingVocabulary.class);
       Ev original = new Ev("user-value", "payload");
 
@@ -242,49 +264,6 @@ class CodecTest {
       assertThatThrownBy(() -> chained.decode(bytes))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Reboot");
-    }
-  }
-
-  @Nested
-  class NestedSealedVocabularies {
-
-    sealed interface Vocabulary permits Restart, Ops {}
-
-    record Restart(String host) implements Vocabulary {}
-
-    sealed interface Ops extends Vocabulary permits Diagnose {}
-
-    record Diagnose(String target) implements Ops {}
-
-    @Test
-    void encodingAClassReachedOnlyThroughANestedSealedInterfaceFailsLoudly() {
-      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
-      Diagnose notADirectPermittedSubclass = new Diagnose("prod-eu");
-
-      assertThatThrownBy(() -> codec.encode(notADirectPermittedSubclass))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("Diagnose")
-          .hasMessageContaining("Vocabulary");
-    }
-
-    @Test
-    void encodingADirectlyPermittedRecordOfTheSameNestedVocabularyStillRoundTrips() {
-      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
-      Vocabulary original = new Restart("prod-eu");
-
-      Vocabulary decoded = codec.decode(codec.encode(original));
-
-      assertThat(decoded).isEqualTo(original);
-    }
-
-    @Test
-    void decodingADiscriminatorThatMatchesANonRecordPermitFailsLoudlyNamingItRatherThanNpe() {
-      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
-      byte[] bytes = "{\"type\":\"Ops\",\"target\":\"prod-eu\"}".getBytes(UTF_8);
-
-      assertThatThrownBy(() -> codec.decode(bytes))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("Ops");
     }
   }
 }

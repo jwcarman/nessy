@@ -15,17 +15,13 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.lang.reflect.RecordComponent;
-import java.util.Arrays;
 import java.util.Objects;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Package-private implementations backing {@link Codec}'s default and static factory methods. Kept
@@ -42,17 +38,33 @@ final class CodecSupport {
   }
 
   /**
-   * {@code type.isInterface() && type.isSealed()} routes to {@link SealedJsonCodec}, a
-   * self-contained inline copy of the discriminator dispatch the deleted {@code SealedInputs}
-   * (repealed 2026-08-22, substrate spec §7) used to provide. TODO(json-repeal task 2): this
-   * permits-walking dispatch is temporary — nessy-intent's rewrite removes {@link SealedJsonCodec}
-   * entirely once its stores bind sealed vocabularies through their own Jackson annotations, the
-   * same way tool inputs now do.
+   * One plain tolerant-binding path (substrate spec §3, §7 repeal): a sealed interface {@code type}
+   * must already carry {@code @JsonTypeInfo}/{@code @JsonSubTypes} — plain Jackson would otherwise
+   * ENCODE an unannotated sealed value with no discriminator at all, producing bytes nothing could
+   * ever decode back. Rejected here, at {@code Codec.json} call time, before any write — the same
+   * construction-time posture {@link org.jwcarman.nessy.api.tool.Schemas} takes for the identical
+   * reason, and the message below mirrors its wording.
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
-    return type.isInterface() && type.isSealed()
-        ? new SealedJsonCodec<>(mapper, type)
-        : new PlainJsonCodec<>(mapper, type);
+    requireJacksonPolymorphismAnnotationsIfSealed(type);
+    return new PlainJsonCodec<>(mapper, type);
+  }
+
+  private static void requireJacksonPolymorphismAnnotationsIfSealed(Class<?> type) {
+    if (!(type.isInterface() && type.isSealed())) {
+      return;
+    }
+    if (!type.isAnnotationPresent(JsonTypeInfo.class)
+        || !type.isAnnotationPresent(JsonSubTypes.class)) {
+      throw new IllegalArgumentException(
+          "sealed interface "
+              + type.getSimpleName()
+              + " is bound through Codec.json but carries no Jackson polymorphism annotations; add"
+              + " @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = \"type\") and @JsonSubTypes"
+              + " naming each permitted record (e.g. @JsonSubTypes.Type(value = Restart.class,"
+              + " name = \"Restart\")) so encoding writes a discriminator and decoding can read it"
+              + " back");
+    }
   }
 
   /** {@link Codec#then(Codec)}'s composed codec. */
@@ -78,27 +90,82 @@ final class CodecSupport {
   }
 
   /**
-   * {@code Codec.json} for a plain (non-sealed) type: direct {@code readValue}/{@code
-   * writeValueAsBytes}.
+   * {@code Codec.json} for any type bound via {@code readValue}/{@code writeValueAsBytes}: plain
+   * records bind directly, and a sealed interface type (already guaranteed by {@link #json} to
+   * carry {@code @JsonTypeInfo}/{@code @JsonSubTypes}) defers wholly to Jackson's own polymorphic
+   * machinery — the discriminator property and its per-record values come from the annotations,
+   * exactly as Jackson would bind them anywhere else.
+   *
+   * <p>Jackson does not itself reject a permitted record that declares its own component sharing
+   * the discriminator's property name (verified empirically: encoding silently writes a duplicate
+   * key, decoding silently lets the record's own value win over the discriminator's) — {@link
+   * #requireNoTypeComponentCollision} catches that offense before any write, naming the record and
+   * the property, rather than letting the corruption through.
    */
   private static final class PlainJsonCodec<T> implements Codec<T> {
 
     private final ObjectMapper mapper;
     private final Class<T> type;
+    private final String collisionProperty;
 
     private PlainJsonCodec(ObjectMapper mapper, Class<T> type) {
       this.mapper = mapper;
       this.type = type;
+      this.collisionProperty = discriminatorPropertyIfCollisionPossible(type);
+    }
+
+    /**
+     * The {@code @JsonTypeInfo} discriminator's property name when {@code type} is a sealed
+     * interface using {@link JsonTypeInfo.As#PROPERTY} inclusion (the convention used throughout
+     * this codebase) — the only inclusion style where a permitted record's own component can
+     * collide with the discriminator by sharing its name. {@code null} otherwise, meaning no
+     * collision is possible so {@link #requireNoTypeComponentCollision} is a no-op.
+     */
+    private static String discriminatorPropertyIfCollisionPossible(Class<?> type) {
+      if (!(type.isInterface() && type.isSealed())) {
+        return null;
+      }
+      JsonTypeInfo typeInfo = type.getAnnotation(JsonTypeInfo.class);
+      if (typeInfo == null
+          || typeInfo.include() != JsonTypeInfo.As.PROPERTY
+          || typeInfo.property().isEmpty()) {
+        return null;
+      }
+      return typeInfo.property();
     }
 
     @Override
     public byte[] encode(T value) {
       Objects.requireNonNull(value, "value must not be null");
+      requireNoTypeComponentCollision(value);
       try {
         return mapper.writeValueAsBytes(value);
       } catch (JsonProcessingException e) {
         throw new IllegalArgumentException(
             "failed to encode " + type.getSimpleName() + " to JSON: " + e.getMessage(), e);
+      }
+    }
+
+    private void requireNoTypeComponentCollision(T value) {
+      if (collisionProperty == null) {
+        return;
+      }
+      Class<?> runtimeType = value.getClass();
+      if (!runtimeType.isRecord()) {
+        return;
+      }
+      for (RecordComponent component : runtimeType.getRecordComponents()) {
+        if (component.getName().equals(collisionProperty)) {
+          throw new IllegalArgumentException(
+              "vocabulary record "
+                  + runtimeType.getSimpleName()
+                  + " declares a component named \""
+                  + collisionProperty
+                  + "\", which collides with the discriminator "
+                  + type.getSimpleName()
+                  + "'s @JsonTypeInfo injects (Jackson would silently duplicate it on encode and"
+                  + " let it win over the discriminator on decode)");
+        }
       }
     }
 
@@ -111,141 +178,6 @@ final class CodecSupport {
         throw new IllegalArgumentException(
             "failed to decode " + type.getSimpleName() + " from JSON: " + e.getMessage(), e);
       }
-    }
-  }
-
-  /**
-   * {@code Codec.json} for a sealed interface type. When {@code type} itself carries
-   * {@code @JsonTypeInfo} (the standard Jackson annotation a caller may already have added, e.g. so
-   * the same vocabulary also rides a tool input's schema/binding), this defers entirely to
-   * Jackson's own polymorphic machinery — no inline dispatch involved. Otherwise it falls back to
-   * encoding with a {@code "type"} discriminator naming the concrete permitted record and decoding
-   * by matching that discriminator back against {@link Class#getPermittedSubclasses()} — the same
-   * convention the deleted {@code SealedInputs} used, inlined here (see {@link #json} TODO) rather
-   * than reintroducing a dependency on the deleted class. The unannotated encode path checks the
-   * value's runtime class is a direct permitted subclass of {@code type} before writing anything —
-   * a class reached only through a nested sealed vocabulary would write a discriminator {@link
-   * #decode} could never match back on decode, so that case fails loudly here instead.
-   */
-  private static final class SealedJsonCodec<T> implements Codec<T> {
-
-    private final ObjectMapper mapper;
-    private final Class<T> type;
-    private final boolean jacksonAnnotated;
-
-    private SealedJsonCodec(ObjectMapper mapper, Class<T> type) {
-      this.mapper = mapper;
-      this.type = type;
-      this.jacksonAnnotated = type.isAnnotationPresent(JsonTypeInfo.class);
-    }
-
-    @Override
-    public byte[] encode(T value) {
-      Objects.requireNonNull(value, "value must not be null");
-      if (jacksonAnnotated) {
-        try {
-          return mapper.writeValueAsBytes(value);
-        } catch (JsonProcessingException e) {
-          throw new IllegalArgumentException(
-              "failed to encode " + type.getSimpleName() + " to JSON: " + e.getMessage(), e);
-        }
-      }
-      Class<?> runtimeType = value.getClass();
-      if (!Arrays.asList(type.getPermittedSubclasses()).contains(runtimeType)) {
-        throw new IllegalArgumentException(
-            "cannot encode "
-                + runtimeType.getSimpleName()
-                + ": not a direct permitted subclass of "
-                + type.getSimpleName());
-      }
-      if (Stream.of(runtimeType.getRecordComponents()).anyMatch(c -> c.getName().equals("type"))) {
-        throw new IllegalArgumentException(
-            "vocabulary record "
-                + runtimeType.getSimpleName()
-                + " declares a component named \"type\", which collides with the discriminator");
-      }
-      JsonNode tree = mapper.valueToTree(value);
-      if (!(tree instanceof ObjectNode objectNode)) {
-        throw new IllegalArgumentException(
-            "cannot encode " + runtimeType.getSimpleName() + ": not a JSON object");
-      }
-      objectNode.put("type", runtimeType.getSimpleName());
-      try {
-        return mapper.writeValueAsBytes(objectNode);
-      } catch (JsonProcessingException e) {
-        throw new IllegalArgumentException(
-            "failed to encode " + runtimeType.getSimpleName() + " to JSON: " + e.getMessage(), e);
-      }
-    }
-
-    @Override
-    public T decode(byte[] bytes) {
-      Objects.requireNonNull(bytes, "bytes must not be null");
-      JsonNode tree;
-      try {
-        tree = mapper.readTree(bytes);
-      } catch (IOException e) {
-        throw new IllegalArgumentException(
-            "failed to decode " + type.getSimpleName() + " from JSON: " + e.getMessage(), e);
-      }
-      if (tree == null) {
-        throw new IllegalArgumentException(
-            "failed to decode " + type.getSimpleName() + " from JSON: empty payload");
-      }
-      if (jacksonAnnotated) {
-        try {
-          return mapper.convertValue(tree, type);
-        } catch (IllegalArgumentException e) {
-          throw new IllegalArgumentException(
-              "failed to decode " + type.getSimpleName() + " from JSON: " + e.getMessage(), e);
-        }
-      }
-      return bind(tree);
-    }
-
-    /**
-     * Reads {@code "type"}, matches a permitted record's simple name, binds the remaining
-     * properties into that record. Missing/unknown {@code "type"} and a matched permit that is not
-     * a record both fail loudly, naming the offense, exactly as {@code SealedInputs#bind} did.
-     */
-    private T bind(JsonNode tree) {
-      Class<?>[] permitted = type.getPermittedSubclasses();
-      String requestedType = tree.isObject() ? tree.path("type").asText(null) : null;
-      Class<?> matched = requestedType == null ? null : matching(permitted, requestedType);
-      if (matched == null) {
-        throw new IllegalArgumentException(
-            "unknown \"type\" for "
-                + type.getSimpleName()
-                + ": "
-                + (requestedType == null ? "<missing>" : requestedType)
-                + "; expected one of: "
-                + legalTypeNames(permitted));
-      }
-      RecordComponent[] components = matched.getRecordComponents();
-      if (components == null) {
-        throw new IllegalArgumentException(
-            "permitted type "
-                + matched.getSimpleName()
-                + " of sealed vocabulary "
-                + type.getSimpleName()
-                + " is not a record");
-      }
-      ObjectNode remainder = ((ObjectNode) tree).deepCopy();
-      remainder.remove("type");
-      return type.cast(mapper.convertValue(remainder, matched));
-    }
-
-    private static Class<?> matching(Class<?>[] permitted, String requestedType) {
-      for (Class<?> candidate : permitted) {
-        if (candidate.getSimpleName().equals(requestedType)) {
-          return candidate;
-        }
-      }
-      return null;
-    }
-
-    private static String legalTypeNames(Class<?>[] permitted) {
-      return Arrays.stream(permitted).map(Class::getSimpleName).collect(Collectors.joining(", "));
     }
   }
 }
