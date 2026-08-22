@@ -380,7 +380,7 @@ control-plane volume; if ever needed, the adapter write-shards
 - **No truncate, no TTL.** The journal is immutable truth; summarization is a
   sidecar; retention is ops (archive by `appendedAt`).
 - **No querying into payloads.** Reporting/BI reads the database directly if
-  it must; the substrate contract stays string-in, string-out.
+  it must; the substrate contract stays bytes-in, bytes-out.
 - **Database-as-queue is the design, not a compromise.** Transactional enqueue
   is the point; control-plane volume is the workload; brokers (RabbitMQ et al.)
   attach *downstream of the outbox* as relays, never instead of it.
