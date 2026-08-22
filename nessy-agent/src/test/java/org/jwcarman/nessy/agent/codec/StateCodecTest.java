@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -39,6 +40,7 @@ class StateCodecTest {
   private static final StateCodec CODEC = new StateCodec(Codecs.copyAndPin(new ObjectMapper()));
   private static final MessageCodec MESSAGE_CODEC =
       new MessageCodec(Codecs.copyAndPin(new ObjectMapper()));
+  private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("response-1");
 
   @Nested
   class PhaseRoundTrips {
@@ -64,7 +66,10 @@ class StateCodecTest {
               List.of(new ToolUseBlock(callA, "sig-a"), new ToolUseBlock(callB, null)));
       var phase =
           new Phase.AwaitingTools(
-              turn, Set.of("a", "b"), List.of(new ToolResultBlock("z", "already gathered", false)));
+              turn,
+              Set.of("a", "b"),
+              List.of(new ToolResultBlock("z", "already gathered", false)),
+              RESPONSE_ID);
       var roundTripped = CODEC.phase(CODEC.toJson(phase));
       assertThat(roundTripped).isEqualTo(phase);
       var awaitingTools = (Phase.AwaitingTools) roundTripped;
@@ -75,7 +80,7 @@ class StateCodecTest {
     void anAwaitingToolsPhaseWithNoGatheredResultsYetRoundTrips() {
       var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
       var turn = Message.assistant(List.of(new ToolUseBlock(call)));
-      var phase = new Phase.AwaitingTools(turn, Set.of("a"), List.of());
+      var phase = new Phase.AwaitingTools(turn, Set.of("a"), List.of(), RESPONSE_ID);
       assertThat(CODEC.phase(CODEC.toJson(phase))).isEqualTo(phase);
     }
 
@@ -93,7 +98,10 @@ class StateCodecTest {
               List.of(new ToolUseBlock(callA, "sig-a"), new ToolUseBlock(callB, null)));
       var phase =
           new Phase.AwaitingTools(
-              turn, Set.of("a", "b"), List.of(new ToolResultBlock("z", "already gathered", false)));
+              turn,
+              Set.of("a", "b"),
+              List.of(new ToolResultBlock("z", "already gathered", false)),
+              RESPONSE_ID);
 
       String json = CODEC.toJson(phase);
 
@@ -104,7 +112,8 @@ class StateCodecTest {
                   + "\"arguments\":{},\"signature\":\"sig-a\"},{\"type\":\"tool-use\",\"id\":\"b\","
                   + "\"name\":\"restart\",\"arguments\":{}}]},\"pending\":[\"a\",\"b\"],"
                   + "\"gathered\":[{\"type\":\"tool-result\",\"toolUseId\":\"z\","
-                  + "\"content\":\"already gathered\",\"isError\":false}]}");
+                  + "\"content\":\"already gathered\",\"isError\":false}],"
+                  + "\"responseId\":{\"value\":\"response-1\"}}");
     }
 
     @Test
@@ -112,7 +121,7 @@ class StateCodecTest {
       var callB = new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
       var callA = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
       var turn = Message.assistant(List.of(new ToolUseBlock(callB), new ToolUseBlock(callA)));
-      var phase = new Phase.AwaitingTools(turn, Set.of("b", "a"), List.of());
+      var phase = new Phase.AwaitingTools(turn, Set.of("b", "a"), List.of(), RESPONSE_ID);
       assertThat(CODEC.toJson(phase)).contains("\"pending\":[\"a\",\"b\"]");
     }
   }
@@ -168,7 +177,7 @@ class StateCodecTest {
       var json =
           "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
               + MESSAGE_CODEC.toJson(turn)
-              + ",\"pending\":[],\"gathered\":[]}";
+              + ",\"pending\":[],\"gathered\":[],\"responseId\":{\"value\":\"response-1\"}}";
       assertThatThrownBy(() -> CODEC.phase(json)).isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -185,7 +194,7 @@ class StateCodecTest {
               + pendingJson
               + ",\"gathered\":"
               + gatheredJson
-              + "}";
+              + ",\"responseId\":{\"value\":\"response-1\"}}";
       assertThatThrownBy(() -> CODEC.phase(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining(expectedMessage);

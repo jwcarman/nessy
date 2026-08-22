@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.ModelOutcome;
+import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.Transition;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
@@ -39,7 +40,10 @@ class TurnNarrationAdapterTest {
     var said = Message.assistant(List.of(new TextBlock("hi")));
     var t = Transition.to(new Phase.Idle()).commit(said);
     adapter.applied(
-        new AgentEvent.ModelFinished(new ModelOutcome.Responded(said.content(), List.of())), t);
+        new AgentEvent.ModelFinished(
+            new ModelOutcome.Responded(
+                said.content(), List.of(), ModelResponseId.of("response-1"))),
+        t);
     assertThat(turn.events()).isNotEmpty();
     assertThat(turn.events().getFirst()).isEqualTo(new TurnEvent.AssistantSaid(said));
   }
@@ -48,7 +52,9 @@ class TurnNarrationAdapterTest {
   void reachingIdleEndsTheTurnCompleted() {
     var t = Transition.to(new Phase.Idle());
     adapter.applied(
-        new AgentEvent.ModelFinished(new ModelOutcome.Responded(List.of(), List.of())), t);
+        new AgentEvent.ModelFinished(
+            new ModelOutcome.Responded(List.of(), List.of(), ModelResponseId.of("response-1"))),
+        t);
     assertThat(turn.events()).contains(new TurnEvent.TurnEnded(null));
   }
 

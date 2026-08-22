@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -35,11 +36,13 @@ class AwaitingModelPhaseTest {
       new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
   private static final ToolCall CALL_B =
       new ToolCall("b", "restart", JsonNodeFactory.instance.objectNode());
+  private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("response-1");
 
   @Test
   void aTerminalAnswerCommitsTheAssistantMessageAndGoesIdle() {
     var content = List.<ContentBlock>of(new TextBlock("done"));
-    var event = new AgentEvent.ModelFinished(new ModelOutcome.Responded(content, List.of()));
+    var event =
+        new AgentEvent.ModelFinished(new ModelOutcome.Responded(content, List.of(), RESPONSE_ID));
     var t = new Phase.AwaitingModel().handle(event);
     assertThat(t.next()).isEqualTo(new Phase.Idle());
     assertThat(t.commit()).containsExactly(Message.assistant(content));
@@ -51,13 +54,15 @@ class AwaitingModelPhaseTest {
     var content =
         List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a"), new ToolUseBlock(CALL_B, "sig-b"));
     var event =
-        new AgentEvent.ModelFinished(new ModelOutcome.Responded(content, List.of(CALL_A, CALL_B)));
+        new AgentEvent.ModelFinished(
+            new ModelOutcome.Responded(content, List.of(CALL_A, CALL_B), RESPONSE_ID));
     var t = new Phase.AwaitingModel().handle(event);
     // the held-back unit: NOTHING committed until every result is in (spec §2.5)
     assertThat(t.commit()).isEmpty();
     assertThat(t.next())
         .isEqualTo(
-            new Phase.AwaitingTools(Message.assistant(content), Set.of("a", "b"), List.of()));
+            new Phase.AwaitingTools(
+                Message.assistant(content), Set.of("a", "b"), List.of(), RESPONSE_ID));
     assertThat(t.effects())
         .containsExactly(new Effect.ExecuteTool(CALL_A), new Effect.ExecuteTool(CALL_B));
   }
@@ -65,7 +70,9 @@ class AwaitingModelPhaseTest {
   @Test
   void theHeldBackTurnKeepsProviderSignaturesBecauseItIsBuiltFromContentBlocks() {
     var content = List.<ContentBlock>of(new ToolUseBlock(CALL_A, "gemini-thought-sig"));
-    var event = new AgentEvent.ModelFinished(new ModelOutcome.Responded(content, List.of(CALL_A)));
+    var event =
+        new AgentEvent.ModelFinished(
+            new ModelOutcome.Responded(content, List.of(CALL_A), RESPONSE_ID));
     var t = new Phase.AwaitingModel().handle(event);
     var held = ((Phase.AwaitingTools) t.next()).assistantTurn();
     assertThat(held.content()).containsExactly(new ToolUseBlock(CALL_A, "gemini-thought-sig"));
@@ -91,5 +98,32 @@ class AwaitingModelPhaseTest {
     var phase = new Phase.AwaitingModel();
     var event = new AgentEvent.Observed(List.of(new TextBlock("hi")));
     assertThatThrownBy(() -> phase.handle(event)).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Nested
+  class Purity {
+
+    /**
+     * The purity law (durable-parcels spec §2): {@code Phase.handle} never mints its own id, so a
+     * CAS-retry re-handling the same committed {@code ModelFinished} event against fresh state
+     * folds to identical state — the carried {@code responseId} included — every time.
+     */
+    @Test
+    void reHandlingTheSameModelFinishedEventTwiceYieldsIdenticalStateIncludingTheResponseId() {
+      var content =
+          List.<ContentBlock>of(
+              new ToolUseBlock(CALL_A, "sig-a"), new ToolUseBlock(CALL_B, "sig-b"));
+      var event =
+          new AgentEvent.ModelFinished(
+              new ModelOutcome.Responded(content, List.of(CALL_A, CALL_B), RESPONSE_ID));
+
+      var first = new Phase.AwaitingModel().handle(event).next();
+      var second = new Phase.AwaitingModel().handle(event).next();
+
+      assertThat(first).isEqualTo(second);
+      assertThat(((Phase.AwaitingTools) first).responseId())
+          .isEqualTo(((Phase.AwaitingTools) second).responseId())
+          .isEqualTo(RESPONSE_ID);
+    }
   }
 }

@@ -48,4 +48,25 @@ class PrimitivesTest {
   void equalContinuationsAreOneRegistration() {
     assertThat(new Continuation("T", "d")).isEqualTo(new Continuation("T", "d"));
   }
+
+  @Test
+  void aToolInvocationIdCarriesTheResponseAndCallIdsAndRejectsBlankOrNullComponents() {
+    var id = new ToolInvocationId("response-1", "call-1");
+    assertThat(id.responseId()).isEqualTo("response-1");
+    assertThat(id.callId()).isEqualTo("call-1");
+    assertThatThrownBy(() -> new ToolInvocationId(null, "call-1"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ToolInvocationId(" ", "call-1"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ToolInvocationId("response-1", null))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ToolInvocationId("response-1", " "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void equalToolInvocationIdsAreOneIdentity() {
+    assertThat(new ToolInvocationId("response-1", "call-1"))
+        .isEqualTo(new ToolInvocationId("response-1", "call-1"));
+  }
 }

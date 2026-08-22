@@ -39,6 +39,7 @@ class AwaitingToolsPhaseTest {
   private static final Message TURN =
       Message.assistant(
           List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a"), new ToolUseBlock(CALL_B, null)));
+  private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("response-1");
 
   private static AgentEvent.ToolFinished returned(ToolCall call, String content) {
     return new AgentEvent.ToolFinished(call, new ToolOutcome.Returned(ToolResult.ok(content)));
@@ -46,20 +47,20 @@ class AwaitingToolsPhaseTest {
 
   @Test
   void aPartialResultShrinksPendingAndCommitsNothing() {
-    var phase = new Phase.AwaitingTools(TURN, Set.of("a", "b"), List.of());
+    var phase = new Phase.AwaitingTools(TURN, Set.of("a", "b"), List.of(), RESPONSE_ID);
     var t = phase.handle(returned(CALL_A, "42"));
     assertThat(t.commit()).isEmpty();
     assertThat(t.effects()).isEmpty();
     assertThat(t.next())
         .isEqualTo(
             new Phase.AwaitingTools(
-                TURN, Set.of("b"), List.of(new ToolResultBlock("a", "42", false))));
+                TURN, Set.of("b"), List.of(new ToolResultBlock("a", "42", false)), RESPONSE_ID));
   }
 
   @Test
   void theLastResultCommitsTheWholeUnitAndCallsTheModel() {
     var gathered = List.of(new ToolResultBlock("a", "42", false));
-    var phase = new Phase.AwaitingTools(TURN, Set.of("b"), gathered);
+    var phase = new Phase.AwaitingTools(TURN, Set.of("b"), gathered, RESPONSE_ID);
     var t = phase.handle(returned(CALL_B, "ok"));
     assertThat(t.next()).isEqualTo(new Phase.AwaitingModel());
     assertThat(t.commit())
@@ -73,33 +74,37 @@ class AwaitingToolsPhaseTest {
 
   @Test
   void aFailedToolRendersInBandAsAnErrorResult() {
-    var phase = new Phase.AwaitingTools(TURN, Set.of("a", "b"), List.of());
+    var phase = new Phase.AwaitingTools(TURN, Set.of("a", "b"), List.of(), RESPONSE_ID);
     var failed =
         new AgentEvent.ToolFinished(CALL_A, new ToolOutcome.Failed(new ToolError("timed out")));
     var t = phase.handle(failed);
     assertThat(t.next())
         .isEqualTo(
             new Phase.AwaitingTools(
-                TURN, Set.of("b"), List.of(new ToolResultBlock("a", "timed out", true))));
+                TURN,
+                Set.of("b"),
+                List.of(new ToolResultBlock("a", "timed out", true)),
+                RESPONSE_ID));
   }
 
   @Test
   void aDuplicateDeliveryOfASettledCallIsIgnored() {
     var phase =
-        new Phase.AwaitingTools(TURN, Set.of("b"), List.of(new ToolResultBlock("a", "42", false)));
+        new Phase.AwaitingTools(
+            TURN, Set.of("b"), List.of(new ToolResultBlock("a", "42", false)), RESPONSE_ID);
     assertThat(phase.handle(returned(CALL_A, "42-again")).isIgnored()).isTrue();
   }
 
   @Test
   void aStrayModelCompletionIsIgnored() {
-    var phase = new Phase.AwaitingTools(TURN, Set.of("a", "b"), List.of());
+    var phase = new Phase.AwaitingTools(TURN, Set.of("a", "b"), List.of(), RESPONSE_ID);
     var event = new AgentEvent.ModelFinished(new ModelOutcome.Failed("late duplicate"));
     assertThat(phase.handle(event).isIgnored()).isTrue();
   }
 
   @Test
   void anObservationReachingThisPhaseIsAProgrammingError() {
-    var phase = new Phase.AwaitingTools(TURN, Set.of("a"), List.of());
+    var phase = new Phase.AwaitingTools(TURN, Set.of("a"), List.of(), RESPONSE_ID);
     var event = new AgentEvent.Observed(List.of(new TextBlock("hi")));
     assertThatThrownBy(() -> phase.handle(event)).isInstanceOf(IllegalStateException.class);
   }
@@ -108,7 +113,7 @@ class AwaitingToolsPhaseTest {
   void awaitingNothingIsNotAPhase() {
     Set<String> empty = Set.of();
     List<ToolResultBlock> none = List.of();
-    assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, empty, none))
+    assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, empty, none, RESPONSE_ID))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -116,7 +121,7 @@ class AwaitingToolsPhaseTest {
   void aPendingIdAbsentFromTheHeldBackTurnIsRejected() {
     Set<String> pending = Set.of("ghost");
     List<ToolResultBlock> none = List.of();
-    assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, pending, none))
+    assertThatThrownBy(() -> new Phase.AwaitingTools(TURN, pending, none, RESPONSE_ID))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

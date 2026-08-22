@@ -68,10 +68,30 @@ class ProviderModelCallExecutorTest {
             List.of(new ModelEvent.TextChunk("Hel"), new ModelEvent.TextChunk("lo")),
             new VerbatimMemory(),
             turn);
-    assertThat(outcome)
-        .isEqualTo(new ModelOutcome.Responded(List.of(new TextBlock("Hello")), List.of()));
+    var responded = (ModelOutcome.Responded) outcome;
+    assertThat(responded.content()).containsExactly(new TextBlock("Hello"));
+    assertThat(responded.calls()).isEmpty();
     assertThat(turn.events())
         .contains(new TurnEvent.TextDelta("Hel"), new TurnEvent.TextDelta("lo"));
+  }
+
+  @Test
+  void eachResponseMintsItsOwnResponseId() {
+    var one =
+        (ModelOutcome.Responded)
+            run(
+                List.of(new ModelEvent.TextChunk("a")),
+                new VerbatimMemory(),
+                new RecordingTurnObserver());
+    var two =
+        (ModelOutcome.Responded)
+            run(
+                List.of(new ModelEvent.TextChunk("b")),
+                new VerbatimMemory(),
+                new RecordingTurnObserver());
+    assertThat(one.responseId().value()).isNotBlank();
+    assertThat(two.responseId().value()).isNotBlank();
+    assertThat(one.responseId()).isNotEqualTo(two.responseId());
   }
 
   @Test

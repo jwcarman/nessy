@@ -127,10 +127,13 @@ class HarnessDemo {
         new ModelOutcome.Responded(
             List.<ContentBlock>of(
                 new ToolUseBlock(lookup, "gemini-sig"), new ToolUseBlock(refund, null)),
-            List.of(lookup, refund)));
+            List.of(lookup, refund),
+            ModelResponseId.of("response-1")));
     model.enqueue(
         new ModelOutcome.Responded(
-            List.of(new TextBlock("Order 42 found; refunded $99.")), List.of()));
+            List.of(new TextBlock("Order 42 found; refunded $99.")),
+            List.of(),
+            ModelResponseId.of("response-1")));
     tools.answer("c1", new ToolOutcome.Returned(ToolResult.ok("{\"status\":\"shipped\"}")));
     tools.answer("c2", new ToolOutcome.Returned(ToolResult.ok("refund queued")));
 

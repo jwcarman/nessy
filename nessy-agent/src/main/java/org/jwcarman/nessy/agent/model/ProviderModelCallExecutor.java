@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.ModelOutcome;
+import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.api.message.ContentBlock;
@@ -99,6 +100,11 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
     }
   }
 
+  /**
+   * Mints the {@link ModelResponseId} for this response here, at arrival — never in the reducer
+   * (durable-parcels spec §2 purity law): a CAS-retry re-handling the same {@code ModelFinished}
+   * event must fold to identical state, which only holds if the id already rode in on the event.
+   */
   private ModelOutcome stream(ModelRequest request) {
     List<ContentBlock> blocks = new ArrayList<>();
     List<ToolCall> calls = new ArrayList<>();
@@ -129,7 +135,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
         }
       }
     }
-    return new ModelOutcome.Responded(blocks, calls);
+    return new ModelOutcome.Responded(blocks, calls, ModelResponseId.generate());
   }
 
   /** Merges a chunk into the trailing text block: a hundred deltas become one block. */
