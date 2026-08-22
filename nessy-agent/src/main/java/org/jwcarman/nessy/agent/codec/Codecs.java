@@ -22,18 +22,21 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * The one {@link ObjectMapper} shared by every codec in this package, plus the tree-reading helpers
- * common to all of them. Package-private: nothing outside {@code codec} touches Jackson directly,
- * and no domain type carries a Jackson annotation (spec §7).
+ * Internal storage machinery: the one {@link ObjectMapper} shared by every codec that renders the
+ * string-payload storage kernel's JSON (spec §7), plus the tree-reading helpers common to all of
+ * them. Public so recipes outside the {@code codec} package (e.g. {@code
+ * org.jwcarman.nessy.agent.durable.OutcomeCodec}) can reuse the same discriminator/tolerant-read
+ * conventions instead of duplicating them; still not API vocabulary — no domain type carries a
+ * Jackson annotation.
  */
-final class Codecs {
+public final class Codecs {
 
-  static final ObjectMapper MAPPER = new ObjectMapper();
+  public static final ObjectMapper MAPPER = new ObjectMapper();
 
   private Codecs() {}
 
   /** The required field {@code name} on {@code node}, as text — malformed payload otherwise. */
-  static String requireText(ObjectNode node, String name, String owner) {
+  public static String requireText(ObjectNode node, String name, String owner) {
     JsonNode field = node.get(name);
     if (field == null || !field.isTextual()) {
       throw new IllegalArgumentException(owner + " missing required field: " + name);
@@ -42,7 +45,7 @@ final class Codecs {
   }
 
   /** The required field {@code name} on {@code node} — malformed payload otherwise. */
-  static JsonNode requireField(ObjectNode node, String name, String owner) {
+  public static JsonNode requireField(ObjectNode node, String name, String owner) {
     JsonNode field = node.get(name);
     if (field == null) {
       throw new IllegalArgumentException(owner + " missing required field: " + name);
@@ -55,7 +58,7 @@ final class Codecs {
    * scalar or object value for {@code name} would otherwise iterate as zero elements and read as a
    * silent empty collection; this fails loudly instead.
    */
-  static ArrayNode requireArray(ObjectNode node, String name, String owner) {
+  public static ArrayNode requireArray(ObjectNode node, String name, String owner) {
     JsonNode field = node.get(name);
     if (field == null || !field.isArray()) {
       throw new IllegalArgumentException(owner + " field must be an array: " + name);
@@ -64,7 +67,7 @@ final class Codecs {
   }
 
   /** {@code node} as an object node, or a malformed-payload {@link IllegalArgumentException}. */
-  static ObjectNode requireObject(JsonNode node, String owner) {
+  public static ObjectNode requireObject(JsonNode node, String owner) {
     if (node == null || !node.isObject()) {
       throw new IllegalArgumentException("malformed " + owner + ": expected an object");
     }
@@ -74,7 +77,7 @@ final class Codecs {
   /**
    * {@code json} parsed as an object node, or a malformed-payload {@link IllegalArgumentException}.
    */
-  static ObjectNode readObject(String json, String owner) {
+  public static ObjectNode readObject(String json, String owner) {
     JsonNode node;
     try {
       node = MAPPER.readTree(json);

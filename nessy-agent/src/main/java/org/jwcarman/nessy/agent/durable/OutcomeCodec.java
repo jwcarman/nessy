@@ -15,14 +15,13 @@
  */
 package org.jwcarman.nessy.agent.durable;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.ComputationStatus;
@@ -45,8 +44,6 @@ import org.jwcarman.nessy.durable.Outcome;
  * discriminator fails loudly with an {@link IllegalArgumentException} naming the offense.
  */
 public final class OutcomeCodec {
-
-  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private static final String TYPE = "type";
   private static final String STATUS = "status";
@@ -87,7 +84,7 @@ public final class OutcomeCodec {
    */
   static String toJson(SlotDocument document) {
     Objects.requireNonNull(document, "document must not be null");
-    ObjectNode root = MAPPER.createObjectNode();
+    ObjectNode root = Codecs.MAPPER.createObjectNode();
     root.put(STATUS, document.status().name());
     if (document.outcome() != null) {
       root.set(OUTCOME, writeOutcome(document.outcome()));
@@ -95,7 +92,7 @@ public final class OutcomeCodec {
     ArrayNode continuations = root.putArray(CONTINUATIONS);
     for (Continuation continuation : document.continuations()) {
       continuations.add(
-          MAPPER
+          Codecs.MAPPER
               .createObjectNode()
               .put(TYPE, continuation.type())
               .put("data", continuation.data()));
@@ -105,21 +102,21 @@ public final class OutcomeCodec {
 
   static SlotDocument document(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    ObjectNode root = readObject(json, "computation slot");
-    ComputationStatus status = readStatus(requireText(root, STATUS, "computation slot"));
+    ObjectNode root = Codecs.readObject(json, "computation slot");
+    ComputationStatus status = readStatus(Codecs.requireText(root, STATUS, "computation slot"));
     JsonNode outcomeNode = root.get(OUTCOME);
     Outcome outcome =
         outcomeNode == null || outcomeNode.isNull()
             ? null
-            : readOutcome(requireObject(outcomeNode, "outcome"));
-    ArrayNode continuationsNode = requireArray(root, CONTINUATIONS, "computation slot");
+            : readOutcome(Codecs.requireObject(outcomeNode, "outcome"));
+    ArrayNode continuationsNode = Codecs.requireArray(root, CONTINUATIONS, "computation slot");
     List<Continuation> continuations = new ArrayList<>();
     for (JsonNode node : continuationsNode) {
-      ObjectNode continuationNode = requireObject(node, "continuation");
+      ObjectNode continuationNode = Codecs.requireObject(node, "continuation");
       continuations.add(
           new Continuation(
-              requireText(continuationNode, TYPE, "continuation"),
-              requireText(continuationNode, "data", "continuation")));
+              Codecs.requireText(continuationNode, TYPE, "continuation"),
+              Codecs.requireText(continuationNode, "data", "continuation")));
     }
     return new SlotDocument(status, outcome, continuations);
   }
@@ -136,14 +133,14 @@ public final class OutcomeCodec {
     return switch (outcome) {
       case Outcome.Success(Object value) -> writeSuccess(value);
       case Outcome.Failure(String message) ->
-          MAPPER.createObjectNode().put(TYPE, TYPE_FAILURE).put("message", message);
+          Codecs.MAPPER.createObjectNode().put(TYPE, TYPE_FAILURE).put("message", message);
       case Outcome.Cancelled(String reason) ->
-          MAPPER.createObjectNode().put(TYPE, TYPE_CANCELLED).put("reason", reason);
+          Codecs.MAPPER.createObjectNode().put(TYPE, TYPE_CANCELLED).put("reason", reason);
     };
   }
 
   private static ObjectNode writeSuccess(Object value) {
-    ObjectNode node = MAPPER.createObjectNode().put(TYPE, TYPE_SUCCESS);
+    ObjectNode node = Codecs.MAPPER.createObjectNode().put(TYPE, TYPE_SUCCESS);
     node.set(PAYLOAD, writePayload(value));
     return node;
   }
@@ -151,7 +148,7 @@ public final class OutcomeCodec {
   private static ObjectNode writePayload(Object value) {
     return switch (value) {
       case ToolResult(String content, boolean isError) ->
-          MAPPER
+          Codecs.MAPPER
               .createObjectNode()
               .put(TYPE, PAYLOAD_TOOL_RESULT)
               .put("content", content)
@@ -171,9 +168,12 @@ public final class OutcomeCodec {
   private static ObjectNode writeDecision(Decision decision) {
     return switch (decision) {
       case Decision.Allow ignored ->
-          MAPPER.createObjectNode().put(TYPE, PAYLOAD_DECISION).put(DECISION_TYPE, DECISION_ALLOW);
+          Codecs.MAPPER
+              .createObjectNode()
+              .put(TYPE, PAYLOAD_DECISION)
+              .put(DECISION_TYPE, DECISION_ALLOW);
       case Decision.Deny(String reason) ->
-          MAPPER
+          Codecs.MAPPER
               .createObjectNode()
               .put(TYPE, PAYLOAD_DECISION)
               .put(DECISION_TYPE, DECISION_DENY)
@@ -182,12 +182,13 @@ public final class OutcomeCodec {
   }
 
   private static Outcome readOutcome(ObjectNode node) {
-    String type = requireText(node, TYPE, "outcome");
+    String type = Codecs.requireText(node, TYPE, "outcome");
     return switch (type) {
       case TYPE_SUCCESS -> readSuccess(node);
-      case TYPE_FAILURE -> new Outcome.Failure(requireText(node, "message", "failure outcome"));
+      case TYPE_FAILURE ->
+          new Outcome.Failure(Codecs.requireText(node, "message", "failure outcome"));
       case TYPE_CANCELLED ->
-          new Outcome.Cancelled(requireText(node, "reason", "cancelled outcome"));
+          new Outcome.Cancelled(Codecs.requireText(node, "reason", "cancelled outcome"));
       default ->
           throw new IllegalArgumentException(
               "unknown outcome type: "
@@ -202,13 +203,14 @@ public final class OutcomeCodec {
   }
 
   private static Outcome readSuccess(ObjectNode node) {
-    ObjectNode payloadNode = requireObject(requireField(node, PAYLOAD, "success outcome"), PAYLOAD);
-    String payloadType = requireText(payloadNode, TYPE, "success payload");
+    ObjectNode payloadNode =
+        Codecs.requireObject(Codecs.requireField(node, PAYLOAD, "success outcome"), PAYLOAD);
+    String payloadType = Codecs.requireText(payloadNode, TYPE, "success payload");
     Object payload =
         switch (payloadType) {
           case PAYLOAD_TOOL_RESULT ->
               new ToolResult(
-                  requireText(payloadNode, "content", "tool-result payload"),
+                  Codecs.requireText(payloadNode, "content", "tool-result payload"),
                   requireBoolean(payloadNode, "isError", "tool-result payload"));
           case PAYLOAD_DECISION -> readDecision(payloadNode);
           default ->
@@ -224,10 +226,10 @@ public final class OutcomeCodec {
   }
 
   private static Decision readDecision(ObjectNode node) {
-    String decisionType = requireText(node, DECISION_TYPE, "decision payload");
+    String decisionType = Codecs.requireText(node, DECISION_TYPE, "decision payload");
     return switch (decisionType) {
       case DECISION_ALLOW -> Decision.allow();
-      case DECISION_DENY -> new Decision.Deny(requireText(node, "reason", "deny decision"));
+      case DECISION_DENY -> new Decision.Deny(Codecs.requireText(node, "reason", "deny decision"));
       default ->
           throw new IllegalArgumentException(
               "unknown decision type: "
@@ -239,52 +241,11 @@ public final class OutcomeCodec {
     };
   }
 
-  private static String requireText(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null || !field.isTextual()) {
-      throw new IllegalArgumentException(owner + " missing required field: " + name);
-    }
-    return field.asText();
-  }
-
   private static boolean requireBoolean(ObjectNode node, String name, String owner) {
     JsonNode field = node.get(name);
     if (field == null || !field.isBoolean()) {
       throw new IllegalArgumentException(owner + " missing required field: " + name);
     }
     return field.asBoolean();
-  }
-
-  private static JsonNode requireField(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null) {
-      throw new IllegalArgumentException(owner + " missing required field: " + name);
-    }
-    return field;
-  }
-
-  private static ArrayNode requireArray(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null || !field.isArray()) {
-      throw new IllegalArgumentException(owner + " field must be an array: " + name);
-    }
-    return (ArrayNode) field;
-  }
-
-  private static ObjectNode requireObject(JsonNode node, String owner) {
-    if (node == null || !node.isObject()) {
-      throw new IllegalArgumentException("malformed " + owner + ": expected an object");
-    }
-    return (ObjectNode) node;
-  }
-
-  private static ObjectNode readObject(String json, String owner) {
-    JsonNode node;
-    try {
-      node = MAPPER.readTree(json);
-    } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException("malformed " + owner + " JSON", e);
-    }
-    return requireObject(node, owner + " JSON");
   }
 }

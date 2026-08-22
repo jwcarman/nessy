@@ -26,6 +26,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.durable.OutcomeCodec.SlotDocument;
+import org.jwcarman.nessy.agent.support.RaceOnceOnWriteStore;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.AwaitResult;
 import org.jwcarman.nessy.durable.CompletionResult;
@@ -212,8 +214,9 @@ class StoredComputationsTest {
     @Test
     void aForeignSuccessPayloadIsRejectedAndTheDocumentStaysAbsent() {
       var id = ComputationId.of("tool:t:a:c-foreign");
+      var foreign = new Outcome.Success("a bare string");
 
-      assertThatThrownBy(() -> computations.complete(id, new Outcome.Success("a bare string")))
+      assertThatThrownBy(() -> computations.complete(id, foreign))
           .isInstanceOf(IllegalArgumentException.class);
 
       assertThat(store.read("computation", id.value())).isEmpty();
@@ -263,6 +266,53 @@ class StoredComputationsTest {
           }
         }
       }
+    }
+  }
+
+  @Nested
+  class DeterministicConflictRetries {
+
+    @Test
+    void completesFlipConflictRetriesToAlreadyTerminalWithTheCompetitorsOutcome() {
+      computations.create(ID);
+      var competitorOutcome = new Outcome.Failure("competitor");
+      String competitorPayload =
+          OutcomeCodec.toJson(
+              new SlotDocument(ComputationStatus.FAILED, competitorOutcome, List.of()));
+      var raced = new StoredComputations(new RaceOnceOnWriteStore(store, competitorPayload));
+
+      CompletionResult result = raced.complete(ID, new Outcome.Success(ToolResult.ok("mine")));
+
+      assertThat(result).isEqualTo(CompletionResult.ALREADY_TERMINAL);
+      assertThat(computations.await(ID, RESUME))
+          .isEqualTo(new AwaitResult.AlreadyCompleted(competitorOutcome));
+    }
+
+    @Test
+    void completesRulingSixAbsentConflictRetriesAndStillCompletes() {
+      var id = ComputationId.of("tool:t:a:ruling-six-race");
+      String competitorPayload =
+          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
+      var raced = new StoredComputations(new RaceOnceOnWriteStore(store, competitorPayload));
+
+      CompletionResult result = raced.complete(id, new Outcome.Success(ToolResult.ok("mine")));
+
+      assertThat(result).isEqualTo(CompletionResult.COMPLETED);
+      assertThat(computations.status(id)).contains(ComputationStatus.SUCCEEDED);
+    }
+
+    @Test
+    void awaitConflictRetriesAndKeepsBothContinuations() {
+      computations.create(ID);
+      var other = new Continuation("OTHER", "{}");
+      String competitorPayload =
+          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of(other)));
+      var raced = new StoredComputations(new RaceOnceOnWriteStore(store, competitorPayload));
+
+      AwaitResult result = raced.await(ID, RESUME);
+
+      assertThat(result).isEqualTo(new AwaitResult.Registered());
+      assertThat(computations.continuationsOf(ID)).containsExactlyInAnyOrder(other, RESUME);
     }
   }
 }
