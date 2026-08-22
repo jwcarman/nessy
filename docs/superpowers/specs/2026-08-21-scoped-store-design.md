@@ -104,28 +104,32 @@ the CAS.
 Beside the substrate lives the typed serialization seam:
 
 ```java
-public interface Codec<I, O> {
-  O encode(I input);
-  I decode(O output);
+public interface Codec<T> {
+  byte[] encode(T value);
+  T decode(byte[] bytes);
 
-  default <T> Codec<I, T> chain(Codec<O, T> next) { ... }  // typed composition
+  default Codec<T> then(Codec<byte[]> next) { ... }  // typed composition
 
-  static <T> Codec<T, String> json(ObjectMapper mapper, Class<T> type) { ... }
-  static Codec<String, byte[]> utf8() { ... }
+  static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) { ... }
 }
 ```
 
-Codecs are chainable, invertible links; `chain` composes them and the types
-enforce the order (decode runs the chain backwards for free). `Codec.json`
-binds a type to JSON text via the caller's mapper (tolerant, user modules flow
-through; sealed vocabularies bind the `SealedInputs` way — discriminator from
-permitted subclasses — so user types never need annotations); `Codec.utf8()`
-is the text↔bytes link. A recipe requires `Codec<T, byte[]>` at the substrate
-boundary, defaulting to `json(mapper, type).chain(utf8())` for user shapes and
-the nessy-owned binding chained with `utf8()` for core types. Transform links
-(gzip, encryption) are user-authored `Codec<byte[], byte[]>`s that click into
-the chain — the typed home of the §7 wrap-the-codec pattern. Use sites always
-concretize both parameters; no wildcards appear.
+A codec binds a subject type to the substrate's native tongue, bytes — and a
+**transform is just a `Codec<byte[]>`**: gzip, encryption, any byte↔byte link.
+`then` chains them: encode runs left-to-right, decode right-to-left, for free.
+The second type parameter a fully general `Codec<I,O>` would carry is phantom
+at every consumer seam (the output is always bytes), so it is baked in — the
+same phantom-generic ruling as the context-pipeline reform; widening to
+`Codec<I,O>` remains the strict generalization if a future feature needs typed
+intermediate stages. `Codec.json` binds straight to UTF-8 JSON bytes via the
+caller's mapper (tolerant, user modules flow through; sealed vocabularies bind
+the `SealedInputs` way — discriminator from permitted subclasses — so user
+types never need annotations; UTF-8 is an internal detail). Each recipe takes
+an optional `Codec<T>` for its stored shape, defaulting to `Codec.json` for
+user shapes and the nessy-owned binding for core types. Enterprise
+encryption-at-rest in one line: `Codec.json(mapper, type).then(gzip).then(aes)`
+— the links are user-authored per the patterns-not-products ruling. Use sites
+never see a wildcard.
 
 One conflict signal, same package:
 
