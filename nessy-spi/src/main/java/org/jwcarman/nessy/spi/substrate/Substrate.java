@@ -32,12 +32,6 @@ import java.util.Optional;
  */
 public interface Substrate {
 
-  /** Shared {@link NullPointerException} message for a null {@code payload} argument. */
-  String PAYLOAD_NULL_MESSAGE = "payload must not be null";
-
-  /** Shared {@code toString()} field-separator label for a record's {@code payload} byte count. */
-  String PAYLOAD_BYTES_LABEL = ", payloadBytes=";
-
   /**
    * The current document at {@code (kind, key)}, or empty if none has ever been written or the last
    * write was a delete.
@@ -114,7 +108,7 @@ public interface Substrate {
   record Document(byte[] payload, long version, Instant updatedAt) {
 
     public Document {
-      payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
+      payload = Objects.requireNonNull(payload, SubstrateSupport.PAYLOAD_NULL_MESSAGE).clone();
     }
 
     @Override
@@ -160,7 +154,7 @@ public interface Substrate {
   record Entry(long seq, byte[] payload, Instant appendedAt) {
 
     public Entry {
-      payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
+      payload = Objects.requireNonNull(payload, SubstrateSupport.PAYLOAD_NULL_MESSAGE).clone();
     }
 
     @Override
@@ -190,7 +184,7 @@ public interface Substrate {
     public String toString() {
       return "Entry[seq="
           + seq
-          + PAYLOAD_BYTES_LABEL
+          + SubstrateSupport.PAYLOAD_BYTES_LABEL
           + payload.length
           + ", appendedAt="
           + appendedAt
@@ -210,7 +204,7 @@ public interface Substrate {
         implements Op {
 
       public WriteDocument {
-        payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
+        payload = Objects.requireNonNull(payload, SubstrateSupport.PAYLOAD_NULL_MESSAGE).clone();
       }
 
       @Override
@@ -249,7 +243,7 @@ public interface Substrate {
             + kind
             + ", key="
             + key
-            + PAYLOAD_BYTES_LABEL
+            + SubstrateSupport.PAYLOAD_BYTES_LABEL
             + payload.length
             + ", expectedVersion="
             + expectedVersion
@@ -268,7 +262,7 @@ public interface Substrate {
     record AppendEntry(String kind, String key, long seq, byte[] payload) implements Op {
 
       public AppendEntry {
-        payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
+        payload = Objects.requireNonNull(payload, SubstrateSupport.PAYLOAD_NULL_MESSAGE).clone();
       }
 
       @Override
@@ -305,7 +299,7 @@ public interface Substrate {
             + key
             + ", seq="
             + seq
-            + PAYLOAD_BYTES_LABEL
+            + SubstrateSupport.PAYLOAD_BYTES_LABEL
             + payload.length
             + "]";
       }
