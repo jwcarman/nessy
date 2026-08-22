@@ -35,7 +35,11 @@ import org.jwcarman.nessy.spi.approval.Approver;
  * whatever it is, arrives through the delivery worker, never through a second read of this
  * computation. Create-then-suspend is idempotent (submit-once): a re-driven ask re-registers the
  * same continuation and never re-notifies — the notifier fires exactly once, on the ask that
- * created the computation.
+ * created the computation — while the computation is pending, that is: once a decision transfers it
+ * to its outbox delivery, the id is deterministically re-derivable again, so a redispatch that
+ * lands after the decision re-creates the computation and re-notifies rather than reading the
+ * decision back. That is the known Task 2 gap the grant-redispatch path runs into (see the fix-
+ * round report); this class does not paper over it.
  *
  * <p>{@code invocation}'s {@code responseId} component is provisional; see {@link
  * ComputationDeferredToolCallPolicy}'s javadoc for why, and for the same Task 3 handoff.

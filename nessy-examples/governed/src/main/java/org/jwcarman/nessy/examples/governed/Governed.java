@@ -145,10 +145,10 @@ public final class Governed {
       host.approvals().approve(request.address().approval());
       System.out.println("approved");
 
-      // KNOWN GAP (durable-parcels Task 2 report — see Approvals#runScripted()'s javadoc for the
+      // KNOWN GAP (durable-deliveries Task 2 report — see Approvals#runScripted()'s javadoc for the
       // full explanation): a grant redispatches the outstanding call instead of completing it, so
       // the redispatch re-asks approval rather than running the tool. Observed here as a second
-      // approval request rather than the completion the pre-parcel design produced.
+      // approval request rather than the completion the pre-pivot design produced.
       ApprovalRequest reSuspended = await(approvalRequests, "the re-suspended approval request");
       System.out.println("re-suspended: computation=" + reSuspended.address().approval().value());
       return new Result(bounce.result().content(), declaredTarget, "GOVERNED TURN RE-SUSPENDED");

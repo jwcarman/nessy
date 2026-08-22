@@ -56,11 +56,15 @@ class ComputationDeferredToolCallPolicyTest {
   }
 
   @Test
-  void theReturnAddressCarriesTheCall() {
+  void theReturnAddressCarriesTheAgentCoordinateAndTheCall() {
     policy.onDeferred(CALL, ADDRESS);
 
     PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
-    assertThat(pending.returnAddress().data()).contains("restart_prod").contains("demo");
+    ScopeRouting.Routing routing =
+        ScopeRouting.decode(TestMappers.plainlyPinned(), pending.returnAddress());
+    assertThat(routing.agentType()).isEqualTo(ADDRESS.agentType());
+    assertThat(routing.agentId()).isEqualTo(ADDRESS.agentId());
+    assertThat(routing.call()).isEqualTo(CALL);
     assertThat(pending.invocation().callId()).isEqualTo("c1");
   }
 }

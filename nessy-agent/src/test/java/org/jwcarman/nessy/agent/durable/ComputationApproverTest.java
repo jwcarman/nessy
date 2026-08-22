@@ -82,9 +82,11 @@ class ComputationApproverTest {
 
     PendingComputation pending = backend.find(ADDRESS.approval()).orElseThrow();
     assertThat(pending.returnAddress().type()).isEqualTo("SCOPE_RESUME");
-    assertThat(pending.returnAddress().data())
-        .contains(ADDRESS.agentType())
-        .contains(ADDRESS.agentId());
+    ScopeRouting.Routing routing =
+        ScopeRouting.decode(TestMappers.plainlyPinned(), pending.returnAddress());
+    assertThat(routing.agentType()).isEqualTo(ADDRESS.agentType());
+    assertThat(routing.agentId()).isEqualTo(ADDRESS.agentId());
+    assertThat(routing.call()).isEqualTo(request.call());
     assertThat(pending.invocation().callId()).isEqualTo(ADDRESS.callId());
   }
 }

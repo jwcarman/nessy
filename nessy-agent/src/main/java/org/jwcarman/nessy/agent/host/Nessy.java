@@ -322,6 +322,15 @@ public final class Nessy {
      * SubstrateComputations} over this builder's {@link #substrate(Substrate)}. Override for a
      * genuinely foreign engine (Restate, Temporal) — nobody implements this seam to get a database
      * (spec §6.5).
+     *
+     * <p><b>Integration contract:</b> the {@link DeliveryWorker} reads completions from this
+     * builder's {@link #substrate(Substrate)} — specifically, {@code kind=outbox} delivery
+     * documents ({@code {destination, outcome}}, spec §4) — never from the backend directly. A
+     * foreign {@code DurableComputationBackend} MUST write those same {@code outbox} documents into
+     * this substrate on {@code complete()}; that write is the only way a completion ever reaches a
+     * parked scope. A backend that completes computations some other way (its own store, its own
+     * callback) parks every scope's completion forever — this builder does not police that at
+     * {@code build()} time, so get the write right.
      */
     public AutonomousBuilder<O> backend(DurableComputationBackend backend) {
       this.backend = Objects.requireNonNull(backend, "backend must not be null");

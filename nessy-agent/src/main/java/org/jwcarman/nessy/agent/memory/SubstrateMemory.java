@@ -94,6 +94,20 @@ public final class SubstrateMemory implements Memory {
   }
 
   /**
+   * Mechanical internal, public only because its one caller ({@code DeliveryWorker}, spec §5) lives
+   * in a different package — the same cross-package reason {@code Harness#modelExecutor} and {@code
+   * #toolExecutor} are public. True iff this instance writes {@link MessageCodec}-encoded bytes
+   * directly into {@code substrate} — the exact shape a caller batching its own journal appends
+   * must match byte-for-byte. False for a different substrate instance, or for a caller-supplied
+   * {@link Codec} (encryption, compression, a test probe) that would silently diverge from what the
+   * worker itself encodes — the check a batching caller uses to fail loudly instead of writing
+   * bytes {@link #recall()} can never decode back.
+   */
+  public boolean writesPlainlyTo(Substrate substrate) {
+    return this.store == substrate && codec instanceof MessageCodecAdapter;
+  }
+
+  /**
    * Adapts {@link MessageCodec}'s String-JSON binding to the byte-oriented {@link Codec} seam —
    * internal, not a new public type (spec §3, §7).
    */

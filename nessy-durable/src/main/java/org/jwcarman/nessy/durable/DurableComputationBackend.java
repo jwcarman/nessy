@@ -46,6 +46,13 @@ public interface DurableComputationBackend {
    * that transfer; {@link CompletionResult#ALREADY_DONE} means the computation was absent — a
    * benign, ignorable outcome under at-least-once delivery (ruling 6, reversed: completion never
    * creates records).
+   *
+   * <p><b>Integration contract for a foreign implementation:</b> the delivery worker that resumes a
+   * parked scope reads completions exclusively as {@code kind=outbox} documents ({@code
+   * {destination, outcome}}, spec §4) written into the host's shared substrate — never by any other
+   * channel. A {@code complete()} that does not write that document into that substrate leaves its
+   * scope parked forever; nothing else observes the completion. This is the whole of the override
+   * seam's obligation, and it is on the implementation to honor it — nothing here polices it.
    */
   CompletionResult complete(ComputationId id, Outcome outcome);
 

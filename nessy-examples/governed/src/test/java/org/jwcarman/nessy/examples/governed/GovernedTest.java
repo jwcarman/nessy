@@ -30,10 +30,10 @@ import org.junit.jupiter.api.Timeout;
 class GovernedTest {
 
   /**
-   * KNOWN GAP (durable-parcels Task 2 report — see {@code Approvals#runScripted()}'s javadoc): a
+   * KNOWN GAP (durable-deliveries Task 2 report — see {@code Approvals#runScripted()}'s javadoc): a
    * grant redispatches the outstanding call instead of completing it, so this scripted run observes
    * a re-suspension rather than the turn's completion. Re-expressed to assert that reality, not the
-   * pre-parcel completion this example demonstrated before the pivot.
+   * pre-pivot completion this example demonstrated before the pivot.
    */
   @Test
   void the_bounced_and_declared_restart_re_suspends_pending_the_redispatch_gap()

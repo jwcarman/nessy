@@ -18,9 +18,7 @@ package org.jwcarman.nessy.agent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.Outcome;
 
@@ -44,18 +42,6 @@ public final class ScopeRedrive {
   public ScopeRedrive(AgentResolver resolver, ObjectMapper mapper) {
     this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
-  }
-
-  /**
-   * Equal addresses produce equal {@link Continuation}s, so the backend's set dedups
-   * re-registration.
-   */
-  public Continuation continuationFor(CallAddress address) {
-    Objects.requireNonNull(address, "address must not be null");
-    ObjectNode data = mapper.createObjectNode();
-    data.put("agentType", address.agentType());
-    data.put("agentId", address.agentId());
-    return new Continuation(TYPE, data.toString());
   }
 
   public void completed(Continuation continuation, Outcome outcome) {

@@ -46,7 +46,6 @@ import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -170,9 +169,11 @@ class ScopeRedriveTest {
     assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
     assertThat(counting.invocations).isEqualTo(1);
 
-    var address = new CallAddress(type.name(), id.value(), call.id());
     var redrive = new ScopeRedrive(resolver, TestMappers.plainlyPinned());
-    var continuation = redrive.continuationFor(address);
+    var continuation =
+        new Continuation(
+            ScopeRedrive.TYPE,
+            "{\"agentType\":\"" + type.name() + "\",\"agentId\":\"" + id.value() + "\"}");
 
     redrive.completed(continuation, DurableDecisions.granted());
     pump.pumpUntilQuiet();

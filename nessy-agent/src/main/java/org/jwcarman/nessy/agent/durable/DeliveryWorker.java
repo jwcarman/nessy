@@ -40,14 +40,18 @@ import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.Outcome;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.spi.substrate.Substrate.Op.AppendEntry;
 import org.jwcarman.nessy.spi.substrate.Substrate.Op.WriteDocument;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Delivery is fold-advance (durable-deliveries spec §5): the one consumer of outbox deliveries. Per
@@ -77,6 +81,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate.Op.WriteDocument;
  */
 public final class DeliveryWorker<O> implements AutoCloseable {
 
+  private static final Logger log = LoggerFactory.getLogger(DeliveryWorker.class);
   private static final String OUTBOX_KIND = "outbox";
   private static final String STATE_KIND = "state";
   private static final String MEMORY_KIND = "memory";
@@ -123,9 +128,13 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     heartbeat.start();
   }
 
-  /** An immediate, synchronous drain — the happy path after every completion. */
+  /**
+   * An immediate, synchronous drain — the happy path after every completion. Never throws: a
+   * completing desk calls this after its own commit, and a nudge failure must not surface as if the
+   * desk's own {@code complete()} had failed.
+   */
   public void nudge() {
-    drainOnce();
+    safeDrainOnce();
   }
 
   @Override
@@ -143,14 +152,32 @@ public final class DeliveryWorker<O> implements AutoCloseable {
         return;
       }
       if (!closed) {
-        drainOnce();
+        safeDrainOnce();
       }
     }
   }
 
+  /** Guards the whole sweep: a scan-level failure must not kill the heartbeat thread. */
+  private void safeDrainOnce() {
+    try {
+      drainOnce();
+    } catch (RuntimeException e) {
+      log.warn("a delivery sweep failed; will retry on the next heartbeat or nudge", e);
+    }
+  }
+
+  /**
+   * One bad delivery — an undecodable continuation, an unknown outcome vocabulary, a resolver
+   * failure — must not block every other pending delivery behind it (no head-of-line blocking), so
+   * each is guarded individually and logged rather than left to abort the whole scan.
+   */
   private void drainOnce() {
     for (String key : store.keys(OUTBOX_KIND, SCAN_LIMIT)) {
-      deliverOne(key);
+      try {
+        deliverOne(key);
+      } catch (RuntimeException e) {
+        log.warn("delivery {} could not be processed; skipped this sweep", key, e);
+      }
     }
   }
 
@@ -175,7 +202,10 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   /**
    * An approval grant is not a fold-advance: the batch is just the delivery removal, and the
    * outstanding call is re-fired afterward (commit-before-dispatch) via {@link ScopeRedrive}'s
-   * existing mechanism.
+   * existing mechanism. Unlike {@link #deliverCompletion}, this arm is at-most-once, not
+   * exactly-once (spec §5a): the delivery is removed before the redispatch fires, so a crash
+   * between the two loses the grant rather than replaying it — Task 3 closes this gap; do not read
+   * this as parity with the completion arm's CAS-batched guarantee.
    */
   private void deliverGrant(String key, long version, DeliveryDocument delivery) {
     try {
@@ -188,6 +218,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
 
   private void deliverCompletion(
       AgentType type, AgentId id, String callId, ToolOutcome outcome, String deliveryKey) {
+    requirePlainSubstrateMemory(id);
     while (true) {
       Optional<Substrate.Document> deliveryDoc = store.read(OUTBOX_KIND, deliveryKey);
       if (deliveryDoc.isEmpty()) {
@@ -235,6 +266,31 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   }
 
   /**
+   * The loud guard F3 asks for: the worker's journal appends bypass {@link
+   * org.jwcarman.nessy.spi.Memory} entirely and write {@link MessageCodec}-encoded bytes straight
+   * into {@code store} (this class's javadoc explains why — one atomic batch). A scope wired with
+   * anything else — a different substrate, a transformed {@link
+   * org.jwcarman.nessy.spi.substrate.Codec}, a non-substrate {@code Memory} test double — would
+   * silently diverge from what {@link SubstrateMemory#recall()} decodes, or never see the append at
+   * all. Failing loudly here, before any write, is deliberately narrower than fixing the seam
+   * itself: a {@code Memory} that contributes its own batch ops is parked for James, not built
+   * here.
+   */
+  private void requirePlainSubstrateMemory(AgentId id) {
+    var memory = harness.bind(id).memory();
+    if (!(memory instanceof SubstrateMemory substrateMemory)
+        || !substrateMemory.writesPlainlyTo(store)) {
+      throw new IllegalStateException(
+          "scope "
+              + id.value()
+              + " is wired with a Memory the delivery worker cannot batch into — its journal"
+              + " appends must be a plain SubstrateMemory over this worker's own substrate (see"
+              + " DeliveryWorker's class javadoc); a custom codec or a non-substrate Memory here"
+              + " would silently lose or corrupt this scope's completions");
+    }
+  }
+
+  /**
    * The pending call, re-derived from the currently-loaded phase's outstanding effects — the same
    * derivation {@link org.jwcarman.nessy.agent.DefaultAgent#redispatch()} relies on. Falls back to
    * a synthetic zero-argument call only if the phase no longer carries it (an already-reconciled or
@@ -271,14 +327,26 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   /**
    * {@code Success(Decision.Allow)} is empty — a grant, not a completion; every other outcome
    * (including a denial, whose reason becomes the tool's in-band failure) maps to a {@link
-   * ToolOutcome} via the same mapping {@link DurableOutcomes} uses for genuinely durable tools.
+   * ToolOutcome}, mirroring {@link DurableOutcomes#toToolOutcome(Outcome)}'s own arms for the
+   * genuinely-durable-tool payloads — inlined here (rather than delegated with a fallback default)
+   * so a future {@link Outcome} variant fails this switch at compile time, the same exhaustiveness
+   * discipline {@link DurableDecisions#toAdjudication} already holds to.
    */
   private static Optional<ToolOutcome> toToolOutcome(Outcome outcome) {
     return switch (outcome) {
       case Outcome.Success(Decision.Allow()) -> Optional.empty();
       case Outcome.Success(Decision.Deny(String reason)) ->
           Optional.of(new ToolOutcome.Failed(new ToolError(reason)));
-      default -> Optional.of(DurableOutcomes.toToolOutcome(outcome));
+      case Outcome.Success(Object value) when value instanceof ToolResult result ->
+          Optional.of(new ToolOutcome.Returned(result));
+      case Outcome.Success(Object value) ->
+          Optional.of(
+              new ToolOutcome.Failed(
+                  new ToolError("unexpected durable payload: " + value.getClass().getName())));
+      case Outcome.Failure(String message) ->
+          Optional.of(new ToolOutcome.Failed(new ToolError(message)));
+      case Outcome.Cancelled(String reason) ->
+          Optional.of(new ToolOutcome.Failed(new ToolError("cancelled: " + reason)));
     };
   }
 }

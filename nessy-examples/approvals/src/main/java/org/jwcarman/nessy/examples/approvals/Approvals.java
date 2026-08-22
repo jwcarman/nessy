@@ -69,9 +69,9 @@ public final class Approvals {
    * {@link #main} prints. Every wait is bounded: a hung host fails loudly with a named timeout
    * instead of hanging the build.
    *
-   * <p><b>Known gap (durable-parcels Task 2 report):</b> approving a computation is not itself a
+   * <p><b>Known gap (durable-deliveries Task 2 report):</b> approving a computation is not itself a
    * fold-advance — the tool has not run yet — so delivery re-fires the scope's still-outstanding
-   * {@code ExecuteTool} effect exactly as the pre-parcel {@code REDRIVE_SCOPE} poke did. {@code
+   * {@code ExecuteTool} effect exactly as the pre-pivot {@code REDRIVE_SCOPE} poke did. {@code
    * RegistryToolCallExecutor} re-checks the grant's policy on every redispatch, asking the approver
    * again; under presence-means-pending the approval computation the first ask created is already
    * gone (transferred to its outbox delivery and consumed), so the approver reads absence and

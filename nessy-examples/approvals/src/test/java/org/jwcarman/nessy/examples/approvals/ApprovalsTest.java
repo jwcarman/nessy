@@ -30,10 +30,10 @@ import org.junit.jupiter.api.Timeout;
 class ApprovalsTest {
 
   /**
-   * KNOWN GAP (durable-parcels Task 2 report — see {@link Approvals#runScripted()}'s javadoc): a
+   * KNOWN GAP (durable-deliveries Task 2 report — see {@link Approvals#runScripted()}'s javadoc): a
    * grant redispatches the outstanding call instead of completing it, so the scripted arc observes
    * a re-suspension rather than a completed restart. Re-expressed to assert that reality, not the
-   * pre-parcel completion this example demonstrated before the pivot.
+   * pre-pivot completion this example demonstrated before the pivot.
    */
   @Test
   void the_scripted_restart_parks_then_re_suspends_pending_the_redispatch_gap()

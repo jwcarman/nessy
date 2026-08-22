@@ -68,6 +68,18 @@ class OutcomeCodecTest {
               "{\"invocation\":{\"responseId\":\"response-1\",\"callId\":\"call-1\"},"
                   + "\"returnAddress\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"}}");
     }
+
+    @Test
+    void aDeadlinedPendingDocumentEmitsTheExactGoldenShapeWithThePinnedDeadlineKey() {
+      var deadline = Instant.parse("2026-08-22T12:00:00Z");
+      var document = new PendingDocument(INVOCATION, RETURN_ADDRESS, Optional.of(deadline));
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"invocation\":{\"responseId\":\"response-1\",\"callId\":\"call-1\"},"
+                  + "\"returnAddress\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"},"
+                  + "\"deadlineEpochMilli\":1787400000000}");
+    }
   }
 
   @Nested
