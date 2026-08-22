@@ -36,7 +36,6 @@ import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.ResolvingAgentBinder;
-import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
@@ -45,6 +44,8 @@ import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.PendingDocument;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
+import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
+import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.CallAddress;
@@ -75,8 +76,9 @@ import org.slf4j.LoggerFactory;
  * is no {@code ToolFinished} for the reducer to fold. That case dispatches the call directly
  * through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool} — the post-gate
  * door — using the {@code CallAddress}/{@code ToolInvocationId} the grant's own continuation
- * carries, never {@link ScopeRedrive}'s unconditional re-fire: re-entering the gate from the top
- * would re-run policy and re-ask the approver on every grant (spec §5a).
+ * carries. Re-entering the gate from the top (the old {@code ScopeRedrive} unconditional re-fire,
+ * retired: nothing routes through it in production anymore) would re-run policy and re-ask the
+ * approver on every grant (spec §5a).
  *
  * <p>One heartbeat thread per host, started by the host and stopped on {@link #close()}; {@link
  * #nudge()} runs an immediate, synchronous drain after every completion — the heartbeat is the
@@ -236,35 +238,126 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   /**
    * An approval grant is not a fold-advance: the tool has not run yet, so there is no {@code
    * ToolFinished} for the reducer to fold. The grant arm dispatches the call directly through
-   * {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool} — the post-gate door —
-   * using the {@code CallAddress}/{@code ToolInvocationId} the continuation itself carries; no fold
-   * read, no re-derivation, and critically no policy/approval re-run (spec §5a). This closes the
-   * Task 2 grant gap: {@link ScopeRedrive}'s unconditional re-fire used to re-enter {@code
-   * RegistryToolCallExecutor}'s gate from the top, re-asking the approver on every grant.
+   * {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow} — the post-gate
+   * door — using the {@code CallAddress}/{@code ToolInvocationId} the continuation itself carries;
+   * no fold read, no re-derivation, and critically no policy/approval re-run (spec §5a). This
+   * closed the Task 2 grant gap: the old {@code ScopeRedrive} unconditional re-fire (retired) used
+   * to re-enter {@code RegistryToolCallExecutor}'s gate from the top, re-asking the approver on
+   * every grant.
    *
-   * <p>Unlike {@link #deliverCompletion}, this arm is still at-most-once, not exactly-once: the
-   * delivery is removed before the redispatch fires, so a crash between the two loses the grant
-   * rather than replaying it. Composing the tool computation's {@code create} and this delivery's
-   * removal into one atomic batch (spec §5a) is not done here — a narrower, still-open gap than the
-   * one this arm closes (the policy re-ask), left for a follow-up rather than risked under this
-   * task's remaining scope.
+   * <p><b>Ownership at every committed point (spec §5a invariant 5):</b> the tool runs
+   * SYNCHRONOUSLY, on this sweep's own thread, before any write — the outcome decides which batch
+   * to commit, exactly as spec §5a requires ("consumed by the result's own fold-advance batch" /
+   * "one batch [create tool computation, delete delivery]"). An immediate outcome's grant delivery
+   * is consumed by {@link #foldGrantedResult}'s own batch — the journal appends, the state CAS, and
+   * this delivery's removal, all in the one {@link Substrate#batch}, the same shape {@link
+   * #deliverCompletion} uses. A deferred outcome has already made itself durable inside {@link
+   * ComputationDeferredToolCallPolicy#onDeferred} (a standalone, CAS-idempotent write) by the time
+   * this method sees {@link ToolExecution.Deferred}; the one crash window that write leaves open —
+   * computation durably created, this delivery not yet deleted — is closed not by a second
+   * substrate write joining the same batch (the {@link
+   * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy} contract persists synchronously and does
+   * not hand back an unexecuted op to batch), but by the presence check below: this method never
+   * re-dispatches into a tool computation that already exists for this exact {@code ComputationId}
+   * — a retry of THIS delivery after that crash finds the computation present and only deletes the
+   * now-redundant delivery, so the external side effect this call's tool may have started is never
+   * re-triggered by delivery replay (deterministic ids, submit-once discipline — spec §2).
+   * Composing the create and the delete into one literal {@link Substrate#batch} call remains open
+   * for a follow-up; the presence-check guard below closes the actual correctness risk (duplicate
+   * dispatch / an orphaned delivery) that composing the batch would also have closed.
    */
   private void deliverGrant(
       String key, long version, AgentType type, AgentId id, ScopeRouting.Routing routing) {
-    try {
-      store.delete(OUTBOX_KIND, key, version);
-    } catch (ConflictException _) {
-      return; // another drain already delivered this delivery
-    }
     CallAddress address =
         new CallAddress(
             routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
     ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
-    Binding<O> binding = harness.bind(id);
-    harness
-        .toolExecutor(binding)
-        .executeGrantedTool(
-            routing.call(), address, invocation, event -> binder.deliver(type, id, event));
+    ComputationId toolId = address.execution();
+
+    if (computations.find(toolId).isPresent()) {
+      // a prior (crashed) attempt already transferred this grant into a durable tool computation —
+      // this delivery is now redundant; consume it without re-running the tool (idempotent replay)
+      deleteDeliveryIfPresent(key, version);
+      return;
+    }
+
+    ToolCallExecutor executor = harness.toolExecutor(harness.bind(id));
+    ToolExecution result = executor.executeGrantedToolNow(routing.call(), address, invocation);
+    switch (result) {
+      case ToolExecution.Immediate(ToolOutcome outcome) ->
+          foldGrantedResult(type, id, routing.call(), outcome, key, version);
+      case ToolExecution.Deferred(_) ->
+          // onDeferred already made the tool computation durable (see javadoc above); the grant
+          // delivery's job is done
+          deleteDeliveryIfPresent(key, version);
+    }
+  }
+
+  private void deleteDeliveryIfPresent(String key, long version) {
+    try {
+      store.delete(OUTBOX_KIND, key, version);
+    } catch (ConflictException _) {
+      // another drain already delivered this delivery
+    }
+  }
+
+  /**
+   * The immediate arm of a grant (spec §5a): the tool already ran, synchronously, and its outcome
+   * is in hand — so the grant delivery is consumed by the RESULT's own fold-advance batch, the same
+   * shape {@link #deliverCompletion} uses, sourced from a directly-computed outcome instead of a
+   * decoded outbox document, and deleting the GRANT delivery (not re-deriving a completion one).
+   */
+  private void foldGrantedResult(
+      AgentType type,
+      AgentId id,
+      ToolCall call,
+      ToolOutcome outcome,
+      String deliveryKey,
+      long deliveryVersion) {
+    requirePlainSubstrateMemory(id);
+    while (true) {
+      Optional<Substrate.Document> deliveryDoc = store.read(OUTBOX_KIND, deliveryKey);
+      if (deliveryDoc.isEmpty()) {
+        return; // another drain already delivered this delivery
+      }
+      Optional<Substrate.Document> stateDoc = store.read(STATE_KIND, id.value());
+      State state =
+          stateDoc
+              .map(
+                  d ->
+                      new State(
+                          stateCodec.phase(new String(d.payload(), StandardCharsets.UTF_8)),
+                          d.version()))
+              .orElseGet(State::initial);
+      var event = new AgentEvent.ToolFinished(call, outcome);
+      var transition = state.phase().handle(event);
+      List<Substrate.Op> ops = new ArrayList<>();
+      if (!transition.isIgnored()) {
+        long seq = currentMemoryHead(id);
+        for (Message message : transition.commit()) {
+          seq++;
+          ops.add(
+              new AppendEntry(
+                  MEMORY_KIND,
+                  id.value(),
+                  seq,
+                  messageCodec.toJson(message).getBytes(StandardCharsets.UTF_8)));
+        }
+        byte[] statePayload = stateCodec.toJson(transition.next()).getBytes(StandardCharsets.UTF_8);
+        ops.add(new WriteDocument(STATE_KIND, id.value(), statePayload, state.version()));
+      }
+      ops.add(
+          new Substrate.Op.DeleteDocument(OUTBOX_KIND, deliveryKey, deliveryDoc.get().version()));
+      try {
+        store.batch(ops);
+      } catch (ConflictException _) {
+        continue; // lost the race — re-read state (or find the delivery already gone) and retry
+      }
+      if (!transition.isIgnored()) {
+        dispatchEffects(type, id, transition.next(), transition.effects());
+      }
+      return;
+    }
   }
 
   private void deliverCompletion(

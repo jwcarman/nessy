@@ -163,6 +163,12 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
         });
   }
 
+  @Override
+  public ToolExecution executeGrantedToolNow(
+      ToolCall call, CallAddress address, ToolInvocationId invocation) {
+    return executePastGate(call, address, invocation);
+  }
+
   private ToolExecution execute(ToolCall call, ModelResponseId responseId) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
@@ -194,6 +200,12 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   private ToolExecution gate(ToolGrant grant, ToolCall call, CallAddress address) {
+    if (deferredToolCallPolicy.isPending(address)) {
+      // ownership-split absorption (spec §5a, §6): a staleness redrive reached a call whose tool
+      // computation already exists — the work is in flight from an earlier pass through this exact
+      // gate. Absorb here, before the tool runs again and before the approver is ever asked again.
+      return new ToolExecution.Deferred(address.execution());
+    }
     Object input = convert(call, grant.tool());
     ToolInvocationId invocation = new ToolInvocationId(address.responseId(), call.id());
     PolicyDecision decision;

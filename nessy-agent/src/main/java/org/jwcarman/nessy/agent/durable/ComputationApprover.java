@@ -29,17 +29,25 @@ import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.approval.Approver;
 
 /**
- * The computation-backed adjudicator (durable-deliveries spec §3, §5): create carries the
+ * The computation-backed adjudicator (durable-deliveries spec §3, §5, §5a): create carries the
  * continuation, so the return address is durable before the call ever suspends. There is no
  * terminal residue to read back here (ruling 6, reversed) — every ask suspends; the decision,
  * whatever it is, arrives through the delivery worker, never through a second read of this
- * computation. Create-then-suspend is idempotent (submit-once): a re-driven ask re-registers the
- * same continuation and never re-notifies — the notifier fires exactly once, on the ask that
- * created the computation — while the computation is pending, that is: once a decision transfers it
- * to its outbox delivery, the id is deterministically re-derivable again, so a redispatch that
- * lands after the decision re-creates the computation and re-notifies rather than reading the
- * decision back. That is the known Task 2 gap the grant-redispatch path runs into (see the fix-
- * round report); this class does not paper over it.
+ * computation.
+ *
+ * <p>Two redrives land differently, and both are absorbed without a duplicate notification. WHILE
+ * STILL PENDING: create-then-suspend is idempotent (submit-once) — a re-driven ask re-registers the
+ * same continuation at the same deterministic id and never re-notifies, because {@code create} on
+ * an already-present document is a CAS conflict, not a create. AFTER A GRANT: the grant arm (spec
+ * §5a) never re-enters this class at all — it dispatches the call directly from the grant's own
+ * continuation, past the gate. The one remaining exposure was a STALENESS redrive landing after the
+ * grant, when this approval id has already been transferred to its outbox delivery and consumed
+ * (presence-means-pending leaves no residue to read here) — that redrive used to reach this class,
+ * find absence, and treat it as a fresh ask, re-creating and re-notifying. It no longer reaches
+ * here: {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s gate checks {@link
+ * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#isPending} on the TOOL computation id first
+ * (a grant that ran to a durable tool leaves that id present) and absorbs there, before this
+ * approver — or the tool — ever runs again.
  *
  * <p>{@code invocation}'s {@code responseId} component is the real, committed {@code
  * ModelResponseId} — read off the address the gate stamps before the approval is ever asked

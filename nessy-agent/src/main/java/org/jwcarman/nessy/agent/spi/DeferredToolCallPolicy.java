@@ -44,4 +44,19 @@ public interface DeferredToolCallPolicy {
       ToolInvocationId invocation,
       RetrySemantics retrySemantics,
       Optional<Duration> timeout);
+
+  /**
+   * Ownership-split absorption (durable-deliveries spec §5a, §6): true when {@code address}'s tool
+   * computation is already durably pending — the work is in flight, dispatched by an earlier pass
+   * through this exact gate. The gate checks this BEFORE running the tool or asking the policy at
+   * all, so a staleness redrive that reaches a call whose work has already gone durable absorbs
+   * silently: no external re-dispatch, no re-run of the tool's own side effect, no second approval
+   * ask (the approver is never even reached). The default answers {@code false} — a wiring with
+   * nothing durable to check has nothing to absorb; {@link
+   * org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy} is the one implementation
+   * that answers meaningfully.
+   */
+  default boolean isPending(CallAddress address) {
+    return false;
+  }
 }

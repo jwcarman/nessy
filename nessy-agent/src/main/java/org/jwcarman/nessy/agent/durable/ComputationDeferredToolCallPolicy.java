@@ -43,6 +43,17 @@ import org.jwcarman.nessy.durable.ToolInvocationId;
  * retrySemantics} rides the continuation itself (via {@link ScopeRouting}) rather than the
  * computation document, so the reaper can decide bump-or-fail straight from the return address it
  * already reads, with no registry lookup.
+ *
+ * <p>{@link #isPending} is the ownership-split absorption door (spec §5a, §6): {@link
+ * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s gate calls it before running the tool
+ * or asking the policy at all, on EVERY dispatch (fresh or redriven) — a staleness redrive that
+ * reaches a call whose tool computation already exists absorbs there, silently, before the tool
+ * ever runs again and before the approver is ever asked again. This replaces the
+ * re-create-and-re-notify behavior {@link ComputationApprover}'s javadoc used to describe as the
+ * known gap: that gap was a redrive reaching the APPROVER after the grant had already transferred
+ * the work into a tool computation, reading absence at the (consumed) approval id, and treating it
+ * as a fresh ask. The gate-level {@code isPending} check on the TOOL id now intercepts that redrive
+ * before it ever reaches the approver.
  */
 public final class ComputationDeferredToolCallPolicy implements DeferredToolCallPolicy {
 
@@ -52,6 +63,11 @@ public final class ComputationDeferredToolCallPolicy implements DeferredToolCall
   public ComputationDeferredToolCallPolicy(DurableComputationBackend backend, ObjectMapper mapper) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+  }
+
+  @Override
+  public boolean isPending(CallAddress address) {
+    return backend.find(address.execution()).isPresent();
   }
 
   @Override

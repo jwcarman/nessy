@@ -45,4 +45,21 @@ public interface ToolCallExecutor {
       ToolCall call, CallAddress address, ToolInvocationId invocation, Sink sink) {
     executeTool(call, ModelResponseId.of(invocation.responseId()), sink);
   }
+
+  /**
+   * The synchronous post-gate door (durable-deliveries spec §5a invariant 5): runs {@code call}
+   * straight to the tool, skipping the policy/approval gate exactly like {@link
+   * #executeGrantedTool}, but on the CALLING thread and returning the {@link ToolExecution}
+   * directly instead of delivering asynchronously. {@link
+   * org.jwcarman.nessy.agent.durable.DeliveryWorker}'s grant arm needs the outcome in hand before
+   * it decides which atomic batch to commit — an immediate outcome rides the result's own
+   * fold-advance batch, a deferred one means the durable computation is already the owner — so this
+   * is the one door that may not hand off to an executor. The default throws: only {@link
+   * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} implements this meaningfully.
+   */
+  default ToolExecution executeGrantedToolNow(
+      ToolCall call, CallAddress address, ToolInvocationId invocation) {
+    throw new UnsupportedOperationException(
+        "this ToolCallExecutor does not support synchronous granted execution");
+  }
 }

@@ -24,12 +24,16 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolOutcome;
+import org.jwcarman.nessy.agent.durable.ComputationApprover;
+import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -49,9 +53,12 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.durable.Continuation;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.approval.Approver;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class RegistryToolCallExecutorTest {
 
@@ -520,5 +527,84 @@ class RegistryToolCallExecutorTest {
     var finished = run(registry, call, new RecordingTurnObserver());
     var failed = (ToolOutcome.Failed) finished.outcome();
     assertThat(failed.error().message()).isEqualTo(RegistryToolCallExecutor.APPROVAL_UNAVAILABLE);
+  }
+
+  static final class ParkingDurableTool implements Tool<EchoInput> {
+    @Override
+    public String name() {
+      return "park_durable";
+    }
+
+    @Override
+    public String description() {
+      return "always defers; gated behind approval";
+    }
+
+    @Override
+    public Class<EchoInput> inputType() {
+      return EchoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+      return Awaited.deferred();
+    }
+  }
+
+  /**
+   * The standalone counting-approver test: exactly one ask across the FULL arc, including a
+   * staleness redrive that lands after the grant already turned the call into a durable tool
+   * computation. Real {@link ComputationApprover} and {@link ComputationDeferredToolCallPolicy}
+   * over a real {@link SubstrateComputations} — no test doubles standing in for the durable
+   * machinery this test is actually about.
+   */
+  @Test
+  void exactlyOneApproverNotificationSurvivesAStalenessRedriveAfterTheGrant() {
+    var mapper = TestMappers.plainlyPinned();
+    var backend = new SubstrateComputations(new InMemorySubstrate(), mapper);
+    var notifications = new ArrayList<ApprovalRequest>();
+    var approver = new ComputationApprover(backend, notifications::add, mapper);
+    var deferredPolicy = new ComputationDeferredToolCallPolicy(backend, mapper);
+    var registry =
+        ToolRegistry.of(ToolGrant.grant(new ParkingDurableTool(), UsagePolicy.requireApproval()));
+    var call =
+        new ToolCall("c1", "park_durable", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var pump = new PumpedExecutor();
+    var turn = new RecordingTurnObserver();
+    var executor =
+        new RegistryToolCallExecutor(
+            registry,
+            AgentType.of("cli"),
+            AgentId.of("cli"),
+            turn,
+            pump,
+            deferredPolicy,
+            approver,
+            mapper);
+    var address = new CallAddress("cli", "cli", RESPONSE_ID.value(), "c1");
+
+    // the first ask: suspends, notifies once
+    var delivered = new ArrayList<AgentEvent>();
+    executor.executeTool(call, RESPONSE_ID, delivered::add);
+    pump.pumpUntilQuiet();
+    assertThat(delivered).isEmpty();
+    assertThat(notifications).hasSize(1);
+
+    // the grant already ran (elsewhere, via the grant arm) and turned the call into a durable
+    // tool computation — simulated directly, since this test is about the approver's count, not
+    // the grant arm's own mechanics (covered by GrantSurvivalTest and AbsorptionTest).
+    backend.create(
+        address.execution(),
+        new ToolInvocationId(RESPONSE_ID.value(), "c1"),
+        new Continuation("SCOPE_RESUME", "{}"),
+        Optional.empty());
+
+    // a staleness redrive lands after the grant: the gate absorbs it via isPending, before the
+    // approver is ever reached again
+    var redelivered = new ArrayList<AgentEvent>();
+    executor.executeTool(call, RESPONSE_ID, redelivered::add);
+    pump.pumpUntilQuiet();
+
+    assertThat(notifications).hasSize(1); // still exactly one ask, ever
   }
 }
