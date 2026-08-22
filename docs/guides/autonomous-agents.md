@@ -174,6 +174,11 @@ ride the same `IntentTool` kit with its own sealed vocabulary instead —
 `TypedIntentDemo`'s `OpsIntent`:
 
 ```java
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+  @JsonSubTypes.Type(value = Diagnose.class, name = "Diagnose")
+})
 sealed interface OpsIntent permits Restart, Diagnose {}
 record Restart(String target, String reason) implements OpsIntent {}
 record Diagnose(String target) implements OpsIntent {}
@@ -191,12 +196,12 @@ Three things fall out of typing the intent:
   action — `TypedIntentDemo` denies, naming both, when a declared
   `Restart("prod-eu", ...)` is followed by an attempt against `prod-us`.
 - A **declaration outside the sealed vocabulary** — `{"type": "Nuke", ...}`
-  — is rejected by the discriminator binder itself, in-band, before
+  — is rejected by Jackson's own polymorphic binding, in-band, before
   `declare-intent` ever runs and before anything is stored. The rejection
   names the legal types (`Restart`, `Diagnose`) so the model can retry
   correctly.
 
-See [Intent](../concepts/intent.md) for the discriminator binding mechanics
+See [Intent](../concepts/intent.md) for the annotated discriminator binding
 this rides on.
 
 ## Typed observations
@@ -278,4 +283,4 @@ the full declared-intent-plus-risk-threshold gate.
 - [Storage](../concepts/storage.md) — the `.substrate(...)` seam and the
   substrate every recipe on this page shares.
 - [Intent](../concepts/intent.md) — the `declare-intent` tool and the
-  sealed-input discriminator binding `TypedIntentDemo` rides.
+  annotated sealed-input binding `TypedIntentDemo` rides.

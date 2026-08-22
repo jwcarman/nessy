@@ -15,8 +15,12 @@
  */
 package org.jwcarman.nessy.agent.backlog;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
@@ -35,24 +39,26 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * queue is rejected with an {@link IllegalStateException}, the bound the deleted {@code
  * BoundedBacklog} used to enforce (spec §12).
  *
- * <p>The outer array-of-strings envelope is hand-written, not Jackson-bound: every element is
- * base64 ({@code [A-Za-z0-9+/=]}), so nothing in it is ever JSON-escapable, and a shared static
- * {@link com.fasterxml.jackson.databind.ObjectMapper} would be exactly the ambient statics this
- * branch (Task 3) exists to retire. Only the elements' meaning is caller-controlled, through {@code
- * codec}.
+ * <p>The outer array-of-strings envelope binds through {@code mapper} — a plain {@code
+ * List<String>} — threaded via the constructor (spec §7's statics-die law: never static/ambient).
+ * Every element is base64 ({@code [A-Za-z0-9+/=]}), so nothing in it is ever JSON-escapable; only
+ * the elements' meaning is caller-controlled, through {@code codec}.
  *
  * @param <O> the observation vocabulary this backlog holds
  */
 public final class SubstrateBacklog<O> implements Backlog<O> {
 
   private static final String KIND = "backlog";
+  private static final String MALFORMED_PAYLOAD_MESSAGE = "malformed backlog payload";
 
   private final Substrate store;
   private final String agentId;
   private final int capacity;
   private final Codec<O> codec;
+  private final ObjectMapper mapper;
 
-  public SubstrateBacklog(Substrate store, String agentId, int capacity, Codec<O> codec) {
+  public SubstrateBacklog(
+      Substrate store, String agentId, int capacity, Codec<O> codec, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     if (capacity < 1) {
@@ -60,6 +66,7 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
     }
     this.capacity = capacity;
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   @Override
@@ -115,40 +122,22 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
     }
   }
 
-  /**
-   * Parses the hand-written {@code ["base64","base64",...]} envelope. Every element is base64
-   * ({@code [A-Za-z0-9+/=]}), so a bare split-and-strip is exact — no escaping is possible inside
-   * an element to confuse it with the {@code ","} separator or the {@code "\""} quote.
-   */
+  /** Parses the {@code ["base64","base64",...]} envelope through {@code mapper}. */
   private List<String> readQueue(String payload) {
-    String trimmed = payload.strip();
-    if (trimmed.equals("[]")) {
-      return new ArrayList<>();
+    try {
+      String[] elements = mapper.readValue(payload, String[].class);
+      return new ArrayList<>(Arrays.asList(elements));
+    } catch (IOException e) {
+      throw new IllegalArgumentException(MALFORMED_PAYLOAD_MESSAGE, e);
     }
-    if (trimmed.length() < 2
-        || trimmed.charAt(0) != '['
-        || trimmed.charAt(trimmed.length() - 1) != ']') {
-      throw new IllegalArgumentException("malformed backlog payload");
-    }
-    String inner = trimmed.substring(1, trimmed.length() - 1);
-    List<String> elements = new ArrayList<>();
-    for (String element : inner.split(",", -1)) {
-      String stripped = element.strip();
-      if (stripped.length() < 2
-          || stripped.charAt(0) != '"'
-          || stripped.charAt(stripped.length() - 1) != '"') {
-        throw new IllegalArgumentException("malformed backlog payload");
-      }
-      elements.add(stripped.substring(1, stripped.length() - 1));
-    }
-    return elements;
   }
 
-  /** Writes the {@code ["base64","base64",...]} envelope; {@code "[]"} for an empty queue. */
+  /** Writes the {@code ["base64","base64",...]} envelope through {@code mapper}. */
   private String writeQueue(List<String> queue) {
-    if (queue.isEmpty()) {
-      return "[]";
+    try {
+      return mapper.writeValueAsString(queue);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("failed to encode backlog payload", e);
     }
-    return "[\"" + String.join("\",\"", queue) + "\"]";
   }
 }

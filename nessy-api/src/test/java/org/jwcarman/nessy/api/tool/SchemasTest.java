@@ -19,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.victools.jsonschema.generator.SchemaVersion;
@@ -35,15 +37,72 @@ class SchemasTest {
       @JsonPropertyDescription("Path relative to the workspace root") String path,
       Optional<Integer> maxLines) {}
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Shutdown.class, name = "Shutdown")
+  })
   sealed interface Vocabulary permits Restart, Shutdown {}
 
   record Restart(@JsonPropertyDescription("Target host") String host) implements Vocabulary {}
 
   record Shutdown(Optional<String> reason) implements Vocabulary {}
 
-  sealed interface CollidingVocabulary permits CollidingType {}
+  sealed interface UnannotatedVocabulary permits UnannotatedMember {}
 
-  record CollidingType(String type) implements CollidingVocabulary {}
+  record UnannotatedMember(String value) implements UnannotatedVocabulary {}
+
+  record NestedTarget(String name) {}
+
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = RestartTarget.class, name = "Restart"),
+    @JsonSubTypes.Type(value = ShutdownTarget.class, name = "Shutdown")
+  })
+  sealed interface VocabularyWithSharedNestedRecord permits RestartTarget, ShutdownTarget {}
+
+  record RestartTarget(NestedTarget target) implements VocabularyWithSharedNestedRecord {}
+
+  record ShutdownTarget(NestedTarget target) implements VocabularyWithSharedNestedRecord {}
+
+  /**
+   * A sealed ABSTRACT CLASS (not an interface) carrying the same polymorphism annotations: victools
+   * still derives {@code anyOf} for it via the Jackson module (annotation-driven, not {@code
+   * isInterface()}-gated), but {@link Schemas#of} only routes through the dedicated {@code
+   * isInterface() && isSealed()} path for interfaces — this type instead exercises the plain {@code
+   * GENERATOR.generateSchema} branch, proving {@link Schemas#of}'s {@code anyOf}→{@code oneOf}
+   * normalization applies there too, not only on the sealed-interface path.
+   */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = ClassRestart.class, name = "ClassRestart"),
+    @JsonSubTypes.Type(value = ClassShutdown.class, name = "ClassShutdown")
+  })
+  abstract static sealed class ClassVocabulary permits ClassRestart, ClassShutdown {}
+
+  static final class ClassRestart extends ClassVocabulary {
+    private String host;
+
+    public String getHost() {
+      return host;
+    }
+
+    public void setHost(String host) {
+      this.host = host;
+    }
+  }
+
+  static final class ClassShutdown extends ClassVocabulary {
+    private String reason;
+
+    public String getReason() {
+      return reason;
+    }
+
+    public void setReason(String reason) {
+      this.reason = reason;
+    }
+  }
 
   @Test
   void components_become_properties() {
@@ -114,6 +173,15 @@ class SchemasTest {
     }
 
     @Test
+    void an_optional_component_is_not_required_on_its_branch() {
+      ObjectNode schema = Schemas.of(Vocabulary.class);
+
+      ObjectNode shutdownBranch = branchNamed(schema, "Shutdown");
+
+      assertThat(requiredNames(shutdownBranch)).doesNotContain("reason");
+    }
+
+    @Test
     void the_root_carries_schema_and_no_branch_does() {
       ObjectNode schema = Schemas.of(Vocabulary.class);
 
@@ -126,11 +194,49 @@ class SchemasTest {
     }
 
     @Test
-    void a_record_declaring_its_own_type_component_fails_loudly_at_schema_time() {
-      assertThatThrownBy(() -> Schemas.of(CollidingVocabulary.class))
+    void an_unannotated_sealed_interface_is_rejected_with_a_message_naming_what_to_add() {
+      assertThatThrownBy(() -> Schemas.of(UnannotatedVocabulary.class))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("CollidingType")
-          .hasMessageContaining("type");
+          .hasMessageContaining("UnannotatedVocabulary")
+          .hasMessageContaining("@JsonTypeInfo")
+          .hasMessageContaining("@JsonSubTypes");
+    }
+
+    @Test
+    void two_branches_sharing_a_nested_record_carry_one_shared_defs_entry_at_the_root() {
+      ObjectNode schema = Schemas.of(VocabularyWithSharedNestedRecord.class);
+
+      assertThat(schema.has("$defs")).isTrue();
+      assertThat(schema.get("$defs").has("NestedTarget")).isTrue();
+      for (JsonNode branch : schema.get("oneOf")) {
+        assertThat(branch.has("$defs")).isFalse();
+      }
+    }
+
+    @Test
+    void every_ref_in_a_shared_nested_record_schema_resolves_against_the_root() {
+      ObjectNode schema = Schemas.of(VocabularyWithSharedNestedRecord.class);
+
+      List<String> refs = new ArrayList<>();
+      collectRefs(schema, refs);
+
+      assertThat(refs).isNotEmpty();
+      for (String ref : refs) {
+        assertThat(ref).startsWith("#/");
+        assertThat(schema.at(ref.substring(1)).isMissingNode()).isFalse();
+      }
+    }
+
+    private void collectRefs(JsonNode node, List<String> refs) {
+      if (node.isObject()) {
+        JsonNode ref = node.get("$ref");
+        if (ref != null) {
+          refs.add(ref.asText());
+        }
+        node.fields().forEachRemaining(entry -> collectRefs(entry.getValue(), refs));
+      } else if (node.isArray()) {
+        node.forEach(child -> collectRefs(child, refs));
+      }
     }
 
     private ObjectNode branchNamed(ObjectNode schema, String typeName) {
@@ -149,6 +255,31 @@ class SchemasTest {
       var names = new ArrayList<String>();
       required.forEach(node -> names.add(node.asText()));
       return names;
+    }
+  }
+
+  @Nested
+  class ASealedAbstractClassInputType {
+
+    @Test
+    void the_schema_is_a_oneOf_not_the_raw_victools_anyOf() {
+      ObjectNode schema = Schemas.of(ClassVocabulary.class);
+
+      assertThat(schema.has("anyOf")).isFalse();
+      assertThat(schema.get("oneOf")).isNotNull();
+      assertThat(schema.get("oneOf")).hasSize(2);
+    }
+
+    @Test
+    void each_branch_still_carries_its_own_discriminator_const() {
+      ObjectNode schema = Schemas.of(ClassVocabulary.class);
+
+      var discriminators = new ArrayList<String>();
+      for (JsonNode branch : schema.get("oneOf")) {
+        discriminators.add(branch.at("/properties/type/const").asText());
+      }
+
+      assertThat(discriminators).containsExactlyInAnyOrder("ClassRestart", "ClassShutdown");
     }
   }
 }

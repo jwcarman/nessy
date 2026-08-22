@@ -70,31 +70,27 @@ public interface Codec<T> {
 }
 ```
 
-`Codec.json(mapper, type)` is the default binding for user-defined shapes:
-tolerant UTF-8 JSON through the caller's mapper, so user-registered modules
-flow through untouched. When `type` is a sealed interface, encoding adds a
-`"type"` discriminator naming the concrete permitted record — the same
-convention `SealedInputs` uses for tool inputs — so a sealed vocabulary
-never needs Jackson annotations to ride this codec.
+`Codec.json(mapper, type)` is a plain `writeValueAsBytes`/`readValue` pair
+through `mapper`, exactly as `mapper` is configured — this call inspects
+neither `type` nor the mapper's configuration first. There is no
+construction-time check and no collision guard: a sealed `type` binds
+through whatever polymorphism `mapper` resolves for it — `@JsonTypeInfo`/
+`@JsonSubTypes` directly on the type, a `mapper.addMixIn(...)`, a custom
+`AnnotationIntrospector` — the same vocabulary a tool input's schema/binding
+rides (see [Tools](tools.md#sealed-inputs-a-vocabulary-as-one-argument)).
+Annotate your sealed vocabularies: an unannotated sealed `type` simply gets
+Jackson's own natural behavior, no discriminator is ever written, and
+decoding fails with Jackson's own error.
 
-!!! warning "A Jackson-annotated sealed type double-discriminates"
-    `Codec.json` detects a sealed `type` and writes its own `"type"` field
-    from `Class#getPermittedSubclasses()` — the concrete record's simple
-    name (`TextBlock`). If `type` is *also* annotated with
-    `@JsonTypeInfo`/`@JsonSubTypes` — as Nessy's own `ContentBlock` and
-    `Phase` are, with kebab-case discriminator values (`text`) — the two
-    conventions collide on the same `"type"` property: `Codec.json`'s own
-    write wins on encode, but anything decoding through the type's own
-    annotation-driven binding expects the kebab-case value and won't
-    recognize `TextBlock`. Nessy-owned annotated types bind directly
-    through the pinned `ObjectMapper` (see `Codecs.copyAndPin`), never
-    through `Codec.json`. Reach for `Codec.json` only for a type that
-    carries no Jackson annotations of its own — which is every
-    user-authored type this seam is meant for; a sealed vocabulary with no
-    annotations gets its discriminator from `Codec.json` for free.
+Misconfiguration surfaces exactly as it would in any Jackson application —
+Nessy does not inspect or police a caller's own mapper setup. What
+`Codec.json` does own is the boundary: malformed bytes, an unknown
+discriminator, or a shape mismatch never leak a raw Jackson exception past
+it — every failure surfaces as `IllegalArgumentException` naming the
+offense.
 
-Malformed bytes never leak a Jackson exception past a codec boundary — a
-decode failure surfaces as `IllegalArgumentException` naming the offense.
+Test over `InMemorySubstrate`: storage there is real encoded bytes, so a
+Jackson misconfiguration fails in your own unit tests, not in production.
 
 ## Transforms are patterns, not products
 
@@ -217,7 +213,7 @@ Two horror stories are why the pin exists, not a hypothetical:
   wire — and the very next `await` would fail to parse the document it
   just wrote, because the field it needs is simply missing.
 
-The pinned copy feeds every recipe default codec and `SealedInputs`
+The pinned copy feeds every recipe default codec and the tool executor's
 binding. `Schemas` generation and tool-result rendering are not threaded
 through it: `Schemas.of` takes no mapper argument at all, and
 `ConfiguredTool` renders a plain (non-`ToolResult`) return value through
@@ -229,17 +225,21 @@ copy-and-pin path with their format pinned by the vendor instead.
 
 ## The annotations law
 
-- **User-authored types never require Jackson annotations.** Nessy binds
-  them: `SealedInputs` for tool inputs and intent vocabularies,
-  `Codec.json` for stored user shapes. This half is load-bearing API
-  quality and permanent.
-- **Nessy-owned types carry Jackson annotations directly.** `ContentBlock`
-  and `Phase` carry `@JsonTypeInfo`/`@JsonSubTypes` on their sealed
-  hierarchies now; the hand-rolled tree-walking codecs that used to bind
-  them are gone. The pinned mapper does the binding, and the wire format is
-  pinned by golden round-trip tests, not by artisanal code. Discriminator
-  values are unchanged (`text`, `image`, `thinking`, `redacted-thinking`,
-  `tool-use`, `tool-result`; `idle`, `awaiting-model`, `awaiting-tools`).
+- **Every sealed hierarchy carries Jackson annotations directly** — user
+  vocabularies and Nessy-owned types alike (the 2026-08-22 repeal). Nessy
+  binds nothing bespoke and polices nothing: `@JsonTypeInfo`/`@JsonSubTypes`
+  on the type is what `Schemas`, `Codec.json`, and the tool executor's
+  binding all read. A user vocabulary that skips the annotations gets
+  either `Schemas`' own rejection (tool inputs — it cannot generate a
+  discriminated schema without them) or Jackson's own unannotated behavior
+  (stored shapes through `Codec.json`).
+- **`ContentBlock` and `Phase` carry `@JsonTypeInfo`/`@JsonSubTypes` on
+  their sealed hierarchies**; the hand-rolled tree-walking codecs that used
+  to bind them are gone. The pinned mapper does the binding, and the wire
+  format is pinned by golden round-trip tests, not by artisanal code.
+  Discriminator values are unchanged (`text`, `image`, `thinking`,
+  `redacted-thinking`, `tool-use`, `tool-result`; `idle`, `awaiting-model`,
+  `awaiting-tools`).
 
 ## The adapter pitch
 

@@ -19,6 +19,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,15 +32,51 @@ class CodecTest {
 
   record Address(String city, String state) {}
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Shutdown.class, name = "Shutdown")
+  })
   sealed interface Vocabulary permits Restart, Shutdown {}
 
   record Restart(String host) implements Vocabulary {}
 
   record Shutdown(String reason) implements Vocabulary {}
 
-  sealed interface CollidingVocabulary permits Ev {}
+  /**
+   * Carries no Jackson annotations of its own — {@link
+   * SealedVocabularies#aVocabularyAnnotatedOnlyThroughAMapperRegisteredMixInRoundTrips} registers
+   * {@link MixInVocabularyPolymorphism} on a fresh mapper via {@code addMixIn} instead: {@code
+   * Codec.json} inspects neither the type nor the mapper's configuration, so binding works exactly
+   * the same regardless of how the caller attached the polymorphism info.
+   */
+  sealed interface MixInVocabulary permits MixInRestart {}
 
-  record Ev(String type, String body) implements CollidingVocabulary {}
+  record MixInRestart(String host) implements MixInVocabulary {}
+
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({@JsonSubTypes.Type(value = MixInRestart.class, name = "MixInRestart")})
+  interface MixInVocabularyPolymorphism {}
+
+  /**
+   * A nested sealed hierarchy: {@code NestedOps} is itself a sealed interface, permitted by {@code
+   * NestedVocabulary} alongside the directly-permitted {@code NestedRestart}. The discriminator
+   * names on {@code NestedVocabulary}'s own {@code @JsonSubTypes} are what binding actually reads
+   * (Jackson, not permits-walking) — {@code NestedRestart}, reached directly, round-trips through
+   * {@code Codec.json(MAPPER, NestedVocabulary.class)} the same as any other permitted member.
+   */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = NestedRestart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = NestedDiagnose.class, name = "Diagnose")
+  })
+  sealed interface NestedVocabulary permits NestedRestart, NestedOps {}
+
+  record NestedRestart(String host) implements NestedVocabulary {}
+
+  sealed interface NestedOps extends NestedVocabulary permits NestedDiagnose {}
+
+  record NestedDiagnose(String target) implements NestedOps {}
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -151,15 +189,32 @@ class CodecTest {
           .hasMessageContaining("Reboot");
     }
 
+    /**
+     * {@code Codec.json} inspects neither {@code type} nor the mapper's configuration before
+     * binding: a vocabulary with zero Jackson annotations of its own, but a polymorphism mix-in
+     * registered on the mapper, binds and round-trips exactly like a directly-annotated one would —
+     * no construction-time guard stands between a caller and whatever their own mapper resolves.
+     */
     @Test
-    void encodingARecordThatDeclaresItsOwnTypeComponentIsRejectedNamingItAndWritesNothing() {
-      Codec<CollidingVocabulary> codec = Codec.json(MAPPER, CollidingVocabulary.class);
-      Ev original = new Ev("user-value", "payload");
+    void aVocabularyAnnotatedOnlyThroughAMapperRegisteredMixInRoundTrips() {
+      ObjectMapper mixInMapper = new ObjectMapper();
+      mixInMapper.addMixIn(MixInVocabulary.class, MixInVocabularyPolymorphism.class);
+      Codec<MixInVocabulary> codec = Codec.json(mixInMapper, MixInVocabulary.class);
+      MixInVocabulary original = new MixInRestart("prod-eu");
 
-      assertThatThrownBy(() -> codec.encode(original))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("Ev")
-          .hasMessageContaining("type");
+      MixInVocabulary decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void aDirectlyPermittedRecordOfANestedSealedHierarchyRoundTrips() {
+      Codec<NestedVocabulary> codec = Codec.json(MAPPER, NestedVocabulary.class);
+      NestedVocabulary original = new NestedRestart("prod-eu");
+
+      NestedVocabulary decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
     }
   }
 
@@ -242,49 +297,6 @@ class CodecTest {
       assertThatThrownBy(() -> chained.decode(bytes))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Reboot");
-    }
-  }
-
-  @Nested
-  class NestedSealedVocabularies {
-
-    sealed interface Vocabulary permits Restart, Ops {}
-
-    record Restart(String host) implements Vocabulary {}
-
-    sealed interface Ops extends Vocabulary permits Diagnose {}
-
-    record Diagnose(String target) implements Ops {}
-
-    @Test
-    void encodingAClassReachedOnlyThroughANestedSealedInterfaceFailsLoudly() {
-      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
-      Diagnose notADirectPermittedSubclass = new Diagnose("prod-eu");
-
-      assertThatThrownBy(() -> codec.encode(notADirectPermittedSubclass))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("Diagnose")
-          .hasMessageContaining("Vocabulary");
-    }
-
-    @Test
-    void encodingADirectlyPermittedRecordOfTheSameNestedVocabularyStillRoundTrips() {
-      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
-      Vocabulary original = new Restart("prod-eu");
-
-      Vocabulary decoded = codec.decode(codec.encode(original));
-
-      assertThat(decoded).isEqualTo(original);
-    }
-
-    @Test
-    void decodingADiscriminatorThatMatchesANonRecordPermitFailsLoudlyNamingItRatherThanNpe() {
-      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
-      byte[] bytes = "{\"type\":\"Ops\",\"target\":\"prod-eu\"}".getBytes(UTF_8);
-
-      assertThatThrownBy(() -> codec.decode(bytes))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("Ops");
     }
   }
 }

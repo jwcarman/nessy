@@ -15,5 +15,17 @@
  */
 package org.jwcarman.nessy.examples.governed;
 
-/** The org's own sealed intent vocabulary: the only two shapes {@code declare-intent} accepts. */
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
+/**
+ * The org's own sealed intent vocabulary: the only two shapes {@code declare-intent} accepts.
+ * Annotated with standard Jackson polymorphism (json-repeal, 2026-08-22) so {@code Schemas} and the
+ * tool executor's binding read the same vocabulary.
+ */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+  @JsonSubTypes.Type(value = Diagnose.class, name = "Diagnose")
+})
 sealed interface OpsIntent permits Restart, Diagnose {}

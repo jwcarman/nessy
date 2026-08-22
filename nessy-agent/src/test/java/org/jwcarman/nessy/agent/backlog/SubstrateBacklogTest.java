@@ -41,21 +41,32 @@ class SubstrateBacklogTest {
   void aNonPositiveCapacityIsRejected() {
     Substrate store = new InMemorySubstrate();
     Codec<String> codec = TestCodecs.utf8String();
-    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, codec))
+    assertThatThrownBy(
+            () -> new SubstrateBacklog<>(store, "agent-a", 0, codec, TestMappers.plainlyPinned()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aFreshBacklogPollsEmpty() {
     var backlog =
-        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
+        new SubstrateBacklog<>(
+            new InMemorySubstrate(),
+            "agent-a",
+            2,
+            TestCodecs.utf8String(),
+            TestMappers.plainlyPinned());
     assertThat(backlog.poll()).isEmpty();
   }
 
   @Test
   void addedObservationsPollInFifoOrder() {
     var backlog =
-        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, TestCodecs.utf8String());
+        new SubstrateBacklog<>(
+            new InMemorySubstrate(),
+            "agent-a",
+            3,
+            TestCodecs.utf8String(),
+            TestMappers.plainlyPinned());
     backlog.add("a");
     backlog.add("b");
     backlog.add("c");
@@ -68,7 +79,12 @@ class SubstrateBacklogTest {
   @Test
   void addBeyondCapacityThrowsTheRejection() {
     var backlog =
-        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
+        new SubstrateBacklog<>(
+            new InMemorySubstrate(),
+            "agent-a",
+            2,
+            TestCodecs.utf8String(),
+            TestMappers.plainlyPinned());
     backlog.add("a");
     backlog.add("b");
     assertThatThrownBy(() -> backlog.add("c"))
@@ -79,7 +95,12 @@ class SubstrateBacklogTest {
   @Test
   void pollingFreesCapacity() {
     var backlog =
-        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
+        new SubstrateBacklog<>(
+            new InMemorySubstrate(),
+            "agent-a",
+            2,
+            TestCodecs.utf8String(),
+            TestMappers.plainlyPinned());
     backlog.add("a");
     backlog.add("b");
     assertThat(backlog.poll()).contains("a");
@@ -92,8 +113,12 @@ class SubstrateBacklogTest {
   @Test
   void twoViewsOverOneSubstrateShareTheQueue() {
     Substrate store = new InMemorySubstrate();
-    var writer = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
-    var reader = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
+    var writer =
+        new SubstrateBacklog<>(
+            store, "agent-a", 4, TestCodecs.utf8String(), TestMappers.plainlyPinned());
+    var reader =
+        new SubstrateBacklog<>(
+            store, "agent-a", 4, TestCodecs.utf8String(), TestMappers.plainlyPinned());
 
     writer.add("first");
     writer.add("second");
@@ -107,7 +132,9 @@ class SubstrateBacklogTest {
   void addRetriesAfterLosingAWriteConflictAndTheElementStillLands() {
     Substrate raceStore =
         new RaceOnceOnWriteSubstrate(new InMemorySubstrate(), racedInDocument("raced-in"));
-    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 2, TestCodecs.utf8String());
+    var backlog =
+        new SubstrateBacklog<>(
+            raceStore, "agent-a", 2, TestCodecs.utf8String(), TestMappers.plainlyPinned());
 
     backlog.add("mine");
 
@@ -119,16 +146,22 @@ class SubstrateBacklogTest {
   @Test
   void pollRetriesAfterLosingAWriteConflictAndStillRemovesExactlyItsElement() {
     Substrate substrate = new InMemorySubstrate();
-    var seeded = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
+    var seeded =
+        new SubstrateBacklog<>(
+            substrate, "agent-a", 3, TestCodecs.utf8String(), TestMappers.plainlyPinned());
     seeded.add("a");
     seeded.add("b");
 
     Substrate raceStore = new RaceOnceOnWriteSubstrate(substrate, racedInDocument("a", "b", "c"));
-    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 3, TestCodecs.utf8String());
+    var backlog =
+        new SubstrateBacklog<>(
+            raceStore, "agent-a", 3, TestCodecs.utf8String(), TestMappers.plainlyPinned());
 
     assertThat(backlog.poll()).contains("a");
 
-    var reader = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
+    var reader =
+        new SubstrateBacklog<>(
+            substrate, "agent-a", 3, TestCodecs.utf8String(), TestMappers.plainlyPinned());
     assertThat(reader.poll()).contains("b");
     assertThat(reader.poll()).contains("c");
     assertThat(reader.poll()).isEmpty();
@@ -149,7 +182,7 @@ class SubstrateBacklogTest {
     Substrate substrate = new InMemorySubstrate();
     ObjectMapper mapper = TestMappers.plainlyPinned();
     Codec<Note> codec = Codec.json(mapper, Note.class);
-    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 4, codec);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 4, codec, mapper);
 
     var note = new Note("check the oven", 3);
     backlog.add(note);
@@ -168,16 +201,20 @@ class SubstrateBacklogTest {
   }
 
   /**
-   * Final review round (T1): negative coverage for the hand-written envelope parser's malformed-
-   * payload branches. Each seeds the substrate directly with a payload {@code readQueue} cannot
-   * parse and asserts {@code poll()} fails loudly rather than silently misreading it.
+   * Negative coverage for the mapper-bound envelope's malformed-payload rejection (json-repeal task
+   * 2: the hand-written parser is gone, {@code readQueue} now binds through {@code mapper}). Each
+   * seeds the substrate directly with a payload {@code mapper.readValue} cannot parse as a {@code
+   * String[]} and asserts {@code poll()} fails loudly, wrapping Jackson's exception, rather than
+   * silently misreading it.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("malformedBacklogPayloads")
   void pollRejectsAMalformedPayload(String description, String payload) {
     Substrate substrate = new InMemorySubstrate();
     substrate.write("backlog", "agent-a", payload.getBytes(StandardCharsets.UTF_8), 0L);
-    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+    var backlog =
+        new SubstrateBacklog<>(
+            substrate, "agent-a", 2, TestCodecs.utf8String(), TestMappers.plainlyPinned());
 
     assertThatThrownBy(backlog::poll)
         .isInstanceOf(IllegalArgumentException.class)
@@ -201,7 +238,9 @@ class SubstrateBacklogTest {
   @Test
   void pollConsumesAPoisonElementBeforePropagatingItsDecodeFailureThenReachesTheNextElement() {
     Codec<String> poisonOnFirst = TestCodecs.poisonOnDecode("boom", "a");
-    var backlog = new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, poisonOnFirst);
+    var backlog =
+        new SubstrateBacklog<>(
+            new InMemorySubstrate(), "agent-a", 3, poisonOnFirst, TestMappers.plainlyPinned());
     backlog.add("a");
     backlog.add("b");
 

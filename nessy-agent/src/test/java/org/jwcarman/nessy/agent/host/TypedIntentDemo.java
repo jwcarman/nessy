@@ -17,6 +17,8 @@ package org.jwcarman.nessy.agent.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.util.List;
@@ -78,6 +80,11 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  */
 class TypedIntentDemo {
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Diagnose.class, name = "Diagnose")
+  })
   sealed interface OpsIntent permits Restart, Diagnose {}
 
   record Restart(String target, String reason) implements OpsIntent {}

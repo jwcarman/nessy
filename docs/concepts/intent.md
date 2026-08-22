@@ -28,9 +28,16 @@ public record Intent(String declaration) {
 ```
 
 **Sealed vocabulary** — an organization's own closed set of declaration
-shapes, when the domain has one:
+shapes, when the domain has one, annotated with the two standard Jackson
+polymorphism annotations so `Schemas` and the tool executor's binding read
+the same vocabulary:
 
 ```java
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+  @JsonSubTypes.Type(value = Diagnose.class, name = "Diagnose")
+})
 sealed interface OpsIntent permits Restart, Diagnose {}
 record Restart(String target, String reason) implements OpsIntent {}
 record Diagnose(String target) implements OpsIntent {}
@@ -49,12 +56,17 @@ public final class IntentTool<T> implements Tool<T> {
 }
 ```
 
-Because `inputType()` just returns the vocabulary class as-is, a sealed
-vocabulary rides `Schemas`' `oneOf` schema and `SealedInputs`' binder with
-zero extra code — the same [sealed-input machinery](tools.md#sealed-inputs-a-vocabulary-as-one-argument)
-any tool gets. This is the NLU anchor: a sealed vocabulary turns "the model
-says what it's about to do" into a small, closed grammar a policy can
+Because `inputType()` just returns the vocabulary class as-is, an annotated
+sealed vocabulary rides `Schemas`' `oneOf` schema and Jackson's own
+polymorphic binding with zero extra code — the same [sealed-input
+machinery](tools.md#sealed-inputs-a-vocabulary-as-one-argument) any tool
+gets. This is the NLU anchor: a sealed vocabulary turns "the model says
+what it's about to do" into a small, closed grammar a policy can
 pattern-match on, rather than a sentence it has to parse.
+
+Test your vocabulary over `InMemorySubstrate` (see [Storage](storage.md)):
+storage there is real encoded bytes, so a missing or mis-set annotation on
+`OpsIntent` fails in your own unit tests, not in production.
 
 ## Declaring, and reading it back
 
@@ -148,21 +160,21 @@ a policy that checks.
 ## The unrepresentable declaration
 
 Because the vocabulary is a sealed input, a declaration outside it is
-rejected by the discriminator binder itself, in-band, before
+rejected by Jackson's own polymorphic binding, in-band, before
 `declare-intent` ever runs — nothing is stored. In `TypedIntentDemo`, a
 declaration carrying `"type": "Nuke"` against `OpsIntent`'s `Restart`/
-`Diagnose` pair fails with the binder's own message naming both legal
-types, and `intentStore.latest()` stays empty. The teaching loop and the
-schema boundary are the same mechanism working at two different points —
-one on the shape of the declaration, one on its content.
+`Diagnose` pair fails with a message naming both legal types, and
+`intentStore.latest()` stays empty. The teaching loop and the schema
+boundary are the same mechanism working at two different points — one on
+the shape of the declaration, one on its content.
 
 ## Where next
 
 - [Authorization](authorization.md) — where `declaredIntent()` fits among
   the other facts a policy judges, and the grant that wires
   `IntentEnricher` alongside a risk assessor.
-- [Tools](tools.md) — the sealed-input schema and discriminator binding
-  `IntentTool` rides for free.
+- [Tools](tools.md) — the sealed-input schema and annotated discriminator
+  binding `IntentTool` rides for free.
 - [Agent as Scope](agent-as-scope.md) — how a tool call, denied or
   approved, fits into the phase transition that carries a turn forward.
 - [Storage](storage.md) — the substrate `SubstrateIntentStore` rides, and why

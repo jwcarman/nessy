@@ -17,6 +17,8 @@ package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -91,6 +93,11 @@ class SubstrateIntentStoreTest {
   @Nested
   class Sealed_vocabulary {
 
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    @JsonSubTypes({
+      @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+      @JsonSubTypes.Type(value = Diagnose.class, name = "Diagnose")
+    })
     sealed interface OpsIntent permits Restart, Diagnose {}
 
     record Restart(String target, String reason) implements OpsIntent {}
@@ -115,6 +122,26 @@ class SubstrateIntentStoreTest {
       store.declare(new Diagnose("prod-eu"));
 
       assertThat(store.latest()).contains(new Diagnose("prod-eu"));
+    }
+
+    /**
+     * json-repeal task 2: once {@code OpsIntent} carries
+     * {@code @JsonTypeInfo}/{@code @JsonSubTypes} (needed for {@code Schemas}/tool-input binding
+     * too), {@code Codec.json} defers wholly to Jackson's own polymorphic machinery — a single
+     * {@code "type"} discriminator, never a double one. Pinned here by asserting the raw stored
+     * bytes carry exactly one {@code "type"} key.
+     */
+    @Test
+    void anAnnotatedVocabularySingleDiscriminatesRatherThanDoublingTheTypeKey() {
+      var substrate = new InMemorySubstrate();
+      var store = new SubstrateIntentStore<>(substrate, "agent-a", OpsIntent.class, MAPPER);
+
+      store.declare(new Restart("prod-eu", "stuck deploy"));
+
+      String rawJson =
+          new String(
+              substrate.read("intent", "agent-a").orElseThrow().payload(), StandardCharsets.UTF_8);
+      assertThat(rawJson.split("\"type\"", -1)).hasSize(2);
     }
   }
 

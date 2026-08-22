@@ -17,6 +17,8 @@ package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -101,6 +103,11 @@ class IntentToolTest {
   @Nested
   class ASealedVocabulary {
 
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    @JsonSubTypes({
+      @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+      @JsonSubTypes.Type(value = Shutdown.class, name = "Shutdown")
+    })
     sealed interface Vocabulary permits Restart, Shutdown {}
 
     record Restart(String host) implements Vocabulary {}

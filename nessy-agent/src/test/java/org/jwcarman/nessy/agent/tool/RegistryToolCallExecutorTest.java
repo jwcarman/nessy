@@ -17,7 +17,11 @@ package org.jwcarman.nessy.agent.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -118,6 +122,11 @@ class RegistryToolCallExecutorTest {
     }
   }
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Ping.class, name = "Ping"),
+    @JsonSubTypes.Type(value = Pong.class, name = "Pong")
+  })
   sealed interface Command permits Ping, Pong {}
 
   record Ping(String note) implements Command {}
@@ -230,6 +239,38 @@ class RegistryToolCallExecutorTest {
     var finished = run(ToolRegistry.of(new DeclareTool()), call, new RecordingTurnObserver());
     var failed = (ToolOutcome.Failed) finished.outcome();
     assertThat(failed.error().message()).contains("Ping").contains("Pong");
+  }
+
+  /**
+   * The branch's central claim, made concrete: the schema shown to a model and the binding this
+   * executor performs are not merely two independently-hand-written things that happen to agree —
+   * they agree by construction, because both read {@code Command}'s own {@code @JsonTypeInfo}/
+   * {@code @JsonSubTypes} annotations. Proven here by never writing a discriminator string in this
+   * test at all: every {@code oneOf} branch is pulled out of {@code DeclareTool}'s own generated
+   * schema, its discriminator {@code const} read back out of that same generated JSON, and a
+   * declaration built from nothing but that reading is bound and executed through the exact
+   * production path ({@link #run}, which threads {@code TestMappers.plainlyPinned()} the same way
+   * {@code Nessy}'s builders thread the pinned mapper) — landing on the concrete record the schema
+   * itself said it would.
+   */
+  @Test
+  void everyOneOfBranchTheGeneratedSchemaDescribesBindsAndRunsAsThatExactShape() {
+    ObjectNode schema = new DeclareTool().spec().inputSchema();
+    JsonNode oneOf = schema.get("oneOf");
+    assertThat(oneOf).isNotEmpty();
+
+    for (JsonNode branch : oneOf) {
+      String discriminator = branch.at("/properties/type/const").asText();
+      var arguments =
+          JsonNodeFactory.instance.objectNode().put("type", discriminator).put("note", "hi");
+      var call = new ToolCall("c1", "declare", arguments);
+
+      var finished = run(ToolRegistry.of(new DeclareTool()), call, new RecordingTurnObserver());
+
+      String expectedPrefix = discriminator.equals("Ping") ? "ping" : "pong";
+      assertThat(finished.outcome())
+          .isEqualTo(new ToolOutcome.Returned(ToolResult.ok(expectedPrefix + ":hi")));
+    }
   }
 
   @Test
