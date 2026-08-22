@@ -82,7 +82,6 @@ try (AutonomousHost host =
         .provider(provider)
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-        .backend(new InMemoryDurableComputationBackend())
         .approvalNotifier(pending::add)
         .build()) {
 
@@ -98,22 +97,24 @@ immediately. If `RestartTool`'s grant requires approval, the call suspends
 on a durable slot and `approvalNotifier` fires once with the
 `ApprovalRequest` that `host.approvals().approve(...)` or `.deny(...)`
 decides. Whether that slot survives a restart of the process that opened it
-depends on the durable computation backend in play — the in-memory one shown
-here does not, a durable implementation does.
+depends on the `ScopedStore` behind `.store(...)` — the default in-memory
+kernel does not, a durable implementation does. See
+[Storage](concepts/storage.md).
 
 See [Getting Started](guides/getting-started.md) for the CLI door walked
 through line by line.
 
 ## The module map
 
-Four modules, each with a persona in mind:
+Five modules, each with a persona in mind:
 
 | Module | Depends on | Who compiles against it |
 |---|---|---|
 | `nessy-durable` | — | the durable-computation primitive everything else builds on |
 | `nessy-api` | `nessy-durable` | tool, policy, and enricher authors — the shared vocabulary: `Tool`, `ToolGrant`, messages, the authorization grammar |
-| `nessy-spi` | `nessy-api` | adapter authors — a custom `Memory`, `IntentStore`, or approver |
-| `nessy-agent` | `nessy-api`, `nessy-spi` | application builders — the machine, both host doors, and the shipped kit (`VerbatimMemory`, the in-memory substrates) |
+| `nessy-spi` | `nessy-api` | adapter authors — a custom `Memory`, approver, or `ScopedStore` implementation |
+| `nessy-agent` | `nessy-api`, `nessy-spi` | application builders — the machine, both host doors, and the shipped kit (`VerbatimMemory`, `InMemoryScopedStore`, the storage recipes) |
+| `nessy-intent` | `nessy-api`, `nessy-spi` | applications that want the declared-intent claim channel — `IntentTool`, `IntentStore`, `IntentEnricher` |
 
 A model provider module (`nessy-model-anthropic`, `nessy-model-openai`,
 `nessy-model-gemini`, `nessy-model-bedrock`, or `nessy-model-env` to pick
@@ -134,6 +135,11 @@ application's dependency list.
 
     Substrate, host, harness, binding — how the pieces above compose, and
     what makes a binding cheap enough to throw away.
+
+- **[Storage](concepts/storage.md)**
+
+    `ScopedStore`: two shapes, one batch, and the recipes — state, memory,
+    intent, backlog, durable computation — built on top of it.
 
 - **[Memory](concepts/memory.md)**
 

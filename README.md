@@ -88,10 +88,9 @@ try (AutonomousHost host =
         .provider(provider)
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-        // The default backend and the default memoryFactory/storeFactory are in-memory —
-        // durable only for this process's lifetime. Swap in a durable backend and durable
-        // factories in production so a suspended approval survives a restart.
-        .backend(new InMemoryDurableComputationBackend())
+        // The default store is a fresh InMemoryScopedStore — durable only for this
+        // process's lifetime. Supply .store(ScopedStore) with a durable implementation
+        // in production so a suspended approval survives a restart.
         .approvalNotifier(pending::add)
         .build()) {
 
@@ -108,28 +107,25 @@ approval, the call suspends on a durable slot and `approvalNotifier` fires
 once with the `ApprovalRequest` — `request.address().approval()` is the slot
 id `host.approvals().approve(...)`/`.deny(..., reason)` decides. Nothing here
 holds a thread open waiting; whether the slot outlives a restart of the
-process that opened it depends on the durable computation backend and the
-memory/state factories in play — the `.backend(...)` shown here and the
-default in-memory `memoryFactory`/`storeFactory` behind it do not survive a
-restart, a durable implementation of each does. See
+process that opened it depends entirely on the `ScopedStore` behind
+`.store(...)` — the in-memory default does not, a durable implementation
+does. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
-the docs site for the rest of the walkthrough.
-
-Migration note: a factory that creates fresh state per call — the old
-cached-world idiom `id -> new InMemoryAgentStateStore()` — now silently loses
-history on every delivery, since there is no per-id cache behind it any more;
-factories must return views over shared state, such as
-`InMemoryStateSubstrate#forScope` or `InMemoryMemorySubstrate#forScope`.
+the docs site for the rest of the walkthrough, and
+[Storage](https://jwcarman.github.io/nessy/concepts/storage/) for the
+kernel underneath every store.
 
 Under both front doors, an agent is assembled in four tiers: a **substrate**
-holds the durable state (in-memory here, JDBC or another durable backend in
-production) and can be shared across many hosts; a **host** is one process's
-assembly around a substrate — the doors, desks, and dispatcher shown above; a
-**harness** is a recipe compiled once per agent type, holding the model-call
-and tool-call machinery; and a **binding** straps one scope's id to that
-harness for the length of a single delivery. `storeFactory`/`memoryFactory`
-each hand back a thin view over the shared substrate rather than fresh state,
-which is what makes a scope's history survive from one delivery to the next.
+holds the durable state — one `ScopedStore` (in-memory here, JDBC or another
+durable backend in production) — and can be shared across many hosts; a
+**host** is one process's assembly around a substrate — the doors, desks,
+and dispatcher shown above; a **harness** is a recipe compiled once per
+agent type, holding the model-call and tool-call machinery; and a
+**binding** straps one scope's id to that harness for the length of a
+single delivery. `.store(ScopedStore)`, and the `memoryFactory` override
+that rides it, each hand back a view over the shared substrate rather than
+fresh state, which is what makes a scope's history survive from one
+delivery to the next.
 
 ## Try it
 
@@ -171,9 +167,10 @@ actually needs:
 ```
 
 Tool, policy, and enricher authors compile against `nessy-api` alone; adapter
-authors — a custom `Memory`, `IntentStore`, or approver — add `nessy-spi`; an
+authors — a custom `Memory`, `ScopedStore`, or approver — add `nessy-spi`; an
 application just building an agent depends on `nessy-agent`, which pulls both
-in.
+in. The declared-intent claim channel is its own artifact, `nessy-intent`,
+for applications that want it.
 
 ```xml
 <dependencies>
@@ -189,7 +186,7 @@ in.
     <artifactId>nessy-api</artifactId>
   </dependency>
 
-  <!-- Outsider seams: the model provider SPI, Memory, IntentStore, the approver trio. -->
+  <!-- Outsider seams: the model provider SPI, Memory, ScopedStore, the approver trio. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-spi</artifactId>
@@ -199,6 +196,12 @@ in.
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-agent</artifactId>
+  </dependency>
+
+  <!-- Optional: the declared-intent claim channel — IntentTool, IntentStore, IntentEnricher. -->
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-intent</artifactId>
   </dependency>
 
   <!-- A model provider — pick one (or more). -->
@@ -256,6 +259,7 @@ framework. The docs site page teaches the whole story; this is just the map.
 | Authorization — a ladder from a static verdict to typed actions, enrichers, and intent, with a self-documenting report | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
 | Intent — the claim channel a model states and an enricher may trust | [Intent](https://jwcarman.github.io/nessy/concepts/intent/) |
 | Memory — the SPI a model call's context is actually built from | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
+| Storage — the two-shape kernel every store in Nessy is a recipe over | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
 | Providers — four native model providers plus every OpenAI-compatible endpoint | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
 | MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
 | Autonomous agents — the posting door, approval desks, durable backends | [Autonomous Agents](https://jwcarman.github.io/nessy/guides/autonomous-agents/) |

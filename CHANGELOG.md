@@ -343,3 +343,36 @@ sequence of renames and interim shapes that produced it.
   one, matching the posture `CliBuilder` has always had: `AssistantSaid` and
   `TurnEnded` narrate on the turn observer without extra wiring. A
   caller-supplied `.agentObserver(...)` still replaces the wiring wholesale.
+- **The storage kernel: `ScopedStore` (scoped-store design).** Every store
+  in Nessy collapses onto one interface, `org.jwcarman.nessy.spi.store`
+  (`nessy-spi`): documents (mutable current-truth, `read`/`write`/`delete`/
+  `keys`, CAS-addressed by `(kind, key)`), a journal (immutable history,
+  `append`/`entries`, addressed by `(kind, key, seq)`), and one atomic
+  `batch` across both. `ConflictException` is the single conflict signal;
+  `InMemoryScopedStore` is the reference substrate, shipped in `nessy-spi`
+  alongside the contract. Four kernel recipes replace the old per-concern
+  substrates and SPIs: `StoredAgentStateStore` (`kind=state`, the document
+  version *is* the scope version), `StoredMemory` (`kind=memory`, a journal,
+  one entry per message, never rewritten), `StoredBacklog` (`kind=backlog`,
+  a JSON-array document, read-mutate-CAS), and `StoredComputations`
+  (`kind=computation`, one document per computation holding
+  `{status, outcome?, continuations[]}` — `DurableComputationBackend` is no
+  longer an adapter SPI, just the vocabulary the two desks speak).
+  `InMemoryStateSubstrate`, `InMemoryMemorySubstrate`,
+  `InMemoryBacklogSubstrate`, `InMemoryAgentStateStore`,
+  `InMemoryIntentStore`, `InMemoryDurableComputationBackend`, and the
+  builder's `storeFactory` seam are all deleted. `Nessy.autonomous()` gets
+  one new storage seam, `.store(ScopedStore)` (default a fresh
+  `InMemoryScopedStore`); `.memoryFactory(...)` and `.backend(...)` survive
+  as override seams over it. A JDBC adapter is two tables
+  (`nessy_document`, `nessy_journal`) and is not part of this change — the
+  outbox (`kind=outbox`) and a summarization sidecar (`kind=summary`) are
+  ratified in the design as future work, not built.
+- **Intent moves out: `nessy-intent`.** The declared-intent claim channel —
+  `IntentTool`, `IntentStore`, `IntentEnricher`, `IntentPolicies`, `Intent`,
+  and `StoredIntentStore` (the `kind=intent` recipe, last-write-wins via
+  read-then-CAS) — leaves `nessy-agent` for its own artifact,
+  `org.jwcarman.nessy:nessy-intent` (package `org.jwcarman.nessy.intent`),
+  depending on `nessy-api` and `nessy-spi`. An application that never
+  declares intent now carries none of this code, and none of its storage
+  footprint.

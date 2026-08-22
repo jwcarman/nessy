@@ -51,8 +51,8 @@ error, an approval denied. A thrown Java exception is reserved for the
 computation *infrastructure* breaking (the backend's connection pool is
 down), which is a different problem than the work coming back negative.
 
-The backend SPI is four operations, and the one worth reading closely is
-`await`:
+The backend vocabulary is four operations, and the one worth reading
+closely is `await`:
 
 ```java
 public interface DurableComputationBackend {
@@ -63,6 +63,18 @@ public interface DurableComputationBackend {
   List<Continuation> continuationsOf(ComputationId id);
 }
 ```
+
+`DurableComputationBackend` is no longer an adapter SPI a database
+implements — it's the internal vocabulary the two desks speak.
+`StoredComputations` (`nessy-agent`) is its default and only shipped
+implementation: a recipe over [`ScopedStore`](storage.md), one document per
+computation (`kind=computation`, `key=id.value()`) holding
+`{ status, outcome?, continuations[] }`. Every operation below is a
+read-decide-CAS-retry loop against that one document — the document's
+version is the row lock the reference in-memory backend used to reach for a
+monitor. `Nessy.autonomous()`'s `.backend(...)` seam survives, but only for
+a genuinely foreign engine (Restate, Temporal); nobody implements it to get
+a database.
 
 `await` is atomic: it answers with exactly one of `Registered()` — the
 continuation is durably attached before anyone can race it — or
@@ -269,3 +281,5 @@ never knew any instance died in the middle.
   place.
 - [The Four Tiers](the-four-tiers.md) — where the durable backend sits as
   the shared substrate beneath a host.
+- [Storage](storage.md) — the kernel `StoredComputations` is a recipe over,
+  and the `computation` document's shape.

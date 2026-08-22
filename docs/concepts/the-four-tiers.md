@@ -10,35 +10,39 @@ tiers are what that builder assembles underneath.
 
 ## Substrate — the shared durable underlay
 
-The substrate is passive and storage-shaped: durable computation, state
-storage, memory storage, backlog storage. It is **possibly shared across
-many hosts** — a JDBC substrate serving ten nodes is the designed
-deployment; an in-memory substrate is the degenerate single-node case of the
-same idea, not a different one.
+The substrate is passive and storage-shaped: durable computation, state,
+memory, backlog. Its storage face is one interface, `ScopedStore`
+(`nessy-spi`) — two shapes, documents and a journal, plus an atomic batch
+across both; see [Storage](storage.md) for the full contract. It is
+**possibly shared across many hosts** — a JDBC-backed `ScopedStore` serving
+ten nodes is the designed deployment; `InMemoryScopedStore` is the
+degenerate single-node case of the same idea, not a different one.
 
-An in-memory substrate is one shared object per host, handing back **thin,
-per-id views** rather than per-id copies. `InMemoryStateSubstrate` and
-`InMemoryMemorySubstrate` both follow this shape — one `ConcurrentHashMap`
-keyed by scope id, and `forScope(String)` returns a view that reads and
-writes through to the shared map:
+`Nessy.autonomous().store(ScopedStore)` is the one storage seam: every
+scope's state, memory (unless overridden), and backlog live as documents in
+that one store. State, memory, and backlog each ride a *recipe* over it —
+`StoredAgentStateStore`, `StoredMemory`, `StoredBacklog` — rather than a
+substrate of their own, so a scope's history is one shared object's
+problem, not three:
 
 ```java
-public AgentStateStore forScope(String id) {
-  return new View(id);   // a reference to the shared map, plus an id
-}
+Function<String, Memory> memoryFactory =
+    id -> new StoredMemory(sharedStore, id);
 ```
 
-Losing a view loses nothing; two views of the same id observe each other's
-writes. Both in-memory substrates grow by one entry per distinct scope id
-ever touched and never evict — a deliberate single-node, bounded-population
-posture, not a durable substrate.
+Losing a recipe instance loses nothing; two recipes built over the same id
+against the same store observe each other's writes. `InMemoryScopedStore`
+grows by one entry per distinct `(kind, key)` ever touched and never
+evicts — a deliberate single-node, bounded-population posture, not a
+durable substrate.
 
-!!! warning "A factory MUST return a view, never fresh state"
-    `id -> new InMemoryAgentStateStore()` compiles and looks identical to
-    `id -> substrate.forScope(id)`, but it silently loses history on every
-    delivery: each call gets a brand-new, empty store instead of a handle
-    onto the id's real state. Factories handed to a harness must always
-    return views over shared substrate.
+!!! warning "A factory MUST return a view over shared state, never fresh state"
+    `id -> new StoredMemory(new InMemoryScopedStore(), id)` compiles and
+    looks identical to `id -> new StoredMemory(sharedStore, id)`, but it
+    silently loses history on every delivery: each call gets a fresh, empty
+    kernel instead of a recipe over the id's real state. Factories handed
+    to a harness must always build their recipe over one shared
+    `ScopedStore`, never a new one per call.
 
 ## Host — one process's assembly
 
@@ -62,7 +66,6 @@ try (AutonomousHost host =
         .provider(provider)
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-        .backend(new InMemoryDurableComputationBackend())
         .approvalNotifier(pending::add)
         .build()) {
   host.post("ops", "restart prod-1");
@@ -181,6 +184,8 @@ noun.
 
 - [Agent as Scope](agent-as-scope.md) — phases, transitions, and how a
   binding's `DefaultAgent` drives one.
+- [Storage](storage.md) — `ScopedStore`'s full contract, the kinds table,
+  and the recipes built over it.
 - [Memory](memory.md) — the SPI a memory factory hands a binding.
 - [Getting Started](../guides/getting-started.md) — the CLI door, end to
   end.

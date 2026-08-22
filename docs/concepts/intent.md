@@ -5,6 +5,11 @@ why — a declaration, recorded before it calls any other tool, that a
 policy may read back and weigh alongside everything else it gathers. It is
 never a grant of authority on its own.
 
+The whole feature ships as its own artifact, `org.jwcarman.nessy:nessy-intent`
+(package `org.jwcarman.nessy.intent`), depending on `nessy-api` and
+`nessy-spi` — an application that never declares intent carries none of
+this code or its storage kind.
+
 ## Two tiers, one generic kit
 
 Nessy ships two tiers of declaration, riding the same `IntentTool<T>`:
@@ -68,6 +73,17 @@ under `AuthzContext.DECLARED_INTENT_KEY` for a policy to read back through
 `context.declaredIntent(Class<T> type)`. Absent a declaration, the context
 passes through untouched — a missing claim is a policy's own choice to
 weigh, not the enricher's failure to report.
+
+`StoredIntentStore<T>` is the shipped implementation: one document per
+scope, `kind=intent`, written by a read-then-CAS retry loop over
+[`ScopedStore`](storage.md) — the same document the scope's state and
+backlog already live in, on the same kernel. Build one directly against
+whatever store the host is using:
+
+```java
+var kernel = new InMemoryScopedStore();
+var intentStore = new StoredIntentStore<>(kernel, "prod-eu", OpsIntent.class);
+```
 
 ## `requireDeclared` — the teaching loop
 
@@ -147,3 +163,5 @@ one on the shape of the declaration, one on its content.
   `IntentTool` rides for free.
 - [Agent as Scope](agent-as-scope.md) — how a tool call, denied or
   approved, fits into the phase transition that carries a turn forward.
+- [Storage](storage.md) — the kernel `StoredIntentStore` rides, and why
+  `intent` is a reserved document kind.
