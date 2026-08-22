@@ -43,15 +43,12 @@ class CodecTest {
 
   record Shutdown(String reason) implements Vocabulary {}
 
-  sealed interface UnannotatedVocabulary permits UnannotatedRestart {}
-
-  record UnannotatedRestart(String host) implements UnannotatedVocabulary {}
-
   /**
    * Carries no Jackson annotations of its own — {@link
-   * #jsonRoundTripsThroughAMapperRegisteredMixIn} registers {@link MixInVocabularyPolymorphism} on
-   * a fresh mapper via {@code addMixIn} instead, proving {@code Codec.json}'s construction-time
-   * guard asks the mapper (mix-ins included), not raw reflection on the class itself.
+   * SealedVocabularies#aVocabularyAnnotatedOnlyThroughAMapperRegisteredMixInRoundTrips} registers
+   * {@link MixInVocabularyPolymorphism} on a fresh mapper via {@code addMixIn} instead: {@code
+   * Codec.json} inspects neither the type nor the mapper's configuration, so binding works exactly
+   * the same regardless of how the caller attached the polymorphism info.
    */
   sealed interface MixInVocabulary permits MixInRestart {}
 
@@ -60,12 +57,6 @@ class CodecTest {
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
   @JsonSubTypes({@JsonSubTypes.Type(value = MixInRestart.class, name = "MixInRestart")})
   interface MixInVocabularyPolymorphism {}
-
-  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-  @JsonSubTypes({@JsonSubTypes.Type(value = Ev.class, name = "Ev")})
-  sealed interface CollidingVocabulary permits Ev {}
-
-  record Ev(String type, String body) implements CollidingVocabulary {}
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -178,34 +169,14 @@ class CodecTest {
           .hasMessageContaining("Reboot");
     }
 
-    @Test
-    void anUnannotatedSealedTypeIsRejectedAtConstructionNamingTheAnnotationsToAdd() {
-      assertThatThrownBy(() -> Codec.json(MAPPER, UnannotatedVocabulary.class))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("UnannotatedVocabulary")
-          .hasMessageContaining("JsonTypeInfo")
-          .hasMessageContaining("JsonSubTypes");
-    }
-
-    @Test
-    void anAnnotatedRecordDeclaringItsOwnTypeComponentIsRejectedNamingItAndWritesNothing() {
-      Codec<CollidingVocabulary> codec = Codec.json(MAPPER, CollidingVocabulary.class);
-      Ev original = new Ev("user-value", "payload");
-
-      assertThatThrownBy(() -> codec.encode(original))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("Ev")
-          .hasMessageContaining("type");
-    }
-
     /**
-     * The construction-time guard asks {@code mapper} itself (via its {@code
-     * AnnotationIntrospector}), not raw reflection on {@code @JsonTypeInfo} — so a vocabulary with
-     * zero annotations of its own, but a polymorphism mix-in registered on the mapper, is accepted
-     * and round-trips exactly like a directly-annotated one would.
+     * {@code Codec.json} inspects neither {@code type} nor the mapper's configuration before
+     * binding: a vocabulary with zero Jackson annotations of its own, but a polymorphism mix-in
+     * registered on the mapper, binds and round-trips exactly like a directly-annotated one would —
+     * no construction-time guard stands between a caller and whatever their own mapper resolves.
      */
     @Test
-    void aVocabularyAnnotatedOnlyThroughAMapperRegisteredMixInIsAcceptedAndRoundTrips() {
+    void aVocabularyAnnotatedOnlyThroughAMapperRegisteredMixInRoundTrips() {
       ObjectMapper mixInMapper = new ObjectMapper();
       mixInMapper.addMixIn(MixInVocabulary.class, MixInVocabularyPolymorphism.class);
       Codec<MixInVocabulary> codec = Codec.json(mixInMapper, MixInVocabulary.class);

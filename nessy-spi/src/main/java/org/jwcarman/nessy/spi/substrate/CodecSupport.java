@@ -15,13 +15,9 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.AnnotationIntrospector;
-import com.fasterxml.jackson.databind.DeserializationConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.lang.reflect.RecordComponent;
 import java.util.Objects;
 
 /**
@@ -39,55 +35,18 @@ final class CodecSupport {
   }
 
   /**
-   * One plain tolerant-binding path (substrate spec §3, §7 repeal): a sealed interface {@code type}
-   * must already carry Jackson polymorphism, as {@code mapper} itself would see it — {@link
-   * #polymorphicTypeInfo} asks the mapper's own {@link AnnotationIntrospector} rather than
-   * reflecting on {@code @JsonTypeInfo} directly, so a vocabulary configured entirely through
-   * {@code mapper.addMixIn(...)} (no annotation on the class itself) is recognized too; how a
-   * caller attaches the annotations is the caller's business. Plain Jackson would otherwise ENCODE
-   * an unannotated sealed value with no discriminator at all, producing bytes nothing could ever
-   * decode back — rejected here, at {@code Codec.json} call time, before any write, the same
-   * construction-time posture {@link org.jwcarman.nessy.api.tool.Schemas} takes for the identical
-   * reason (the message below mirrors its wording).
+   * One plain tolerant-binding path (substrate spec §3, §7 repeal): {@code writeValueAsBytes}/
+   * {@code readValue} through {@code mapper}, exactly as {@code mapper} is configured — no
+   * inspection of {@code type} beyond that. A sealed interface {@code type} rides whatever
+   * polymorphism {@code mapper} resolves for it (annotations on the type, a mix-in, a custom {@code
+   * AnnotationIntrospector} — Nessy does not care which); an unannotated sealed type simply gets
+   * Jackson's own natural behavior, translated at this boundary like any other malformed or
+   * unbindable input (no discriminator ever gets written, so nothing this layer wrote could ever
+   * decode back through the same unannotated type — Jackson's own failure names that, same as it
+   * would for any Jackson caller).
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
-    JsonTypeInfo.Value polymorphicTypeInfo = polymorphicTypeInfo(mapper, type);
-    requirePolymorphicTypeInfoIfSealed(type, polymorphicTypeInfo);
-    return new PlainJsonCodec<>(mapper, type, polymorphicTypeInfo);
-  }
-
-  /**
-   * {@code mapper}'s own answer to "does {@code type} carry Jackson polymorphism info" — via {@code
-   * DeserializationConfig.introspectClassAnnotations(type)} (which folds in any mix-in {@code
-   * mapper} has registered for {@code type}) and {@link
-   * AnnotationIntrospector#findPolymorphicTypeInfo}, the same lookup Jackson's own (de)serializer
-   * construction uses. Deliberately not {@code mapper.canSerialize}/{@code canDeserialize}: both
-   * are shallow for this question — verified empirically (a completely unannotated sealed
-   * interface, one permitted record, no mix-in registered): {@code canSerialize} correctly answers
-   * {@code false}, but {@code canDeserialize} answers {@code true} anyway, because Jackson can
-   * still build an {@code AbstractDeserializer} placeholder for the bare interface even though no
-   * discriminator would ever be written on encode and nothing could ever be read back). Returns
-   * {@code null} when {@code type} carries no polymorphism info by the mapper's own lights.
-   */
-  private static JsonTypeInfo.Value polymorphicTypeInfo(ObjectMapper mapper, Class<?> type) {
-    DeserializationConfig config = mapper.getDeserializationConfig();
-    var annotatedClass = config.introspectClassAnnotations(type).getClassInfo();
-    return config.getAnnotationIntrospector().findPolymorphicTypeInfo(config, annotatedClass);
-  }
-
-  private static void requirePolymorphicTypeInfoIfSealed(
-      Class<?> type, JsonTypeInfo.Value polymorphicTypeInfo) {
-    if (!(type.isInterface() && type.isSealed()) || polymorphicTypeInfo != null) {
-      return;
-    }
-    throw new IllegalArgumentException(
-        "sealed interface "
-            + type.getSimpleName()
-            + " is bound through Codec.json but carries no Jackson polymorphism annotations; add"
-            + " @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = \"type\") and @JsonSubTypes"
-            + " naming each permitted record (e.g. @JsonSubTypes.Type(value = Restart.class,"
-            + " name = \"Restart\")) so encoding writes a discriminator and decoding can read it"
-            + " back — directly on the type or via a mapper mix-in");
+    return new PlainJsonCodec<>(mapper, type);
   }
 
   /** {@link Codec#then(Codec)}'s composed codec. */
@@ -113,82 +72,31 @@ final class CodecSupport {
   }
 
   /**
-   * {@code Codec.json} for any type bound via {@code readValue}/{@code writeValueAsBytes}: plain
-   * records bind directly, and a sealed interface type (already guaranteed by {@link #json} to
-   * carry Jackson polymorphism info, by the mapper's own lights) defers wholly to Jackson's own
-   * polymorphic machinery — the discriminator property and its per-record values come from the
-   * annotations (or mix-in), exactly as Jackson would bind them anywhere else.
-   *
-   * <p>Jackson does not itself reject a permitted record that declares its own component sharing
-   * the discriminator's property name (verified empirically: encoding silently writes a duplicate
-   * key, decoding silently lets the record's own value win over the discriminator's) — {@link
-   * #requireNoTypeComponentCollision} catches that offense before any write, naming the record and
-   * the property, rather than letting the corruption through.
+   * {@code Codec.json} for any type: a literal {@code writeValueAsBytes}/{@code readValue} pair
+   * through {@code mapper}. Whatever {@code mapper} is configured to do — annotated sealed types,
+   * mix-ins, custom modules — happens exactly as it would for any other Jackson caller; this codec
+   * inspects neither {@code type} nor the mapper's configuration before binding. The only thing
+   * this layer owns is the boundary: a Jackson checked exception never leaks past it, translated
+   * into an {@link IllegalArgumentException} naming the offense.
    */
   private static final class PlainJsonCodec<T> implements Codec<T> {
 
     private final ObjectMapper mapper;
     private final Class<T> type;
-    private final String collisionProperty;
 
-    private PlainJsonCodec(
-        ObjectMapper mapper, Class<T> type, JsonTypeInfo.Value polymorphicTypeInfo) {
+    private PlainJsonCodec(ObjectMapper mapper, Class<T> type) {
       this.mapper = mapper;
       this.type = type;
-      this.collisionProperty = discriminatorPropertyIfCollisionPossible(type, polymorphicTypeInfo);
-    }
-
-    /**
-     * The discriminator's property name when {@code type} is a sealed interface carrying
-     * polymorphism info using {@link JsonTypeInfo.As#PROPERTY} inclusion (the convention used
-     * throughout this codebase) — the only inclusion style where a permitted record's own component
-     * can collide with the discriminator by sharing its name. {@code null} otherwise, meaning no
-     * collision is possible so {@link #requireNoTypeComponentCollision} is a no-op.
-     */
-    private static String discriminatorPropertyIfCollisionPossible(
-        Class<?> type, JsonTypeInfo.Value polymorphicTypeInfo) {
-      if (!(type.isInterface() && type.isSealed()) || polymorphicTypeInfo == null) {
-        return null;
-      }
-      if (polymorphicTypeInfo.getInclusionType() != JsonTypeInfo.As.PROPERTY) {
-        return null;
-      }
-      String property = polymorphicTypeInfo.getPropertyName();
-      return property == null || property.isEmpty() ? null : property;
     }
 
     @Override
     public byte[] encode(T value) {
       Objects.requireNonNull(value, "value must not be null");
-      requireNoTypeComponentCollision(value);
       try {
         return mapper.writeValueAsBytes(value);
       } catch (JsonProcessingException e) {
         throw new IllegalArgumentException(
             "failed to encode " + type.getSimpleName() + " to JSON: " + e.getMessage(), e);
-      }
-    }
-
-    private void requireNoTypeComponentCollision(T value) {
-      if (collisionProperty == null) {
-        return;
-      }
-      Class<?> runtimeType = value.getClass();
-      if (!runtimeType.isRecord()) {
-        return;
-      }
-      for (RecordComponent component : runtimeType.getRecordComponents()) {
-        if (component.getName().equals(collisionProperty)) {
-          throw new IllegalArgumentException(
-              "vocabulary record "
-                  + runtimeType.getSimpleName()
-                  + " declares a component named \""
-                  + collisionProperty
-                  + "\", which collides with the discriminator "
-                  + type.getSimpleName()
-                  + "'s polymorphism info injects (Jackson would silently duplicate it on encode"
-                  + " and let it win over the discriminator on decode)");
-        }
       }
     }
 

@@ -27,11 +27,12 @@ import java.util.Objects;
  *
  * <p>{@link #json(ObjectMapper, Class)} is the default binding for user-defined shapes: tolerant
  * UTF-8 JSON via the caller's mapper, so user-registered modules flow through untouched — this
- * layer neither constructs nor mutates the mapper it is given. Every type binds through {@code
- * readValue}/{@code writeValueAsBytes} directly, one plain path (substrate spec §3, §7, the
- * 2026-08-22 repeal); a sealed interface type rides Jackson's own polymorphic machinery via its own
- * {@code @JsonTypeInfo}/{@code @JsonSubTypes} annotations — the same annotations tool inputs bind
- * through — so the schema shown to a model and the bytes a store persists agree by construction.
+ * layer neither constructs nor mutates the mapper it is given, and inspects neither the mapper's
+ * configuration nor {@code type} before binding (substrate spec §3, §7, the 2026-08-22 repeal): no
+ * babysitting a caller's own Jackson setup. Every type binds through {@code readValue}/{@code
+ * writeValueAsBytes} directly — including a sealed interface type, which rides whatever
+ * polymorphism {@code mapper} resolves for it (annotations on the type, a mix-in, a custom
+ * introspector; configure Jackson however you like) exactly as any other Jackson caller would get.
  */
 public interface Codec<T> {
 
@@ -61,24 +62,22 @@ public interface Codec<T> {
   }
 
   /**
-   * A tolerant UTF-8 JSON codec for {@code type}, bound through {@code mapper}. A plain
-   * (non-sealed) type binds through {@code readValue}/{@code writeValueAsBytes} directly. A sealed
-   * interface {@code type} must already carry Jackson polymorphism info — {@code @JsonTypeInfo}/
-   * {@code @JsonSubTypes} directly on the type, or the same pair attached via {@code
-   * mapper.addMixIn(...)}, as {@code mapper} itself would resolve it — so the same vocabulary also
-   * rides a tool input's schema/binding (spec §3, json-repeal 2026-08-22); this call rejects a
-   * sealed {@code type} the mapper sees no polymorphism info for with an {@link
-   * IllegalArgumentException} naming the exact annotations to add, before any write — plain Jackson
-   * would otherwise encode an unannotated sealed value with no discriminator at all, producing
-   * bytes nothing could ever decode back. A sealed {@code type} the mapper does recognize defers
-   * wholly to Jackson's own polymorphic machinery: the discriminator property and its per-record
-   * values come from the polymorphism info, exactly as Jackson would bind them anywhere else.
-   * Jackson's checked exceptions never leak past this boundary: malformed bytes, an unknown
-   * discriminator, or a shape mismatch all surface as {@link IllegalArgumentException} naming the
-   * offense. A permitted record that declares its own component sharing the discriminator's
-   * property name is also rejected before any write, naming the record and the property — Jackson
-   * itself does not protect against that collision (verified empirically: it silently duplicates
-   * the key on encode and lets the record's own value win over the discriminator on decode).
+   * A tolerant UTF-8 JSON codec for {@code type}: a literal {@code writeValueAsBytes}/{@code
+   * readValue} pair through {@code mapper}, exactly as {@code mapper} is configured — this call
+   * inspects neither {@code type} nor the mapper's configuration first. A sealed interface {@code
+   * type} binds through whatever polymorphism {@code mapper} resolves for it —
+   * {@code @JsonTypeInfo}/{@code @JsonSubTypes} directly on the type, a {@code
+   * mapper.addMixIn(...)}, a custom {@code AnnotationIntrospector} — the same vocabulary a tool
+   * input's schema/binding would also ride (spec §3, json-repeal 2026-08-22). An unannotated sealed
+   * {@code type} simply gets Jackson's own natural behavior: no discriminator is ever written, so
+   * decoding fails with Jackson's own error — translated at this boundary like any other malformed
+   * input, not guarded against up front. The only thing this layer owns is that boundary: Jackson's
+   * checked exceptions never leak past it, malformed bytes or an unknown discriminator or a shape
+   * mismatch all surface as {@link IllegalArgumentException} naming the offense. Jackson's own
+   * behavior on a permitted record whose own component happens to share the discriminator's
+   * property name — verified empirically to be a silent duplicate-key/overwrite, not a thrown
+   * exception — is likewise not guarded against here; that is the caller's own Jackson
+   * configuration to own, same as any other Jackson application.
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
     Objects.requireNonNull(mapper, "mapper must not be null");
