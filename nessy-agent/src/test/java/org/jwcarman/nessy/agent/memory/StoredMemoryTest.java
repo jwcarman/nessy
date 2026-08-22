@@ -17,6 +17,7 @@ package org.jwcarman.nessy.agent.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.support.RaceOnceOnAppendSubstrate;
@@ -48,7 +49,8 @@ class StoredMemoryTest {
   @Test
   void rememberRetriesAfterLosingAConflictOnAppend() {
     Substrate delegate = new InMemorySubstrate();
-    String competitor = MessageCodec.toJson(Message.user("stole the slot"));
+    byte[] competitor =
+        MessageCodec.toJson(Message.user("stole the slot")).getBytes(StandardCharsets.UTF_8);
     Substrate racing = new RaceOnceOnAppendSubstrate(delegate, competitor);
     var memory = new StoredMemory(racing, "agent-a");
 

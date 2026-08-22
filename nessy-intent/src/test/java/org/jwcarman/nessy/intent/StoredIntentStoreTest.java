@@ -17,6 +17,7 @@ package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -53,7 +54,8 @@ class StoredIntentStoreTest {
       substrate.write(
           "intent",
           "agent-a",
-          "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}",
+          "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}"
+              .getBytes(StandardCharsets.UTF_8),
           0);
       var store = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
 
@@ -144,10 +146,14 @@ class StoredIntentStoreTest {
     }
 
     @Override
-    public void write(String kind, String key, String payload, long expectedVersion) {
+    public void write(String kind, String key, byte[] payload, long expectedVersion) {
       if (!raced) {
         raced = true;
-        delegate.write(kind, key, "{\"declaration\":\"a competing declaration\"}", expectedVersion);
+        delegate.write(
+            kind,
+            key,
+            "{\"declaration\":\"a competing declaration\"}".getBytes(StandardCharsets.UTF_8),
+            expectedVersion);
       }
       delegate.write(kind, key, payload, expectedVersion);
     }
@@ -163,7 +169,7 @@ class StoredIntentStoreTest {
     }
 
     @Override
-    public void append(String kind, String key, long expectedSeq, String payload) {
+    public void append(String kind, String key, long expectedSeq, byte[] payload) {
       delegate.append(kind, key, expectedSeq, payload);
     }
 

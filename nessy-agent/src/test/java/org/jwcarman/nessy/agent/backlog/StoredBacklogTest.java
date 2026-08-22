@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.backlog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -88,7 +89,9 @@ class StoredBacklogTest {
 
   @Test
   void addRetriesAfterLosingAWriteConflictAndTheElementStillLands() {
-    Substrate raceStore = new RaceOnceOnWriteSubstrate(new InMemorySubstrate(), "[\"raced-in\"]");
+    Substrate raceStore =
+        new RaceOnceOnWriteSubstrate(
+            new InMemorySubstrate(), "[\"raced-in\"]".getBytes(StandardCharsets.UTF_8));
     var backlog = new StoredBacklog(raceStore, "agent-a", 2);
 
     backlog.add("mine");
@@ -105,7 +108,9 @@ class StoredBacklogTest {
     seeded.add("a");
     seeded.add("b");
 
-    Substrate raceStore = new RaceOnceOnWriteSubstrate(substrate, "[\"a\",\"b\",\"c\"]");
+    Substrate raceStore =
+        new RaceOnceOnWriteSubstrate(
+            substrate, "[\"a\",\"b\",\"c\"]".getBytes(StandardCharsets.UTF_8));
     var backlog = new StoredBacklog(raceStore, "agent-a", 3);
 
     assertThat(backlog.poll()).contains("a");

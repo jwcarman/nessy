@@ -16,16 +16,19 @@
 package org.jwcarman.nessy.spi.substrate;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
  * The substrate (spec §2): two shapes — a document store (mutable current-truth, addressed by
  * {@code (kind, key)}) and a journal (immutable history, addressed by {@code (kind, key, seq)}) —
- * plus one atomic batch across both. Payloads are opaque, non-null strings the substrate never
- * parses; JSON is the house convention but the contract itself only says "string" (spec §4.5).
- * Every mutation carries a CAS expectation and a miss is a {@link ConflictException}, never a wait
- * (spec §4.1–§4.2); implementations must be safe for concurrent use (spec §4.7).
+ * plus one atomic batch across both. Payloads are opaque, non-null byte arrays the substrate never
+ * inspects or constrains; UTF-8 JSON is the house convention above the seam, but the contract
+ * itself only says "bytes" (spec §4.5). Every mutation carries a CAS expectation and a miss is a
+ * {@link ConflictException}, never a wait (spec §4.1–§4.2); implementations must be safe for
+ * concurrent use (spec §4.7).
  */
 public interface Substrate {
 
@@ -46,11 +49,11 @@ public interface Substrate {
    * @throws NullPointerException if {@code kind}, {@code key}, or {@code payload} is null
    * @throws ConflictException if the stored version does not match {@code expectedVersion}
    */
-  void write(String kind, String key, String payload, long expectedVersion);
+  void write(String kind, String key, byte[] payload, long expectedVersion);
 
   /**
    * Deletes the document at {@code (kind, key)} under the same CAS discipline as {@link
-   * #write(String, String, String, long)}: {@code expectedVersion} is what the caller believes is
+   * #write(String, String, byte[], long)}: {@code expectedVersion} is what the caller believes is
    * currently stored, and {@code 0} means "I believe this is absent". Deleting a document that is
    * genuinely absent at {@code expectedVersion == 0} is therefore an idempotent success (a no-op);
    * deleting a document that is present at {@code expectedVersion == 0} is a conflict, as is any
@@ -78,7 +81,7 @@ public interface Substrate {
    * @throws NullPointerException if {@code kind}, {@code key}, or {@code payload} is null
    * @throws ConflictException if an entry already exists at {@code expectedSeq}
    */
-  void append(String kind, String key, long expectedSeq, String payload);
+  void append(String kind, String key, long expectedSeq, byte[] payload);
 
   /**
    * Journal entries at {@code (kind, key)} from {@code fromSeq} (inclusive) in ascending order.
@@ -97,23 +100,200 @@ public interface Substrate {
    */
   void batch(List<Op> ops);
 
-  /** A document's current payload, version, and last-write timestamp. */
-  record Document(String payload, long version, Instant updatedAt) {}
+  /**
+   * A document's current payload, version, and last-write timestamp. Content-equal on {@code
+   * payload} bytes ({@link Arrays#equals(byte[], byte[])}), never array identity; the payload is
+   * defensively copied on construction and on read so no caller can alias stored truth (spec §4.5).
+   */
+  record Document(byte[] payload, long version, Instant updatedAt) {
 
-  /** One journal entry: its sequence, payload, and append timestamp. */
-  record Entry(long seq, String payload, Instant appendedAt) {}
+    public Document {
+      payload = payload.clone();
+    }
+
+    @Override
+    public byte[] payload() {
+      return payload.clone();
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (!(other instanceof Document that)) {
+        return false;
+      }
+      return version == that.version
+          && Arrays.equals(payload, that.payload)
+          && Objects.equals(updatedAt, that.updatedAt);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(Arrays.hashCode(payload), version, updatedAt);
+    }
+
+    @Override
+    public String toString() {
+      return "Document[payloadBytes="
+          + payload.length
+          + ", version="
+          + version
+          + ", updatedAt="
+          + updatedAt
+          + "]";
+    }
+  }
+
+  /**
+   * One journal entry: its sequence, payload, and append timestamp. Content-equal on {@code
+   * payload} bytes, defensively copied on construction and on read, per {@link Document}.
+   */
+  record Entry(long seq, byte[] payload, Instant appendedAt) {
+
+    public Entry {
+      payload = payload.clone();
+    }
+
+    @Override
+    public byte[] payload() {
+      return payload.clone();
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (!(other instanceof Entry that)) {
+        return false;
+      }
+      return seq == that.seq
+          && Arrays.equals(payload, that.payload)
+          && Objects.equals(appendedAt, that.appendedAt);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(seq, Arrays.hashCode(payload), appendedAt);
+    }
+
+    @Override
+    public String toString() {
+      return "Entry[seq="
+          + seq
+          + ", payloadBytes="
+          + payload.length
+          + ", appendedAt="
+          + appendedAt
+          + "]";
+    }
+  }
 
   /** One operation a {@link #batch(List)} call applies. */
   sealed interface Op {
 
-    /** Writes a document under CAS, as {@link Substrate#write(String, String, String, long)}. */
-    record WriteDocument(String kind, String key, String payload, long expectedVersion)
-        implements Op {}
+    /**
+     * Writes a document under CAS, as {@link Substrate#write(String, String, byte[], long)}.
+     * Content-equal on {@code payload} bytes, defensively copied on construction and on read, per
+     * {@link Document}.
+     */
+    record WriteDocument(String kind, String key, byte[] payload, long expectedVersion)
+        implements Op {
+
+      public WriteDocument {
+        payload = payload.clone();
+      }
+
+      @Override
+      public byte[] payload() {
+        return payload.clone();
+      }
+
+      @Override
+      public boolean equals(Object other) {
+        if (this == other) {
+          return true;
+        }
+        if (!(other instanceof WriteDocument that)) {
+          return false;
+        }
+        return expectedVersion == that.expectedVersion
+            && Objects.equals(kind, that.kind)
+            && Objects.equals(key, that.key)
+            && Arrays.equals(payload, that.payload);
+      }
+
+      @Override
+      public int hashCode() {
+        return Objects.hash(kind, key, Arrays.hashCode(payload), expectedVersion);
+      }
+
+      @Override
+      public String toString() {
+        return "WriteDocument[kind="
+            + kind
+            + ", key="
+            + key
+            + ", payloadBytes="
+            + payload.length
+            + ", expectedVersion="
+            + expectedVersion
+            + "]";
+      }
+    }
 
     /** Deletes a document under CAS, as {@link Substrate#delete(String, String, long)}. */
     record DeleteDocument(String kind, String key, long expectedVersion) implements Op {}
 
-    /** Appends a journal entry, as {@link Substrate#append(String, String, long, String)}. */
-    record AppendEntry(String kind, String key, long seq, String payload) implements Op {}
+    /**
+     * Appends a journal entry, as {@link Substrate#append(String, String, long, byte[])}.
+     * Content-equal on {@code payload} bytes, defensively copied on construction and on read, per
+     * {@link Document}.
+     */
+    record AppendEntry(String kind, String key, long seq, byte[] payload) implements Op {
+
+      public AppendEntry {
+        payload = payload.clone();
+      }
+
+      @Override
+      public byte[] payload() {
+        return payload.clone();
+      }
+
+      @Override
+      public boolean equals(Object other) {
+        if (this == other) {
+          return true;
+        }
+        if (!(other instanceof AppendEntry that)) {
+          return false;
+        }
+        return seq == that.seq
+            && Objects.equals(kind, that.kind)
+            && Objects.equals(key, that.key)
+            && Arrays.equals(payload, that.payload);
+      }
+
+      @Override
+      public int hashCode() {
+        return Objects.hash(kind, key, seq, Arrays.hashCode(payload));
+      }
+
+      @Override
+      public String toString() {
+        return "AppendEntry[kind="
+            + kind
+            + ", key="
+            + key
+            + ", seq="
+            + seq
+            + ", payloadBytes="
+            + payload.length
+            + "]";
+      }
+    }
   }
 }

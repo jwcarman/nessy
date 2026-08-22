@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.store;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
@@ -47,14 +48,18 @@ public final class StoredAgentStateStore implements AgentStateStore {
   public State load() {
     return store
         .read(KIND, agentId)
-        .map(doc -> new State(StateCodec.phase(doc.payload()), doc.version()))
+        .map(
+            doc ->
+                new State(
+                    StateCodec.phase(new String(doc.payload(), StandardCharsets.UTF_8)),
+                    doc.version()))
         .orElseGet(State::initial);
   }
 
   @Override
   public void save(State state) {
     Objects.requireNonNull(state, "state must not be null");
-    String payload = StateCodec.toJson(state.phase());
+    byte[] payload = StateCodec.toJson(state.phase()).getBytes(StandardCharsets.UTF_8);
     try {
       store.write(KIND, agentId, payload, state.version());
     } catch (ConflictException e) {

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.durable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -276,9 +277,10 @@ class StoredComputationsTest {
     void completesFlipConflictRetriesToAlreadyTerminalWithTheCompetitorsOutcome() {
       computations.create(ID);
       var competitorOutcome = new Outcome.Failure("competitor");
-      String competitorPayload =
+      byte[] competitorPayload =
           OutcomeCodec.toJson(
-              new SlotDocument(ComputationStatus.FAILED, competitorOutcome, List.of()));
+                  new SlotDocument(ComputationStatus.FAILED, competitorOutcome, List.of()))
+              .getBytes(StandardCharsets.UTF_8);
       var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
 
       CompletionResult result = raced.complete(ID, new Outcome.Success(ToolResult.ok("mine")));
@@ -291,8 +293,9 @@ class StoredComputationsTest {
     @Test
     void completesRulingSixAbsentConflictRetriesAndStillCompletes() {
       var id = ComputationId.of("tool:t:a:ruling-six-race");
-      String competitorPayload =
-          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
+      byte[] competitorPayload =
+          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()))
+              .getBytes(StandardCharsets.UTF_8);
       var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
 
       CompletionResult result = raced.complete(id, new Outcome.Success(ToolResult.ok("mine")));
@@ -305,8 +308,9 @@ class StoredComputationsTest {
     void awaitConflictRetriesAndKeepsBothContinuations() {
       computations.create(ID);
       var other = new Continuation("OTHER", "{}");
-      String competitorPayload =
-          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of(other)));
+      byte[] competitorPayload =
+          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of(other)))
+              .getBytes(StandardCharsets.UTF_8);
       var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
 
       AwaitResult result = raced.await(ID, RESUME);

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.backlog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -55,14 +56,17 @@ public final class StoredBacklog implements Backlog<String> {
     Objects.requireNonNull(observation, "observation must not be null");
     while (true) {
       Optional<Substrate.Document> doc = store.read(KIND, agentId);
-      List<String> queue = doc.map(d -> readQueue(d.payload())).orElseGet(ArrayList::new);
+      List<String> queue =
+          doc.map(d -> readQueue(new String(d.payload(), StandardCharsets.UTF_8)))
+              .orElseGet(ArrayList::new);
       if (queue.size() >= capacity) {
         throw new IllegalStateException("backlog full (capacity " + capacity + ")");
       }
       queue.add(observation);
       long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
       try {
-        store.write(KIND, agentId, writeQueue(queue), expectedVersion);
+        store.write(
+            KIND, agentId, writeQueue(queue).getBytes(StandardCharsets.UTF_8), expectedVersion);
         return;
       } catch (ConflictException e) {
         // another writer changed the queue between our read and our write; retry
@@ -77,13 +81,14 @@ public final class StoredBacklog implements Backlog<String> {
       if (doc.isEmpty()) {
         return Optional.empty();
       }
-      List<String> queue = readQueue(doc.get().payload());
+      List<String> queue = readQueue(new String(doc.get().payload(), StandardCharsets.UTF_8));
       if (queue.isEmpty()) {
         return Optional.empty();
       }
       String head = queue.remove(0);
       try {
-        store.write(KIND, agentId, writeQueue(queue), doc.get().version());
+        store.write(
+            KIND, agentId, writeQueue(queue).getBytes(StandardCharsets.UTF_8), doc.get().version());
         return Optional.of(head);
       } catch (ConflictException e) {
         // another writer changed the queue between our read and our write; retry

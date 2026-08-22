@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.durable;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -58,7 +59,7 @@ public final class StoredComputations implements DurableComputationBackend {
     String payload =
         OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
     try {
-      store.write(KIND, id.value(), payload, 0);
+      store.write(KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
       return new CreateResult(id, true);
     } catch (ConflictException e) {
       return new CreateResult(id, false);
@@ -70,7 +71,7 @@ public final class StoredComputations implements DurableComputationBackend {
     Objects.requireNonNull(continuation, "continuation must not be null");
     while (true) {
       Substrate.Document doc = requiredDocument(id);
-      SlotDocument slot = OutcomeCodec.document(doc.payload());
+      SlotDocument slot = OutcomeCodec.document(new String(doc.payload(), StandardCharsets.UTF_8));
       if (slot.status() != ComputationStatus.PENDING) {
         return new AwaitResult.AlreadyCompleted(slot.outcome());
       }
@@ -82,7 +83,7 @@ public final class StoredComputations implements DurableComputationBackend {
       String payload =
           OutcomeCodec.toJson(new SlotDocument(slot.status(), slot.outcome(), registered));
       try {
-        store.write(KIND, id.value(), payload, doc.version());
+        store.write(KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), doc.version());
         return new AwaitResult.Registered();
       } catch (ConflictException e) {
         // lost the race to another writer; re-read and retry the whole decision (spec §12)
@@ -104,20 +105,22 @@ public final class StoredComputations implements DurableComputationBackend {
       if (doc.isEmpty()) {
         // Ruling 6: completion creates the slot when it must — one flip, at birth.
         try {
-          store.write(KIND, id.value(), createPayload, 0);
+          store.write(KIND, id.value(), createPayload.getBytes(StandardCharsets.UTF_8), 0);
           return CompletionResult.COMPLETED;
         } catch (ConflictException e) {
           continue; // the slot was created concurrently; re-read and re-evaluate
         }
       }
-      SlotDocument slot = OutcomeCodec.document(doc.get().payload());
+      SlotDocument slot =
+          OutcomeCodec.document(new String(doc.get().payload(), StandardCharsets.UTF_8));
       if (slot.status() != ComputationStatus.PENDING) {
         return CompletionResult.ALREADY_TERMINAL;
       }
       String payload =
           OutcomeCodec.toJson(new SlotDocument(terminalStatus, outcome, slot.continuations()));
       try {
-        store.write(KIND, id.value(), payload, doc.get().version());
+        store.write(
+            KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), doc.get().version());
         return CompletionResult.COMPLETED;
       } catch (ConflictException e) {
         // lost the race to another completer; re-read — it may now be ALREADY_TERMINAL
@@ -128,12 +131,17 @@ public final class StoredComputations implements DurableComputationBackend {
   @Override
   public Optional<ComputationStatus> status(ComputationId id) {
     Objects.requireNonNull(id, "id must not be null");
-    return store.read(KIND, id.value()).map(doc -> OutcomeCodec.document(doc.payload()).status());
+    return store
+        .read(KIND, id.value())
+        .map(
+            doc ->
+                OutcomeCodec.document(new String(doc.payload(), StandardCharsets.UTF_8)).status());
   }
 
   @Override
   public List<Continuation> continuationsOf(ComputationId id) {
-    return OutcomeCodec.document(requiredDocument(id).payload()).continuations();
+    return OutcomeCodec.document(new String(requiredDocument(id).payload(), StandardCharsets.UTF_8))
+        .continuations();
   }
 
   private Substrate.Document requiredDocument(ComputationId id) {

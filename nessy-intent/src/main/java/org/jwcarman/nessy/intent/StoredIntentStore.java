@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.tool.SealedInputs;
@@ -58,7 +59,7 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
   @Override
   public void declare(T declaration) {
     Objects.requireNonNull(declaration, "declaration must not be null");
-    String payload = toJson(declaration);
+    byte[] payload = toJson(declaration).getBytes(StandardCharsets.UTF_8);
     while (true) {
       Optional<Substrate.Document> doc = store.read(KIND, agentId);
       long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
@@ -73,7 +74,9 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
 
   @Override
   public Optional<T> latest() {
-    return store.read(KIND, agentId).map(doc -> fromJson(doc.payload()));
+    return store
+        .read(KIND, agentId)
+        .map(doc -> fromJson(new String(doc.payload(), StandardCharsets.UTF_8)));
   }
 
   private String toJson(T declaration) {

@@ -60,7 +60,7 @@ public final class InMemorySubstrate implements Substrate {
   }
 
   @Override
-  public void write(String kind, String key, String payload, long expectedVersion) {
+  public void write(String kind, String key, byte[] payload, long expectedVersion) {
     synchronized (lock) {
       applyWrite(documents, kind, key, payload, expectedVersion, clock.instant());
     }
@@ -90,7 +90,7 @@ public final class InMemorySubstrate implements Substrate {
   }
 
   @Override
-  public void append(String kind, String key, long expectedSeq, String payload) {
+  public void append(String kind, String key, long expectedSeq, byte[] payload) {
     synchronized (lock) {
       applyAppend(journals, kind, key, expectedSeq, payload, clock.instant());
     }
@@ -185,7 +185,7 @@ public final class InMemorySubstrate implements Substrate {
       Map<DocKey, Document> target,
       String kind,
       String key,
-      String payload,
+      byte[] payload,
       long expectedVersion,
       Instant now) {
     Objects.requireNonNull(kind, "kind must not be null");
@@ -239,7 +239,7 @@ public final class InMemorySubstrate implements Substrate {
       String kind,
       String key,
       long expectedSeq,
-      String payload,
+      byte[] payload,
       Instant now) {
     Objects.requireNonNull(kind, "kind must not be null");
     Objects.requireNonNull(key, "key must not be null");

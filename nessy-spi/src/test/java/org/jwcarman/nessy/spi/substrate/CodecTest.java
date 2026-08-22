@@ -1,0 +1,232 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.spi.substrate;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+class CodecTest {
+
+  record Address(String city, String state) {}
+
+  sealed interface Vocabulary permits Restart, Shutdown {}
+
+  record Restart(String host) implements Vocabulary {}
+
+  record Shutdown(String reason) implements Vocabulary {}
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  /** Appends {@code marker} to the bytes it sees on encode, strips it back off on decode. */
+  private static final class MarkerCodec implements Codec<byte[]> {
+
+    private final byte marker;
+    private final List<byte[]> encodeInputs = new ArrayList<>();
+    private final List<byte[]> decodeInputs = new ArrayList<>();
+
+    private MarkerCodec(byte marker) {
+      this.marker = marker;
+    }
+
+    @Override
+    public byte[] encode(byte[] value) {
+      encodeInputs.add(value.clone());
+      byte[] marked = Arrays.copyOf(value, value.length + 1);
+      marked[value.length] = marker;
+      return marked;
+    }
+
+    @Override
+    public byte[] decode(byte[] bytes) {
+      decodeInputs.add(bytes.clone());
+      return Arrays.copyOf(bytes, bytes.length - 1);
+    }
+  }
+
+  @Nested
+  class PlainRecords {
+
+    @Test
+    void json_round_trips_a_plain_record() {
+      Codec<Address> codec = Codec.json(MAPPER, Address.class);
+      Address original = new Address("Columbus", "OH");
+
+      Address decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void json_encodes_utf8_bytes() {
+      Codec<Address> codec = Codec.json(MAPPER, Address.class);
+      Address original = new Address("Columbus", "OH");
+
+      byte[] encoded = codec.encode(original);
+
+      assertThat(new String(encoded, UTF_8)).contains("Columbus");
+    }
+
+    @Test
+    void malformed_bytes_are_rejected_naming_the_offense() {
+      Codec<Address> codec = Codec.json(MAPPER, Address.class);
+      byte[] malformed = "not json at all {".getBytes(UTF_8);
+
+      assertThatThrownBy(() -> codec.decode(malformed))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Address");
+    }
+
+    @Test
+    void a_null_value_on_encode_throws_npe_with_a_message() {
+      Codec<Address> codec = Codec.json(MAPPER, Address.class);
+      assertThatThrownBy(() -> codec.encode(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("value");
+    }
+
+    @Test
+    void null_bytes_on_decode_throw_npe_with_a_message() {
+      Codec<Address> codec = Codec.json(MAPPER, Address.class);
+      assertThatThrownBy(() -> codec.decode(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("bytes");
+    }
+  }
+
+  @Nested
+  class SealedVocabularies {
+
+    @Test
+    void json_round_trips_one_member_of_a_sealed_vocabulary_via_the_class_token() {
+      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
+      Vocabulary original = new Restart("prod-eu");
+
+      Vocabulary decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void json_round_trips_a_different_member_of_the_same_sealed_vocabulary() {
+      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
+      Vocabulary original = new Shutdown("maintenance");
+
+      Vocabulary decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void unknown_discriminator_is_rejected_naming_it() {
+      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
+      byte[] bytes = "{\"type\":\"Reboot\",\"host\":\"prod-eu\"}".getBytes(UTF_8);
+
+      assertThatThrownBy(() -> codec.decode(bytes))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Reboot");
+    }
+  }
+
+  @Nested
+  class ThenOrder {
+
+    @Test
+    void encode_passes_through_the_appended_transform_last() {
+      MarkerCodec marker = new MarkerCodec((byte) '!');
+      Codec<Address> plain = Codec.json(MAPPER, Address.class);
+      Codec<Address> withMarker = plain.then(marker);
+      Address original = new Address("Columbus", "OH");
+
+      byte[] plainBytes = plain.encode(original);
+      byte[] result = withMarker.encode(original);
+
+      assertThat(marker.encodeInputs).hasSize(1);
+      assertThat(marker.encodeInputs.getFirst()).isEqualTo(plainBytes);
+      assertThat(result).hasSize(plainBytes.length + 1);
+    }
+
+    @Test
+    void decode_passes_through_the_appended_transform_first() {
+      MarkerCodec marker = new MarkerCodec((byte) '!');
+      Codec<Address> plain = Codec.json(MAPPER, Address.class);
+      Codec<Address> withMarker = plain.then(marker);
+      Address original = new Address("Columbus", "OH");
+
+      byte[] markedBytes = withMarker.encode(original);
+      Address decoded = withMarker.decode(markedBytes);
+
+      assertThat(marker.decodeInputs).hasSize(1);
+      assertThat(marker.decodeInputs.getFirst()).isEqualTo(markedBytes);
+      assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void a_stacked_chain_encodes_a_then_b_and_decodes_b_then_a() {
+      MarkerCodec a = new MarkerCodec((byte) 'a');
+      MarkerCodec b = new MarkerCodec((byte) 'b');
+      Codec<Address> plain = Codec.json(MAPPER, Address.class);
+      Codec<Address> stacked = plain.then(a).then(b);
+      Address original = new Address("Columbus", "OH");
+
+      byte[] plainBytes = plain.encode(original);
+      byte[] result = stacked.encode(original);
+      byte[] expectedAfterA = Arrays.copyOf(plainBytes, plainBytes.length + 1);
+      expectedAfterA[plainBytes.length] = (byte) 'a';
+
+      // encode order: plain, then a, then b
+      assertThat(a.encodeInputs).hasSize(1);
+      assertThat(a.encodeInputs.getFirst()).isEqualTo(plainBytes);
+      assertThat(b.encodeInputs).hasSize(1);
+      assertThat(b.encodeInputs.getFirst()).isEqualTo(expectedAfterA);
+      assertThat(result).hasSize(plainBytes.length + 2);
+      assertThat(result[result.length - 1]).isEqualTo((byte) 'b');
+      assertThat(result[result.length - 2]).isEqualTo((byte) 'a');
+
+      Address decoded = stacked.decode(result);
+      assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void malformed_bytes_through_the_chain_are_rejected_naming_the_offense() {
+      MarkerCodec marker = new MarkerCodec((byte) '!');
+      Codec<Address> chained = Codec.json(MAPPER, Address.class).then(marker);
+      byte[] malformed = marker.encode("not json at all {".getBytes(UTF_8));
+
+      assertThatThrownBy(() -> chained.decode(malformed))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Address");
+    }
+
+    @Test
+    void unknown_discriminator_through_the_chain_is_rejected_naming_it() {
+      MarkerCodec marker = new MarkerCodec((byte) '!');
+      Codec<Vocabulary> chained = Codec.json(MAPPER, Vocabulary.class).then(marker);
+      byte[] bytes = marker.encode("{\"type\":\"Reboot\",\"host\":\"prod-eu\"}".getBytes(UTF_8));
+
+      assertThatThrownBy(() -> chained.decode(bytes))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Reboot");
+    }
+  }
+}

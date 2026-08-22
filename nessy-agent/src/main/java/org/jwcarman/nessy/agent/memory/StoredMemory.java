@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.memory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
@@ -47,7 +48,7 @@ public final class StoredMemory implements Memory {
   @Override
   public void remember(Message message) {
     Objects.requireNonNull(message, "message must not be null");
-    String payload = MessageCodec.toJson(message);
+    byte[] payload = MessageCodec.toJson(message).getBytes(StandardCharsets.UTF_8);
     while (true) {
       long nextSeq = head() + 1;
       try {
@@ -63,7 +64,7 @@ public final class StoredMemory implements Memory {
   public Context recall() {
     List<Message> messages =
         store.entries(KIND, agentId, 1).stream()
-            .map(entry -> MessageCodec.message(entry.payload()))
+            .map(entry -> MessageCodec.message(new String(entry.payload(), StandardCharsets.UTF_8)))
             .toList();
     return Context.of(messages);
   }
