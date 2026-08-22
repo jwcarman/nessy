@@ -43,7 +43,7 @@ import org.jwcarman.nessy.durable.Outcome;
  * <p>Reads are tolerant: unknown fields are ignored. Malformed JSON or an unrecognized
  * discriminator fails loudly with an {@link IllegalArgumentException} naming the offense.
  */
-public final class OutcomeCodec {
+final class OutcomeCodec {
 
   private static final String TYPE = "type";
   private static final String STATUS = "status";
@@ -211,7 +211,7 @@ public final class OutcomeCodec {
           case PAYLOAD_TOOL_RESULT ->
               new ToolResult(
                   Codecs.requireText(payloadNode, "content", "tool-result payload"),
-                  requireBoolean(payloadNode, "isError", "tool-result payload"));
+                  Codecs.requireBoolean(payloadNode, "isError", "tool-result payload"));
           case PAYLOAD_DECISION -> readDecision(payloadNode);
           default ->
               throw new IllegalArgumentException(
@@ -239,13 +239,5 @@ public final class OutcomeCodec {
                   + ", "
                   + DECISION_DENY);
     };
-  }
-
-  private static boolean requireBoolean(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null || !field.isBoolean()) {
-      throw new IllegalArgumentException(owner + " missing required field: " + name);
-    }
-    return field.asBoolean();
   }
 }

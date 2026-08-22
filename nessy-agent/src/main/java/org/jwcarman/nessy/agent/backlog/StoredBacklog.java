@@ -16,27 +16,26 @@
 package org.jwcarman.nessy.agent.backlog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.spi.store.ConflictException;
 import org.jwcarman.nessy.spi.store.ScopedStore;
 
 /**
- * The {@code backlog} recipe (spec §6.4): one document per scope, keyed by {@code agentId}, holding
- * the pending observations as a plain JSON array of strings — no codec involved, just Jackson. An
- * absent document reads as an empty queue; the document is created lazily on the first {@link
- * #add(String)}. {@code add}/{@code poll} are read-mutate-CAS-retry loops; a full queue is rejected
- * with an {@link IllegalStateException}, the bound the deleted {@code BoundedBacklog} used to
- * enforce (spec §12).
+ * The {@code backlog} recipe (scoped-store spec §6.4): one document per scope, keyed by {@code
+ * agentId}, holding the pending observations as a plain JSON array of strings — no codec involved,
+ * just Jackson. An absent document reads as an empty queue; the document is created lazily on the
+ * first {@link #add(String)}. {@code add}/{@code poll} are read-mutate-CAS-retry loops; a full
+ * queue is rejected with an {@link IllegalStateException}, the bound the deleted {@code
+ * BoundedBacklog} used to enforce (spec §12).
  */
 public final class StoredBacklog implements Backlog<String> {
 
   private static final String KIND = "backlog";
-  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private final ScopedStore store;
   private final String agentId;
@@ -94,16 +93,16 @@ public final class StoredBacklog implements Backlog<String> {
 
   private static List<String> readQueue(String payload) {
     try {
-      String[] values = MAPPER.readValue(payload, String[].class);
+      String[] values = Codecs.MAPPER.readValue(payload, String[].class);
       return new ArrayList<>(List.of(values));
     } catch (JsonProcessingException e) {
-      throw new IllegalStateException("malformed backlog payload", e);
+      throw new IllegalArgumentException("malformed backlog payload", e);
     }
   }
 
   private static String writeQueue(List<String> queue) {
     try {
-      return MAPPER.writeValueAsString(queue);
+      return Codecs.MAPPER.writeValueAsString(queue);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("unwritable backlog payload", e);
     }

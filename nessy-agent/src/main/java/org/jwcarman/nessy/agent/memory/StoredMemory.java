@@ -25,12 +25,12 @@ import org.jwcarman.nessy.spi.store.ConflictException;
 import org.jwcarman.nessy.spi.store.ScopedStore;
 
 /**
- * The {@code memory} recipe (spec §6.2): one journal per scope, keyed by {@code agentId}, one entry
- * per message. {@link #remember(Message)} appends at head + 1; a conflicting racer means someone
- * else appended first, so the head is re-read and the append retried — near-zero in practice since
- * the scope CAS already serializes turns, but correct under a genuine race. {@link #recall()} folds
- * every entry from seq 1 into a {@link Context}. The transcript is the permanent record: nothing
- * here ever rewrites an entry.
+ * The {@code memory} recipe (scoped-store spec §6.2): one journal per scope, keyed by {@code
+ * agentId}, one entry per message. {@link #remember(Message)} appends at head + 1; a conflicting
+ * racer means someone else appended first, so the head is re-read and the append retried —
+ * near-zero in practice since the scope CAS already serializes turns, but correct under a genuine
+ * race. {@link #recall()} folds every entry from seq 1 into a {@link Context}. The transcript is
+ * the permanent record: nothing here ever rewrites an entry.
  */
 public final class StoredMemory implements Memory {
 

@@ -202,7 +202,7 @@ public final class MessageCodec {
           new ToolResultBlock(
               Codecs.requireText(node, "toolUseId", "tool-result block"),
               Codecs.requireText(node, CONTENT, "tool-result block"),
-              requireBoolean(node, "isError", "tool-result block"));
+              Codecs.requireBoolean(node, "isError", "tool-result block"));
       default ->
           throw new IllegalArgumentException(
               "unknown content block type: "
@@ -234,13 +234,5 @@ public final class MessageCodec {
   private static String optionalText(ObjectNode node, String name, String fallback) {
     JsonNode field = node.get(name);
     return field == null || field.isNull() ? fallback : field.asText();
-  }
-
-  private static boolean requireBoolean(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null || !field.isBoolean()) {
-      throw new IllegalArgumentException(owner + " missing required field: " + name);
-    }
-    return field.asBoolean();
   }
 }

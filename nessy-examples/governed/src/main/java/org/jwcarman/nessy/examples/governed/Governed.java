@@ -94,8 +94,8 @@ public final class Governed {
    * wait is bounded: a hung host fails loudly with a named timeout instead of hanging the build.
    */
   static Result run() throws InterruptedException {
-    IntentStore<OpsIntent> intentStore =
-        new StoredIntentStore<>(new InMemoryScopedStore(), SCOPE_ID, OpsIntent.class);
+    var kernel = new InMemoryScopedStore();
+    IntentStore<OpsIntent> intentStore = new StoredIntentStore<>(kernel, SCOPE_ID, OpsIntent.class);
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
@@ -115,6 +115,7 @@ public final class Governed {
                 restartGrant(intentStore))
             .approvalNotifier(approvalRequests::add)
             .turnObserver(observer)
+            .store(kernel)
             .build()) {
 
       System.out.println("== posting: please restart prod-eu ==");

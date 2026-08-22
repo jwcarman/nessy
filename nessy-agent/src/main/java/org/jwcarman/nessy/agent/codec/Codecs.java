@@ -66,6 +66,17 @@ public final class Codecs {
     return (ArrayNode) field;
   }
 
+  /**
+   * The required field {@code name} on {@code node}, as a boolean — malformed payload otherwise.
+   */
+  public static boolean requireBoolean(ObjectNode node, String name, String owner) {
+    JsonNode field = node.get(name);
+    if (field == null || !field.isBoolean()) {
+      throw new IllegalArgumentException(owner + " missing required field: " + name);
+    }
+    return field.asBoolean();
+  }
+
   /** {@code node} as an object node, or a malformed-payload {@link IllegalArgumentException}. */
   public static ObjectNode requireObject(JsonNode node, String owner) {
     if (node == null || !node.isObject()) {

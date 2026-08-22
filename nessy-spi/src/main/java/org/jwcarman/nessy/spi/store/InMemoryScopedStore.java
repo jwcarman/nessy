@@ -112,10 +112,11 @@ public final class InMemoryScopedStore implements ScopedStore {
   @Override
   public void batch(List<Op> ops) {
     Objects.requireNonNull(ops, "ops must not be null");
+    List<Op> snapshot = List.copyOf(ops);
     synchronized (lock) {
       Set<DocKey> documentKeys = new HashSet<>();
       Set<DocKey> journalKeys = new HashSet<>();
-      for (Op op : ops) {
+      for (Op op : snapshot) {
         collectTouchedKey(op, documentKeys, journalKeys);
       }
 
@@ -135,7 +136,7 @@ public final class InMemoryScopedStore implements ScopedStore {
       }
 
       Instant now = clock.instant();
-      for (Op op : ops) {
+      for (Op op : snapshot) {
         applyOp(documentsCopy, journalsCopy, op, now);
       }
 

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.intent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -41,7 +42,8 @@ import org.jwcarman.nessy.spi.store.ScopedStore;
 public final class StoredIntentStore<T> implements IntentStore<T> {
 
   private static final String KIND = "intent";
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
   private final ScopedStore store;
   private final String agentId;
@@ -91,7 +93,7 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
     try {
       node = MAPPER.readTree(payload);
     } catch (JsonProcessingException e) {
-      throw new IllegalStateException("malformed intent payload", e);
+      throw new IllegalArgumentException("malformed intent payload", e);
     }
     if (SealedInputs.isSealedInput(vocabulary)) {
       return SealedInputs.bind(vocabulary, node, MAPPER);

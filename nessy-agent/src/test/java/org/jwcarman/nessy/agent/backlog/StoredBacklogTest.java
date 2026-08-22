@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.support.RaceOnceOnWriteStore;
 import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 import org.jwcarman.nessy.spi.store.ScopedStore;
 
@@ -82,6 +83,36 @@ class StoredBacklogTest {
 
     assertThat(reader.poll()).contains("first");
     assertThat(reader.poll()).contains("second");
+    assertThat(reader.poll()).isEmpty();
+  }
+
+  @Test
+  void addRetriesAfterLosingAWriteConflictAndTheElementStillLands() {
+    ScopedStore raceStore = new RaceOnceOnWriteStore(new InMemoryScopedStore(), "[\"raced-in\"]");
+    var backlog = new StoredBacklog(raceStore, "agent-a", 2);
+
+    backlog.add("mine");
+
+    assertThat(backlog.poll()).contains("raced-in");
+    assertThat(backlog.poll()).contains("mine");
+    assertThat(backlog.poll()).isEmpty();
+  }
+
+  @Test
+  void pollRetriesAfterLosingAWriteConflictAndStillRemovesExactlyItsElement() {
+    ScopedStore kernel = new InMemoryScopedStore();
+    var seeded = new StoredBacklog(kernel, "agent-a", 3);
+    seeded.add("a");
+    seeded.add("b");
+
+    ScopedStore raceStore = new RaceOnceOnWriteStore(kernel, "[\"a\",\"b\",\"c\"]");
+    var backlog = new StoredBacklog(raceStore, "agent-a", 3);
+
+    assertThat(backlog.poll()).contains("a");
+
+    var reader = new StoredBacklog(kernel, "agent-a", 3);
+    assertThat(reader.poll()).contains("b");
+    assertThat(reader.poll()).contains("c");
     assertThat(reader.poll()).isEmpty();
   }
 }

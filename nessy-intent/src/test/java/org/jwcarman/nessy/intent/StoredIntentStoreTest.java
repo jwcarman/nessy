@@ -46,6 +46,19 @@ class StoredIntentStoreTest {
 
       assertThat(store.latest()).contains(new Intent("second declaration"));
     }
+
+    @Test
+    void aStoredDeclarationWithAnUnknownFieldStillReads() {
+      var kernel = new InMemoryScopedStore();
+      kernel.write(
+          "intent",
+          "agent-a",
+          "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}",
+          0);
+      var store = new StoredIntentStore<>(kernel, "agent-a", Intent.class);
+
+      assertThat(store.latest()).contains(new Intent("restart prod-eu"));
+    }
   }
 
   @Nested

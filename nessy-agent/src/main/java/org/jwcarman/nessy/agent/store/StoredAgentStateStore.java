@@ -24,9 +24,9 @@ import org.jwcarman.nessy.spi.store.ConflictException;
 import org.jwcarman.nessy.spi.store.ScopedStore;
 
 /**
- * The {@code state} recipe (spec §6.1): one document per scope, keyed by {@code agentId}. The
- * document version IS the scope version — no separate version field rides in the payload — so
- * {@link #save(State)} is a direct CAS write and a lost race surfaces as {@link
+ * The {@code state} recipe (scoped-store spec §6.1): one document per scope, keyed by {@code
+ * agentId}. The document version IS the scope version — no separate version field rides in the
+ * payload — so {@link #save(State)} is a direct CAS write and a lost race surfaces as {@link
  * ScopedStore.Document}'s version disagreeing with what the caller believed it held.
  */
 public final class StoredAgentStateStore implements AgentStateStore {

@@ -109,6 +109,14 @@ serialization; the kernel never sees anything but a string.
 - **Intent** (`kind=intent`) — one document per scope, last-write-wins via
   read-then-CAS retry, shipped in `nessy-intent` — see [Intent](intent.md).
 
+> **Discriminator conventions differ by kind.** Every polymorphic payload
+> above carries a `"type"` field, but its values aren't spelled the same
+> way: the message/phase/outcome codecs (`kind=memory`, `kind=state`,
+> `kind=computation`) write kebab-case values (`tool-use`, `redacted-thinking`,
+> `tool-result`), while the sealed intent vocabularies (`kind=intent`) write
+> the declared record's verbatim simple name (`Restart`, `Diagnose`). A
+> reader of the raw tables will see both conventions, one per kind.
+
 ## The adapter pitch
 
 Implement seven methods against your database and every feature above

@@ -347,4 +347,50 @@ class AutonomousHostTest {
         .anyMatch(m -> m.content().contains(new TextBlock("second message")))
         .anyMatch(m -> m.content().contains(new TextBlock("second reply")));
   }
+
+  /**
+   * The branch's headline claim, proven with two entirely separate hosts rather than two builds
+   * from one builder: durability lives in the {@link ScopedStore} itself, so a second host — built
+   * later, from its own builder, knowing nothing about the first — still inherits the first host's
+   * turn the moment it's pointed at the same kernel. The proof rides the model request host B's own
+   * provider recorded: its context carries host A's turn.
+   */
+  @Test
+  void aSecondHostBuiltOverTheSameKernelInheritsTheFirstHostsTurn() {
+    var kernel = new InMemoryScopedStore();
+
+    var pumpA = new PumpedExecutor();
+    var providerA =
+        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply one"))));
+    var hostA =
+        Nessy.autonomous()
+            .provider(providerA)
+            .settings(TestSettings.settings())
+            .executor(pumpA)
+            .store(kernel)
+            .build();
+    hostA.post("shared-scope", "message one");
+    pumpA.pumpUntilQuiet();
+
+    var pumpB = new PumpedExecutor();
+    var providerB =
+        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply two"))));
+    var hostB =
+        Nessy.autonomous()
+            .provider(providerB)
+            .settings(TestSettings.settings())
+            .executor(pumpB)
+            .store(kernel)
+            .build();
+    hostB.post("shared-scope", "message two");
+    pumpB.pumpUntilQuiet();
+
+    List<ModelRequest> requestsToHostB = providerB.requests();
+    assertThat(requestsToHostB).hasSize(1);
+    List<Message> secondTurnContext = requestsToHostB.get(0).context().messages();
+    assertThat(secondTurnContext)
+        .isNotEmpty()
+        .anyMatch(m -> m.content().contains(new TextBlock("message one")))
+        .anyMatch(m -> m.content().contains(new TextBlock("reply one")));
+  }
 }
