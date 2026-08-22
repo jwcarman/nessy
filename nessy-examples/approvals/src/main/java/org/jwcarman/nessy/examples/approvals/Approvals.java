@@ -83,7 +83,7 @@ public final class Approvals {
     TurnObserver observer =
         TurnObserver.observe(o -> o.onAssistantSaid(replies::add).onTurnEnded(completions::add));
 
-    try (AutonomousHost host =
+    try (AutonomousHost<String> host =
         Nessy.autonomous()
             .type("approvals")
             .provider(provider)
@@ -118,7 +118,7 @@ public final class Approvals {
     var settings = new ModelSettings(selection.model(), SYSTEM_PROMPT, 1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ApprovalRequest>();
 
-    try (AutonomousHost host =
+    try (AutonomousHost<String> host =
         Nessy.autonomous()
             .type("approvals")
             .provider(selection.provider())

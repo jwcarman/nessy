@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.agent.backlog;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -37,16 +35,17 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * queue is rejected with an {@link IllegalStateException}, the bound the deleted {@code
  * BoundedBacklog} used to enforce (spec §12).
  *
- * <p>The outer array-of-strings envelope is structural, not domain, JSON — it is bound through a
- * plain, un-pinned {@link ObjectMapper} private to this class, never the caller's mapper; only the
- * elements' meaning is caller-controlled, through {@code codec}.
+ * <p>The outer array-of-strings envelope is hand-written, not Jackson-bound: every element is
+ * base64 ({@code [A-Za-z0-9+/=]}), so nothing in it is ever JSON-escapable, and a shared static
+ * {@link com.fasterxml.jackson.databind.ObjectMapper} would be exactly the ambient statics this
+ * branch (Task 3) exists to retire. Only the elements' meaning is caller-controlled, through {@code
+ * codec}.
  *
  * @param <O> the observation vocabulary this backlog holds
  */
 public final class SubstrateBacklog<O> implements Backlog<O> {
 
   private static final String KIND = "backlog";
-  private static final ObjectMapper ENVELOPE_MAPPER = new ObjectMapper();
 
   private final Substrate store;
   private final String agentId;
@@ -87,6 +86,13 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
     }
   }
 
+  /**
+   * Polls the head observation, or empty if the queue is absent or empty. Decoding is the very last
+   * step, after the CAS write that removes the element has already succeeded: a {@code
+   * codec.decode} failure on an already-consumed element is a hard error by design — the element is
+   * gone from the queue, and the exception propagates rather than looping to try the next one, so a
+   * poison element never silently starves the rest of the backlog behind a retry loop.
+   */
   @Override
   public Optional<O> poll() {
     while (true) {
@@ -109,20 +115,40 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
     }
   }
 
+  /**
+   * Parses the hand-written {@code ["base64","base64",...]} envelope. Every element is base64
+   * ({@code [A-Za-z0-9+/=]}), so a bare split-and-strip is exact — no escaping is possible inside
+   * an element to confuse it with the {@code ","} separator or the {@code "\""} quote.
+   */
   private List<String> readQueue(String payload) {
-    try {
-      String[] values = ENVELOPE_MAPPER.readValue(payload, String[].class);
-      return new ArrayList<>(List.of(values));
-    } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException("malformed backlog payload", e);
+    String trimmed = payload.strip();
+    if (trimmed.equals("[]")) {
+      return new ArrayList<>();
     }
+    if (trimmed.length() < 2
+        || trimmed.charAt(0) != '['
+        || trimmed.charAt(trimmed.length() - 1) != ']') {
+      throw new IllegalArgumentException("malformed backlog payload");
+    }
+    String inner = trimmed.substring(1, trimmed.length() - 1);
+    List<String> elements = new ArrayList<>();
+    for (String element : inner.split(",", -1)) {
+      String stripped = element.strip();
+      if (stripped.length() < 2
+          || stripped.charAt(0) != '"'
+          || stripped.charAt(stripped.length() - 1) != '"') {
+        throw new IllegalArgumentException("malformed backlog payload");
+      }
+      elements.add(stripped.substring(1, stripped.length() - 1));
+    }
+    return elements;
   }
 
+  /** Writes the {@code ["base64","base64",...]} envelope; {@code "[]"} for an empty queue. */
   private String writeQueue(List<String> queue) {
-    try {
-      return ENVELOPE_MAPPER.writeValueAsString(queue);
-    } catch (JsonProcessingException e) {
-      throw new IllegalStateException("unwritable backlog payload", e);
+    if (queue.isEmpty()) {
+      return "[]";
     }
+    return "[\"" + String.join("\",\"", queue) + "\"]";
   }
 }

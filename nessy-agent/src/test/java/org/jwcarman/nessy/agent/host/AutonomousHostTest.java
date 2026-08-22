@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
@@ -447,7 +448,8 @@ class AutonomousHostTest {
      * queue's {@code Codec<Note>} — and drives its own scripted turn.
      */
     @Test
-    void aTypedRecordObservationSurvivesTheBacklogAcrossHostsAndDrivesAScriptedTurnOnHostB() {
+    void aTypedRecordObservationSurvivesTheBacklogAcrossHostsAndDrivesAScriptedTurnOnHostB()
+        throws JsonProcessingException {
       var substrate = new InMemorySubstrate();
       var scopeId = "scope-1";
 
@@ -472,6 +474,15 @@ class AutonomousHostTest {
       // The scope isn't Idle any more, so drive() declines to drain this one — it sits in the
       // backlog document, the claim under test.
       hostA.post(scopeId, pending);
+
+      // The raw backlog document holds exactly the pending Note: "prime" already drained out as
+      // part of the first post, "check the oven" sat back down because the scope was busy.
+      Substrate.Document backlogDoc = substrate.read("backlog", scopeId).orElseThrow();
+      String[] backlogElements =
+          TestMappers.plainlyPinned()
+              .readValue(new String(backlogDoc.payload(), StandardCharsets.UTF_8), String[].class);
+      assertThat(backlogElements).isNotEmpty().hasSize(1);
+
       // hostA is abandoned here: pumpA is never pumped.
 
       var pumpB = new PumpedExecutor();
@@ -508,6 +519,33 @@ class AutonomousHostTest {
           new SubstrateAgentStateStore(
               substrate, scopeId, Clock.systemUTC(), TestMappers.plainlyPinned());
       assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+    }
+
+    /**
+     * The typed door's required seam, enforced at {@code build()}: {@link
+     * Nessy.AutonomousBuilder#renderer} has no default for {@code O}, unlike the {@code String}
+     * door's preset lambda — a builder that never calls it fails loudly, naming {@code renderer}.
+     */
+    @Test
+    void theTypedDoorWithoutARendererIsRejectedAtBuildTimeNamingTheRenderer() {
+      var builder =
+          Nessy.autonomous(Note.class)
+              .provider(new ScriptedModelProvider(List.of()))
+              .settings(TestSettings.settings());
+
+      assertThatThrownBy(builder::build)
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("renderer");
+    }
+
+    /** {@link Nessy#autonomous(Class)} rejects a null observation type up front, naming it. */
+    @Test
+    void aNullObservationTypeIsRejectedByTheTypedDoor() {
+      Class<Note> nullType = null;
+
+      assertThatThrownBy(() -> Nessy.autonomous(nullType))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("observationType");
     }
   }
 

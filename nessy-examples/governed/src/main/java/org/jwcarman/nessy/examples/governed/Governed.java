@@ -109,7 +109,7 @@ public final class Governed {
         TurnObserver.observe(
             o -> o.onToolCallCompleted(toolCompletions::add).onTurnEnded(completions::add));
 
-    try (AutonomousHost host =
+    try (AutonomousHost<String> host =
         Nessy.autonomous()
             .type("governed")
             .provider(scriptedProvider())

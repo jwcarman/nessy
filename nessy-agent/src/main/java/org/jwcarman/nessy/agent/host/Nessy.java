@@ -113,9 +113,9 @@ public final class Nessy {
    * The typed door (spec §6.4): observations are {@code O}, not {@code String}. The caller must
    * supply the {@link ObservationRenderer} that turns an {@code O} into inference content — the
    * same seam {@link Harness} has always taken — via {@link
-   * AutonomousBuilder#renderer(ObservationRenderer)} before {@code build()}; the backlog codec
-   * defaults to {@link Codec#json(ObjectMapper, Class)} over the builder's pinned mapper,
-   * overridable via {@link AutonomousBuilder#backlogCodec(Codec)}.
+   * AutonomousBuilder#renderer(ObservationRenderer)} before {@code build()}; the backlog codec is
+   * always {@link Codec#json(ObjectMapper, Class)} over the builder's pinned mapper and {@code
+   * observationType}.
    */
   public static <O> AutonomousBuilder<O> autonomous(Class<O> observationType) {
     Objects.requireNonNull(observationType, "observationType must not be null");
@@ -134,6 +134,9 @@ public final class Nessy {
     private List<Tool<?>> tools = List.of();
     private ExecutorService executor;
     private ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Reachable only through {@link Nessy#cli()}. */
+    private CliBuilder() {}
 
     /** The model backend the scope talks to. */
     public CliBuilder provider(ModelProvider provider) {
@@ -245,11 +248,14 @@ public final class Nessy {
     // set by Nessy.autonomous() for the String door; required (via renderer(ObservationRenderer))
     // before build() for the typed door opened by Nessy.autonomous(Class).
     private ObservationRenderer<O> renderer;
-    // set by Nessy.autonomous() for the String door; the typed door defaults it in build() to
-    // Codec.json(pinned, observationType) unless backlogCodec(Codec) overrides it.
+    // set by Nessy.autonomous() for the String door; the typed door always derives its codec in
+    // build() from Codec.json(pinned, observationType) — no override seam (parked for James).
     private Codec<O> backlogCodec;
-    // set only by Nessy.autonomous(Class<O>) — the typed door's default-codec source.
+    // set only by Nessy.autonomous(Class<O>) — the typed door's codec-derivation source.
     private Class<O> observationType;
+
+    /** Reachable only through {@link Nessy#autonomous()} or {@link Nessy#autonomous(Class)}. */
+    private AutonomousBuilder() {}
 
     /**
      * The recipe's name — the first coordinate of every durable address; default {@code
@@ -400,23 +406,14 @@ public final class Nessy {
       return this;
     }
 
-    /**
-     * The {@code backlog} document's per-observation codec (spec §6.4); default {@link
-     * Codec#json(ObjectMapper, Class)} over this builder's pinned mapper and the typed door's
-     * observation type. Override for a caller-supplied shape, a chained transform ({@link
-     * Codec#then(Codec)}), or a test probe.
-     */
-    public AutonomousBuilder<O> backlogCodec(Codec<O> backlogCodec) {
-      this.backlogCodec = Objects.requireNonNull(backlogCodec, "backlogCodec must not be null");
-      return this;
-    }
-
     public AutonomousHost<O> build() {
       Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
       Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
       ObservationRenderer<O> effectiveRenderer =
           Objects.requireNonNull(renderer, "renderer must not be null");
       ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
+      // the String door (Nessy.autonomous()) presets backlogCodec to STRING_CODEC; the typed door
+      // (Nessy.autonomous(Class)) always derives it here — no override seam (parked for James).
       Codec<O> effectiveBacklogCodec =
           backlogCodec != null ? backlogCodec : Codec.json(pinned, observationType);
       boolean ownsExecutor = executor == null;
