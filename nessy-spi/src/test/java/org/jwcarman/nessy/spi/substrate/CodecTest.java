@@ -58,6 +58,26 @@ class CodecTest {
   @JsonSubTypes({@JsonSubTypes.Type(value = MixInRestart.class, name = "MixInRestart")})
   interface MixInVocabularyPolymorphism {}
 
+  /**
+   * A nested sealed hierarchy: {@code NestedOps} is itself a sealed interface, permitted by {@code
+   * NestedVocabulary} alongside the directly-permitted {@code NestedRestart}. The discriminator
+   * names on {@code NestedVocabulary}'s own {@code @JsonSubTypes} are what binding actually reads
+   * (Jackson, not permits-walking) — {@code NestedRestart}, reached directly, round-trips through
+   * {@code Codec.json(MAPPER, NestedVocabulary.class)} the same as any other permitted member.
+   */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = NestedRestart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = NestedDiagnose.class, name = "Diagnose")
+  })
+  sealed interface NestedVocabulary permits NestedRestart, NestedOps {}
+
+  record NestedRestart(String host) implements NestedVocabulary {}
+
+  sealed interface NestedOps extends NestedVocabulary permits NestedDiagnose {}
+
+  record NestedDiagnose(String target) implements NestedOps {}
+
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   /** Appends {@code marker} to the bytes it sees on encode, strips it back off on decode. */
@@ -183,6 +203,16 @@ class CodecTest {
       MixInVocabulary original = new MixInRestart("prod-eu");
 
       MixInVocabulary decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
+    }
+
+    @Test
+    void aDirectlyPermittedRecordOfANestedSealedHierarchyRoundTrips() {
+      Codec<NestedVocabulary> codec = Codec.json(MAPPER, NestedVocabulary.class);
+      NestedVocabulary original = new NestedRestart("prod-eu");
+
+      NestedVocabulary decoded = codec.decode(codec.encode(original));
 
       assertThat(decoded).isEqualTo(original);
     }

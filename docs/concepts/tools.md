@@ -89,12 +89,15 @@ record Diagnose(String target) implements OpsIntent {}
 `Schemas` reads those same annotations and renders a `oneOf` over the
 permitted records, each gaining a required const `"type"` property naming
 the record — so the schema shown to the model and the binding
-`RegistryToolCallExecutor` performs agree by construction, because both
-read the same annotations. Jackson's own polymorphic machinery binds the
-arriving call: a missing or unknown `"type"` fails in-band with an
-`IllegalArgumentException` naming the offense — the model reads the error
-and corrects, rather than the call vanishing into a generic binding
-failure.
+`RegistryToolCallExecutor` performs agree by construction via the
+annotations, because both read the same ones. (`Schemas` builds its own
+schema generator rather than reading the caller's mapper, so a mapper-level
+customization — a registered module, a mix-in, a custom
+`AnnotationIntrospector` — is visible to binding but not to the generated
+schema.) Jackson's own polymorphic machinery binds the arriving call: a
+missing or unknown `"type"` fails in-band with an `IllegalArgumentException`
+naming the offense — the model reads the error and corrects, rather than
+the call vanishing into a generic binding failure.
 
 A sealed interface missing `@JsonTypeInfo`/`@JsonSubTypes` is rejected by
 `Schemas` up front — it cannot generate a discriminated schema without that

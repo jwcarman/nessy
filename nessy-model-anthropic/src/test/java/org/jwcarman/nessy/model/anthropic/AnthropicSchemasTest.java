@@ -42,6 +42,45 @@ class AnthropicSchemasTest {
 
   record Shutdown(String reason) implements Vocabulary {}
 
+  /**
+   * A sealed ABSTRACT CLASS (not an interface): {@code Schemas.of} does not route this through its
+   * dedicated sealed-interface path (gated on {@code isInterface()}), but victools' Jackson module
+   * still derives {@code anyOf} for it purely from the annotations — {@code Schemas.of}'s {@code
+   * anyOf}→{@code oneOf} normalization has to apply on that plain-generation path too, or this
+   * adapter (which only copies a top-level {@code oneOf} key) silently drops every branch, handing
+   * Anthropic an empty schema.
+   */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = ClassRestart.class, name = "ClassRestart"),
+    @JsonSubTypes.Type(value = ClassShutdown.class, name = "ClassShutdown")
+  })
+  abstract static sealed class ClassVocabulary permits ClassRestart, ClassShutdown {}
+
+  static final class ClassRestart extends ClassVocabulary {
+    private String host;
+
+    public String getHost() {
+      return host;
+    }
+
+    public void setHost(String host) {
+      this.host = host;
+    }
+  }
+
+  static final class ClassShutdown extends ClassVocabulary {
+    private String reason;
+
+    public String getReason() {
+      return reason;
+    }
+
+    public void setReason(String reason) {
+      this.reason = reason;
+    }
+  }
+
   @Test
   void properties_are_copied_onto_the_input_schema() {
     ObjectNode schema = MAPPER.createObjectNode();
@@ -138,5 +177,29 @@ class AnthropicSchemasTest {
     var typeConsts = new ArrayList<String>();
     oneOf.forEach(branch -> typeConsts.add(branch.at("/properties/type/const").asText()));
     assertThat(typeConsts).containsExactlyInAnyOrder("Restart", "Shutdown");
+  }
+
+  /**
+   * The reviewer's case: an annotated sealed ABSTRACT CLASS reaches {@code Schemas.of}'s plain
+   * (non-sealed-interface) generation branch, where victools still emits {@code anyOf} straight
+   * from the Jackson annotations. Without {@code Schemas.of}'s normalization, this adapter — which
+   * only ever looks for {@code oneOf} — would silently produce zero branches (an empty schema
+   * handed to the model) instead of failing loudly; this pins that it does not.
+   */
+  @Test
+  void a_sealed_abstract_classs_oneOf_branches_survive_adaptation_too() {
+    ObjectNode schema = Schemas.of(ClassVocabulary.class);
+    ToolSpec spec = new ToolSpec("restart_or_shutdown", "Restarts or shuts down a host", schema);
+
+    var inputSchema = AnthropicSchemas.toInputSchema(spec.inputSchema());
+
+    var additionalProperties = inputSchema._additionalProperties();
+    assertThat(additionalProperties).containsKey("oneOf");
+    JsonNode oneOf = additionalProperties.get("oneOf").convert(JsonNode.class);
+    assertThat(oneOf).hasSize(2);
+
+    var typeConsts = new ArrayList<String>();
+    oneOf.forEach(branch -> typeConsts.add(branch.at("/properties/type/const").asText()));
+    assertThat(typeConsts).containsExactlyInAnyOrder("ClassRestart", "ClassShutdown");
   }
 }

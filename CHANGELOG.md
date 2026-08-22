@@ -413,8 +413,11 @@ sequence of renames and interim shapes that produced it.
   vocabulary, first-party or user-authored. `Schemas` derives its `oneOf`
   discriminated schema from those same annotations via victools' Jackson
   module, so the schema shown to the model and the bound shape agree by
-  construction; a sealed interface missing the annotations is rejected up
-  front — `Schemas`' own requirement, since it cannot generate a
+  construction via the annotations — `Schemas` builds its own generator, so
+  a mapper-level customization (a registered module, a mix-in, a custom
+  `AnnotationIntrospector`) is visible to binding but invisible to the
+  schema; a sealed interface missing the annotations themselves is rejected
+  up front — `Schemas`' own requirement, since it cannot generate a
   discriminated schema without the information, not Nessy babysitting a
   caller's Jackson setup. `SealedJsonCodec` is deleted along with it:
   `Codec.json(mapper, type)` is now a plain `writeValueAsBytes`/`readValue`

@@ -40,18 +40,19 @@ import java.util.Optional;
  * <p>A sealed interface's schema is a {@code oneOf} over its permitted records, derived from the
  * type's own standard Jackson {@code @JsonTypeInfo}/{@code @JsonSubTypes} annotations via victools'
  * Jackson module (substrate spec §7, the 2026-08-22 repeal): the schema shown to the model and the
- * binding {@code RegistryToolCallExecutor} performs agree by construction, because both read the
- * same annotations. A sealed interface missing those annotations is rejected with a message telling
- * the caller what to add.
+ * binding {@code RegistryToolCallExecutor} performs agree by construction via those annotations,
+ * since both read the same ones — this class inspects and requires nothing beyond their presence,
+ * so a caller's own mapper-level configuration (a mix-in, a custom introspector) is visible to
+ * binding but invisible here, since this class builds its own generator rather than the caller's
+ * mapper. A sealed interface missing the annotations themselves is rejected with a message telling
+ * the caller what to add — the one check this class makes.
  */
 public final class Schemas {
 
   private static final String ANY_OF = "anyOf";
   private static final String ONE_OF = "oneOf";
-  private static final String ALL_OF = "allOf";
   private static final String DEFS = "$defs";
   private static final String SCHEMA_KEYWORD = "$schema";
-  private static final String TYPE_CONST_POINTER = "/properties/type/const";
 
   private static final SchemaGenerator GENERATOR = generator();
 
@@ -61,7 +62,29 @@ public final class Schemas {
     if (inputType.isInterface() && inputType.isSealed()) {
       return sealedInterfaceSchema(inputType);
     }
-    return GENERATOR.generateSchema(inputType);
+    return normalizeAnyOfToOneOf(GENERATOR.generateSchema(inputType));
+  }
+
+  /**
+   * Victools always names its polymorphic combinator {@code anyOf}; {@code oneOf} is the tighter,
+   * correct keyword for discriminator-tagged mutually exclusive branches (the convention this class
+   * uses throughout), so every schema {@link #of} returns is normalized to it — not only the
+   * dedicated {@link #sealedInterfaceSchema} path. An annotated sealed <em>abstract class</em>
+   * input type does not hit that path at all (it is gated on {@code isInterface()}, since that gate
+   * exists to require polymorphism annotations up front for sealed interfaces specifically); it
+   * carries its own {@code @JsonTypeInfo}/{@code @JsonSubTypes} regardless, so it still reaches
+   * victools' Jackson module here and still gets an unrenamed {@code anyOf} back. Left un-renamed,
+   * {@code AnthropicSchemas.toInputSchema} (which only copies a top-level {@code oneOf} key) would
+   * silently drop every branch, handing the model an empty schema. A schema with no combinator at
+   * all — the overwhelmingly common case, a plain record or any other non-polymorphic type —
+   * round-trips through this method unchanged.
+   */
+  private static ObjectNode normalizeAnyOfToOneOf(ObjectNode schema) {
+    JsonNode anyOf = schema.remove(ANY_OF);
+    if (anyOf != null) {
+      schema.set(ONE_OF, anyOf);
+    }
+    return schema;
   }
 
   /**
@@ -102,41 +125,8 @@ public final class Schemas {
       }
       branches = JsonNodeFactory.instance.arrayNode().add(generated);
     }
-    for (JsonNode branch : branches) {
-      requireNoTypeCollision(branch, sealedType);
-    }
     schema.set(ONE_OF, branches);
     return schema;
-  }
-
-  /**
-   * A permitted record that declares its own {@code type} component collides with the {@code
-   * "type"} discriminator {@code @JsonTypeInfo(property = "type")} injects. Jackson does not reject
-   * this itself — it silently writes a duplicate {@code "type"} key on encode and drops the
-   * discriminator's value on decode (verified empirically; not a documented contract) — so this is
-   * rejected here, at schema-generation time, before the shape is ever shown to a model. Victools
-   * signals the collision by falling back to an {@code allOf} of two conflicting property
-   * definitions instead of merging them into one {@code properties} object; that {@code allOf}
-   * shape is the detection signal.
-   */
-  private static void requireNoTypeCollision(JsonNode branch, Class<?> sealedType) {
-    JsonNode allOf = branch.get(ALL_OF);
-    if (allOf == null) {
-      return;
-    }
-    String offender = null;
-    for (JsonNode part : allOf) {
-      JsonNode constNode = part.at(TYPE_CONST_POINTER);
-      if (!constNode.isMissingNode()) {
-        offender = constNode.asText();
-      }
-    }
-    throw new IllegalArgumentException(
-        "vocabulary record "
-            + (offender == null ? "<unknown>" : offender)
-            + " of sealed vocabulary "
-            + sealedType.getSimpleName()
-            + " declares a component named \"type\", which collides with the discriminator");
   }
 
   private static void requireJacksonPolymorphismAnnotations(Class<?> sealedType) {
