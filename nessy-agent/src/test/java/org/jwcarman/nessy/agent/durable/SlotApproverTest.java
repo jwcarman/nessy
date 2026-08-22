@@ -28,16 +28,16 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /** The slot-backed adjudicator: the approval slot IS the fact (spec §4.3 amendment). */
 class SlotApproverTest {
 
   private static final CallAddress ADDRESS = new CallAddress("test-agent-type", "a1", "c1");
 
-  private final InMemoryDurableComputationBackend backend = new InMemoryDurableComputationBackend();
+  private final StoredComputations backend = new StoredComputations(new InMemoryScopedStore());
   private final List<ApprovalRequest> notified = new ArrayList<>();
   private final SlotApprover approver = new SlotApprover(backend, notified::add);
 

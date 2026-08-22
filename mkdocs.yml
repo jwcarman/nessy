@@ -83,6 +83,7 @@ nav:
       - Authorization: concepts/authorization.md
       - Intent: concepts/intent.md
       - Memory: concepts/memory.md
+      - Storage: concepts/storage.md
   - Guides:
       - Getting Started: guides/getting-started.md
       - Autonomous Agents: guides/autonomous-agents.md

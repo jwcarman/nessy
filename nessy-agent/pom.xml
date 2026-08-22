@@ -48,6 +48,16 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- Test-only: the host-integration demos (TypedIntentDemo, GovernedTurnDemo) exercise the
+         intent feature jar end to end over a real AutonomousHost, host machinery nessy-intent
+         itself cannot see (it depends only on nessy-api + nessy-spi). nessy-agent's own main
+         artifact carries no such dependency; this is a one-way, test-scope-only edge. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-intent</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

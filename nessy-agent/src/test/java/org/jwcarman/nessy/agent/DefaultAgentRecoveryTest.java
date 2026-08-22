@@ -23,7 +23,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 class DefaultAgentRecoveryTest {
 
@@ -40,7 +41,7 @@ class DefaultAgentRecoveryTest {
       new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
 
   private static AgentFixture stalled(Phase phase, TestClock clock) {
-    var store = new InMemoryAgentStateStore(clock);
+    var store = new StoredAgentStateStore(new InMemoryScopedStore(clock), "agent", clock);
     store.save(new State(phase, 0L));
     return new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
   }
@@ -96,7 +97,7 @@ class DefaultAgentRecoveryTest {
   @Test
   void aStaleIdleScopeJustDrains() {
     var clock = new TestClock(T0);
-    var store = new InMemoryAgentStateStore(clock);
+    var store = new StoredAgentStateStore(new InMemoryScopedStore(clock), "agent", clock);
     var f = new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
     f.backlogQueue.add("waiting");

@@ -20,7 +20,6 @@ try (McpToolbox toolbox = McpToolbox.connect(transport, mapper);
             .grants(
                 ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
                 ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
-            .backend(new InMemoryDurableComputationBackend())
             .approvalNotifier(pending::add)
             .build()) {
   host.post("agent-1", "find the cheapest flight and buy it");
@@ -101,7 +100,6 @@ try (McpToolbox toolbox =
                 ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
                 ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
                 ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
-            .backend(new InMemoryDurableComputationBackend())
             .approvalNotifier(pending::add)
             .build()) {
   host.post("researcher", "what does jwcarman/nessy's harness module do?");

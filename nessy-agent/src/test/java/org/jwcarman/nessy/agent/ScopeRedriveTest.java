@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -28,13 +29,14 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.DurableDecisions;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.StoredComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -50,8 +52,8 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.Continuation;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /** The redrive door (spec §4.3 amendment): a poke that re-fires a scope's outstanding effects. */
 class ScopeRedriveTest {
@@ -99,8 +101,9 @@ class ScopeRedriveTest {
   void aFiredRedriveResolvesTheScopeAndRedispatchesItsOutstandingEffects() {
     var pump = new PumpedExecutor();
     var memory = new VerbatimMemory();
-    var store = new InMemoryAgentStateStore();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var store = new StoredAgentStateStore(kernel, "demo", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var narrator = new RecordingTurnObserver();
     var type = AgentType.of("approver");
     var id = AgentId.of("demo");

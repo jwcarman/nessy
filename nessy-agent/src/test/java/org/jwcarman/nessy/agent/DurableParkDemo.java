@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -26,11 +27,12 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.StoredComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -50,8 +52,8 @@ import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /**
  * The narrated proof (the-slot plan, Task 6): a turn parks on approval, the instance becomes
@@ -89,8 +91,9 @@ class DurableParkDemo {
     // the durable world — everything an instance is NOT
     var pump = new PumpedExecutor();
     var memory = new VerbatimMemory();
-    var store = new InMemoryAgentStateStore();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var store = new StoredAgentStateStore(kernel, "demo", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var dispatcher = new ContinuationDispatcher();
     var desk = new CompletionDesk(backend, dispatcher);
     var narrator = new RecordingTurnObserver();

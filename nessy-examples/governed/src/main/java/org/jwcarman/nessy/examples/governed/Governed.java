@@ -25,16 +25,12 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.agent.host.AutonomousHost;
 import org.jwcarman.nessy.agent.host.Nessy;
-import org.jwcarman.nessy.agent.intent.InMemoryIntentStore;
-import org.jwcarman.nessy.agent.intent.IntentEnricher;
-import org.jwcarman.nessy.agent.intent.IntentTool;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
 import org.jwcarman.nessy.api.tool.authorization.Impact;
-import org.jwcarman.nessy.api.tool.authorization.IntentPolicies;
 import org.jwcarman.nessy.api.tool.authorization.Likelihood;
 import org.jwcarman.nessy.api.tool.authorization.RiskAssessment;
 import org.jwcarman.nessy.api.tool.authorization.RiskFactors;
@@ -42,9 +38,14 @@ import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
 import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.intent.IntentEnricher;
+import org.jwcarman.nessy.intent.IntentPolicies;
+import org.jwcarman.nessy.intent.IntentStore;
+import org.jwcarman.nessy.intent.IntentTool;
+import org.jwcarman.nessy.intent.StoredIntentStore;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
-import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelSettings;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 import org.jwcarman.nessy.testing.ScriptedModelProvider;
 
 /**
@@ -93,7 +94,8 @@ public final class Governed {
    * wait is bounded: a hung host fails loudly with a named timeout instead of hanging the build.
    */
   static Result run() throws InterruptedException {
-    IntentStore<OpsIntent> intentStore = new InMemoryIntentStore<>();
+    var kernel = new InMemoryScopedStore();
+    IntentStore<OpsIntent> intentStore = new StoredIntentStore<>(kernel, SCOPE_ID, OpsIntent.class);
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
@@ -113,6 +115,7 @@ public final class Governed {
                 restartGrant(intentStore))
             .approvalNotifier(approvalRequests::add)
             .turnObserver(observer)
+            .store(kernel)
             .build()) {
 
       System.out.println("== posting: please restart prod-eu ==");

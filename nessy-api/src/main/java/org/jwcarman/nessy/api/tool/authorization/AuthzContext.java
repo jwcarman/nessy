@@ -39,8 +39,8 @@ public interface AuthzContext {
   Key<Object> PRINCIPAL_KEY = new Key<>(Object.class, "principal");
 
   /**
-   * The well-known slot {@code spi.intent} deposits the latest declaration recorded in the
-   * harness's {@code IntentStore} into.
+   * The well-known slot the {@code nessy-intent} feature jar's enricher deposits the latest
+   * declaration recorded in the harness's {@code IntentStore} into.
    */
   Key<Object> DECLARED_INTENT_KEY = new Key<>(Object.class, "declaredIntent");
 
@@ -94,8 +94,9 @@ public interface AuthzContext {
   }
 
   /**
-   * The model's latest untrusted claim of intent (design §7) — empty unless {@code spi.intent} is
-   * wired and has a declaration recorded in the harness's {@code IntentStore}.
+   * The model's latest untrusted claim of intent (design §7) — empty unless the {@code
+   * nessy-intent} feature jar's enricher is wired and has a declaration recorded in the harness's
+   * {@code IntentStore}.
    */
   default Optional<Object> declaredIntent() {
     return get(DECLARED_INTENT_KEY);

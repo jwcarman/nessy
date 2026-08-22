@@ -19,9 +19,13 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The durable computation store (durable spec §9): slots with one PENDING→terminal flip, atomic
- * await, and opaque continuations. Implementations may not assume single-threaded callers — the
- * slot is the lock.
+ * The durable computation store: slots with one PENDING→terminal flip, atomic await, and opaque
+ * continuations. Implementations may not assume single-threaded callers — the slot is the lock.
+ *
+ * <p>Internal vocabulary and the override seam for a genuinely foreign engine (Restate, Temporal);
+ * nobody implements this seam just to get a database. The default implementation is the kernel's
+ * {@code computation} recipe (scoped-store spec §6.5), riding the same {@code ScopedStore} every
+ * other recipe does.
  */
 public interface DurableComputationBackend {
 
@@ -49,6 +53,9 @@ public interface DurableComputationBackend {
   /** Empty for a slot that was never created. */
   Optional<ComputationStatus> status(ComputationId id);
 
-  /** Snapshot of registrations; the completing door feeds these to the dispatcher. */
+  /**
+   * Snapshot of registrations; the completing door feeds these to the dispatcher. Unknown id →
+   * {@link IllegalArgumentException}.
+   */
   List<Continuation> continuationsOf(ComputationId id);
 }

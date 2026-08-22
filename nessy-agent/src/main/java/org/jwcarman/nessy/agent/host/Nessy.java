@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.host;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -34,21 +35,20 @@ import org.jwcarman.nessy.agent.ResolvingAgentBinder;
 import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.backlog.BoundedBacklog;
-import org.jwcarman.nessy.agent.backlog.InMemoryBacklogSubstrate;
+import org.jwcarman.nessy.agent.backlog.StoredBacklog;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.SlotApprover;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.memory.InMemoryMemorySubstrate;
+import org.jwcarman.nessy.agent.durable.StoredComputations;
+import org.jwcarman.nessy.agent.memory.StoredMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
-import org.jwcarman.nessy.agent.store.InMemoryStateSubstrate;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -58,11 +58,12 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelProvider;
 import org.jwcarman.nessy.spi.model.ModelSettings;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.store.ScopedStore;
 
 /** The front doors (§7.1). Builders wire existing seams; they never own machinery. */
 public final class Nessy {
@@ -143,8 +144,9 @@ public final class Nessy {
       ToolRegistry limited = ToolRegistry.limited(registry, CompletionPolicy.AWAITABLE);
       var agentId = AgentId.of(id);
       var agentType = AgentType.of(typeName);
-      var store = new InMemoryAgentStateStore();
-      var backlog = inMemoryBacklog();
+      ScopedStore kernel = new InMemoryScopedStore();
+      var store = new StoredAgentStateStore(kernel, id, Clock.systemUTC());
+      var backlog = new StoredBacklog(kernel, id, 1024);
       Harness<String> harness =
           Harness.of(
               agentType,
@@ -163,10 +165,6 @@ public final class Nessy {
       Binding<String> binding = harness.bind(agentId);
       return new CliAgent(new DefaultAgent<>(harness, binding), relay, exec, ownsExecutor);
     }
-
-    private static Backlog<String> inMemoryBacklog() {
-      return new BoundedBacklog<>(1024);
-    }
   }
 
   public static final class AutonomousBuilder {
@@ -176,8 +174,8 @@ public final class Nessy {
     private String typeName = "autonomous";
     private List<ToolGrant> grants = List.of();
     private Function<String, Memory> memoryFactory;
-    private Function<String, AgentStateStore> storeFactory;
-    private DurableComputationBackend backend = new InMemoryDurableComputationBackend();
+    private ScopedStore store;
+    private DurableComputationBackend backend;
     private Consumer<ApprovalRequest> approvalNotifier = request -> {};
     private TurnObserver turnObserver = TurnObserver.noop();
     // null until the caller sets one — build() defaults it to a TurnNarrationAdapter over
@@ -224,10 +222,12 @@ public final class Nessy {
     }
 
     /**
-     * Builds each scope's conversation store from its raw id; default a thin view — {@link
-     * InMemoryMemorySubstrate#forScope(String)} — over one shared substrate built at {@link
-     * #build()}. A factory is free to return views over any durable substrate shared across many
-     * hosts (spec §10.11) — the id is the only key, and losing a view loses nothing.
+     * Builds each scope's conversation store from its raw id; default {@code id -> new
+     * StoredMemory(store, id)} — a view over the one {@link ScopedStore} every scope shares (§6.2).
+     * The store IS the shared state now; a factory is a view over it by construction, never
+     * freshly-created state of its own. A factory is free to return views over any durable memory
+     * shared across many hosts (spec §10.11) — the id is the only key, and losing a view loses
+     * nothing.
      *
      * <p>Invoked once per delivery — the factory MUST return a view over shared state, never
      * freshly-created state; there is no per-id cache behind it.
@@ -238,20 +238,21 @@ public final class Nessy {
     }
 
     /**
-     * Builds each scope's state store from its raw id; default a thin view — {@link
-     * InMemoryStateSubstrate#forScope(String)} — over one shared substrate built at {@link
-     * #build()}. A factory is free to return views over any durable substrate shared across many
-     * hosts (spec §10.11) — the id is the only key, and losing a view loses nothing.
-     *
-     * <p>Invoked once per delivery — the factory MUST return a view over shared state, never
-     * freshly-created state; there is no per-id cache behind it.
+     * The one storage seam (scoped-store spec §12): every scope's state, memory (unless {@link
+     * #memoryFactory(Function)} overrides it), and backlog live as documents in this kernel;
+     * default a fresh {@link InMemoryScopedStore}. Supply a durable {@link ScopedStore} — a JDBC or
+     * DynamoDB adapter — to persist every scope beyond the process.
      */
-    public AutonomousBuilder storeFactory(Function<String, AgentStateStore> storeFactory) {
-      this.storeFactory = Objects.requireNonNull(storeFactory, "storeFactory must not be null");
+    public AutonomousBuilder store(ScopedStore store) {
+      this.store = Objects.requireNonNull(store, "store must not be null");
       return this;
     }
 
-    /** The shared durable computation backend behind both desks. */
+    /**
+     * The shared durable computation backend behind both desks; default {@link StoredComputations}
+     * over this builder's {@link #store(ScopedStore)}. Override for a genuinely foreign engine
+     * (Restate, Temporal) — nobody implements this seam to get a database (spec §6.5).
+     */
     public AutonomousBuilder backend(DurableComputationBackend backend) {
       this.backend = Objects.requireNonNull(backend, "backend must not be null");
       return this;
@@ -289,9 +290,8 @@ public final class Nessy {
     }
 
     /**
-     * The per-scope capacity of the one shared {@link InMemoryBacklogSubstrate} built at {@link
-     * #build()} (spec §11, open question 0); default 1024. Every scope's backlog is a thin view —
-     * {@link InMemoryBacklogSubstrate#forScope(String)} — over that shared substrate.
+     * The per-scope capacity of the {@code backlog} document every scope holds in the shared {@link
+     * #store(ScopedStore)} (spec §6.4, §11 open question 0); default 1024.
      */
     public AutonomousBuilder backlogCapacity(int backlogCapacity) {
       if (backlogCapacity < 1) {
@@ -320,11 +320,15 @@ public final class Nessy {
       var agentType = AgentType.of(typeName);
       ToolRegistry base = ToolRegistry.of(grants.toArray(ToolGrant[]::new));
       ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
-      var backlogSubstrate = new InMemoryBacklogSubstrate(backlogCapacity);
+      ScopedStore effectiveStore = store != null ? store : new InMemoryScopedStore();
       Function<String, Memory> effectiveMemoryFactory =
-          memoryFactory != null ? memoryFactory : new InMemoryMemorySubstrate()::forScope;
+          memoryFactory != null ? memoryFactory : id -> new StoredMemory(effectiveStore, id);
       Function<String, AgentStateStore> effectiveStoreFactory =
-          storeFactory != null ? storeFactory : new InMemoryStateSubstrate()::forScope;
+          id -> new StoredAgentStateStore(effectiveStore, id, Clock.systemUTC());
+      Function<String, Backlog<String>> effectiveBacklogFactory =
+          id -> new StoredBacklog(effectiveStore, id, backlogCapacity);
+      DurableComputationBackend effectiveBackend =
+          backend != null ? backend : new StoredComputations(effectiveStore);
       AgentObserver effectiveAgentObserver =
           agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
 
@@ -337,7 +341,7 @@ public final class Nessy {
               stalenessPolicy,
               effectiveMemoryFactory,
               effectiveStoreFactory,
-              backlogSubstrate::forScope,
+              effectiveBacklogFactory,
               binding ->
                   new ProviderModelCallExecutor(
                       provider, settings, registry, binding.memory(), turnObserver, exec),
@@ -348,8 +352,8 @@ public final class Nessy {
                       binding.id(),
                       turnObserver,
                       exec,
-                      new SlotDeferredToolCallPolicy(backend),
-                      new SlotApprover(backend, approvalNotifier)));
+                      new SlotDeferredToolCallPolicy(effectiveBackend),
+                      new SlotApprover(effectiveBackend, approvalNotifier)));
 
       var dispatcher = new ContinuationDispatcher();
       var hostRef = new AtomicReference<AutonomousHost>();
@@ -364,8 +368,8 @@ public final class Nessy {
           ScopeResumption.TYPE, new ScopeResumption(new ResolvingAgentBinder(resolver)));
       dispatcher.register(ScopeRedrive.TYPE, new ScopeRedrive(resolver));
 
-      var approvals = new ApprovalDesk(backend, dispatcher);
-      var completions = new CompletionDesk(backend, dispatcher);
+      var approvals = new ApprovalDesk(effectiveBackend, dispatcher);
+      var completions = new CompletionDesk(effectiveBackend, dispatcher);
       var host = new AutonomousHost(owned, approvals, completions, harness);
       hostRef.set(host);
       return host;

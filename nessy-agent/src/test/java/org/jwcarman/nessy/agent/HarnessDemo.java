@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -25,7 +26,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /** Throwaway demo — not part of the suite's contract. Prints a whole turn. */
 class HarnessDemo {
@@ -44,7 +46,8 @@ class HarnessDemo {
     // ---- collaborators: plain construction, any order ----
     var pump = new PumpedExecutor();
     var memory = new RecordingMemory();
-    var store = new InMemoryAgentStateStore();
+    var store =
+        new StoredAgentStateStore(new InMemoryScopedStore(), "demo-scope", Clock.systemUTC());
     var model = new ScriptedModelExecutor(pump, memory);
     var tools = new ScriptedToolExecutor(pump);
     Deque<String> queue = new ArrayDeque<>();

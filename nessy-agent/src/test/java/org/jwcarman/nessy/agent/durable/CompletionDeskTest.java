@@ -26,8 +26,8 @@ import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /**
  * The result door: completes {@code tool:} slots with a {@code ToolResult} (spec §4.3 amendment).
@@ -36,7 +36,7 @@ class CompletionDeskTest {
 
   private record Fired(Continuation continuation, Outcome outcome) {}
 
-  private final InMemoryDurableComputationBackend backend = new InMemoryDurableComputationBackend();
+  private final StoredComputations backend = new StoredComputations(new InMemoryScopedStore());
   private final ContinuationDispatcher dispatcher = new ContinuationDispatcher();
   private final List<Fired> fired = new ArrayList<>();
   private final CompletionDesk desk = new CompletionDesk(backend, dispatcher);
