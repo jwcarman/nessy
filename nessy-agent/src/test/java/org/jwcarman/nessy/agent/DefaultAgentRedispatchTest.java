@@ -17,6 +17,7 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -25,11 +26,12 @@ import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.RecordingAgentObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /**
  * The redrive door's own short-circuits: an Idle scope narrates nothing, and a stalled model call
@@ -57,7 +59,7 @@ class DefaultAgentRedispatchTest {
 
   @Test
   void anIdleScopeNarratesNothingAndDispatchesNothingOnRedispatch() {
-    var store = new InMemoryAgentStateStore();
+    var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
     var model = new CountingModelCallExecutor();
     var tools = new CountingToolCallExecutor();
     var observer = new RecordingAgentObserver();
@@ -82,7 +84,7 @@ class DefaultAgentRedispatchTest {
 
   @Test
   void anAwaitingModelScopeDispatchesNothingBecauseCallModelIsFilteredOut() {
-    var store = new InMemoryAgentStateStore();
+    var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
     store.save(new State(new Phase.AwaitingModel(), store.load().version()));
     var model = new CountingModelCallExecutor();
     var tools = new CountingToolCallExecutor();

@@ -15,19 +15,21 @@
  */
 package org.jwcarman.nessy.agent;
 
+import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /** One fully-wired agent on a pump; the fixture is the test's vocabulary. */
 final class AgentFixture {
@@ -74,6 +76,8 @@ final class AgentFixture {
   }
 
   AgentFixture() {
-    this(new InMemoryAgentStateStore(), false);
+    this(
+        new StoredAgentStateStore(new InMemoryScopedStore(), "fixture-scope", Clock.systemUTC()),
+        false);
   }
 }

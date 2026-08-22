@@ -18,15 +18,16 @@ package org.jwcarman.nessy.agent.host;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.memory.StoredMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
-import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -38,6 +39,8 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.store.ScopedStore;
 
 class AutonomousHostTest {
 
@@ -146,7 +149,7 @@ class AutonomousHostTest {
     var pump = new PumpedExecutor();
     var provider =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
-    ConcurrentMap<String, AgentStateStore> stores = new ConcurrentHashMap<>();
+    var kernel = new InMemoryScopedStore();
     TurnObserver throwing =
         event -> {
           if (event instanceof TurnEvent.AssistantSaid) {
@@ -159,15 +162,15 @@ class AutonomousHostTest {
             .provider(provider)
             .settings(TestSettings.settings())
             .executor(pump)
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .turnObserver(throwing)
             .build();
 
     host.post("scope-1", "hello");
     pump.pumpUntilQuiet();
 
-    assertThat(stores.get("scope-1").load().phase()).isEqualTo(new Phase.Idle());
+    var scopeOneState = new StoredAgentStateStore(kernel, "scope-1", Clock.systemUTC());
+    assertThat(scopeOneState.load().phase()).isEqualTo(new Phase.Idle());
   }
 
   @Test
@@ -205,13 +208,14 @@ class AutonomousHostTest {
   }
 
   /**
-   * F3: the default memoryFactory/storeFactory substrates are built inside {@code build()}, not
-   * once in field initializers — so two {@code build()} calls from the SAME builder each get their
-   * own fresh default substrates and don't leak history between hosts. Memory independence is read
-   * straight off the model requests (defaults left untouched); store independence is read off
-   * captured stores installed through {@code storeFactory} — the cheapest honest window onto
-   * otherwise-opaque default substrate state — and pins that a second host's first delivery to a
-   * scope starts from a fresh, unadvanced version, not one built on top of the first host's saves.
+   * F3: two {@code build()} calls from the SAME builder don't leak history between hosts. Memory
+   * independence is read straight off the model requests (the default {@code memoryFactory} is left
+   * untouched); store independence is read off two distinct {@link ScopedStore}s installed through
+   * the builder's one storage seam, {@link
+   * org.jwcarman.nessy.agent.host.Nessy.AutonomousBuilder#store} — {@code storeFactory} is gone
+   * (spec §12), so the seam that gives an honest window onto otherwise-opaque store state is now
+   * {@code store} itself — and this pins that a second host's first delivery to a scope starts from
+   * a fresh, unadvanced version, not one built on top of the first host's saves.
    */
   @Test
   void twoBuildCallsFromOneBuilderDoNotShareDefaultSubstrateState() {
@@ -223,25 +227,15 @@ class AutonomousHostTest {
 
     var builder = Nessy.autonomous().provider(provider).settings(TestSettings.settings());
 
-    ConcurrentMap<String, AgentStateStore> storesOne = new ConcurrentHashMap<>();
+    var kernelOne = new InMemoryScopedStore();
     var pumpOne = new PumpedExecutor();
-    var hostOne =
-        builder
-            .executor(pumpOne)
-            .storeFactory(
-                id -> storesOne.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
-            .build();
+    var hostOne = builder.executor(pumpOne).store(kernelOne).build();
     hostOne.post("shared-scope", "message one");
     pumpOne.pumpUntilQuiet();
 
-    ConcurrentMap<String, AgentStateStore> storesTwo = new ConcurrentHashMap<>();
+    var kernelTwo = new InMemoryScopedStore();
     var pumpTwo = new PumpedExecutor();
-    var hostTwo =
-        builder
-            .executor(pumpTwo)
-            .storeFactory(
-                id -> storesTwo.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
-            .build();
+    var hostTwo = builder.executor(pumpTwo).store(kernelTwo).build();
     hostTwo.post("shared-scope", "message two");
     pumpTwo.pumpUntilQuiet();
 
@@ -252,8 +246,10 @@ class AutonomousHostTest {
         .isNotEmpty()
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
 
-    long versionAfterHostOnesTurn = storesOne.get("shared-scope").load().version();
-    long versionAfterHostTwosTurn = storesTwo.get("shared-scope").load().version();
+    var stateOne = new StoredAgentStateStore(kernelOne, "shared-scope", Clock.systemUTC());
+    var stateTwo = new StoredAgentStateStore(kernelTwo, "shared-scope", Clock.systemUTC());
+    long versionAfterHostOnesTurn = stateOne.load().version();
+    long versionAfterHostTwosTurn = stateTwo.load().version();
     assertThat(versionAfterHostTwosTurn)
         .as(
             "host two's scope should run the same number of transitions as host one's, from a"
@@ -300,6 +296,50 @@ class AutonomousHostTest {
     pump.pumpUntilQuiet();
 
     List<Message> messages = captured.get("scope-1").recall().messages();
+    assertThat(messages)
+        .isNotEmpty()
+        .anyMatch(m -> m.content().contains(new TextBlock("first message")))
+        .anyMatch(m -> m.content().contains(new TextBlock("first reply")))
+        .anyMatch(m -> m.content().contains(new TextBlock("second message")))
+        .anyMatch(m -> m.content().contains(new TextBlock("second reply")));
+  }
+
+  /**
+   * The storage-kernel reform's whole point (spec §12): durability lives in the {@link
+   * ScopedStore}, not in any object graph the builder happens to wire together. Neither {@code
+   * memoryFactory} nor {@code storeFactory} is overridden here — the host uses its default {@code
+   * id -> new StoredMemory(store, id)} recipe over the one {@link #store} this test supplies — so
+   * the only thing tying the two deliveries together is the shared {@link ScopedStore}. Proof is
+   * read back through a SECOND, independently-constructed {@code StoredMemory} over that same
+   * store: a fresh recipe instance, never touched by the host, still recalls both turns.
+   */
+  @Test
+  void twoDeliveriesToTheSameAgentShareOneScopedStoreProvenByASecondMemoryBinding() {
+    var pump = new PumpedExecutor();
+    var provider =
+        new ScriptedModelProvider(
+            List.of(
+                List.of(new ModelEvent.TextChunk("first reply")),
+                List.of(new ModelEvent.TextChunk("second reply"))));
+    var kernel = new InMemoryScopedStore();
+
+    var host =
+        Nessy.autonomous()
+            .provider(provider)
+            .settings(TestSettings.settings())
+            .executor(pump)
+            .store(kernel)
+            .build();
+
+    host.post("scope-1", "first message");
+    pump.pumpUntilQuiet();
+    host.post("scope-1", "second message");
+    pump.pumpUntilQuiet();
+
+    // a fresh recipe instance the host never held a reference to — the store, not the object
+    // graph, is what makes this see both turns
+    var secondBindingOverTheSameStore = new StoredMemory(kernel, "scope-1");
+    List<Message> messages = secondBindingOverTheSameStore.recall().messages();
     assertThat(messages)
         .isNotEmpty()
         .anyMatch(m -> m.content().contains(new TextBlock("first message")))

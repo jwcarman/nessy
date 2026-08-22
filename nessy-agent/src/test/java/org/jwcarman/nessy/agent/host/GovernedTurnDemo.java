@@ -18,16 +18,18 @@ package org.jwcarman.nessy.agent.host;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.durable.StoredComputations;
 import org.jwcarman.nessy.agent.intent.InMemoryIntentStore;
 import org.jwcarman.nessy.agent.intent.IntentEnricher;
 import org.jwcarman.nessy.agent.intent.IntentTool;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -54,10 +56,10 @@ import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
 import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /**
  * The flagship (action-wave spec §3 and §7): the model declares its intent before it acts, then
@@ -140,9 +142,10 @@ class GovernedTurnDemo {
   @Test
   void theModelDeclaresIntentThenTheRiskyRestartParksForApprovalAndCompletes() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore = new InMemoryIntentStore<Intent>();
     var provider =
@@ -161,8 +164,7 @@ class GovernedTurnDemo {
                 ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -178,8 +180,8 @@ class GovernedTurnDemo {
 
       var slot = ComputationId.of("approval:ops:prod-eu:c1");
       System.out.println(
-          "phase after park: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+          "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       assertThat(backend.status(slot)).contains(ComputationStatus.PENDING);
 
       assertThat(requests).isNotEmpty();
@@ -198,9 +200,8 @@ class GovernedTurnDemo {
       host.approvals().approve(slot);
       pump.pumpUntilQuiet();
 
-      System.out.println(
-          "final phase: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       List<Message> transcript = memories.get("prod-eu").recall().messages();
       System.out.println("transcript:");
       transcript.forEach(
@@ -221,9 +222,10 @@ class GovernedTurnDemo {
   @Test
   void aVeryHighSeverityIsDeniedInBandBeforeAnyApproverIsAsked() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore = new InMemoryIntentStore<Intent>();
     var provider =
@@ -242,8 +244,7 @@ class GovernedTurnDemo {
                 ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -253,9 +254,8 @@ class GovernedTurnDemo {
       host.post("prod-eu", "please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
-      System.out.println(
-          "final phase: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).isEmpty();
 
       List<Message> transcript = memories.get("prod-eu").recall().messages();
@@ -270,9 +270,9 @@ class GovernedTurnDemo {
   @Test
   void withNoRiskAssessorWiredTheThresholdFailsClosed() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore = new InMemoryIntentStore<Intent>();
     var provider =
@@ -292,8 +292,7 @@ class GovernedTurnDemo {
                 restartGrant(
                     List.of(new IntentEnricher(intentStore), Enrichers.principal(() -> "jcarman"))))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)

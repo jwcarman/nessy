@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +27,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.TestAgents;
@@ -37,6 +38,7 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 class DefaultAgentApplyTest {
 
@@ -126,7 +128,7 @@ class DefaultAgentApplyTest {
   void aCompletionThatLosesTheRaceIsReHandledAgainstFreshState() {
     // Seed a store mid-fan-out: AwaitingTools{a,b}, and let a competitor apply a's result
     // out-of-band just before b's save — computed with the pure machine, no threads needed.
-    var inner = new InMemoryAgentStateStore();
+    var inner = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
     var turn =
         Message.assistant(
             List.<ContentBlock>of(new ToolUseBlock(CALL_A, null), new ToolUseBlock(CALL_B, null)));
@@ -169,7 +171,7 @@ class DefaultAgentApplyTest {
 
   @Test
   void theStateIsSavedBeforeAnyEffectIsDispatched() {
-    var store = new InMemoryAgentStateStore();
+    var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
     var versionsAtCall = new ArrayList<Long>();
     var queue = new ArrayDeque<String>();
     Backlog<String> backlog =

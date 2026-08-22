@@ -17,18 +17,20 @@ package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 class DefaultAgentDrainTest {
 
@@ -70,7 +72,7 @@ class DefaultAgentDrainTest {
     // Idle to AwaitingModel before handing back the observation it was asked for. With one load
     // per drain iteration, the race is caught by the save CAS (StaleStateException), never by
     // handing a non-idle phase an Observed event.
-    var store = new InMemoryAgentStateStore();
+    var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
     var addedBack = new ArrayList<String>();
     Backlog<String> racingBacklog =
         new Backlog<>() {
@@ -137,7 +139,7 @@ class DefaultAgentDrainTest {
   void anObservationThatLosesTheRaceReturnsToTheBacklog() {
     // Competitor moves the scope off Idle just before our save; benign duplicate in memory is
     // the accepted §5.2 class — the assertion is the re-add, not memory purity.
-    var inner = new InMemoryAgentStateStore();
+    var inner = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
     var competitorState = new State(new Phase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
     f.agent.observe("hello");
@@ -148,7 +150,9 @@ class DefaultAgentDrainTest {
 
   @Test
   void autonomousWiringDrainsTheNextObservationWhenTheTurnEnds() {
-    var f = new AgentFixture(new InMemoryAgentStateStore(), true);
+    var f =
+        new AgentFixture(
+            new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC()), true);
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("one")), List.of()));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("two")), List.of()));
     f.agent.observe("first");
@@ -160,7 +164,10 @@ class DefaultAgentDrainTest {
 
   @Test
   void interactiveWiringLeavesTheBacklogForTheNextDrive() {
-    var f = new AgentFixture(new InMemoryAgentStateStore(), false);
+    var f =
+        new AgentFixture(
+            new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC()),
+            false);
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("one")), List.of()));
     f.agent.observe("first");
     f.agent.observe("second");
@@ -174,7 +181,7 @@ class DefaultAgentDrainTest {
 
   @Test
   void aRequeueIsNarrated() {
-    var inner = new InMemoryAgentStateStore();
+    var inner = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
     var competitorState = new State(new Phase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
     f.agent.observe("hello");

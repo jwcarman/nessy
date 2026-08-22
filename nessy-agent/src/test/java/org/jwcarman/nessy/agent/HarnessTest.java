@@ -18,14 +18,15 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.backlog.InMemoryBacklogSubstrate;
-import org.jwcarman.nessy.agent.memory.InMemoryMemorySubstrate;
+import org.jwcarman.nessy.agent.backlog.StoredBacklog;
+import org.jwcarman.nessy.agent.memory.StoredMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
@@ -33,12 +34,12 @@ import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
-import org.jwcarman.nessy.agent.store.InMemoryStateSubstrate;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 class HarnessTest {
 
@@ -68,7 +69,8 @@ class HarnessTest {
         }
       };
 
-  private static final AgentStateStore STORE = new InMemoryAgentStateStore();
+  private static final AgentStateStore STORE =
+      new StoredAgentStateStore(new InMemoryScopedStore(), "harness-fixture", Clock.systemUTC());
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
   private static final ModelCallExecutor MODEL = sink -> {};
   private static final ToolCallExecutor TOOLS = (call, sink) -> {};
@@ -326,18 +328,16 @@ class HarnessTest {
 
     @Test
     void twoDifferentIdsGetDistinctHandlesThatDoNotLeakIntoEachOther() {
-      var memorySubstrate = new InMemoryMemorySubstrate();
-      var stateSubstrate = new InMemoryStateSubstrate();
-      var backlogSubstrate = new InMemoryBacklogSubstrate(16);
+      var kernel = new InMemoryScopedStore();
       Harness<String> harness =
           harness(
               TYPE,
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              memorySubstrate::forScope,
-              stateSubstrate::forScope,
-              backlogSubstrate::forScope,
+              id -> new StoredMemory(kernel, id),
+              id -> new StoredAgentStateStore(kernel, id, Clock.systemUTC()),
+              id -> new StoredBacklog(kernel, id, 16),
               b -> MODEL,
               b -> TOOLS);
 
@@ -360,18 +360,16 @@ class HarnessTest {
 
     @Test
     void bindingTheSameIdTwiceSeesTheSameSubstrate() {
-      var memorySubstrate = new InMemoryMemorySubstrate();
-      var stateSubstrate = new InMemoryStateSubstrate();
-      var backlogSubstrate = new InMemoryBacklogSubstrate(16);
+      var kernel = new InMemoryScopedStore();
       Harness<String> harness =
           harness(
               TYPE,
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              memorySubstrate::forScope,
-              stateSubstrate::forScope,
-              backlogSubstrate::forScope,
+              id -> new StoredMemory(kernel, id),
+              id -> new StoredAgentStateStore(kernel, id, Clock.systemUTC()),
+              id -> new StoredBacklog(kernel, id, 16),
               b -> MODEL,
               b -> TOOLS);
 

@@ -18,17 +18,19 @@ package org.jwcarman.nessy.agent.host;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.durable.StoredComputations;
 import org.jwcarman.nessy.agent.intent.InMemoryIntentStore;
 import org.jwcarman.nessy.agent.intent.IntentEnricher;
 import org.jwcarman.nessy.agent.intent.IntentTool;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -54,10 +56,10 @@ import org.jwcarman.nessy.api.tool.authorization.RiskFactors;
 import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
 import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /**
  * The flagship for the vocabulary amendment's §3 consistency-check bullet: an organization's own
@@ -169,9 +171,10 @@ class TypedIntentDemo {
   @Test
   void anUndeclaredRestartIsDeniedTeachingTheModelToDeclareThenTheApprovedRestartCompletes() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore = new InMemoryIntentStore<OpsIntent>();
 
@@ -208,8 +211,7 @@ class TypedIntentDemo {
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -233,9 +235,8 @@ class TypedIntentDemo {
       host.approvals().approve(slot);
       pump.pumpUntilQuiet();
 
-      System.out.println(
-          "final phase: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
 
       List<Message> transcript = memories.get("prod-eu").recall().messages();
       System.out.println("transcript:");
@@ -259,9 +260,10 @@ class TypedIntentDemo {
   @Test
   void aDeclaredTargetThatDoesNotMatchTheAttemptedTargetIsDeniedNamingBoth() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore = new InMemoryIntentStore<OpsIntent>();
 
@@ -294,8 +296,7 @@ class TypedIntentDemo {
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), true))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -306,9 +307,8 @@ class TypedIntentDemo {
       pump.pumpUntilQuiet();
 
       assertThat(requests).isEmpty();
-      System.out.println(
-          "final phase: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
 
       List<Message> transcript = memories.get("prod-eu").recall().messages();
       ToolResultBlock mismatchDenial = (ToolResultBlock) transcript.get(4).content().getFirst();
@@ -321,9 +321,10 @@ class TypedIntentDemo {
   @Test
   void anUnrepresentableDeclarationFailsInBandNamingTheLegalTypesAndStoresNothing() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore = new InMemoryIntentStore<OpsIntent>();
 
@@ -348,8 +349,7 @@ class TypedIntentDemo {
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -362,9 +362,8 @@ class TypedIntentDemo {
       System.out.println("intent recorded: " + intentStore.latest());
       assertThat(intentStore.latest()).isEmpty();
 
-      System.out.println(
-          "final phase: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
 
       List<Message> transcript = memories.get("prod-eu").recall().messages();
       ToolResultBlock bindingError = (ToolResultBlock) transcript.get(2).content().getFirst();

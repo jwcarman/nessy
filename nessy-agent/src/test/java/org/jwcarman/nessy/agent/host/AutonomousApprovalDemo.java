@@ -18,13 +18,15 @@ package org.jwcarman.nessy.agent.host;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.durable.StoredComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.store.InMemoryAgentStateStore;
+import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -41,9 +43,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
-import org.jwcarman.nessy.durable.InMemoryDurableComputationBackend;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 /**
  * The flagship (the-doors plan, Task 9): an autonomous agent asks to restart prod, the policy says
@@ -90,9 +92,10 @@ class AutonomousApprovalDemo {
   @Test
   void anApprovalParksTheTurnAndTheDeskResumesIt() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
@@ -111,8 +114,7 @@ class AutonomousApprovalDemo {
             .grants(
                 ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -124,8 +126,8 @@ class AutonomousApprovalDemo {
 
       var slot = ComputationId.of("approval:ops:prod-eu:c1");
       System.out.println(
-          "phase after park: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+          "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       assertThat(backend.status(slot)).contains(ComputationStatus.PENDING);
       assertThat(requests).hasSize(1);
       assertThat(requests.getFirst().context().action()).contains("restart prod-eu");
@@ -135,9 +137,8 @@ class AutonomousApprovalDemo {
       host.approvals().approve(slot);
       pump.pumpUntilQuiet();
 
-      System.out.println(
-          "final phase: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       List<Message> transcript = memories.get("prod-eu").recall().messages();
       System.out.println("transcript:");
       transcript.forEach(
@@ -156,9 +157,10 @@ class AutonomousApprovalDemo {
   @Test
   void aDenialArrivesInBandAndTheModelReacts() {
     var pump = new PumpedExecutor();
-    var backend = new InMemoryDurableComputationBackend();
+    var kernel = new InMemoryScopedStore();
+    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
-    var stores = new ConcurrentHashMap<String, InMemoryAgentStateStore>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
@@ -177,8 +179,7 @@ class AutonomousApprovalDemo {
             .grants(
                 ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .storeFactory(
-                id -> stores.computeIfAbsent(id, ignored -> new InMemoryAgentStateStore()))
+            .store(kernel)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -189,16 +190,15 @@ class AutonomousApprovalDemo {
       pump.pumpUntilQuiet();
 
       var slot = ComputationId.of("approval:ops:prod-eu:c1");
-      assertThat(stores.get("prod-eu").load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       assertThat(requests).hasSize(1);
 
       System.out.println("== the desk says no; the denial arrives in-band ==");
       host.approvals().deny(slot, "not during business hours");
       pump.pumpUntilQuiet();
 
-      System.out.println(
-          "final phase: " + stores.get("prod-eu").load().phase().getClass().getSimpleName());
-      assertThat(stores.get("prod-eu").load().phase()).isEqualTo(new Phase.Idle());
+      System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       List<Message> transcript = memories.get("prod-eu").recall().messages();
       assertThat(transcript).hasSize(4);
       assertThat(transcript.get(2).content())

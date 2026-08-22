@@ -30,7 +30,8 @@ import org.jwcarman.nessy.spi.store.ScopedStore;
  * the pending observations as a plain JSON array of strings — no codec involved, just Jackson. An
  * absent document reads as an empty queue; the document is created lazily on the first {@link
  * #add(String)}. {@code add}/{@code poll} are read-mutate-CAS-retry loops; a full queue is rejected
- * exactly as {@link BoundedBacklog} rejects it today.
+ * with an {@link IllegalStateException}, the bound the deleted {@code BoundedBacklog} used to
+ * enforce (spec §12).
  */
 public final class StoredBacklog implements Backlog<String> {
 
