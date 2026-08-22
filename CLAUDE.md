@@ -66,9 +66,11 @@ context-pipeline reform.)
 amendment `docs/superpowers/specs/2026-08-20-action-and-tool-vocabulary.md`
 (which amends `2026-08-16-authorization-design.md`), the substrate spec
 `docs/superpowers/specs/2026-08-21-scoped-store-design.md` (which supersedes
-the durable spec's storage mechanics), and the delivery spec
+the durable spec's storage mechanics), the delivery spec
 `docs/superpowers/specs/2026-08-22-durable-deliveries-design.md` (which reshapes
-the durable spec's execution semantics) are the design of record. Its decisions (zones, naming conventions, the grant
+the durable spec's execution semantics), and the harness-first spec
+`docs/superpowers/specs/2026-08-22-harness-first-design.md` (the API doors)
+are the design of record. Its decisions (zones, naming conventions, the grant
 principle, sealed-grammar etiquette, the no-mocking-library promise, prose test
 style) bind all work here; propose spec amendments rather than quietly
 diverging.
