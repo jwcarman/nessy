@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.CompletionResult;
@@ -178,6 +179,41 @@ class SubstrateComputationsTest {
       assertThat(results).hasSize(2);
       assertThat(results).filteredOn(r -> r == CompletionResult.TRANSFERRED).hasSize(1);
       assertThat(results).filteredOn(r -> r == CompletionResult.ALREADY_DONE).hasSize(1);
+    }
+  }
+
+  @Nested
+  class InjectedConflictAtTheOwnershipTransfer {
+
+    /**
+     * The computation-to-delivery hand-off's own atomicity edge (spec §9): a deterministic
+     * competitor write between {@code complete()}'s read and its own batch, via {@link
+     * RaceOnceOnBatchSubstrate} — the same fixture {@code DeliveryWorkerTest} uses for the
+     * delivery-to-fold hand-off. A {@code complete()} that let the resulting {@code
+     * ConflictException} escape instead of re-reading and retrying would fail this test by
+     * throwing; one that retried but re-read stale data would fail it by writing a second, orphaned
+     * delivery.
+     */
+    @Test
+    void aConflictingWriteBetweenReadAndBatchForcesCompleteToRetryAndLeavesExactlyOneDelivery() {
+      var backing = new InMemorySubstrate();
+      var setup = new SubstrateComputations(backing, TestMappers.plainlyPinned());
+      setup.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
+      byte[] computationPayload = backing.read("computation", ID.value()).orElseThrow().payload();
+
+      // the competitor re-saves the identical computation document, landing between complete()'s
+      // read and its own batch — a genuine version bump complete() must retry past, not a
+      // semantic change
+      var raced =
+          new RaceOnceOnBatchSubstrate(backing, "computation", ID.value(), computationPayload);
+      var computations = new SubstrateComputations(raced, TestMappers.plainlyPinned());
+
+      CompletionResult result =
+          computations.complete(ID, new Outcome.Success(ToolResult.ok("first")));
+
+      assertThat(result).isEqualTo(CompletionResult.TRANSFERRED);
+      assertThat(computations.find(ID)).isEmpty();
+      assertThat(outboxCount(raced)).isEqualTo(1L);
     }
   }
 
