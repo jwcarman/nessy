@@ -103,13 +103,13 @@ try (AutonomousHost<String> host =
 
 `post(agentId, observation)` enqueues one fact for that scope and returns
 immediately; the scope drains it, and if `RestartTool`'s grant requires
-approval, the call suspends on a durable slot and `approvalNotifier` fires
-once with the `ApprovalRequest` — `request.address().approval()` is the slot
-id `host.approvals().approve(...)`/`.deny(..., reason)` decides. Nothing here
-holds a thread open waiting; whether the slot outlives a restart of the
-process that opened it depends entirely on the `Substrate` behind
-`.substrate(...)` — the in-memory default does not, a durable implementation
-does. See
+approval, the call suspends on a durable computation and `approvalNotifier`
+fires once with the `ApprovalRequest` — `request.address().approval()` is
+the computation id `host.approvals().approve(...)`/`.deny(..., reason)`
+decides. Nothing here holds a thread open waiting; whether that computation
+outlives a restart of the process that opened it depends entirely on the
+`Substrate` behind `.substrate(...)` — the in-memory default does not, a
+durable implementation does. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
 the docs site for the rest of the walkthrough, and
 [Storage](https://jwcarman.github.io/nessy/concepts/storage/) for the

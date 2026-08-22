@@ -432,3 +432,44 @@ sequence of renames and interim shapes that produced it.
   pinned `ObjectMapper` every other recipe uses. Test your vocabulary over
   `InMemorySubstrate`: storage there is real encoded bytes, so a Jackson
   misconfiguration fails in your own unit tests, not in production.
+- **Durable deliveries: nothing waits.** A durable computation is no longer
+  a promise a live process `await`s — it's a chain of atomic ownership
+  transfers over the substrate: pending computation → pending delivery (the
+  outbox, now built) → advanced fold. Presence means pending throughout;
+  there is no status field and no terminal record anywhere in the pipeline.
+  `DurableComputationBackend` shrinks to three operations —
+  `create`/`complete`/`find` — and `complete` performs the whole transfer in
+  one substrate `batch`: delete the computation, create its outbox
+  delivery. `DeliveryWorker` (`nessy-agent`) is the one consumer: a
+  heartbeat thread per host drains pending deliveries and reconciles each
+  through the pure reducer, journal appends, state CAS, and the delivery's
+  own removal in one atomic batch; `nudge()` runs an immediate synchronous
+  drain right after any completion commits, so the heartbeat is the
+  recovery net, never the happy-path latency. Two new identities carry the
+  pipeline: `ModelResponseId` (minted in the model-call executor, never the
+  reducer) and `ToolInvocationId` (= `ModelResponseId` + the provider's call
+  id), the latter handed to every tool invocation through
+  `ToolContext.invocationId()` as a natural idempotency key. The approval
+  gate now runs inline, exactly once: a parked `RequireApproval` creates a
+  computation whose continuation carries the tool call itself, so a grant's
+  delivery dispatches the call directly — no re-derivation, no re-run of
+  the policy or the approver. Durable tools declare `RetrySemantics`
+  (`RETRYABLE`/`NON_RETRYABLE`, default `NON_RETRYABLE`) and an optional
+  `timeout` at registration; a reaper sweep on the same heartbeat bumps and
+  redispatches an overdue `RETRYABLE` computation, or manufactures a
+  `TIMEOUT_NON_RETRYABLE` failure for an overdue `NON_RETRYABLE` one, riding
+  the normal delivery pipeline into the fold either way — a computation with
+  no declared timeout waits indefinitely, which is what an approval needs.
+  This is a from-scratch reform of the durable-computation design, not a
+  deprecation cycle: `await()`, `AwaitResult`, `ComputationStatus`,
+  `ALREADY_TERMINAL`, terminal computation records, the `List<Continuation>`
+  multicast surface and its set-dedup, and the live
+  `ContinuationDispatcher`/`ContinuationHandler` fire path are all deleted,
+  not superseded in place. Two edges are open by design rather than
+  papered over: a single-winner delivery claim is per-host only until an
+  outbox lease lands with the first durable substrate adapter, so a grant
+  delivery can be drained more than once across hosts in the meantime; and
+  the instant between a grant's own completion and its delivery being
+  drained is not yet closed, so a redrive landing exactly there still
+  re-asks the approver — both parked, not fixed, and named as such in
+  [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/).

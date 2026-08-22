@@ -134,7 +134,7 @@ noisily at startup rather than silently doing the wrong thing mid-turn.
 - **No elicitation or sampling yet.** Every `McpTool#execute` call is a
   single request/response round trip — never a park. MCP elicitation (a
   server asking the *caller* a question mid-call) would pair naturally with
-  Nessy's `Awaited.parked` and durable HITL, but that pairing is its own
+  Nessy's `Awaited.deferred()` and durable HITL, but that pairing is its own
   generation of work — banked, not forgotten.
 - **The SDK's 20-second request/init timeout applies as-is.** Neither
   `connect` nor `McpToolbox` exposes a way to raise it yet. Real MCP tools

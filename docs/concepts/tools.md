@@ -65,9 +65,40 @@ public sealed interface Awaited<T> {
 
 `Ready` carries the answer, in hand right now. `Deferred` says the answer
 arrives through a durable computation — a callback, an approval, a job.
-The marker carries no identity: the wiring derives the slot's deterministic
-id from the work's coordinates itself, because a tool can neither reach the
-backend nor know the scope it's running in.
+The marker carries no identity: the wiring derives the computation's
+deterministic id from the work's coordinates itself, because a tool can
+neither reach the backend nor know the scope it's running in.
+
+## `RetrySemantics` and `timeout` — what redispatch is allowed to assume
+
+A deferring tool declares two more things at registration, both consulted
+only by the reaper (see [Durable Computation](durable-computation.md#retry-deadlines-and-the-reaper)):
+
+```java
+Tool.of(SlowJob.class, t -> t
+    .description("...")
+    .defers((cmd, ctx) -> jobs.submit(cmd, ctx))
+    .retrySemantics(RetrySemantics.RETRYABLE)
+    .timeout(Duration.ofMinutes(10)));
+```
+
+`retrySemantics(RetrySemantics)` — `RETRYABLE` or `NON_RETRYABLE`, default
+`NON_RETRYABLE` — is your own assertion that redispatching this tool's
+external work with the same `ToolInvocationId` is safe. Nessy cannot verify
+that; it only guarantees the identity stays stable and the routing stays
+durable, never that the external side effect itself runs exactly once. If
+your call is idempotent, dedups on its own, or accepts a provider
+idempotency key, derive that key from `ToolInvocationId` — every
+invocation carries one, through `ToolContext.invocationId()`, stable across
+every redispatch and replay of the same logical call. A tool that cannot
+make that assertion stays `NON_RETRYABLE`: an overdue computation fails
+rather than runs twice.
+
+`timeout(Duration)` is optional. Set, an overdue durable computation gets
+reaped — bumped and redispatched if `RETRYABLE`, failed if not. Unset,
+there is no deadline: the computation waits indefinitely, which is exactly
+what you want for a tool whose answer is a human's approval, not a job
+that might hang.
 
 ## Sealed inputs — a vocabulary as one argument
 
