@@ -16,85 +16,92 @@
 package org.jwcarman.nessy.agent.codec;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 /**
  * Internal storage machinery: the one {@link ObjectMapper} shared by every codec that renders the
- * string-payload substrate's JSON (spec §7), plus the tree-reading helpers common to all of them.
+ * string-payload substrate's JSON (spec §7), plus the boundary translation every codec relies on.
  * Public so recipes outside the {@code codec} package (e.g. {@code
- * org.jwcarman.nessy.agent.durable.OutcomeCodec}) can reuse the same discriminator/tolerant-read
- * conventions instead of duplicating them; still not API vocabulary — no domain type carries a
- * Jackson annotation.
+ * org.jwcarman.nessy.agent.durable.OutcomeCodec}) can reuse the same tolerant-read/exception
+ * conventions instead of duplicating them; still not API vocabulary — nessy-owned types carry their
+ * own Jackson annotations (spec §7), this class carries none.
+ *
+ * <p>Reads are tolerant: unknown fields are ignored. Any {@link JsonProcessingException} — a parse
+ * failure, an unresolved discriminator, a canonical-constructor invariant rejecting the payload —
+ * is translated here into an {@link IllegalArgumentException} naming the offense; a Jackson
+ * exception never leaks past a codec boundary.
  */
 public final class Codecs {
 
-  public static final ObjectMapper MAPPER = new ObjectMapper();
+  public static final ObjectMapper MAPPER =
+      new ObjectMapper()
+          .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+          .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
 
   private Codecs() {}
 
-  /** The required field {@code name} on {@code node}, as text — malformed payload otherwise. */
-  public static String requireText(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null || !field.isTextual()) {
-      throw new IllegalArgumentException(owner + " missing required field: " + name);
+  /** {@code json} parsed to a tree, or a malformed-payload {@link IllegalArgumentException}. */
+  public static JsonNode readTree(String json, String owner) {
+    try {
+      return MAPPER.readTree(json);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("malformed " + owner + " JSON: " + rootMessage(e), e);
     }
-    return field.asText();
-  }
-
-  /** The required field {@code name} on {@code node} — malformed payload otherwise. */
-  public static JsonNode requireField(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null) {
-      throw new IllegalArgumentException(owner + " missing required field: " + name);
-    }
-    return field;
   }
 
   /**
-   * The required field {@code name} on {@code node}, as an array — malformed payload otherwise. A
-   * scalar or object value for {@code name} would otherwise iterate as zero elements and read as a
-   * silent empty collection; this fails loudly instead.
+   * {@code root} bound to {@code type}, or a malformed-payload {@link IllegalArgumentException}.
    */
-  public static ArrayNode requireArray(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null || !field.isArray()) {
+  public static <T> T bind(JsonNode root, Class<T> type, String owner) {
+    try {
+      return MAPPER.treeToValue(root, type);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("malformed " + owner + " JSON: " + rootMessage(e), e);
+    }
+  }
+
+  /**
+   * {@code json} bound to {@code type}, or a malformed-payload {@link IllegalArgumentException}.
+   */
+  public static <T> T read(String json, Class<T> type, String owner) {
+    try {
+      return MAPPER.readValue(json, type);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("malformed " + owner + " JSON: " + rootMessage(e), e);
+    }
+  }
+
+  /** {@code value} rendered to JSON, or an encoding-failure {@link IllegalArgumentException}. */
+  public static String write(Object value) {
+    try {
+      return MAPPER.writeValueAsString(value);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException(
+          "could not encode " + value.getClass().getSimpleName() + ": " + rootMessage(e), e);
+    }
+  }
+
+  /**
+   * {@code root}'s field {@code name}, if present, must be a JSON array — malformed payload
+   * otherwise. A scalar or object value for {@code name} would otherwise fail deep inside binding
+   * with a message that may not name the field; this fails loudly and names it up front.
+   */
+  public static void requireArrayIfPresent(JsonNode root, String name, String owner) {
+    JsonNode field = root.get(name);
+    if (field != null && !field.isArray()) {
       throw new IllegalArgumentException(owner + " field must be an array: " + name);
     }
-    return (ArrayNode) field;
   }
 
-  /**
-   * The required field {@code name} on {@code node}, as a boolean — malformed payload otherwise.
-   */
-  public static boolean requireBoolean(ObjectNode node, String name, String owner) {
-    JsonNode field = node.get(name);
-    if (field == null || !field.isBoolean()) {
-      throw new IllegalArgumentException(owner + " missing required field: " + name);
+  /** The deepest cause's message — Jackson wraps constructor-thrown invariant failures. */
+  private static String rootMessage(Throwable t) {
+    Throwable deepest = t;
+    while (deepest.getCause() != null) {
+      deepest = deepest.getCause();
     }
-    return field.asBoolean();
-  }
-
-  /** {@code node} as an object node, or a malformed-payload {@link IllegalArgumentException}. */
-  public static ObjectNode requireObject(JsonNode node, String owner) {
-    if (node == null || !node.isObject()) {
-      throw new IllegalArgumentException("malformed " + owner + ": expected an object");
-    }
-    return (ObjectNode) node;
-  }
-
-  /**
-   * {@code json} parsed as an object node, or a malformed-payload {@link IllegalArgumentException}.
-   */
-  public static ObjectNode readObject(String json, String owner) {
-    JsonNode node;
-    try {
-      node = MAPPER.readTree(json);
-    } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException("malformed " + owner + " JSON", e);
-    }
-    return requireObject(node, owner + " JSON");
+    return deepest.getMessage();
   }
 }

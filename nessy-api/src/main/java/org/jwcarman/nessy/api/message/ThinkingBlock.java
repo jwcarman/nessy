@@ -15,10 +15,17 @@
  */
 package org.jwcarman.nessy.api.message;
 
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import java.util.Objects;
 
-/** The model's visible reasoning, with the signature the provider needs to trust it on replay. */
-public record ThinkingBlock(String text, String signature) implements ContentBlock {
+/**
+ * The model's visible reasoning, with the signature the provider needs to trust it on replay. A
+ * stored payload with no {@code signature} key decodes as unsigned ({@code ""}), never {@code
+ * null}.
+ */
+public record ThinkingBlock(String text, @JsonSetter(nulls = Nulls.AS_EMPTY) String signature)
+    implements ContentBlock {
 
   public ThinkingBlock {
     Objects.requireNonNull(text, "text must not be null");

@@ -15,12 +15,16 @@
  */
 package org.jwcarman.nessy.agent;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -31,7 +35,17 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * State that carries its own data. Pending calls exist only inside {@code AwaitingTools}; "idle
  * with outstanding calls" is unrepresentable (spec §2.2). Every phase carries enough to reconstruct
  * its outstanding effects (spec §6.1).
+ *
+ * <p>Carries a {@code "type"} discriminator naming the record on the wire (substrate spec §7):
+ * {@code idle}, {@code awaiting-model}, {@code awaiting-tools}. The values are a compatibility
+ * surface and must never change.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = Phase.Idle.class, name = "idle"),
+  @JsonSubTypes.Type(value = Phase.AwaitingModel.class, name = "awaiting-model"),
+  @JsonSubTypes.Type(value = Phase.AwaitingTools.class, name = "awaiting-tools")
+})
 public sealed interface Phase {
 
   /**
@@ -98,7 +112,9 @@ public sealed interface Phase {
 
     public AwaitingTools {
       Objects.requireNonNull(assistantTurn, "assistantTurn must not be null");
-      pending = Set.copyOf(pending);
+      // A TreeSet, not Set.copyOf: pending ids serialize in a deterministic (sorted) order —
+      // wire-format invariance the hand-rolled codec used to enforce by sorting on write.
+      pending = Collections.unmodifiableSortedSet(new TreeSet<>(pending));
       gathered = List.copyOf(gathered);
       if (pending.isEmpty()) {
         throw new IllegalArgumentException("awaiting tools with nothing pending is not a phase");

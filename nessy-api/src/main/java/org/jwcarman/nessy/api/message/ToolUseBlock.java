@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.api.message;
 
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ToolCall;
 
@@ -32,7 +33,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * value, so signature-in-equals cannot break the transcript's no-stutter dedup or the fold's
  * idempotency.
  */
-public record ToolUseBlock(ToolCall call, String signature) implements ContentBlock {
+public record ToolUseBlock(@JsonUnwrapped ToolCall call, String signature) implements ContentBlock {
 
   public ToolUseBlock {
     Objects.requireNonNull(call, "call must not be null");

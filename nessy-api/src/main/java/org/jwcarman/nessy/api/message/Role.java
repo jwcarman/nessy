@@ -15,13 +15,19 @@
  */
 package org.jwcarman.nessy.api.message;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * Who a message came from.
  *
  * <p>There is no {@code SYSTEM} role: the system prompt is a separate field on {@code
  * ModelRequest}, not a message, because that is what the providers we target actually model.
+ *
+ * <p>Wire values are lower-case (substrate spec §7) and must never change.
  */
 public enum Role {
+  @JsonProperty("user")
   USER,
+  @JsonProperty("assistant")
   ASSISTANT
 }

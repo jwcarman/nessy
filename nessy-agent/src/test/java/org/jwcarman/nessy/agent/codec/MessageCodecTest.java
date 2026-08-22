@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.codec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
@@ -192,6 +193,13 @@ class MessageCodecTest {
     void malformedMessageJsonIsRejected() {
       assertThatThrownBy(() -> MessageCodec.message("not json at all"))
           .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void malformedMessageJsonNeverLeaksAJacksonException() {
+      assertThatThrownBy(() -> MessageCodec.message("not json at all"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .isNotInstanceOf(JsonProcessingException.class);
     }
 
     @Test
