@@ -20,9 +20,9 @@ package org.jwcarman.nessy.api;
  *
  * <p>Two arms, no third (durable spec, two-armed ruling): {@link Ready} is the answer in hand;
  * {@link Deferred} says the answer arrives through a durable computation. Deferred carries no
- * identity — the wiring derives the slot's deterministic id from the work's coordinates
+ * identity — the wiring derives the computation's deterministic id from the work's coordinates
  * (submit-once discipline), because a tool can neither reach the backend nor know the scope. A
- * future {@code ToolContext} may grow slot creation for tools that own their references.
+ * future {@code ToolContext} may grow computation creation for tools that own their references.
  *
  * @param <T> what the wait produces
  */

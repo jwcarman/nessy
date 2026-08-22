@@ -298,8 +298,12 @@ public final class Nessy {
      * memory shared across many hosts (spec §10.11) — the id is the only key, and losing a view
      * loses nothing.
      *
-     * <p>Invoked once per delivery — the factory MUST return a view over shared state, never
-     * freshly-created state; there is no per-id cache behind it.
+     * <p>Invoked once per binding — the factory MUST return a view over shared state, never
+     * freshly-created state; there is no per-id cache behind it. One caller cares which view comes
+     * back: {@code DeliveryWorker}'s grant path requires the bound {@link Memory} to be backed by
+     * the same {@link Substrate}, plain — a scope wired with anything else fails loudly before a
+     * granted tool ever runs (durable-deliveries spec §5a; see {@code DeliveryWorker}'s own javadoc
+     * for why).
      */
     public AutonomousBuilder<O> memoryFactory(Function<String, Memory> memoryFactory) {
       this.memoryFactory = Objects.requireNonNull(memoryFactory, "memoryFactory must not be null");

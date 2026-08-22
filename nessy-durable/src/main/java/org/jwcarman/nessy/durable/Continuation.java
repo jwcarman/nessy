@@ -19,8 +19,7 @@ import java.util.Objects;
 
 /**
  * A durable description of what becomes runnable on completion — data, never code (durable spec
- * §11). The data is opaque to this module; registrants encode, their handlers decode. Equal
- * continuations are one registration.
+ * §11). The data is opaque to this module; registrants encode, their handlers decode.
  */
 public record Continuation(String type, String data) {
 

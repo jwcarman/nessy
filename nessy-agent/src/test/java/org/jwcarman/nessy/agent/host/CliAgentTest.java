@@ -179,7 +179,7 @@ class CliAgentTest {
 
     @Override
     public String description() {
-      return "only ever answers through a durable slot";
+      return "only ever answers through a durable computation";
     }
 
     @Override

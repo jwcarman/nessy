@@ -493,8 +493,8 @@ class RegistryToolCallExecutorTest {
 
   @Test
   void aSuspendedAdjudicationDeliversNothingAndNarratesNothing() {
-    var slot = ComputationId.of("approval:cli:cli:r1:c1");
-    Approver suspendingApprover = request -> new Adjudication.Suspended(slot);
+    var computationId = ComputationId.of("approval:cli:cli:r1:c1");
+    Approver suspendingApprover = request -> new Adjudication.Suspended(computationId);
     var registry =
         ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), UsagePolicy.requireApproval()));
     var call =

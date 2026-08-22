@@ -113,7 +113,23 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   private static final String MEMORY_KIND = "memory";
   private static final String COMPUTATION_KIND = "computation";
   private static final String TIMEOUT_NON_RETRYABLE = "TIMEOUT_NON_RETRYABLE";
+  // matches org.jwcarman.nessy.api.tool.CallAddress#approval()'s own derivation prefix
+  private static final String APPROVAL_PREFIX = "approval:";
   private static final int SCAN_LIMIT = 1000;
+
+  /**
+   * F2: the computation sweep's own key fetch, wider than {@link #SCAN_LIMIT}. {@code keys()} is
+   * lexicographic and {@code "approval:"} sorts before {@code "tool:"} — a single {@code
+   * keys(COMPUTATION_KIND, SCAN_LIMIT)} call would let 1000 pending approvals (deadline-less, never
+   * reapable) fill the entire result and truncate every {@code "tool:"} key out of it before the
+   * sweep ever saw one, no matter how cheaply the loop below skips what it does see. Fetching KEYS
+   * (not documents) is metadata-cheap, so a much wider window here is a fair trade: it does not
+   * raise the delivery sweep's own {@link #SCAN_LIMIT}, and it is still a bounded cap, not the
+   * unbounded cursor the real fix needs — an approval (or tool) backlog past THIS width can still
+   * starve the reaper. Parked, per {@code docs/concepts/durable-computation.md}'s Honest limits.
+   */
+  private static final int REAP_KEY_SCAN_LIMIT = 20_000;
+
   private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(2);
 
   private final Substrate store;
@@ -295,6 +311,12 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     if (fresh.isEmpty()) {
       return; // already delivered by another drain
     }
+    // F1: the guard runs BEFORE the tool ever executes — a scope wired with a Memory this worker
+    // cannot batch into must fail loudly here, not after the tool's external side effect has
+    // already fired. The claim above is still released (the finally in deliverGrant), so a later
+    // sweep gets another chance once the wiring is fixed, rather than spinning on a permanently
+    // re-executed side effect.
+    requirePlainSubstrateMemory(id);
     long currentVersion = fresh.get().version();
 
     CallAddress address =
@@ -326,7 +348,8 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    */
   private void foldGrantedResult(
       AgentType type, AgentId id, ToolCall call, ToolOutcome outcome, String deliveryKey) {
-    requirePlainSubstrateMemory(id);
+    // requirePlainSubstrateMemory already ran in deliverClaimedGrant, before the tool executed
+    // (F1) — not repeated here.
     while (true) {
       Optional<Substrate.Document> deliveryDoc = store.read(OUTBOX_KIND, deliveryKey);
       if (deliveryDoc.isEmpty()) {
@@ -428,9 +451,23 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * without a real-time heartbeat wait — the same reasoning {@link #nudge()} exists for the
    * delivery sweep, just without a public door of its own (the reaper's public entry stays the
    * heartbeat; nothing external calls this directly).
+   *
+   * <p>F2: {@code keys()} is lexicographic, and {@code "approval:"} sorts before {@code "tool:"}
+   * ({@link org.jwcarman.nessy.api.tool.CallAddress}'s own prefixes) — an approval is deadline-less
+   * by design (spec §5a: approvals wait indefinitely) and NEVER reapable, so a scope carrying 1000+
+   * pending approvals would otherwise fill every sweep's key fetch and starve every real tool
+   * deadline behind them, silently, forever (see {@link #REAP_KEY_SCAN_LIMIT}'s own javadoc for why
+   * the fetch itself had to widen, not just this loop). Skipping the {@code "approval:"} prefix
+   * before ever reading the document is still worth doing on top of that: a backlog past {@link
+   * #REAP_KEY_SCAN_LIMIT} — approvals or tool computations alike — can still starve the reaper. The
+   * real fix (a {@code Substrate} keys cursor, so a sweep can page rather than being capped) is
+   * parked; see {@code docs/concepts/durable-computation.md}'s Honest limits.
    */
   void reapOnce() {
-    for (String key : store.keys(COMPUTATION_KIND, SCAN_LIMIT)) {
+    for (String key : store.keys(COMPUTATION_KIND, REAP_KEY_SCAN_LIMIT)) {
+      if (key.startsWith(APPROVAL_PREFIX)) {
+        continue; // never reapable — deadline-less by design; would otherwise starve tool deadlines
+      }
       try {
         reapOne(key);
       } catch (RuntimeException e) {
@@ -526,9 +563,14 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * anything else — a different substrate, a transformed {@link
    * org.jwcarman.nessy.spi.substrate.Codec}, a non-substrate {@code Memory} test double — would
    * silently diverge from what {@link SubstrateMemory#recall()} decodes, or never see the append at
-   * all. Failing loudly here, before any write, is deliberately narrower than fixing the seam
-   * itself: a {@code Memory} that contributes its own batch ops is parked for James, not built
-   * here.
+   * all. Failing loudly here is deliberately narrower than fixing the seam itself: a {@code Memory}
+   * that contributes its own batch ops is parked for James, not built here.
+   *
+   * <p>Every caller runs this BEFORE any write, AND before any tool ever executes (F1): {@link
+   * #deliverClaimedGrant} calls it immediately after confirming the delivery is still present,
+   * ahead of {@code executeGrantedToolNow} — a non-plain {@code Memory} scope must never fire a
+   * granted tool's external side effect only to fail after the fact, on a delivery the next
+   * heartbeat would otherwise re-execute the same side effect against, forever.
    */
   private void requirePlainSubstrateMemory(AgentId id) {
     var memory = harness.bind(id).memory();

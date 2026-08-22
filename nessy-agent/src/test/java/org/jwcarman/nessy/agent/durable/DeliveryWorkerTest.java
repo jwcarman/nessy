@@ -38,20 +38,31 @@ import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
+import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
+import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
+import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.Outcome;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -282,6 +293,78 @@ class DeliveryWorkerTest {
       assertThat(store.entries("memory", ID.value(), 1)).isEmpty(); // nothing to fold
       assertThat(store.keys("outbox", 10)).isEmpty(); // the stale delivery is still consumed
       assertThat(store.read("state", ID.value()).orElseThrow().version()).isEqualTo(versionBefore);
+    }
+  }
+
+  record NoInput() {}
+
+  private static final class CountingTool implements Tool<NoInput> {
+    final AtomicInteger invocations = new AtomicInteger();
+
+    @Override
+    public String name() {
+      return "restart";
+    }
+
+    @Override
+    public String description() {
+      return "counts every invocation";
+    }
+
+    @Override
+    public Class<NoInput> inputType() {
+      return NoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+      invocations.incrementAndGet();
+      return Awaited.ready(ToolResult.ok("restarted"));
+    }
+  }
+
+  /**
+   * F1: {@link #requirePlainSubstrateMemory} must run BEFORE the granted tool ever executes, not
+   * only before the fold-advance batch — otherwise a non-plain-Memory scope fires the tool's
+   * external side effect, then throws, the per-item catch in {@link #drainOnce()} logs it, the
+   * delivery survives untouched, and the NEXT heartbeat repeats the whole thing. Zero tests tripped
+   * this before the fix; this one pins the fail-loud-before-any-side-effect ordering down.
+   */
+  @Nested
+  class NonPlainMemoryGuard {
+
+    @Test
+    void aNonPlainMemoryScopeFailsLoudlyBeforeTheToolEverRunsAndLeavesTheDeliveryInPlace() {
+      var mapper = TestMappers.plainlyPinned();
+      var store = new InMemorySubstrate();
+      var tool = new CountingTool();
+      var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.allow()));
+      var pump = new PumpedExecutor();
+      var executor =
+          new RegistryToolCallExecutor(
+              registry, TYPE, ID, new RecordingTurnObserver(), pump, mapper);
+      // a non-plain Memory: VerbatimMemory keeps its own in-process list, never writes through the
+      // worker's substrate at all — exactly the wiring requirePlainSubstrateMemory must catch.
+      Harness<String> harness =
+          TestAgents.harness(
+              new VerbatimMemory(),
+              new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper),
+              new NoopBacklog(),
+              text -> List.of(new TextBlock(text)),
+              new NoopModelCallExecutor(),
+              executor,
+              AgentObserver.noop(),
+              false,
+              StalenessPolicy.never());
+      var worker =
+          new DeliveryWorker<String>(store, mapper, harness, (t, i) -> null, Duration.ofHours(1));
+
+      writeDelivery(store, mapper, "grant", new Outcome.Success(Decision.allow()));
+
+      worker.nudge(); // must not throw out of nudge() — the per-item catch absorbs it
+
+      assertThat(tool.invocations).hasValue(0); // the tool never ran
+      assertThat(store.keys("outbox", 10)).containsExactly("grant"); // the delivery survives
     }
   }
 }

@@ -348,4 +348,40 @@ class ReaperTest {
 
     assertThat(tool.invocations).hasSize(2); // not invoked a third time
   }
+
+  /**
+   * F2: {@code keys()} is lexicographic and {@code "approval:"} sorts before {@code "tool:"} — a
+   * naive {@code keys(COMPUTATION_KIND, 1000)} fetch would let 1000+ pending approvals (deadline-
+   * less, never reapable) fill the whole result and truncate every {@code "tool:"} key out of it,
+   * starving the reaper of any real tool deadline behind them. This writes 1000 raw approval-
+   * prefixed documents directly (skipping the full approval-gate flow, which would be far slower
+   * for no additional coverage) plus one genuinely overdue tool computation, and checks the reaper
+   * still reaches and reaps the latter.
+   */
+  @Test
+  void aBacklogOf1000PendingApprovalsDoesNotStarveTheReaperOfAnOverdueToolComputation()
+      throws InterruptedException {
+    var tool =
+        new RecordingParkingTool(RetrySemantics.NON_RETRYABLE, Optional.of(Duration.ofMillis(1)));
+    var substrate = new InMemorySubstrate();
+    var world = worldFor(tool, substrate);
+
+    world.agent().observe("go");
+    world.pump().pumpUntilQuiet();
+    assertThat(tool.invocations).hasSize(1);
+    Thread.sleep(5); // let the 1ms timeout genuinely elapse
+
+    // 1000 deadline-less approval-prefixed documents; "approval:" sorts before "tool:", so a
+    // narrow keys() fetch would let these alone crowd out the real tool computation below.
+    for (int i = 0; i < 1000; i++) {
+      String key = "approval:test:test-scope:r%04d:c1".formatted(i);
+      substrate.write("computation", key, new byte[] {0}, 0);
+    }
+
+    world.worker().reapOnce();
+    world.pump().pumpUntilQuiet();
+
+    assertThat(world.store().load().phase()).isEqualTo(new Phase.Idle());
+    assertThat(tool.invocations).hasSize(1); // never redispatched: failed, not retried
+  }
 }

@@ -292,6 +292,19 @@ softening them would promise more than the design gives:
   The absorption guarantee that does hold: a pending ask absorbs a redrive,
   and in-flight work absorbs one — only this one already-granted-but-
   undrained instant does not.
+- **The reaper's scan has a cap, and pending approvals used to be able to
+  starve it.** `keys()` returns lexicographically, and `"approval:"` sorts
+  before `"tool:"` — since an approval is deadline-less by design and never
+  reapable, 1000+ pending approvals could fill the whole scan and make every
+  real tool deadline unreachable, silently, forever. Closing that took two
+  changes together: the reaper's own key fetch is now wider than the
+  delivery sweep's (fetching bare keys is metadata-cheap, so a generous
+  window is a fair trade), and it skips the `"approval:"` prefix before it
+  ever reads a computation document. Neither change removes the cap itself —
+  it's wider, not gone: a backlog of 20,000+ pending computations, approvals
+  or real tool work alike, can still starve a sweep. The real fix — a keys
+  cursor on the `Substrate` seam, so a sweep can page rather than being
+  capped at any fixed width — is parked, not built.
 
 None of this is exactly-once anywhere it isn't claimed. What's promised —
 stable identity, durable routing, at-least-once delivery — is what the
