@@ -108,7 +108,7 @@ public interface Substrate {
   record Document(byte[] payload, long version, Instant updatedAt) {
 
     public Document {
-      payload = payload.clone();
+      payload = Objects.requireNonNull(payload, "payload must not be null").clone();
     }
 
     @Override
@@ -153,7 +153,7 @@ public interface Substrate {
   record Entry(long seq, byte[] payload, Instant appendedAt) {
 
     public Entry {
-      payload = payload.clone();
+      payload = Objects.requireNonNull(payload, "payload must not be null").clone();
     }
 
     @Override
@@ -203,7 +203,7 @@ public interface Substrate {
         implements Op {
 
       public WriteDocument {
-        payload = payload.clone();
+        payload = Objects.requireNonNull(payload, "payload must not be null").clone();
       }
 
       @Override
@@ -255,7 +255,7 @@ public interface Substrate {
     record AppendEntry(String kind, String key, long seq, byte[] payload) implements Op {
 
       public AppendEntry {
-        payload = payload.clone();
+        payload = Objects.requireNonNull(payload, "payload must not be null").clone();
       }
 
       @Override

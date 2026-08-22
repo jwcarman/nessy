@@ -15,11 +15,7 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.io.IOException;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.SealedInputs;
 
@@ -61,7 +57,7 @@ public interface Codec<T> {
    */
   default Codec<T> then(Codec<byte[]> next) {
     Objects.requireNonNull(next, "next must not be null");
-    return new ThenCodec<>(this, next);
+    return CodecSupport.then(this, next);
   }
 
   /**
@@ -71,123 +67,14 @@ public interface Codec<T> {
    * discriminator back to its record before binding the remainder — exactly {@link SealedInputs}'
    * convention for tool inputs, applied here to stored payloads. Jackson's checked exceptions never
    * leak past this boundary: malformed bytes, an unknown discriminator, or a shape mismatch all
-   * surface as {@link IllegalArgumentException} naming the offense.
+   * surface as {@link IllegalArgumentException} naming the offense. Encoding a value whose runtime
+   * class is not a direct permitted subclass of {@code type} (e.g. a member reached through a
+   * nested sealed vocabulary) is rejected the same way, naming the class and the vocabulary, rather
+   * than writing a discriminator {@link SealedInputs#bind} could never match back.
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
     Objects.requireNonNull(mapper, "mapper must not be null");
     Objects.requireNonNull(type, "type must not be null");
-    return SealedInputs.isSealedInput(type)
-        ? new SealedJsonCodec<>(mapper, type)
-        : new PlainJsonCodec<>(mapper, type);
-  }
-
-  /** {@link #then(Codec)}'s composed codec. */
-  final class ThenCodec<T> implements Codec<T> {
-
-    private final Codec<T> first;
-    private final Codec<byte[]> next;
-
-    private ThenCodec(Codec<T> first, Codec<byte[]> next) {
-      this.first = first;
-      this.next = next;
-    }
-
-    @Override
-    public byte[] encode(T value) {
-      return next.encode(first.encode(value));
-    }
-
-    @Override
-    public T decode(byte[] bytes) {
-      return first.decode(next.decode(bytes));
-    }
-  }
-
-  /**
-   * {@code Codec.json} for a plain (non-sealed) type: direct {@code readValue}/{@code
-   * writeValueAsBytes}.
-   */
-  final class PlainJsonCodec<T> implements Codec<T> {
-
-    private final ObjectMapper mapper;
-    private final Class<T> type;
-
-    private PlainJsonCodec(ObjectMapper mapper, Class<T> type) {
-      this.mapper = mapper;
-      this.type = type;
-    }
-
-    @Override
-    public byte[] encode(T value) {
-      Objects.requireNonNull(value, "value must not be null");
-      try {
-        return mapper.writeValueAsBytes(value);
-      } catch (JsonProcessingException e) {
-        throw new IllegalArgumentException(
-            "failed to encode " + type.getSimpleName() + " to JSON: " + e.getMessage(), e);
-      }
-    }
-
-    @Override
-    public T decode(byte[] bytes) {
-      Objects.requireNonNull(bytes, "bytes must not be null");
-      try {
-        return mapper.readValue(bytes, type);
-      } catch (IOException e) {
-        throw new IllegalArgumentException(
-            "failed to decode " + type.getSimpleName() + " from JSON: " + e.getMessage(), e);
-      }
-    }
-  }
-
-  /**
-   * {@code Codec.json} for a sealed interface type: encodes with a {@code "type"} discriminator
-   * naming the concrete permitted record, decodes by matching that discriminator the {@link
-   * SealedInputs} way.
-   */
-  final class SealedJsonCodec<T> implements Codec<T> {
-
-    private final ObjectMapper mapper;
-    private final Class<T> type;
-
-    private SealedJsonCodec(ObjectMapper mapper, Class<T> type) {
-      this.mapper = mapper;
-      this.type = type;
-    }
-
-    @Override
-    public byte[] encode(T value) {
-      Objects.requireNonNull(value, "value must not be null");
-      JsonNode tree = mapper.valueToTree(value);
-      if (!(tree instanceof ObjectNode objectNode)) {
-        throw new IllegalArgumentException(
-            "cannot encode " + value.getClass().getSimpleName() + ": not a JSON object");
-      }
-      objectNode.put("type", value.getClass().getSimpleName());
-      try {
-        return mapper.writeValueAsBytes(objectNode);
-      } catch (JsonProcessingException e) {
-        throw new IllegalArgumentException(
-            "failed to encode " + value.getClass().getSimpleName() + " to JSON: " + e.getMessage(),
-            e);
-      }
-    }
-
-    @Override
-    public T decode(byte[] bytes) {
-      Objects.requireNonNull(bytes, "bytes must not be null");
-      JsonNode tree;
-      try {
-        tree = mapper.readTree(bytes);
-      } catch (IOException e) {
-        throw new IllegalArgumentException(
-            "failed to decode " + type.getSimpleName() + " from JSON: " + e.getMessage(), e);
-      }
-      if (tree == null) {
-        throw new IllegalArgumentException(
-            "failed to decode " + type.getSimpleName() + " from JSON: empty payload");
-      }
-      return SealedInputs.bind(type, tree, mapper);
-    }
+    return CodecSupport.json(mapper, type);
   }
 }

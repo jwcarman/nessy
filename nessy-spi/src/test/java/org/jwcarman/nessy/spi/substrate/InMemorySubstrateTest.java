@@ -183,6 +183,14 @@ class InMemorySubstrateTest {
     }
 
     @Test
+    void constructingADocumentWithANullPayloadThrowsNpeWithAMessage() {
+      var updatedAt = Instant.parse("2026-08-21T12:00:00Z");
+      assertThatThrownBy(() -> new Substrate.Document(null, 3L, updatedAt))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("payload");
+    }
+
+    @Test
     void mutatingTheCallersArrayAfterWriteDoesNotChangeALaterRead() {
       var store = new InMemorySubstrate();
       byte[] payload = bytes("original");
@@ -295,6 +303,19 @@ class InMemorySubstrateTest {
       assertThat(text(store.entries("memory", "agent-a", 1L).getFirst().payload()))
           .isEqualTo("original");
     }
+
+    @Test
+    void twoEntriesWithEqualContentDistinctArraysAreEqualButDifferWhenSeqDiffers() {
+      var appendedAt = Instant.parse("2026-08-21T12:00:00Z");
+      var first = new Substrate.Entry(1L, bytes("same content"), appendedAt);
+      var second = new Substrate.Entry(1L, bytes("same content"), appendedAt);
+      var differentSeq = new Substrate.Entry(2L, bytes("same content"), appendedAt);
+
+      assertThat(first.payload()).isNotSameAs(second.payload());
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isNotEqualTo(differentSeq);
+    }
   }
 
   @Nested
@@ -344,6 +365,33 @@ class InMemorySubstrateTest {
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("ops");
     }
+
+    @Test
+    void
+        twoWriteDocumentOpsWithEqualContentDistinctArraysAreEqualButDifferWhenExpectedVersionDiffers() {
+      var first = new Substrate.Op.WriteDocument("state", "agent-a", bytes("same content"), 0L);
+      var second = new Substrate.Op.WriteDocument("state", "agent-a", bytes("same content"), 0L);
+      var differentVersion =
+          new Substrate.Op.WriteDocument("state", "agent-a", bytes("same content"), 1L);
+
+      assertThat(first.payload()).isNotSameAs(second.payload());
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isNotEqualTo(differentVersion);
+    }
+
+    @Test
+    void twoAppendEntryOpsWithEqualContentDistinctArraysAreEqualButDifferWhenSeqDiffers() {
+      var first = new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes("same content"));
+      var second = new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes("same content"));
+      var differentSeq =
+          new Substrate.Op.AppendEntry("memory", "agent-a", 2L, bytes("same content"));
+
+      assertThat(first.payload()).isNotSameAs(second.payload());
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isNotEqualTo(differentSeq);
+    }
   }
 
   @Nested
@@ -375,6 +423,26 @@ class InMemorySubstrateTest {
       assertThat(outcomes).isNotEmpty();
       assertThat(outcomes.stream().filter(Boolean::booleanValue).count()).isEqualTo(1L);
       assertThat(store.read("state", "agent-a").orElseThrow().version()).isEqualTo(2L);
+    }
+  }
+
+  @Nested
+  class ToStringHygieneOnTheArrayBearingRecords {
+
+    private static final String MARKER = "super-secret-marker-xyz";
+
+    @Test
+    void allFourArrayBearingRecordsReportPayloadSizeNeverPayloadContent() {
+      var now = Instant.parse("2026-08-21T12:00:00Z");
+      var document = new Substrate.Document(bytes(MARKER), 1L, now);
+      var entry = new Substrate.Entry(1L, bytes(MARKER), now);
+      var writeDocument = new Substrate.Op.WriteDocument("state", "agent-a", bytes(MARKER), 0L);
+      var appendEntry = new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes(MARKER));
+
+      assertThat(document.toString()).contains("payloadBytes=").doesNotContain(MARKER);
+      assertThat(entry.toString()).contains("payloadBytes=").doesNotContain(MARKER);
+      assertThat(writeDocument.toString()).contains("payloadBytes=").doesNotContain(MARKER);
+      assertThat(appendEntry.toString()).contains("payloadBytes=").doesNotContain(MARKER);
     }
   }
 }

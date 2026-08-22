@@ -229,4 +229,37 @@ class CodecTest {
           .hasMessageContaining("Reboot");
     }
   }
+
+  @Nested
+  class NestedSealedVocabularies {
+
+    sealed interface Vocabulary permits Restart, Ops {}
+
+    record Restart(String host) implements Vocabulary {}
+
+    sealed interface Ops extends Vocabulary permits Diagnose {}
+
+    record Diagnose(String target) implements Ops {}
+
+    @Test
+    void encoding_a_class_reached_only_through_a_nested_sealed_interface_fails_loudly() {
+      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
+      Diagnose notADirectPermittedSubclass = new Diagnose("prod-eu");
+
+      assertThatThrownBy(() -> codec.encode(notADirectPermittedSubclass))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Diagnose")
+          .hasMessageContaining("Vocabulary");
+    }
+
+    @Test
+    void encoding_a_directly_permitted_record_of_the_same_nested_vocabulary_still_round_trips() {
+      Codec<Vocabulary> codec = Codec.json(MAPPER, Vocabulary.class);
+      Vocabulary original = new Restart("prod-eu");
+
+      Vocabulary decoded = codec.decode(codec.encode(original));
+
+      assertThat(decoded).isEqualTo(original);
+    }
+  }
 }
