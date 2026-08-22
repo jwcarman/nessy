@@ -37,17 +37,22 @@ public final class SlotApprover implements Approver {
 
   private final DurableComputationBackend backend;
   private final Consumer<ApprovalRequest> notifier;
+  private final ScopeRedrive scopeRedrive;
 
-  public SlotApprover(DurableComputationBackend backend, Consumer<ApprovalRequest> notifier) {
+  public SlotApprover(
+      DurableComputationBackend backend,
+      Consumer<ApprovalRequest> notifier,
+      ScopeRedrive scopeRedrive) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
+    this.scopeRedrive = Objects.requireNonNull(scopeRedrive, "scopeRedrive must not be null");
   }
 
   @Override
   public Adjudication adjudicate(ApprovalRequest request) {
     ComputationId slot = request.address().approval();
     CreateResult created = backend.create(slot);
-    AwaitResult awaited = backend.await(slot, ScopeRedrive.continuationFor(request.address()));
+    AwaitResult awaited = backend.await(slot, scopeRedrive.continuationFor(request.address()));
     return switch (awaited) {
       case AwaitResult.AlreadyCompleted(var outcome) ->
           DurableDecisions.toAdjudication(outcome, slot);

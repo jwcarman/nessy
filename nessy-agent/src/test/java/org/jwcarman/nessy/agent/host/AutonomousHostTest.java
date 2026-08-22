@@ -18,10 +18,24 @@ package org.jwcarman.nessy.agent.host;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.memory.StoredMemory;
@@ -31,9 +45,15 @@ import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
@@ -169,7 +189,9 @@ class AutonomousHostTest {
     host.post("scope-1", "hello");
     pump.pumpUntilQuiet();
 
-    var scopeOneState = new StoredAgentStateStore(substrate, "scope-1", Clock.systemUTC());
+    var scopeOneState =
+        new StoredAgentStateStore(
+            substrate, "scope-1", Clock.systemUTC(), TestMappers.plainlyPinned());
     assertThat(scopeOneState.load().phase()).isEqualTo(new Phase.Idle());
   }
 
@@ -246,8 +268,12 @@ class AutonomousHostTest {
         .isNotEmpty()
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
 
-    var stateOne = new StoredAgentStateStore(substrateOne, "shared-scope", Clock.systemUTC());
-    var stateTwo = new StoredAgentStateStore(substrateTwo, "shared-scope", Clock.systemUTC());
+    var stateOne =
+        new StoredAgentStateStore(
+            substrateOne, "shared-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var stateTwo =
+        new StoredAgentStateStore(
+            substrateTwo, "shared-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
     long versionAfterHostOnesTurn = stateOne.load().version();
     long versionAfterHostTwosTurn = stateTwo.load().version();
     assertThat(versionAfterHostTwosTurn)
@@ -338,7 +364,8 @@ class AutonomousHostTest {
 
     // a fresh recipe instance the host never held a reference to — the substrate, not the object
     // graph, is what makes this see both turns
-    var secondBindingOverTheSameStore = new StoredMemory(substrate, "scope-1");
+    var secondBindingOverTheSameStore =
+        new StoredMemory(substrate, "scope-1", TestMappers.plainlyPinned());
     List<Message> messages = secondBindingOverTheSameStore.recall().messages();
     assertThat(messages)
         .isNotEmpty()
@@ -392,5 +419,170 @@ class AutonomousHostTest {
         .isNotEmpty()
         .anyMatch(m -> m.content().contains(new TextBlock("message one")))
         .anyMatch(m -> m.content().contains(new TextBlock("reply one")));
+  }
+
+  /**
+   * Task 3 (bytes-and-codecs): one mapper in, pinned copy throughout (spec §7). {@code
+   * .objectMapper(ObjectMapper)} feeds {@code build()}'s one pinned copy into every recipe that
+   * binds JSON — the tool-call binder included.
+   */
+  @Nested
+  class ObjectMapperThreading {
+
+    /** A user shape whose wire form ({@code "$12.34"}) only a registered module can produce. */
+    record Money(long cents) {}
+
+    record ChargeInput(Money amount) {}
+
+    static final class MoneySerializer extends JsonSerializer<Money> {
+      @Override
+      public void serialize(Money value, JsonGenerator gen, SerializerProvider serializers)
+          throws IOException {
+        gen.writeString("$%d.%02d".formatted(value.cents() / 100, value.cents() % 100));
+      }
+    }
+
+    static final class MoneyDeserializer extends JsonDeserializer<Money> {
+      @Override
+      public Money deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        String digits = p.getValueAsString().replace("$", "").replace(".", "");
+        return new Money(Long.parseLong(digits));
+      }
+    }
+
+    static final class ChargeTool implements Tool<ChargeInput> {
+      @Override
+      public String name() {
+        return "charge";
+      }
+
+      @Override
+      public String description() {
+        return "charges an amount";
+      }
+
+      @Override
+      public Class<ChargeInput> inputType() {
+        return ChargeInput.class;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(ChargeInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok(String.valueOf(input.amount().cents())));
+      }
+    }
+
+    record EchoInput(String value) {}
+
+    static final class EchoTool implements Tool<EchoInput> {
+      @Override
+      public String name() {
+        return "echo";
+      }
+
+      @Override
+      public String description() {
+        return "echoes";
+      }
+
+      @Override
+      public Class<EchoInput> inputType() {
+        return EchoInput.class;
+      }
+
+      @Override
+      public Awaited<ToolResult> execute(EchoInput input, ToolContext context) {
+        return Awaited.ready(ToolResult.ok("echo: " + input.value()));
+      }
+    }
+
+    @Test
+    void aUserRegisteredModuleFlowsThroughToToolInputBinding() {
+      var module = new SimpleModule();
+      module.addSerializer(Money.class, new MoneySerializer());
+      module.addDeserializer(Money.class, new MoneyDeserializer());
+      var userMapper = new ObjectMapper().registerModule(module);
+
+      var pump = new PumpedExecutor();
+      var call =
+          new ToolCall(
+              "c1", "charge", JsonNodeFactory.instance.objectNode().put("amount", "$12.34"));
+      var provider =
+          new ScriptedModelProvider(
+              List.of(
+                  List.of(new ModelEvent.ToolUseEmitted(call, null)),
+                  List.of(new ModelEvent.TextChunk("charged"))));
+      var observer = new RecordingTurnObserver();
+
+      var host =
+          Nessy.autonomous()
+              .provider(provider)
+              .settings(TestSettings.settings())
+              .executor(pump)
+              .objectMapper(userMapper)
+              .tools(new ChargeTool())
+              .turnObserver(observer)
+              .build();
+
+      host.post("scope-1", "charge please");
+      pump.pumpUntilQuiet();
+
+      var completed =
+          observer.events().stream()
+              .filter(TurnEvent.ToolCallCompleted.class::isInstance)
+              .map(TurnEvent.ToolCallCompleted.class::cast)
+              .findFirst();
+      assertThat(completed).isPresent();
+      assertThat(completed.get().result().content()).isEqualTo("1234");
+    }
+
+    /**
+     * The pin holds even when the caller's own mapper is configured for something else entirely:
+     * {@code build()} pins lower-camel property naming on its copy (spec §7), so the substrate's
+     * stored JSON stays camelCase — {@code ToolResultBlock}'s golden fields, {@code toolUseId} and
+     * {@code isError} — regardless of what the caller's mapper prefers.
+     */
+    @Test
+    void theBuilderPinsTheStoredFormatEvenWhenTheUsersMapperPrefersSnakeCase() {
+      var substrate = new InMemorySubstrate();
+      var snakeCaseMapper =
+          new ObjectMapper().setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+      var pump = new PumpedExecutor();
+      var call =
+          new ToolCall("c1", "echo", JsonNodeFactory.instance.objectNode().put("value", "hi"));
+      var provider =
+          new ScriptedModelProvider(
+              List.of(
+                  List.of(new ModelEvent.ToolUseEmitted(call, null)),
+                  List.of(new ModelEvent.TextChunk("done"))));
+
+      var host =
+          Nessy.autonomous()
+              .provider(provider)
+              .settings(TestSettings.settings())
+              .executor(pump)
+              .substrate(substrate)
+              .objectMapper(snakeCaseMapper)
+              .tools(new EchoTool())
+              .build();
+
+      host.post("scope-1", "hi");
+      pump.pumpUntilQuiet();
+
+      List<Substrate.Entry> entries = substrate.entries("memory", "scope-1", 1);
+      assertThat(entries).isNotEmpty();
+      String allPayloads =
+          entries.stream()
+              .map(e -> new String(e.payload(), StandardCharsets.UTF_8))
+              .collect(Collectors.joining("\n"));
+      assertThat(allPayloads).contains("\"toolUseId\"").contains("\"isError\"");
+      assertThat(allPayloads).doesNotContain("tool_use_id").doesNotContain("is_error");
+    }
+
+    @Test
+    void aNullObjectMapperIsRejectedByItsSetter() {
+      var builder = Nessy.autonomous();
+      assertThatThrownBy(() -> builder.objectMapper(null)).isInstanceOf(NullPointerException.class);
+    }
   }
 }

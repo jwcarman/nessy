@@ -17,27 +17,31 @@ package org.jwcarman.nessy.agent.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.support.RaceOnceOnAppendSubstrate;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class StoredMemoryTest {
 
+  private static final MessageCodec CODEC = new MessageCodec(new ObjectMapper());
+
   @Test
   void aFreshMemoryRecallsAnEmptyContext() {
-    var memory = new StoredMemory(new InMemorySubstrate(), "agent-a");
+    var memory = new StoredMemory(new InMemorySubstrate(), "agent-a", TestMappers.plainlyPinned());
     assertThat(memory.recall().messages()).isEmpty();
   }
 
   @Test
   void rememberedMessagesRecallInOrderAcrossTwoInstancesSharingOneSubstrate() {
     Substrate store = new InMemorySubstrate();
-    var writer = new StoredMemory(store, "agent-a");
-    var reader = new StoredMemory(store, "agent-a");
+    var writer = new StoredMemory(store, "agent-a", TestMappers.plainlyPinned());
+    var reader = new StoredMemory(store, "agent-a", TestMappers.plainlyPinned());
 
     writer.remember(Message.user("first"));
     writer.remember(Message.user("second"));
@@ -50,9 +54,9 @@ class StoredMemoryTest {
   void rememberRetriesAfterLosingAConflictOnAppend() {
     Substrate delegate = new InMemorySubstrate();
     byte[] competitor =
-        MessageCodec.toJson(Message.user("stole the slot")).getBytes(StandardCharsets.UTF_8);
+        CODEC.toJson(Message.user("stole the slot")).getBytes(StandardCharsets.UTF_8);
     Substrate racing = new RaceOnceOnAppendSubstrate(delegate, competitor);
-    var memory = new StoredMemory(racing, "agent-a");
+    var memory = new StoredMemory(racing, "agent-a", TestMappers.plainlyPinned());
 
     memory.remember(Message.user("mine"));
 

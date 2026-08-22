@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -71,7 +72,11 @@ final class OutcomeCodec {
   private static final Set<String> PAYLOAD_TYPES =
       Set.of(PAYLOAD_TOOL_RESULT, PAYLOAD_ALLOW, PAYLOAD_DENY);
 
-  private OutcomeCodec() {}
+  private final Codecs codecs;
+
+  OutcomeCodec(ObjectMapper mapper) {
+    this.codecs = new Codecs(mapper);
+  }
 
   /**
    * The {@code computation} document's shape: {@code status} always present, {@code outcome} null
@@ -91,17 +96,17 @@ final class OutcomeCodec {
    * ToolResult} nor {@link Decision} throws {@link IllegalArgumentException} here — before the
    * caller writes anything.
    */
-  static String toJson(SlotDocument document) {
+  String toJson(SlotDocument document) {
     Objects.requireNonNull(document, "document must not be null");
-    return Codecs.write(SlotDocumentWire.from(document));
+    return codecs.write(SlotDocumentWire.from(document));
   }
 
-  static SlotDocument document(String json) {
+  SlotDocument document(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = Codecs.readTree(json, "computation slot");
+    JsonNode root = codecs.readTree(json, "computation slot");
     Codecs.requireArray(root, CONTINUATIONS, "computation slot");
     requireKnownOutcomeVocabulary(root.get(OUTCOME));
-    return Codecs.bind(root, SlotDocumentWire.class, "computation slot").toDomain();
+    return codecs.bind(root, SlotDocumentWire.class, "computation slot").toDomain();
   }
 
   /**

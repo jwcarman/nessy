@@ -23,6 +23,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
@@ -37,6 +38,7 @@ import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestAgents;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
@@ -92,8 +94,10 @@ class DurableParkDemo {
     var pump = new PumpedExecutor();
     var memory = new VerbatimMemory();
     var substrate = new InMemorySubstrate();
-    var store = new StoredAgentStateStore(substrate, "demo", Clock.systemUTC());
-    var backend = new StoredComputations(substrate);
+    var store =
+        new StoredAgentStateStore(
+            substrate, "demo", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
     var dispatcher = new ContinuationDispatcher();
     var desk = new CompletionDesk(backend, dispatcher);
     var narrator = new RecordingTurnObserver();
@@ -125,6 +129,7 @@ class DurableParkDemo {
         };
 
     // a FRESH DefaultAgent over the shared world, every time anyone needs one
+    var scopeResumptionRef = new AtomicReference<ScopeResumption>();
     Supplier<DefaultAgent<String>> agents =
         () ->
             TestAgents.<String>wired(
@@ -135,13 +140,22 @@ class DurableParkDemo {
                 new ProviderModelCallExecutor(
                     provider, TestSettings.settings(), registry, memory, narrator, pump),
                 new RegistryToolCallExecutor(
-                    registry, type, id, narrator, pump, new SlotDeferredToolCallPolicy(backend)),
+                    registry,
+                    type,
+                    id,
+                    narrator,
+                    pump,
+                    new SlotDeferredToolCallPolicy(backend, scopeResumptionRef.get()),
+                    TestMappers.plainlyPinned()),
                 AgentObserver.noop(),
                 false,
                 StalenessPolicy.never());
 
-    dispatcher.register(
-        ScopeResumption.TYPE, new ScopeResumption((t, i, event) -> agents.get().deliver(event)));
+    var scopeResumption =
+        new ScopeResumption(
+            (t, i, event) -> agents.get().deliver(event), TestMappers.plainlyPinned());
+    scopeResumptionRef.set(scopeResumption);
+    dispatcher.register(ScopeResumption.TYPE, scopeResumption);
 
     System.out.println("== turn begins ==");
     agents.get().observe("please restart prod");

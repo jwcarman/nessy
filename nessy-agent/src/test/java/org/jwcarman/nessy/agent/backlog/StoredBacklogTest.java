@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -29,19 +30,21 @@ class StoredBacklogTest {
   @Test
   void aNonPositiveCapacityIsRejected() {
     Substrate store = new InMemorySubstrate();
-    assertThatThrownBy(() -> new StoredBacklog(store, "agent-a", 0))
+    assertThatThrownBy(() -> new StoredBacklog(store, "agent-a", 0, TestMappers.plainlyPinned()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aFreshBacklogPollsEmpty() {
-    var backlog = new StoredBacklog(new InMemorySubstrate(), "agent-a", 2);
+    var backlog =
+        new StoredBacklog(new InMemorySubstrate(), "agent-a", 2, TestMappers.plainlyPinned());
     assertThat(backlog.poll()).isEmpty();
   }
 
   @Test
   void addedObservationsPollInFifoOrder() {
-    var backlog = new StoredBacklog(new InMemorySubstrate(), "agent-a", 3);
+    var backlog =
+        new StoredBacklog(new InMemorySubstrate(), "agent-a", 3, TestMappers.plainlyPinned());
     backlog.add("a");
     backlog.add("b");
     backlog.add("c");
@@ -53,7 +56,8 @@ class StoredBacklogTest {
 
   @Test
   void addBeyondCapacityThrowsTheRejection() {
-    var backlog = new StoredBacklog(new InMemorySubstrate(), "agent-a", 2);
+    var backlog =
+        new StoredBacklog(new InMemorySubstrate(), "agent-a", 2, TestMappers.plainlyPinned());
     backlog.add("a");
     backlog.add("b");
     assertThatThrownBy(() -> backlog.add("c"))
@@ -63,7 +67,8 @@ class StoredBacklogTest {
 
   @Test
   void pollingFreesCapacity() {
-    var backlog = new StoredBacklog(new InMemorySubstrate(), "agent-a", 2);
+    var backlog =
+        new StoredBacklog(new InMemorySubstrate(), "agent-a", 2, TestMappers.plainlyPinned());
     backlog.add("a");
     backlog.add("b");
     assertThat(backlog.poll()).contains("a");
@@ -76,8 +81,8 @@ class StoredBacklogTest {
   @Test
   void twoViewsOverOneSubstrateShareTheQueue() {
     Substrate store = new InMemorySubstrate();
-    var writer = new StoredBacklog(store, "agent-a", 4);
-    var reader = new StoredBacklog(store, "agent-a", 4);
+    var writer = new StoredBacklog(store, "agent-a", 4, TestMappers.plainlyPinned());
+    var reader = new StoredBacklog(store, "agent-a", 4, TestMappers.plainlyPinned());
 
     writer.add("first");
     writer.add("second");
@@ -92,7 +97,7 @@ class StoredBacklogTest {
     Substrate raceStore =
         new RaceOnceOnWriteSubstrate(
             new InMemorySubstrate(), "[\"raced-in\"]".getBytes(StandardCharsets.UTF_8));
-    var backlog = new StoredBacklog(raceStore, "agent-a", 2);
+    var backlog = new StoredBacklog(raceStore, "agent-a", 2, TestMappers.plainlyPinned());
 
     backlog.add("mine");
 
@@ -104,18 +109,18 @@ class StoredBacklogTest {
   @Test
   void pollRetriesAfterLosingAWriteConflictAndStillRemovesExactlyItsElement() {
     Substrate substrate = new InMemorySubstrate();
-    var seeded = new StoredBacklog(substrate, "agent-a", 3);
+    var seeded = new StoredBacklog(substrate, "agent-a", 3, TestMappers.plainlyPinned());
     seeded.add("a");
     seeded.add("b");
 
     Substrate raceStore =
         new RaceOnceOnWriteSubstrate(
             substrate, "[\"a\",\"b\",\"c\"]".getBytes(StandardCharsets.UTF_8));
-    var backlog = new StoredBacklog(raceStore, "agent-a", 3);
+    var backlog = new StoredBacklog(raceStore, "agent-a", 3, TestMappers.plainlyPinned());
 
     assertThat(backlog.poll()).contains("a");
 
-    var reader = new StoredBacklog(substrate, "agent-a", 3);
+    var reader = new StoredBacklog(substrate, "agent-a", 3, TestMappers.plainlyPinned());
     assertThat(reader.poll()).contains("b");
     assertThat(reader.poll()).contains("c");
     assertThat(reader.poll()).isEmpty();

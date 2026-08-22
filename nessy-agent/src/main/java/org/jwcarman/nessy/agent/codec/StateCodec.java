@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.codec;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import org.jwcarman.nessy.agent.Phase;
 
@@ -31,21 +32,28 @@ import org.jwcarman.nessy.agent.Phase;
  * violation surfaces as a Jackson failure this codec translates into an {@link
  * IllegalArgumentException} naming the offense, same as a malformed payload or an unrecognized
  * discriminator.
+ *
+ * <p>Wraps one caller-supplied, already-pinned {@link ObjectMapper} (spec §7) — no static mapper
+ * survives here.
  */
 public final class StateCodec {
 
-  private StateCodec() {}
+  private final Codecs codecs;
 
-  public static String toJson(Phase phase) {
-    Objects.requireNonNull(phase, "phase must not be null");
-    return Codecs.write(phase);
+  public StateCodec(ObjectMapper mapper) {
+    this.codecs = new Codecs(mapper);
   }
 
-  public static Phase phase(String json) {
+  public String toJson(Phase phase) {
+    Objects.requireNonNull(phase, "phase must not be null");
+    return codecs.write(phase);
+  }
+
+  public Phase phase(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = Codecs.readTree(json, "phase");
+    JsonNode root = codecs.readTree(json, "phase");
     Codecs.requireArrayIfPresent(root, "pending", "awaiting-tools phase");
     Codecs.requireArrayIfPresent(root, "gathered", "awaiting-tools phase");
-    return Codecs.bind(root, Phase.class, "phase");
+    return codecs.bind(root, Phase.class, "phase");
   }
 }

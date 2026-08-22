@@ -35,21 +35,22 @@ public final class ScopeResumption implements ContinuationHandler {
 
   public static final String TYPE = "RESUME_SCOPE";
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final String AGENT_TYPE_FIELD = "agentType";
   private static final String AGENT_ID_FIELD = "agentId";
   private static final String ARGUMENTS_FIELD = "arguments";
 
   private final AgentBinder binder;
+  private final ObjectMapper mapper;
 
-  public ScopeResumption(AgentBinder binder) {
+  public ScopeResumption(AgentBinder binder, ObjectMapper mapper) {
     this.binder = Objects.requireNonNull(binder, "binder must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
-  public static Continuation continuationFor(CallAddress address, ToolCall call) {
+  public Continuation continuationFor(CallAddress address, ToolCall call) {
     Objects.requireNonNull(address, "address must not be null");
     Objects.requireNonNull(call, "call must not be null");
-    ObjectNode data = MAPPER.createObjectNode();
+    ObjectNode data = mapper.createObjectNode();
     data.put(AGENT_TYPE_FIELD, address.agentType());
     data.put(AGENT_ID_FIELD, address.agentId());
     ObjectNode callNode = data.putObject("call");
@@ -63,7 +64,7 @@ public final class ScopeResumption implements ContinuationHandler {
   public void completed(Continuation continuation, Outcome outcome) {
     JsonNode data;
     try {
-      data = MAPPER.readTree(continuation.data());
+      data = mapper.readTree(continuation.data());
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("undecodable RESUME_SCOPE continuation", e);
     }

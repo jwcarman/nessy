@@ -29,6 +29,7 @@ import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.CallAddress;
@@ -176,7 +177,13 @@ class RegistryToolCallExecutorTest {
       ToolRegistry registry, ToolCall call, RecordingTurnObserver turn) {
     var pump = new PumpedExecutor();
     var executor =
-        new RegistryToolCallExecutor(registry, AgentType.of("cli"), AgentId.of("cli"), turn, pump);
+        new RegistryToolCallExecutor(
+            registry,
+            AgentType.of("cli"),
+            AgentId.of("cli"),
+            turn,
+            pump,
+            TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();
@@ -301,7 +308,8 @@ class RegistryToolCallExecutorTest {
             turn,
             pump,
             (parkedCall, address) ->
-                new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")));
+                new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")),
+            TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();
@@ -329,7 +337,14 @@ class RegistryToolCallExecutorTest {
     var pump = new PumpedExecutor();
     var executor =
         new RegistryToolCallExecutor(
-            registry, AgentType.of("cli"), AgentId.of("cli"), turn, pump, neverParks(), approver);
+            registry,
+            AgentType.of("cli"),
+            AgentId.of("cli"),
+            turn,
+            pump,
+            neverParks(),
+            approver,
+            TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();
@@ -442,7 +457,8 @@ class RegistryToolCallExecutorTest {
             turn,
             pump,
             neverParks(),
-            suspendingApprover);
+            suspendingApprover,
+            TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, delivered::add);
     pump.pumpUntilQuiet();

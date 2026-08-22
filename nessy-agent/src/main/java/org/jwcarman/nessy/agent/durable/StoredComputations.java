@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.durable;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,16 +49,17 @@ public final class StoredComputations implements DurableComputationBackend {
   private static final String KIND = "computation";
 
   private final Substrate store;
+  private final OutcomeCodec codec;
 
-  public StoredComputations(Substrate store) {
+  public StoredComputations(Substrate store, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
+    this.codec = new OutcomeCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
   }
 
   @Override
   public CreateResult create(ComputationId id) {
     Objects.requireNonNull(id, "id must not be null");
-    String payload =
-        OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
+    String payload = codec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
     try {
       store.write(KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
       return new CreateResult(id, true);
@@ -71,7 +73,7 @@ public final class StoredComputations implements DurableComputationBackend {
     Objects.requireNonNull(continuation, "continuation must not be null");
     while (true) {
       Substrate.Document doc = requiredDocument(id);
-      SlotDocument slot = OutcomeCodec.document(new String(doc.payload(), StandardCharsets.UTF_8));
+      SlotDocument slot = codec.document(new String(doc.payload(), StandardCharsets.UTF_8));
       if (slot.status() != ComputationStatus.PENDING) {
         return new AwaitResult.AlreadyCompleted(slot.outcome());
       }
@@ -80,8 +82,7 @@ public final class StoredComputations implements DurableComputationBackend {
       }
       List<Continuation> registered = new ArrayList<>(slot.continuations());
       registered.add(continuation);
-      String payload =
-          OutcomeCodec.toJson(new SlotDocument(slot.status(), slot.outcome(), registered));
+      String payload = codec.toJson(new SlotDocument(slot.status(), slot.outcome(), registered));
       try {
         store.write(KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), doc.version());
         return new AwaitResult.Registered();
@@ -98,8 +99,7 @@ public final class StoredComputations implements DurableComputationBackend {
     ComputationStatus terminalStatus = statusOf(outcome);
     // Validate before touching the store: a foreign Success payload throws here (spec §7),
     // leaving the document untouched — absent if it never existed.
-    String createPayload =
-        OutcomeCodec.toJson(new SlotDocument(terminalStatus, outcome, List.of()));
+    String createPayload = codec.toJson(new SlotDocument(terminalStatus, outcome, List.of()));
     while (true) {
       Optional<Substrate.Document> doc = store.read(KIND, id.value());
       if (doc.isEmpty()) {
@@ -111,13 +111,12 @@ public final class StoredComputations implements DurableComputationBackend {
           continue; // the slot was created concurrently; re-read and re-evaluate
         }
       }
-      SlotDocument slot =
-          OutcomeCodec.document(new String(doc.get().payload(), StandardCharsets.UTF_8));
+      SlotDocument slot = codec.document(new String(doc.get().payload(), StandardCharsets.UTF_8));
       if (slot.status() != ComputationStatus.PENDING) {
         return CompletionResult.ALREADY_TERMINAL;
       }
       String payload =
-          OutcomeCodec.toJson(new SlotDocument(terminalStatus, outcome, slot.continuations()));
+          codec.toJson(new SlotDocument(terminalStatus, outcome, slot.continuations()));
       try {
         store.write(
             KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), doc.get().version());
@@ -133,14 +132,13 @@ public final class StoredComputations implements DurableComputationBackend {
     Objects.requireNonNull(id, "id must not be null");
     return store
         .read(KIND, id.value())
-        .map(
-            doc ->
-                OutcomeCodec.document(new String(doc.payload(), StandardCharsets.UTF_8)).status());
+        .map(doc -> codec.document(new String(doc.payload(), StandardCharsets.UTF_8)).status());
   }
 
   @Override
   public List<Continuation> continuationsOf(ComputationId id) {
-    return OutcomeCodec.document(new String(requiredDocument(id).payload(), StandardCharsets.UTF_8))
+    return codec
+        .document(new String(requiredDocument(id).payload(), StandardCharsets.UTF_8))
         .continuations();
   }
 

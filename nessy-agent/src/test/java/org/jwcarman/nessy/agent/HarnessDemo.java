@@ -31,6 +31,7 @@ import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
@@ -46,7 +47,9 @@ class HarnessDemo {
     // ---- collaborators: plain construction, any order ----
     var pump = new PumpedExecutor();
     var memory = new RecordingMemory();
-    var store = new StoredAgentStateStore(new InMemorySubstrate(), "demo-scope", Clock.systemUTC());
+    var store =
+        new StoredAgentStateStore(
+            new InMemorySubstrate(), "demo-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
     var model = new ScriptedModelExecutor(pump, memory);
     var tools = new ScriptedToolExecutor(pump);
     Deque<String> queue = new ArrayDeque<>();

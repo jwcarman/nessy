@@ -31,6 +31,7 @@ import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.TestAgents;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.ContentBlock;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -128,7 +129,9 @@ class DefaultAgentApplyTest {
   void aCompletionThatLosesTheRaceIsReHandledAgainstFreshState() {
     // Seed a store mid-fan-out: AwaitingTools{a,b}, and let a competitor apply a's result
     // out-of-band just before b's save — computed with the pure machine, no threads needed.
-    var inner = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
+    var inner =
+        new StoredAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var turn =
         Message.assistant(
             List.<ContentBlock>of(new ToolUseBlock(CALL_A, null), new ToolUseBlock(CALL_B, null)));
@@ -171,7 +174,9 @@ class DefaultAgentApplyTest {
 
   @Test
   void theStateIsSavedBeforeAnyEffectIsDispatched() {
-    var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
+    var store =
+        new StoredAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var versionsAtCall = new ArrayList<Long>();
     var queue = new ArrayDeque<String>();
     Backlog<String> backlog =

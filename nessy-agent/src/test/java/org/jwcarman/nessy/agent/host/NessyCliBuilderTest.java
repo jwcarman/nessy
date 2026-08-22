@@ -58,4 +58,10 @@ class NessyCliBuilderTest {
     var builder = Nessy.cli();
     assertThatThrownBy(() -> builder.id(null)).isInstanceOf(NullPointerException.class);
   }
+
+  @Test
+  void aNullObjectMapperIsRejectedByItsSetter() {
+    var builder = Nessy.cli();
+    assertThatThrownBy(() -> builder.objectMapper(null)).isInstanceOf(NullPointerException.class);
+  }
 }

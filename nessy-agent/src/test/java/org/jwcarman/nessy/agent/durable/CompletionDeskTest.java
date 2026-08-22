@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
@@ -36,7 +37,8 @@ class CompletionDeskTest {
 
   private record Fired(Continuation continuation, Outcome outcome) {}
 
-  private final StoredComputations backend = new StoredComputations(new InMemorySubstrate());
+  private final StoredComputations backend =
+      new StoredComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
   private final ContinuationDispatcher dispatcher = new ContinuationDispatcher();
   private final List<Fired> fired = new ArrayList<>();
   private final CompletionDesk desk = new CompletionDesk(backend, dispatcher);

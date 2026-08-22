@@ -17,6 +17,8 @@ package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
@@ -28,19 +30,23 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class StoredIntentStoreTest {
 
+  /** A plainly-pinned mapper — tolerant reads, same as the substrate's format contract. */
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
   @Nested
   class Declaring {
 
     @Test
     void anUnwrittenStoreHoldsNoDeclarationBeforeAnyDeclaration() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).isEmpty();
     }
 
     @Test
     void aSecondDeclarationReplacesTheFirstLastWriteWins() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
 
       store.declare(new Intent("first declaration"));
       store.declare(new Intent("second declaration"));
@@ -57,7 +63,7 @@ class StoredIntentStoreTest {
           "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}"
               .getBytes(StandardCharsets.UTF_8),
           0);
-      var store = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
+      var store = new StoredIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).contains(new Intent("restart prod-eu"));
     }
@@ -69,8 +75,8 @@ class StoredIntentStoreTest {
     @Test
     void shareTheDeclaration() {
       var substrate = new InMemorySubstrate();
-      var writer = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
-      var reader = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
+      var writer = new StoredIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
+      var reader = new StoredIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
 
       writer.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
@@ -89,7 +95,8 @@ class StoredIntentStoreTest {
 
     @Test
     void aDeclarationRoundTripsThroughTheClassToken() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class);
+      var store =
+          new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Restart("prod-eu", "stuck deploy"));
 
@@ -98,7 +105,8 @@ class StoredIntentStoreTest {
 
     @Test
     void aDifferentPermittedShapeRoundTripsThroughTheClassTokenToo() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class);
+      var store =
+          new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Diagnose("prod-eu"));
 
@@ -113,11 +121,12 @@ class StoredIntentStoreTest {
     void retriesAndTheRetriedDeclarationStillWins() {
       var substrate = new InMemorySubstrate();
       var raced =
-          new StoredIntentStore<>(new RaceOnceOnWriteSubstrate(substrate), "agent-a", Intent.class);
+          new StoredIntentStore<>(
+              new RaceOnceOnWriteSubstrate(substrate), "agent-a", Intent.class, MAPPER);
 
       raced.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
-      var readBack = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
+      var readBack = new StoredIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
       assertThat(readBack.latest())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
     }

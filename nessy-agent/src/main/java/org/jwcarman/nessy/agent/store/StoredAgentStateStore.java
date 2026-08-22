@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.store;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -37,11 +38,13 @@ public final class StoredAgentStateStore implements AgentStateStore {
   private final Substrate store;
   private final String agentId;
   private final Instant birth;
+  private final StateCodec codec;
 
-  public StoredAgentStateStore(Substrate store, String agentId, Clock clock) {
+  public StoredAgentStateStore(Substrate store, String agentId, Clock clock, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.birth = Objects.requireNonNull(clock, "clock must not be null").instant();
+    this.codec = new StateCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
   }
 
   @Override
@@ -51,15 +54,14 @@ public final class StoredAgentStateStore implements AgentStateStore {
         .map(
             doc ->
                 new State(
-                    StateCodec.phase(new String(doc.payload(), StandardCharsets.UTF_8)),
-                    doc.version()))
+                    codec.phase(new String(doc.payload(), StandardCharsets.UTF_8)), doc.version()))
         .orElseGet(State::initial);
   }
 
   @Override
   public void save(State state) {
     Objects.requireNonNull(state, "state must not be null");
-    byte[] payload = StateCodec.toJson(state.phase()).getBytes(StandardCharsets.UTF_8);
+    byte[] payload = codec.toJson(state.phase()).getBytes(StandardCharsets.UTF_8);
     try {
       store.write(KIND, agentId, payload, state.version());
     } catch (ConflictException e) {

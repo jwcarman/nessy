@@ -16,12 +16,12 @@
 package org.jwcarman.nessy.agent.backlog;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -41,14 +41,16 @@ public final class StoredBacklog implements Backlog<String> {
   private final Substrate store;
   private final String agentId;
   private final int capacity;
+  private final ObjectMapper mapper;
 
-  public StoredBacklog(Substrate store, String agentId, int capacity) {
+  public StoredBacklog(Substrate store, String agentId, int capacity, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     if (capacity < 1) {
       throw new IllegalArgumentException("capacity must be at least 1: " + capacity);
     }
     this.capacity = capacity;
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   @Override
@@ -96,18 +98,18 @@ public final class StoredBacklog implements Backlog<String> {
     }
   }
 
-  private static List<String> readQueue(String payload) {
+  private List<String> readQueue(String payload) {
     try {
-      String[] values = Codecs.MAPPER.readValue(payload, String[].class);
+      String[] values = mapper.readValue(payload, String[].class);
       return new ArrayList<>(List.of(values));
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("malformed backlog payload", e);
     }
   }
 
-  private static String writeQueue(List<String> queue) {
+  private String writeQueue(List<String> queue) {
     try {
-      return Codecs.MAPPER.writeValueAsString(queue);
+      return mapper.writeValueAsString(queue);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("unwritable backlog payload", e);
     }

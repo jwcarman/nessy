@@ -28,6 +28,7 @@ import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -72,7 +73,9 @@ class DefaultAgentDrainTest {
     // Idle to AwaitingModel before handing back the observation it was asked for. With one load
     // per drain iteration, the race is caught by the save CAS (StaleStateException), never by
     // handing a non-idle phase an Observed event.
-    var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
+    var store =
+        new StoredAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var addedBack = new ArrayList<String>();
     Backlog<String> racingBacklog =
         new Backlog<>() {
@@ -139,7 +142,9 @@ class DefaultAgentDrainTest {
   void anObservationThatLosesTheRaceReturnsToTheBacklog() {
     // Competitor moves the scope off Idle just before our save; benign duplicate in memory is
     // the accepted §5.2 class — the assertion is the re-add, not memory purity.
-    var inner = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
+    var inner =
+        new StoredAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var competitorState = new State(new Phase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
     f.agent.observe("hello");
@@ -152,7 +157,9 @@ class DefaultAgentDrainTest {
   void autonomousWiringDrainsTheNextObservationWhenTheTurnEnds() {
     var f =
         new AgentFixture(
-            new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC()), true);
+            new StoredAgentStateStore(
+                new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned()),
+            true);
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("one")), List.of()));
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("two")), List.of()));
     f.agent.observe("first");
@@ -166,7 +173,9 @@ class DefaultAgentDrainTest {
   void interactiveWiringLeavesTheBacklogForTheNextDrive() {
     var f =
         new AgentFixture(
-            new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC()), false);
+            new StoredAgentStateStore(
+                new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned()),
+            false);
     f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("one")), List.of()));
     f.agent.observe("first");
     f.agent.observe("second");
@@ -180,7 +189,9 @@ class DefaultAgentDrainTest {
 
   @Test
   void aRequeueIsNarrated() {
-    var inner = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
+    var inner =
+        new StoredAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var competitorState = new State(new Phase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
     f.agent.observe("hello");

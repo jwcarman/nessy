@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.intent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -43,17 +42,18 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 public final class StoredIntentStore<T> implements IntentStore<T> {
 
   private static final String KIND = "intent";
-  private static final ObjectMapper MAPPER =
-      new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
   private final Substrate store;
   private final String agentId;
   private final Class<T> vocabulary;
+  private final ObjectMapper mapper;
 
-  public StoredIntentStore(Substrate store, String agentId, Class<T> vocabulary) {
+  public StoredIntentStore(
+      Substrate store, String agentId, Class<T> vocabulary, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   @Override
@@ -80,12 +80,12 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
   }
 
   private String toJson(T declaration) {
-    ObjectNode node = (ObjectNode) MAPPER.valueToTree(declaration);
+    ObjectNode node = (ObjectNode) mapper.valueToTree(declaration);
     if (SealedInputs.isSealedInput(vocabulary)) {
       node.put("type", declaration.getClass().getSimpleName());
     }
     try {
-      return MAPPER.writeValueAsString(node);
+      return mapper.writeValueAsString(node);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("unwritable intent payload", e);
     }
@@ -94,13 +94,13 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
   private T fromJson(String payload) {
     JsonNode node;
     try {
-      node = MAPPER.readTree(payload);
+      node = mapper.readTree(payload);
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("malformed intent payload", e);
     }
     if (SealedInputs.isSealedInput(vocabulary)) {
-      return SealedInputs.bind(vocabulary, node, MAPPER);
+      return SealedInputs.bind(vocabulary, node, mapper);
     }
-    return MAPPER.convertValue(node, vocabulary);
+    return mapper.convertValue(node, vocabulary);
   }
 }

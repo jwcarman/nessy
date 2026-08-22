@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
@@ -36,6 +37,9 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 
 class MessageCodecTest {
 
+  private static final MessageCodec CODEC = new MessageCodec(Codecs.copyAndPin(new ObjectMapper()));
+  private static final Codecs CODECS = new Codecs(Codecs.copyAndPin(new ObjectMapper()));
+
   private static ToolCall lookupCall() {
     return new ToolCall("call-1", "lookup", JsonNodeFactory.instance.objectNode().put("q", "x"));
   }
@@ -47,63 +51,63 @@ class MessageCodecTest {
     void aTextBlockRoundTrips() {
       var block = new TextBlock("hello there");
       var message = new Message(Role.USER, List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void anImageBlockRoundTrips() {
       var block = new ImageBlock("image/png", "aGVsbG8=");
       var message = new Message(Role.USER, List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void aSignedThinkingBlockRoundTrips() {
       var block = new ThinkingBlock("hmm, let me think", "sig-abc");
       var message = new Message(Role.ASSISTANT, List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void anUnsignedThinkingBlockRoundTrips() {
       var block = new ThinkingBlock("hmm, let me think", "");
       var message = new Message(Role.ASSISTANT, List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void aRedactedThinkingBlockRoundTrips() {
       var block = new RedactedThinkingBlock("opaque-ciphertext");
       var message = new Message(Role.ASSISTANT, List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void aSignedToolUseBlockRoundTrips() {
       var block = new ToolUseBlock(lookupCall(), "sig-xyz");
       var message = new Message(Role.ASSISTANT, List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void anUnsignedToolUseBlockRoundTrips() {
       var block = new ToolUseBlock(lookupCall());
       var message = new Message(Role.ASSISTANT, List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void aToolResultBlockRoundTrips() {
       var block = new ToolResultBlock("call-1", "42", false);
       var message = Message.toolResults(List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void aFailedToolResultBlockRoundTrips() {
       var block = new ToolResultBlock("call-1", "boom", true);
       var message = Message.toolResults(List.of(block));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
   }
 
@@ -113,14 +117,14 @@ class MessageCodecTest {
     @Test
     void anImageBlockEmitsTheExactGoldenShape() {
       var block = new ImageBlock("image/png", "aGk=");
-      assertThat(Codecs.write(block))
+      assertThat(CODECS.write(block))
           .isEqualTo("{\"type\":\"image\",\"mediaType\":\"image/png\",\"base64Data\":\"aGk=\"}");
     }
 
     @Test
     void aToolResultBlockEmitsTheExactGoldenShape() {
       var block = new ToolResultBlock("call-1", "42", false);
-      assertThat(Codecs.write(block))
+      assertThat(CODECS.write(block))
           .isEqualTo(
               "{\"type\":\"tool-result\",\"toolUseId\":\"call-1\",\"content\":\"42\","
                   + "\"isError\":false}");
@@ -129,7 +133,7 @@ class MessageCodecTest {
     @Test
     void aSignedToolUseBlockEmitsTheExactGoldenShape() {
       var block = new ToolUseBlock(lookupCall(), "sig-xyz");
-      assertThat(Codecs.write(block))
+      assertThat(CODECS.write(block))
           .isEqualTo(
               "{\"type\":\"tool-use\",\"id\":\"call-1\",\"name\":\"lookup\","
                   + "\"arguments\":{\"q\":\"x\"},\"signature\":\"sig-xyz\"}");
@@ -138,7 +142,7 @@ class MessageCodecTest {
     @Test
     void anUnsignedToolUseBlockEmitsNoSignatureKey() {
       var block = new ToolUseBlock(lookupCall());
-      assertThat(Codecs.write(block))
+      assertThat(CODECS.write(block))
           .isEqualTo(
               "{\"type\":\"tool-use\",\"id\":\"call-1\",\"name\":\"lookup\","
                   + "\"arguments\":{\"q\":\"x\"}}");
@@ -151,13 +155,13 @@ class MessageCodecTest {
     @Test
     void aUserMessageRoundTrips() {
       var message = Message.user("hi");
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
 
     @Test
     void anAssistantMessageRoundTrips() {
       var message = Message.assistant(List.of(new TextBlock("hi back")));
-      assertThat(MessageCodec.message(MessageCodec.toJson(message))).isEqualTo(message);
+      assertThat(CODEC.message(CODEC.toJson(message))).isEqualTo(message);
     }
   }
 
@@ -174,13 +178,13 @@ class MessageCodecTest {
                   Message.assistant(List.of(new ToolUseBlock(call))),
                   Message.toolResults(List.of(new ToolResultBlock(call.id(), "sunny", false))),
                   Message.assistant(List.of(new TextBlock("it's sunny")))));
-      assertThat(MessageCodec.context(MessageCodec.toJson(context))).isEqualTo(context);
+      assertThat(CODEC.context(CODEC.toJson(context))).isEqualTo(context);
     }
 
     @Test
     void anEmptyContextRoundTrips() {
       var context = Context.empty();
-      assertThat(MessageCodec.context(MessageCodec.toJson(context))).isEqualTo(context);
+      assertThat(CODEC.context(CODEC.toJson(context))).isEqualTo(context);
     }
   }
 
@@ -193,7 +197,7 @@ class MessageCodecTest {
           """
           {"role":"user","content":[{"type":"text","text":"hi"}],"fromTheFuture":true}
           """;
-      assertThat(MessageCodec.message(json)).isEqualTo(Message.user("hi"));
+      assertThat(CODEC.message(json)).isEqualTo(Message.user("hi"));
     }
 
     @Test
@@ -202,7 +206,7 @@ class MessageCodecTest {
           """
           {"role":"user","content":[{"type":"text","text":"hi","futureField":42}]}
           """;
-      assertThat(MessageCodec.message(json)).isEqualTo(Message.user("hi"));
+      assertThat(CODEC.message(json)).isEqualTo(Message.user("hi"));
     }
 
     @Test
@@ -211,7 +215,7 @@ class MessageCodecTest {
           """
           {"role":"user","content":[{"type":"video","url":"x"}]}
           """;
-      assertThatThrownBy(() -> MessageCodec.message(json))
+      assertThatThrownBy(() -> CODEC.message(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("video");
     }
@@ -222,33 +226,32 @@ class MessageCodecTest {
           """
           {"role":"referee","content":[{"type":"text","text":"hi"}]}
           """;
-      assertThatThrownBy(() -> MessageCodec.message(json))
+      assertThatThrownBy(() -> CODEC.message(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("referee");
     }
 
     @Test
     void malformedMessageJsonIsRejected() {
-      assertThatThrownBy(() -> MessageCodec.message("not json at all"))
+      assertThatThrownBy(() -> CODEC.message("not json at all"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void malformedMessageJsonNeverLeaksAJacksonException() {
-      assertThatThrownBy(() -> MessageCodec.message("not json at all"))
+      assertThatThrownBy(() -> CODEC.message("not json at all"))
           .isInstanceOf(IllegalArgumentException.class)
           .isNotInstanceOf(JsonProcessingException.class);
     }
 
     @Test
     void malformedContextJsonIsRejected() {
-      assertThatThrownBy(() -> MessageCodec.context("{"))
-          .isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> CODEC.context("{")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void aMessageMissingItsRoleIsRejected() {
-      assertThatThrownBy(() -> MessageCodec.message("{\"content\":[]}"))
+      assertThatThrownBy(() -> CODEC.message("{\"content\":[]}"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -258,8 +261,7 @@ class MessageCodecTest {
           """
           {"role":"user","content":[{"text":"hi"}]}
           """;
-      assertThatThrownBy(() -> MessageCodec.message(json))
-          .isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> CODEC.message(json)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -268,7 +270,7 @@ class MessageCodecTest {
           """
           {"role":"user","content":42}
           """;
-      assertThatThrownBy(() -> MessageCodec.message(json))
+      assertThatThrownBy(() -> CODEC.message(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("content");
     }
@@ -279,7 +281,7 @@ class MessageCodecTest {
           """
           {"messages":"oops"}
           """;
-      assertThatThrownBy(() -> MessageCodec.context(json))
+      assertThatThrownBy(() -> CODEC.context(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("messages");
     }
@@ -290,7 +292,7 @@ class MessageCodecTest {
           """
           {"role":"assistant","content":[{"type":"thinking","text":"x"}]}
           """;
-      assertThat(MessageCodec.message(json))
+      assertThat(CODEC.message(json))
           .isEqualTo(new Message(Role.ASSISTANT, List.of(new ThinkingBlock("x", ""))));
     }
   }

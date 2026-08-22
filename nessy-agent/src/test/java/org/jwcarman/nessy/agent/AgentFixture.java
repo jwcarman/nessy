@@ -28,6 +28,7 @@ import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -77,7 +78,11 @@ final class AgentFixture {
 
   AgentFixture() {
     this(
-        new StoredAgentStateStore(new InMemorySubstrate(), "fixture-scope", Clock.systemUTC()),
+        new StoredAgentStateStore(
+            new InMemorySubstrate(),
+            "fixture-scope",
+            Clock.systemUTC(),
+            TestMappers.plainlyPinned()),
         false);
   }
 }

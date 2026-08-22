@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.examples.governed;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Arrays;
@@ -95,8 +97,10 @@ public final class Governed {
    */
   static Result run() throws InterruptedException {
     var substrate = new InMemorySubstrate();
+    ObjectMapper intentMapper =
+        new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     IntentStore<OpsIntent> intentStore =
-        new StoredIntentStore<>(substrate, SCOPE_ID, OpsIntent.class);
+        new StoredIntentStore<>(substrate, SCOPE_ID, OpsIntent.class, intentMapper);
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();

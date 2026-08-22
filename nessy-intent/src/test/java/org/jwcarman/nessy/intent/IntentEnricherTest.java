@@ -17,6 +17,8 @@ package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -24,6 +26,10 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class IntentEnricherTest {
+
+  /** A plainly-pinned mapper — tolerant reads, same as the substrate's format contract. */
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
   private static AuthzContext freshContext() {
     var call =
@@ -33,7 +39,7 @@ class IntentEnricherTest {
   }
 
   private static StoredIntentStore<Intent> freshStore() {
-    return new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
+    return new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
   }
 
   @Test

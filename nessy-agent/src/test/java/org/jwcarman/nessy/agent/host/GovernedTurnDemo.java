@@ -29,6 +29,7 @@ import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
@@ -143,11 +144,14 @@ class GovernedTurnDemo {
   void theModelDeclaresIntentThenTheRiskyRestartParksForApprovalAndCompletes() {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
-    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(substrate);
+    var prodEuState =
+        new StoredAgentStateStore(
+            substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", Intent.class);
+    var intentStore =
+        new StoredIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -223,11 +227,14 @@ class GovernedTurnDemo {
   void aVeryHighSeverityIsDeniedInBandBeforeAnyApproverIsAsked() {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
-    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(substrate);
+    var prodEuState =
+        new StoredAgentStateStore(
+            substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", Intent.class);
+    var intentStore =
+        new StoredIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -271,10 +278,11 @@ class GovernedTurnDemo {
   void withNoRiskAssessorWiredTheThresholdFailsClosed() {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
-    var backend = new StoredComputations(substrate);
+    var backend = new StoredComputations(substrate, TestMappers.plainlyPinned());
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", Intent.class);
+    var intentStore =
+        new StoredIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
     var provider =
         new ScriptedModelProvider(
             List.of(

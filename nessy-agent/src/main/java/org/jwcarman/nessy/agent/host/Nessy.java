@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.host;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.backlog.StoredBacklog;
+import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.SlotApprover;
@@ -90,6 +92,7 @@ public final class Nessy {
     private String typeName = "cli";
     private List<Tool<?>> tools = List.of();
     private ExecutorService executor;
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     /** The model backend the scope talks to. */
     public CliBuilder provider(ModelProvider provider) {
@@ -133,9 +136,21 @@ public final class Nessy {
       return this;
     }
 
+    /**
+     * The mapper the host binds JSON with; default a fresh {@link ObjectMapper}. {@code build()}
+     * pins a copy of it (spec §7: lower-camel property naming, tolerant reads, no default typing)
+     * and threads that one pinned copy through every recipe that binds JSON — user-registered
+     * modules and serializers survive the copy.
+     */
+    public CliBuilder objectMapper(ObjectMapper objectMapper) {
+      this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+      return this;
+    }
+
     public CliAgent build() {
       Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
       Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
+      ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
       boolean ownsExecutor = executor == null;
       ExecutorService exec = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : executor;
       Memory effectiveMemory = memory != null ? memory : new VerbatimMemory();
@@ -145,8 +160,8 @@ public final class Nessy {
       var agentId = AgentId.of(id);
       var agentType = AgentType.of(typeName);
       Substrate substrate = new InMemorySubstrate();
-      var store = new StoredAgentStateStore(substrate, id, Clock.systemUTC());
-      var backlog = new StoredBacklog(substrate, id, 1024);
+      var store = new StoredAgentStateStore(substrate, id, Clock.systemUTC(), pinned);
+      var backlog = new StoredBacklog(substrate, id, 1024, pinned);
       Harness<String> harness =
           Harness.of(
               agentType,
@@ -161,7 +176,8 @@ public final class Nessy {
                   new ProviderModelCallExecutor(
                       provider, settings, limited, binding.memory(), relay, exec),
               binding ->
-                  new RegistryToolCallExecutor(limited, agentType, binding.id(), relay, exec));
+                  new RegistryToolCallExecutor(
+                      limited, agentType, binding.id(), relay, exec, pinned));
       Binding<String> binding = harness.bind(agentId);
       return new CliAgent(new DefaultAgent<>(harness, binding), relay, exec, ownsExecutor);
     }
@@ -184,6 +200,7 @@ public final class Nessy {
     private Executor executor;
     private int backlogCapacity = 1024;
     private StalenessPolicy stalenessPolicy = StalenessPolicy.after(Duration.ofMinutes(5));
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * The recipe's name — the first coordinate of every durable address; default {@code
@@ -311,9 +328,21 @@ public final class Nessy {
       return this;
     }
 
+    /**
+     * The mapper the host binds JSON with; default a fresh {@link ObjectMapper}. {@code build()}
+     * pins a copy of it (spec §7: lower-camel property naming, tolerant reads, no default typing)
+     * and threads that one pinned copy through every recipe that binds JSON — user-registered
+     * modules and serializers survive the copy.
+     */
+    public AutonomousBuilder objectMapper(ObjectMapper objectMapper) {
+      this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+      return this;
+    }
+
     public AutonomousHost build() {
       Objects.requireNonNull(provider, PROVIDER_MUST_NOT_BE_NULL);
       Objects.requireNonNull(settings, SETTINGS_MUST_NOT_BE_NULL);
+      ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
       boolean ownsExecutor = executor == null;
       ExecutorService owned = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : null;
       Executor exec = ownsExecutor ? owned : executor;
@@ -322,15 +351,29 @@ public final class Nessy {
       ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
       Substrate effectiveSubstrate = substrate != null ? substrate : new InMemorySubstrate();
       Function<String, Memory> effectiveMemoryFactory =
-          memoryFactory != null ? memoryFactory : id -> new StoredMemory(effectiveSubstrate, id);
+          memoryFactory != null
+              ? memoryFactory
+              : id -> new StoredMemory(effectiveSubstrate, id, pinned);
       Function<String, AgentStateStore> effectiveStoreFactory =
-          id -> new StoredAgentStateStore(effectiveSubstrate, id, Clock.systemUTC());
+          id -> new StoredAgentStateStore(effectiveSubstrate, id, Clock.systemUTC(), pinned);
       Function<String, Backlog<String>> effectiveBacklogFactory =
-          id -> new StoredBacklog(effectiveSubstrate, id, backlogCapacity);
+          id -> new StoredBacklog(effectiveSubstrate, id, backlogCapacity, pinned);
       DurableComputationBackend effectiveBackend =
-          backend != null ? backend : new StoredComputations(effectiveSubstrate);
+          backend != null ? backend : new StoredComputations(effectiveSubstrate, pinned);
       AgentObserver effectiveAgentObserver =
           agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
+
+      var dispatcher = new ContinuationDispatcher();
+      var hostRef = new AtomicReference<AutonomousHost>();
+      AgentResolver resolver =
+          (type, id) -> {
+            if (!type.equals(agentType)) {
+              throw new IllegalArgumentException("unknown agent type: " + type.name());
+            }
+            return hostRef.get().agentFor(id);
+          };
+      var scopeResumption = new ScopeResumption(new ResolvingAgentBinder(resolver), pinned);
+      var scopeRedrive = new ScopeRedrive(resolver, pinned);
 
       Harness<String> harness =
           Harness.of(
@@ -352,21 +395,12 @@ public final class Nessy {
                       binding.id(),
                       turnObserver,
                       exec,
-                      new SlotDeferredToolCallPolicy(effectiveBackend),
-                      new SlotApprover(effectiveBackend, approvalNotifier)));
+                      new SlotDeferredToolCallPolicy(effectiveBackend, scopeResumption),
+                      new SlotApprover(effectiveBackend, approvalNotifier, scopeRedrive),
+                      pinned));
 
-      var dispatcher = new ContinuationDispatcher();
-      var hostRef = new AtomicReference<AutonomousHost>();
-      AgentResolver resolver =
-          (type, id) -> {
-            if (!type.equals(agentType)) {
-              throw new IllegalArgumentException("unknown agent type: " + type.name());
-            }
-            return hostRef.get().agentFor(id);
-          };
-      dispatcher.register(
-          ScopeResumption.TYPE, new ScopeResumption(new ResolvingAgentBinder(resolver)));
-      dispatcher.register(ScopeRedrive.TYPE, new ScopeRedrive(resolver));
+      dispatcher.register(ScopeResumption.TYPE, scopeResumption);
+      dispatcher.register(ScopeRedrive.TYPE, scopeRedrive);
 
       var approvals = new ApprovalDesk(effectiveBackend, dispatcher);
       var completions = new CompletionDesk(effectiveBackend, dispatcher);

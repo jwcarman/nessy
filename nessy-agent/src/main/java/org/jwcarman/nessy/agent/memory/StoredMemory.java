@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.memory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
@@ -39,16 +40,18 @@ public final class StoredMemory implements Memory {
 
   private final Substrate store;
   private final String agentId;
+  private final MessageCodec codec;
 
-  public StoredMemory(Substrate store, String agentId) {
+  public StoredMemory(Substrate store, String agentId, ObjectMapper mapper) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
+    this.codec = new MessageCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
   }
 
   @Override
   public void remember(Message message) {
     Objects.requireNonNull(message, "message must not be null");
-    byte[] payload = MessageCodec.toJson(message).getBytes(StandardCharsets.UTF_8);
+    byte[] payload = codec.toJson(message).getBytes(StandardCharsets.UTF_8);
     while (true) {
       long nextSeq = head() + 1;
       try {
@@ -64,7 +67,7 @@ public final class StoredMemory implements Memory {
   public Context recall() {
     List<Message> messages =
         store.entries(KIND, agentId, 1).stream()
-            .map(entry -> MessageCodec.message(new String(entry.payload(), StandardCharsets.UTF_8)))
+            .map(entry -> codec.message(new String(entry.payload(), StandardCharsets.UTF_8)))
             .toList();
     return Context.of(messages);
   }

@@ -22,6 +22,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.ScopeRedrive;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
@@ -37,9 +39,12 @@ class SlotApproverTest {
 
   private static final CallAddress ADDRESS = new CallAddress("test-agent-type", "a1", "c1");
 
-  private final StoredComputations backend = new StoredComputations(new InMemorySubstrate());
+  private final StoredComputations backend =
+      new StoredComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
   private final List<ApprovalRequest> notified = new ArrayList<>();
-  private final SlotApprover approver = new SlotApprover(backend, notified::add);
+  private final ScopeRedrive scopeRedrive =
+      new ScopeRedrive((type, id) -> null, TestMappers.plainlyPinned());
+  private final SlotApprover approver = new SlotApprover(backend, notified::add, scopeRedrive);
 
   private ApprovalRequest requestFor(CallAddress address) {
     ObjectNode arguments = JsonNodeFactory.instance.objectNode();

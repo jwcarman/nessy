@@ -35,6 +35,7 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -70,7 +71,11 @@ class HarnessTest {
       };
 
   private static final AgentStateStore STORE =
-      new StoredAgentStateStore(new InMemorySubstrate(), "harness-fixture", Clock.systemUTC());
+      new StoredAgentStateStore(
+          new InMemorySubstrate(),
+          "harness-fixture",
+          Clock.systemUTC(),
+          TestMappers.plainlyPinned());
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
   private static final ModelCallExecutor MODEL = sink -> {};
   private static final ToolCallExecutor TOOLS = (call, sink) -> {};
@@ -335,9 +340,11 @@ class HarnessTest {
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              id -> new StoredMemory(substrate, id),
-              id -> new StoredAgentStateStore(substrate, id, Clock.systemUTC()),
-              id -> new StoredBacklog(substrate, id, 16),
+              id -> new StoredMemory(substrate, id, TestMappers.plainlyPinned()),
+              id ->
+                  new StoredAgentStateStore(
+                      substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
+              id -> new StoredBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
               b -> MODEL,
               b -> TOOLS);
 
@@ -367,9 +374,11 @@ class HarnessTest {
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              id -> new StoredMemory(substrate, id),
-              id -> new StoredAgentStateStore(substrate, id, Clock.systemUTC()),
-              id -> new StoredBacklog(substrate, id, 16),
+              id -> new StoredMemory(substrate, id, TestMappers.plainlyPinned()),
+              id ->
+                  new StoredAgentStateStore(
+                      substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
+              id -> new StoredBacklog(substrate, id, 16, TestMappers.plainlyPinned()),
               b -> MODEL,
               b -> TOOLS);
 

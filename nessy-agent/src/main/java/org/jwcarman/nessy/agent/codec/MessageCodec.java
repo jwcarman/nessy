@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent.codec;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
@@ -30,32 +31,39 @@ import org.jwcarman.nessy.api.message.Message;
  * adds the field-naming precheck the mapper cannot phrase as loudly as the wire-format contract
  * demands, and translates every Jackson failure into an {@link IllegalArgumentException} naming the
  * offense.
+ *
+ * <p>Wraps one caller-supplied, already-pinned {@link ObjectMapper} (spec §7) — no static mapper
+ * survives here.
  */
 public final class MessageCodec {
 
-  private MessageCodec() {}
+  private final Codecs codecs;
 
-  public static String toJson(Message message) {
+  public MessageCodec(ObjectMapper mapper) {
+    this.codecs = new Codecs(mapper);
+  }
+
+  public String toJson(Message message) {
     Objects.requireNonNull(message, "message must not be null");
-    return Codecs.write(message);
+    return codecs.write(message);
   }
 
-  public static Message message(String json) {
+  public Message message(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = Codecs.readTree(json, "message");
+    JsonNode root = codecs.readTree(json, "message");
     Codecs.requireArrayIfPresent(root, "content", "message");
-    return Codecs.bind(root, Message.class, "message");
+    return codecs.bind(root, Message.class, "message");
   }
 
-  public static String toJson(Context context) {
+  public String toJson(Context context) {
     Objects.requireNonNull(context, "context must not be null");
-    return Codecs.write(context);
+    return codecs.write(context);
   }
 
-  public static Context context(String json) {
+  public Context context(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = Codecs.readTree(json, "context");
+    JsonNode root = codecs.readTree(json, "context");
     Codecs.requireArrayIfPresent(root, "messages", "context");
-    return Codecs.bind(root, Context.class, "context");
+    return codecs.bind(root, Context.class, "context");
   }
 }
