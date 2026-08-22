@@ -1,5 +1,14 @@
 # The Action Wave — authorization speaks the industry's language, tools shed their ceremony
 
+> **Repeal notice — 2026-08-22.** The nessy-owned-binding machinery this spec
+> introduced for sealed vocabularies (`SealedInputs`, the hand-rolled oneOf
+> discriminator in `Schemas`) is repealed: every serialized sealed hierarchy —
+> user vocabularies included — binds through its own standard Jackson
+> `@JsonTypeInfo`/`@JsonSubTypes` annotations, and `Schemas` derives its
+> discriminator schemas from those annotations. The two-tier intent design and
+> the sealed-vocabulary concept itself are unchanged; only the bespoke binding
+> layer dies. See the substrate spec §7 for the ruling.
+
 **Date:** 2026-08-20
 **Status:** RATIFIED in conversation (owner). Binding amendments to
 `2026-08-16-authorization-design.md` (§0 anchor, §2, §5, §7) and to the core tool vocabulary.

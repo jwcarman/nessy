@@ -113,11 +113,11 @@ public interface Codec<T> {
 ```
 
 `Codec.json` is the default for user-defined types: tolerant Jackson binding,
-UTF-8, the caller's mapper (so user-registered modules flow through). It binds
-sealed vocabularies the `SealedInputs` way — discriminator from the permitted
-subclasses — so user types never need annotations. Each recipe takes an
-optional `Codec<T>` for its stored shape, defaulting to the nessy-owned
-binding for core types.
+UTF-8, the caller's mapper (so user-registered modules flow through). It is a
+plain mapper call — no sealed special-casing: a user's sealed vocabulary
+carries its own standard `@JsonTypeInfo`/`@JsonSubTypes` annotations (repeal
+ruling, 2026-08-22, below). Each recipe takes an optional `Codec<T>` for its
+stored shape, defaulting to the nessy-owned binding for core types.
 
 One conflict signal, same package:
 
@@ -283,18 +283,31 @@ One `ObjectMapper`, injected at the composition root, used throughout:
   reads (unknown fields ignored), no default typing. User-registered modules
   and serializers flow through; format-critical knobs do not — the stored
   format is a compatibility surface and cannot float on presentation
-  preferences. The pinned copy feeds recipe default codecs, `SealedInputs`
-  binding, `Schemas` generation, and tool-result rendering. Static mappers are
-  forbidden; mappers are threaded, never ambient.
+  preferences. The pinned copy feeds recipe default codecs and
+  tool-input binding; `Schemas` generation and tool-result rendering remain
+  un-threaded surfaces (parked for the pin-reachability ruling). Static
+  mappers are forbidden on the threaded paths; mappers are threaded, never
+  ambient.
 - Model-provider wire mappers serve vendor protocol contracts, not user data;
   they build from the same copy-and-pin path but their formats are pinned by
   the vendor.
 
-The annotations law, restated at its true scope:
+The annotations law, as finally ruled (2026-08-22 — the user-type half is
+REPEALED):
 
-- **User-authored types never require Jackson annotations.** Nessy binds them:
-  `SealedInputs` for tool inputs and intent vocabularies, `Codec.json` for
-  stored user shapes. This half is load-bearing API quality and permanent.
+- **Every sealed hierarchy that gets serialized binds through its own standard
+  Jackson annotations — Nessy's and users' alike.** A user building a sealed
+  vocabulary (intent, observations, tool inputs) writes `@JsonTypeInfo`/
+  `@JsonSubTypes` like any Jackson user; plain records need nothing. The
+  earlier "users never annotate" law bought two annotations of purity at the
+  price of a bespoke binding layer (`SealedInputs`, `SealedJsonCodec`,
+  hand-rolled discriminator logic in `Schemas`) that was the branch's densest
+  bug source (silent type-component clobbering, non-record-permit NPE) —
+  repealed by James: "users can properly set up their hierarchies using
+  Jackson; that's not that hard." All bespoke sealed-binding machinery is
+  deleted; `Schemas` derives oneOf/discriminator schemas from the same
+  annotations (victools' Jackson module) so the schema shown to the model and
+  the binding agree by construction.
 - **Nessy-owned types carry Jackson annotations directly** (`@JsonTypeInfo`/
   `@JsonSubTypes` on the sealed hierarchies — `ContentBlock`, `Phase`, the
   computation document). The hand-rolled tree-walking codecs are deleted; the
@@ -397,8 +410,9 @@ artifacts with zero storage footprint unless used:
 - **Notebook, fact journal, trajectory** (future): same pattern — own jar, own
   kind, no core tax.
 
-`SealedInputs`/`Schemas` stay in `nessy-api` — they are schema binding for all
-tools, not an intent feature.
+`Schemas` stays in `nessy-api` — schema generation over standard Jackson
+annotations, for all tools, not an intent feature. `SealedInputs` is deleted
+by the 2026-08-22 repeal (tool-input binding is a plain mapper call).
 
 ## 12. What dies, what survives
 
