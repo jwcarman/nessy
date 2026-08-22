@@ -39,7 +39,7 @@ import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class HarnessTest {
 
@@ -70,7 +70,7 @@ class HarnessTest {
       };
 
   private static final AgentStateStore STORE =
-      new StoredAgentStateStore(new InMemoryScopedStore(), "harness-fixture", Clock.systemUTC());
+      new StoredAgentStateStore(new InMemorySubstrate(), "harness-fixture", Clock.systemUTC());
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
   private static final ModelCallExecutor MODEL = sink -> {};
   private static final ToolCallExecutor TOOLS = (call, sink) -> {};
@@ -328,16 +328,16 @@ class HarnessTest {
 
     @Test
     void twoDifferentIdsGetDistinctHandlesThatDoNotLeakIntoEachOther() {
-      var kernel = new InMemoryScopedStore();
+      var substrate = new InMemorySubstrate();
       Harness<String> harness =
           harness(
               TYPE,
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              id -> new StoredMemory(kernel, id),
-              id -> new StoredAgentStateStore(kernel, id, Clock.systemUTC()),
-              id -> new StoredBacklog(kernel, id, 16),
+              id -> new StoredMemory(substrate, id),
+              id -> new StoredAgentStateStore(substrate, id, Clock.systemUTC()),
+              id -> new StoredBacklog(substrate, id, 16),
               b -> MODEL,
               b -> TOOLS);
 
@@ -360,16 +360,16 @@ class HarnessTest {
 
     @Test
     void bindingTheSameIdTwiceSeesTheSameSubstrate() {
-      var kernel = new InMemoryScopedStore();
+      var substrate = new InMemorySubstrate();
       Harness<String> harness =
           harness(
               TYPE,
               RENDERER,
               OBSERVER,
               STALENESS_POLICY,
-              id -> new StoredMemory(kernel, id),
-              id -> new StoredAgentStateStore(kernel, id, Clock.systemUTC()),
-              id -> new StoredBacklog(kernel, id, 16),
+              id -> new StoredMemory(substrate, id),
+              id -> new StoredAgentStateStore(substrate, id, Clock.systemUTC()),
+              id -> new StoredBacklog(substrate, id, 16),
               b -> MODEL,
               b -> TOOLS);
 

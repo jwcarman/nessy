@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.store;
+package org.jwcarman.nessy.spi.substrate;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -28,25 +28,25 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The reference {@link ScopedStore} substrate: one lock guards a document map and a journal map,
- * both keyed by {@code (kind, key)}. {@link #batch(List)} validates and applies every op against
- * private copies of only the {@code (kind, key)} pairs the batch actually touches — snapshotted out
- * of the live maps, mutated in isolation, merged back only on success — so a conflict anywhere in
- * the batch leaves the live store byte-for-byte as it was (spec §4.3) without ever copying the
- * whole store. This is a single-node, in-process reference implementation, not a durable substrate.
+ * The reference {@link Substrate} substrate: one lock guards a document map and a journal map, both
+ * keyed by {@code (kind, key)}. {@link #batch(List)} validates and applies every op against private
+ * copies of only the {@code (kind, key)} pairs the batch actually touches — snapshotted out of the
+ * live maps, mutated in isolation, merged back only on success — so a conflict anywhere in the
+ * batch leaves the live store byte-for-byte as it was (spec §4.3) without ever copying the whole
+ * store. This is a single-node, in-process reference implementation, not a durable substrate.
  */
-public final class InMemoryScopedStore implements ScopedStore {
+public final class InMemorySubstrate implements Substrate {
 
   private final Object lock = new Object();
   private final Clock clock;
   private final Map<DocKey, Document> documents = new HashMap<>();
   private final Map<DocKey, NavigableMap<Long, Entry>> journals = new HashMap<>();
 
-  public InMemoryScopedStore() {
+  public InMemorySubstrate() {
     this(Clock.systemUTC());
   }
 
-  public InMemoryScopedStore(Clock clock) {
+  public InMemorySubstrate(Clock clock) {
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
   }
 

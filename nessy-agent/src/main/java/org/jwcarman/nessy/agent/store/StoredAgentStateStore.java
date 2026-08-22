@@ -20,24 +20,24 @@ import java.time.Instant;
 import java.util.Objects;
 import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.codec.StateCodec;
-import org.jwcarman.nessy.spi.store.ConflictException;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The {@code state} recipe (scoped-store spec §6.1): one document per scope, keyed by {@code
- * agentId}. The document version IS the scope version — no separate version field rides in the
- * payload — so {@link #save(State)} is a direct CAS write and a lost race surfaces as {@link
- * ScopedStore.Document}'s version disagreeing with what the caller believed it held.
+ * The {@code state} recipe (substrate spec §6.1): one document per scope, keyed by {@code agentId}.
+ * The document version IS the scope version — no separate version field rides in the payload — so
+ * {@link #save(State)} is a direct CAS write and a lost race surfaces as {@link
+ * Substrate.Document}'s version disagreeing with what the caller believed it held.
  */
 public final class StoredAgentStateStore implements AgentStateStore {
 
   private static final String KIND = "state";
 
-  private final ScopedStore store;
+  private final Substrate store;
   private final String agentId;
   private final Instant birth;
 
-  public StoredAgentStateStore(ScopedStore store, String agentId, Clock clock) {
+  public StoredAgentStateStore(Substrate store, String agentId, Clock clock) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.birth = Objects.requireNonNull(clock, "clock must not be null").instant();
@@ -58,13 +58,13 @@ public final class StoredAgentStateStore implements AgentStateStore {
     try {
       store.write(KIND, agentId, payload, state.version());
     } catch (ConflictException e) {
-      long actual = store.read(KIND, agentId).map(ScopedStore.Document::version).orElse(0L);
+      long actual = store.read(KIND, agentId).map(Substrate.Document::version).orElse(0L);
       throw new StaleStateException(state.version(), actual);
     }
   }
 
   @Override
   public Instant lastSaved() {
-    return store.read(KIND, agentId).map(ScopedStore.Document::updatedAt).orElse(birth);
+    return store.read(KIND, agentId).map(Substrate.Document::updatedAt).orElse(birth);
   }
 }

@@ -22,8 +22,8 @@ import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class StoredIntentStoreTest {
 
@@ -32,14 +32,14 @@ class StoredIntentStoreTest {
 
     @Test
     void anUnwrittenStoreHoldsNoDeclarationBeforeAnyDeclaration() {
-      var store = new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
 
       assertThat(store.latest()).isEmpty();
     }
 
     @Test
     void aSecondDeclarationReplacesTheFirstLastWriteWins() {
-      var store = new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
 
       store.declare(new Intent("first declaration"));
       store.declare(new Intent("second declaration"));
@@ -49,26 +49,26 @@ class StoredIntentStoreTest {
 
     @Test
     void aStoredDeclarationWithAnUnknownFieldStillReads() {
-      var kernel = new InMemoryScopedStore();
-      kernel.write(
+      var substrate = new InMemorySubstrate();
+      substrate.write(
           "intent",
           "agent-a",
           "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}",
           0);
-      var store = new StoredIntentStore<>(kernel, "agent-a", Intent.class);
+      var store = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
 
       assertThat(store.latest()).contains(new Intent("restart prod-eu"));
     }
   }
 
   @Nested
-  class Two_store_views_over_one_kernel {
+  class Two_store_views_over_one_substrate {
 
     @Test
     void shareTheDeclaration() {
-      var kernel = new InMemoryScopedStore();
-      var writer = new StoredIntentStore<>(kernel, "agent-a", Intent.class);
-      var reader = new StoredIntentStore<>(kernel, "agent-a", Intent.class);
+      var substrate = new InMemorySubstrate();
+      var writer = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
+      var reader = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
 
       writer.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
@@ -87,7 +87,7 @@ class StoredIntentStoreTest {
 
     @Test
     void aDeclarationRoundTripsThroughTheClassToken() {
-      var store = new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", OpsIntent.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class);
 
       store.declare(new Restart("prod-eu", "stuck deploy"));
 
@@ -96,7 +96,7 @@ class StoredIntentStoreTest {
 
     @Test
     void aDifferentPermittedShapeRoundTripsThroughTheClassTokenToo() {
-      var store = new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", OpsIntent.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class);
 
       store.declare(new Diagnose("prod-eu"));
 
@@ -109,13 +109,13 @@ class StoredIntentStoreTest {
 
     @Test
     void retriesAndTheRetriedDeclarationStillWins() {
-      var kernel = new InMemoryScopedStore();
+      var substrate = new InMemorySubstrate();
       var raced =
-          new StoredIntentStore<>(new RaceOnceOnWriteStore(kernel), "agent-a", Intent.class);
+          new StoredIntentStore<>(new RaceOnceOnWriteSubstrate(substrate), "agent-a", Intent.class);
 
       raced.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
-      var readBack = new StoredIntentStore<>(kernel, "agent-a", Intent.class);
+      var readBack = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
       assertThat(readBack.latest())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
     }
@@ -125,16 +125,16 @@ class StoredIntentStoreTest {
    * Simulates one lost race on {@link #write}: the first call is preceded by a competitor's write
    * landing first at the very {@code expectedVersion} the caller is targeting, so the delegate
    * throws a genuine {@code ConflictException}; every later write goes straight through. A local
-   * hand-rolled equivalent of {@code RaceOnceOnWriteStore} (nessy-agent's own test support), which
-   * this module cannot depend on (design authority: nessy-intent depends only on nessy-api and
-   * nessy-spi).
+   * hand-rolled equivalent of {@code RaceOnceOnWriteSubstrate} (nessy-agent's own test support),
+   * which this module cannot depend on (design authority: nessy-intent depends only on nessy-api
+   * and nessy-spi).
    */
-  private static final class RaceOnceOnWriteStore implements ScopedStore {
+  private static final class RaceOnceOnWriteSubstrate implements Substrate {
 
-    private final ScopedStore delegate;
+    private final Substrate delegate;
     private boolean raced;
 
-    private RaceOnceOnWriteStore(ScopedStore delegate) {
+    private RaceOnceOnWriteSubstrate(Substrate delegate) {
       this.delegate = Objects.requireNonNull(delegate);
     }
 

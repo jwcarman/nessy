@@ -11,14 +11,14 @@ tiers are what that builder assembles underneath.
 ## Substrate — the shared durable underlay
 
 The substrate is passive and storage-shaped: durable computation, state,
-memory, backlog. Its storage face is one interface, `ScopedStore`
+memory, backlog. Its storage face is one interface, `Substrate`
 (`nessy-spi`) — two shapes, documents and a journal, plus an atomic batch
 across both; see [Storage](storage.md) for the full contract. It is
-**possibly shared across many hosts** — a JDBC-backed `ScopedStore` serving
-ten nodes is the designed deployment; `InMemoryScopedStore` is the
+**possibly shared across many hosts** — a JDBC-backed `Substrate` serving
+ten nodes is the designed deployment; `InMemorySubstrate` is the
 degenerate single-node case of the same idea, not a different one.
 
-`Nessy.autonomous().store(ScopedStore)` is the one storage seam: every
+`Nessy.autonomous().substrate(Substrate)` is the one storage seam: every
 scope's state, memory (unless overridden), and backlog live as documents in
 that one store. State, memory, and backlog each ride a *recipe* over it —
 `StoredAgentStateStore`, `StoredMemory`, `StoredBacklog` — rather than a
@@ -31,18 +31,18 @@ Function<String, Memory> memoryFactory =
 ```
 
 Losing a recipe instance loses nothing; two recipes built over the same id
-against the same store observe each other's writes. `InMemoryScopedStore`
+against the same store observe each other's writes. `InMemorySubstrate`
 grows by one entry per distinct `(kind, key)` ever touched and never
 evicts — a deliberate single-node, bounded-population posture, not a
 durable substrate.
 
 !!! warning "A factory MUST return a view over shared state, never fresh state"
-    `id -> new StoredMemory(new InMemoryScopedStore(), id)` compiles and
+    `id -> new StoredMemory(new InMemorySubstrate(), id)` compiles and
     looks identical to `id -> new StoredMemory(sharedStore, id)`, but it
     silently loses history on every delivery: each call gets a fresh, empty
-    kernel instead of a recipe over the id's real state. Factories handed
+    substrate instead of a recipe over the id's real state. Factories handed
     to a harness must always build their recipe over one shared
-    `ScopedStore`, never a new one per call.
+    `Substrate`, never a new one per call.
 
 ## Host — one process's assembly
 
@@ -184,7 +184,7 @@ noun.
 
 - [Agent as Scope](agent-as-scope.md) — phases, transitions, and how a
   binding's `DefaultAgent` drives one.
-- [Storage](storage.md) — `ScopedStore`'s full contract, the kinds table,
+- [Storage](storage.md) — `Substrate`'s full contract, the kinds table,
   and the recipes built over it.
 - [Memory](memory.md) — the SPI a memory factory hands a binding.
 - [Getting Started](../guides/getting-started.md) — the CLI door, end to

@@ -18,21 +18,21 @@ package org.jwcarman.nessy.agent.support;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * Simulates one lost race on {@link #write}: the first call to write is preceded by a competitor's
- * write (supplied by the test) landing first at the very {@code expectedVersion} the caller is
- * targeting, so the delegate throws a genuine {@code ConflictException}; every later write goes
- * straight through. Mirrors the {@code RaceOnceOnAppendStore} convention.
+ * Simulates one lost race on {@link #append}: the first call to append is preceded by a
+ * competitor's append (supplied by the test) stealing the very seq the caller is targeting, so the
+ * delegate throws a genuine {@code ConflictException}; every later append goes straight through.
+ * Mirrors the {@code RaceOnceSubstrate} convention used for {@code AgentStateStore}.
  */
-public final class RaceOnceOnWriteStore implements ScopedStore {
+public final class RaceOnceOnAppendSubstrate implements Substrate {
 
-  private final ScopedStore delegate;
+  private final Substrate delegate;
   private final String competitorPayload;
   private boolean raced;
 
-  public RaceOnceOnWriteStore(ScopedStore delegate, String competitorPayload) {
+  public RaceOnceOnAppendSubstrate(Substrate delegate, String competitorPayload) {
     this.delegate = Objects.requireNonNull(delegate);
     this.competitorPayload = Objects.requireNonNull(competitorPayload);
   }
@@ -44,10 +44,6 @@ public final class RaceOnceOnWriteStore implements ScopedStore {
 
   @Override
   public void write(String kind, String key, String payload, long expectedVersion) {
-    if (!raced) {
-      raced = true;
-      delegate.write(kind, key, competitorPayload, expectedVersion); // someone else won first
-    }
     delegate.write(kind, key, payload, expectedVersion);
   }
 
@@ -63,6 +59,10 @@ public final class RaceOnceOnWriteStore implements ScopedStore {
 
   @Override
   public void append(String kind, String key, long expectedSeq, String payload) {
+    if (!raced) {
+      raced = true;
+      delegate.append(kind, key, expectedSeq, competitorPayload); // someone else won first
+    }
     delegate.append(kind, key, expectedSeq, payload);
   }
 

@@ -23,9 +23,9 @@ import java.util.Optional;
  * continuations. Implementations may not assume single-threaded callers — the slot is the lock.
  *
  * <p>Internal vocabulary and the override seam for a genuinely foreign engine (Restate, Temporal);
- * nobody implements this seam just to get a database. The default implementation is the kernel's
- * {@code computation} recipe (scoped-store spec §6.5), riding the same {@code ScopedStore} every
- * other recipe does.
+ * nobody implements this seam just to get a database. The default implementation is the substrate's
+ * {@code computation} recipe (substrate spec §6.5), riding the same {@code Substrate} every other
+ * recipe does.
  */
 public interface DurableComputationBackend {
 

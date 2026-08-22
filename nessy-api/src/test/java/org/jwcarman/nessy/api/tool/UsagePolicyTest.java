@@ -274,10 +274,10 @@ class UsagePolicyTest {
 
     /**
      * A standin for {@code IntentPolicies.requireDeclared(Restart.class)} — that factory now lives
-     * in {@code nessy-intent} (scoped-store spec §11), which this module may not depend on. What
-     * these tests exercise is {@link UsagePolicy#allOf(List)}'s own ordering and short-circuiting,
-     * not the intent feature itself, so a minimal local policy with the same deny/allow shape
-     * stands in for it here.
+     * in {@code nessy-intent} (substrate spec §11), which this module may not depend on. What these
+     * tests exercise is {@link UsagePolicy#allOf(List)}'s own ordering and short-circuiting, not
+     * the intent feature itself, so a minimal local policy with the same deny/allow shape stands in
+     * for it here.
      */
     private static UsagePolicy requireDeclaredRestart() {
       return UsagePolicy.of(

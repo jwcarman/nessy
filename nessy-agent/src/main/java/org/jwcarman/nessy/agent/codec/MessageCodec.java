@@ -36,8 +36,8 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 
 /**
  * Internal storage machinery: renders the {@link Message}/{@link Context} vocabulary to and from
- * the JSON the string-payload storage kernel persists (spec §7). Not API vocabulary — nothing here
- * is meant to be called outside the recipes that back {@code Memory} and friends.
+ * the JSON the string-payload substrate persists (spec §7). Not API vocabulary — nothing here is
+ * meant to be called outside the recipes that back {@code Memory} and friends.
  *
  * <p>Every polymorphic {@link ContentBlock} carries a {@code "type"} discriminator naming the
  * record: {@code text}, {@code image}, {@code thinking}, {@code redacted-thinking}, {@code

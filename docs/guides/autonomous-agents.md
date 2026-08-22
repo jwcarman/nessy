@@ -16,7 +16,7 @@ try (AutonomousHost host =
         .provider(provider)
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-        .store(kernel)
+        .substrate(substrate)
         .approvalNotifier(requests::add)
         .build()) {
   host.post("prod-eu", "please restart prod-eu");
@@ -30,14 +30,14 @@ The builder surface, piece by piece:
 - **`grants(ToolGrant...)`** — the tool grants every scope carries, authority
   and all; `.tools(Tool<?>...)` is sugar for granting each an answered-allow
   policy, same as the CLI door.
-- **`store(ScopedStore)`** — the one storage seam (see
+- **`substrate(Substrate)`** — the one storage seam (see
   [Storage](../concepts/storage.md)): every scope's state, memory, and
-  backlog live as documents in this kernel; default a fresh
-  `InMemoryScopedStore`, durable only for the process's lifetime. Supply a
-  durable `ScopedStore` — a JDBC or DynamoDB adapter — to persist every
+  backlog live as documents in this substrate; default a fresh
+  `InMemorySubstrate`, durable only for the process's lifetime. Supply a
+  durable `Substrate` — a JDBC or DynamoDB adapter — to persist every
   scope beyond the process. There is no per-id cache behind a host:
   `agentFor(id)` binds a fresh `DefaultAgent` on *every* delivery, and the
-  kernel document each recipe reads is what makes a scope's history survive
+  substrate document each recipe reads is what makes a scope's history survive
   from one delivery to the next.
 - **`memoryFactory(Function<String, Memory>)`** — overrides the default
   `id -> new StoredMemory(store, id)` recipe with a caller-supplied
@@ -46,7 +46,7 @@ The builder surface, piece by piece:
   free by reading and writing through the shared store.
 - **`backend(DurableComputationBackend)`** — the shared durable computation
   backend behind both desks; default `StoredComputations` over this
-  builder's `store(...)`. Override only for a genuinely foreign engine
+  builder's `substrate(...)`. Override only for a genuinely foreign engine
   (Restate, Temporal) — nobody implements this seam to get a database.
 - **`approvalNotifier(Consumer<ApprovalRequest>)`** — fires once,
   point-to-point, the moment an approval slot is first asked. One recipient,
@@ -86,7 +86,7 @@ try (var host =
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
         .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-        .store(kernel)
+        .substrate(substrate)
         .backend(backend)
         .approvalNotifier(requests::add)
         .build()) {
@@ -118,8 +118,8 @@ reacts to it, same as `AutonomousApprovalDemo`'s
 `aDenialArrivesInBandAndTheModelReacts` shows.
 
 Nothing here holds a thread open waiting. Whether a park survives a restart
-of the process that opened it depends entirely on the `ScopedStore` behind
-`.store(...)` — `InMemoryScopedStore` does not, a durable implementation
+of the process that opened it depends entirely on the `Substrate` behind
+`.substrate(...)` — `InMemorySubstrate` does not, a durable implementation
 does.
 
 ## The governed turn: intent, risk, and threshold together
@@ -224,7 +224,7 @@ the full declared-intent-plus-risk-threshold gate.
 - [Durable Computation](../concepts/durable-computation.md) — the slot
   primitive, the two desks, and why a parked call survives its own instance
   dying.
-- [Storage](../concepts/storage.md) — the `.store(...)` seam and the
-  kernel every recipe on this page shares.
+- [Storage](../concepts/storage.md) — the `.substrate(...)` seam and the
+  substrate every recipe on this page shares.
 - [Intent](../concepts/intent.md) — the `declare-intent` tool and the
   sealed-input discriminator binding `TypedIntentDemo` rides.

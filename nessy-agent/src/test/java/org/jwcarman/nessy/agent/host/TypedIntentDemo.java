@@ -59,7 +59,7 @@ import org.jwcarman.nessy.intent.IntentTool;
 import org.jwcarman.nessy.intent.StoredIntentStore;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The flagship for the vocabulary amendment's §3 consistency-check bullet: an organization's own
@@ -171,12 +171,12 @@ class TypedIntentDemo {
   @Test
   void anUndeclaredRestartIsDeniedTeachingTheModelToDeclareThenTheApprovedRestartCompletes() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", OpsIntent.class);
+    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class);
 
     var firstAttempt =
         new ToolCall(
@@ -211,7 +211,7 @@ class TypedIntentDemo {
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -260,12 +260,12 @@ class TypedIntentDemo {
   @Test
   void aDeclaredTargetThatDoesNotMatchTheAttemptedTargetIsDeniedNamingBoth() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", OpsIntent.class);
+    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class);
 
     var declareCall =
         new ToolCall(
@@ -296,7 +296,7 @@ class TypedIntentDemo {
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), true))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -321,12 +321,12 @@ class TypedIntentDemo {
   @Test
   void anUnrepresentableDeclarationFailsInBandNamingTheLegalTypesAndStoresNothing() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", OpsIntent.class);
+    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class);
 
     var unrepresentableDeclare =
         new ToolCall(
@@ -349,7 +349,7 @@ class TypedIntentDemo {
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)

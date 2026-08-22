@@ -3,23 +3,23 @@
 Every store in Nessy is the same sentence: save this JSON, scoped to an id,
 safely. State is a versioned blob. Memory is a blob list. Intent is
 last-blob-wins. A durable computation is a blob with a one-way status flip.
-`ScopedStore` is the one primitive underneath all of them.
+`Substrate` is the one primitive underneath all of them.
 
-## The kernel in one paragraph
+## The substrate in one paragraph
 
-`ScopedStore` holds two shapes. **Documents** are mutable current-truth:
+`Substrate` holds two shapes. **Documents** are mutable current-truth:
 read, write-CAS, delete, and list keys, addressed by `(kind, key)`. The
 **journal** is immutable history: append and read-from, addressed by
 `(kind, key, seq)`. **`batch`** applies a list of document writes, document
 deletes, and journal appends all-or-nothing across both shapes. Payloads
-are opaque strings — JSON by convention, but the kernel never parses them.
+are opaque strings — JSON by convention, but the substrate never parses them.
 The store is the lock: every mutation carries a CAS expectation, and a miss
 is a conflict, never a wait. Seven methods, two tables, and an adapter that
 implements them gets the entire system — state, transcripts, intent,
 backlogs, durable computations, and (once built) the outbox.
 
 ```java
-public interface ScopedStore {
+public interface Substrate {
 
   // documents — mutable current-truth
   Optional<Document> read(String kind, String key);
@@ -43,12 +43,12 @@ entry already sitting at the expected seq is a conflict, never an
 overwrite. There are no locks and no waits: a caller that loses a race
 re-reads and retries.
 
-`org.jwcarman.nessy.spi.store` (module `nessy-spi`) is the whole package:
-`ScopedStore`, `ConflictException`, and `InMemoryScopedStore` — the
+`org.jwcarman.nessy.spi.substrate` (module `nessy-spi`) is the whole package:
+`Substrate`, `ConflictException`, and `InMemorySubstrate` — the
 reference substrate, shipped alongside the contract so a feature jar can
 test against it without depending on `nessy-agent`. `Nessy.autonomous()`
-defaults to a fresh `InMemoryScopedStore`; supply a durable implementation
-through `.store(ScopedStore)` to persist every scope beyond the process.
+defaults to a fresh `InMemorySubstrate`; supply a durable implementation
+through `.substrate(Substrate)` to persist every scope beyond the process.
 
 ## The kinds table
 
@@ -68,7 +68,7 @@ reserved — a feature jar declares its own kinds and must not reuse one:
 ## Layout rules
 
 Three rules decide which shape a new kind gets, normative for anything
-built on the kernel:
+built on the substrate:
 
 - **Mutable current-truth → document. Immutable history → journal. Derived
   artifacts** (summaries, folds, snapshots) **→ documents pointing at a
@@ -83,9 +83,9 @@ built on the kernel:
 ## Recipes, not more SPI
 
 `Memory`, `AgentStateStore`, `Backlog`, and `DurableComputationBackend`
-survive as vocabulary — floor, not ceiling — with a kernel recipe as each
+survive as vocabulary — floor, not ceiling — with a substrate recipe as each
 one's default and only shipped implementation. A recipe owns its
-serialization; the kernel never sees anything but a string.
+serialization; the substrate never sees anything but a string.
 
 - **State** (`kind=state`) — one document per scope. The document version
   *is* the scope version: `StoredAgentStateStore.save` writes at
@@ -156,19 +156,19 @@ code, which is why adding a new one is cheap.
 
 !!! note "No JDBC adapter ships yet"
     This schema is the reference mapping the spec ratifies, not a shipped
-    class. The in-memory kernel (`InMemoryScopedStore`, `nessy-spi`) is
+    class. The in-memory substrate (`InMemorySubstrate`, `nessy-spi`) is
     what ships on this branch; a JDBC adapter is the next piece of work,
     not part of it.
 
-## What the kernel deliberately leaves out
+## What the substrate deliberately leaves out
 
 - **No queue primitive.** A queue is documents plus `batch` plus polling,
   not a fourth shape. The property that matters — enqueueing atomically
   with a state flip — lives in `batch` already.
 - **No truncate, no TTL.** The journal is immutable truth. Retention is an
-  operations concern, not a kernel one.
+  operations concern, not a substrate one.
 - **No querying into payloads.** Reporting reads the database directly if
-  it must; the kernel contract stays string-in, string-out.
+  it must; the substrate contract stays string-in, string-out.
 
 ## Specified, not built: the outbox and the summary sidecar
 
@@ -194,7 +194,7 @@ sections as forward-looking design, not an API reference.
 
 ## Where next
 
-- [The Four Tiers](the-four-tiers.md) — where `ScopedStore` sits as the
+- [The Four Tiers](the-four-tiers.md) — where `Substrate` sits as the
   substrate tier's one storage face.
 - [Memory](memory.md) — the journal recipe in full, and why the transcript
   is never rewritten.

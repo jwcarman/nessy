@@ -36,7 +36,7 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /** Throwaway demo — not part of the suite's contract. Prints a whole turn. */
 class HarnessDemo {
@@ -46,8 +46,7 @@ class HarnessDemo {
     // ---- collaborators: plain construction, any order ----
     var pump = new PumpedExecutor();
     var memory = new RecordingMemory();
-    var store =
-        new StoredAgentStateStore(new InMemoryScopedStore(), "demo-scope", Clock.systemUTC());
+    var store = new StoredAgentStateStore(new InMemorySubstrate(), "demo-scope", Clock.systemUTC());
     var model = new ScriptedModelExecutor(pump, memory);
     var tools = new ScriptedToolExecutor(pump);
     Deque<String> queue = new ArrayDeque<>();

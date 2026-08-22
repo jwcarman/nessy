@@ -29,7 +29,7 @@ import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /** One fully-wired agent on a pump; the fixture is the test's vocabulary. */
 final class AgentFixture {
@@ -77,7 +77,7 @@ final class AgentFixture {
 
   AgentFixture() {
     this(
-        new StoredAgentStateStore(new InMemoryScopedStore(), "fixture-scope", Clock.systemUTC()),
+        new StoredAgentStateStore(new InMemorySubstrate(), "fixture-scope", Clock.systemUTC()),
         false);
   }
 }

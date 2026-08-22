@@ -22,11 +22,11 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.Backlog;
-import org.jwcarman.nessy.spi.store.ConflictException;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The {@code backlog} recipe (scoped-store spec §6.4): one document per scope, keyed by {@code
+ * The {@code backlog} recipe (substrate spec §6.4): one document per scope, keyed by {@code
  * agentId}, holding the pending observations as a plain JSON array of strings — no codec involved,
  * just Jackson. An absent document reads as an empty queue; the document is created lazily on the
  * first {@link #add(String)}. {@code add}/{@code poll} are read-mutate-CAS-retry loops; a full
@@ -37,11 +37,11 @@ public final class StoredBacklog implements Backlog<String> {
 
   private static final String KIND = "backlog";
 
-  private final ScopedStore store;
+  private final Substrate store;
   private final String agentId;
   private final int capacity;
 
-  public StoredBacklog(ScopedStore store, String agentId, int capacity) {
+  public StoredBacklog(Substrate store, String agentId, int capacity) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     if (capacity < 1) {
@@ -54,13 +54,13 @@ public final class StoredBacklog implements Backlog<String> {
   public void add(String observation) {
     Objects.requireNonNull(observation, "observation must not be null");
     while (true) {
-      Optional<ScopedStore.Document> doc = store.read(KIND, agentId);
+      Optional<Substrate.Document> doc = store.read(KIND, agentId);
       List<String> queue = doc.map(d -> readQueue(d.payload())).orElseGet(ArrayList::new);
       if (queue.size() >= capacity) {
         throw new IllegalStateException("backlog full (capacity " + capacity + ")");
       }
       queue.add(observation);
-      long expectedVersion = doc.map(ScopedStore.Document::version).orElse(0L);
+      long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
       try {
         store.write(KIND, agentId, writeQueue(queue), expectedVersion);
         return;
@@ -73,7 +73,7 @@ public final class StoredBacklog implements Backlog<String> {
   @Override
   public Optional<String> poll() {
     while (true) {
-      Optional<ScopedStore.Document> doc = store.read(KIND, agentId);
+      Optional<Substrate.Document> doc = store.read(KIND, agentId);
       if (doc.isEmpty()) {
         return Optional.empty();
       }

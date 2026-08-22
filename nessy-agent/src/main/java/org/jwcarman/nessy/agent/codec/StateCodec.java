@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 
 /**
- * Internal storage machinery: renders {@link Phase} to and from the JSON the string-payload storage
- * kernel persists as the {@code state} document's payload (spec §7). Not API vocabulary — the scope
- * version lives in the kernel's own document version (see the {@code state} recipe), not in this
- * payload.
+ * Internal storage machinery: renders {@link Phase} to and from the JSON the string-payload
+ * substrate persists as the {@code state} document's payload (spec §7). Not API vocabulary — the
+ * scope version lives in the substrate's own document version (see the {@code state} recipe), not
+ * in this payload.
  *
  * <p>Each phase carries a {@code "type"} discriminator naming it: {@code idle}, {@code
  * awaiting-model}, {@code awaiting-tools} — mirroring the {@code Schemas}/{@code SealedInputs}

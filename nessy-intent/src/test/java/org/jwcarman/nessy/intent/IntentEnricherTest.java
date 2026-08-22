@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class IntentEnricherTest {
 
@@ -33,7 +33,7 @@ class IntentEnricherTest {
   }
 
   private static StoredIntentStore<Intent> freshStore() {
-    return new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class);
+    return new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
   }
 
   @Test

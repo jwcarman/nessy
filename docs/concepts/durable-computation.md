@@ -67,7 +67,7 @@ public interface DurableComputationBackend {
 `DurableComputationBackend` is no longer an adapter SPI a database
 implements — it's the internal vocabulary the two desks speak.
 `StoredComputations` (`nessy-agent`) is its default and only shipped
-implementation: a recipe over [`ScopedStore`](storage.md), one document per
+implementation: a recipe over [`Substrate`](storage.md), one document per
 computation (`kind=computation`, `key=id.value()`) holding
 `{ status, outcome?, continuations[] }`. Every operation below is a
 read-decide-CAS-retry loop against that one document — the document's
@@ -281,5 +281,5 @@ never knew any instance died in the middle.
   place.
 - [The Four Tiers](the-four-tiers.md) — where the durable backend sits as
   the shared substrate beneath a host.
-- [Storage](storage.md) — the kernel `StoredComputations` is a recipe over,
+- [Storage](storage.md) — the substrate `StoredComputations` is a recipe over,
   and the `computation` document's shape.

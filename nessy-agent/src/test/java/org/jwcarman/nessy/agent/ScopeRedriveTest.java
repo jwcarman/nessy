@@ -53,7 +53,7 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /** The redrive door (spec §4.3 amendment): a poke that re-fires a scope's outstanding effects. */
 class ScopeRedriveTest {
@@ -101,9 +101,9 @@ class ScopeRedriveTest {
   void aFiredRedriveResolvesTheScopeAndRedispatchesItsOutstandingEffects() {
     var pump = new PumpedExecutor();
     var memory = new VerbatimMemory();
-    var kernel = new InMemoryScopedStore();
-    var store = new StoredAgentStateStore(kernel, "demo", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var store = new StoredAgentStateStore(substrate, "demo", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var narrator = new RecordingTurnObserver();
     var type = AgentType.of("approver");
     var id = AgentId.of("demo");

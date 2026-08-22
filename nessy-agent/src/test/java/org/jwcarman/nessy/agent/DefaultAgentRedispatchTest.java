@@ -31,7 +31,7 @@ import org.jwcarman.nessy.agent.support.RecordingAgentObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The redrive door's own short-circuits: an Idle scope narrates nothing, and a stalled model call
@@ -59,7 +59,7 @@ class DefaultAgentRedispatchTest {
 
   @Test
   void anIdleScopeNarratesNothingAndDispatchesNothingOnRedispatch() {
-    var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
+    var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
     var model = new CountingModelCallExecutor();
     var tools = new CountingToolCallExecutor();
     var observer = new RecordingAgentObserver();
@@ -84,7 +84,7 @@ class DefaultAgentRedispatchTest {
 
   @Test
   void anAwaitingModelScopeDispatchesNothingBecauseCallModelIsFilteredOut() {
-    var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
+    var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
     store.save(new State(new Phase.AwaitingModel(), store.load().version()));
     var model = new CountingModelCallExecutor();
     var tools = new CountingToolCallExecutor();

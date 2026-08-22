@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.store;
+package org.jwcarman.nessy.spi.substrate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -29,18 +29,18 @@ import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-class InMemoryScopedStoreTest {
+class InMemorySubstrateTest {
 
   @Nested
   class Documents {
 
     @Test
     void writeAtVersionZeroCreatesTheDocumentAtVersionOne() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "{\"phase\":\"idle\"}", 0L);
       assertThat(store.read("state", "agent-a"))
           .contains(
-              new ScopedStore.Document(
+              new Substrate.Document(
                   "{\"phase\":\"idle\"}",
                   1L,
                   store.read("state", "agent-a").orElseThrow().updatedAt()));
@@ -48,7 +48,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aMatchingCasWriteIncrementsTheVersionByOne() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v1", 0L);
       store.write("state", "agent-a", "v2", 1L);
       assertThat(store.read("state", "agent-a").orElseThrow().version()).isEqualTo(2L);
@@ -57,7 +57,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aCreateWriteAgainstAnAlreadyPresentDocumentThrowsConflict() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v1", 0L);
       assertThatThrownBy(() -> store.write("state", "agent-a", "v2", 0L))
           .isInstanceOf(ConflictException.class);
@@ -65,7 +65,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aStaleCasWriteThrowsConflict() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v1", 0L);
       assertThatThrownBy(() -> store.write("state", "agent-a", "v2", 5L))
           .isInstanceOf(ConflictException.class);
@@ -73,7 +73,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aStaleDeleteThrowsConflict() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v1", 0L);
       assertThatThrownBy(() -> store.delete("state", "agent-a", 5L))
           .isInstanceOf(ConflictException.class);
@@ -81,7 +81,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aMatchingDeleteRemovesTheDocument() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v1", 0L);
       store.delete("state", "agent-a", 1L);
       assertThat(store.read("state", "agent-a")).isEmpty();
@@ -89,14 +89,14 @@ class InMemoryScopedStoreTest {
 
     @Test
     void deletingAnAbsentDocumentAtVersionZeroIsANoOpSuccess() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.delete("state", "never-written", 0L);
       assertThat(store.read("state", "never-written")).isEmpty();
     }
 
     @Test
     void deletingAPresentDocumentAtVersionZeroThrowsConflict() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v1", 0L);
       assertThatThrownBy(() -> store.delete("state", "agent-a", 0L))
           .isInstanceOf(ConflictException.class);
@@ -104,13 +104,13 @@ class InMemoryScopedStoreTest {
 
     @Test
     void readingAnAbsentDocumentReturnsEmpty() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThat(store.read("state", "unknown-agent")).isEmpty();
     }
 
     @Test
     void keysComeBackInAscendingLexicographicOrderUpToTheLimit() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "charlie", "v", 0L);
       store.write("state", "alpha", "v", 0L);
       store.write("state", "bravo", "v", 0L);
@@ -119,7 +119,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void keysOnlyReportsTheRequestedKind() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v", 0L);
       store.write("memory", "agent-a", "v", 0L);
       assertThat(store.keys("state", 10)).containsExactly("agent-a");
@@ -127,13 +127,13 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aLimitBelowOneIsRejected() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThatThrownBy(() -> store.keys("state", 0)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void nullKindOnReadThrowsNpeWithAMessage() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThatThrownBy(() -> store.read(null, "agent-a"))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("kind");
@@ -141,7 +141,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void nullKeyOnWriteThrowsNpeWithAMessage() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThatThrownBy(() -> store.write("state", null, "v", 0L))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("key");
@@ -149,7 +149,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void nullPayloadOnWriteThrowsNpeWithAMessage() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThatThrownBy(() -> store.write("state", "agent-a", null, 0L))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("payload");
@@ -158,7 +158,7 @@ class InMemoryScopedStoreTest {
     @Test
     void updatedAtComesFromTheInjectedClock() {
       var fixed = Instant.parse("2026-08-21T12:00:00Z");
-      var store = new InMemoryScopedStore(Clock.fixed(fixed, ZoneOffset.UTC));
+      var store = new InMemorySubstrate(Clock.fixed(fixed, ZoneOffset.UTC));
       store.write("state", "agent-a", "v1", 0L);
       assertThat(store.read("state", "agent-a").orElseThrow().updatedAt()).isEqualTo(fixed);
     }
@@ -169,26 +169,26 @@ class InMemoryScopedStoreTest {
 
     @Test
     void appendAtSeqOneCreatesTheFirstEntry() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.append("memory", "agent-a", 1L, "first");
       assertThat(store.entries("memory", "agent-a", 1L))
-          .extracting(ScopedStore.Entry::payload)
+          .extracting(Substrate.Entry::payload)
           .containsExactly("first");
     }
 
     @Test
     void appendingAtHeadPlusOneAppendsAfterTheExistingEntry() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.append("memory", "agent-a", 1L, "first");
       store.append("memory", "agent-a", 2L, "second");
       assertThat(store.entries("memory", "agent-a", 1L))
-          .extracting(ScopedStore.Entry::payload)
+          .extracting(Substrate.Entry::payload)
           .containsExactly("first", "second");
     }
 
     @Test
     void appendingAtAnOccupiedSeqThrowsConflict() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.append("memory", "agent-a", 1L, "first");
       assertThatThrownBy(() -> store.append("memory", "agent-a", 1L, "replacement"))
           .isInstanceOf(ConflictException.class);
@@ -196,42 +196,42 @@ class InMemoryScopedStoreTest {
 
     @Test
     void appendingPastAGapIsNotItselfAConflict() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.append("memory", "agent-a", 1L, "first");
       store.append("memory", "agent-a", 5L, "farAhead");
       assertThat(store.entries("memory", "agent-a", 1L))
-          .extracting(ScopedStore.Entry::seq)
+          .extracting(Substrate.Entry::seq)
           .containsExactly(1L, 5L);
     }
 
     @Test
     void entriesFromSeqSlicesInclusively() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.append("memory", "agent-a", 1L, "one");
       store.append("memory", "agent-a", 2L, "two");
       store.append("memory", "agent-a", 3L, "three");
       assertThat(store.entries("memory", "agent-a", 2L))
-          .extracting(ScopedStore.Entry::payload)
+          .extracting(Substrate.Entry::payload)
           .containsExactly("two", "three");
     }
 
     @Test
     void entriesForAnUnknownKeyIsEmpty() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThat(store.entries("memory", "unknown-agent", 1L)).isEmpty();
     }
 
     @Test
     void appendedAtComesFromTheInjectedClock() {
       var fixed = Instant.parse("2026-08-21T12:00:00Z");
-      var store = new InMemoryScopedStore(Clock.fixed(fixed, ZoneOffset.UTC));
+      var store = new InMemorySubstrate(Clock.fixed(fixed, ZoneOffset.UTC));
       store.append("memory", "agent-a", 1L, "first");
       assertThat(store.entries("memory", "agent-a", 1L).getFirst().appendedAt()).isEqualTo(fixed);
     }
 
     @Test
     void nullPayloadOnAppendThrowsNpeWithAMessage() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThatThrownBy(() -> store.append("memory", "agent-a", 1L, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("payload");
@@ -243,25 +243,25 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aMixedShapeBatchAppliesEveryOpOnSuccess() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.batch(
           List.of(
-              new ScopedStore.Op.WriteDocument("state", "agent-a", "v1", 0L),
-              new ScopedStore.Op.AppendEntry("memory", "agent-a", 1L, "hello")));
+              new Substrate.Op.WriteDocument("state", "agent-a", "v1", 0L),
+              new Substrate.Op.AppendEntry("memory", "agent-a", 1L, "hello")));
       assertThat(store.read("state", "agent-a").orElseThrow().payload()).isEqualTo("v1");
       assertThat(store.entries("memory", "agent-a", 1L))
-          .extracting(ScopedStore.Entry::payload)
+          .extracting(Substrate.Entry::payload)
           .containsExactly("hello");
     }
 
     @Test
     void aBatchWithOneStaleOpAppliesNothing() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "original", 0L);
-      List<ScopedStore.Op> ops =
+      List<Substrate.Op> ops =
           List.of(
-              new ScopedStore.Op.AppendEntry("memory", "agent-a", 1L, "hello"),
-              new ScopedStore.Op.WriteDocument("state", "agent-a", "stale", 99L));
+              new Substrate.Op.AppendEntry("memory", "agent-a", 1L, "hello"),
+              new Substrate.Op.WriteDocument("state", "agent-a", "stale", 99L));
 
       assertThatThrownBy(() -> store.batch(ops)).isInstanceOf(ConflictException.class);
 
@@ -271,15 +271,15 @@ class InMemoryScopedStoreTest {
 
     @Test
     void aBatchDeleteRemovesTheDocument() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v1", 0L);
-      store.batch(List.of(new ScopedStore.Op.DeleteDocument("state", "agent-a", 1L)));
+      store.batch(List.of(new Substrate.Op.DeleteDocument("state", "agent-a", 1L)));
       assertThat(store.read("state", "agent-a")).isEmpty();
     }
 
     @Test
     void nullOpsThrowsNpeWithAMessage() {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       assertThatThrownBy(() -> store.batch(null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("ops");
@@ -291,7 +291,7 @@ class InMemoryScopedStoreTest {
 
     @Test
     void racingCasWritersProduceExactlyOneWinnerPerRound() throws Exception {
-      var store = new InMemoryScopedStore();
+      var store = new InMemorySubstrate();
       store.write("state", "agent-a", "v0", 0L);
       int racers = 16;
       List<Callable<Boolean>> attempts = new ArrayList<>();

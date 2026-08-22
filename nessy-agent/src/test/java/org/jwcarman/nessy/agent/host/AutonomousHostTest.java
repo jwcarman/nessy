@@ -39,8 +39,8 @@ import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.model.ModelRequest;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class AutonomousHostTest {
 
@@ -149,7 +149,7 @@ class AutonomousHostTest {
     var pump = new PumpedExecutor();
     var provider =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
-    var kernel = new InMemoryScopedStore();
+    var substrate = new InMemorySubstrate();
     TurnObserver throwing =
         event -> {
           if (event instanceof TurnEvent.AssistantSaid) {
@@ -162,14 +162,14 @@ class AutonomousHostTest {
             .provider(provider)
             .settings(TestSettings.settings())
             .executor(pump)
-            .store(kernel)
+            .substrate(substrate)
             .turnObserver(throwing)
             .build();
 
     host.post("scope-1", "hello");
     pump.pumpUntilQuiet();
 
-    var scopeOneState = new StoredAgentStateStore(kernel, "scope-1", Clock.systemUTC());
+    var scopeOneState = new StoredAgentStateStore(substrate, "scope-1", Clock.systemUTC());
     assertThat(scopeOneState.load().phase()).isEqualTo(new Phase.Idle());
   }
 
@@ -210,12 +210,12 @@ class AutonomousHostTest {
   /**
    * F3: two {@code build()} calls from the SAME builder don't leak history between hosts. Memory
    * independence is read straight off the model requests (the default {@code memoryFactory} is left
-   * untouched); store independence is read off two distinct {@link ScopedStore}s installed through
-   * the builder's one storage seam, {@link
-   * org.jwcarman.nessy.agent.host.Nessy.AutonomousBuilder#store} — {@code storeFactory} is gone
-   * (spec §12), so the seam that gives an honest window onto otherwise-opaque store state is now
-   * {@code store} itself — and this pins that a second host's first delivery to a scope starts from
-   * a fresh, unadvanced version, not one built on top of the first host's saves.
+   * untouched); substrate independence is read off two distinct {@link Substrate}s installed
+   * through the builder's one storage seam, {@link
+   * org.jwcarman.nessy.agent.host.Nessy.AutonomousBuilder#substrate} — {@code storeFactory} is gone
+   * (spec §12), so the seam that gives an honest window onto otherwise-opaque substrate state is
+   * now {@code substrate} itself — and this pins that a second host's first delivery to a scope
+   * starts from a fresh, unadvanced version, not one built on top of the first host's saves.
    */
   @Test
   void twoBuildCallsFromOneBuilderWithDistinctStoresDoNotLeakHistory() {
@@ -227,15 +227,15 @@ class AutonomousHostTest {
 
     var builder = Nessy.autonomous().provider(provider).settings(TestSettings.settings());
 
-    var kernelOne = new InMemoryScopedStore();
+    var substrateOne = new InMemorySubstrate();
     var pumpOne = new PumpedExecutor();
-    var hostOne = builder.executor(pumpOne).store(kernelOne).build();
+    var hostOne = builder.executor(pumpOne).substrate(substrateOne).build();
     hostOne.post("shared-scope", "message one");
     pumpOne.pumpUntilQuiet();
 
-    var kernelTwo = new InMemoryScopedStore();
+    var substrateTwo = new InMemorySubstrate();
     var pumpTwo = new PumpedExecutor();
-    var hostTwo = builder.executor(pumpTwo).store(kernelTwo).build();
+    var hostTwo = builder.executor(pumpTwo).substrate(substrateTwo).build();
     hostTwo.post("shared-scope", "message two");
     pumpTwo.pumpUntilQuiet();
 
@@ -246,8 +246,8 @@ class AutonomousHostTest {
         .isNotEmpty()
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
 
-    var stateOne = new StoredAgentStateStore(kernelOne, "shared-scope", Clock.systemUTC());
-    var stateTwo = new StoredAgentStateStore(kernelTwo, "shared-scope", Clock.systemUTC());
+    var stateOne = new StoredAgentStateStore(substrateOne, "shared-scope", Clock.systemUTC());
+    var stateTwo = new StoredAgentStateStore(substrateTwo, "shared-scope", Clock.systemUTC());
     long versionAfterHostOnesTurn = stateOne.load().version();
     long versionAfterHostTwosTurn = stateTwo.load().version();
     assertThat(versionAfterHostTwosTurn)
@@ -305,30 +305,30 @@ class AutonomousHostTest {
   }
 
   /**
-   * The storage-kernel reform's whole point (spec §12): durability lives in the {@link
-   * ScopedStore}, not in any object graph the builder happens to wire together. Neither {@code
-   * memoryFactory} nor {@code storeFactory} is overridden here — the host uses its default {@code
-   * id -> new StoredMemory(store, id)} recipe over the one {@link #store} this test supplies — so
-   * the only thing tying the two deliveries together is the shared {@link ScopedStore}. Proof is
-   * read back through a SECOND, independently-constructed {@code StoredMemory} over that same
-   * store: a fresh recipe instance, never touched by the host, still recalls both turns.
+   * The substrate reform's whole point (spec §12): durability lives in the {@link Substrate}, not
+   * in any object graph the builder happens to wire together. Neither {@code memoryFactory} nor
+   * {@code storeFactory} is overridden here — the host uses its default {@code id -> new
+   * StoredMemory(substrate, id)} recipe over the one substrate this test supplies — so the only
+   * thing tying the two deliveries together is the shared {@link Substrate}. Proof is read back
+   * through a SECOND, independently-constructed {@code StoredMemory} over that same substrate: a
+   * fresh recipe instance, never touched by the host, still recalls both turns.
    */
   @Test
-  void twoDeliveriesToTheSameAgentShareOneScopedStoreProvenByASecondMemoryBinding() {
+  void twoDeliveriesToTheSameAgentShareOneSubstrateProvenByASecondMemoryBinding() {
     var pump = new PumpedExecutor();
     var provider =
         new ScriptedModelProvider(
             List.of(
                 List.of(new ModelEvent.TextChunk("first reply")),
                 List.of(new ModelEvent.TextChunk("second reply"))));
-    var kernel = new InMemoryScopedStore();
+    var substrate = new InMemorySubstrate();
 
     var host =
         Nessy.autonomous()
             .provider(provider)
             .settings(TestSettings.settings())
             .executor(pump)
-            .store(kernel)
+            .substrate(substrate)
             .build();
 
     host.post("scope-1", "first message");
@@ -336,9 +336,9 @@ class AutonomousHostTest {
     host.post("scope-1", "second message");
     pump.pumpUntilQuiet();
 
-    // a fresh recipe instance the host never held a reference to — the store, not the object
+    // a fresh recipe instance the host never held a reference to — the substrate, not the object
     // graph, is what makes this see both turns
-    var secondBindingOverTheSameStore = new StoredMemory(kernel, "scope-1");
+    var secondBindingOverTheSameStore = new StoredMemory(substrate, "scope-1");
     List<Message> messages = secondBindingOverTheSameStore.recall().messages();
     assertThat(messages)
         .isNotEmpty()
@@ -350,14 +350,14 @@ class AutonomousHostTest {
 
   /**
    * The branch's headline claim, proven with two entirely separate hosts rather than two builds
-   * from one builder: durability lives in the {@link ScopedStore} itself, so a second host — built
+   * from one builder: durability lives in the {@link Substrate} itself, so a second host — built
    * later, from its own builder, knowing nothing about the first — still inherits the first host's
-   * turn the moment it's pointed at the same kernel. The proof rides the model request host B's own
-   * provider recorded: its context carries host A's turn.
+   * turn the moment it's pointed at the same substrate. The proof rides the model request host B's
+   * own provider recorded: its context carries host A's turn.
    */
   @Test
-  void aSecondHostBuiltOverTheSameKernelInheritsTheFirstHostsTurn() {
-    var kernel = new InMemoryScopedStore();
+  void aSecondHostBuiltOverTheSameSubstrateInheritsTheFirstHostsTurn() {
+    var substrate = new InMemorySubstrate();
 
     var pumpA = new PumpedExecutor();
     var providerA =
@@ -367,7 +367,7 @@ class AutonomousHostTest {
             .provider(providerA)
             .settings(TestSettings.settings())
             .executor(pumpA)
-            .store(kernel)
+            .substrate(substrate)
             .build();
     hostA.post("shared-scope", "message one");
     pumpA.pumpUntilQuiet();
@@ -380,7 +380,7 @@ class AutonomousHostTest {
             .provider(providerB)
             .settings(TestSettings.settings())
             .executor(pumpB)
-            .store(kernel)
+            .substrate(substrate)
             .build();
     hostB.post("shared-scope", "message two");
     pumpB.pumpUntilQuiet();

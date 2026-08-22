@@ -76,13 +76,13 @@ weigh, not the enricher's failure to report.
 
 `StoredIntentStore<T>` is the shipped implementation: one document per
 scope, `kind=intent`, written by a read-then-CAS retry loop over
-[`ScopedStore`](storage.md) — the same document the scope's state and
-backlog already live in, on the same kernel. Build one directly against
+[`Substrate`](storage.md) — the same document the scope's state and
+backlog already live in, on the same substrate. Build one directly against
 whatever store the host is using:
 
 ```java
-var kernel = new InMemoryScopedStore();
-var intentStore = new StoredIntentStore<>(kernel, "prod-eu", OpsIntent.class);
+var substrate = new InMemorySubstrate();
+var intentStore = new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class);
 ```
 
 ## `requireDeclared` — the teaching loop
@@ -163,5 +163,5 @@ one on the shape of the declaration, one on its content.
   `IntentTool` rides for free.
 - [Agent as Scope](agent-as-scope.md) — how a tool call, denied or
   approved, fits into the phase transition that carries a turn forward.
-- [Storage](storage.md) — the kernel `StoredIntentStore` rides, and why
+- [Storage](storage.md) — the substrate `StoredIntentStore` rides, and why
   `intent` is a reserved document kind.

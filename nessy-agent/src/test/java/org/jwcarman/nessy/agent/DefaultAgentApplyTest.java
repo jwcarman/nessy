@@ -38,7 +38,7 @@ import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class DefaultAgentApplyTest {
 
@@ -128,7 +128,7 @@ class DefaultAgentApplyTest {
   void aCompletionThatLosesTheRaceIsReHandledAgainstFreshState() {
     // Seed a store mid-fan-out: AwaitingTools{a,b}, and let a competitor apply a's result
     // out-of-band just before b's save — computed with the pure machine, no threads needed.
-    var inner = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
+    var inner = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
     var turn =
         Message.assistant(
             List.<ContentBlock>of(new ToolUseBlock(CALL_A, null), new ToolUseBlock(CALL_B, null)));
@@ -171,7 +171,7 @@ class DefaultAgentApplyTest {
 
   @Test
   void theStateIsSavedBeforeAnyEffectIsDispatched() {
-    var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent", Clock.systemUTC());
+    var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent", Clock.systemUTC());
     var versionsAtCall = new ArrayList<Long>();
     var queue = new ArrayDeque<String>();
     Backlog<String> backlog =

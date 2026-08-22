@@ -59,7 +59,7 @@ import org.jwcarman.nessy.intent.IntentTool;
 import org.jwcarman.nessy.intent.StoredIntentStore;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The flagship (action-wave spec §3 and §7): the model declares its intent before it acts, then
@@ -142,12 +142,12 @@ class GovernedTurnDemo {
   @Test
   void theModelDeclaresIntentThenTheRiskyRestartParksForApprovalAndCompletes() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", Intent.class);
+    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", Intent.class);
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -164,7 +164,7 @@ class GovernedTurnDemo {
                 ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -222,12 +222,12 @@ class GovernedTurnDemo {
   @Test
   void aVeryHighSeverityIsDeniedInBandBeforeAnyApproverIsAsked() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", Intent.class);
+    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", Intent.class);
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -244,7 +244,7 @@ class GovernedTurnDemo {
                 ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -270,11 +270,11 @@ class GovernedTurnDemo {
   @Test
   void withNoRiskAssessorWiredTheThresholdFailsClosed() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", Intent.class);
+    var intentStore = new StoredIntentStore<>(substrate, "prod-eu", Intent.class);
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -292,7 +292,7 @@ class GovernedTurnDemo {
                 restartGrant(
                     List.of(new IntentEnricher(intentStore), Enrichers.principal(() -> "jcarman"))))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)

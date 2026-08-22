@@ -23,13 +23,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.tool.SealedInputs;
-import org.jwcarman.nessy.spi.store.ConflictException;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The {@code intent} recipe (scoped-store spec §6.3): one document per scope, keyed by {@code
+ * The {@code intent} recipe (substrate spec §6.3): one document per scope, keyed by {@code
  * agentId}, holding the latest declaration — last write wins via a read-then-CAS retry loop, the
- * same read-decide-CAS shape the kernel's other recipes ride.
+ * same read-decide-CAS shape the substrate's other recipes ride.
  *
  * <p>The stored payload rides the same discriminator convention {@link IntentTool} binds sealed
  * vocabularies through ({@link SealedInputs}): a sealed vocabulary's declaration is rendered with a
@@ -45,11 +45,11 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
   private static final ObjectMapper MAPPER =
       new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
-  private final ScopedStore store;
+  private final Substrate store;
   private final String agentId;
   private final Class<T> vocabulary;
 
-  public StoredIntentStore(ScopedStore store, String agentId, Class<T> vocabulary) {
+  public StoredIntentStore(Substrate store, String agentId, Class<T> vocabulary) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.vocabulary = Objects.requireNonNull(vocabulary, "vocabulary must not be null");
@@ -60,8 +60,8 @@ public final class StoredIntentStore<T> implements IntentStore<T> {
     Objects.requireNonNull(declaration, "declaration must not be null");
     String payload = toJson(declaration);
     while (true) {
-      Optional<ScopedStore.Document> doc = store.read(KIND, agentId);
-      long expectedVersion = doc.map(ScopedStore.Document::version).orElse(0L);
+      Optional<Substrate.Document> doc = store.read(KIND, agentId);
+      long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
       try {
         store.write(KIND, agentId, payload, expectedVersion);
         return;

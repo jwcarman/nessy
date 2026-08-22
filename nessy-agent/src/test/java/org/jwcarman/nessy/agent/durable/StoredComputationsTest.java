@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.SlotDocument;
-import org.jwcarman.nessy.agent.support.RaceOnceOnWriteStore;
+import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.AwaitResult;
 import org.jwcarman.nessy.durable.CompletionResult;
@@ -35,15 +35,15 @@ import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.Outcome;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class StoredComputationsTest {
 
   private static final ComputationId ID = ComputationId.of("tool:t:a:c1");
   private static final Continuation RESUME = new Continuation("RESUME_SCOPE", "{\"x\":1}");
 
-  private final ScopedStore store = new InMemoryScopedStore();
+  private final Substrate store = new InMemorySubstrate();
   private final StoredComputations computations = new StoredComputations(store);
 
   @Nested
@@ -279,7 +279,7 @@ class StoredComputationsTest {
       String competitorPayload =
           OutcomeCodec.toJson(
               new SlotDocument(ComputationStatus.FAILED, competitorOutcome, List.of()));
-      var raced = new StoredComputations(new RaceOnceOnWriteStore(store, competitorPayload));
+      var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
 
       CompletionResult result = raced.complete(ID, new Outcome.Success(ToolResult.ok("mine")));
 
@@ -293,7 +293,7 @@ class StoredComputationsTest {
       var id = ComputationId.of("tool:t:a:ruling-six-race");
       String competitorPayload =
           OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
-      var raced = new StoredComputations(new RaceOnceOnWriteStore(store, competitorPayload));
+      var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
 
       CompletionResult result = raced.complete(id, new Outcome.Success(ToolResult.ok("mine")));
 
@@ -307,7 +307,7 @@ class StoredComputationsTest {
       var other = new Continuation("OTHER", "{}");
       String competitorPayload =
           OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of(other)));
-      var raced = new StoredComputations(new RaceOnceOnWriteStore(store, competitorPayload));
+      var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
 
       AwaitResult result = raced.await(ID, RESUME);
 

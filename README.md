@@ -88,8 +88,8 @@ try (AutonomousHost host =
         .provider(provider)
         .settings(settings)
         .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-        // The default store is a fresh InMemoryScopedStore — durable only for this
-        // process's lifetime. Supply .store(ScopedStore) with a durable implementation
+        // The default substrate is a fresh InMemorySubstrate — durable only for this
+        // process's lifetime. Supply .substrate(Substrate) with a durable implementation
         // in production so a suspended approval survives a restart.
         .approvalNotifier(pending::add)
         .build()) {
@@ -107,22 +107,22 @@ approval, the call suspends on a durable slot and `approvalNotifier` fires
 once with the `ApprovalRequest` — `request.address().approval()` is the slot
 id `host.approvals().approve(...)`/`.deny(..., reason)` decides. Nothing here
 holds a thread open waiting; whether the slot outlives a restart of the
-process that opened it depends entirely on the `ScopedStore` behind
-`.store(...)` — the in-memory default does not, a durable implementation
+process that opened it depends entirely on the `Substrate` behind
+`.substrate(...)` — the in-memory default does not, a durable implementation
 does. See
 [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/) on
 the docs site for the rest of the walkthrough, and
 [Storage](https://jwcarman.github.io/nessy/concepts/storage/) for the
-kernel underneath every store.
+substrate underneath every store.
 
 Under both front doors, an agent is assembled in four tiers: a **substrate**
-holds the durable state — one `ScopedStore` (in-memory here, JDBC or another
+holds the durable state — one `Substrate` (in-memory here, JDBC or another
 durable backend in production) — and can be shared across many hosts; a
 **host** is one process's assembly around a substrate — the doors, desks,
 and dispatcher shown above; a **harness** is a recipe compiled once per
 agent type, holding the model-call and tool-call machinery; and a
 **binding** straps one scope's id to that harness for the length of a
-single delivery. `.store(ScopedStore)`, and the `memoryFactory` override
+single delivery. `.substrate(Substrate)`, and the `memoryFactory` override
 that rides it, each hand back a view over the shared substrate rather than
 fresh state, which is what makes a scope's history survive from one
 delivery to the next.
@@ -167,7 +167,7 @@ actually needs:
 ```
 
 Tool, policy, and enricher authors compile against `nessy-api` alone; adapter
-authors — a custom `Memory`, `ScopedStore`, or approver — add `nessy-spi`; an
+authors — a custom `Memory`, `Substrate`, or approver — add `nessy-spi`; an
 application just building an agent depends on `nessy-agent`, which pulls both
 in. The declared-intent claim channel is its own artifact, `nessy-intent`,
 for applications that want it.
@@ -186,7 +186,7 @@ for applications that want it.
     <artifactId>nessy-api</artifactId>
   </dependency>
 
-  <!-- Outsider seams: the model provider SPI, Memory, ScopedStore, the approver trio. -->
+  <!-- Outsider seams: the model provider SPI, Memory, Substrate, the approver trio. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-spi</artifactId>

@@ -343,14 +343,14 @@ sequence of renames and interim shapes that produced it.
   one, matching the posture `CliBuilder` has always had: `AssistantSaid` and
   `TurnEnded` narrate on the turn observer without extra wiring. A
   caller-supplied `.agentObserver(...)` still replaces the wiring wholesale.
-- **The storage kernel: `ScopedStore` (scoped-store design).** Every store
-  in Nessy collapses onto one interface, `org.jwcarman.nessy.spi.store`
+- **The substrate: `Substrate` (substrate design).** Every store
+  in Nessy collapses onto one interface, `org.jwcarman.nessy.spi.substrate`
   (`nessy-spi`): documents (mutable current-truth, `read`/`write`/`delete`/
   `keys`, CAS-addressed by `(kind, key)`), a journal (immutable history,
   `append`/`entries`, addressed by `(kind, key, seq)`), and one atomic
   `batch` across both. `ConflictException` is the single conflict signal;
-  `InMemoryScopedStore` is the reference substrate, shipped in `nessy-spi`
-  alongside the contract. Four kernel recipes replace the old per-concern
+  `InMemorySubstrate` is the reference substrate, shipped in `nessy-spi`
+  alongside the contract. Four substrate recipes replace the old per-concern
   substrates and SPIs: `StoredAgentStateStore` (`kind=state`, the document
   version *is* the scope version), `StoredMemory` (`kind=memory`, a journal,
   one entry per message, never rewritten), `StoredBacklog` (`kind=backlog`,
@@ -362,8 +362,8 @@ sequence of renames and interim shapes that produced it.
   `InMemoryBacklogSubstrate`, `InMemoryAgentStateStore`,
   `InMemoryIntentStore`, `InMemoryDurableComputationBackend`, and the
   builder's `storeFactory` seam are all deleted. `Nessy.autonomous()` gets
-  one new storage seam, `.store(ScopedStore)` (default a fresh
-  `InMemoryScopedStore`); `.memoryFactory(...)` and `.backend(...)` survive
+  one new storage seam, `.substrate(Substrate)` (default a fresh
+  `InMemorySubstrate`); `.memoryFactory(...)` and `.backend(...)` survive
   as override seams over it. A JDBC adapter is two tables
   (`nessy_document`, `nessy_journal`) and is not part of this change — the
   outbox (`kind=outbox`) and a summarization sidecar (`kind=summary`) are

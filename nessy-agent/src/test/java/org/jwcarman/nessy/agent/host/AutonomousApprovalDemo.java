@@ -45,7 +45,7 @@ import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The flagship (the-doors plan, Task 9): an autonomous agent asks to restart prod, the policy says
@@ -92,9 +92,9 @@ class AutonomousApprovalDemo {
   @Test
   void anApprovalParksTheTurnAndTheDeskResumesIt() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
@@ -114,7 +114,7 @@ class AutonomousApprovalDemo {
             .grants(
                 ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)
@@ -157,9 +157,9 @@ class AutonomousApprovalDemo {
   @Test
   void aDenialArrivesInBandAndTheModelReacts() {
     var pump = new PumpedExecutor();
-    var kernel = new InMemoryScopedStore();
-    var prodEuState = new StoredAgentStateStore(kernel, "prod-eu", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var prodEuState = new StoredAgentStateStore(substrate, "prod-eu", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
@@ -179,7 +179,7 @@ class AutonomousApprovalDemo {
             .grants(
                 ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
             .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .store(kernel)
+            .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
             .executor(pump)

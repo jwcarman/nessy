@@ -53,7 +53,7 @@ conversation cadence. `Nessy.cli()` uses one of these per scope by default.
 A single `VerbatimMemory` is one scope's history, held in a Java list.
 `StoredMemory` is the shape a host's `memoryFactory` reaches for once more
 than one scope needs to persist: a recipe over
-[`ScopedStore`](storage.md), `kind=memory`, one journal per scope, **one
+[`Substrate`](storage.md), `kind=memory`, one journal per scope, **one
 entry per message**:
 
 ```java
@@ -68,20 +68,20 @@ another writer took that sequence first, so it re-reads the head and
 retries — near-zero in practice, since the scope's own state CAS already
 serializes turns. `recall` reads every entry from seq 1 and folds it back
 into a `Context`. **The journal is never rewritten**: there is no update,
-no delete, and no truncate operation on it anywhere in `ScopedStore` — a
+no delete, and no truncate operation on it anywhere in `Substrate` — a
 transcript only ever grows.
 
 Two views built over the same shared store observe each other's writes;
 losing one loses nothing. See [The Four Tiers](the-four-tiers.md) for the
 general shape and the MUST-return-views contract a memory factory has to
-honor, and [Storage](storage.md) for the kernel `StoredMemory` rides.
+honor, and [Storage](storage.md) for the substrate `StoredMemory` rides.
 
 !!! note "Single-node by construction, not a durable substrate on its own"
-    `InMemoryScopedStore` grows by one entry per distinct `(kind, key)`
+    `InMemorySubstrate` grows by one entry per distinct `(kind, key)`
     ever touched and never evicts. That is a deliberate posture for the
-    reference substrate, not an oversight — a durable `ScopedStore` (JDBC
+    reference substrate, not an oversight — a durable `Substrate` (JDBC
     or another backend) is what a production deployment supplies through
-    `.store(...)` instead.
+    `.substrate(...)` instead.
 
 ## What "the memory owns history" means for a model call
 
@@ -117,7 +117,7 @@ exist at once, one riding the effect and one living in memory. Instead:
   reaches `Memory.remember` in the decide-commit-save-dispatch order.
 - [The Four Tiers](the-four-tiers.md) — substrates, views, and the
   MUST-return-views contract a `memoryFactory` has to honor.
-- [Storage](storage.md) — the kernel `StoredMemory` rides, and why
+- [Storage](storage.md) — the substrate `StoredMemory` rides, and why
   `memory` is a reserved journal kind.
 - [Getting Started](../guides/getting-started.md) — the CLI door and its
   default `VerbatimMemory`.

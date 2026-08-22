@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.store;
+package org.jwcarman.nessy.spi.substrate;
 
 /**
- * A {@link ScopedStore} mutation's CAS or sequence expectation was not met (spec §4.1–§4.3). The
- * only conflict signal the kernel raises: document write/delete, journal append, and batch all
- * throw this one exception, naming the {@code kind}/{@code key} at issue and what was expected
- * versus what was actually stored.
+ * A {@link Substrate} mutation's CAS or sequence expectation was not met (spec §4.1–§4.3). The only
+ * conflict signal the substrate raises: document write/delete, journal append, and batch all throw
+ * this one exception, naming the {@code kind}/{@code key} at issue and what was expected versus
+ * what was actually stored.
  */
 public final class ConflictException extends RuntimeException {
 

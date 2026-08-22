@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.support.TestClock;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class StoredAgentStateStoreTest {
 
@@ -34,20 +34,20 @@ class StoredAgentStateStoreTest {
 
     @Test
     void aFreshScopeLoadsTheInitialState() {
-      var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent-a", fixedClock());
+      var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent-a", fixedClock());
       assertThat(store.load()).isEqualTo(State.initial());
     }
 
     @Test
     void aSavedPhaseRoundTripsThroughTheKernel() {
-      var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent-a", fixedClock());
+      var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent-a", fixedClock());
       store.save(new State(new Phase.AwaitingModel(), store.load().version()));
       assertThat(store.load()).isEqualTo(new State(new Phase.AwaitingModel(), 1L));
     }
 
     @Test
     void repeatedSavesAdvanceTheVersionByExactlyOne() {
-      var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent-a", fixedClock());
+      var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent-a", fixedClock());
       store.save(new State(new Phase.AwaitingModel(), 0L));
       store.save(new State(new Phase.Idle(), 1L));
       assertThat(store.load()).isEqualTo(new State(new Phase.Idle(), 2L));
@@ -59,7 +59,7 @@ class StoredAgentStateStoreTest {
 
     @Test
     void aSaveAgainstAStaleVersionThrowsStaleStateException() {
-      var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent-a", fixedClock());
+      var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent-a", fixedClock());
       store.save(new State(new Phase.AwaitingModel(), 0L)); // stored version is now 1
       var stale = new State(new Phase.Idle(), 0L);
 
@@ -68,7 +68,7 @@ class StoredAgentStateStoreTest {
 
     @Test
     void aStaleSaveCarriesBothTheExpectedAndTheActualVersion() {
-      var store = new StoredAgentStateStore(new InMemoryScopedStore(), "agent-a", fixedClock());
+      var store = new StoredAgentStateStore(new InMemorySubstrate(), "agent-a", fixedClock());
       store.save(new State(new Phase.AwaitingModel(), 0L)); // stored version is now 1
       var stale = new State(new Phase.Idle(), 0L);
 
@@ -86,7 +86,7 @@ class StoredAgentStateStoreTest {
     void aNeverSavedScopeReportsTheInstantTheStoreWasConstructed() {
       var birth = Instant.parse("2026-08-21T09:00:00Z");
       var store =
-          new StoredAgentStateStore(new InMemoryScopedStore(), "agent-a", new TestClock(birth));
+          new StoredAgentStateStore(new InMemorySubstrate(), "agent-a", new TestClock(birth));
       assertThat(store.lastSaved()).isEqualTo(birth);
     }
 
@@ -95,7 +95,7 @@ class StoredAgentStateStoreTest {
       var savedAt = Instant.parse("2026-08-21T09:05:00Z");
       var store =
           new StoredAgentStateStore(
-              new InMemoryScopedStore(new TestClock(savedAt)), "agent-a", fixedClock());
+              new InMemorySubstrate(new TestClock(savedAt)), "agent-a", fixedClock());
       store.save(new State(new Phase.AwaitingModel(), 0L));
       assertThat(store.lastSaved()).isEqualTo(savedAt);
     }

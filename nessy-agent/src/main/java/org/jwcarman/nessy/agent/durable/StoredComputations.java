@@ -28,27 +28,27 @@ import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.CreateResult;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
-import org.jwcarman.nessy.spi.store.ConflictException;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The {@code computation} recipe (scoped-store spec §6.5): one document per computation, {@code
+ * The {@code computation} recipe (substrate spec §6.5): one document per computation, {@code
  * kind=computation}, {@code key=id.value()}, holding {@code {status, outcome?, continuations[]}}.
  * The durable spec's semantic law (one flip §10, atomic await §12, idempotent completion §23,
- * ruling 6) maps onto the kernel's CAS: every mutation is read-decide-CAS, and a lost race retries
- * the whole decision — the document version is the row lock the reference in-memory backend played
- * with a monitor.
+ * ruling 6) maps onto the substrate's CAS: every mutation is read-decide-CAS, and a lost race
+ * retries the whole decision — the document version is the row lock the reference in-memory backend
+ * played with a monitor.
  *
- * <p>{@code DurableComputationBackend} is no longer an adapter SPI (scoped-store spec §6.5); this
- * is its default and only shipped implementation. {@link OutcomeCodec} renders the payloads.
+ * <p>{@code DurableComputationBackend} is no longer an adapter SPI (substrate spec §6.5); this is
+ * its default and only shipped implementation. {@link OutcomeCodec} renders the payloads.
  */
 public final class StoredComputations implements DurableComputationBackend {
 
   private static final String KIND = "computation";
 
-  private final ScopedStore store;
+  private final Substrate store;
 
-  public StoredComputations(ScopedStore store) {
+  public StoredComputations(Substrate store) {
     this.store = Objects.requireNonNull(store, "store must not be null");
   }
 
@@ -69,7 +69,7 @@ public final class StoredComputations implements DurableComputationBackend {
   public AwaitResult await(ComputationId id, Continuation continuation) {
     Objects.requireNonNull(continuation, "continuation must not be null");
     while (true) {
-      ScopedStore.Document doc = requiredDocument(id);
+      Substrate.Document doc = requiredDocument(id);
       SlotDocument slot = OutcomeCodec.document(doc.payload());
       if (slot.status() != ComputationStatus.PENDING) {
         return new AwaitResult.AlreadyCompleted(slot.outcome());
@@ -100,7 +100,7 @@ public final class StoredComputations implements DurableComputationBackend {
     String createPayload =
         OutcomeCodec.toJson(new SlotDocument(terminalStatus, outcome, List.of()));
     while (true) {
-      Optional<ScopedStore.Document> doc = store.read(KIND, id.value());
+      Optional<Substrate.Document> doc = store.read(KIND, id.value());
       if (doc.isEmpty()) {
         // Ruling 6: completion creates the slot when it must — one flip, at birth.
         try {
@@ -136,7 +136,7 @@ public final class StoredComputations implements DurableComputationBackend {
     return OutcomeCodec.document(requiredDocument(id).payload()).continuations();
   }
 
-  private ScopedStore.Document requiredDocument(ComputationId id) {
+  private Substrate.Document requiredDocument(ComputationId id) {
     Objects.requireNonNull(id, "id must not be null");
     return store
         .read(KIND, id.value())

@@ -97,8 +97,8 @@ immediately. If `RestartTool`'s grant requires approval, the call suspends
 on a durable slot and `approvalNotifier` fires once with the
 `ApprovalRequest` that `host.approvals().approve(...)` or `.deny(...)`
 decides. Whether that slot survives a restart of the process that opened it
-depends on the `ScopedStore` behind `.store(...)` — the default in-memory
-kernel does not, a durable implementation does. See
+depends on the `Substrate` behind `.substrate(...)` — the default in-memory
+substrate does not, a durable implementation does. See
 [Storage](concepts/storage.md).
 
 See [Getting Started](guides/getting-started.md) for the CLI door walked
@@ -112,8 +112,8 @@ Five modules, each with a persona in mind:
 |---|---|---|
 | `nessy-durable` | — | the durable-computation primitive everything else builds on |
 | `nessy-api` | `nessy-durable` | tool, policy, and enricher authors — the shared vocabulary: `Tool`, `ToolGrant`, messages, the authorization grammar |
-| `nessy-spi` | `nessy-api` | adapter authors — a custom `Memory`, approver, or `ScopedStore` implementation |
-| `nessy-agent` | `nessy-api`, `nessy-spi` | application builders — the machine, both host doors, and the shipped kit (`VerbatimMemory`, `InMemoryScopedStore`, the storage recipes) |
+| `nessy-spi` | `nessy-api` | adapter authors — a custom `Memory`, approver, or `Substrate` implementation |
+| `nessy-agent` | `nessy-api`, `nessy-spi` | application builders — the machine, both host doors, and the shipped kit (`VerbatimMemory`, `InMemorySubstrate`, the storage recipes) |
 | `nessy-intent` | `nessy-api`, `nessy-spi` | applications that want the declared-intent claim channel — `IntentTool`, `IntentStore`, `IntentEnricher` |
 
 A model provider module (`nessy-model-anthropic`, `nessy-model-openai`,
@@ -138,7 +138,7 @@ application's dependency list.
 
 - **[Storage](concepts/storage.md)**
 
-    `ScopedStore`: two shapes, one batch, and the recipes — state, memory,
+    `Substrate`: two shapes, one batch, and the recipes — state, memory,
     intent, backlog, durable computation — built on top of it.
 
 - **[Memory](concepts/memory.md)**

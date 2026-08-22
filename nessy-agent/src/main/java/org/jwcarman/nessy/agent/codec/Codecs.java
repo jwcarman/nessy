@@ -23,8 +23,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Internal storage machinery: the one {@link ObjectMapper} shared by every codec that renders the
- * string-payload storage kernel's JSON (spec §7), plus the tree-reading helpers common to all of
- * them. Public so recipes outside the {@code codec} package (e.g. {@code
+ * string-payload substrate's JSON (spec §7), plus the tree-reading helpers common to all of them.
+ * Public so recipes outside the {@code codec} package (e.g. {@code
  * org.jwcarman.nessy.agent.durable.OutcomeCodec}) can reuse the same discriminator/tolerant-read
  * conventions instead of duplicating them; still not API vocabulary — no domain type carries a
  * Jackson annotation.

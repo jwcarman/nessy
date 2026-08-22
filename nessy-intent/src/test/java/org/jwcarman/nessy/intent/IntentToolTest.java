@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolEventListener;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class IntentToolTest {
 
@@ -45,7 +45,7 @@ class IntentToolTest {
     void itIsNamedDeclareIntent() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class));
+              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class));
 
       assertThat(tool.name()).isEqualTo("declare-intent");
     }
@@ -54,7 +54,7 @@ class IntentToolTest {
     void itsDescriptionTellsTheModelToDeclareBeforeActing() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class));
+              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class));
 
       assertThat(tool.description())
           .isEqualTo("Declare what you are about to do and why, before using any other tool.");
@@ -64,14 +64,14 @@ class IntentToolTest {
     void itRequiresOnlyImmediateCompletion() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class));
+              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class));
 
       assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.IMMEDIATE);
     }
 
     @Test
     void executingDeclaresTheDeclarationIntoTheStore() {
-      var store = new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
       var tool = IntentTool.freeform(store);
 
       tool.execute(new Intent("restart prod-eu to clear the stuck deploy"), freshContext());
@@ -83,7 +83,7 @@ class IntentToolTest {
     void executingReturnsAnImmediatelyReadyOkResult() {
       var tool =
           IntentTool.freeform(
-              new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class));
+              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class));
 
       Awaited<ToolResult> outcome = tool.execute(new Intent("restart prod-eu"), freshContext());
 
@@ -105,7 +105,7 @@ class IntentToolTest {
       var tool =
           new IntentTool<>(
               Vocabulary.class,
-              new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Vocabulary.class));
+              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Vocabulary.class));
 
       assertThat(tool.description())
           .isEqualTo(
@@ -118,7 +118,7 @@ class IntentToolTest {
       var tool =
           new IntentTool<>(
               Vocabulary.class,
-              new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Vocabulary.class));
+              new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Vocabulary.class));
 
       var schema = tool.spec().inputSchema();
 
@@ -128,7 +128,7 @@ class IntentToolTest {
 
     @Test
     void executingBindsTheTypedDeclarationIntoTheStore() {
-      var store = new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Vocabulary.class);
+      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Vocabulary.class);
       var tool = new IntentTool<>(Vocabulary.class, store);
 
       tool.execute(new Restart("prod-eu"), freshContext());

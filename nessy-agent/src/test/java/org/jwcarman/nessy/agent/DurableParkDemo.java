@@ -53,7 +53,7 @@ import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.spi.model.ModelEvent;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The narrated proof (the-slot plan, Task 6): a turn parks on approval, the instance becomes
@@ -91,9 +91,9 @@ class DurableParkDemo {
     // the durable world — everything an instance is NOT
     var pump = new PumpedExecutor();
     var memory = new VerbatimMemory();
-    var kernel = new InMemoryScopedStore();
-    var store = new StoredAgentStateStore(kernel, "demo", Clock.systemUTC());
-    var backend = new StoredComputations(kernel);
+    var substrate = new InMemorySubstrate();
+    var store = new StoredAgentStateStore(substrate, "demo", Clock.systemUTC());
+    var backend = new StoredComputations(substrate);
     var dispatcher = new ContinuationDispatcher();
     var desk = new CompletionDesk(backend, dispatcher);
     var narrator = new RecordingTurnObserver();

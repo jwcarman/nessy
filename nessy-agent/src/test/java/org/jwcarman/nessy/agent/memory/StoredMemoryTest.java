@@ -19,22 +19,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
-import org.jwcarman.nessy.agent.support.RaceOnceOnAppendStore;
+import org.jwcarman.nessy.agent.support.RaceOnceOnAppendSubstrate;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class StoredMemoryTest {
 
   @Test
   void aFreshMemoryRecallsAnEmptyContext() {
-    var memory = new StoredMemory(new InMemoryScopedStore(), "agent-a");
+    var memory = new StoredMemory(new InMemorySubstrate(), "agent-a");
     assertThat(memory.recall().messages()).isEmpty();
   }
 
   @Test
-  void rememberedMessagesRecallInOrderAcrossTwoInstancesSharingOneKernel() {
-    ScopedStore store = new InMemoryScopedStore();
+  void rememberedMessagesRecallInOrderAcrossTwoInstancesSharingOneSubstrate() {
+    Substrate store = new InMemorySubstrate();
     var writer = new StoredMemory(store, "agent-a");
     var reader = new StoredMemory(store, "agent-a");
 
@@ -47,9 +47,9 @@ class StoredMemoryTest {
 
   @Test
   void rememberRetriesAfterLosingAConflictOnAppend() {
-    ScopedStore delegate = new InMemoryScopedStore();
+    Substrate delegate = new InMemorySubstrate();
     String competitor = MessageCodec.toJson(Message.user("stole the slot"));
-    ScopedStore racing = new RaceOnceOnAppendStore(delegate, competitor);
+    Substrate racing = new RaceOnceOnAppendSubstrate(delegate, competitor);
     var memory = new StoredMemory(racing, "agent-a");
 
     memory.remember(Message.user("mine"));

@@ -30,15 +30,15 @@ import org.jwcarman.nessy.durable.Outcome;
 
 /**
  * Internal storage machinery: renders the {@code computation} document — {@code {status, outcome?,
- * continuations[]}} (scoped-store spec §6.5) — to and from the JSON the string-payload storage
- * kernel persists. Not API vocabulary; only {@link StoredComputations} calls this.
+ * continuations[]}} (substrate spec §6.5) — to and from the JSON the string-payload substrate
+ * persists. Not API vocabulary; only {@link StoredComputations} calls this.
  *
  * <p>{@code outcome} carries a {@code "type"} discriminator (mirroring the {@code Schemas}/{@code
  * SealedInputs}/{@code MessageCodec} convention): {@code success}, {@code failure}, {@code
  * cancelled}. A {@code success} outcome's payload is itself discriminated as the closed vocabulary
- * scoped-store spec §7 mandates: {@code tool-result} ({@link ToolResult}) or {@code decision}
- * ({@link Decision}) — any other payload type is out of contract and rejected here, before any
- * write. Continuations serialize as {@code {type, data}} pairs, already opaque strings.
+ * substrate spec §7 mandates: {@code tool-result} ({@link ToolResult}) or {@code decision} ({@link
+ * Decision}) — any other payload type is out of contract and rejected here, before any write.
+ * Continuations serialize as {@code {type, data}} pairs, already opaque strings.
  *
  * <p>Reads are tolerant: unknown fields are ignored. Malformed JSON or an unrecognized
  * discriminator fails loudly with an {@link IllegalArgumentException} naming the offense.

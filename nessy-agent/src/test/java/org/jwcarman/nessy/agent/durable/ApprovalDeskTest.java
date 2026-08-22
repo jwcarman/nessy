@@ -27,7 +27,7 @@ import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.Outcome;
 import org.jwcarman.nessy.spi.approval.Adjudication;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The approve/deny door: two decisions, one vocabulary — {@code Decision} (spec §4.3 amendment).
@@ -36,7 +36,7 @@ class ApprovalDeskTest {
 
   private record Fired(Continuation continuation, Outcome outcome) {}
 
-  private final StoredComputations backend = new StoredComputations(new InMemoryScopedStore());
+  private final StoredComputations backend = new StoredComputations(new InMemorySubstrate());
   private final ContinuationDispatcher dispatcher = new ContinuationDispatcher();
   private final List<Fired> fired = new ArrayList<>();
   private final ApprovalDesk desk = new ApprovalDesk(backend, dispatcher);

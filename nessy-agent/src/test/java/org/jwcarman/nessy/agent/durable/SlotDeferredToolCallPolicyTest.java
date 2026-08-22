@@ -27,11 +27,11 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Outcome;
-import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class SlotDeferredToolCallPolicyTest {
 
-  private final StoredComputations backend = new StoredComputations(new InMemoryScopedStore());
+  private final StoredComputations backend = new StoredComputations(new InMemorySubstrate());
   private final SlotDeferredToolCallPolicy policy = new SlotDeferredToolCallPolicy(backend);
 
   private static final ToolCall CALL =

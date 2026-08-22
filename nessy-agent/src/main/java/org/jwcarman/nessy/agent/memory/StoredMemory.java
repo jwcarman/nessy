@@ -21,25 +21,25 @@ import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Memory;
-import org.jwcarman.nessy.spi.store.ConflictException;
-import org.jwcarman.nessy.spi.store.ScopedStore;
+import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The {@code memory} recipe (scoped-store spec §6.2): one journal per scope, keyed by {@code
- * agentId}, one entry per message. {@link #remember(Message)} appends at head + 1; a conflicting
- * racer means someone else appended first, so the head is re-read and the append retried —
- * near-zero in practice since the scope CAS already serializes turns, but correct under a genuine
- * race. {@link #recall()} folds every entry from seq 1 into a {@link Context}. The transcript is
- * the permanent record: nothing here ever rewrites an entry.
+ * The {@code memory} recipe (substrate spec §6.2): one journal per scope, keyed by {@code agentId},
+ * one entry per message. {@link #remember(Message)} appends at head + 1; a conflicting racer means
+ * someone else appended first, so the head is re-read and the append retried — near-zero in
+ * practice since the scope CAS already serializes turns, but correct under a genuine race. {@link
+ * #recall()} folds every entry from seq 1 into a {@link Context}. The transcript is the permanent
+ * record: nothing here ever rewrites an entry.
  */
 public final class StoredMemory implements Memory {
 
   private static final String KIND = "memory";
 
-  private final ScopedStore store;
+  private final Substrate store;
   private final String agentId;
 
-  public StoredMemory(ScopedStore store, String agentId) {
+  public StoredMemory(Substrate store, String agentId) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
   }
@@ -69,7 +69,7 @@ public final class StoredMemory implements Memory {
   }
 
   private long head() {
-    List<ScopedStore.Entry> entries = store.entries(KIND, agentId, 1);
+    List<Substrate.Entry> entries = store.entries(KIND, agentId, 1);
     return entries.isEmpty() ? 0L : entries.getLast().seq();
   }
 }

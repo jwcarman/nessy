@@ -13,21 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.store;
+package org.jwcarman.nessy.spi.substrate;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * The storage kernel (spec §2): two shapes — a document store (mutable current-truth, addressed by
+ * The substrate (spec §2): two shapes — a document store (mutable current-truth, addressed by
  * {@code (kind, key)}) and a journal (immutable history, addressed by {@code (kind, key, seq)}) —
- * plus one atomic batch across both. Payloads are opaque, non-null strings the kernel never parses;
- * JSON is the house convention but the contract itself only says "string" (spec §4.5). Every
- * mutation carries a CAS expectation and a miss is a {@link ConflictException}, never a wait (spec
- * §4.1–§4.2); implementations must be safe for concurrent use (spec §4.7).
+ * plus one atomic batch across both. Payloads are opaque, non-null strings the substrate never
+ * parses; JSON is the house convention but the contract itself only says "string" (spec §4.5).
+ * Every mutation carries a CAS expectation and a miss is a {@link ConflictException}, never a wait
+ * (spec §4.1–§4.2); implementations must be safe for concurrent use (spec §4.7).
  */
-public interface ScopedStore {
+public interface Substrate {
 
   /**
    * The current document at {@code (kind, key)}, or empty if none has ever been written or the last
@@ -106,14 +106,14 @@ public interface ScopedStore {
   /** One operation a {@link #batch(List)} call applies. */
   sealed interface Op {
 
-    /** Writes a document under CAS, as {@link ScopedStore#write(String, String, String, long)}. */
+    /** Writes a document under CAS, as {@link Substrate#write(String, String, String, long)}. */
     record WriteDocument(String kind, String key, String payload, long expectedVersion)
         implements Op {}
 
-    /** Deletes a document under CAS, as {@link ScopedStore#delete(String, String, long)}. */
+    /** Deletes a document under CAS, as {@link Substrate#delete(String, String, long)}. */
     record DeleteDocument(String kind, String key, long expectedVersion) implements Op {}
 
-    /** Appends a journal entry, as {@link ScopedStore#append(String, String, long, String)}. */
+    /** Appends a journal entry, as {@link Substrate#append(String, String, long, String)}. */
     record AppendEntry(String kind, String key, long seq, String payload) implements Op {}
   }
 }
