@@ -25,9 +25,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.StoredComputations;
-import org.jwcarman.nessy.agent.intent.InMemoryIntentStore;
-import org.jwcarman.nessy.agent.intent.IntentEnricher;
-import org.jwcarman.nessy.agent.intent.IntentTool;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -35,7 +32,6 @@ import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.intent.Intent;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
@@ -56,8 +52,12 @@ import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
 import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.ComputationStatus;
+import org.jwcarman.nessy.intent.Intent;
+import org.jwcarman.nessy.intent.IntentEnricher;
+import org.jwcarman.nessy.intent.IntentStore;
+import org.jwcarman.nessy.intent.IntentTool;
+import org.jwcarman.nessy.intent.StoredIntentStore;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
-import org.jwcarman.nessy.spi.intent.IntentStore;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
@@ -147,7 +147,7 @@ class GovernedTurnDemo {
     var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new InMemoryIntentStore<Intent>();
+    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", Intent.class);
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -227,7 +227,7 @@ class GovernedTurnDemo {
     var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new InMemoryIntentStore<Intent>();
+    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", Intent.class);
     var provider =
         new ScriptedModelProvider(
             List.of(
@@ -274,7 +274,7 @@ class GovernedTurnDemo {
     var backend = new StoredComputations(kernel);
     var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
-    var intentStore = new InMemoryIntentStore<Intent>();
+    var intentStore = new StoredIntentStore<>(kernel, "prod-eu", Intent.class);
     var provider =
         new ScriptedModelProvider(
             List.of(

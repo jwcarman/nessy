@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.tool.authorization;
+package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +29,9 @@ import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.authorization.GrantStory;
 
 class IntentPoliciesTest {
 

@@ -13,11 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.tool.authorization;
+package org.jwcarman.nessy.intent;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
+import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.api.tool.authorization.RiskPolicies;
 
 /**
  * Canonical {@link UsagePolicy} factories that judge {@link AuthzContext#declaredIntent()}

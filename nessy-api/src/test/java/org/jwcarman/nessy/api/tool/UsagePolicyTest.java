@@ -31,7 +31,6 @@ import org.jwcarman.nessy.api.tool.authorization.AuthorizationReport;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.GrantStory;
 import org.jwcarman.nessy.api.tool.authorization.Impact;
-import org.jwcarman.nessy.api.tool.authorization.IntentPolicies;
 import org.jwcarman.nessy.api.tool.authorization.Likelihood;
 import org.jwcarman.nessy.api.tool.authorization.RiskAssessment;
 import org.jwcarman.nessy.api.tool.authorization.RiskLevel;
@@ -273,13 +272,32 @@ class UsagePolicyTest {
 
     private record Restart(String target) {}
 
+    /**
+     * A standin for {@code IntentPolicies.requireDeclared(Restart.class)} — that factory now lives
+     * in {@code nessy-intent} (scoped-store spec §11), which this module may not depend on. What
+     * these tests exercise is {@link UsagePolicy#allOf(List)}'s own ordering and short-circuiting,
+     * not the intent feature itself, so a minimal local policy with the same deny/allow shape
+     * stands in for it here.
+     */
+    private static UsagePolicy requireDeclaredRestart() {
+      return UsagePolicy.of(
+          context ->
+              context
+                  .declaredIntent(Restart.class)
+                  .<PolicyDecision>map(declared -> new PolicyDecision.Allow())
+                  .orElseGet(
+                      () ->
+                          new PolicyDecision.Deny(
+                              "no Restart declared — declare your intent with the declare-intent"
+                                  + " tool before acting")));
+    }
+
     @Test
     void combinesRequireDeclaredWithARiskThresholdPolicyDenyingOnTheUndeclaredIntentFirst() {
       UsagePolicy policy =
           UsagePolicy.allOf(
               List.of(
-                  IntentPolicies.requireDeclared(Restart.class),
-                  RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
+                  requireDeclaredRestart(), RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
       ToolCall call = spendCall(1);
 
       PolicyDecision decision = policy.evaluate(contextFor(call));
@@ -293,8 +311,7 @@ class UsagePolicyTest {
       UsagePolicy policy =
           UsagePolicy.allOf(
               List.of(
-                  IntentPolicies.requireDeclared(Restart.class),
-                  RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
+                  requireDeclaredRestart(), RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
       ToolCall call = spendCall(1);
       RiskAssessment highRisk =
           new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, RiskLevel.HIGH, Set.of());
@@ -314,8 +331,7 @@ class UsagePolicyTest {
       UsagePolicy policy =
           UsagePolicy.allOf(
               List.of(
-                  IntentPolicies.requireDeclared(Restart.class),
-                  RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
+                  requireDeclaredRestart(), RiskPolicies.threshold(RiskLevel.LOW, RiskLevel.HIGH)));
       ToolCall call = spendCall(1);
       RiskAssessment lowRisk =
           new RiskAssessment(Likelihood.MODERATE, Impact.MODERATE, RiskLevel.VERY_LOW, Set.of());

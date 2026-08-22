@@ -51,6 +51,11 @@
       <artifactId>nessy-agent</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-intent</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- Compile scope, unlike every other module's test-only ScriptedModelProvider: this demo's
          whole point is that its one narrated run needs no real provider at all, so the scripted
          one is the demo's provider, not a test fixture. -->

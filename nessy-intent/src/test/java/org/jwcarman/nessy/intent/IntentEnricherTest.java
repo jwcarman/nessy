@@ -13,15 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent.intent;
+package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.intent.Intent;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.spi.store.InMemoryScopedStore;
 
 class IntentEnricherTest {
 
@@ -32,16 +32,20 @@ class IntentEnricherTest {
     return AuthzContext.of("ops", call);
   }
 
+  private static StoredIntentStore<Intent> freshStore() {
+    return new StoredIntentStore<>(new InMemoryScopedStore(), "agent-a", Intent.class);
+  }
+
   @Test
   void itIsNamedIntentForTheAuthorizationReport() {
-    var enricher = new IntentEnricher(new InMemoryIntentStore<Intent>());
+    var enricher = new IntentEnricher(freshStore());
 
     assertThat(enricher.displayName()).contains("intent");
   }
 
   @Test
   void itDepositsTheLatestDeclarationWhenOneWasRecorded() {
-    var store = new InMemoryIntentStore<Intent>();
+    var store = freshStore();
     store.declare(new Intent("restart prod-eu to clear the stuck deploy"));
     var enricher = new IntentEnricher(store);
 
@@ -53,7 +57,7 @@ class IntentEnricherTest {
 
   @Test
   void itLeavesTheContextUntouchedWhenNoDeclarationWasEverRecorded() {
-    var enricher = new IntentEnricher(new InMemoryIntentStore<Intent>());
+    var enricher = new IntentEnricher(freshStore());
     var context = freshContext();
 
     AuthzContext enriched = enricher.enrich(context);

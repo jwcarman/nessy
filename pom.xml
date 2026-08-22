@@ -59,6 +59,7 @@
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-agent</module>
+    <module>nessy-intent</module>
     <module>nessy-testing</module>
     <module>nessy-model-anthropic</module>
     <module>nessy-model-openai</module>

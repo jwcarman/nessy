@@ -218,7 +218,7 @@ class AutonomousHostTest {
    * a fresh, unadvanced version, not one built on top of the first host's saves.
    */
   @Test
-  void twoBuildCallsFromOneBuilderDoNotShareDefaultSubstrateState() {
+  void twoBuildCallsFromOneBuilderWithDistinctStoresDoNotLeakHistory() {
     var provider =
         new ScriptedModelProvider(
             List.of(

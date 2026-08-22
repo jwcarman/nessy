@@ -20,53 +20,47 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <parent>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>nessy-agent</artifactId>
-  <name>Nessy Agent</name>
+
+  <artifactId>nessy-intent</artifactId>
+  <name>Nessy Intent</name>
+  <description>The claim channel as a feature jar (scoped-store design §6.3, §11): the declared-intent
+    vocabulary, tool, enricher, policies, and the kernel-backed store recipe — zero storage footprint
+    unless wired.</description>
+
   <dependencies>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
+      <artifactId>nessy-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-durable</artifactId>
-      <version>${project.version}</version>
+      <artifactId>nessy-spi</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-model-env</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <!-- Test-only: the host-integration demos (TypedIntentDemo, GovernedTurnDemo) exercise the
-         intent feature jar end to end over a real AutonomousHost, host machinery nessy-intent
-         itself cannot see (it depends only on nessy-api + nessy-spi). nessy-agent's own main
-         artifact carries no such dependency; this is a one-way, test-scope-only edge. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-intent</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Automatic-Module-Name>org.jwcarman.nessy.intent</Automatic-Module-Name>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

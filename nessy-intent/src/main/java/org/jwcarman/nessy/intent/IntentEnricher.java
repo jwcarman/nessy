@@ -13,13 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent.intent;
+package org.jwcarman.nessy.intent;
 
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.tool.authorization.Enricher;
-import org.jwcarman.nessy.spi.intent.IntentStore;
 
 /**
  * Reads the {@link IntentStore} this enricher was built over and deposits its latest declaration
