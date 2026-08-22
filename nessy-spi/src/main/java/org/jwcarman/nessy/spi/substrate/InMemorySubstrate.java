@@ -37,6 +37,9 @@ import java.util.TreeMap;
  */
 public final class InMemorySubstrate implements Substrate {
 
+  private static final String KIND_NULL_MESSAGE = "kind must not be null";
+  private static final String KEY_NULL_MESSAGE = "key must not be null";
+
   private final Object lock = new Object();
   private final Clock clock;
   private final Map<DocKey, Document> documents = new HashMap<>();
@@ -52,8 +55,8 @@ public final class InMemorySubstrate implements Substrate {
 
   @Override
   public Optional<Document> read(String kind, String key) {
-    Objects.requireNonNull(kind, "kind must not be null");
-    Objects.requireNonNull(key, "key must not be null");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
     synchronized (lock) {
       return Optional.ofNullable(documents.get(new DocKey(kind, key)));
     }
@@ -75,7 +78,7 @@ public final class InMemorySubstrate implements Substrate {
 
   @Override
   public List<String> keys(String kind, int limit) {
-    Objects.requireNonNull(kind, "kind must not be null");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
     if (limit < 1) {
       throw new IllegalArgumentException("limit must be at least 1, was " + limit);
     }
@@ -98,8 +101,8 @@ public final class InMemorySubstrate implements Substrate {
 
   @Override
   public List<Entry> entries(String kind, String key, long fromSeq) {
-    Objects.requireNonNull(kind, "kind must not be null");
-    Objects.requireNonNull(key, "key must not be null");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
     synchronized (lock) {
       NavigableMap<Long, Entry> journal = journals.get(new DocKey(kind, key));
       if (journal == null) {
@@ -168,12 +171,12 @@ public final class InMemorySubstrate implements Substrate {
       Op op,
       Instant now) {
     switch (op) {
-      case Op.WriteDocument w ->
-          applyWrite(documentsCopy, w.kind(), w.key(), w.payload(), w.expectedVersion(), now);
-      case Op.DeleteDocument d ->
-          applyDelete(documentsCopy, d.kind(), d.key(), d.expectedVersion());
-      case Op.AppendEntry a ->
-          applyAppend(journalsCopy, a.kind(), a.key(), a.seq(), a.payload(), now);
+      case Op.WriteDocument(String wKind, String wKey, byte[] wPayload, long wExpectedVersion) ->
+          applyWrite(documentsCopy, wKind, wKey, wPayload, wExpectedVersion, now);
+      case Op.DeleteDocument(String dKind, String dKey, long dExpectedVersion) ->
+          applyDelete(documentsCopy, dKind, dKey, dExpectedVersion);
+      case Op.AppendEntry(String aKind, String aKey, long aSeq, byte[] aPayload) ->
+          applyAppend(journalsCopy, aKind, aKey, aSeq, aPayload, now);
     }
   }
 
@@ -188,8 +191,8 @@ public final class InMemorySubstrate implements Substrate {
       byte[] payload,
       long expectedVersion,
       Instant now) {
-    Objects.requireNonNull(kind, "kind must not be null");
-    Objects.requireNonNull(key, "key must not be null");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
     Objects.requireNonNull(payload, "payload must not be null");
     DocKey docKey = new DocKey(kind, key);
     Document current = target.get(docKey);
@@ -215,8 +218,8 @@ public final class InMemorySubstrate implements Substrate {
    */
   private void applyDelete(
       Map<DocKey, Document> target, String kind, String key, long expectedVersion) {
-    Objects.requireNonNull(kind, "kind must not be null");
-    Objects.requireNonNull(key, "key must not be null");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
     DocKey docKey = new DocKey(kind, key);
     Document current = target.get(docKey);
     long currentVersion = current == null ? 0L : current.version();
@@ -241,8 +244,8 @@ public final class InMemorySubstrate implements Substrate {
       long expectedSeq,
       byte[] payload,
       Instant now) {
-    Objects.requireNonNull(kind, "kind must not be null");
-    Objects.requireNonNull(key, "key must not be null");
+    Objects.requireNonNull(kind, KIND_NULL_MESSAGE);
+    Objects.requireNonNull(key, KEY_NULL_MESSAGE);
     Objects.requireNonNull(payload, "payload must not be null");
     DocKey docKey = new DocKey(kind, key);
     NavigableMap<Long, Entry> journal = target.computeIfAbsent(docKey, unused -> new TreeMap<>());

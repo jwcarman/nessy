@@ -73,7 +73,7 @@ public final class SubstrateMemory implements Memory {
       try {
         store.append(KIND, agentId, nextSeq, payload);
         return;
-      } catch (ConflictException e) {
+      } catch (ConflictException _) {
         // another writer took nextSeq first; re-read the head and retry
       }
     }

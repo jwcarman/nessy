@@ -59,6 +59,7 @@ final class OutcomeCodec {
   private static final String OUTCOME = "outcome";
   private static final String PAYLOAD = "payload";
   private static final String CONTINUATIONS = "continuations";
+  private static final String COMPUTATION_SLOT = "computation slot";
 
   private static final String TYPE_SUCCESS = "success";
   private static final String TYPE_FAILURE = "failure";
@@ -103,10 +104,10 @@ final class OutcomeCodec {
 
   SlotDocument document(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = codecs.readTree(json, "computation slot");
-    Codecs.requireArray(root, CONTINUATIONS, "computation slot");
+    JsonNode root = codecs.readTree(json, COMPUTATION_SLOT);
+    Codecs.requireArray(root, CONTINUATIONS, COMPUTATION_SLOT);
     requireKnownOutcomeVocabulary(root.get(OUTCOME));
-    return codecs.bind(root, SlotDocumentWire.class, "computation slot").toDomain();
+    return codecs.bind(root, SlotDocumentWire.class, COMPUTATION_SLOT).toDomain();
   }
 
   /**
@@ -251,7 +252,7 @@ final class OutcomeCodec {
     static PayloadWire from(Object value) {
       return switch (value) {
         case ToolResult(String content, boolean isError) -> new ToolResultWire(content, isError);
-        case Decision.Allow ignored -> new AllowWire();
+        case Decision.Allow _ -> new AllowWire();
         case Decision.Deny(String reason) -> new DenyWire(reason);
         default ->
             throw new IllegalArgumentException(

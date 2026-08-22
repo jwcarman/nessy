@@ -32,6 +32,12 @@ import java.util.Optional;
  */
 public interface Substrate {
 
+  /** Shared {@link NullPointerException} message for a null {@code payload} argument. */
+  String PAYLOAD_NULL_MESSAGE = "payload must not be null";
+
+  /** Shared {@code toString()} field-separator label for a record's {@code payload} byte count. */
+  String PAYLOAD_BYTES_LABEL = ", payloadBytes=";
+
   /**
    * The current document at {@code (kind, key)}, or empty if none has ever been written or the last
    * write was a delete.
@@ -108,7 +114,7 @@ public interface Substrate {
   record Document(byte[] payload, long version, Instant updatedAt) {
 
     public Document {
-      payload = Objects.requireNonNull(payload, "payload must not be null").clone();
+      payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
     }
 
     @Override
@@ -121,12 +127,13 @@ public interface Substrate {
       if (this == other) {
         return true;
       }
-      if (!(other instanceof Document that)) {
+      if (!(other
+          instanceof Document(byte[] thatPayload, long thatVersion, Instant thatUpdatedAt))) {
         return false;
       }
-      return version == that.version
-          && Arrays.equals(payload, that.payload)
-          && Objects.equals(updatedAt, that.updatedAt);
+      return version == thatVersion
+          && Arrays.equals(payload, thatPayload)
+          && Objects.equals(updatedAt, thatUpdatedAt);
     }
 
     @Override
@@ -153,7 +160,7 @@ public interface Substrate {
   record Entry(long seq, byte[] payload, Instant appendedAt) {
 
     public Entry {
-      payload = Objects.requireNonNull(payload, "payload must not be null").clone();
+      payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
     }
 
     @Override
@@ -166,12 +173,12 @@ public interface Substrate {
       if (this == other) {
         return true;
       }
-      if (!(other instanceof Entry that)) {
+      if (!(other instanceof Entry(long thatSeq, byte[] thatPayload, Instant thatAppendedAt))) {
         return false;
       }
-      return seq == that.seq
-          && Arrays.equals(payload, that.payload)
-          && Objects.equals(appendedAt, that.appendedAt);
+      return seq == thatSeq
+          && Arrays.equals(payload, thatPayload)
+          && Objects.equals(appendedAt, thatAppendedAt);
     }
 
     @Override
@@ -183,7 +190,7 @@ public interface Substrate {
     public String toString() {
       return "Entry[seq="
           + seq
-          + ", payloadBytes="
+          + PAYLOAD_BYTES_LABEL
           + payload.length
           + ", appendedAt="
           + appendedAt
@@ -203,7 +210,7 @@ public interface Substrate {
         implements Op {
 
       public WriteDocument {
-        payload = Objects.requireNonNull(payload, "payload must not be null").clone();
+        payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
       }
 
       @Override
@@ -216,13 +223,19 @@ public interface Substrate {
         if (this == other) {
           return true;
         }
-        if (!(other instanceof WriteDocument that)) {
+        if (!(other
+            instanceof
+            WriteDocument(
+                String thatKind,
+                String thatKey,
+                byte[] thatPayload,
+                long thatExpectedVersion))) {
           return false;
         }
-        return expectedVersion == that.expectedVersion
-            && Objects.equals(kind, that.kind)
-            && Objects.equals(key, that.key)
-            && Arrays.equals(payload, that.payload);
+        return expectedVersion == thatExpectedVersion
+            && Objects.equals(kind, thatKind)
+            && Objects.equals(key, thatKey)
+            && Arrays.equals(payload, thatPayload);
       }
 
       @Override
@@ -236,7 +249,7 @@ public interface Substrate {
             + kind
             + ", key="
             + key
-            + ", payloadBytes="
+            + PAYLOAD_BYTES_LABEL
             + payload.length
             + ", expectedVersion="
             + expectedVersion
@@ -255,7 +268,7 @@ public interface Substrate {
     record AppendEntry(String kind, String key, long seq, byte[] payload) implements Op {
 
       public AppendEntry {
-        payload = Objects.requireNonNull(payload, "payload must not be null").clone();
+        payload = Objects.requireNonNull(payload, PAYLOAD_NULL_MESSAGE).clone();
       }
 
       @Override
@@ -268,13 +281,15 @@ public interface Substrate {
         if (this == other) {
           return true;
         }
-        if (!(other instanceof AppendEntry that)) {
+        if (!(other
+            instanceof
+            AppendEntry(String thatKind, String thatKey, long thatSeq, byte[] thatPayload))) {
           return false;
         }
-        return seq == that.seq
-            && Objects.equals(kind, that.kind)
-            && Objects.equals(key, that.key)
-            && Arrays.equals(payload, that.payload);
+        return seq == thatSeq
+            && Objects.equals(kind, thatKind)
+            && Objects.equals(key, thatKey)
+            && Arrays.equals(payload, thatPayload);
       }
 
       @Override
@@ -290,7 +305,7 @@ public interface Substrate {
             + key
             + ", seq="
             + seq
-            + ", payloadBytes="
+            + PAYLOAD_BYTES_LABEL
             + payload.length
             + "]";
       }

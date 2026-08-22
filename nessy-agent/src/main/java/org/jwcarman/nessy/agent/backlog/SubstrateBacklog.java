@@ -80,7 +80,7 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
         store.write(
             KIND, agentId, writeQueue(queue).getBytes(StandardCharsets.UTF_8), expectedVersion);
         return;
-      } catch (ConflictException e) {
+      } catch (ConflictException _) {
         // another writer changed the queue between our read and our write; retry
       }
     }
@@ -109,7 +109,7 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
         store.write(
             KIND, agentId, writeQueue(queue).getBytes(StandardCharsets.UTF_8), doc.get().version());
         return Optional.of(codec.decode(Base64.getDecoder().decode(head)));
-      } catch (ConflictException e) {
+      } catch (ConflictException _) {
         // another writer changed the queue between our read and our write; retry
       }
     }

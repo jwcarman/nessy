@@ -68,7 +68,8 @@ class InMemorySubstrateTest {
     void aCreateWriteAgainstAnAlreadyPresentDocumentThrowsConflict() {
       var store = new InMemorySubstrate();
       store.write("state", "agent-a", bytes("v1"), 0L);
-      assertThatThrownBy(() -> store.write("state", "agent-a", bytes("v2"), 0L))
+      byte[] v2 = bytes("v2");
+      assertThatThrownBy(() -> store.write("state", "agent-a", v2, 0L))
           .isInstanceOf(ConflictException.class);
     }
 
@@ -76,7 +77,8 @@ class InMemorySubstrateTest {
     void aStaleCasWriteThrowsConflict() {
       var store = new InMemorySubstrate();
       store.write("state", "agent-a", bytes("v1"), 0L);
-      assertThatThrownBy(() -> store.write("state", "agent-a", bytes("v2"), 5L))
+      byte[] v2 = bytes("v2");
+      assertThatThrownBy(() -> store.write("state", "agent-a", v2, 5L))
           .isInstanceOf(ConflictException.class);
     }
 
@@ -151,7 +153,8 @@ class InMemorySubstrateTest {
     @Test
     void nullKeyOnWriteThrowsNpeWithAMessage() {
       var store = new InMemorySubstrate();
-      assertThatThrownBy(() -> store.write("state", null, bytes("v"), 0L))
+      byte[] payload = bytes("v");
+      assertThatThrownBy(() -> store.write("state", null, payload, 0L))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("key");
     }
@@ -178,8 +181,7 @@ class InMemorySubstrateTest {
       var first = new Substrate.Document(bytes("same content"), 3L, updatedAt);
       var second = new Substrate.Document(bytes("same content"), 3L, updatedAt);
       assertThat(first.payload()).isNotSameAs(second.payload());
-      assertThat(first).isEqualTo(second);
-      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isEqualTo(second).hasSameHashCodeAs(second);
     }
 
     @Test
@@ -237,7 +239,8 @@ class InMemorySubstrateTest {
     void appendingAtAnOccupiedSeqThrowsConflict() {
       var store = new InMemorySubstrate();
       store.append("memory", "agent-a", 1L, bytes("first"));
-      assertThatThrownBy(() -> store.append("memory", "agent-a", 1L, bytes("replacement")))
+      byte[] replacement = bytes("replacement");
+      assertThatThrownBy(() -> store.append("memory", "agent-a", 1L, replacement))
           .isInstanceOf(ConflictException.class);
     }
 
@@ -312,9 +315,7 @@ class InMemorySubstrateTest {
       var differentSeq = new Substrate.Entry(2L, bytes("same content"), appendedAt);
 
       assertThat(first.payload()).isNotSameAs(second.payload());
-      assertThat(first).isEqualTo(second);
-      assertThat(first).hasSameHashCodeAs(second);
-      assertThat(first).isNotEqualTo(differentSeq);
+      assertThat(first).isEqualTo(second).hasSameHashCodeAs(second).isNotEqualTo(differentSeq);
     }
   }
 
@@ -375,9 +376,7 @@ class InMemorySubstrateTest {
           new Substrate.Op.WriteDocument("state", "agent-a", bytes("same content"), 1L);
 
       assertThat(first.payload()).isNotSameAs(second.payload());
-      assertThat(first).isEqualTo(second);
-      assertThat(first).hasSameHashCodeAs(second);
-      assertThat(first).isNotEqualTo(differentVersion);
+      assertThat(first).isEqualTo(second).hasSameHashCodeAs(second).isNotEqualTo(differentVersion);
     }
 
     @Test
@@ -388,9 +387,7 @@ class InMemorySubstrateTest {
           new Substrate.Op.AppendEntry("memory", "agent-a", 2L, bytes("same content"));
 
       assertThat(first.payload()).isNotSameAs(second.payload());
-      assertThat(first).isEqualTo(second);
-      assertThat(first).hasSameHashCodeAs(second);
-      assertThat(first).isNotEqualTo(differentSeq);
+      assertThat(first).isEqualTo(second).hasSameHashCodeAs(second).isNotEqualTo(differentSeq);
     }
   }
 

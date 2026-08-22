@@ -90,7 +90,7 @@ class SubstrateAgentStateStoreTest {
 
       var thrown = catchThrowableOfType(StaleStateException.class, () -> store.save(stale));
 
-      assertThat(thrown.expected()).isEqualTo(0L);
+      assertThat(thrown.expected()).isZero();
       assertThat(thrown.found()).isEqualTo(1L);
     }
   }

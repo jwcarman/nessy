@@ -151,8 +151,8 @@ class AutonomousHostTest {
     pump.pumpUntilQuiet();
 
     List<TurnEvent> events = observer.events();
-    assertThat(events).isNotEmpty();
     assertThat(events)
+        .isNotEmpty()
         .noneMatch(TurnEvent.AssistantSaid.class::isInstance)
         .noneMatch(TurnEvent.TurnEnded.class::isInstance);
   }
@@ -703,8 +703,11 @@ class AutonomousHostTest {
           entries.stream()
               .map(e -> new String(e.payload(), StandardCharsets.UTF_8))
               .collect(Collectors.joining("\n"));
-      assertThat(allPayloads).contains("\"toolUseId\"").contains("\"isError\"");
-      assertThat(allPayloads).doesNotContain("tool_use_id").doesNotContain("is_error");
+      assertThat(allPayloads)
+          .contains("\"toolUseId\"")
+          .contains("\"isError\"")
+          .doesNotContain("tool_use_id")
+          .doesNotContain("is_error");
     }
 
     @Test

@@ -75,7 +75,7 @@ public final class SubstrateIntentStore<T> implements IntentStore<T> {
       try {
         store.write(KIND, agentId, payload, expectedVersion);
         return;
-      } catch (ConflictException e) {
+      } catch (ConflictException _) {
         // another writer declared between our read and our write; retry
       }
     }

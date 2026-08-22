@@ -81,7 +81,7 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
     byte[] payload = codec.encode(state.phase());
     try {
       store.write(KIND, agentId, payload, state.version());
-    } catch (ConflictException e) {
+    } catch (ConflictException _) {
       long actual = store.read(KIND, agentId).map(Substrate.Document::version).orElse(0L);
       throw new StaleStateException(state.version(), actual);
     }

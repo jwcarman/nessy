@@ -58,6 +58,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 public final class SubstrateComputations implements DurableComputationBackend {
 
   private static final String KIND = "computation";
+  private static final String ID_NULL_MESSAGE = "id must not be null";
 
   private final Substrate store;
   private final OutcomeCodec codec;
@@ -69,12 +70,12 @@ public final class SubstrateComputations implements DurableComputationBackend {
 
   @Override
   public CreateResult create(ComputationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_NULL_MESSAGE);
     String payload = codec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
     try {
       store.write(KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
       return new CreateResult(id, true);
-    } catch (ConflictException e) {
+    } catch (ConflictException _) {
       return new CreateResult(id, false);
     }
   }
@@ -97,7 +98,7 @@ public final class SubstrateComputations implements DurableComputationBackend {
       try {
         store.write(KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), doc.version());
         return new AwaitResult.Registered();
-      } catch (ConflictException e) {
+      } catch (ConflictException _) {
         // lost the race to another writer; re-read and retry the whole decision (spec §12)
       }
     }
@@ -105,7 +106,7 @@ public final class SubstrateComputations implements DurableComputationBackend {
 
   @Override
   public CompletionResult complete(ComputationId id, Outcome outcome) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_NULL_MESSAGE);
     Objects.requireNonNull(outcome, "outcome must not be null");
     ComputationStatus terminalStatus = statusOf(outcome);
     // Validate before touching the store: a foreign Success payload throws here (spec §7),
@@ -118,7 +119,7 @@ public final class SubstrateComputations implements DurableComputationBackend {
         try {
           store.write(KIND, id.value(), createPayload.getBytes(StandardCharsets.UTF_8), 0);
           return CompletionResult.COMPLETED;
-        } catch (ConflictException e) {
+        } catch (ConflictException _) {
           continue; // the slot was created concurrently; re-read and re-evaluate
         }
       }
@@ -132,7 +133,7 @@ public final class SubstrateComputations implements DurableComputationBackend {
         store.write(
             KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), doc.get().version());
         return CompletionResult.COMPLETED;
-      } catch (ConflictException e) {
+      } catch (ConflictException _) {
         // lost the race to another completer; re-read — it may now be ALREADY_TERMINAL
       }
     }
@@ -140,7 +141,7 @@ public final class SubstrateComputations implements DurableComputationBackend {
 
   @Override
   public Optional<ComputationStatus> status(ComputationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_NULL_MESSAGE);
     return store
         .read(KIND, id.value())
         .map(doc -> codec.document(new String(doc.payload(), StandardCharsets.UTF_8)).status());
@@ -154,7 +155,7 @@ public final class SubstrateComputations implements DurableComputationBackend {
   }
 
   private Substrate.Document requiredDocument(ComputationId id) {
-    Objects.requireNonNull(id, "id must not be null");
+    Objects.requireNonNull(id, ID_NULL_MESSAGE);
     return store
         .read(KIND, id.value())
         .orElseThrow(() -> new IllegalArgumentException("unknown computation: " + id.value()));
@@ -162,9 +163,9 @@ public final class SubstrateComputations implements DurableComputationBackend {
 
   private static ComputationStatus statusOf(Outcome outcome) {
     return switch (outcome) {
-      case Outcome.Success ignored -> ComputationStatus.SUCCEEDED;
-      case Outcome.Failure ignored -> ComputationStatus.FAILED;
-      case Outcome.Cancelled ignored -> ComputationStatus.CANCELLED;
+      case Outcome.Success _ -> ComputationStatus.SUCCEEDED;
+      case Outcome.Failure _ -> ComputationStatus.FAILED;
+      case Outcome.Cancelled _ -> ComputationStatus.CANCELLED;
     };
   }
 }

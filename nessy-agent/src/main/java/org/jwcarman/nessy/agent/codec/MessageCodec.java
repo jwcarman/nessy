@@ -37,6 +37,9 @@ import org.jwcarman.nessy.api.message.Message;
  */
 public final class MessageCodec {
 
+  private static final String MESSAGE = "message";
+  private static final String CONTEXT = "context";
+
   private final Codecs codecs;
 
   public MessageCodec(ObjectMapper mapper) {
@@ -50,9 +53,9 @@ public final class MessageCodec {
 
   public Message message(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = codecs.readTree(json, "message");
-    Codecs.requireArrayIfPresent(root, "content", "message");
-    return codecs.bind(root, Message.class, "message");
+    JsonNode root = codecs.readTree(json, MESSAGE);
+    Codecs.requireArrayIfPresent(root, "content", MESSAGE);
+    return codecs.bind(root, Message.class, MESSAGE);
   }
 
   public String toJson(Context context) {
@@ -62,8 +65,8 @@ public final class MessageCodec {
 
   public Context context(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = codecs.readTree(json, "context");
-    Codecs.requireArrayIfPresent(root, "messages", "context");
-    return codecs.bind(root, Context.class, "context");
+    JsonNode root = codecs.readTree(json, CONTEXT);
+    Codecs.requireArrayIfPresent(root, "messages", CONTEXT);
+    return codecs.bind(root, Context.class, CONTEXT);
   }
 }

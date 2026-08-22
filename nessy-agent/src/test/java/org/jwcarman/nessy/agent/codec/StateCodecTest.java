@@ -22,8 +22,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -158,19 +162,6 @@ class StateCodecTest {
     }
 
     @Test
-    void anAwaitingToolsPayloadWithPendingOutsideTheAssistantTurnIsRejected() {
-      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
-      var json =
-          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
-              + MESSAGE_CODEC.toJson(turn)
-              + ",\"pending\":[\"a\",\"ghost\"],\"gathered\":[]}";
-      assertThatThrownBy(() -> CODEC.phase(json))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("ghost");
-    }
-
-    @Test
     void anAwaitingToolsPayloadWithNothingPendingIsRejected() {
       var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
       var turn = Message.assistant(List.of(new ToolUseBlock(call)));
@@ -181,43 +172,35 @@ class StateCodecTest {
       assertThatThrownBy(() -> CODEC.phase(json)).isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test
-    void aNonToolResultBlockInGatheredIsRejectedNamingItsType() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("org.jwcarman.nessy.agent.codec.StateCodecTest#malformedAwaitingToolsPayloads")
+    void anAwaitingToolsPayloadWithAStructuralDefectIsRejectedNamingIt(
+        String description, String pendingJson, String gatheredJson, String expectedMessage) {
       var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
       var turn = Message.assistant(List.of(new ToolUseBlock(call)));
       var json =
           "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
               + MESSAGE_CODEC.toJson(turn)
-              + ",\"pending\":[\"a\"],\"gathered\":[{\"type\":\"text\",\"text\":\"oops\"}]}";
+              + ",\"pending\":"
+              + pendingJson
+              + ",\"gathered\":"
+              + gatheredJson
+              + "}";
       assertThatThrownBy(() -> CODEC.phase(json))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("text");
+          .hasMessageContaining(expectedMessage);
     }
+  }
 
-    @Test
-    void anAwaitingToolsPayloadWithNonArrayPendingIsRejected() {
-      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
-      var json =
-          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
-              + MESSAGE_CODEC.toJson(turn)
-              + ",\"pending\":\"oops\",\"gathered\":[]}";
-      assertThatThrownBy(() -> CODEC.phase(json))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("pending");
-    }
-
-    @Test
-    void anAwaitingToolsPayloadWithNonArrayGatheredIsRejected() {
-      var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
-      var turn = Message.assistant(List.of(new ToolUseBlock(call)));
-      var json =
-          "{\"type\":\"awaiting-tools\",\"assistantTurn\":"
-              + MESSAGE_CODEC.toJson(turn)
-              + ",\"pending\":[\"a\"],\"gathered\":\"oops\"}";
-      assertThatThrownBy(() -> CODEC.phase(json))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("gathered");
-    }
+  private static Stream<Arguments> malformedAwaitingToolsPayloads() {
+    return Stream.of(
+        Arguments.of("pending outside the assistant turn", "[\"a\",\"ghost\"]", "[]", "ghost"),
+        Arguments.of(
+            "a non-tool-result block in gathered",
+            "[\"a\"]",
+            "[{\"type\":\"text\",\"text\":\"oops\"}]",
+            "text"),
+        Arguments.of("a non-array pending", "\"oops\"", "[]", "pending"),
+        Arguments.of("a non-array gathered", "[\"a\"]", "\"oops\"", "gathered"));
   }
 }

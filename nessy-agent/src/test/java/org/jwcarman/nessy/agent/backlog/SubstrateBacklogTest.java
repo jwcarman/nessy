@@ -23,7 +23,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
 import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -36,7 +40,8 @@ class SubstrateBacklogTest {
   @Test
   void aNonPositiveCapacityIsRejected() {
     Substrate store = new InMemorySubstrate();
-    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, TestCodecs.utf8String()))
+    Codec<String> codec = TestCodecs.utf8String();
+    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, codec))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -167,10 +172,11 @@ class SubstrateBacklogTest {
    * payload branches. Each seeds the substrate directly with a payload {@code readQueue} cannot
    * parse and asserts {@code poll()} fails loudly rather than silently misreading it.
    */
-  @Test
-  void pollRejectsAPayloadThatIsNotAnArrayAtAll() {
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("malformedBacklogPayloads")
+  void pollRejectsAMalformedPayload(String description, String payload) {
     Substrate substrate = new InMemorySubstrate();
-    substrate.write("backlog", "agent-a", "not an array".getBytes(StandardCharsets.UTF_8), 0L);
+    substrate.write("backlog", "agent-a", payload.getBytes(StandardCharsets.UTF_8), 0L);
     var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
 
     assertThatThrownBy(backlog::poll)
@@ -178,37 +184,12 @@ class SubstrateBacklogTest {
         .hasMessageContaining("malformed backlog payload");
   }
 
-  @Test
-  void pollRejectsAnUnquotedElement() {
-    Substrate substrate = new InMemorySubstrate();
-    substrate.write("backlog", "agent-a", "[abc]".getBytes(StandardCharsets.UTF_8), 0L);
-    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
-
-    assertThatThrownBy(backlog::poll)
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("malformed backlog payload");
-  }
-
-  @Test
-  void pollRejectsAnEmptyEnvelopeThatIsNotTheEmptyArrayLiteral() {
-    Substrate substrate = new InMemorySubstrate();
-    substrate.write("backlog", "agent-a", "".getBytes(StandardCharsets.UTF_8), 0L);
-    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
-
-    assertThatThrownBy(backlog::poll)
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("malformed backlog payload");
-  }
-
-  @Test
-  void pollRejectsAnEnvelopeMissingItsClosingBracket() {
-    Substrate substrate = new InMemorySubstrate();
-    substrate.write("backlog", "agent-a", "[\"abc\"".getBytes(StandardCharsets.UTF_8), 0L);
-    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
-
-    assertThatThrownBy(backlog::poll)
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("malformed backlog payload");
+  private static Stream<Arguments> malformedBacklogPayloads() {
+    return Stream.of(
+        Arguments.of("a payload that is not an array at all", "not an array"),
+        Arguments.of("an unquoted element", "[abc]"),
+        Arguments.of("an empty envelope that is not the empty array literal", ""),
+        Arguments.of("an envelope missing its closing bracket", "[\"abc\""));
   }
 
   /**
