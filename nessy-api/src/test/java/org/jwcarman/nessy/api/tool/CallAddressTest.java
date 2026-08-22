@@ -25,32 +25,38 @@ class CallAddressTest {
 
   @Test
   void theTwoDerivationsAreTheOnlyPlaceTheFormulasLive() {
-    var address = new CallAddress("ops", "prod-1", "c42");
-    assertThat(address.approval()).isEqualTo(ComputationId.of("approval:ops:prod-1:c42"));
-    assertThat(address.execution()).isEqualTo(ComputationId.of("tool:ops:prod-1:c42"));
+    var address = new CallAddress("ops", "prod-1", "r7", "c42");
+    assertThat(address.approval()).isEqualTo(ComputationId.of("approval:ops:prod-1:r7:c42"));
+    assertThat(address.execution()).isEqualTo(ComputationId.of("tool:ops:prod-1:r7:c42"));
   }
 
   @Test
   void blankCoordinatesAreRefused() {
-    assertThatThrownBy(() -> new CallAddress(" ", "a", "c"))
+    assertThatThrownBy(() -> new CallAddress(" ", "a", "r", "c"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aBlankAgentIdIsRefused() {
-    assertThatThrownBy(() -> new CallAddress("ops", " ", "c"))
+    assertThatThrownBy(() -> new CallAddress("ops", " ", "r", "c"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void aBlankResponseIdIsRefused() {
+    assertThatThrownBy(() -> new CallAddress("ops", "a", " ", "c"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aBlankCallIdIsRefused() {
-    assertThatThrownBy(() -> new CallAddress("ops", "a", " "))
+    assertThatThrownBy(() -> new CallAddress("ops", "a", "r", " "))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void aNullCoordinateThrowsANullPointerExceptionLikeEverySiblingType() {
-    assertThatThrownBy(() -> new CallAddress(null, "a", "c"))
+    assertThatThrownBy(() -> new CallAddress(null, "a", "r", "c"))
         .isInstanceOf(NullPointerException.class);
   }
 }

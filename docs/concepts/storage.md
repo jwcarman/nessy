@@ -2,9 +2,9 @@
 
 Every store in Nessy is the same sentence: save this, scoped to an id,
 safely. State is a versioned blob. Memory is a blob list. Intent is
-last-blob-wins. A durable computation is a blob with a one-way status flip.
-`Substrate` is the one primitive underneath all of them, and it stores
-bytes, not text.
+last-blob-wins. A durable computation is presence: the blob exists while
+its work is pending and is gone the moment it isn't. `Substrate` is the one
+primitive underneath all of them, and it stores bytes, not text.
 
 ## The substrate in one paragraph
 
@@ -18,7 +18,7 @@ JSON is the house convention *above* the seam, not a substrate promise. The
 store is the lock: every mutation carries a CAS expectation, and a miss
 is a conflict, never a wait. Seven methods, two tables, and an adapter that
 implements them gets the entire system — state, transcripts, intent,
-backlogs, durable computations, and (once built) the outbox.
+backlogs, durable computations, and the outbox.
 
 ```java
 public interface Substrate {
@@ -131,7 +131,7 @@ reserved — a feature jar declares its own kinds and must not reuse one:
 | `intent` | document | agentId | `nessy-intent` |
 | `backlog` | document | agentId | backlog recipe |
 | `computation` | document | computationId | durable computations |
-| `outbox` | document | UUIDv7 | outbox recipe (future) |
+| `outbox` | document | UUIDv7 | delivery pipeline |
 
 ## Layout rules
 
@@ -174,13 +174,27 @@ serialization; the substrate never sees anything but bytes.
   because the backlog is self-draining transient state and glance-readability
   yields to uniformity here. `SubstrateBacklog#add`/`.poll` are
   read-mutate-CAS-retry loops; a full queue throws `IllegalStateException`.
-- **Durable computations** (`kind=computation`) — one document per
-  computation: `{ status, outcome?, continuations[] }`. `SubstrateComputations`
-  maps `create`/`await`/`complete` onto read-decide-CAS, in `nessy-agent`.
+- **Durable computations** (`kind=computation`) — one document per pending
+  computation: `{ invocation: {responseId, callId}, returnAddress: {type,
+  data}, deadline? }`. There is no status field and no terminal record —
+  presence alone means pending. `SubstrateComputations` (`nessy-agent`)
+  maps `create` onto a plain CAS write and `complete` onto one atomic
+  `batch` that deletes the computation and creates its outbox delivery.
   `DurableComputationBackend` is no longer an adapter SPI; `.backend(...)`
   on the builder survives only as an override seam for a genuinely foreign
   engine (Restate, Temporal) — see
   [Durable Computation](durable-computation.md).
+- **The outbox** (`kind=outbox`) — one document per pending delivery, a
+  UUIDv7 key so `keys("outbox", n)` scans oldest-first, holding `{
+  destination: {type, data}, outcome: {type, ...} }`. Deliveries are
+  pending-only: delivering deletes them, in the same batch as the fold it
+  advances. `DeliveryWorker` (`nessy-agent`) is the one consumer — a
+  heartbeat thread per host, plus an immediate synchronous drain
+  (`nudge()`) right after any completion commits, so the heartbeat is the
+  recovery net rather than the happy-path latency. `SubstrateComputations`
+  writes each delivery as the second half of the same `complete()` batch
+  that removes its computation, the transactional-outbox pattern by
+  construction — see [Durable Computation](durable-computation.md).
 - **Intent** (`kind=intent`) — one document per scope, last-write-wins via
   read-then-CAS retry, shipped in `nessy-intent` — see [Intent](intent.md).
 
@@ -208,10 +222,10 @@ Two horror stories are why the pin exists, not a hypothetical:
 - A caller mapper set to `SNAKE_CASE` naming would rename every stored
   field the moment it replaced the default — a scope's own state document
   would stop parsing on the very next read.
-- A caller mapper set to `NON_EMPTY` inclusion would drop
-  `SubstrateComputations#create`'s empty `continuations` array from the
-  wire — and the very next `await` would fail to parse the document it
-  just wrote, because the field it needs is simply missing.
+- A caller mapper set to `NON_EMPTY` inclusion could silently drop a field
+  a recipe's own codec expects present on read — a `computation` or
+  `outbox` document written under one inclusion policy and read back under
+  another is exactly the kind of drift the pin exists to rule out.
 
 The pinned copy feeds every recipe default codec and the tool executor's
 binding. `Schemas` generation and tool-result rendering are not threaded
@@ -300,18 +314,11 @@ transform, exactly as expected of encrypted or compressed bytes.
 - **No querying into payloads.** Reporting reads the database directly if
   it must; the substrate contract stays bytes-in, bytes-out.
 
-## Specified, not built: the outbox and the summary sidecar
+## Specified, not built: the summary sidecar
 
-Two pieces of this design are ratified in the spec but have no code on
-this branch. Both are documented here as the intended shape, not as
-something you can reach for today.
-
-**The outbox** (`kind=outbox`, future) is a shared queue: document-per-item
-under UUIDv7 keys, so `keys("outbox", n)` scans oldest-first for free. An
-enqueue is meant to join whatever flip it announces in the same `batch`
-call — the transactional-outbox pattern, by construction, once a worker
-exists to drain it. It lands with the first durable (non-in-memory)
-adapter, not before.
+One piece of this design is ratified in the spec but has no code on this
+branch — documented here as the intended shape, not as something you can
+reach for today.
 
 **The summarization sidecar** (`kind=summary`, future) never rewrites the
 transcript. A `summary` document is meant to hold `{ text, throughSeq }`;
@@ -319,8 +326,11 @@ a working context would then be the summary plus
 `entries("memory", id, throughSeq + 1)`. Re-summarizing would CAS-advance
 the sidecar document; the journal underneath would never hear about it.
 
-Neither of these exists in `nessy-spi` or `nessy-agent` today — treat both
-sections as forward-looking design, not an API reference.
+This does not exist in `nessy-spi` or `nessy-agent` today — treat this
+section as forward-looking design, not an API reference. The outbox
+(`kind=outbox`) it was once specified alongside has since shipped — see
+the delivery-pipeline recipes above and
+[Durable Computation](durable-computation.md).
 
 ## Where next
 
@@ -329,4 +339,4 @@ sections as forward-looking design, not an API reference.
 - [Memory](memory.md) — the journal recipe in full, and why the transcript
   is never rewritten.
 - [Durable Computation](durable-computation.md) — how the `computation`
-  document maps onto the create/await/complete lifecycle.
+  and `outbox` documents carry the create/complete/deliver pipeline.

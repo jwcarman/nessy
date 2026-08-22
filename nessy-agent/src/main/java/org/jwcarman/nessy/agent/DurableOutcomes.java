@@ -19,7 +19,10 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.Outcome;
 
-/** The one mapping from a durable outcome to the tool grammar — checked casts, in-band failures. */
+/**
+ * The one mapping between a durable outcome and the tool grammar — checked casts, in-band failures,
+ * both directions.
+ */
 public final class DurableOutcomes {
 
   private DurableOutcomes() {}
@@ -35,6 +38,19 @@ public final class DurableOutcomes {
       case Outcome.Failure(String message) -> new ToolOutcome.Failed(new ToolError(message));
       case Outcome.Cancelled(String reason) ->
           new ToolOutcome.Failed(new ToolError("cancelled: " + reason));
+    };
+  }
+
+  /**
+   * The reverse mapping: a reaper redispatch that answers immediately (spec §6, F2) rides this into
+   * {@code complete(id, outcome)} so its computation is consumed by the normal pipeline rather than
+   * orphaned.
+   */
+  public static Outcome toOutcome(ToolOutcome outcome) {
+    Objects.requireNonNull(outcome, "outcome must not be null");
+    return switch (outcome) {
+      case ToolOutcome.Returned(ToolResult result) -> new Outcome.Success(result);
+      case ToolOutcome.Failed(ToolError error) -> new Outcome.Failure(error.message());
     };
   }
 }

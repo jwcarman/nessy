@@ -34,8 +34,8 @@ import org.jwcarman.nessy.spi.model.ModelSettings;
 
 /**
  * Run me from the IDE (needs a provider key in the environment — see {@code nessy-model-env}). Type
- * observations; when the agent wants an approval you'll see the request and the slot id; type
- * "approve" or "deny &lt;reason&gt;" to answer; "quit" exits.
+ * observations; when the agent wants an approval you'll see the request and the computation id;
+ * type "approve" or "deny &lt;reason&gt;" to answer; "quit" exits.
  *
  * <p>Never run by surefire (no {@code @Test} methods, and the class name avoids the default {@code
  * *Test}/{@code *Tests}/{@code *TestCase} include patterns) — this is a tinker door only.

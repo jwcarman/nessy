@@ -16,33 +16,25 @@
 package org.jwcarman.nessy.agent.durable;
 
 import java.util.Objects;
-import org.jwcarman.nessy.durable.CompletionResult;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
 
 /**
- * The approve/deny door (§4.3 amendment), addressed by the computation's own deterministic identity
- * — the desk holds no state of its own, because the backend is the state. Re-drives re-derive the
- * same id, so there is exactly one handle per question, ever. Second decisions are refused loudly
- * by the backend's own vocabulary; a decision on a never-created id births the slot already decided
- * (durable ruling 6). Completion-capability secrets (durable spec §9, "MAY be secured separately")
- * arrive with the out-of-process doors in Plan 5.
- *
- * <p>Complete-then-fire, at-least-once (plan decision 3): a handler throw during fire propagates
- * with the slot already terminal, leaving delivery deferred — no floor re-drives it promptly.
- * Prompt delivery (a sweeper, or the Plan-5 outbox) is future work; until it lands, a stranded
- * scope resumes only on its next observation or on a staleness re-drive.
+ * The approve/deny door (durable-deliveries spec §5), addressed by the computation's own
+ * deterministic identity — the desk holds no state of its own, because the backend is the state.
+ * Complete, then nudge the delivery worker: a completed-or-absent id is equally benign under
+ * at-least-once delivery (ruling 6, reversed) — there is no "already decided" to refuse loudly,
+ * because there is nothing left to read once the answer has transferred to its delivery.
  */
 public final class ApprovalDesk {
 
   private final DurableComputationBackend backend;
-  private final ContinuationDispatcher dispatcher;
+  private final Runnable nudge;
 
-  public ApprovalDesk(DurableComputationBackend backend, ContinuationDispatcher dispatcher) {
+  public ApprovalDesk(DurableComputationBackend backend, Runnable nudge) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
-    this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher must not be null");
+    this.nudge = Objects.requireNonNull(nudge, "nudge must not be null");
   }
 
   /**
@@ -60,9 +52,7 @@ public final class ApprovalDesk {
 
   private void decide(ComputationId id, Outcome outcome) {
     Objects.requireNonNull(id, "id must not be null");
-    if (backend.complete(id, outcome) == CompletionResult.ALREADY_TERMINAL) {
-      throw new IllegalStateException("already decided: " + id.value());
-    }
-    dispatcher.fire(backend.continuationsOf(id), outcome);
+    backend.complete(id, outcome);
+    nudge.run();
   }
 }

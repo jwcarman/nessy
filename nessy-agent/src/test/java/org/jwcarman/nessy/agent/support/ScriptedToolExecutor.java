@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import org.jwcarman.nessy.agent.AgentEvent;
+import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -42,7 +43,7 @@ public final class ScriptedToolExecutor implements ToolCallExecutor {
   }
 
   @Override
-  public void executeTool(ToolCall call, Sink sink) {
+  public void executeTool(ToolCall call, ModelResponseId responseId, Sink sink) {
     executed.add(call);
     ToolOutcome outcome = outcomes.get(call.id());
     if (outcome == null) {

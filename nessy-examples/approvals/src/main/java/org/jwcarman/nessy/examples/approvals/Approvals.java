@@ -28,11 +28,11 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.agent.host.AutonomousHost;
 import org.jwcarman.nessy.agent.host.Nessy;
+import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
@@ -68,20 +68,30 @@ public final class Approvals {
 
   /**
    * The whole scripted arc, factored out so {@code ApprovalsTest} can assert on exactly the line
-   * {@link #main} prints. Synchronizes on {@link TurnEvent.TurnEnded} — the autonomous host's
-   * default {@code agentObserver} narrates it (and {@link TurnEvent.AssistantSaid}) on the turn
-   * observer, so no extra wiring is needed beyond {@link Nessy.AutonomousBuilder#turnObserver}.
-   * Every wait is bounded: a hung host fails loudly with a named timeout instead of hanging the
-   * build.
+   * {@link #main} prints. Every wait is bounded: a hung host fails loudly with a named timeout
+   * instead of hanging the build.
+   *
+   * <p>The grant arc (durable-deliveries spec §5a): approving the computation dispatches the call
+   * directly past the gate from the grant's own continuation — no re-derivation, no second ask. The
+   * notifier fires exactly once, the tool runs exactly once, and the model's reply lands.
    */
   static String runScripted() throws InterruptedException {
     ModelProvider provider = scriptedProvider();
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<ApprovalRequest> requests = new LinkedBlockingQueue<>();
-    BlockingQueue<TurnEvent.AssistantSaid> replies = new LinkedBlockingQueue<>();
-    BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
+    BlockingQueue<String> replies = new LinkedBlockingQueue<>();
     TurnObserver observer =
-        TurnObserver.observe(o -> o.onAssistantSaid(replies::add).onTurnEnded(completions::add));
+        TurnObserver.observe(
+            o ->
+                o.onAssistantSaid(
+                    said -> {
+                      // the first segment's AssistantSaid carries the tool-use turn, no text yet
+                      // (blank); only the post-grant segment's text is the reply worth awaiting.
+                      String text = textOf(said.message());
+                      if (!text.isBlank()) {
+                        replies.add(text);
+                      }
+                    }));
 
     try (AutonomousHost<String> host =
         Nessy.autonomous()
@@ -97,20 +107,24 @@ public final class Approvals {
       System.out.println("== posting: please restart prod-eu ==");
       host.post(SCOPE_ID, "please restart prod-eu");
 
-      ApprovalRequest request = await(requests, "the approval request");
-      System.out.println("== approving " + request.address().approval().value() + " ==");
-      host.approvals().approve(request.address().approval());
+      ApprovalRequest firstAsk = await(requests, "the approval request");
+      System.out.println("== approving " + firstAsk.address().approval().value() + " ==");
+      host.approvals().approve(firstAsk.address().approval());
 
-      // The tool-use ask commits to memory alongside its result once the call resolves — both
-      // land only after approval, the ask first, then the model's final reply.
-      await(replies, "the model's tool-use ask");
-      TurnEvent.AssistantSaid said = await(replies, "the model's reply");
-      await(completions, "the turn to end");
-      String reply =
-          said.message().content().getFirst() instanceof TextBlock(String text) ? text : "";
-      System.out.println("reply: " + reply);
-      return reply + " (APPROVED AND COMPLETE)";
+      String reply = await(replies, "the assistant's reply after the grant");
+      System.out.println("== assistant replied: " + reply + " ==");
+      return "restarted prod-eu: " + reply;
     }
+  }
+
+  private static String textOf(Message message) {
+    StringBuilder text = new StringBuilder();
+    for (var block : message.content()) {
+      if (block instanceof TextBlock(String value)) {
+        text.append(value);
+      }
+    }
+    return text.toString();
   }
 
   private static void runInteractive() throws IOException {
@@ -151,10 +165,10 @@ public final class Approvals {
     }
   }
 
-  /** Prints the request (slot id + rendered action) and queues it for the loop to answer. */
+  /** Prints the request (computation id + rendered action) and queues it for the loop to answer. */
   private static void printRequest(ApprovalRequest request, BlockingQueue<ApprovalRequest> queue) {
     System.out.println(
-        "approval requested: slot="
+        "approval requested: computation="
             + request.address().approval().value()
             + " action="
             + request.context().action().orElse(null));

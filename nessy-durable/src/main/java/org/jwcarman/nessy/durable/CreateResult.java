@@ -18,7 +18,7 @@ package org.jwcarman.nessy.durable;
 import java.util.Objects;
 
 /**
- * Get-or-create's answer (preamble ruling 4): {@code created} is false when the slot already
+ * Get-or-create's answer (preamble ruling 4): {@code created} is false when the computation already
  * existed — the submit-once discipline's signal not to re-submit external work.
  */
 public record CreateResult(ComputationId id, boolean created) {

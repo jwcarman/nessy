@@ -17,6 +17,8 @@ package org.jwcarman.nessy.api.tool;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
@@ -34,18 +36,24 @@ final class ConfiguredTool<T> implements Tool<T> {
   private final Class<T> inputType;
   private final BiFunction<T, ToolContext, Awaited<ToolResult>> executor;
   private final CompletionPolicy requiredCompletion;
+  private final RetrySemantics retrySemantics;
+  private final Optional<Duration> timeout;
 
   ConfiguredTool(
       String name,
       String description,
       Class<T> inputType,
       BiFunction<T, ToolContext, Awaited<ToolResult>> executor,
-      CompletionPolicy requiredCompletion) {
+      CompletionPolicy requiredCompletion,
+      RetrySemantics retrySemantics,
+      Optional<Duration> timeout) {
     this.name = name;
     this.description = description;
     this.inputType = inputType;
     this.executor = executor;
     this.requiredCompletion = requiredCompletion;
+    this.retrySemantics = retrySemantics;
+    this.timeout = timeout;
   }
 
   @Override
@@ -71,6 +79,16 @@ final class ConfiguredTool<T> implements Tool<T> {
   @Override
   public CompletionPolicy requiredCompletion() {
     return requiredCompletion;
+  }
+
+  @Override
+  public RetrySemantics retrySemantics() {
+    return retrySemantics;
+  }
+
+  @Override
+  public Optional<Duration> timeout() {
+    return timeout;
   }
 
   /**

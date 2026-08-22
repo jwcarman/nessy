@@ -137,7 +137,7 @@ public final class Governed {
 
       ApprovalRequest request = await(approvalRequests, "the approval request");
       System.out.println(
-          "parked: slot="
+          "parked: computation="
               + request.address().approval().value()
               + " action="
               + request.context().action().orElse(null));
@@ -145,11 +145,12 @@ public final class Governed {
       host.approvals().approve(request.address().approval());
       System.out.println("approved");
 
-      TurnEvent.ToolCallCompleted completed =
-          await(toolCompletions, "the approved restart's completion");
-      System.out.println("completion: " + completed.result().content());
-
-      await(completions, "the turn to end");
+      // The grant arc (durable-deliveries spec §5a): the delivery worker dispatches the call
+      // directly past the gate from the grant's own continuation — no second ask, no re-suspend.
+      TurnEvent.ToolCallCompleted restarted = await(toolCompletions, "the granted restart");
+      System.out.println("restarted: " + restarted.result().content());
+      TurnEvent.TurnEnded ended = await(completions, "the turn's completion");
+      System.out.println("turn ended: failed=" + ended.failed());
       return new Result(bounce.result().content(), declaredTarget, "GOVERNED TURN COMPLETE");
     }
   }

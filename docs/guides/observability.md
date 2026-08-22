@@ -139,6 +139,17 @@ public interface AgentObserver {
 `AgentObserver.noop()` is the default everywhere a host is built without
 one, via `AutonomousBuilder#agentObserver(AgentObserver)`.
 
+None of these events originate from a live wait. `DeliveryWorker` — one
+heartbeat thread per host, plus an immediate synchronous drain right after
+any completion commits — is what turns a pending outbox delivery back into
+an `applied` (or `ignored`) fact on this same observer; a grant's dispatch
+and a durable tool's eventual result both surface here exactly like any
+other transition, with no separate "resumed from durable storage" event of
+its own. There is nothing to observe about the worker itself beyond that:
+it narrates through the same seam every other transition does. See
+[Durable Computation](../concepts/durable-computation.md) for the pipeline
+underneath it.
+
 **Observers narrate; they never influence.** Nothing here can change what
 the shell does — no return value feeds back into the transition, and
 nothing about authorization runs through this seam either: a grant's

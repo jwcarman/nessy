@@ -33,16 +33,14 @@ import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.Binding;
 import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.ResolvingAgentBinder;
-import org.jwcarman.nessy.agent.ScopeRedrive;
-import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
-import org.jwcarman.nessy.agent.durable.SlotApprover;
-import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.ComputationApprover;
+import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
@@ -60,7 +58,6 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
@@ -301,8 +298,12 @@ public final class Nessy {
      * memory shared across many hosts (spec §10.11) — the id is the only key, and losing a view
      * loses nothing.
      *
-     * <p>Invoked once per delivery — the factory MUST return a view over shared state, never
-     * freshly-created state; there is no per-id cache behind it.
+     * <p>Invoked once per binding — the factory MUST return a view over shared state, never
+     * freshly-created state; there is no per-id cache behind it. One caller cares which view comes
+     * back: {@code DeliveryWorker}'s grant path requires the bound {@link Memory} to be backed by
+     * the same {@link Substrate}, plain — a scope wired with anything else fails loudly before a
+     * granted tool ever runs (durable-deliveries spec §5a; see {@code DeliveryWorker}'s own javadoc
+     * for why).
      */
     public AutonomousBuilder<O> memoryFactory(Function<String, Memory> memoryFactory) {
       this.memoryFactory = Objects.requireNonNull(memoryFactory, "memoryFactory must not be null");
@@ -325,13 +326,25 @@ public final class Nessy {
      * SubstrateComputations} over this builder's {@link #substrate(Substrate)}. Override for a
      * genuinely foreign engine (Restate, Temporal) — nobody implements this seam to get a database
      * (spec §6.5).
+     *
+     * <p><b>Integration contract:</b> the {@link DeliveryWorker} reads completions from this
+     * builder's {@link #substrate(Substrate)} — specifically, {@code kind=outbox} delivery
+     * documents ({@code {destination, outcome}}, spec §4) — never from the backend directly. A
+     * foreign {@code DurableComputationBackend} MUST write those same {@code outbox} documents into
+     * this substrate on {@code complete()}; that write is the only way a completion ever reaches a
+     * parked scope. A backend that completes computations some other way (its own store, its own
+     * callback) parks every scope's completion forever — this builder does not police that at
+     * {@code build()} time, so get the write right.
      */
     public AutonomousBuilder<O> backend(DurableComputationBackend backend) {
       this.backend = Objects.requireNonNull(backend, "backend must not be null");
       return this;
     }
 
-    /** Fires once, point-to-point, the moment an approval slot is first asked (§4.3 amendment). */
+    /**
+     * Fires once, point-to-point, the moment an approval computation is first asked (§4.3
+     * amendment).
+     */
     public AutonomousBuilder<O> approvalNotifier(Consumer<ApprovalRequest> approvalNotifier) {
       this.approvalNotifier =
           Objects.requireNonNull(approvalNotifier, "approvalNotifier must not be null");
@@ -438,7 +451,6 @@ public final class Nessy {
       AgentObserver effectiveAgentObserver =
           agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
 
-      var dispatcher = new ContinuationDispatcher();
       var hostRef = new AtomicReference<AutonomousHost<O>>();
       AgentResolver resolver =
           (type, id) -> {
@@ -447,8 +459,6 @@ public final class Nessy {
             }
             return hostRef.get().agentFor(id);
           };
-      var scopeResumption = new ScopeResumption(new ResolvingAgentBinder(resolver), pinned);
-      var scopeRedrive = new ScopeRedrive(resolver, pinned);
 
       Harness<O> harness =
           Harness.of(
@@ -470,17 +480,16 @@ public final class Nessy {
                       binding.id(),
                       turnObserver,
                       exec,
-                      new SlotDeferredToolCallPolicy(effectiveBackend, scopeResumption),
-                      new SlotApprover(effectiveBackend, approvalNotifier, scopeRedrive),
+                      new ComputationDeferredToolCallPolicy(effectiveBackend, pinned),
+                      new ComputationApprover(effectiveBackend, approvalNotifier, pinned),
                       pinned));
 
-      dispatcher.register(ScopeResumption.TYPE, scopeResumption);
-      dispatcher.register(ScopeRedrive.TYPE, scopeRedrive);
-
-      var approvals = new ApprovalDesk(effectiveBackend, dispatcher);
-      var completions = new CompletionDesk(effectiveBackend, dispatcher);
-      var host = new AutonomousHost<>(owned, approvals, completions, harness);
+      var worker = new DeliveryWorker<>(effectiveSubstrate, pinned, harness, resolver);
+      var approvals = new ApprovalDesk(effectiveBackend, worker::nudge);
+      var completions = new CompletionDesk(effectiveBackend, worker::nudge);
+      var host = new AutonomousHost<>(owned, approvals, completions, harness, worker);
       hostRef.set(host);
+      worker.start();
       return host;
     }
   }

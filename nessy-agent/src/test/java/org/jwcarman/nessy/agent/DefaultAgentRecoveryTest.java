@@ -62,7 +62,9 @@ class DefaultAgentRecoveryTest {
   void aStaleModelCallIsReFired() {
     var clock = new TestClock(T0);
     var f = stalled(new Phase.AwaitingModel(), clock);
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("recovered")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("recovered")), List.of(), ModelResponseId.of("response-1")));
     clock.advance(Duration.ofMinutes(6));
     f.agent.drive();
     f.pump.pumpUntilQuiet();
@@ -76,7 +78,9 @@ class DefaultAgentRecoveryTest {
     // stale, not merely one tick past it.
     var clock = new TestClock(T0);
     var f = stalled(new Phase.AwaitingModel(), clock);
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("recovered")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("recovered")), List.of(), ModelResponseId.of("response-1")));
     clock.advance(THRESHOLD);
     f.agent.drive();
     f.pump.pumpUntilQuiet();
@@ -87,9 +91,14 @@ class DefaultAgentRecoveryTest {
   void aStaleFanOutReFiresOnlyThePendingCallsWithTheirFullArguments() {
     var clock = new TestClock(T0);
     var turn = Message.assistant(List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a")));
-    var f = stalled(new Phase.AwaitingTools(turn, Set.of("a"), List.of()), clock);
+    var f =
+        stalled(
+            new Phase.AwaitingTools(turn, Set.of("a"), List.of(), ModelResponseId.of("response-1")),
+            clock);
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("done")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-1")));
     clock.advance(Duration.ofMinutes(6));
     f.agent.drive();
     f.pump.pumpUntilQuiet();
@@ -104,7 +113,9 @@ class DefaultAgentRecoveryTest {
         new SubstrateAgentStateStore(
             new InMemorySubstrate(clock), "agent", clock, TestMappers.plainlyPinned());
     var f = new AgentFixture(store, false, StalenessPolicy.after(THRESHOLD, clock));
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1")));
     f.backlogQueue.add("waiting");
     clock.advance(Duration.ofHours(1));
     f.agent.drive();
@@ -117,7 +128,9 @@ class DefaultAgentRecoveryTest {
   void aReFireIsNarrated() {
     var clock = new TestClock(T0);
     var f = stalled(new Phase.AwaitingModel(), clock);
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1")));
     clock.advance(Duration.ofMinutes(6));
     f.agent.drive();
     f.pump.pumpUntilQuiet();

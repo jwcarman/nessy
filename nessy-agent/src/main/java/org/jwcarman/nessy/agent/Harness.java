@@ -133,13 +133,21 @@ public final class Harness<O> {
     return stalenessPolicy;
   }
 
-  /** The per-scope model executor for {@code binding} — a plain field-holding object (§10.11). */
-  ModelCallExecutor modelExecutor(Binding<O> binding) {
+  /**
+   * The per-scope model executor for {@code binding} — a plain field-holding object (§10.11).
+   * Public so the delivery worker (durable-deliveries spec §5) can dispatch a post-commit {@code
+   * CallModel} effect exactly as {@link DefaultAgent} does, without duplicating the harness's own
+   * factory wiring.
+   */
+  public ModelCallExecutor modelExecutor(Binding<O> binding) {
     return modelExecutorFactory.apply(binding);
   }
 
-  /** The per-scope tool executor for {@code binding} — a plain field-holding object (§10.11). */
-  ToolCallExecutor toolExecutor(Binding<O> binding) {
+  /**
+   * The per-scope tool executor for {@code binding} — a plain field-holding object (§10.11). Public
+   * for the same reason as {@link #modelExecutor(Binding)}.
+   */
+  public ToolCallExecutor toolExecutor(Binding<O> binding) {
     return toolExecutorFactory.apply(binding);
   }
 }

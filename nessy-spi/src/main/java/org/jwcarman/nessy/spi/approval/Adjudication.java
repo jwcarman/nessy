@@ -33,6 +33,6 @@ public sealed interface Adjudication {
     }
   }
 
-  /** The question is open in a durable slot; the call suspends. */
-  record Suspended(ComputationId slot) implements Adjudication {}
+  /** The question is open in a durable computation; the call suspends. */
+  record Suspended(ComputationId computation) implements Adjudication {}
 }

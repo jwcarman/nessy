@@ -131,8 +131,8 @@ Or run the shape this page just built, for real, with no key at all:
 - [Autonomous Agents](autonomous-agents.md) — the second front door, for a
   host that keeps running without a human driving each turn, with an
   `ApprovalDesk` for whatever a tool's policy sends to a human.
-- [Durable Computation](../concepts/durable-computation.md) — the slot
-  primitive both front doors are built on, and why a parked call survives
-  the instance that opened it.
+- [Durable Computation](../concepts/durable-computation.md) — the
+  ownership-transfer pipeline both front doors are built on, and why a
+  parked call survives the instance that opened it.
 - [The Four Tiers](../concepts/the-four-tiers.md) — how a substrate, a host,
   a harness, and a binding compose into the agent this page just built.

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.durable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class PrimitivesTest {
@@ -47,5 +48,62 @@ class PrimitivesTest {
   @Test
   void equalContinuationsAreOneRegistration() {
     assertThat(new Continuation("T", "d")).isEqualTo(new Continuation("T", "d"));
+  }
+
+  @Test
+  void aToolInvocationIdCarriesTheResponseAndCallIdsAndRejectsBlankOrNullComponents() {
+    var id = new ToolInvocationId("response-1", "call-1");
+    assertThat(id.responseId()).isEqualTo("response-1");
+    assertThat(id.callId()).isEqualTo("call-1");
+    assertThatThrownBy(() -> new ToolInvocationId(null, "call-1"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ToolInvocationId(" ", "call-1"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ToolInvocationId("response-1", null))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ToolInvocationId("response-1", " "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void equalToolInvocationIdsAreOneIdentity() {
+    assertThat(new ToolInvocationId("response-1", "call-1"))
+        .isEqualTo(new ToolInvocationId("response-1", "call-1"));
+  }
+
+  @Test
+  void aPendingComputationCarriesItsInvocationReturnAddressAndOptionalDeadlineAndRejectsNulls() {
+    var id = ComputationId.of("tool:a:b:c");
+    var invocation = new ToolInvocationId("response-1", "call-1");
+    var returnAddress = new Continuation("RESUME_SCOPE", "{}");
+    var pending = new PendingComputation(id, invocation, returnAddress, Optional.empty());
+
+    assertThat(pending.id()).isEqualTo(id);
+    assertThat(pending.invocation()).isEqualTo(invocation);
+    assertThat(pending.returnAddress()).isEqualTo(returnAddress);
+    assertThat(pending.deadline()).isEmpty();
+    assertThatThrownBy(
+            () -> new PendingComputation(null, invocation, returnAddress, Optional.empty()))
+        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> new PendingComputation(id, null, returnAddress, Optional.empty()))
+        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> new PendingComputation(id, invocation, null, Optional.empty()))
+        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> new PendingComputation(id, invocation, returnAddress, null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void createResultIsGetOrCreate() {
+    var id = ComputationId.of("tool:a:b:c");
+    assertThat(new CreateResult(id, true).created()).isTrue();
+    assertThat(new CreateResult(id, false).created()).isFalse();
+    assertThatThrownBy(() -> new CreateResult(null, true)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void completionResultHasExactlyTwoArms() {
+    assertThat(CompletionResult.values())
+        .containsExactly(CompletionResult.TRANSFERRED, CompletionResult.ALREADY_DONE);
   }
 }

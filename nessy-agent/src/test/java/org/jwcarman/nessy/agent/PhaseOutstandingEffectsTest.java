@@ -51,13 +51,19 @@ class PhaseOutstandingEffectsTest {
   @Test
   void awaitingToolsReDerivesOnlyThePendingCallsWithFullArguments() {
     var phase =
-        new Phase.AwaitingTools(TURN, Set.of("b"), List.of(new ToolResultBlock("a", "42", false)));
+        new Phase.AwaitingTools(
+            TURN,
+            Set.of("b"),
+            List.of(new ToolResultBlock("a", "42", false)),
+            ModelResponseId.of("response-1"));
     assertThat(phase.outstandingEffects()).containsExactly(new Effect.ExecuteTool(CALL_B));
   }
 
   @Test
   void awaitingToolsReDerivesInSortedIdOrder() {
-    var phase = new Phase.AwaitingTools(TURN, Set.of("b", "a"), List.of());
+    var phase =
+        new Phase.AwaitingTools(
+            TURN, Set.of("b", "a"), List.of(), ModelResponseId.of("response-1"));
     assertThat(phase.outstandingEffects())
         .containsExactly(new Effect.ExecuteTool(CALL_A), new Effect.ExecuteTool(CALL_B));
   }

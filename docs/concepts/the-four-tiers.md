@@ -158,9 +158,9 @@ public interface StalenessPolicy {
 The `Clock` lives inside the policy, not the shell — the policy owns time.
 Phase-awareness is the point of the interface, not an afterthought: an
 implementation may inspect `phase` and decide that a scope quiet because its
-only outstanding call is suspended on an approval slot is not stale at all,
-however long it has sat there. `StalenessPolicy.never()` is what a scope
-with no automatic re-firing — the CLI's default — asks for.
+only outstanding call is suspended on an approval computation is not stale
+at all, however long it has sat there. `StalenessPolicy.never()` is what a
+scope with no automatic re-firing — the CLI's default — asks for.
 
 ## Multi-node in one sentence
 
@@ -177,9 +177,9 @@ Agent-as-scope is the virtual-actor model with one deliberate deviation:
 `(AgentType, AgentId)` plays the role of Orleans' `(grain type, grain key)`,
 and a binding is a grain activation *minus* the single-activation guarantee
 — safety comes from CAS and at-least-once idempotence instead, which is
-what lets any node answer. On the durable side, a slot plays the role of a
-Restate/DBOS durable promise, and "host" agrees with MCP's own architecture
-noun.
+what lets any node answer. On the durable side, a pending computation plays
+the role of a Restate/DBOS durable promise, and "host" agrees with MCP's
+own architecture noun.
 
 ## Where next
 

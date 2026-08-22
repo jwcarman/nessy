@@ -49,17 +49,35 @@ public final class TestAgents {
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy) {
     Harness<O> harness =
-        Harness.of(
-            AgentType.of("test"),
-            renderer,
-            observer,
-            drainOnIdle,
-            stalenessPolicy,
-            rawId -> memory,
-            rawId -> store,
-            rawId -> backlog,
-            binding -> model,
-            binding -> tools);
+        harness(
+            memory, store, backlog, renderer, model, tools, observer, drainOnIdle, stalenessPolicy);
     return new DefaultAgent<>(harness, harness.bind(AgentId.of("test-scope")));
+  }
+
+  /**
+   * The same one-scope harness {@link #wired} builds, returned directly — for tests that also need
+   * the harness itself (e.g. to construct a delivery worker against the same fixed collaborators).
+   */
+  public static <O> Harness<O> harness(
+      Memory memory,
+      AgentStateStore store,
+      Backlog<O> backlog,
+      ObservationRenderer<O> renderer,
+      ModelCallExecutor model,
+      ToolCallExecutor tools,
+      AgentObserver observer,
+      boolean drainOnIdle,
+      StalenessPolicy stalenessPolicy) {
+    return Harness.of(
+        AgentType.of("test"),
+        renderer,
+        observer,
+        drainOnIdle,
+        stalenessPolicy,
+        rawId -> memory,
+        rawId -> store,
+        rawId -> backlog,
+        binding -> model,
+        binding -> tools);
   }
 }

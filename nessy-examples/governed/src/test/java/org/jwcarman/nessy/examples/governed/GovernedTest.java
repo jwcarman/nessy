@@ -29,8 +29,13 @@ import org.junit.jupiter.api.Timeout;
 @Timeout(60)
 class GovernedTest {
 
+  /**
+   * The grant arc (durable-deliveries spec §5a): approving the parked restart dispatches it past
+   * the gate directly from the grant's own continuation — no second ask, no re-suspend — so this
+   * scripted run observes the turn's completion.
+   */
   @Test
-  void the_bounced_declared_and_approved_restart_completes_the_turn() throws InterruptedException {
+  void the_bounced_and_declared_restart_completes_once_approved() throws InterruptedException {
     Governed.Result result = Governed.run();
 
     assertThat(result.sentinel()).isEqualTo("GOVERNED TURN COMPLETE");

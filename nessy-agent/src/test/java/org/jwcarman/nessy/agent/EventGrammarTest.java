@@ -45,7 +45,9 @@ class EventGrammarTest {
 
   @Test
   void aModelCompletionWrapsExactlyOneOutcome() {
-    var responded = new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of());
+    var responded =
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1"));
     assertThat(new AgentEvent.ModelFinished(responded).outcome()).isEqualTo(responded);
   }
 

@@ -51,7 +51,9 @@ class DefaultAgentApplyTest {
   @Test
   void aFullTurnRunsObserveToIdle() {
     var f = new AgentFixture();
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("hello back")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("hello back")), List.of(), ModelResponseId.of("response-1")));
     f.agent.observe("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
@@ -65,7 +67,9 @@ class DefaultAgentApplyTest {
   @Test
   void theUserMessageIsInMemoryBeforeTheModelIsCalled() {
     var f = new AgentFixture();
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1")));
     f.agent.observe("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.model.memorySizesAtCall()).isNotEmpty();
@@ -77,8 +81,12 @@ class DefaultAgentApplyTest {
     var f = new AgentFixture();
     var turnBlocks =
         List.<ContentBlock>of(new ToolUseBlock(CALL_A, "sig-a"), new ToolUseBlock(CALL_B, null));
-    f.model.enqueue(new ModelOutcome.Responded(turnBlocks, List.of(CALL_A, CALL_B)));
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("both done")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            turnBlocks, List.of(CALL_A, CALL_B), ModelResponseId.of("response-1")));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("both done")), List.of(), ModelResponseId.of("response-1")));
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
     f.tools.answer("b", new ToolOutcome.Returned(ToolResult.ok("restarted")));
     f.agent.observe("do both");
@@ -100,8 +108,11 @@ class DefaultAgentApplyTest {
   void aDuplicateToolDeliveryIsIgnoredAndWritesNothing() {
     var f = new AgentFixture();
     var turnBlocks = List.<ContentBlock>of(new ToolUseBlock(CALL_A, null));
-    f.model.enqueue(new ModelOutcome.Responded(turnBlocks, List.of(CALL_A)));
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("done")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(turnBlocks, List.of(CALL_A), ModelResponseId.of("response-1")));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-1")));
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
     f.agent.observe("go");
     f.pump.pumpUntilQuiet();
@@ -135,13 +146,17 @@ class DefaultAgentApplyTest {
     var turn =
         Message.assistant(
             List.<ContentBlock>of(new ToolUseBlock(CALL_A, null), new ToolUseBlock(CALL_B, null)));
-    var awaiting = new Phase.AwaitingTools(turn, Set.of("a", "b"), List.of());
+    var awaiting =
+        new Phase.AwaitingTools(
+            turn, Set.of("a", "b"), List.of(), ModelResponseId.of("response-1"));
     inner.save(new State(awaiting, 0L)); // now at v1
     var aFinished =
         new AgentEvent.ToolFinished(CALL_A, new ToolOutcome.Returned(ToolResult.ok("42")));
     var competitorState = new State(awaiting.handle(aFinished).next(), 1L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("done")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-1")));
     f.agent.deliver(
         new AgentEvent.ToolFinished(CALL_B, new ToolOutcome.Returned(ToolResult.ok("ok"))));
     f.pump.pumpUntilQuiet();
@@ -165,7 +180,10 @@ class DefaultAgentApplyTest {
     // and dropped rather than escaping the pump.
     var f = new AgentFixture();
     f.model.enqueue(
-        new ModelOutcome.Responded(List.of(new TextBlock("no tool blocks")), List.of(CALL_A)));
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("no tool blocks")),
+            List.of(CALL_A),
+            ModelResponseId.of("response-1")));
     f.agent.observe("go");
     f.pump.pumpUntilQuiet();
     assertThat(f.observer.applyFailures()).hasSize(1);
@@ -198,7 +216,7 @@ class DefaultAgentApplyTest {
             backlog,
             text -> List.of(new TextBlock(text)),
             sink -> versionsAtCall.add(store.load().version()),
-            (call, sink) -> {},
+            (call, responseId, sink) -> {},
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());

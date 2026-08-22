@@ -19,7 +19,7 @@ Five words carry the whole design, from least to most trusted:
 - **Adjudication** — the stage a call enters only when judgment's verdict is
   require approval: a human or an external system decides — `Granted`,
   `Refused`, or its most interesting state, `Suspended`: not decided yet,
-  parked in a durable slot.
+  parked in a durable computation.
 
 Each stage only ever adds information; nothing downstream can widen what an
 upstream stage already narrowed.
@@ -213,7 +213,7 @@ switch (decision) {
   case RequireApproval _  -> switch (approver.adjudicate(new ApprovalRequest(address, call, assembled))) {
       case Granted _              -> run(tool, input, call, address);
       case Refused(String reason) -> failed(call, reason);
-      case Suspended(var slot)    -> deferred(slot);
+      case Suspended(var computation) -> deferred(computation);
     };
 }
 ```
@@ -236,7 +236,7 @@ public interface Approver {
 public sealed interface Adjudication {
   record Granted() implements Adjudication {}
   record Refused(String reason) implements Adjudication {}
-  record Suspended(ComputationId slot) implements Adjudication {}
+  record Suspended(ComputationId computation) implements Adjudication {}
 }
 ```
 
@@ -248,9 +248,10 @@ never less. The rendered action is not a component of its own; it lives in
 
 The default approver (the executor's 5- and 6-arg constructors) refuses
 loudly in-band — approval is a capability of the wiring, not a right of
-every deployment. A durable wiring's approver instead suspends into a slot
-and returns `Suspended`; the desk mechanics — approval slots, `approve`/
-`deny`, resuming a scope from a fresh process — belong to
+every deployment. A durable wiring's approver instead suspends into a
+computation and returns `Suspended`; the desk mechanics — approval
+computations, `approve`/`deny`, a granted call dispatching straight through
+the delivery pipeline with no re-asked policy — belong to
 [Durable Computation](durable-computation.md), not here.
 
 ## `AuthorizationReport` — the report is the wiring
@@ -325,5 +326,6 @@ the same door closed with `"no risk assessment deposited under RISK_KEY"`.
   teaching loop `IntentPolicies.requireDeclared` drives.
 - [Tools](tools.md) — what a granted `Tool` actually is, and the sealed
   vocabulary a grant's input can take.
-- [Durable Computation](durable-computation.md) — the slot an approval
-  suspends into and how a scope resumes once it's answered.
+- [Durable Computation](durable-computation.md) — the computation an
+  approval suspends into and how a granted call dispatches once it's
+  answered.

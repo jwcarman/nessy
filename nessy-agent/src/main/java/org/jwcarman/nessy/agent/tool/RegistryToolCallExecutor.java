@@ -22,6 +22,7 @@ import java.util.concurrent.Executor;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.Codecs;
@@ -43,9 +44,12 @@ import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.approval.Approver;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * The registry tool executor (§4.3): find, bind, judge, execute, deliver — and the harness's one
@@ -63,8 +67,16 @@ import org.jwcarman.nessy.spi.approval.Approver;
  *
  * <p>What happens when a tool defers is the wiring's {@link DeferredToolCallPolicy}: the default
  * (5-arg constructor) fails loudly in-band — a deferred turn wedges a conversation — while a
- * durable wiring suspends the call into a slot. A suspended call, whether from a deferred tool or a
- * suspended {@link Adjudication}, delivers nothing and narrates nothing.
+ * durable wiring suspends the call into its computation. A suspended call, whether from a deferred
+ * tool or a suspended {@link Adjudication}, delivers nothing and narrates nothing.
+ *
+ * <p>The policy runs inline, exactly once, before the tool ever gets a chance to do anything
+ * (durable-deliveries spec §5a). Before that, even before the policy: {@link #gate} checks {@link
+ * DeferredToolCallPolicy#pendingComputation} — ownership-split absorption, spec §5a/§6. {@link
+ * #executeGrantedToolNow} is the one door that skips both the absorption check and the policy: it
+ * is reached only for work the gate already cleared — an approval's granted tool call, or the
+ * reaper's redispatch of a {@code RETRYABLE} overdue computation — so re-running policy or
+ * re-asking an approver there would be a bug, not a safety net.
  */
 public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
@@ -125,36 +137,75 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   }
 
   @Override
-  public void executeTool(ToolCall call, Sink sink) {
+  public void executeTool(ToolCall call, ModelResponseId responseId, Sink sink) {
+    Objects.requireNonNull(responseId, "responseId must not be null");
     executor.execute(
         () -> {
-          switch (execute(call)) {
+          switch (execute(call, responseId)) {
             case ToolExecution.Immediate(ToolOutcome outcome) ->
                 sink.deliver(new AgentEvent.ToolFinished(call, outcome));
             case ToolExecution.Deferred(_) -> {
-              // suspended into its slot: nothing delivered, nothing narrated (§4.3) — the
-              // completion re-enters through the slot's registered continuation
+              // suspended into its computation: nothing delivered, nothing narrated (§4.3) — the
+              // completion re-enters through the computation's registered continuation
             }
           }
         });
   }
 
-  private ToolExecution execute(ToolCall call) {
+  @Override
+  public ToolExecution executeGrantedToolNow(
+      ToolCall call,
+      CallAddress address,
+      ToolInvocationId invocation,
+      Optional<Substrate.Op> alsoCommit) {
+    return executePastGate(call, address, invocation, alsoCommit);
+  }
+
+  private ToolExecution execute(ToolCall call, ModelResponseId responseId) {
     Optional<ToolGrant> found = registry.find(call.name());
     if (found.isEmpty()) {
       return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
     }
+    CallAddress address = new CallAddress(type.name(), id.value(), responseId.value(), call.id());
     try {
-      return invoke(found.get(), call);
+      return gate(found.get(), call, address);
     } catch (RuntimeException e) {
       String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
       return new ToolExecution.Immediate(failed(call, message));
     }
   }
 
-  private ToolExecution invoke(ToolGrant grant, ToolCall call) {
+  private ToolExecution executePastGate(
+      ToolCall call,
+      CallAddress address,
+      ToolInvocationId invocation,
+      Optional<Substrate.Op> alsoCommit) {
+    Optional<ToolGrant> found = registry.find(call.name());
+    if (found.isEmpty()) {
+      return new ToolExecution.Immediate(failed(call, "unknown tool: " + call.name()));
+    }
+    try {
+      ToolGrant grant = found.get();
+      Object input = convert(call, grant.tool());
+      return run(grant.tool(), input, call, address, invocation, alsoCommit);
+    } catch (RuntimeException e) {
+      String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+      return new ToolExecution.Immediate(failed(call, message));
+    }
+  }
+
+  private ToolExecution gate(ToolGrant grant, ToolCall call, CallAddress address) {
+    Optional<ComputationId> pending = deferredToolCallPolicy.pendingComputation(address);
+    if (pending.isPresent()) {
+      // ownership-split absorption (spec §5a, §6): a staleness redrive reached a call whose
+      // approval is still pending, or whose tool computation already exists — the ask, or the
+      // work, is already in flight from an earlier pass through this exact gate. Absorb here,
+      // before the policy (which could be non-constant) or its enrichers run again, before the
+      // tool runs again, and before the approver is ever asked again.
+      return new ToolExecution.Deferred(pending.get());
+    }
     Object input = convert(call, grant.tool());
-    CallAddress address = new CallAddress(type.name(), id.value(), call.id());
+    ToolInvocationId invocation = new ToolInvocationId(address.responseId(), call.id());
     PolicyDecision decision;
     AuthzContext assembled = null;
     if (grant.policy() instanceof UsagePolicy.Static fixed) {
@@ -169,14 +220,16 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       }
     }
     return switch (decision) {
-      case PolicyDecision.Allow _ -> run(grant.tool(), input, call, address);
+      case PolicyDecision.Allow _ ->
+          run(grant.tool(), input, call, address, invocation, Optional.empty());
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
       case PolicyDecision.RequireApproval _ ->
           switch (approver.adjudicate(new ApprovalRequest(address, call, assembled))) {
-            case Adjudication.Granted _ -> run(grant.tool(), input, call, address);
+            case Adjudication.Granted _ ->
+                run(grant.tool(), input, call, address, invocation, Optional.empty());
             case Adjudication.Refused(String reason) ->
                 new ToolExecution.Immediate(failed(call, reason));
-            case Adjudication.Suspended(var slot) -> new ToolExecution.Deferred(slot);
+            case Adjudication.Suspended(var computation) -> new ToolExecution.Deferred(computation);
           };
     };
   }
@@ -193,15 +246,23 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     return codecs.bind(call.arguments(), tool.inputType(), tool.inputType().getSimpleName());
   }
 
-  private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {
+  private <T> ToolExecution run(
+      Tool<T> tool,
+      Object input,
+      ToolCall call,
+      CallAddress address,
+      ToolInvocationId invocation,
+      Optional<Substrate.Op> alsoCommit) {
     T typed = tool.inputType().cast(input);
-    ToolContext context = new ToolContext(call, event -> narrate(call, event), address);
+    ToolContext context = new ToolContext(call, event -> narrate(call, event), address, invocation);
     return switch (tool.execute(typed, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));
         yield new ToolExecution.Immediate(new ToolOutcome.Returned(value));
       }
-      case Awaited.Deferred<ToolResult> _ -> deferredToolCallPolicy.onDeferred(call, address);
+      case Awaited.Deferred<ToolResult> _ ->
+          deferredToolCallPolicy.onDeferred(
+              call, address, invocation, tool.retrySemantics(), tool.timeout(), alsoCommit);
     };
   }
 
@@ -224,7 +285,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   /** The 5-arg constructor's default: fails loudly in-band rather than suspending silently. */
   private static DeferredToolCallPolicy defaultPolicy(TurnObserver turn) {
-    return (call, address) -> {
+    return (call, address, invocation, retrySemantics, timeout, alsoCommit) -> {
       ToolResult error = ToolResult.error(PARKING_UNAVAILABLE);
       turn.on(new TurnEvent.ToolCallCompleted(call, error));
       return new ToolExecution.Immediate(

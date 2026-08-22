@@ -23,10 +23,12 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 /** What a model call came back with. Success and failure are outcomes, never separate events. */
 public sealed interface ModelOutcome {
 
-  record Responded(List<ContentBlock> content, List<ToolCall> calls) implements ModelOutcome {
+  record Responded(List<ContentBlock> content, List<ToolCall> calls, ModelResponseId responseId)
+      implements ModelOutcome {
     public Responded {
       Objects.requireNonNull(content, "content must not be null");
       Objects.requireNonNull(calls, "calls must not be null");
+      Objects.requireNonNull(responseId, "responseId must not be null");
       content = List.copyOf(content);
       calls = List.copyOf(calls);
     }

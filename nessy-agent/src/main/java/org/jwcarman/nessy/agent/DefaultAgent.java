@@ -62,7 +62,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     if (isStale(state)) {
       List<Effect> outstanding = state.phase().outstandingEffects();
       harness.observer().reFired(outstanding);
-      outstanding.forEach(this::dispatch); // §6.1 — the re-fire arm
+      outstanding.forEach(effect -> dispatch(effect, state.phase())); // §6.1 — the re-fire arm
     }
   }
 
@@ -100,7 +100,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     t.commit().forEach(binding.memory()::remember); // commit before dispatch
     binding.store().save(new State(t.next(), state.version()));
     harness.observer().applied(event, t);
-    t.effects().forEach(this::dispatch);
+    t.effects().forEach(effect -> dispatch(effect, t.next()));
     if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
       drive(); // §3.1 — the autonomous wiring's drain executor
     }
@@ -162,17 +162,32 @@ public final class DefaultAgent<O> implements Agent<O> {
             .filter(effect -> effect instanceof Effect.ExecuteTool)
             .toList();
     harness.observer().reFired(outstanding);
-    outstanding.forEach(this::dispatch);
+    outstanding.forEach(effect -> dispatch(effect, state.phase()));
   }
 
   private boolean isStale(State state) {
     return harness.stalenessPolicy().isStale(state.phase(), binding.store().lastSaved());
   }
 
-  private void dispatch(Effect effect) {
+  /**
+   * {@code phase} is the committed state an {@code ExecuteTool} effect is dispatched alongside —
+   * always {@link Phase.AwaitingTools}, the only phase that ever carries one (§2.2) — and is where
+   * the call's {@link ModelResponseId} is read from (durable-deliveries spec §2): minted once, in
+   * the model-call executor, never re-derived here.
+   */
+  private void dispatch(Effect effect, Phase phase) {
     switch (effect) {
       case Effect.CallModel _ -> model.callModel(this::deliver);
-      case Effect.ExecuteTool(var call) -> tools.executeTool(call, this::deliver);
+      case Effect.ExecuteTool(var call) ->
+          tools.executeTool(call, responseIdOf(phase), this::deliver);
     }
+  }
+
+  private static ModelResponseId responseIdOf(Phase phase) {
+    if (phase instanceof Phase.AwaitingTools awaiting) {
+      return awaiting.responseId();
+    }
+    throw new IllegalStateException(
+        "an ExecuteTool effect was dispatched outside AwaitingTools: " + phase);
   }
 }

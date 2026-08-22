@@ -57,7 +57,9 @@ class DefaultAgentDrainTest {
             f.observer,
             false,
             StalenessPolicy.never());
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1")));
     f.backlogQueue.add("bad-observation");
     f.backlogQueue.add("good-observation");
     poisoned.drive();
@@ -102,7 +104,7 @@ class DefaultAgentDrainTest {
             racingBacklog,
             text -> List.of(new TextBlock(text)),
             sink -> {},
-            (call, sink) -> {},
+            (call, responseId, sink) -> {},
             new RecordingObserver(),
             false,
             StalenessPolicy.never());
@@ -114,7 +116,9 @@ class DefaultAgentDrainTest {
   @Test
   void anEmptyRenderDeclinesTheObservationAndKeepsDraining() {
     var f = new AgentFixture();
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("ok")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1")));
     var poisoned =
         TestAgents.<String>wired(
             f.memory,
@@ -160,8 +164,12 @@ class DefaultAgentDrainTest {
             new SubstrateAgentStateStore(
                 new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned()),
             true);
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("one")), List.of()));
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("two")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("one")), List.of(), ModelResponseId.of("response-1")));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("two")), List.of(), ModelResponseId.of("response-1")));
     f.agent.observe("first");
     f.agent.observe("second"); // arrives mid-turn; queues
     f.pump.pumpUntilQuiet();
@@ -176,12 +184,16 @@ class DefaultAgentDrainTest {
             new SubstrateAgentStateStore(
                 new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned()),
             false);
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("one")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("one")), List.of(), ModelResponseId.of("response-1")));
     f.agent.observe("first");
     f.agent.observe("second");
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).containsExactly("second"); // waits for the client's next stream
-    f.model.enqueue(new ModelOutcome.Responded(List.of(new TextBlock("two")), List.of()));
+    f.model.enqueue(
+        new ModelOutcome.Responded(
+            List.of(new TextBlock("two")), List.of(), ModelResponseId.of("response-1")));
     f.agent.drive();
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).isEmpty();

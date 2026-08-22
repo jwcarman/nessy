@@ -29,10 +29,15 @@ import org.junit.jupiter.api.Timeout;
 @Timeout(60)
 class ApprovalsTest {
 
+  /**
+   * The grant arc (durable-deliveries spec §5a — see {@link Approvals#runScripted()}'s javadoc):
+   * approving the parked computation dispatches the call past the gate directly, with no second
+   * ask, so the scripted arc observes a completed restart.
+   */
   @Test
   void the_scripted_restart_parks_then_completes_once_approved() throws InterruptedException {
     String line = Approvals.runScripted();
 
-    assertThat(line).isEqualTo("Restarted prod-eu. (APPROVED AND COMPLETE)");
+    assertThat(line).isEqualTo("restarted prod-eu: Restarted prod-eu.");
   }
 }

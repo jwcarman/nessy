@@ -59,15 +59,14 @@ public final class Codecs {
    *
    * <p>Serialization inclusion is pinned to {@code ALWAYS}: a caller mapper configured for {@code
    * NON_EMPTY} (or any other omit-if-default policy) would otherwise survive the copy and drop
-   * empty collections from the wire — {@code SubstrateComputations#create}'s empty {@code
-   * continuations} array, most sharply, since the very next {@code await} then fails to parse the
-   * document it just wrote. {@code WRITE_EMPTY_JSON_ARRAYS} is pinned {@code true} for the same
-   * reason: a per-type {@code configOverride} on the caller's mapper can still ask for {@code
-   * NON_EMPTY} on a specific class, and the pin alone does not out-rank that override — see {@code
-   * OutcomeCodec.SlotDocumentWire#continuations}, which carries its own
-   * {@code @JsonInclude(ALWAYS)} to close that route. Root wrapping is pinned off both directions
-   * for the same reason: it is a presentation preference, not a format the stored bytes can float
-   * on.
+   * empty or absent fields from the wire — a recipe whose document round-trips through its own
+   * canonical constructor (spec §7) then fails to parse the very document it just wrote. {@code
+   * WRITE_EMPTY_JSON_ARRAYS} is pinned {@code true} for the same reason: a per-type {@code
+   * configOverride} on the caller's mapper can still ask for {@code NON_EMPTY} on a specific class,
+   * and the pin alone does not out-rank that override — a wire record with a collection field that
+   * must always render carries its own {@code @JsonInclude(ALWAYS)} to close that route. Root
+   * wrapping is pinned off both directions for the same reason: it is a presentation preference,
+   * not a format the stored bytes can float on.
    *
    * <p>What the pin does <em>not</em> defend against: a caller mapper with {@code
    * MapperFeature.USE_ANNOTATIONS} disabled, a caller-installed {@code setVisibility} override, or

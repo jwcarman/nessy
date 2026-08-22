@@ -88,7 +88,7 @@ class ToolRegistryTest {
 
     @Override
     public String description() {
-      return "Only ever answers through a durable slot";
+      return "Only ever answers through a durable computation";
     }
 
     @Override
@@ -115,7 +115,7 @@ class ToolRegistryTest {
 
     @Override
     public String description() {
-      return "Needs process-local async completion, but not a durable slot";
+      return "Needs process-local async completion, but not a durable computation";
     }
 
     @Override

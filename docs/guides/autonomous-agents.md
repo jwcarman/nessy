@@ -4,8 +4,8 @@
 that keeps running without a human driving each turn — a Slack bot, a queue
 consumer, an ops agent that might need to wait hours for a person to approve
 something. `Nessy.autonomous()` is the second front door: post an
-observation, get nothing back on that thread, and let the durable slot
-primitive carry the wait.
+observation, get nothing back on that thread, and let the durable
+computation pipeline carry the wait.
 
 ## Building a host
 
@@ -56,8 +56,9 @@ The builder surface, piece by piece:
   one pinned copy through every recipe that binds JSON. User-registered
   modules and serializers survive the copy.
 - **`approvalNotifier(Consumer<ApprovalRequest>)`** — fires once,
-  point-to-point, the moment an approval slot is first asked. One recipient,
-  never narrated — see [Durable Computation](../concepts/durable-computation.md).
+  point-to-point, the moment an approval computation is first asked. One
+  recipient, never narrated — see
+  [Durable Computation](../concepts/durable-computation.md).
 - **`staleness(StalenessPolicy)`** — the judgment call for when a quiet phase
   counts as dead enough to re-fire; default five minutes.
 - **`backlogCapacity(int)`** — the per-scope capacity of the shared backlog
@@ -102,28 +103,32 @@ try (var host =
         .build()) {
 
   host.post("prod-eu", "please restart prod-eu");
-  // ... turn runs, the tool call parks on approval:ops:prod-eu:c1 ...
+  // ... turn runs, the tool call parks on approval:ops:prod-eu:<responseId>:c1 ...
 
   ApprovalRequest request = requests.getFirst();
-  // request.address().approval() is the slot id
+  // request.address().approval() is the computation id
   // request.context().action() is "restart prod-eu", from the ActionContributor
 
   host.approvals().approve(request.address().approval());
-  // ... any node, any time later; the scope resumes and the turn completes ...
+  // ... any node, any time later; the call dispatches and the turn completes ...
 }
 ```
 
 The arc: **park** — the gate sees `RequireApproval`, creates the
-`approval:` slot, registers a `REDRIVE_SCOPE` continuation, and suspends;
+`approval:` computation whose continuation carries the tool call itself
+(routing, invocation id, call name and arguments), and suspends;
 **notifier** — `approvalNotifier` fires once with the `ApprovalRequest`,
-carrying the slot id and the assembled `AuthzContext` (action, declared
-intent, risk, principal — whatever the grant's enrichers deposited);
-**desk** — `host.approvals().approve(...)` or `.deny(..., reason)` completes
-the slot with a `Decision`; **redrive** — completion fires `REDRIVE_SCOPE`,
-which re-dispatches the scope's outstanding tool effects, the gate re-reads
-the now-decided slot, and either runs the tool or delivers the denial
-in-band. A denial is not an error path outside the model's view — the model
-reads "not during business hours" as an ordinary failed tool result and
+carrying the computation id and the assembled `AuthzContext` (action,
+declared intent, risk, principal — whatever the grant's enrichers
+deposited); **desk** — `host.approvals().approve(...)` or `.deny(...,
+reason)` completes the computation with a `Decision`, which is itself the
+ownership transfer into one outbox delivery; **dispatch** — the delivery
+worker drains that delivery and, because its destination continuation
+already carries the call, dispatches it directly — no re-read of the fold,
+no re-derivation of the pending computation, and no second run through the
+policy or the approver. A denial completes the same computation with
+`Decision.Deny`, and the delivery worker folds it as an ordinary failed
+tool result: the model reads "not during business hours" in-band and
 reacts to it, same as `AutonomousApprovalDemo`'s
 `aDenialArrivesInBandAndTheModelReacts` shows.
 
@@ -131,6 +136,16 @@ Nothing here holds a thread open waiting. Whether a park survives a restart
 of the process that opened it depends entirely on the `Substrate` behind
 `.substrate(...)` — `InMemorySubstrate` does not, a durable implementation
 does.
+
+!!! note "Delivery is per-host, not per-cluster, until the outbox gets a lease"
+    Within one host, the delivery worker's own claim gives one winner per
+    delivery. Across hosts, the same delivery can be drained more than once
+    until an outbox lease lands with the first durable substrate adapter —
+    parked, not built. The durable record stays single-winner regardless
+    (that's the completion's own atomic transfer); only a tool's external
+    side effect can run more than once in the meantime, which is why
+    `RetrySemantics` exists at all — see
+    [Durable Computation](../concepts/durable-computation.md#honest-limits).
 
 ## The governed turn: intent, risk, and threshold together
 
@@ -154,7 +169,7 @@ the assembled context and judges three ways:
 
 - severity below `MODERATE` → `Allow`, no approval needed.
 - severity `MODERATE` up to (not including) `VERY_HIGH` → `RequireApproval`,
-  the same park-and-redrive arc as above; the approval request carries the
+  the same park-and-dispatch arc as above; the approval request carries the
   declared intent, the risk assessment, and the principal for a human to
   weigh.
 - severity `VERY_HIGH` → `Deny`, in-band, **before any approver is ever
@@ -267,7 +282,7 @@ try (var host =
 ```
 
 Run it from the IDE with a provider key set — see
-[Providers](providers.md) — to watch the park-notify-approve-redrive arc
+[Providers](providers.md) — to watch the park-notify-approve-dispatch arc
 happen live, narrated turn by turn.
 
 For this same arc as consumer code, runnable with no key at all, see
@@ -277,9 +292,9 @@ the full declared-intent-plus-risk-threshold gate.
 
 ## Where next
 
-- [Durable Computation](../concepts/durable-computation.md) — the slot
-  primitive, the two desks, and why a parked call survives its own instance
-  dying.
+- [Durable Computation](../concepts/durable-computation.md) — the
+  ownership-transfer pipeline, the two desks, and why a parked call
+  survives its own instance dying.
 - [Storage](../concepts/storage.md) — the `.substrate(...)` seam and the
   substrate every recipe on this page shares.
 - [Intent](../concepts/intent.md) — the `declare-intent` tool and the

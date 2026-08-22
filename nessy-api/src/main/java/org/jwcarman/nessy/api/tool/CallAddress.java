@@ -26,24 +26,29 @@ import org.jwcarman.nessy.durable.ComputationId;
  *
  * @param agentType the recipe's name
  * @param agentId the scope
+ * @param responseId the committed model response that produced this call (durable-deliveries spec
+ *     §2) — closes the provider-uniqueness hole a bare {@code callId} leaves open, since provider
+ *     call ids are not contractually unique over an agent's lifetime
  * @param callId the provider-assigned tool call id
  */
-public record CallAddress(String agentType, String agentId, String callId) {
+public record CallAddress(String agentType, String agentId, String responseId, String callId) {
 
   public CallAddress {
     requireText(agentType, "agentType");
     requireText(agentId, "agentId");
+    requireText(responseId, "responseId");
     requireText(callId, "callId");
   }
 
   /** The address of "may it run?" — completed with a {@code Decision} by the approval desk. */
   public ComputationId approval() {
-    return ComputationId.of("approval:%s:%s:%s".formatted(agentType, agentId, callId));
+    return ComputationId.of(
+        "approval:%s:%s:%s:%s".formatted(agentType, agentId, responseId, callId));
   }
 
   /** The address of "what did it return?" — completed with a {@code ToolResult}. */
   public ComputationId execution() {
-    return ComputationId.of("tool:%s:%s:%s".formatted(agentType, agentId, callId));
+    return ComputationId.of("tool:%s:%s:%s:%s".formatted(agentType, agentId, responseId, callId));
   }
 
   private static void requireText(String value, String name) {

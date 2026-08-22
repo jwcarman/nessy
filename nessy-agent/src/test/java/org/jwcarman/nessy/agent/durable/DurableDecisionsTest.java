@@ -27,7 +27,7 @@ import org.jwcarman.nessy.spi.approval.Adjudication;
 /** The one mapping from a durable outcome to the approval grammar (spec §4.3 amendment). */
 class DurableDecisionsTest {
 
-  private static final ComputationId SLOT = ComputationId.of("approval:t:a:c1");
+  private static final ComputationId COMPUTATION = ComputationId.of("approval:t:a:c1");
 
   @Test
   void deniedRejectsABlankReason() {
@@ -38,35 +38,35 @@ class DurableDecisionsTest {
   @Test
   void aSuccessfulAllowIsGranted() {
     var outcome = new Outcome.Success(Decision.allow());
-    assertThat(DurableDecisions.toAdjudication(outcome, SLOT))
+    assertThat(DurableDecisions.toAdjudication(outcome, COMPUTATION))
         .isEqualTo(new Adjudication.Granted());
   }
 
   @Test
   void aSuccessfulDenyIsRefusedWithTheDenialReason() {
     var outcome = new Outcome.Success(new Decision.Deny("r"));
-    assertThat(DurableDecisions.toAdjudication(outcome, SLOT))
+    assertThat(DurableDecisions.toAdjudication(outcome, COMPUTATION))
         .isEqualTo(new Adjudication.Refused("r"));
   }
 
   @Test
   void anUnexpectedSuccessPayloadIsRefusedNamingTheClass() {
     var outcome = new Outcome.Success("garbage");
-    var adjudication = (Adjudication.Refused) DurableDecisions.toAdjudication(outcome, SLOT);
+    var adjudication = (Adjudication.Refused) DurableDecisions.toAdjudication(outcome, COMPUTATION);
     assertThat(adjudication.reason()).startsWith("unexpected approval payload: ");
   }
 
   @Test
   void aFailureIsRefusedWithTheFailureMessage() {
     var outcome = new Outcome.Failure("m");
-    assertThat(DurableDecisions.toAdjudication(outcome, SLOT))
+    assertThat(DurableDecisions.toAdjudication(outcome, COMPUTATION))
         .isEqualTo(new Adjudication.Refused("m"));
   }
 
   @Test
   void aCancellationIsRefusedNamingItself() {
     var outcome = new Outcome.Cancelled("r");
-    assertThat(DurableDecisions.toAdjudication(outcome, SLOT))
+    assertThat(DurableDecisions.toAdjudication(outcome, COMPUTATION))
         .isEqualTo(new Adjudication.Refused("cancelled: r"));
   }
 }

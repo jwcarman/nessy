@@ -16,81 +16,69 @@
 package org.jwcarman.nessy.agent.durable;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
-import org.jwcarman.nessy.durable.ContinuationDispatcher;
-import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
-/**
- * The result door: completes {@code tool:} slots with a {@code ToolResult} (spec §4.3 amendment).
- */
+/** The result door: completes {@code tool:} computations with a {@code ToolResult} (spec §5). */
 class CompletionDeskTest {
-
-  private record Fired(Continuation continuation, Outcome outcome) {}
 
   private final SubstrateComputations backend =
       new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
-  private final ContinuationDispatcher dispatcher = new ContinuationDispatcher();
-  private final List<Fired> fired = new ArrayList<>();
-  private final CompletionDesk desk = new CompletionDesk(backend, dispatcher);
+  private int nudges;
+  private final CompletionDesk desk = new CompletionDesk(backend, () -> nudges++);
 
-  private static final ComputationId SLOT = ComputationId.of("tool:t:a:c1");
-  private static final Continuation RESUME = new Continuation("RESUME", "{}");
+  private static final ComputationId COMPUTATION = ComputationId.of("tool:t:a:c1");
+  private static final ToolInvocationId INVOCATION = new ToolInvocationId("response-1", "c1");
+  private static final Continuation RETURN_ADDRESS = new Continuation("SCOPE_RESUME", "{}");
 
   private void park() {
-    dispatcher.register("RESUME", (c, o) -> fired.add(new Fired(c, o)));
-    backend.create(SLOT);
-    backend.await(SLOT, RESUME);
+    backend.create(COMPUTATION, INVOCATION, RETURN_ADDRESS, Optional.empty());
   }
 
   @Test
-  void completingFiresTheContinuationWithTheResult() {
+  void completingTransfersOwnershipAndNudgesTheWorker() {
     park();
-    desk.complete(SLOT, ToolResult.ok("approved"));
-    assertThat(fired)
-        .containsExactly(new Fired(RESUME, new Outcome.Success(ToolResult.ok("approved"))));
+
+    desk.complete(COMPUTATION, ToolResult.ok("approved"));
+
+    assertThat(backend.find(COMPUTATION)).isEmpty();
+    assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void failingFiresAFailure() {
+  void failingTransfersOwnershipAndNudgesTheWorker() {
     park();
-    desk.fail(SLOT, "too risky");
-    assertThat(fired).containsExactly(new Fired(RESUME, new Outcome.Failure("too risky")));
+
+    desk.fail(COMPUTATION, "too risky");
+
+    assertThat(backend.find(COMPUTATION)).isEmpty();
+    assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void completingAnUnknownIdBirthsTheSlotAlreadySucceededAndFiresNothing() {
+  void completingAnUnknownIdIsBenignAndStillNudges() {
     var ghost = ComputationId.of("ghost");
+
     desk.complete(ghost, ToolResult.ok("x"));
-    assertThat(backend.status(ghost)).contains(ComputationStatus.SUCCEEDED);
-    assertThat(fired).isEmpty();
+
+    assertThat(backend.find(ghost)).isEmpty();
+    assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void aSecondCompletionIsRefusedAsAlreadyCompleted() {
+  void aSecondCompletionIsBenignNotAThrow() {
     park();
-    desk.complete(SLOT, ToolResult.ok("approved"));
-    var again = ToolResult.ok("again");
-    assertThatThrownBy(() -> desk.complete(SLOT, again))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("already completed");
-  }
+    desk.complete(COMPUTATION, ToolResult.ok("approved"));
 
-  @Test
-  void thereIsExactlyOneHandlePerQuestion() {
-    // the deterministic id IS the handle: a re-derived id equals the original — no siblings exist
-    park();
-    var reDerived = ComputationId.of("tool:t:a:c1");
-    desk.complete(reDerived, ToolResult.ok("approved via the re-derived handle"));
-    assertThat(fired).hasSize(1);
+    assertThatCode(() -> desk.complete(COMPUTATION, ToolResult.ok("again")))
+        .doesNotThrowAnyException();
   }
 }

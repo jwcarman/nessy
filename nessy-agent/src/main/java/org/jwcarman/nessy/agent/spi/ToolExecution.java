@@ -22,7 +22,7 @@ import org.jwcarman.nessy.durable.ComputationId;
 /**
  * What executing a tool came to: an outcome in hand, or a reference to the durable computation that
  * will carry the answer (durable spec, two-armed ruling — there is no third lifetime). A deferred
- * execution delivers nothing now; its completion re-enters through the slot's registered
+ * execution delivers nothing now; its completion re-enters through the computation's registered
  * continuation. Core's {@code Awaited} migrates onto this shape at distillation.
  */
 public sealed interface ToolExecution {

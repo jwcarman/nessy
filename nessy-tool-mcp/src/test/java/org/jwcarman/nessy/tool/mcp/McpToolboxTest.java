@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.ToolSpec;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
 class McpToolboxTest {
 
@@ -77,7 +78,10 @@ class McpToolboxTest {
   private static ToolContext contextFor(JsonNode arguments) {
     ToolCall call = new ToolCall("call-1", "echo", arguments);
     return new ToolContext(
-        call, ToolEventListener.noop(), new CallAddress("test-agent", "test-scope", call.id()));
+        call,
+        ToolEventListener.noop(),
+        new CallAddress("test-agent", "test-scope", "r1", call.id()),
+        new ToolInvocationId("r1", call.id()));
   }
 
   private static ToolResult readyResult(Awaited<ToolResult> awaited) {

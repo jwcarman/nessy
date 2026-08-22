@@ -1,14 +1,25 @@
 # Durable Computation
 
 Every deferred question in Nessy — an approval, a slow tool, a callback from
-outside the process — answers through the same primitive: a **slot**. This
-page names the primitive first, then follows it up into the agent layer that
-rides it.
+outside the process — travels the same pipeline: a chain of atomic
+ownership transfers over the substrate, never a future a live process
+awaits.
 
-## The slot
+```
+pending computation ──(result arrives; atomic)──▶ pending delivery (outbox)
+pending delivery ──(delivered; atomic)──▶ advanced fold (the scope's state)
+```
 
-A slot is addressed by a `ComputationId`, a deterministic string derived
-from the work's own coordinates — never a fresh random id per attempt:
+At every committed point the eventual result is owned by exactly one
+stage. Nothing waits: the continuation handed at creation is the label, and
+delivery means reconciling the result into the fold — not landing in any
+intermediate container.
+
+## Presence means pending
+
+A computation is addressed by a `ComputationId`, a deterministic string
+derived from the work's own coordinates — never a fresh random id per
+attempt:
 
 ```java
 public record ComputationId(String value) {
@@ -18,25 +29,26 @@ public record ComputationId(String value) {
 
 Determinism is the point. A recovery re-fire, a re-driven scope, and an
 external system answering days later all derive the *same* id from the same
-coordinates, so they all find the *same* slot instead of minting duplicates.
+coordinates, so they all find the *same* computation instead of minting
+duplicates.
 
-A slot has a small lifecycle — at most one transition from `PENDING` to a
-terminal state, and no terminal-to-terminal transition:
+There is no status field and no terminal record. `PendingComputation` is
+the whole of what "presence means pending" stores:
 
 ```java
-public enum ComputationStatus {
-  PENDING, SUCCEEDED, FAILED, CANCELLED
-}
+public record PendingComputation(
+    ComputationId id,
+    ToolInvocationId invocation,
+    Continuation returnAddress,
+    Optional<Instant> deadline) {}
 ```
 
-`ComputationStatus` is deliberately thin. There is no `RUNNING`, no
-`WAITING_FOR_CALLBACK` — those belong to whatever produces the work, not to
-the fact of whether it's done. The industry has a name for this shape: a
-durable promise, one instance of the broader pattern usually called
-**durable execution**. Nessy's version is a slot: create it, await it,
-complete it, once.
+Presence alone is the pending signal. The moment the work completes, the
+backend deletes this record and creates the outbox delivery that carries
+the result onward — there is nothing left to read back once that has
+happened.
 
-What the slot completes with is a value, not an exception:
+What a computation completes with is a value, not an exception:
 
 ```java
 public sealed interface Outcome {
@@ -48,239 +60,269 @@ public sealed interface Outcome {
 
 An `Outcome.Failure` is the work's own failure — a tool that returned an
 error, an approval denied. A thrown Java exception is reserved for the
-computation *infrastructure* breaking (the backend's connection pool is
-down), which is a different problem than the work coming back negative.
+computation *infrastructure* breaking, which is a different problem than
+the work coming back negative.
 
-The backend vocabulary is four operations, and the one worth reading
-closely is `await`:
+The backend is three operations:
 
 ```java
 public interface DurableComputationBackend {
-  CreateResult create(ComputationId id);
-  AwaitResult await(ComputationId id, Continuation continuation);
+  CreateResult create(ComputationId id, ToolInvocationId invocation,
+                      Continuation returnAddress, Optional<Instant> deadline);
   CompletionResult complete(ComputationId id, Outcome outcome);
-  Optional<ComputationStatus> status(ComputationId id);
-  List<Continuation> continuationsOf(ComputationId id);
+  Optional<PendingComputation> find(ComputationId id);
 }
 ```
+
+`create` carries the continuation — the return address is durable before
+any dispatch, so the register-after-create window that an earlier design
+left open cannot occur. It is get-or-create on the deterministic id, which
+is what makes a redrive idempotent: re-creating an already-present
+computation is a CAS conflict, not a duplicate.
+
+`complete` is the one atomic ownership transfer: it deletes the computation
+and creates its outbox delivery, or does nothing. `CompletionResult`
+answers `TRANSFERRED` when this call performed that transfer, or
+`ALREADY_DONE` when the computation was already absent — completed earlier,
+or never created. The two cases are indistinguishable and equally
+ignorable under at-least-once delivery, so completing an unknown id is
+never an error. Two racing completers land on exactly one winner; the loser
+observes absence and moves on.
 
 `DurableComputationBackend` is no longer an adapter SPI a database
-implements — it's the internal vocabulary the two desks speak.
-`SubstrateComputations` (`nessy-agent`) is its default and only shipped
-implementation: a recipe over [`Substrate`](storage.md), one document per
-computation (`kind=computation`, `key=id.value()`) holding
-`{ status, outcome?, continuations[] }`, bound through the host's pinned
-`ObjectMapper`. Every operation below is a
-read-decide-CAS-retry loop against that one document — the document's
-version is the row lock the reference in-memory backend used to reach for a
-monitor. `Nessy.autonomous()`'s `.backend(...)` seam survives, but only for
-a genuinely foreign engine (Restate, Temporal); nobody implements it to get
-a database.
+implements — it's internal vocabulary. `SubstrateComputations`
+(`nessy-agent`) is its default and only shipped implementation, a recipe
+over [`Substrate`](storage.md) — see [Storage](storage.md) for the document
+shapes it writes.
 
-`await` is atomic: it answers with exactly one of `Registered()` — the
-continuation is durably attached before anyone can race it — or
-`AlreadyCompleted(outcome)` — the answer was already sitting there. There is
-no window where a check-then-register sequence could let a completion slip
-past an unregistered waiter; that race is exactly what the standalone
-`get()` + `registerContinuation()` shape would have opened. Registering an
-equal continuation twice is one registration, which is what lets a recovery
-re-fire and a legitimate re-drive both call `await` without double-booking.
+## Identity: what stays stable across a redispatch
 
-`complete` is the one flip. The first caller wins and gets `COMPLETED`;
-every later caller — a duplicate delivery, a slow retry — gets
-`ALREADY_TERMINAL` and changes nothing. And completion can happen on an id
-no slot has been created under yet: it births the slot already terminal.
-This closes a real race — a tool can hand an external system a deterministic
-address *before* the slot exists, and a fast completer who answers before
-anyone ever called `await` simply wins; the later `create` reports
-`created=false`.
+Two ids give a tool invocation a durable identity that survives crashes,
+retries, and multiple hosts.
 
-## Continuations: data, not code
+**`ModelResponseId`** is a Nessy-generated id (UUIDv7) minted for each
+committed model response. It is generated in the model-call executor, when
+the response arrives — never in the reducer, which stays a pure fold: a
+generated id inside a fold would break the law that re-handling the same
+event yields identical state.
 
-What fires when a slot completes is not a callback closure — those die with
-the process that created them. It's data:
+**`ToolInvocationId`** pairs that response id with the provider's own tool
+call id:
 
 ```java
-public record Continuation(String type, String data) {}
+public record ToolInvocationId(String responseId, String callId) {}
 ```
 
-The backend stores continuations as opaque `(type, data)` pairs. A
-**continuation dispatcher** maps registered types to handlers:
+A bare provider call id is not contractually unique over an agent's
+lifetime; pairing it with the response that minted it closes that hole.
+Every tool invocation carries its `ToolInvocationId` — via `ToolContext` —
+for logging, correlation, and as a natural idempotency key.
+
+`ComputationId` itself stays deterministic, derived from the fold's own
+coordinates:
 
 ```java
-public final class ContinuationDispatcher {
-  public void register(String type, ContinuationHandler handler) { ... }
-  public void fire(List<Continuation> continuations, Outcome outcome) { ... }
+public record CallAddress(String agentType, String agentId,
+                          String responseId, String callId) {
+  public ComputationId approval() { ... }  // "approval:type:id:responseId:callId"
+  public ComputationId execution() { ... } // "tool:type:id:responseId:callId"
 }
 ```
 
-The primitive knows nothing about agents. Agent resumption is just the one
-handler the agent layer happens to register.
+Deterministic still means recomputable from committed state — that's what
+gives a redrive its O(1) lookup and `create` its natural idempotence.
 
-## Where an agent's calls become addresses
+## The delivery: the outbox, built
 
-`CallAddress` is where the primitive meets a running turn. The executor —
-the one party that provably holds the scope — stamps it onto `ToolContext`
-before a tool runs:
+A delivery is one outbox document — `kind=outbox`, a UUIDv7 key so
+`keys("outbox", n)` scans oldest-first, holding `{ destination, outcome }`.
+Deliveries are pending-only: delivering deletes them. See
+[Storage](storage.md) for the wire shape.
 
-```java
-public record CallAddress(String agentType, String agentId, String callId) {
-  public ComputationId approval() {
-    return ComputationId.of("approval:%s:%s:%s".formatted(agentType, agentId, callId));
-  }
-  public ComputationId execution() {
-    return ComputationId.of("tool:%s:%s:%s".formatted(agentType, agentId, callId));
-  }
-}
+`DeliveryWorker` is the one consumer. For each pending delivery it:
+
+1. reads the delivery and resolves the destination scope from its
+   continuation;
+2. loads the scope's state and lets the pure reducer fold the outcome into
+   it (`ToolFinished`, or the reducer's own no-op for an already-reconciled
+   call);
+3. commits one substrate batch — journal appends for any committed
+   messages, the CAS state write, and the delivery's own removal — the
+   atomic turn-advance the substrate's `batch` exists for;
+4. dispatches the transition's effects, after that commit, unchanged from
+   every other transition in the shell.
+
+A CAS miss re-reads and re-handles. A crash anywhere leaves the delivery
+pending, and redelivery just re-runs a pure fold — the reducer itself is
+the dedup, so a duplicate delivery costs a wasted read, never a duplicate
+effect.
+
+`DeliveryWorker` runs one heartbeat thread per host. `nudge()` runs an
+immediate, synchronous drain right after a completion commits — the
+heartbeat is the recovery net, never the happy-path latency. There is no
+live `ContinuationDispatcher` fire path anymore: continuations are read by
+exactly one consumer, the delivery worker, whether that read happens
+because something nudged it or because its own heartbeat came around.
+
+## The approval gate
+
+Authorization's `RequireApproval` verdict runs inline, exactly once, before
+a tool ever gets a chance to do anything:
+
+```
+policy: Allow           → the tool call proceeds
+        Deny            → ToolFinished(Failed), inline
+        RequireApproval → ask the Approver, inline
 ```
 
-One tool call can pose two separate durable questions over its life, each
-its own slot: `approval:` asks "may it run?" and `tool:` asks "what did it
-return?" The kind prefix keeps them from ever colliding — a call can be
-gated by an approval and separately deferred by the tool itself without the
-two slots stepping on one another. Every party holding the same three
-coordinates re-derives the same address, which is what lets an external
-system dedup a redelivered webhook against it.
+If the approver decides immediately, the call proceeds or fails right
+there — no computation involved at all. If the approver parks, it creates
+an approval computation whose **continuation carries the tool call
+itself** — routing, invocation id, call name and arguments. That
+continuation is the work order: the same data `ApprovalRequest` already
+hands the approver, taking one more step.
 
-## The two desks
+Granting is completing that computation with `Decision.Allow`. Completion
+is the ownership transfer described above — it produces exactly one
+delivery, whose destination continuation *is* the call. When the delivery
+worker drains it, it dispatches the call directly. There is no fold read,
+no re-derivation of the pending computation, and critically no re-running
+of the policy or the approver — the gate is never re-entered for a call
+that has already cleared it. Denying completes the same computation with a
+decision the reducer folds as `ToolFinished(Failed)`, in-band, exactly like
+any other tool failure the model reads and reacts to.
 
-Two doors complete slots, and they complete different kinds:
+Because the sequence only ever moves forward, a grant needs no durable
+marker of its own: a granted call is simply work in flight, owned at every
+committed point by either its delivery or the tool computation it goes on
+to open.
 
-- **`ApprovalDesk`** completes `approval:` slots with a `Decision` —
-  `approve(id)` or `deny(id, reason)`. Denying is a *successful*
-  adjudication; the question was answered "no."
-- **`CompletionDesk`** completes `tool:` slots with a `ToolResult` —
-  `complete(id, result)` or `fail(id, reason)`.
+## Retry, deadlines, and the reaper
 
-Both desks are thin: `complete()` on the backend, then `dispatcher.fire()`
-on whatever continuations were registered. Neither desk holds state of its
-own — the backend is the state, so an approval clicked on one node resumes
-a scope parked by another with no coordination between them beyond the
-shared backend.
+A durable tool declares two things at registration:
 
-## Suspension is invisible
+```java
+Tool.of(SlowJob.class, t -> t
+    .description("...")
+    .defers((cmd, ctx) -> jobs.submit(cmd, ctx))
+    .retrySemantics(RetrySemantics.RETRYABLE)
+    .timeout(Duration.ofMinutes(10)));
+```
 
-The agent layer contributes exactly two continuation handlers, and they
-answer two different intents:
+**`RetrySemantics`** — `RETRYABLE` or `NON_RETRYABLE`, default
+`NON_RETRYABLE` — is the tool author's own safety assertion, not a fact
+Nessy can verify. Declaring `RETRYABLE` says redispatching this tool's
+external side effect with the same `ToolInvocationId` is safe, by
+idempotence, by dedup on that identity, or by a provider idempotency key
+the tool derives from it. Nessy guarantees stable identity and durable
+routing; it never guarantees the external side effect runs exactly once.
 
-**`ScopeResumption`** (`RESUME_SCOPE`) carries a tool-result payload — the
-scope coordinate plus the full `ToolCall`. When a `tool:` slot completes,
-this handler binds `(AgentType, AgentId)` fresh and delivers the outcome as
-an ordinary `ToolFinished` event, exactly as if the tool had just returned.
-From the phase's point of view there is no difference between a tool that
-answers in 200ms and one that answers three days later on a different node
-— both are a pending call that eventually produces `ToolFinished`. There is
-no parked phase in the state machine, no `ParkToken`.
+**`timeout`** is optional. Set, it stamps a durable `deadlineAt = now +
+timeout` onto the computation at dispatch. Unset, the computation has no
+deadline and waits indefinitely — legitimate for an approval, which may
+sit for days waiting on a person.
 
-**`ScopeRedrive`** (`REDRIVE_SCOPE`) carries only the scope coordinate — a
-poke, not a payload. When an `approval:` slot completes, this handler calls
-`redispatch()` on the scope, which re-fires whatever `ExecuteTool` effects
-are still outstanding. The gate meets the re-fired call again, reads the
-now-decided slot, and proceeds — the decision itself travels through the
-gate's own slot read, not through the continuation.
+The reaper is the delivery worker's second sweep, on the same heartbeat:
+scan `computation` documents, decode each, and compare its deadline.
+Presence-means-pending is what keeps this scan cheap — the table only ever
+holds what's currently parked. Deadline-less computations are skipped; an
+overdue one splits two ways:
 
-`RESUME_SCOPE` and `REDRIVE_SCOPE` stay two types because they carry two
-intents: one delivers an answer, the other says "go check again."
+- **`NON_RETRYABLE` overdue** → the reaper manufactures the completion
+  itself: `complete(id, Failure("TIMEOUT_NON_RETRYABLE"))`. That failure
+  rides the ordinary delivery pipeline into the fold — there is no special
+  timeout path.
+- **`RETRYABLE` overdue** → the reaper CAS-bumps the deadline (a lost CAS
+  means another worker already bumped or completed it first, so this sweep
+  backs off) and redispatches the same `ToolInvocationId`.
 
-### Redrive semantics
-
-`redispatch()` has two guards worth naming, because both are deliberate,
-not incidental:
-
-- **Idle short-circuits.** If the scope's phase is already `Idle` there is
-  nothing outstanding to re-fire, so `redispatch()` returns immediately —
-  no hollow "re-fired nothing" narration.
-- **`ExecuteTool` only.** A redrive re-fires pending tool effects, never a
-  pending `CallModel`. A stalled model call is the staleness-based recovery
-  arm's job, not redrive's — a stale `ModelFinished` carries no correlation
-  id, so re-firing `CallModel` from redrive could commit a stale model
-  response into a turn that has since moved on.
-
-Redrive is at-least-once, same as ordinary recovery: a decided approval is
-not gated by staleness, and `ToolCallId` correlation absorbs any duplicate
-completion that a second re-fire produces.
-
-## Two arms, not three
-
-An earlier draft of this design modeled three computation shapes —
-completed, attached-to-this-JVM, and durable — mirroring `Future` and
-`CompletionStage`. That third middle case collapsed under review. Under a
-push-shaped tool executor and virtual threads, "locally awaitable between
-dispatch and delivery" is every executor's default posture, not a distinct
-category worth its own type.
-
-What actually differs is two axes, not one shape:
-
-- **Does completion arrive in-process or out-of-band?**
-- **Is redoing the work safe?**
-
-A slot is *needed* only for out-of-band completion. Recovery-by-retry is
-*allowed* only when the work is redo-safe. That's why streaming model calls
-never get a slot at all: they're in-process (the same JVM that dispatched
-them receives the response) and redo-safe (a crash mid-call just costs
-tokens on the retry; `ToolCallId`-keyed idempotence at the commit point
-handles the rest). A model call parking would buy nothing — there's no
-external party to wait on, and re-running the call is strictly cheaper than
-the plumbing a slot would need.
-
-Approvals are the opposite on both axes: they're out-of-band (a human, on
-their own schedule) and redo-hostile (you cannot safely "retry" asking a
-person to decide again as though nothing happened). That's a slot for both
-reasons — which is exactly why `DurableParkDemo` and
-`AutonomousApprovalDemo` park on tool calls and approvals, never on a model
-turn.
+A crash between creating a computation and dispatching its work needs no
+separate recovery pass: the computation simply times out and retry
+semantics take over from there.
 
 ## Worked example: a call survives its own instance dying
 
-`DurableParkDemo` proves the shape end to end. A turn asks to restart
-production; the tool declares `Awaited.deferred()` — it won't answer now.
-The executor creates the `tool:` slot and awaits it:
+The shape end to end — a turn asks for something that won't answer now,
+the tool defers, the process that dispatched it disappears, and a
+completely different process eventually completes the computation:
 
 ```java
-agents.get().observe("please restart prod");
-pump.pumpUntilQuiet();
+host.post("prod-eu", "please restart prod-eu");
+// ... the tool defers; DeliveryWorker has nothing to drain yet ...
 
-var slot = ComputationId.of("tool:approver:demo:c1");
-assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-assertThat(backend.status(slot)).contains(ComputationStatus.PENDING);
+ApprovalRequest request = requests.getFirst();
+host.approvals().approve(request.address().approval());
+// ... any node, any time later: complete() transfers ownership to a
+//     delivery, the worker drains it, and the turn completes ...
 ```
 
-The `DefaultAgent` instance that dispatched the call is discarded — nothing
-holds it open. Hours later, any node calls `CompletionDesk.complete`:
+The instance that dispatched the call never has to still be running. The
+transcript reads as one continuous turn regardless of how many hosts or
+how much wall-clock time separates the ask from the answer.
 
-```java
-desk.complete(slot, ToolResult.ok("approved by jcarman"));
-pump.pumpUntilQuiet();
+## Honest limits
 
-assertThat(store.load().phase()).isEqualTo(new Phase.Idle());
-assertThat(backend.status(slot)).contains(ComputationStatus.SUCCEEDED);
-```
+The pipeline promises ownership transfer, never a live thread and never
+exactly-once external work. A few edges are worth naming plainly, because
+softening them would promise more than the design gives:
 
-Completion fires `ScopeResumption`, which binds a *fresh* `DefaultAgent` —
-one that has never seen this scope before — and delivers the tool result as
-an ordinary event. The transcript reads as one continuous turn: the model
-never knew any instance died in the middle.
+- **A tool's external work starts before its transfer batch commits.** A
+  deferring tool can only reveal that it's deferring by *returning*
+  `Awaited.deferred()`, so the external call it started necessarily runs
+  before Nessy can commit the computation that owns its return address. The
+  real guarantee is narrower than "durable before dispatch": the batch
+  commits before control returns to the pipeline, and a crash between the
+  tool's external start and that commit leaves the delivery to be
+  redriven — at-least-once, the same contract every tool already signs up
+  to.
+- **A single-winner claim is per-host, not per-cluster.** Within one host,
+  draining a grant's delivery has exactly one winner. Across hosts, the
+  same grant delivery can be drained more than once until an outbox lease
+  lands with the first durable (non-in-memory) substrate adapter — parked,
+  not built. Until then, a tool's `execute()` can run more than once for
+  the same grant, immediate or durable alike; the durable record stays
+  single-winner regardless, because that's the transfer batch's CAS, not
+  the external side effect.
+- **The window right after a grant completes and before its delivery
+  drains is not yet closed.** In that window neither the approval
+  computation nor a tool computation exists, so a staleness redrive
+  landing there re-asks the approver — the delivery's key is random, not
+  derivable from the call's address. Closing it needs a deterministic
+  grant-delivery key or an explicit granted marker; it's parked, not fixed.
+  The absorption guarantee that does hold: a pending ask absorbs a redrive,
+  and in-flight work absorbs one — only this one already-granted-but-
+  undrained instant does not.
+- **The reaper's scan has a cap, and pending approvals used to be able to
+  starve it.** `keys()` returns lexicographically, and `"approval:"` sorts
+  before `"tool:"` — since an approval is deadline-less by design and never
+  reapable, 1000+ pending approvals could fill the whole scan and make every
+  real tool deadline unreachable, silently, forever. Closing that took two
+  changes together: the reaper's own key fetch is now wider than the
+  delivery sweep's (fetching bare keys is metadata-cheap, so a generous
+  window is a fair trade), and it skips the `"approval:"` prefix before it
+  ever reads a computation document. Neither change removes the cap itself —
+  it's wider, not gone: a backlog of 20,000+ pending computations, approvals
+  or real tool work alike, can still starve a sweep. The real fix — a keys
+  cursor on the `Substrate` seam, so a sweep can page rather than being
+  capped at any fixed width — is parked, not built.
 
-`AutonomousApprovalDemo` runs the same shape one layer up, through
-`Nessy.autonomous()` and the two desks together — see
-[Autonomous Agents](../guides/autonomous-agents.md) for that walkthrough.
+None of this is exactly-once anywhere it isn't claimed. What's promised —
+stable identity, durable routing, at-least-once delivery — is what the
+pipeline actually gives.
 
 !!! warning "At-least-once, always"
-    Every path through this primitive — recovery re-fire, redrive, an
+    Every path through this pipeline — recovery re-fire, a redrive, an
     external system's retried webhook — can redeliver. Idempotence is not
-    optional: tools correlate by `ToolCallId`, the phase fold dedups by
+    optional: tools correlate by `ToolInvocationId`, the reducer dedups by
     completion identity, and the state store's version CAS absorbs a lost
-    race. Nothing here promises exactly-once *execution* of a callback,
-    only exactly-once completion of the slot it answers.
+    race.
 
 ## Where next
 
 - [Autonomous Agents](../guides/autonomous-agents.md) — the builder surface
   that wires a backend behind both desks, and the approval arc end to end.
 - [Authorization](authorization.md) — the ladder whose `RequireApproval`
-  verdict is what puts a call in front of the approval slot in the first
+  verdict is what puts a call in front of the approval gate in the first
   place.
-- [The Four Tiers](the-four-tiers.md) — where the durable backend sits as
-  the shared substrate beneath a host.
-- [Storage](storage.md) — the substrate `SubstrateComputations` is a recipe
-  over, and the `computation` document's shape.
+- [Storage](storage.md) — the `computation` and `outbox` document shapes
+  `SubstrateComputations` and `DeliveryWorker` read and write.

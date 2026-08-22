@@ -15,7 +15,9 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 
@@ -63,8 +65,8 @@ public interface Tool<T> {
   /**
    * Runs the tool. Returns {@link Awaited.Deferred} only if the answer genuinely arrives through a
    * durable computation — a callback, an approval, a job. The deferred marker carries no identity:
-   * the wiring derives the slot's deterministic id from the work's coordinates and registers the
-   * continuation (durable spec, submit-once discipline).
+   * the wiring derives the computation's deterministic id from the work's coordinates and registers
+   * the continuation (durable spec, submit-once discipline).
    */
   Awaited<ToolResult> execute(T input, ToolContext context);
 
@@ -75,11 +77,29 @@ public interface Tool<T> {
 
   /**
    * The strongest completion semantics this tool needs (durable spec §14). A tool that answers
-   * through a durable slot — an approval, a callback, a job — declares {@code DURABLE} so a wiring
-   * that cannot suspend never shows it to the model at all (spec §4.3: filtering precedes failing).
-   * The loud in-band failure remains the backstop for tools that under-declare.
+   * through a durable computation — an approval, a callback, a job — declares {@code DURABLE} so a
+   * wiring that cannot suspend never shows it to the model at all (spec §4.3: filtering precedes
+   * failing). The loud in-band failure remains the backstop for tools that under-declare.
    */
   default CompletionPolicy requiredCompletion() {
     return CompletionPolicy.IMMEDIATE;
+  }
+
+  /**
+   * The reaper's authority to redispatch this tool's overdue durable computation (durable-
+   * deliveries spec §6). Default {@link RetrySemantics#NON_RETRYABLE}: an overdue computation is
+   * failed, never guessed safe to redispatch.
+   */
+  default RetrySemantics retrySemantics() {
+    return RetrySemantics.NON_RETRYABLE;
+  }
+
+  /**
+   * How long a durable computation this tool starts may stay pending before the reaper treats it as
+   * overdue (durable-deliveries spec §6). Empty means no deadline — the computation waits
+   * indefinitely, exactly like an approval.
+   */
+  default Optional<Duration> timeout() {
+    return Optional.empty();
   }
 }

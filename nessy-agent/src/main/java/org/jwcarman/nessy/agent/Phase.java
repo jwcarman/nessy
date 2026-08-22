@@ -84,15 +84,17 @@ public sealed interface Phase {
     @Override
     public Transition handle(AgentEvent event) {
       return switch (event) {
-        case AgentEvent.ModelFinished(ModelOutcome.Responded(var content, var calls))
+        case AgentEvent.ModelFinished(ModelOutcome.Responded(var content, var calls, var _))
             when calls.isEmpty() ->
             Transition.to(new Idle()).commit(Message.assistant(content));
-        case AgentEvent.ModelFinished(ModelOutcome.Responded(var content, var calls)) ->
+        case AgentEvent.ModelFinished(
+                ModelOutcome.Responded(var content, var calls, var responseId)) ->
             Transition.to(
                     new AwaitingTools(
                         Message.assistant(content),
                         calls.stream().map(ToolCall::id).collect(Collectors.toUnmodifiableSet()),
-                        List.of()))
+                        List.of(),
+                        responseId))
                 .emit(calls.stream().map(Effect.ExecuteTool::new).map(Effect.class::cast).toList());
         case AgentEvent.ModelFinished(_) -> Transition.to(new Idle());
         case AgentEvent.ToolFinished _ -> Transition.ignore();
@@ -110,12 +112,19 @@ public sealed interface Phase {
   /**
    * @param pending the still-outstanding tool-call ids; normalized to a sorted, unmodifiable set so
    *     wire serialization is deterministic without codec-side sorting
+   * @param responseId the id of the model response that produced {@code assistantTurn} — carried on
+   *     the wire (durable-deliveries spec §2), never generated here (the reducer stays a pure fold)
    */
-  record AwaitingTools(Message assistantTurn, Set<String> pending, List<ToolResultBlock> gathered)
+  record AwaitingTools(
+      Message assistantTurn,
+      Set<String> pending,
+      List<ToolResultBlock> gathered,
+      ModelResponseId responseId)
       implements Phase {
 
     public AwaitingTools {
       Objects.requireNonNull(assistantTurn, "assistantTurn must not be null");
+      Objects.requireNonNull(responseId, "responseId must not be null");
       // A TreeSet, not Set.copyOf: pending ids serialize in a deterministic (sorted) order —
       // wire-format invariance the hand-rolled codec used to enforce by sorting on write.
       pending = Collections.unmodifiableSortedSet(new TreeSet<>(pending));
@@ -152,7 +161,7 @@ public sealed interface Phase {
             yield Transition.to(new AwaitingModel(), new Effect.CallModel())
                 .commit(assistantTurn, Message.toolResults(List.copyOf(all)));
           }
-          yield Transition.to(new AwaitingTools(assistantTurn, left, all));
+          yield Transition.to(new AwaitingTools(assistantTurn, left, all, responseId));
         }
         case AgentEvent.ModelFinished _ -> Transition.ignore();
         case AgentEvent.Observed _ ->

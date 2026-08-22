@@ -17,9 +17,9 @@ package org.jwcarman.nessy.spi.approval;
 
 /**
  * What a wiring does when the policy says RequireApproval (spec §4.3 amendment): the rendezvous
- * approver blocks a human-present channel; the slot-backed approver suspends into the durable
- * backend; the default refuses loudly in-band — approval is a capability of the wiring, not a right
- * of every deployment.
+ * approver blocks a human-present channel; the computation-backed approver suspends into the
+ * durable backend; the default refuses loudly in-band — approval is a capability of the wiring, not
+ * a right of every deployment.
  */
 @FunctionalInterface
 public interface Approver {

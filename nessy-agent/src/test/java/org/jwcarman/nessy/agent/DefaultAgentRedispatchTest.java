@@ -53,7 +53,7 @@ class DefaultAgentRedispatchTest {
     private int invocations;
 
     @Override
-    public void executeTool(ToolCall call, Sink sink) {
+    public void executeTool(ToolCall call, ModelResponseId responseId, Sink sink) {
       invocations++;
     }
   }

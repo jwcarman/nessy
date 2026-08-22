@@ -23,12 +23,11 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -184,7 +183,6 @@ class TypedIntentDemo {
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
-    var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(
@@ -222,7 +220,6 @@ class TypedIntentDemo {
                 ToolGrant.grant(
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
-            .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
@@ -237,35 +234,26 @@ class TypedIntentDemo {
       assertThat(intentStore.latest()).contains(new Restart("prod-eu", "stuck deploy"));
 
       System.out.println("== the desk approves the retried restart ==");
-      var slot = ComputationId.of("approval:ops:prod-eu:c3");
-      assertThat(backend.status(slot)).isPresent();
+      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
+      var computation =
+          ComputationId.of("approval:ops:prod-eu:" + parkedResponseId.value() + ":c3");
+      assertThat(backend.find(computation)).isPresent();
       assertThat(requests).hasSize(1);
       ApprovalRequest request = requests.getFirst();
       assertThat(request.context().declaredIntent(OpsIntent.class))
           .contains(new Restart("prod-eu", "stuck deploy"));
 
-      host.approvals().approve(slot);
+      host.approvals().approve(computation);
       pump.pumpUntilQuiet();
 
+      // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker dispatches the
+      // call past the gate directly from the grant's own continuation — no re-derivation, no
+      // second ask. The tool runs exactly once and the turn completes.
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
-
-      List<Message> transcript = memories.get("prod-eu").recall().messages();
-      System.out.println("transcript:");
-      transcript.forEach(
-          m ->
-              System.out.println(
-                  "  "
-                      + m.role()
-                      + ": "
-                      + m.content().stream().map(b -> b.getClass().getSimpleName()).toList()));
-      assertThat(transcript).hasSize(8);
-      ToolResultBlock firstDenial = (ToolResultBlock) transcript.get(2).content().getFirst();
-      System.out.println("first denial: " + firstDenial);
-      assertThat(firstDenial.isError()).isTrue();
-      assertThat(firstDenial.content()).contains("declare-intent");
-      assertThat(transcript.get(6).content())
-          .contains(new ToolResultBlock("c3", "restarted prod-eu", false));
+      assertThat(requests).hasSize(1);
+      assertThat(backend.find(computation)).isEmpty();
     }
   }
 
@@ -277,7 +265,6 @@ class TypedIntentDemo {
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
-    var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(
@@ -311,7 +298,6 @@ class TypedIntentDemo {
                 ToolGrant.grant(
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), true))
-            .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
@@ -326,7 +312,10 @@ class TypedIntentDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
 
-      List<Message> transcript = memories.get("prod-eu").recall().messages();
+      List<Message> transcript =
+          new SubstrateMemory(substrate, "prod-eu", TestMappers.plainlyPinned())
+              .recall()
+              .messages();
       ToolResultBlock mismatchDenial = (ToolResultBlock) transcript.get(4).content().getFirst();
       System.out.println("mismatch denial: " + mismatchDenial);
       assertThat(mismatchDenial.isError()).isTrue();
@@ -342,7 +331,6 @@ class TypedIntentDemo {
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
-    var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(
@@ -368,7 +356,6 @@ class TypedIntentDemo {
                 ToolGrant.grant(
                     new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
                 restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
-            .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
@@ -385,7 +372,10 @@ class TypedIntentDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
 
-      List<Message> transcript = memories.get("prod-eu").recall().messages();
+      List<Message> transcript =
+          new SubstrateMemory(substrate, "prod-eu", TestMappers.plainlyPinned())
+              .recall()
+              .messages();
       ToolResultBlock bindingError = (ToolResultBlock) transcript.get(2).content().getFirst();
       System.out.println("binding error: " + bindingError);
       assertThat(bindingError.isError()).isTrue();

@@ -19,12 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
 class ToolOfTest {
 
@@ -34,7 +36,11 @@ class ToolOfTest {
 
   private static ToolContext contextFor(ToolEventListener listener) {
     ToolCall call = new ToolCall("c1", "create-account", JsonNodeFactory.instance.objectNode());
-    return new ToolContext(call, listener, new CallAddress("test-agent", "test-scope", call.id()));
+    return new ToolContext(
+        call,
+        listener,
+        new CallAddress("test-agent", "test-scope", "r1", call.id()),
+        new ToolInvocationId("r1", call.id()));
   }
 
   private static ToolContext noopContext() {
@@ -271,6 +277,47 @@ class ToolOfTest {
                       .defers((cmd, ctx) -> {}));
 
       assertThat(tool.requiredCompletion()).isEqualTo(CompletionPolicy.AWAITABLE);
+    }
+  }
+
+  @Nested
+  class Retry_and_deadline {
+
+    @Test
+    void a_tool_defaults_to_non_retryable_with_no_timeout() {
+      Tool<CreateAccount> tool =
+          Tool.of(
+              CreateAccount.class,
+              t -> t.description("Create a new bank account.").executes(cmd -> "ok"));
+
+      assertThat(tool.retrySemantics()).isEqualTo(RetrySemantics.NON_RETRYABLE);
+      assertThat(tool.timeout()).isEmpty();
+    }
+
+    @Test
+    void retry_semantics_can_be_declared_retryable() {
+      Tool<CreateAccount> tool =
+          Tool.of(
+              CreateAccount.class,
+              t ->
+                  t.description("Create a new bank account.")
+                      .retrySemantics(RetrySemantics.RETRYABLE)
+                      .executes(cmd -> "ok"));
+
+      assertThat(tool.retrySemantics()).isEqualTo(RetrySemantics.RETRYABLE);
+    }
+
+    @Test
+    void a_declared_timeout_is_carried_on_the_built_tool() {
+      Tool<CreateAccount> tool =
+          Tool.of(
+              CreateAccount.class,
+              t ->
+                  t.description("Create a new bank account.")
+                      .timeout(Duration.ofMinutes(5))
+                      .executes(cmd -> "ok"));
+
+      assertThat(tool.timeout()).contains(Duration.ofMinutes(5));
     }
   }
 

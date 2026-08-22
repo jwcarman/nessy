@@ -15,47 +15,47 @@
  */
 package org.jwcarman.nessy.durable;
 
-import java.util.List;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
- * The durable computation store: slots with one PENDING→terminal flip, atomic await, and opaque
- * continuations. Implementations may not assume single-threaded callers — the slot is the lock.
+ * The durable computation store: ownership transfer, not waiting (durable-deliveries spec §3).
+ * Presence means pending — there is no status field and no terminal record. Implementations may not
+ * assume single-threaded callers.
  *
  * <p>Internal vocabulary and the override seam for a genuinely foreign engine (Restate, Temporal);
  * nobody implements this seam just to get a database. The default implementation is the substrate's
- * {@code computation} recipe (substrate spec §6.5), riding the same {@code Substrate} every other
- * recipe does.
+ * {@code computation} recipe, riding the same {@code Substrate} every other recipe does.
  */
 public interface DurableComputationBackend {
 
   /**
-   * Get-or-create; {@code created} is false when the slot already existed. Deterministic ids make
-   * this the submit-once discipline's foundation (preamble ruling 4).
+   * Get-or-create; {@code created} is false when the computation already existed. The return
+   * address is durable before any dispatch — the register-after-create window is unexpressible
+   * (spec §3). Deterministic ids make this the submit-once discipline's foundation.
    */
-  CreateResult create(ComputationId id);
+  CreateResult create(
+      ComputationId id,
+      ToolInvocationId invocation,
+      Continuation returnAddress,
+      Optional<Instant> deadline);
 
   /**
-   * Atomic (durable spec §12): EITHER the terminal outcome is returned, OR the continuation is
-   * durably registered before completion can proceed. Registering an equal continuation twice is
-   * one registration. Unknown id → {@link IllegalArgumentException}.
-   */
-  AwaitResult await(ComputationId id, Continuation continuation);
-
-  /**
-   * One flip (durable spec §10, §23, ruling 6): the first completion wins; every later attempt
-   * returns {@link CompletionResult#ALREADY_TERMINAL} and changes nothing. An unknown id is created
-   * already terminal — the deterministic address may travel before the slot exists, and the {@code
-   * AlreadyCompleted} arm of {@link #await} absorbs completed-before-create.
+   * One atomic ownership transfer (spec §3, §7 invariant 5): DELETE the computation and CREATE its
+   * outbox delivery, or do nothing. {@link CompletionResult#TRANSFERRED} means this call performed
+   * that transfer; {@link CompletionResult#ALREADY_DONE} means the computation was absent — a
+   * benign, ignorable outcome under at-least-once delivery (ruling 6, reversed: completion never
+   * creates records).
+   *
+   * <p><b>Integration contract for a foreign implementation:</b> the delivery worker that resumes a
+   * parked scope reads completions exclusively as {@code kind=outbox} documents ({@code
+   * {destination, outcome}}, spec §4) written into the host's shared substrate — never by any other
+   * channel. A {@code complete()} that does not write that document into that substrate leaves its
+   * scope parked forever; nothing else observes the completion. This is the whole of the override
+   * seam's obligation, and it is on the implementation to honor it — nothing here polices it.
    */
   CompletionResult complete(ComputationId id, Outcome outcome);
 
-  /** Empty for a slot that was never created. */
-  Optional<ComputationStatus> status(ComputationId id);
-
-  /**
-   * Snapshot of registrations; the completing door feeds these to the dispatcher. Unknown id →
-   * {@link IllegalArgumentException}.
-   */
-  List<Continuation> continuationsOf(ComputationId id);
+  /** Empty for a computation that is not currently pending — completed, or never created. */
+  Optional<PendingComputation> find(ComputationId id);
 }

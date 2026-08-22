@@ -20,12 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Clock;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -43,16 +42,15 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
  * The flagship (the-doors plan, Task 9): an autonomous agent asks to restart prod, the policy says
- * RequireApproval, the call suspends into an approval slot, every instance dies — and an approve at
- * the desk redrives the scope on a fresh instance, the gate finds the decision, the tool finally
- * runs, and the turn completes. The model never knew anyone hesitated.
+ * RequireApproval, the call suspends into an approval computation, every instance dies — and an
+ * approve at the desk redrives the scope on a fresh instance, the gate finds the decision, the tool
+ * finally runs, and the turn completes. The model never knew anyone hesitated.
  */
 class AutonomousApprovalDemo {
 
@@ -98,7 +96,6 @@ class AutonomousApprovalDemo {
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
-    var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
@@ -116,7 +113,6 @@ class AutonomousApprovalDemo {
             .settings(TestSettings.settings())
             .grants(
                 ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
@@ -127,33 +123,29 @@ class AutonomousApprovalDemo {
       host.post("prod-eu", "please restart prod-eu");
       pump.pumpUntilQuiet();
 
-      var slot = ComputationId.of("approval:ops:prod-eu:c1");
       System.out.println(
           "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      assertThat(backend.status(slot)).contains(ComputationStatus.PENDING);
+      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
+      var computation =
+          ComputationId.of("approval:ops:prod-eu:" + parkedResponseId.value() + ":c1");
+      assertThat(backend.find(computation)).isPresent();
       assertThat(requests).hasSize(1);
       assertThat(requests.getFirst().context().action()).contains("restart prod-eu");
-      assertThat(requests.getFirst().address().approval()).isEqualTo(slot);
+      assertThat(requests.getFirst().address().approval()).isEqualTo(computation);
 
       System.out.println("== hours pass; every instance is garbage; any node may answer ==");
-      host.approvals().approve(slot);
+      host.approvals().approve(computation);
       pump.pumpUntilQuiet();
 
+      // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker reads the grant's
+      // continuation directly and dispatches the call past the gate via
+      // ToolCallExecutor#executeGrantedToolNow — no re-derivation, no second ask. The tool runs
+      // exactly once and the turn completes; the notifier fires exactly once, on the original ask.
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
-      List<Message> transcript = memories.get("prod-eu").recall().messages();
-      System.out.println("transcript:");
-      transcript.forEach(
-          m ->
-              System.out.println(
-                  "  "
-                      + m.role()
-                      + ": "
-                      + m.content().stream().map(b -> b.getClass().getSimpleName()).toList()));
-      assertThat(transcript).hasSize(4);
-      assertThat(transcript.get(2).content())
-          .contains(new ToolResultBlock("c1", "restarted prod-eu", false));
+      assertThat(requests).hasSize(1);
+      assertThat(backend.find(computation)).isEmpty();
     }
   }
 
@@ -165,7 +157,6 @@ class AutonomousApprovalDemo {
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
     var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
-    var memories = new ConcurrentHashMap<String, VerbatimMemory>();
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
@@ -183,7 +174,6 @@ class AutonomousApprovalDemo {
             .settings(TestSettings.settings())
             .grants(
                 ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .memoryFactory(id -> memories.computeIfAbsent(id, ignored -> new VerbatimMemory()))
             .substrate(substrate)
             .backend(backend)
             .approvalNotifier(requests::add)
@@ -194,17 +184,22 @@ class AutonomousApprovalDemo {
       host.post("prod-eu", "please restart prod-eu");
       pump.pumpUntilQuiet();
 
-      var slot = ComputationId.of("approval:ops:prod-eu:c1");
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
+      var computation =
+          ComputationId.of("approval:ops:prod-eu:" + parkedResponseId.value() + ":c1");
       assertThat(requests).hasSize(1);
 
       System.out.println("== the desk says no; the denial arrives in-band ==");
-      host.approvals().deny(slot, "not during business hours");
+      host.approvals().deny(computation, "not during business hours");
       pump.pumpUntilQuiet();
 
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
-      List<Message> transcript = memories.get("prod-eu").recall().messages();
+      List<Message> transcript =
+          new SubstrateMemory(substrate, "prod-eu", TestMappers.plainlyPinned())
+              .recall()
+              .messages();
       assertThat(transcript).hasSize(4);
       assertThat(transcript.get(2).content())
           .contains(new ToolResultBlock("c1", "not during business hours", true));

@@ -94,11 +94,11 @@ try (AutonomousHost<String> host =
 
 `post(agentId, observation)` enqueues one fact for that scope and returns
 immediately. If `RestartTool`'s grant requires approval, the call suspends
-on a durable slot and `approvalNotifier` fires once with the
+on a durable computation and `approvalNotifier` fires once with the
 `ApprovalRequest` that `host.approvals().approve(...)` or `.deny(...)`
-decides. Whether that slot survives a restart of the process that opened it
-depends on the `Substrate` behind `.substrate(...)` — the default in-memory
-substrate does not, a durable implementation does. See
+decides. Whether that computation survives a restart of the process that
+opened it depends on the `Substrate` behind `.substrate(...)` — the default
+in-memory substrate does not, a durable implementation does. See
 [Storage](concepts/storage.md).
 
 See [Getting Started](guides/getting-started.md) for the CLI door walked
