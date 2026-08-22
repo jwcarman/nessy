@@ -104,20 +104,28 @@ the CAS.
 Beside the substrate lives the typed serialization seam:
 
 ```java
-public interface Codec<T> {
-  byte[] encode(T value);
-  T decode(byte[] bytes);
+public interface Codec<I, O> {
+  O encode(I input);
+  I decode(O output);
 
-  static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) { ... }
+  default <T> Codec<I, T> chain(Codec<O, T> next) { ... }  // typed composition
+
+  static <T> Codec<T, String> json(ObjectMapper mapper, Class<T> type) { ... }
+  static Codec<String, byte[]> utf8() { ... }
 }
 ```
 
-`Codec.json` is the default for user-defined types: tolerant Jackson binding,
-UTF-8, the caller's mapper (so user-registered modules flow through). It binds
-sealed vocabularies the `SealedInputs` way — discriminator from the permitted
-subclasses — so user types never need annotations. Each recipe takes an
-optional `Codec<T>` for its stored shape, defaulting to the nessy-owned
-binding for core types.
+Codecs are chainable, invertible links; `chain` composes them and the types
+enforce the order (decode runs the chain backwards for free). `Codec.json`
+binds a type to JSON text via the caller's mapper (tolerant, user modules flow
+through; sealed vocabularies bind the `SealedInputs` way — discriminator from
+permitted subclasses — so user types never need annotations); `Codec.utf8()`
+is the text↔bytes link. A recipe requires `Codec<T, byte[]>` at the substrate
+boundary, defaulting to `json(mapper, type).chain(utf8())` for user shapes and
+the nessy-owned binding chained with `utf8()` for core types. Transform links
+(gzip, encryption) are user-authored `Codec<byte[], byte[]>`s that click into
+the chain — the typed home of the §7 wrap-the-codec pattern. Use sites always
+concretize both parameters; no wildcards appear.
 
 One conflict signal, same package:
 
