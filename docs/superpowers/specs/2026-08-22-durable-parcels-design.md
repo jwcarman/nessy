@@ -1,7 +1,12 @@
-# Durable Parcels — asynchronous request/reply with durable ownership
+# Durable Deliveries — asynchronous request/reply with durable ownership
 
 **Date:** 2026-08-22
 **Status:** Ratified (James, in conversation, 2026-08-22)
+**Naming ruling (2026-08-22, same day):** "delivery" was the teaching metaphor and
+never ratified vocabulary — retired. The thing is a **delivery** (destination +
+outcome, pending in the outbox); the worker is the **DeliveryWorker**. The
+ratified nouns were already sufficient: outbox (the place), delivery (the
+thing), fold (the landing).
 **Origin:** synthesis of an external design review (ChatGPT findings, "Nessy
 Durable Tool Execution", reviewed 2026-08-22) with the shipped design of
 record. Adopted: the ownership-transfer pipeline, retry semantics, durable
@@ -27,14 +32,14 @@ later, possibly in a different process. The design is a chain of **atomic
 ownership transfers** over the substrate:
 
 ```
-pending computation ──(result arrives; atomic)──▶ pending parcel (outbox)
-pending parcel ──(delivery; atomic)──▶ advanced fold (the scope's state)
+pending computation ──(result arrives; atomic)──▶ pending delivery (outbox)
+pending delivery ──(delivered; atomic)──▶ advanced fold (the scope's state)
 ```
 
 At every committed point, the eventual result is durably owned by exactly one
-stage. "Parcel" is the teaching word for an outbox row: a payload plus an
-address label. There is no waiting anywhere — the continuation handed at
-creation is the label, and delivery means *reconciling the parcel into the
+stage. An outbox row is a **delivery**: an outcome plus its
+durable destination. There is no waiting anywhere — the continuation handed at
+creation is the label, and delivery means *reconciling the delivery into the
 fold* (the tool call meets its result in `AwaitingTools`), not landing in any
 intermediate container.
 
@@ -77,48 +82,48 @@ interface DurableComputationBackend {
 - **Exactly one continuation.** It is a required scalar component — a durable
   reply-to address (`type`, routing data), never executable. The old
   `List<Continuation>` multicast surface and its set-dedup die; a future
-  fan-out need would be N parcels at delivery, never N continuations.
+  fan-out need would be N deliverys at delivery, never N continuations.
 - **`await()` does not exist.** Nothing waits. `AwaitResult`, the
   atomic-await law (§12 of the durable spec), `Registered`/`AlreadyCompleted`,
   and the CAS-append continuation loop all die with it.
 - **Presence means pending.** There are no terminal computation records and no
   status field. `complete(id, outcome)` performs one substrate `batch`:
-  DELETE `computation/{id}` + CREATE the parcel. Completing an **absent** id
+  DELETE `computation/{id}` + CREATE the delivery. Completing an **absent** id
   returns a benign already-done result (the computation completed earlier, or
   never existed — indistinguishable and equally ignorable under at-least-once
   result delivery). Ruling 6 is reversed: completion never creates records.
 - **The one-flip law survives as CAS on the delete**: two racing completers —
   exactly one wins the ownership transfer; the loser observes absence.
 
-## 4. The parcel (outbox, now built)
+## 4. The delivery (outbox, now built)
 
-`kind=outbox`, one document per parcel, UUIDv7 key (creation-ordered scans),
+`kind=outbox`, one document per delivery, UUIDv7 key (creation-ordered scans),
 payload `{ destination: Continuation, outcome: Outcome }` — serialized via
-Jackson annotations on the wire records, no hand-built JSON. Parcels are
-pending-only: delivery deletes them. Substrate spec §6.6's layout and
+Jackson annotations on the wire records, no hand-built JSON. Deliveries are
+pending-only: delivering deletes them. Substrate spec §6.6's layout and
 self-draining reasoning apply as written; its "lands with the first durable
-adapter" deferral is superseded — the parcel pipeline ships now, on the
+adapter" deferral is superseded — the delivery pipeline ships now, on the
 in-memory substrate, and JDBC inherits it.
 
 ## 5. Delivery is fold-advance
 
-The delivery worker, per parcel:
+The delivery worker, per delivery:
 
-1. read the parcel; resolve the destination scope from the continuation;
+1. read the delivery; resolve the destination scope from the continuation;
 2. load state; `phase.handle(ToolFinished/decision event)` — the pure reducer
    reconciles the pending call with its outcome;
 3. one substrate `batch`: **[ journal appends for committed messages,
-   CAS-write of the advanced state, DELETE parcel ]** — the atomic
+   CAS-write of the advanced state, DELETE delivery ]** — the atomic
    turn-advance the substrate's `batch` was specified for; this lane retires
    the duplicate-message replay residue;
 4. dispatch the transition's effects (commit-before-dispatch, unchanged law).
 
 - CAS miss → re-read, re-handle, retry (single-writer-per-scope law).
 - `Transition.ignore()` (already-reconciled call — the reducer IS the dedup)
-  → the batch is just the parcel delete.
-- A crash anywhere leaves the parcel pending; redelivery re-runs a pure fold.
+  → the batch is just the delivery delete.
+- A crash anywhere leaves the delivery pending; redelivery re-runs a pure fold.
 - The user-observation backlog is untouched: engine events never queue in it;
-  their pending form IS the parcel.
+  their pending form IS the pending delivery.
 - The live `ContinuationDispatcher` fire-path retires; continuations are read
   by exactly one consumer — the delivery worker. In-process completions nudge
   the worker after commit; polling is the recovery net, never the happy-path
@@ -137,7 +142,7 @@ The delivery worker, per parcel:
   timeout → no deadline → waits indefinitely (approvals legitimately wait
   days; approval expiry/escalation belongs to the roadmap's park-lifecycle
   governance, not here).
-- **The reaper** is the host worker's second sweep (same heartbeat as parcel
+- **The reaper** is the host worker's second sweep (same heartbeat as delivery
   delivery): scan `keys("computation")`, decode, compare deadlines — cheap
   BECAUSE presence-means-pending keeps the table O(currently-parked).
   - `RETRYABLE` overdue → CAS-bump the deadline (multi-host arbitration for
@@ -160,7 +165,7 @@ The delivery worker, per parcel:
 3. `RETRYABLE` is the tool author's safety assertion; Nessy never
    auto-retries `NON_RETRYABLE` work.
 4. Presence of a computation record means the result is pending; presence of
-   a parcel means delivery is pending; neither has terminal residue.
+   a delivery record means delivering is pending; neither has terminal residue.
 5. Completion and delivery are each one atomic substrate batch; at every
    committed point the result is owned by exactly one stage.
 6. No live JVM, thread, callback, or future is required for a result to
@@ -181,9 +186,9 @@ retain.
 ## 9. Tests the reform must carry
 
 Ownership-transfer atomicity under injected conflict at both hand-offs
-(computation→parcel; parcel→fold); process-loss (create+dispatch in one
+(computation→delivery; delivery→fold); process-loss (create+dispatch in one
 runtime, complete in a fresh one, fold advances in a third); concurrent
-completion (one winner); duplicate parcel delivery (reducer absorbs, parcel
+completion (one winner); duplicate outbox delivery (reducer absorbs, delivery
 consumed once); retry identity (same `ToolInvocationId` across redispatch);
 non-retryable timeout traveling the normal pipeline; deadline-less
 computations never reaped.
