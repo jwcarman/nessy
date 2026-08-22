@@ -173,7 +173,7 @@ class StateCodecTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("org.jwcarman.nessy.agent.codec.StateCodecTest#malformedAwaitingToolsPayloads")
+    @MethodSource("malformedAwaitingToolsPayloads")
     void anAwaitingToolsPayloadWithAStructuralDefectIsRejectedNamingIt(
         String description, String pendingJson, String gatheredJson, String expectedMessage) {
       var call = new ToolCall("a", "lookup", JsonNodeFactory.instance.objectNode());
@@ -190,17 +190,17 @@ class StateCodecTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining(expectedMessage);
     }
-  }
 
-  private static Stream<Arguments> malformedAwaitingToolsPayloads() {
-    return Stream.of(
-        Arguments.of("pending outside the assistant turn", "[\"a\",\"ghost\"]", "[]", "ghost"),
-        Arguments.of(
-            "a non-tool-result block in gathered",
-            "[\"a\"]",
-            "[{\"type\":\"text\",\"text\":\"oops\"}]",
-            "text"),
-        Arguments.of("a non-array pending", "\"oops\"", "[]", "pending"),
-        Arguments.of("a non-array gathered", "[\"a\"]", "\"oops\"", "gathered"));
+    private static Stream<Arguments> malformedAwaitingToolsPayloads() {
+      return Stream.of(
+          Arguments.of("pending outside the assistant turn", "[\"a\",\"ghost\"]", "[]", "ghost"),
+          Arguments.of(
+              "a non-tool-result block in gathered",
+              "[\"a\"]",
+              "[{\"type\":\"text\",\"text\":\"oops\"}]",
+              "text"),
+          Arguments.of("a non-array pending", "\"oops\"", "[]", "pending"),
+          Arguments.of("a non-array gathered", "[\"a\"]", "\"oops\"", "gathered"));
+    }
   }
 }
