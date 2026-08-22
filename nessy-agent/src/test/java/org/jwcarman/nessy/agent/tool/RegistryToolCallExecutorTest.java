@@ -599,7 +599,8 @@ class RegistryToolCallExecutorTest {
         new Continuation("SCOPE_RESUME", "{}"),
         Optional.empty());
 
-    // a staleness redrive lands after the grant: the gate absorbs it via isPending, before the
+    // a staleness redrive lands after the grant: the gate absorbs it via pendingComputation, before
+    // the
     // approver is ever reached again
     var redelivered = new ArrayList<AgentEvent>();
     executor.executeTool(call, RESPONSE_ID, redelivered::add);

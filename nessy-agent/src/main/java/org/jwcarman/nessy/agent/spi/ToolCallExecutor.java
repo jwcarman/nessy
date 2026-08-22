@@ -44,15 +44,19 @@ public interface ToolCallExecutor {
    * to build from it, and the reaper decides whether to fold an immediate answer straight into the
    * pipeline (spec §6) rather than leave its computation orphaned.
    *
-   * <p>{@code alsoCommit} is the transfer-then-dispatch door (spec §5a invariant 5): when present
-   * and the invocation defers, an implementation that can must commit {@code alsoCommit} in the
-   * SAME atomic batch as the durable computation's own creation — BEFORE the tool's {@code
-   * execute()} is ever called, so the transfer is what claims the work, not a side effect of having
-   * run it. This is simultaneously the crash-safety property (a crash before the batch commits
-   * leaves nothing to duplicate) and the single-winner property (two concurrent claimants racing
-   * the same batch leave exactly one committed). The default throws: only {@link
-   * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} implements this meaningfully, and
-   * nothing calls it on a {@link ToolCallExecutor} without a gate to skip.
+   * <p>{@code alsoCommit} is the transfer-then-dispatch door (spec §5a invariant 5, honesty
+   * amendment): when present and the invocation defers, an implementation that can must commit
+   * {@code alsoCommit} in the SAME atomic batch as the durable computation's own creation — before
+   * control returns here, not before the tool's {@code execute()} runs (a tool reveals deferral
+   * only by returning {@code Awaited.deferred()}, so {@code execute()} necessarily runs first). The
+   * honest crash property: a crash between the tool's external start and the batch leaves the
+   * delivery to be redriven and the external side effect to be re-run — at-least-once, per the
+   * {@code Tool} contract, not "nothing to duplicate." What the batch DOES guarantee is the
+   * single-winner property within one host: two concurrent claimants racing the same batch leave
+   * exactly one committed (the worker's own claim, not this batch, is what makes that true — see
+   * {@link org.jwcarman.nessy.agent.durable.DeliveryWorker}'s javadoc). The default throws: only
+   * {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} implements this meaningfully,
+   * and nothing calls it on a {@link ToolCallExecutor} without a gate to skip.
    */
   default ToolExecution executeGrantedToolNow(
       ToolCall call,

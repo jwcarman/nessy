@@ -62,10 +62,13 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * The double-drain race (durable-deliveries spec §5a invariant 5, fix round 2 item (c)): two
  * concurrent drains of the SAME grant delivery — {@link DeliveryWorker#nudge()} racing the
  * heartbeat, modeled here as two threads both calling {@code nudge()} at once — must execute the
- * granted tool exactly once. Before the transfer-then-dispatch fix, both racers would read the
- * delivery present, both call the tool, and both attempt to fold — a duplicate external side effect
- * with no crash involved. The CAS version-bump claim inside {@link DeliveryWorker#deliverGrant} is
- * what makes this test pass: only the claim's winner ever reaches the tool.
+ * granted tool exactly once. Before the fix, both racers would read the delivery present, both call
+ * the tool, and both attempt to fold — a duplicate external side effect with no crash involved. A
+ * version-bump claim was tried first and proven insufficient by this exact test (a second racer
+ * reading after the first's bump sees an ordinary document at a newer version and bumps it again
+ * just as validly); the actual single-winner mechanism is {@link DeliveryWorker}'s in-process
+ * {@code claiming} key set — that is what makes this test pass: only the claim's winner ever
+ * reaches the tool.
  */
 class GrantRaceTest {
 

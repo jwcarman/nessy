@@ -129,11 +129,13 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   /**
    * The grant arm's single-winner mechanism (spec §5a invariant 5, fix round 2 item (c)): a bare
    * key set, {@code add} as the claim, {@code remove} as the release. In-process only — this is NOT
-   * a substrate write, and does not protect against a second {@code DeliveryWorker} instance in a
-   * different process racing the same delivery; it exists specifically to serialize THIS worker's
-   * own {@link #nudge()} against its own heartbeat thread, the exact race a version-bump alone
-   * cannot close (a second racer reading after the first's bump sees an ordinary document at a
-   * newer version, indistinguishable from "untouched," and bumps it again just as validly).
+   * a substrate write, and does not protect against any other {@code DeliveryWorker} instance, in
+   * this process or another, racing the same delivery (two workers in one JVM over one substrate
+   * are just as unprotected as two workers in two JVMs — this is a plain in-memory set, not a
+   * cross-instance coordination mechanism); it exists specifically to serialize THIS worker's own
+   * {@link #nudge()} against its own heartbeat thread, the exact race a version-bump alone cannot
+   * close (a second racer reading after the first's bump sees an ordinary document at a newer
+   * version, indistinguishable from "untouched," and bumps it again just as validly).
    */
   private final Set<String> claiming = ConcurrentHashMap.newKeySet();
 
@@ -266,10 +268,15 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * current version, the same shape {@link #deliverCompletion} uses. A deferred outcome's transfer
    * — {@code [create tool computation, delete delivery]} — is composed into ONE {@link
    * Substrate#batch} by {@link ComputationDeferredToolCallPolicy#onDeferred} via the {@code
-   * alsoCommit} door, BEFORE the tool's {@code execute()} that started it ever returns control here
-   * — so there is no window where the computation exists and this delivery still does, or where a
-   * real completion could ever find this delivery left over to reprocess (spec §5a invariant 5,
-   * closed at every committed point).
+   * alsoCommit} door, before control returns here — so once that batch commits, there is no window
+   * where the computation exists and this delivery still does, and no way for a real completion to
+   * ever find this delivery left over to reprocess. This is NOT "closed at every committed point"
+   * unqualified, though: the grant's OWN completion batch (approval computation deleted, this
+   * delivery created) is itself a committed point at which neither the approval nor the tool
+   * computation exists — between that batch and this worker draining it, a staleness redrive still
+   * re-asks the approver, because the delivery's key is random and not derivable from the call's
+   * address. Closing that window needs a design ruling (a deterministic grant-delivery key, or an
+   * explicit granted marker) — PARKED, not fixed here.
    */
   private void deliverGrant(String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
     if (!claiming.add(key)) {
