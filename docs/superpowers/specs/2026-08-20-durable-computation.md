@@ -1,5 +1,13 @@
 # Durable Computation and Agent Execution Specification
 
+> **Parcel supersession — 2026-08-22.** `2026-08-22-durable-parcels-design.md`
+> reshapes the execution semantics: `await()` and §12 are retired (the
+> continuation travels with `create`), preamble ruling 6 is reversed
+> (completion never creates records; presence means pending), ruling 4 is
+> amended (ids derive over `ModelResponseId`), and results reach scopes as
+> atomic ownership transfers (computation → outbox parcel → fold) instead of
+> live continuation dispatch. Retry/timeout semantics live there too.
+
 > **Storage supersession — 2026-08-21.** `2026-08-21-scoped-store-design.md` (the
 > substrate) supersedes this document's storage *mechanics*: §9 (backend SPI as an adapter
 > surface), §17–§22 (SQL reference, continuation table, outbox tables, SQL await/completion,

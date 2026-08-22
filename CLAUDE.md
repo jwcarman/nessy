@@ -64,9 +64,11 @@ context-pipeline reform.)
 `docs/superpowers/specs/2026-08-18-agent-as-scope-design.md`, its companion
 `docs/superpowers/specs/2026-08-20-durable-computation.md`, the vocabulary
 amendment `docs/superpowers/specs/2026-08-20-action-and-tool-vocabulary.md`
-(which amends `2026-08-16-authorization-design.md`), and the substrate spec
+(which amends `2026-08-16-authorization-design.md`), the substrate spec
 `docs/superpowers/specs/2026-08-21-scoped-store-design.md` (which supersedes
-the durable spec's storage mechanics) are the design of record. Its decisions (zones, naming conventions, the grant
+the durable spec's storage mechanics), and the parcel spec
+`docs/superpowers/specs/2026-08-22-durable-parcels-design.md` (which reshapes
+the durable spec's execution semantics) are the design of record. Its decisions (zones, naming conventions, the grant
 principle, sealed-grammar etiquette, the no-mocking-library promise, prose test
 style) bind all work here; propose spec amendments rather than quietly
 diverging.
