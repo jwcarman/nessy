@@ -16,11 +16,14 @@
 package org.jwcarman.nessy.agent.durable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.durable.ComputationId;
 import org.jwcarman.nessy.durable.Continuation;
@@ -28,17 +31,18 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.ToolInvocationId;
 
 /**
- * The durable wiring's answer to a deferral (durable-deliveries spec §3, §5): create carries the
- * continuation — the return address is durable before any dispatch, so the register-after-create
- * window is unexpressible. Every deferral suspends; the eventual completion arrives through the
- * delivery worker, never here.
+ * The durable wiring's answer to a deferral (durable-deliveries spec §3, §5, §6): create carries
+ * the continuation — the return address is durable before any dispatch, so the register-after-
+ * create window is unexpressible. Every deferral suspends; the eventual completion arrives through
+ * the delivery worker, never here.
  *
- * <p>{@code invocation}'s {@code responseId} component is provisional: the committed {@code
- * ModelResponseId} is not reachable at this seam without threading it through {@link CallAddress}
- * and the tool call executor, which durable-deliveries Task 2 leaves untouched (Task 3's
- * territory). The deterministic {@link ComputationId} string stands in for it instead — stable
- * across redispatch, which is what {@link ToolInvocationId} identity requires for this task's
- * scope.
+ * <p>{@code invocation} arrives from the gate ({@link
+ * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}) already carrying the committed {@code
+ * ModelResponseId} — no provisional stand-in. {@code timeout} stamps {@code deadlineAt = now +
+ * timeout} into the computation; a tool with no declared timeout waits indefinitely. {@code
+ * retrySemantics} rides the continuation itself (via {@link ScopeRouting}) rather than the
+ * computation document, so the reaper can decide bump-or-fail straight from the return address it
+ * already reads, with no registry lookup.
  */
 public final class ComputationDeferredToolCallPolicy implements DeferredToolCallPolicy {
 
@@ -51,12 +55,24 @@ public final class ComputationDeferredToolCallPolicy implements DeferredToolCall
   }
 
   @Override
-  public ToolExecution onDeferred(ToolCall call, CallAddress address) {
+  public ToolExecution onDeferred(
+      ToolCall call,
+      CallAddress address,
+      ToolInvocationId invocation,
+      RetrySemantics retrySemantics,
+      Optional<Duration> timeout) {
     ComputationId id = address.execution();
-    ToolInvocationId invocation = new ToolInvocationId(id.value(), call.id());
     Continuation continuation =
-        ScopeRouting.continuationFor(mapper, address.agentType(), address.agentId(), call);
-    backend.create(id, invocation, continuation, Optional.empty());
+        ScopeRouting.continuationFor(
+            mapper,
+            address.agentType(),
+            address.agentId(),
+            address.responseId(),
+            call,
+            retrySemantics,
+            timeout);
+    Optional<Instant> deadline = timeout.map(Instant.now()::plus);
+    backend.create(id, invocation, continuation, deadline);
     return new ToolExecution.Deferred(id);
   }
 }

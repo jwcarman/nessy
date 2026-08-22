@@ -104,7 +104,7 @@ class DefaultAgentDrainTest {
             racingBacklog,
             text -> List.of(new TextBlock(text)),
             sink -> {},
-            (call, sink) -> {},
+            (call, responseId, sink) -> {},
             new RecordingObserver(),
             false,
             StalenessPolicy.never());

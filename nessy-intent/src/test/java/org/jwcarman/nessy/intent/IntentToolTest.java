@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolEventListener;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class IntentToolTest {
@@ -43,7 +44,11 @@ class IntentToolTest {
     var call =
         new ToolCall(
             "c0", "declare-intent", JsonNodeFactory.instance.objectNode().put("declaration", "x"));
-    return new ToolContext(call, ToolEventListener.noop(), new CallAddress("ops", "prod-eu", "c0"));
+    return new ToolContext(
+        call,
+        ToolEventListener.noop(),
+        new CallAddress("ops", "prod-eu", "r0", "c0"),
+        new ToolInvocationId("r0", "c0"));
   }
 
   @Nested

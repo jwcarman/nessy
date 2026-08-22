@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
 class ToolContextTest {
 
@@ -29,7 +30,11 @@ class ToolContextTest {
     List<ToolEvent> heard = new ArrayList<>();
     ToolCall call = new ToolCall("c1", "issue_coupon", JsonNodeFactory.instance.objectNode());
     ToolContext context =
-        new ToolContext(call, heard::add, new CallAddress("test-agent", "test-scope", call.id()));
+        new ToolContext(
+            call,
+            heard::add,
+            new CallAddress("test-agent", "test-scope", "r1", call.id()),
+            new ToolInvocationId("r1", call.id()));
 
     context.progress("halfway");
 

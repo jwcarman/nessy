@@ -37,7 +37,7 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  */
 class ComputationApproverTest {
 
-  private static final CallAddress ADDRESS = new CallAddress("test-agent-type", "a1", "c1");
+  private static final CallAddress ADDRESS = new CallAddress("test-agent-type", "a1", "r7", "c1");
 
   private final SubstrateComputations backend =
       new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
@@ -88,5 +88,15 @@ class ComputationApproverTest {
     assertThat(routing.agentId()).isEqualTo(ADDRESS.agentId());
     assertThat(routing.call()).isEqualTo(request.call());
     assertThat(pending.invocation().callId()).isEqualTo(ADDRESS.callId());
+  }
+
+  @Test
+  void theInvocationCarriesTheRealCommittedResponseIdFromTheAddress() {
+    ApprovalRequest request = requestFor(ADDRESS);
+
+    approver.adjudicate(request);
+
+    PendingComputation pending = backend.find(ADDRESS.approval()).orElseThrow();
+    assertThat(pending.invocation().responseId()).isEqualTo(ADDRESS.responseId());
   }
 }

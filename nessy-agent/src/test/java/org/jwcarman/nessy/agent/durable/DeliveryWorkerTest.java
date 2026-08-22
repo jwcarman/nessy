@@ -82,7 +82,7 @@ class DeliveryWorkerTest {
 
   private static final class NoopToolCallExecutor implements ToolCallExecutor {
     @Override
-    public void executeTool(ToolCall call, Sink sink) {
+    public void executeTool(ToolCall call, ModelResponseId responseId, Sink sink) {
       // unused by these scenarios: every delivery here resolves the scope's only pending call
     }
   }
@@ -126,7 +126,8 @@ class DeliveryWorkerTest {
   private static void writeDelivery(
       Substrate store, ObjectMapper mapper, String key, Outcome outcome) {
     OutcomeCodec codec = new OutcomeCodec(mapper);
-    Continuation destination = ScopeRouting.continuationFor(mapper, TYPE.name(), ID.value(), CALL);
+    Continuation destination =
+        ScopeRouting.continuationFor(mapper, TYPE.name(), ID.value(), "response-1", CALL);
     byte[] payload =
         codec.toJson(new DeliveryDocument(destination, outcome)).getBytes(StandardCharsets.UTF_8);
     store.write("outbox", key, payload, 0);

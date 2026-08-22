@@ -28,6 +28,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.agent.host.AutonomousHost;
 import org.jwcarman.nessy.agent.host.Nessy;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
@@ -69,22 +71,27 @@ public final class Approvals {
    * {@link #main} prints. Every wait is bounded: a hung host fails loudly with a named timeout
    * instead of hanging the build.
    *
-   * <p><b>Known gap (durable-deliveries Task 2 report):</b> approving a computation is not itself a
-   * fold-advance — the tool has not run yet — so delivery re-fires the scope's still-outstanding
-   * {@code ExecuteTool} effect exactly as the pre-pivot {@code REDRIVE_SCOPE} poke did. {@code
-   * RegistryToolCallExecutor} re-checks the grant's policy on every redispatch, asking the approver
-   * again; under presence-means-pending the approval computation the first ask created is already
-   * gone (transferred to its outbox delivery and consumed), so the approver reads absence and
-   * treats it as a fresh ask rather than a decided one — the call re-suspends instead of running.
-   * This example demonstrates the re-suspension honestly rather than hanging on a reply that never
-   * arrives; closing the gap needs either {@code RegistryToolCallExecutor} to skip re-approval on a
-   * grant-driven redispatch, or a durable "recently granted" signal the desk can hand the approver.
+   * <p>The grant arc (durable-deliveries spec §5a): approving the computation dispatches the call
+   * directly past the gate from the grant's own continuation — no re-derivation, no second ask. The
+   * notifier fires exactly once, the tool runs exactly once, and the model's reply lands.
    */
   static String runScripted() throws InterruptedException {
     ModelProvider provider = scriptedProvider();
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<ApprovalRequest> requests = new LinkedBlockingQueue<>();
-    TurnObserver observer = TurnObserver.noop();
+    BlockingQueue<String> replies = new LinkedBlockingQueue<>();
+    TurnObserver observer =
+        TurnObserver.observe(
+            o ->
+                o.onAssistantSaid(
+                    said -> {
+                      // the first segment's AssistantSaid carries the tool-use turn, no text yet
+                      // (blank); only the post-grant segment's text is the reply worth awaiting.
+                      String text = textOf(said.message());
+                      if (!text.isBlank()) {
+                        replies.add(text);
+                      }
+                    }));
 
     try (AutonomousHost<String> host =
         Nessy.autonomous()
@@ -104,12 +111,20 @@ public final class Approvals {
       System.out.println("== approving " + firstAsk.address().approval().value() + " ==");
       host.approvals().approve(firstAsk.address().approval());
 
-      // See the "Known gap" note above: the grant redispatches the outstanding call, which
-      // re-asks approval rather than running the tool — observed here as a second notification.
-      ApprovalRequest secondAsk = await(requests, "the re-suspended approval request");
-      System.out.println("== re-suspended: " + secondAsk.address().approval().value() + " ==");
-      return "restarted prod-eu (RE-SUSPENDED, NOT COMPLETE — see Known gap)";
+      String reply = await(replies, "the assistant's reply after the grant");
+      System.out.println("== assistant replied: " + reply + " ==");
+      return "restarted prod-eu: " + reply;
     }
+  }
+
+  private static String textOf(Message message) {
+    StringBuilder text = new StringBuilder();
+    for (var block : message.content()) {
+      if (block instanceof TextBlock(String value)) {
+        text.append(value);
+      }
+    }
+    return text.toString();
   }
 
   private static void runInteractive() throws IOException {

@@ -15,12 +15,34 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
+import org.jwcarman.nessy.agent.ModelResponseId;
+import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
 /**
  * Tool execution: async by contract. The sink is handed per dispatch, lives one dispatch, and is
- * never invoked on the dispatching stack (§4).
+ * never invoked on the dispatching stack (§4). {@code responseId} is the committed {@code
+ * ModelResponseId} that produced {@code call} (durable-deliveries spec §2), read from the fold's
+ * {@code AwaitingTools} state at the dispatch site — it is how {@link CallAddress}'s derivation and
+ * a real {@code ToolInvocationId} become possible at the gate.
  */
 public interface ToolCallExecutor {
-  void executeTool(ToolCall call, Sink sink);
+
+  void executeTool(ToolCall call, ModelResponseId responseId, Sink sink);
+
+  /**
+   * The post-gate door (durable-deliveries spec §5a, §6): dispatches {@code call} straight to the
+   * tool with an already-known {@code address}/{@code invocation}, skipping the policy/approval
+   * gate entirely. Used only where the gate has already run for this exact invocation — a granted
+   * approval's tool call, or the reaper's redispatch of a {@code RETRYABLE} overdue computation —
+   * never for a fresh dispatch. The default falls back to a fresh, gate-checked dispatch (correct
+   * for any {@link ToolCallExecutor} that has no gate to skip, e.g. test doubles); {@link
+   * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} is the one implementation that actually
+   * bypasses its gate here.
+   */
+  default void executeGrantedTool(
+      ToolCall call, CallAddress address, ToolInvocationId invocation, Sink sink) {
+    executeTool(call, ModelResponseId.of(invocation.responseId()), sink);
+  }
 }

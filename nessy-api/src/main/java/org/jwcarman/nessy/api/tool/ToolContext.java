@@ -16,14 +16,23 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
-/** What a tool learns about the invocation it is serving. */
-public record ToolContext(ToolCall call, ToolEventListener events, CallAddress address) {
+/**
+ * What a tool learns about the invocation it is serving.
+ *
+ * @param invocationId this invocation's logical identity (durable-deliveries spec §2) — stable
+ *     across every redispatch and replay; a tool wants this for logging, correlation, or an
+ *     idempotency key
+ */
+public record ToolContext(
+    ToolCall call, ToolEventListener events, CallAddress address, ToolInvocationId invocationId) {
 
   public ToolContext {
     Objects.requireNonNull(call, "call must not be null");
     Objects.requireNonNull(events, "events must not be null");
     Objects.requireNonNull(address, "address must not be null");
+    Objects.requireNonNull(invocationId, "invocationId must not be null");
   }
 
   /**

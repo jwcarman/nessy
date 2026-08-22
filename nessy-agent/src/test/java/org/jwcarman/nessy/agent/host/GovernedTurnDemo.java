@@ -178,10 +178,12 @@ class GovernedTurnDemo {
       assertThat(intentStore.latest())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
 
-      var computation = ComputationId.of("approval:ops:prod-eu:c1");
       System.out.println(
           "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
+      var computation =
+          ComputationId.of("approval:ops:prod-eu:" + parkedResponseId.value() + ":c1");
       assertThat(backend.find(computation)).isPresent();
 
       assertThat(requests).isNotEmpty();
@@ -200,14 +202,13 @@ class GovernedTurnDemo {
       host.approvals().approve(computation);
       pump.pumpUntilQuiet();
 
-      // KNOWN GAP (durable-deliveries Task 2 report) — see AutonomousApprovalDemo's identical note:
-      // a grant redispatches the outstanding ExecuteTool effect, which re-asks the approver;
-      // presence-means-pending leaves no record for it to read back, so it re-suspends instead of
-      // running the tool. Asserted here as observed.
+      // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker dispatches the
+      // call past the gate directly from the grant's own continuation — no re-derivation, no
+      // second ask. The tool runs exactly once and the turn completes.
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      assertThat(requests).hasSize(2);
-      assertThat(backend.find(computation)).isPresent();
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(requests).hasSize(1);
+      assertThat(backend.find(computation)).isEmpty();
     }
   }
 

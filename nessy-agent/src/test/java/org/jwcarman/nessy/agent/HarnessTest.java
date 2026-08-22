@@ -79,7 +79,7 @@ class HarnessTest {
           TestMappers.plainlyPinned());
   private static final ObservationRenderer<String> RENDERER = text -> List.of();
   private static final ModelCallExecutor MODEL = sink -> {};
-  private static final ToolCallExecutor TOOLS = (call, sink) -> {};
+  private static final ToolCallExecutor TOOLS = (call, responseId, sink) -> {};
   private static final AgentObserver OBSERVER = AgentObserver.noop();
   private static final StalenessPolicy STALENESS_POLICY = StalenessPolicy.never();
   private static final AgentType TYPE = AgentType.of("test");
@@ -456,7 +456,8 @@ class HarnessTest {
                 ToolCallExecutor fresh =
                     new ToolCallExecutor() {
                       @Override
-                      public void executeTool(ToolCall call, Sink sink) {
+                      public void executeTool(
+                          ToolCall call, ModelResponseId responseId, Sink sink) {
                         // fixture only: this test cares about factory freshness, not tool output
                       }
                     };

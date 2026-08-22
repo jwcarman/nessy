@@ -145,13 +145,13 @@ public final class Governed {
       host.approvals().approve(request.address().approval());
       System.out.println("approved");
 
-      // KNOWN GAP (durable-deliveries Task 2 report — see Approvals#runScripted()'s javadoc for the
-      // full explanation): a grant redispatches the outstanding call instead of completing it, so
-      // the redispatch re-asks approval rather than running the tool. Observed here as a second
-      // approval request rather than the completion the pre-pivot design produced.
-      ApprovalRequest reSuspended = await(approvalRequests, "the re-suspended approval request");
-      System.out.println("re-suspended: computation=" + reSuspended.address().approval().value());
-      return new Result(bounce.result().content(), declaredTarget, "GOVERNED TURN RE-SUSPENDED");
+      // The grant arc (durable-deliveries spec §5a): the delivery worker dispatches the call
+      // directly past the gate from the grant's own continuation — no second ask, no re-suspend.
+      TurnEvent.ToolCallCompleted restarted = await(toolCompletions, "the granted restart");
+      System.out.println("restarted: " + restarted.result().content());
+      TurnEvent.TurnEnded ended = await(completions, "the turn's completion");
+      System.out.println("turn ended: failed=" + ended.failed());
+      return new Result(bounce.result().content(), declaredTarget, "GOVERNED TURN COMPLETE");
     }
   }
 

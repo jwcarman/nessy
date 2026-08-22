@@ -216,7 +216,7 @@ class DefaultAgentApplyTest {
             backlog,
             text -> List.of(new TextBlock(text)),
             sink -> versionsAtCall.add(store.load().version()),
-            (call, sink) -> {},
+            (call, responseId, sink) -> {},
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());

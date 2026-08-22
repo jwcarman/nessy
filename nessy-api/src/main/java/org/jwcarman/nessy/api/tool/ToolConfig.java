@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -47,6 +49,8 @@ public final class ToolConfig<T> {
   private BiFunction<T, ToolContext, ?> contextHandler;
   private BiConsumer<T, ToolContext> deferStarter;
   private CompletionPolicy explicitCompletion;
+  private RetrySemantics retrySemantics = RetrySemantics.NON_RETRYABLE;
+  private Duration timeout;
 
   ToolConfig(Class<T> inputType) {
     this.inputType = inputType;
@@ -100,6 +104,28 @@ public final class ToolConfig<T> {
   }
 
   /**
+   * The reaper's authority to redispatch this tool's overdue durable computation with the same
+   * {@code ToolInvocationId} (durable-deliveries spec §6). Default {@link
+   * RetrySemantics#NON_RETRYABLE}. Declaring {@link RetrySemantics#RETRYABLE} is the tool author's
+   * own assertion that redispatch is safe — see {@link RetrySemantics}'s javadoc for what that
+   * assertion means.
+   */
+  public ToolConfig<T> retrySemantics(RetrySemantics retrySemantics) {
+    this.retrySemantics = Objects.requireNonNull(retrySemantics, "retrySemantics must not be null");
+    return this;
+  }
+
+  /**
+   * How long a durable computation this tool starts may stay pending before the reaper treats it as
+   * overdue (durable-deliveries spec §6). Unset means no deadline — the computation waits
+   * indefinitely.
+   */
+  public ToolConfig<T> timeout(Duration timeout) {
+    this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
+    return this;
+  }
+
+  /**
    * Turns this config into the {@link Tool} it describes — the factory's own step, never a public
    * {@code build()} (design of record 2026-08-16 §1). Reached only from {@link Tool#of(Class,
    * ToolCustomizer)}, once {@code customize} has returned.
@@ -117,7 +143,14 @@ public final class ToolConfig<T> {
           "tool '%s' must declare exactly one handler door (executes/executes/defers), found %d"
               .formatted(name, handlerCount));
     }
-    return new ConfiguredTool<>(name, description, inputType, buildExecutor(), completionPolicy());
+    return new ConfiguredTool<>(
+        name,
+        description,
+        inputType,
+        buildExecutor(),
+        completionPolicy(),
+        retrySemantics,
+        Optional.ofNullable(timeout));
   }
 
   private CompletionPolicy completionPolicy() {

@@ -41,8 +41,9 @@ import org.jwcarman.nessy.spi.approval.Approver;
  * decision back. That is the known Task 2 gap the grant-redispatch path runs into (see the fix-
  * round report); this class does not paper over it.
  *
- * <p>{@code invocation}'s {@code responseId} component is provisional; see {@link
- * ComputationDeferredToolCallPolicy}'s javadoc for why, and for the same Task 3 handoff.
+ * <p>{@code invocation}'s {@code responseId} component is the real, committed {@code
+ * ModelResponseId} — read off the address the gate stamps before the approval is ever asked
+ * (durable-deliveries spec §2), not a provisional stand-in.
  */
 public final class ComputationApprover implements Approver {
 
@@ -61,10 +62,10 @@ public final class ComputationApprover implements Approver {
   public Adjudication adjudicate(ApprovalRequest request) {
     var address = request.address();
     ComputationId computation = address.approval();
-    ToolInvocationId invocation = new ToolInvocationId(computation.value(), request.call().id());
+    ToolInvocationId invocation = new ToolInvocationId(address.responseId(), request.call().id());
     Continuation continuation =
         ScopeRouting.continuationFor(
-            mapper, address.agentType(), address.agentId(), request.call());
+            mapper, address.agentType(), address.agentId(), address.responseId(), request.call());
     CreateResult created = backend.create(computation, invocation, continuation, Optional.empty());
     if (created.created()) {
       notifier.accept(request);

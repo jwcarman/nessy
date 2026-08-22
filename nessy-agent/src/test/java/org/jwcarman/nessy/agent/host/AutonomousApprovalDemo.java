@@ -123,10 +123,12 @@ class AutonomousApprovalDemo {
       host.post("prod-eu", "please restart prod-eu");
       pump.pumpUntilQuiet();
 
-      var computation = ComputationId.of("approval:ops:prod-eu:c1");
       System.out.println(
           "phase after park: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
+      var computation =
+          ComputationId.of("approval:ops:prod-eu:" + parkedResponseId.value() + ":c1");
       assertThat(backend.find(computation)).isPresent();
       assertThat(requests).hasSize(1);
       assertThat(requests.getFirst().context().action()).contains("restart prod-eu");
@@ -136,20 +138,14 @@ class AutonomousApprovalDemo {
       host.approvals().approve(computation);
       pump.pumpUntilQuiet();
 
-      // KNOWN GAP (durable-deliveries Task 2 report): a grant is not a fold-advance — the tool has
-      // not run yet — so delivery re-fires the outstanding ExecuteTool effect exactly as the old
-      // REDRIVE_SCOPE poke did. RegistryToolCallExecutor (Task 3's file, off-limits here) re-checks
-      // the grant's policy on every redispatch, so it asks the approver again; under
-      // presence-means-pending the prior approval computation is already gone (transferred and
-      // consumed), so ComputationApprover reads absence and treats it as a fresh ask — the call
-      // re-suspends instead of running. Closing this needs either RegistryToolCallExecutor to skip
-      // re-approval on a grant-driven redispatch, or a durable "recently granted" signal the desk
-      // can hand the approver — both out of Task 2's file scope. Asserted here as observed, not
-      // silently accepted: a fresh approval computation exists and the notifier fired again.
+      // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker reads the grant's
+      // continuation directly and dispatches the call past the gate via
+      // ToolCallExecutor#executeGrantedTool — no re-derivation, no second ask. The tool runs
+      // exactly once and the turn completes; the notifier fires exactly once, on the original ask.
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
-      assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-      assertThat(requests).hasSize(2);
-      assertThat(backend.find(ComputationId.of("approval:ops:prod-eu:c1"))).isPresent();
+      assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
+      assertThat(requests).hasSize(1);
+      assertThat(backend.find(computation)).isEmpty();
     }
   }
 
@@ -188,8 +184,10 @@ class AutonomousApprovalDemo {
       host.post("prod-eu", "please restart prod-eu");
       pump.pumpUntilQuiet();
 
-      var computation = ComputationId.of("approval:ops:prod-eu:c1");
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+      var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
+      var computation =
+          ComputationId.of("approval:ops:prod-eu:" + parkedResponseId.value() + ":c1");
       assertThat(requests).hasSize(1);
 
       System.out.println("== the desk says no; the denial arrives in-band ==");

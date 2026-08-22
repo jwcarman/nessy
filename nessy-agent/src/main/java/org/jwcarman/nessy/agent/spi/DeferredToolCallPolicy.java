@@ -15,8 +15,12 @@
  */
 package org.jwcarman.nessy.agent.spi;
 
+import java.time.Duration;
+import java.util.Optional;
 import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
 /**
  * What a wiring does when a tool defers (spec §4.3). {@link ToolExecution.Deferred} means the call
@@ -24,9 +28,20 @@ import org.jwcarman.nessy.api.tool.ToolCall;
  * deferral is invisible, but the suspension carries its reference. {@link ToolExecution.Immediate}
  * means an outcome to deliver now — the loud in-band failure of a non-durable wiring, or a durable
  * computation's already-terminal answer.
+ *
+ * <p>{@code invocation}, {@code retrySemantics}, and {@code timeout} are the tool's registration-
+ * time facts (durable-deliveries spec §6) a durable wiring needs to create the computation and
+ * stamp its deadline: {@code invocation} carries the real, committed {@code ModelResponseId} paired
+ * with the call's id; {@code retrySemantics} and {@code timeout} come straight from the tool's
+ * {@code Tool#retrySemantics()}/{@code Tool#timeout()}.
  */
 @FunctionalInterface
 public interface DeferredToolCallPolicy {
 
-  ToolExecution onDeferred(ToolCall call, CallAddress address);
+  ToolExecution onDeferred(
+      ToolCall call,
+      CallAddress address,
+      ToolInvocationId invocation,
+      RetrySemantics retrySemantics,
+      Optional<Duration> timeout);
 }

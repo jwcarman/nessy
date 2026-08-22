@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -32,6 +33,8 @@ import org.jwcarman.nessy.agent.Binding;
 import org.jwcarman.nessy.agent.DurableOutcomes;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.Harness;
+import org.jwcarman.nessy.agent.ModelResponseId;
+import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.ResolvingAgentBinder;
 import org.jwcarman.nessy.agent.ScopeRedrive;
 import org.jwcarman.nessy.agent.State;
@@ -40,12 +43,18 @@ import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
+import org.jwcarman.nessy.agent.durable.OutcomeCodec.PendingDocument;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.spi.substrate.Substrate.Op.AppendEntry;
@@ -63,13 +72,26 @@ import org.slf4j.LoggerFactory;
  * is just the delivery removal.
  *
  * <p>An approval's {@code Allow} decision is not a completion — the tool has not run yet, so there
- * is no {@code ToolFinished} for the reducer to fold. That case reuses {@link ScopeRedrive}'s
- * existing, tested mechanism exactly as it always worked: remove the delivery, then unconditionally
- * re-fire the scope's still-outstanding {@code ExecuteTool} effect.
+ * is no {@code ToolFinished} for the reducer to fold. That case dispatches the call directly
+ * through {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool} — the post-gate
+ * door — using the {@code CallAddress}/{@code ToolInvocationId} the grant's own continuation
+ * carries, never {@link ScopeRedrive}'s unconditional re-fire: re-entering the gate from the top
+ * would re-run policy and re-ask the approver on every grant (spec §5a).
  *
  * <p>One heartbeat thread per host, started by the host and stopped on {@link #close()}; {@link
  * #nudge()} runs an immediate, synchronous drain after every completion — the heartbeat is the
  * recovery net, never the happy-path latency (spec §5).
+ *
+ * <p>The reaper is this worker's second sweep, on the same heartbeat (spec §6): scan {@code
+ * computation} documents, decode each, and compare its deadline. Deadline-less computations are
+ * skipped — they wait indefinitely, exactly like an approval. An overdue {@link
+ * RetrySemantics#NON_RETRYABLE} computation is failed — {@code complete(id,
+ * Failure("TIMEOUT_NON_RETRYABLE"))} — which rides the normal delivery pipeline into the fold, no
+ * special timeout path. An overdue {@link RetrySemantics#RETRYABLE} computation gets its deadline
+ * CAS-bumped (a lost CAS means another worker already won the bump, or already completed it — this
+ * worker backs off) and is redispatched through {@link
+ * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool}, the same {@code
+ * ToolInvocationId} the computation already carries.
  *
  * <p>The journal writes go straight through the {@code Substrate} the {@code memory} recipe defines
  * (kind {@code memory}, keyed by agent id, {@link MessageCodec}-encoded) so they land in the SAME
@@ -85,6 +107,8 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   private static final String OUTBOX_KIND = "outbox";
   private static final String STATE_KIND = "state";
   private static final String MEMORY_KIND = "memory";
+  private static final String COMPUTATION_KIND = "computation";
+  private static final String TIMEOUT_NON_RETRYABLE = "TIMEOUT_NON_RETRYABLE";
   private static final int SCAN_LIMIT = 1000;
   private static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(2);
 
@@ -94,7 +118,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
   private final MessageCodec messageCodec;
   private final Harness<O> harness;
   private final AgentBinder binder;
-  private final ScopeRedrive scopeRedrive;
+  private final DurableComputationBackend computations;
   private final ObjectMapper mapper;
   private final Thread heartbeat;
   private volatile boolean closed;
@@ -118,7 +142,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     Objects.requireNonNull(resolver, "resolver must not be null");
     this.binder = new ResolvingAgentBinder(resolver);
-    this.scopeRedrive = new ScopeRedrive(resolver, mapper);
+    this.computations = new SubstrateComputations(store, mapper);
     Objects.requireNonNull(pollInterval, "pollInterval must not be null");
     this.heartbeat = new Thread(() -> heartbeatLoop(pollInterval), "nessy-delivery");
     this.heartbeat.setDaemon(true);
@@ -153,6 +177,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
       }
       if (!closed) {
         safeDrainOnce();
+        safeReapOnce();
       }
     }
   }
@@ -163,6 +188,15 @@ public final class DeliveryWorker<O> implements AutoCloseable {
       drainOnce();
     } catch (RuntimeException e) {
       log.warn("a delivery sweep failed; will retry on the next heartbeat or nudge", e);
+    }
+  }
+
+  /** Guards the whole reaper sweep: a scan-level failure must not kill the heartbeat thread. */
+  private void safeReapOnce() {
+    try {
+      reapOnce();
+    } catch (RuntimeException e) {
+      log.warn("a reaper sweep failed; will retry on the next heartbeat", e);
     }
   }
 
@@ -193,27 +227,44 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     AgentId id = AgentId.of(routing.agentId());
     Optional<ToolOutcome> toolOutcome = toToolOutcome(delivery.outcome());
     if (toolOutcome.isEmpty()) {
-      deliverGrant(key, doc.get().version(), delivery);
+      deliverGrant(key, doc.get().version(), type, id, routing);
       return;
     }
     deliverCompletion(type, id, routing.call().id(), toolOutcome.get(), key);
   }
 
   /**
-   * An approval grant is not a fold-advance: the batch is just the delivery removal, and the
-   * outstanding call is re-fired afterward (commit-before-dispatch) via {@link ScopeRedrive}'s
-   * existing mechanism. Unlike {@link #deliverCompletion}, this arm is at-most-once, not
-   * exactly-once (spec §5a): the delivery is removed before the redispatch fires, so a crash
-   * between the two loses the grant rather than replaying it — Task 3 closes this gap; do not read
-   * this as parity with the completion arm's CAS-batched guarantee.
+   * An approval grant is not a fold-advance: the tool has not run yet, so there is no {@code
+   * ToolFinished} for the reducer to fold. The grant arm dispatches the call directly through
+   * {@link org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool} — the post-gate door —
+   * using the {@code CallAddress}/{@code ToolInvocationId} the continuation itself carries; no fold
+   * read, no re-derivation, and critically no policy/approval re-run (spec §5a). This closes the
+   * Task 2 grant gap: {@link ScopeRedrive}'s unconditional re-fire used to re-enter {@code
+   * RegistryToolCallExecutor}'s gate from the top, re-asking the approver on every grant.
+   *
+   * <p>Unlike {@link #deliverCompletion}, this arm is still at-most-once, not exactly-once: the
+   * delivery is removed before the redispatch fires, so a crash between the two loses the grant
+   * rather than replaying it. Composing the tool computation's {@code create} and this delivery's
+   * removal into one atomic batch (spec §5a) is not done here — a narrower, still-open gap than the
+   * one this arm closes (the policy re-ask), left for a follow-up rather than risked under this
+   * task's remaining scope.
    */
-  private void deliverGrant(String key, long version, DeliveryDocument delivery) {
+  private void deliverGrant(
+      String key, long version, AgentType type, AgentId id, ScopeRouting.Routing routing) {
     try {
       store.delete(OUTBOX_KIND, key, version);
     } catch (ConflictException _) {
       return; // another drain already delivered this delivery
     }
-    scopeRedrive.completed(delivery.destination(), delivery.outcome());
+    CallAddress address =
+        new CallAddress(
+            routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
+    ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
+    Binding<O> binding = harness.bind(id);
+    harness
+        .toolExecutor(binding)
+        .executeGrantedTool(
+            routing.call(), address, invocation, event -> binder.deliver(type, id, event));
   }
 
   private void deliverCompletion(
@@ -259,10 +310,89 @@ public final class DeliveryWorker<O> implements AutoCloseable {
         continue; // lost the race — re-read state (or find the delivery already gone) and retry
       }
       if (!transition.isIgnored()) {
-        dispatchEffects(type, id, transition.effects());
+        dispatchEffects(type, id, transition.next(), transition.effects());
       }
       return;
     }
+  }
+
+  /**
+   * One bad computation — an undecodable continuation, an unresolvable scope — must not block every
+   * other pending computation behind it, matching {@link #drainOnce()}'s per-item isolation.
+   * Package-visible (not {@code private}) so tests can trigger one reaper sweep synchronously,
+   * without a real-time heartbeat wait — the same reasoning {@link #nudge()} exists for the
+   * delivery sweep, just without a public door of its own (the reaper's public entry stays the
+   * heartbeat; nothing external calls this directly).
+   */
+  void reapOnce() {
+    for (String key : store.keys(COMPUTATION_KIND, SCAN_LIMIT)) {
+      try {
+        reapOne(key);
+      } catch (RuntimeException e) {
+        log.warn("computation {} could not be reaped; skipped this sweep", key, e);
+      }
+    }
+  }
+
+  private void reapOne(String key) {
+    Optional<Substrate.Document> doc = store.read(COMPUTATION_KIND, key);
+    if (doc.isEmpty()) {
+      return; // completed (or never existed) by the time this sweep reached it
+    }
+    PendingDocument pending =
+        codec.pendingDocument(new String(doc.get().payload(), StandardCharsets.UTF_8));
+    Optional<Instant> deadline = pending.deadline();
+    if (deadline.isEmpty() || deadline.get().isAfter(Instant.now())) {
+      return; // deadline-less waits indefinitely (spec §6); not yet overdue waits its turn
+    }
+    ComputationId id = ComputationId.of(key);
+    ScopeRouting.Routing routing = ScopeRouting.decode(mapper, pending.returnAddress());
+    if (routing.retrySemantics() == RetrySemantics.NON_RETRYABLE) {
+      computations.complete(id, new Outcome.Failure(TIMEOUT_NON_RETRYABLE));
+      nudge(); // the failure rides the normal delivery pipeline into the fold (spec §6)
+      return;
+    }
+    reapRetryable(key, doc.get().version(), pending, routing);
+  }
+
+  /**
+   * {@code RETRYABLE} overdue: CAS-bump the deadline, then redispatch the same {@code
+   * ToolInvocationId} through {@link
+   * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedTool} — the post-gate door, since
+   * this call already cleared the gate when it first deferred (spec §5a, §6). A lost CAS means
+   * another worker already bumped or completed this computation first; this sweep backs off rather
+   * than double-dispatching.
+   */
+  private void reapRetryable(
+      String key, long version, PendingDocument pending, ScopeRouting.Routing routing) {
+    Instant bumped = Instant.now().plus(routing.timeout().orElse(Duration.ZERO));
+    byte[] payload =
+        codec
+            .toJson(
+                new PendingDocument(
+                    pending.invocation(), pending.returnAddress(), Optional.of(bumped)))
+            .getBytes(StandardCharsets.UTF_8);
+    try {
+      store.write(COMPUTATION_KIND, key, payload, version);
+    } catch (ConflictException _) {
+      return; // another worker's bump or completion won the race
+    }
+    AgentType type = AgentType.of(routing.agentType());
+    AgentId agentId = AgentId.of(routing.agentId());
+    CallAddress address =
+        new CallAddress(
+            routing.agentType(),
+            routing.agentId(),
+            pending.invocation().responseId(),
+            routing.call().id());
+    Binding<O> binding = harness.bind(agentId);
+    harness
+        .toolExecutor(binding)
+        .executeGrantedTool(
+            routing.call(),
+            address,
+            pending.invocation(),
+            event -> binder.deliver(type, agentId, event));
   }
 
   /**
@@ -310,7 +440,14 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     return entries.isEmpty() ? 0L : entries.getLast().seq();
   }
 
-  private void dispatchEffects(AgentType type, AgentId id, List<Effect> effects) {
+  /**
+   * {@code phase} is the transition's committed {@code next()} — an {@code ExecuteTool} effect here
+   * would need its {@code ModelResponseId} from an {@link
+   * org.jwcarman.nessy.agent.Phase.AwaitingTools}, but a {@code ToolFinished} fold never actually
+   * emits one (only a model response does, in {@code AwaitingModel}'s own handling); this arm stays
+   * total rather than assuming that invariant silently.
+   */
+  private void dispatchEffects(AgentType type, AgentId id, Phase phase, List<Effect> effects) {
     Binding<O> binding = harness.bind(id);
     for (Effect effect : effects) {
       switch (effect) {
@@ -319,9 +456,17 @@ public final class DeliveryWorker<O> implements AutoCloseable {
         case Effect.ExecuteTool(var call) ->
             harness
                 .toolExecutor(binding)
-                .executeTool(call, event -> binder.deliver(type, id, event));
+                .executeTool(call, responseIdOf(phase), event -> binder.deliver(type, id, event));
       }
     }
+  }
+
+  private static ModelResponseId responseIdOf(Phase phase) {
+    if (phase instanceof Phase.AwaitingTools awaiting) {
+      return awaiting.responseId();
+    }
+    throw new IllegalStateException(
+        "an ExecuteTool effect was dispatched outside AwaitingTools: " + phase);
   }
 
   /**

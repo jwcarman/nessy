@@ -30,17 +30,15 @@ import org.junit.jupiter.api.Timeout;
 class GovernedTest {
 
   /**
-   * KNOWN GAP (durable-deliveries Task 2 report — see {@code Approvals#runScripted()}'s javadoc): a
-   * grant redispatches the outstanding call instead of completing it, so this scripted run observes
-   * a re-suspension rather than the turn's completion. Re-expressed to assert that reality, not the
-   * pre-pivot completion this example demonstrated before the pivot.
+   * The grant arc (durable-deliveries spec §5a): approving the parked restart dispatches it past
+   * the gate directly from the grant's own continuation — no second ask, no re-suspend — so this
+   * scripted run observes the turn's completion.
    */
   @Test
-  void the_bounced_and_declared_restart_re_suspends_pending_the_redispatch_gap()
-      throws InterruptedException {
+  void the_bounced_and_declared_restart_completes_once_approved() throws InterruptedException {
     Governed.Result result = Governed.run();
 
-    assertThat(result.sentinel()).isEqualTo("GOVERNED TURN RE-SUSPENDED");
+    assertThat(result.sentinel()).isEqualTo("GOVERNED TURN COMPLETE");
     assertThat(result.bounceMessage()).contains("declare-intent");
     assertThat(result.declaredTarget()).isEqualTo("prod-eu");
   }

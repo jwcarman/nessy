@@ -91,9 +91,9 @@ class ScopeRedriveTest {
     }
 
     @Override
-    public void executeTool(ToolCall call, Sink sink) {
+    public void executeTool(ToolCall call, ModelResponseId responseId, Sink sink) {
       invocations++;
-      delegate.executeTool(call, sink);
+      delegate.executeTool(call, responseId, sink);
     }
   }
 

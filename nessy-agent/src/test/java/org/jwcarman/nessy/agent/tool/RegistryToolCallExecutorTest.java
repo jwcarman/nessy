@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
@@ -182,6 +183,8 @@ class RegistryToolCallExecutorTest {
     }
   }
 
+  private static final ModelResponseId RESPONSE_ID = ModelResponseId.of("r1");
+
   private AgentEvent.ToolFinished run(
       ToolRegistry registry, ToolCall call, RecordingTurnObserver turn) {
     var pump = new PumpedExecutor();
@@ -194,7 +197,7 @@ class RegistryToolCallExecutorTest {
             pump,
             TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
-    executor.executeTool(call, delivered::add);
+    executor.executeTool(call, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();
     assertThat(delivered).hasSize(1);
     return (AgentEvent.ToolFinished) delivered.getFirst();
@@ -348,11 +351,11 @@ class RegistryToolCallExecutorTest {
             AgentId.of("cli"),
             turn,
             pump,
-            (parkedCall, address) ->
-                new ToolExecution.Deferred(ComputationId.of("tool:test:cli:c1")),
+            (parkedCall, address, invocation, retrySemantics, timeout) ->
+                new ToolExecution.Deferred(ComputationId.of("tool:test:cli:r1:c1")),
             TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
-    executor.executeTool(call, delivered::add);
+    executor.executeTool(call, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();
     assertThat(delivered).isEmpty();
     assertThat(turn.events()).isEmpty();
@@ -368,7 +371,7 @@ class RegistryToolCallExecutorTest {
   }
 
   private DeferredToolCallPolicy neverParks() {
-    return (parkedCall, address) -> {
+    return (parkedCall, address, invocation, retrySemantics, timeout) -> {
       throw new AssertionError("no tool in this test defers");
     };
   }
@@ -387,7 +390,7 @@ class RegistryToolCallExecutorTest {
             approver,
             TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
-    executor.executeTool(call, delivered::add);
+    executor.executeTool(call, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();
     assertThat(delivered).hasSize(1);
     return (AgentEvent.ToolFinished) delivered.getFirst();
@@ -458,7 +461,8 @@ class RegistryToolCallExecutorTest {
     var finished = runWithApprover(registry, call, new RecordingTurnObserver(), recordingApprover);
     assertThat(requests).hasSize(1);
     var request = requests.getFirst();
-    assertThat(request.address()).isEqualTo(new CallAddress("cli", "cli", "c1"));
+    assertThat(request.address())
+        .isEqualTo(new CallAddress("cli", "cli", RESPONSE_ID.value(), "c1"));
     assertThat(request.context().action()).contains("EchoInput[value=hi]");
     assertThat(request.context().agentName()).isEqualTo("cli");
     assertThat(request.context().principal()).contains("ada");
@@ -482,7 +486,7 @@ class RegistryToolCallExecutorTest {
 
   @Test
   void aSuspendedAdjudicationDeliversNothingAndNarratesNothing() {
-    var slot = ComputationId.of("approval:cli:cli:c1");
+    var slot = ComputationId.of("approval:cli:cli:r1:c1");
     Approver suspendingApprover = request -> new Adjudication.Suspended(slot);
     var registry =
         ToolRegistry.of(ToolGrant.grant(new NeverRunTool(), UsagePolicy.requireApproval()));
@@ -501,7 +505,7 @@ class RegistryToolCallExecutorTest {
             suspendingApprover,
             TestMappers.plainlyPinned());
     var delivered = new ArrayList<AgentEvent>();
-    executor.executeTool(call, delivered::add);
+    executor.executeTool(call, RESPONSE_ID, delivered::add);
     pump.pumpUntilQuiet();
     assertThat(delivered).isEmpty();
     assertThat(turn.events()).isEmpty();

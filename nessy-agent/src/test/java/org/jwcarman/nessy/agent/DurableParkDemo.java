@@ -173,9 +173,10 @@ class DurableParkDemo {
     agents.get().observe("please restart prod");
     pump.pumpUntilQuiet();
 
-    var computation = ComputationId.of("tool:approver:demo:c1");
     System.out.println("phase after park: " + store.load().phase().getClass().getSimpleName());
     assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
+    var parkedResponseId = ((Phase.AwaitingTools) store.load().phase()).responseId();
+    var computation = ComputationId.of("tool:approver:demo:" + parkedResponseId.value() + ":c1");
     assertThat(backend.find(computation)).isPresent();
     // only the observation is committed; the assistant tool-use turn is held back
     assertThat(memory.recall().messages())

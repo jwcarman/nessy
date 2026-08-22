@@ -15,7 +15,9 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 
@@ -81,5 +83,23 @@ public interface Tool<T> {
    */
   default CompletionPolicy requiredCompletion() {
     return CompletionPolicy.IMMEDIATE;
+  }
+
+  /**
+   * The reaper's authority to redispatch this tool's overdue durable computation (durable-
+   * deliveries spec §6). Default {@link RetrySemantics#NON_RETRYABLE}: an overdue computation is
+   * failed, never guessed safe to redispatch.
+   */
+  default RetrySemantics retrySemantics() {
+    return RetrySemantics.NON_RETRYABLE;
+  }
+
+  /**
+   * How long a durable computation this tool starts may stay pending before the reaper treats it as
+   * overdue (durable-deliveries spec §6). Empty means no deadline — the computation waits
+   * indefinitely, exactly like an approval.
+   */
+  default Optional<Duration> timeout() {
+    return Optional.empty();
   }
 }
