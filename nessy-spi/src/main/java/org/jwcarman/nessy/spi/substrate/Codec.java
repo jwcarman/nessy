@@ -17,7 +17,6 @@ package org.jwcarman.nessy.spi.substrate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.SealedInputs;
 
 /**
  * The typed serialization seam above the {@link Substrate}'s opaque {@code byte[]} payloads (spec
@@ -29,9 +28,10 @@ import org.jwcarman.nessy.api.tool.SealedInputs;
  * <p>{@link #json(ObjectMapper, Class)} is the default binding for user-defined shapes: tolerant
  * UTF-8 JSON via the caller's mapper, so user-registered modules flow through untouched — this
  * layer neither constructs nor mutates the mapper it is given. Plain types bind through {@code
- * readValue}/{@code writeValueAsBytes}; sealed interface types bind the {@link SealedInputs} way —
- * a {@code "type"} discriminator matched against {@link Class#getPermittedSubclasses()} — so sealed
- * vocabularies work unannotated.
+ * readValue}/{@code writeValueAsBytes}; sealed interface types bind through a {@code "type"}
+ * discriminator matched against {@link Class#getPermittedSubclasses()} — a temporary inline
+ * mechanism (json-repeal task 2 replaces it with the same standard Jackson annotations tool inputs
+ * now bind through).
  */
 public interface Codec<T> {
 
@@ -62,15 +62,14 @@ public interface Codec<T> {
 
   /**
    * A tolerant UTF-8 JSON codec for {@code type}, bound through {@code mapper}. When {@code type}
-   * is a sealed interface (spec §3, {@link SealedInputs}), encoding adds a {@code "type"}
-   * discriminator naming the concrete permitted record's simple name, and decoding matches that
-   * discriminator back to its record before binding the remainder — exactly {@link SealedInputs}'
-   * convention for tool inputs, applied here to stored payloads. Jackson's checked exceptions never
-   * leak past this boundary: malformed bytes, an unknown discriminator, or a shape mismatch all
-   * surface as {@link IllegalArgumentException} naming the offense. Encoding a value whose runtime
-   * class is not a direct permitted subclass of {@code type} (e.g. a member reached through a
-   * nested sealed vocabulary) is rejected the same way, naming the class and the vocabulary, rather
-   * than writing a discriminator {@link SealedInputs#bind} could never match back.
+   * is a sealed interface (spec §3), encoding adds a {@code "type"} discriminator naming the
+   * concrete permitted record's simple name, and decoding matches that discriminator back to its
+   * record before binding the remainder. Jackson's checked exceptions never leak past this
+   * boundary: malformed bytes, an unknown discriminator, or a shape mismatch all surface as {@link
+   * IllegalArgumentException} naming the offense. Encoding a value whose runtime class is not a
+   * direct permitted subclass of {@code type} (e.g. a member reached through a nested sealed
+   * vocabulary) is rejected the same way, naming the class and the vocabulary, rather than writing
+   * a discriminator decoding could never match back.
    */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
     Objects.requireNonNull(mapper, "mapper must not be null");

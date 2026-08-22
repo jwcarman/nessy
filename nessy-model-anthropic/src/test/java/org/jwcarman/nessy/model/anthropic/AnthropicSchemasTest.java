@@ -17,6 +17,8 @@ package org.jwcarman.nessy.model.anthropic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -29,6 +31,11 @@ class AnthropicSchemasTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Shutdown.class, name = "Shutdown")
+  })
   sealed interface Vocabulary permits Restart, Shutdown {}
 
   record Restart(String host) implements Vocabulary {}

@@ -17,6 +17,8 @@ package org.jwcarman.nessy.agent.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -118,6 +120,11 @@ class RegistryToolCallExecutorTest {
     }
   }
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Ping.class, name = "Ping"),
+    @JsonSubTypes.Type(value = Pong.class, name = "Pong")
+  })
   sealed interface Command permits Ping, Pong {}
 
   record Ping(String note) implements Command {}

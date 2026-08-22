@@ -24,6 +24,7 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ToolError;
 import org.jwcarman.nessy.agent.ToolOutcome;
+import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -31,7 +32,6 @@ import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
-import org.jwcarman.nessy.api.tool.SealedInputs;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -75,7 +75,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final Executor executor;
   private final DeferredToolCallPolicy deferredToolCallPolicy;
   private final Approver approver;
-  private final ObjectMapper mapper;
+  private final Codecs codecs;
 
   private static final String PARKING_UNAVAILABLE =
       "deferred execution is unavailable in this wiring; the desk arrives with the autonomous host";
@@ -121,7 +121,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     this.deferredToolCallPolicy =
         Objects.requireNonNull(deferredToolCallPolicy, "deferredToolCallPolicy must not be null");
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.codecs = new Codecs(Objects.requireNonNull(mapper, "mapper must not be null"));
   }
 
   @Override
@@ -181,10 +181,16 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     };
   }
 
+  /**
+   * Jackson binds directly — its own polymorphic machinery reads whatever {@code @JsonTypeInfo}/
+   * {@code @JsonSubTypes} annotations a sealed input type carries (substrate spec §7, the
+   * 2026-08-22 repeal), so the shape {@link org.jwcarman.nessy.api.tool.Schemas} showed the model
+   * and the shape bound here agree by construction. {@link Codecs#bind} wraps Jackson's checked
+   * exceptions into an {@link IllegalArgumentException} naming the offense — malformed arguments or
+   * an unrecognized discriminator surface in-band rather than escaping raw.
+   */
   private <T> Object convert(ToolCall call, Tool<T> tool) {
-    return SealedInputs.isSealedInput(tool.inputType())
-        ? SealedInputs.bind(tool.inputType(), call.arguments(), mapper)
-        : mapper.convertValue(call.arguments(), tool.inputType());
+    return codecs.bind(call.arguments(), tool.inputType(), tool.inputType().getSimpleName());
   }
 
   private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {

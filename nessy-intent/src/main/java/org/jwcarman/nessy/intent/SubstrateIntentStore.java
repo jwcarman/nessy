@@ -18,7 +18,6 @@ package org.jwcarman.nessy.intent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
-import org.jwcarman.nessy.api.tool.SealedInputs;
 import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -30,13 +29,12 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  *
  * <p>The stored shape is a {@link Codec}{@code <T>} (spec §3, §7): the {@link
  * #SubstrateIntentStore(Substrate, String, Class, ObjectMapper)} constructor defaults it to {@link
- * Codec#json(ObjectMapper, Class)}, which rides the same discriminator convention {@link
- * IntentTool} binds sealed vocabularies through ({@link SealedInputs}) — a sealed vocabulary's
- * declaration is rendered with a {@code "type"} discriminator naming the declared record, and read
- * back through the vocabulary class token; the freeform {@link Intent} tier — and any other plain
- * record vocabulary — round-trips as an ordinary JSON object, no discriminator involved. {@link
- * #SubstrateIntentStore(Substrate, String, Codec)} accepts a caller-supplied codec directly — a
- * transform chained on with {@link Codec#then(Codec)} (encryption, compression) or a test probe.
+ * Codec#json(ObjectMapper, Class)} — a sealed vocabulary's declaration is rendered with a {@code
+ * "type"} discriminator naming the declared record, and read back through the vocabulary class
+ * token; the freeform {@link Intent} tier — and any other plain record vocabulary — round-trips as
+ * an ordinary JSON object, no discriminator involved. {@link #SubstrateIntentStore(Substrate,
+ * String, Codec)} accepts a caller-supplied codec directly — a transform chained on with {@link
+ * Codec#then(Codec)} (encryption, compression) or a test probe.
  *
  * @param <T> the declared-intent vocabulary this store holds
  */

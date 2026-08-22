@@ -19,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.victools.jsonschema.generator.SchemaVersion;
@@ -35,12 +37,23 @@ class SchemasTest {
       @JsonPropertyDescription("Path relative to the workspace root") String path,
       Optional<Integer> maxLines) {}
 
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Shutdown.class, name = "Shutdown")
+  })
   sealed interface Vocabulary permits Restart, Shutdown {}
 
   record Restart(@JsonPropertyDescription("Target host") String host) implements Vocabulary {}
 
   record Shutdown(Optional<String> reason) implements Vocabulary {}
 
+  sealed interface UnannotatedVocabulary permits UnannotatedMember {}
+
+  record UnannotatedMember(String value) implements UnannotatedVocabulary {}
+
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({@JsonSubTypes.Type(value = CollidingType.class, name = "CollidingType")})
   sealed interface CollidingVocabulary permits CollidingType {}
 
   record CollidingType(String type) implements CollidingVocabulary {}
@@ -114,6 +127,15 @@ class SchemasTest {
     }
 
     @Test
+    void an_optional_component_is_not_required_on_its_branch() {
+      ObjectNode schema = Schemas.of(Vocabulary.class);
+
+      ObjectNode shutdownBranch = branchNamed(schema, "Shutdown");
+
+      assertThat(requiredNames(shutdownBranch)).doesNotContain("reason");
+    }
+
+    @Test
     void the_root_carries_schema_and_no_branch_does() {
       ObjectNode schema = Schemas.of(Vocabulary.class);
 
@@ -123,6 +145,15 @@ class SchemasTest {
       for (JsonNode branch : schema.get("oneOf")) {
         assertThat(branch.has("$schema")).isFalse();
       }
+    }
+
+    @Test
+    void an_unannotated_sealed_interface_is_rejected_with_a_message_naming_what_to_add() {
+      assertThatThrownBy(() -> Schemas.of(UnannotatedVocabulary.class))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("UnannotatedVocabulary")
+          .hasMessageContaining("@JsonTypeInfo")
+          .hasMessageContaining("@JsonSubTypes");
     }
 
     @Test
