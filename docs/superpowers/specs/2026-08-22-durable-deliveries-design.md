@@ -172,6 +172,33 @@ deny  → delivery → fold-advances ToolFinished(Failed)
   a granted call is simply *work in flight*, owned by its delivery or its
   tool computation.
 
+**Honesty amendments (2026-08-22, post-implementation review — probe-verified):**
+
+- **"Before external dispatch" is not literally achievable for `Awaited`-shaped
+  tools**: a tool reveals deferral only by *returning* `Awaited.deferred`, so
+  `execute()` necessarily runs before the transfer batch can commit. The real
+  guarantee: the batch commits before control returns to the pipeline, and a
+  crash between the tool's external start and the batch leaves the delivery to
+  be redriven — at-least-once, per the Tool contract. Invariant 1 reads
+  accordingly: the computation and return address are durable before any
+  *completion* can be lost, not before the external work begins.
+- **Winner scope**: within one host, delivery of a grant has exactly one
+  winner (the worker's claim). Across hosts, a grant delivery may be drained
+  more than once and the tool's `execute()` invoked more than once — for
+  immediate AND durable tools alike — until the §6.6 outbox lease lands with
+  the first durable adapter. The durable record is single-winner regardless
+  (the transfer batch's CAS); only the external side effect is at-least-once,
+  which the spec already promises is the contract ("never exactly-once
+  external side effects").
+- **The grant-delivery-pending window**: between the grant's completion batch
+  (approval computation deleted, delivery created) and the worker draining it,
+  neither computation exists, so a redrive in that window re-asks the approver
+  (the delivery is keyed randomly and not derivable from the address).
+  Closing it needs a ruling — a deterministic grant-delivery key or an
+  explicit granted marker — PARKED on the decision list; until then the
+  absorption guarantee is: pending-ask and in-flight-work absorb; the
+  completed-but-undrained instant does not.
+
 ## 6. Retry, deadlines, and the reaper
 
 - **`RetrySemantics`** (`RETRYABLE` / `NON_RETRYABLE`) is declared at tool
