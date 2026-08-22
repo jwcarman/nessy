@@ -345,7 +345,9 @@ class HarnessTest {
               id ->
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
+              id ->
+                  new SubstrateBacklog<>(
+                      substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
               b -> MODEL,
               b -> TOOLS);
 
@@ -379,7 +381,9 @@ class HarnessTest {
               id ->
                   new SubstrateAgentStateStore(
                       substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
-              id -> new SubstrateBacklog<>(substrate, id, 16, TestCodecs.utf8String()),
+              id ->
+                  new SubstrateBacklog<>(
+                      substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
               b -> MODEL,
               b -> TOOLS);
 

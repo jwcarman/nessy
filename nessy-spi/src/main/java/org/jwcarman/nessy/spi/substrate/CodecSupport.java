@@ -16,14 +16,9 @@
 package org.jwcarman.nessy.spi.substrate;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Objects;
-import java.util.stream.Stream;
-import org.jwcarman.nessy.api.tool.SealedInputs;
 
 /**
  * Package-private implementations backing {@link Codec}'s default and static factory methods. Kept
@@ -39,10 +34,19 @@ final class CodecSupport {
     return new ThenCodec<>(first, next);
   }
 
+  /**
+   * One plain tolerant-binding path (substrate spec §3, §7 repeal): {@code writeValueAsBytes}/
+   * {@code readValue} through {@code mapper}, exactly as {@code mapper} is configured — no
+   * inspection of {@code type} beyond that. A sealed interface {@code type} rides whatever
+   * polymorphism {@code mapper} resolves for it (annotations on the type, a mix-in, a custom {@code
+   * AnnotationIntrospector} — Nessy does not care which); an unannotated sealed type simply gets
+   * Jackson's own natural behavior, translated at this boundary like any other malformed or
+   * unbindable input (no discriminator ever gets written, so nothing this layer wrote could ever
+   * decode back through the same unannotated type — Jackson's own failure names that, same as it
+   * would for any Jackson caller).
+   */
   static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) {
-    return SealedInputs.isSealedInput(type)
-        ? new SealedJsonCodec<>(mapper, type)
-        : new PlainJsonCodec<>(mapper, type);
+    return new PlainJsonCodec<>(mapper, type);
   }
 
   /** {@link Codec#then(Codec)}'s composed codec. */
@@ -68,8 +72,12 @@ final class CodecSupport {
   }
 
   /**
-   * {@code Codec.json} for a plain (non-sealed) type: direct {@code readValue}/{@code
-   * writeValueAsBytes}.
+   * {@code Codec.json} for any type: a literal {@code writeValueAsBytes}/{@code readValue} pair
+   * through {@code mapper}. Whatever {@code mapper} is configured to do — annotated sealed types,
+   * mix-ins, custom modules — happens exactly as it would for any other Jackson caller; this codec
+   * inspects neither {@code type} nor the mapper's configuration before binding. The only thing
+   * this layer owns is the boundary: a Jackson checked exception never leaks past it, translated
+   * into an {@link IllegalArgumentException} naming the offense.
    */
   private static final class PlainJsonCodec<T> implements Codec<T> {
 
@@ -101,73 +109,6 @@ final class CodecSupport {
         throw new IllegalArgumentException(
             "failed to decode " + type.getSimpleName() + " from JSON: " + e.getMessage(), e);
       }
-    }
-  }
-
-  /**
-   * {@code Codec.json} for a sealed interface type: encodes with a {@code "type"} discriminator
-   * naming the concrete permitted record, decodes by matching that discriminator the {@link
-   * SealedInputs} way. Encoding checks the value's runtime class is a direct permitted subclass of
-   * {@code type} before writing anything — a class reached only through a nested sealed vocabulary
-   * would write a discriminator {@link SealedInputs#bind} could never match back on decode, so that
-   * case fails loudly here instead.
-   */
-  private static final class SealedJsonCodec<T> implements Codec<T> {
-
-    private final ObjectMapper mapper;
-    private final Class<T> type;
-
-    private SealedJsonCodec(ObjectMapper mapper, Class<T> type) {
-      this.mapper = mapper;
-      this.type = type;
-    }
-
-    @Override
-    public byte[] encode(T value) {
-      Objects.requireNonNull(value, "value must not be null");
-      Class<?> runtimeType = value.getClass();
-      if (!Arrays.asList(type.getPermittedSubclasses()).contains(runtimeType)) {
-        throw new IllegalArgumentException(
-            "cannot encode "
-                + runtimeType.getSimpleName()
-                + ": not a direct permitted subclass of "
-                + type.getSimpleName());
-      }
-      if (Stream.of(runtimeType.getRecordComponents()).anyMatch(c -> c.getName().equals("type"))) {
-        throw new IllegalArgumentException(
-            "vocabulary record "
-                + runtimeType.getSimpleName()
-                + " declares a component named \"type\", which collides with the discriminator");
-      }
-      JsonNode tree = mapper.valueToTree(value);
-      if (!(tree instanceof ObjectNode objectNode)) {
-        throw new IllegalArgumentException(
-            "cannot encode " + runtimeType.getSimpleName() + ": not a JSON object");
-      }
-      objectNode.put("type", runtimeType.getSimpleName());
-      try {
-        return mapper.writeValueAsBytes(objectNode);
-      } catch (JsonProcessingException e) {
-        throw new IllegalArgumentException(
-            "failed to encode " + runtimeType.getSimpleName() + " to JSON: " + e.getMessage(), e);
-      }
-    }
-
-    @Override
-    public T decode(byte[] bytes) {
-      Objects.requireNonNull(bytes, "bytes must not be null");
-      JsonNode tree;
-      try {
-        tree = mapper.readTree(bytes);
-      } catch (IOException e) {
-        throw new IllegalArgumentException(
-            "failed to decode " + type.getSimpleName() + " from JSON: " + e.getMessage(), e);
-      }
-      if (tree == null) {
-        throw new IllegalArgumentException(
-            "failed to decode " + type.getSimpleName() + " from JSON: empty payload");
-      }
-      return SealedInputs.bind(type, tree, mapper);
     }
   }
 }

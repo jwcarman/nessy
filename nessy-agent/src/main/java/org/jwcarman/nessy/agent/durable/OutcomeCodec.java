@@ -38,10 +38,10 @@ import org.jwcarman.nessy.durable.Outcome;
  * <p>{@link Outcome}, {@link Decision}, and {@link ToolResult} live in {@code nessy-durable} and
  * {@code nessy-api} respectively and stay Jackson-free by design ({@code nessy-durable} carries no
  * Jackson dependency at all). So this codec binds a private, mapper-annotated wire shape instead
- * (mirroring the {@code Schemas}/{@code SealedInputs}/{@code MessageCodec} discriminator
- * convention) and hand-translates it to and from the domain types; that translation IS the
- * closed-vocabulary door — a {@code Success} outcome whose payload is neither {@link ToolResult}
- * nor {@link Decision} is rejected here, before any write.
+ * (mirroring the {@code Schemas}/{@code MessageCodec} discriminator convention) and hand-translates
+ * it to and from the domain types; that translation IS the closed-vocabulary door — a {@code
+ * Success} outcome whose payload is neither {@link ToolResult} nor {@link Decision} is rejected
+ * here, before any write.
  *
  * <p>The wire vocabulary this codec owns, a compatibility surface once emitted: an {@code outcome}
  * carries a {@code "type"} discriminator naming it {@code success}, {@code failure}, or {@code

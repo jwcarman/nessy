@@ -404,3 +404,31 @@ sequence of renames and interim shapes that produced it.
   unchanged in behavior. The JDBC reference schema's payload column is
   `BYTEA`/`BLOB`, never a JSON-typed column, so a wrapping transform's
   ciphertext is always representable.
+- **The json repeal: annotate your own vocabulary, standard Jackson.**
+  Nessy binds nothing bespoke and polices nothing (2026-08-22). `SealedInputs`
+  is deleted; a sealed tool input binds through Jackson's own polymorphic
+  machinery in `RegistryToolCallExecutor` — the caller's sealed interface
+  carries `@JsonTypeInfo(use = Id.NAME, property = "type")` and
+  `@JsonSubTypes` directly, the same two standard annotations for every
+  vocabulary, first-party or user-authored. `Schemas` derives its `oneOf`
+  discriminated schema from those same annotations via victools' Jackson
+  module, so the schema shown to the model and the bound shape agree by
+  construction via the annotations — `Schemas` builds its own generator, so
+  a mapper-level customization (a registered module, a mix-in, a custom
+  `AnnotationIntrospector`) is visible to binding but invisible to the
+  schema; a sealed interface missing the annotations themselves is rejected
+  up front — `Schemas`' own requirement, since it cannot generate a
+  discriminated schema without the information, not Nessy babysitting a
+  caller's Jackson setup. `SealedJsonCodec` is deleted along with it:
+  `Codec.json(mapper, type)` is now a plain `writeValueAsBytes`/`readValue`
+  pair through `mapper`, exactly as configured — no construction-time
+  annotation check, no type-component collision guard, no double-discrimination
+  special case for a sealed `type`. Misconfiguration (a missing annotation, a
+  colliding component name) surfaces exactly as it would in any Jackson
+  application, translated at the codec boundary into an
+  `IllegalArgumentException` naming the offense the same as any other
+  malformed input. `SubstrateBacklog`'s hand-rolled envelope parser/writer is
+  gone too; the `List<String>` envelope binds through the same injected,
+  pinned `ObjectMapper` every other recipe uses. Test your vocabulary over
+  `InMemorySubstrate`: storage there is real encoded bytes, so a Jackson
+  misconfiguration fails in your own unit tests, not in production.

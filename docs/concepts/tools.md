@@ -72,28 +72,43 @@ backend nor know the scope it's running in.
 ## Sealed inputs — a vocabulary as one argument
 
 A tool's `inputType()` can be a sealed interface of records instead of a
-single record. `Schemas` renders it as a `oneOf` over the permitted
-records, each gaining a required const `"type"` property naming the record:
+single record. Annotate it with the two standard Jackson polymorphism
+annotations, naming each permitted record:
 
 ```java
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+  @JsonSubTypes.Type(value = Diagnose.class, name = "Diagnose")
+})
 sealed interface OpsIntent permits Restart, Diagnose {}
 record Restart(String target, String reason) implements OpsIntent {}
 record Diagnose(String target) implements OpsIntent {}
 ```
 
-`SealedInputs.bind` reads that back: it takes the arriving JSON's `"type"`,
-matches it against `getPermittedSubclasses()`, and binds the remaining
-properties into the matched record. A missing or unknown `"type"` fails
-in-band with an `IllegalArgumentException` naming every legal type — the
-model reads the error and corrects, rather than the call vanishing into a
-generic binding failure.
+`Schemas` reads those same annotations and renders a `oneOf` over the
+permitted records, each gaining a required const `"type"` property naming
+the record — so the schema shown to the model and the binding
+`RegistryToolCallExecutor` performs agree by construction via the
+annotations, because both read the same ones. (`Schemas` builds its own
+schema generator rather than reading the caller's mapper, so a mapper-level
+customization — a registered module, a mix-in, a custom
+`AnnotationIntrospector` — is visible to binding but not to the generated
+schema.) Jackson's own polymorphic machinery binds the arriving call: a
+missing or unknown `"type"` fails in-band with an `IllegalArgumentException`
+naming the offense — the model reads the error and corrects, rather than
+the call vanishing into a generic binding failure.
 
-A record that declares its own component named `"type"` collides with the
-discriminator; `Schemas` refuses to generate a schema for it, and
-`SealedInputs.bind` refuses to bind into it even if a caller hand-built
-arguments that bypassed schema generation. Sealed *interfaces* are the
-whole contract — a sealed abstract class is not recognized as an input
+A sealed interface missing `@JsonTypeInfo`/`@JsonSubTypes` is rejected by
+`Schemas` up front — it cannot generate a discriminated schema without that
+information, so the failure names what to add rather than producing
+whatever shape victools would otherwise guess at. Sealed *interfaces* are
+the whole contract — a sealed abstract class is not recognized as an input
 vocabulary.
+
+Test your vocabulary over `InMemorySubstrate` (see [Storage](storage.md)):
+storage there is real encoded bytes, so a missing or mis-set annotation
+fails in your own unit tests, not in production.
 
 ## `CompletionPolicy` — filtering precedes failing
 

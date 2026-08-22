@@ -28,9 +28,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *
  * <p>Generic over the vocabulary itself (vocabulary amendment §3, "One generic kit carries both"):
  * {@link #inputType()} returns the vocabulary class as-is, so a sealed vocabulary rides {@link
- * org.jwcarman.nessy.api.tool.Schemas}' {@code oneOf} schema and {@link
- * org.jwcarman.nessy.api.tool.SealedInputs} binder with zero extra code. The freeform tier is the
- * pre-built {@code T = Intent} instance returned by {@link #freeform(IntentStore)}.
+ * org.jwcarman.nessy.api.tool.Schemas}' {@code oneOf} schema and the tool executor's Jackson
+ * binding with zero extra code. The freeform tier is the pre-built {@code T = Intent} instance
+ * returned by {@link #freeform(IntentStore)}.
  *
  * <p>A named public class, not {@link Tool#of} — users reference {@code IntentTool} directly to
  * wire the same store into both this tool's grant and the {@link IntentEnricher} of the tool whose
