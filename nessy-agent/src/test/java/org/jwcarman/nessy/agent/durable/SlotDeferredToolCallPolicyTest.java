@@ -19,8 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -31,8 +33,12 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class SlotDeferredToolCallPolicyTest {
 
-  private final StoredComputations backend = new StoredComputations(new InMemorySubstrate());
-  private final SlotDeferredToolCallPolicy policy = new SlotDeferredToolCallPolicy(backend);
+  private final SubstrateComputations backend =
+      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
+  private final ScopeResumption scopeResumption =
+      new ScopeResumption((type, id, event) -> {}, TestMappers.plainlyPinned());
+  private final SlotDeferredToolCallPolicy policy =
+      new SlotDeferredToolCallPolicy(backend, scopeResumption);
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());

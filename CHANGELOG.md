@@ -351,10 +351,11 @@ sequence of renames and interim shapes that produced it.
   `batch` across both. `ConflictException` is the single conflict signal;
   `InMemorySubstrate` is the reference substrate, shipped in `nessy-spi`
   alongside the contract. Four substrate recipes replace the old per-concern
-  substrates and SPIs: `StoredAgentStateStore` (`kind=state`, the document
-  version *is* the scope version), `StoredMemory` (`kind=memory`, a journal,
-  one entry per message, never rewritten), `StoredBacklog` (`kind=backlog`,
-  a JSON-array document, read-mutate-CAS), and `StoredComputations`
+  substrates and SPIs: `SubstrateAgentStateStore` (`kind=state`, the document
+  version *is* the scope version), `SubstrateMemory` (`kind=memory`, a journal,
+  one entry per message, never rewritten), `SubstrateBacklog<O>`
+  (`kind=backlog`, a JSON-array document, read-mutate-CAS), and
+  `SubstrateComputations`
   (`kind=computation`, one document per computation holding
   `{status, outcome?, continuations[]}` — `DurableComputationBackend` is no
   longer an adapter SPI, just the vocabulary the two desks speak).
@@ -370,9 +371,36 @@ sequence of renames and interim shapes that produced it.
   ratified in the design as future work, not built.
 - **Intent moves out: `nessy-intent`.** The declared-intent claim channel —
   `IntentTool`, `IntentStore`, `IntentEnricher`, `IntentPolicies`, `Intent`,
-  and `StoredIntentStore` (the `kind=intent` recipe, last-write-wins via
+  and `SubstrateIntentStore` (the `kind=intent` recipe, last-write-wins via
   read-then-CAS) — leaves `nessy-agent` for its own artifact,
   `org.jwcarman.nessy:nessy-intent` (package `org.jwcarman.nessy.intent`),
   depending on `nessy-api` and `nessy-spi`. An application that never
   declares intent now carries none of this code, and none of its storage
   footprint.
+- **Bytes below, one mapper throughout.** `Substrate` payloads are `byte[]`,
+  not `String` — the substrate never assumed UTF-8 JSON, it just hadn't
+  said so in the type. `Codec<T>` (`org.jwcarman.nessy.spi.substrate`) is
+  the typed seam above the bytes: `Codec.json(mapper, type)` binds
+  unannotated user shapes (sealed vocabularies included, via the
+  `SealedInputs` discriminator convention), and `Codec<T>#then(Codec<byte[]>)`
+  chains a byte-to-byte transform — compression, encryption — onto any
+  codec, left-to-right on encode. Nessy-owned sealed types
+  (`ContentBlock`, `Phase`) now carry `@JsonTypeInfo`/`@JsonSubTypes`
+  directly instead of a hand-rolled tree-walking codec; the pinned
+  `ObjectMapper` binds them. Every substrate recipe takes an optional
+  `Codec<T>` for its stored shape. Both host builders gain
+  `.objectMapper(ObjectMapper)`: `build()` copies it and pins the
+  format-critical settings (lower-camel naming, tolerant reads, `ALWAYS`
+  inclusion, no root wrapping, no default typing) onto the copy, threading
+  that one pinned mapper through every recipe that binds JSON —
+  user-registered modules survive the copy; the wire format does not float
+  on a caller's naming or inclusion preference. **Observations are typed:**
+  `Nessy.autonomous(Class<O>)` opens a door where `AutonomousHost<O>` and
+  `SubstrateBacklog<O>` carry any `O`, not just `String`; the caller
+  supplies `.renderer(ObservationRenderer<O>)` (no default, unlike the
+  `String` door's preset), and the backlog codec is always derived as
+  `Codec.json(pinned, observationType)` — there is no override seam for it
+  yet. `Nessy.autonomous()` (no argument) keeps the `String` text door,
+  unchanged in behavior. The JDBC reference schema's payload column is
+  `BYTEA`/`BLOB`, never a JSON-typed column, so a wrapping transform's
+  ciphertext is always representable.

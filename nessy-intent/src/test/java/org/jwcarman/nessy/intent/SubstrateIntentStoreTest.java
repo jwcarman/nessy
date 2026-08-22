@@ -17,29 +17,40 @@ package org.jwcarman.nessy.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
-class StoredIntentStoreTest {
+class SubstrateIntentStoreTest {
+
+  /** A plainly-pinned mapper — tolerant reads, same as the substrate's format contract. */
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
   @Nested
   class Declaring {
 
     @Test
     void anUnwrittenStoreHoldsNoDeclarationBeforeAnyDeclaration() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
+      var store =
+          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).isEmpty();
     }
 
     @Test
     void aSecondDeclarationReplacesTheFirstLastWriteWins() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class);
+      var store =
+          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", Intent.class, MAPPER);
 
       store.declare(new Intent("first declaration"));
       store.declare(new Intent("second declaration"));
@@ -53,9 +64,10 @@ class StoredIntentStoreTest {
       substrate.write(
           "intent",
           "agent-a",
-          "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}",
+          "{\"declaration\":\"restart prod-eu\",\"futureField\":\"not yet invented\"}"
+              .getBytes(StandardCharsets.UTF_8),
           0);
-      var store = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
+      var store = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
 
       assertThat(store.latest()).contains(new Intent("restart prod-eu"));
     }
@@ -67,8 +79,8 @@ class StoredIntentStoreTest {
     @Test
     void shareTheDeclaration() {
       var substrate = new InMemorySubstrate();
-      var writer = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
-      var reader = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
+      var writer = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
+      var reader = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
 
       writer.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
@@ -87,7 +99,8 @@ class StoredIntentStoreTest {
 
     @Test
     void aDeclarationRoundTripsThroughTheClassToken() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class);
+      var store =
+          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Restart("prod-eu", "stuck deploy"));
 
@@ -96,7 +109,8 @@ class StoredIntentStoreTest {
 
     @Test
     void aDifferentPermittedShapeRoundTripsThroughTheClassTokenToo() {
-      var store = new StoredIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class);
+      var store =
+          new SubstrateIntentStore<>(new InMemorySubstrate(), "agent-a", OpsIntent.class, MAPPER);
 
       store.declare(new Diagnose("prod-eu"));
 
@@ -111,13 +125,62 @@ class StoredIntentStoreTest {
     void retriesAndTheRetriedDeclarationStillWins() {
       var substrate = new InMemorySubstrate();
       var raced =
-          new StoredIntentStore<>(new RaceOnceOnWriteSubstrate(substrate), "agent-a", Intent.class);
+          new SubstrateIntentStore<>(
+              new RaceOnceOnWriteSubstrate(substrate), "agent-a", Intent.class, MAPPER);
 
       raced.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
-      var readBack = new StoredIntentStore<>(substrate, "agent-a", Intent.class);
+      var readBack = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
       assertThat(readBack.latest())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
+    }
+  }
+
+  @Nested
+  class A_custom_codec {
+
+    @Test
+    void isHonoredByBothWritesAndReads() {
+      var substrate = new InMemorySubstrate();
+      Codec<Intent> codec = Codec.json(MAPPER, Intent.class).then(new MarkerBytesCodec());
+      var store = new SubstrateIntentStore<>(substrate, "agent-a", codec);
+
+      store.declare(new Intent("restart prod-eu"));
+
+      byte[] rawPayload = substrate.read("intent", "agent-a").orElseThrow().payload();
+      assertThat(MarkerBytesCodec.isMarked(rawPayload)).isTrue();
+      assertThat(store.latest()).contains(new Intent("restart prod-eu"));
+    }
+  }
+
+  /**
+   * A trivial byte-transform codec: prepends a fixed marker to every encoded payload and strips it
+   * back off on decode. Chained onto a {@code Codec<T>} via {@link Codec#then(Codec)}, it proves a
+   * caller-supplied codec is actually honored by the recipe — the substrate's raw stored bytes
+   * carry the marker, and a read still round-trips through it. A local hand-rolled equivalent of
+   * nessy-agent's own {@code MarkerBytesCodec} test support, which this module cannot depend on
+   * (design authority: nessy-intent depends only on nessy-api and nessy-spi).
+   */
+  private static final class MarkerBytesCodec implements Codec<byte[]> {
+
+    private static final byte[] MARKER = "MARKER:".getBytes(StandardCharsets.UTF_8);
+
+    @Override
+    public byte[] encode(byte[] value) {
+      byte[] marked = new byte[MARKER.length + value.length];
+      System.arraycopy(MARKER, 0, marked, 0, MARKER.length);
+      System.arraycopy(value, 0, marked, MARKER.length, value.length);
+      return marked;
+    }
+
+    @Override
+    public byte[] decode(byte[] bytes) {
+      return Arrays.copyOfRange(bytes, MARKER.length, bytes.length);
+    }
+
+    static boolean isMarked(byte[] payload) {
+      return payload.length >= MARKER.length
+          && Arrays.equals(payload, 0, MARKER.length, MARKER, 0, MARKER.length);
     }
   }
 
@@ -144,10 +207,14 @@ class StoredIntentStoreTest {
     }
 
     @Override
-    public void write(String kind, String key, String payload, long expectedVersion) {
+    public void write(String kind, String key, byte[] payload, long expectedVersion) {
       if (!raced) {
         raced = true;
-        delegate.write(kind, key, "{\"declaration\":\"a competing declaration\"}", expectedVersion);
+        delegate.write(
+            kind,
+            key,
+            "{\"declaration\":\"a competing declaration\"}".getBytes(StandardCharsets.UTF_8),
+            expectedVersion);
       }
       delegate.write(kind, key, payload, expectedVersion);
     }
@@ -163,7 +230,7 @@ class StoredIntentStoreTest {
     }
 
     @Override
-    public void append(String kind, String key, long expectedSeq, String payload) {
+    public void append(String kind, String key, long expectedSeq, byte[] payload) {
       delegate.append(kind, key, expectedSeq, payload);
     }
 

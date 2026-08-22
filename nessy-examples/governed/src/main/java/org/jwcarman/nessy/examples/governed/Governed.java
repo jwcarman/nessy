@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.examples.governed;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Arrays;
@@ -42,7 +44,7 @@ import org.jwcarman.nessy.intent.IntentEnricher;
 import org.jwcarman.nessy.intent.IntentPolicies;
 import org.jwcarman.nessy.intent.IntentStore;
 import org.jwcarman.nessy.intent.IntentTool;
-import org.jwcarman.nessy.intent.StoredIntentStore;
+import org.jwcarman.nessy.intent.SubstrateIntentStore;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -95,8 +97,10 @@ public final class Governed {
    */
   static Result run() throws InterruptedException {
     var substrate = new InMemorySubstrate();
+    ObjectMapper intentMapper =
+        new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     IntentStore<OpsIntent> intentStore =
-        new StoredIntentStore<>(substrate, SCOPE_ID, OpsIntent.class);
+        new SubstrateIntentStore<>(substrate, SCOPE_ID, OpsIntent.class, intentMapper);
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<TurnEvent.ToolCallCompleted> toolCompletions = new LinkedBlockingQueue<>();
     BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
@@ -105,7 +109,7 @@ public final class Governed {
         TurnObserver.observe(
             o -> o.onToolCallCompleted(toolCompletions::add).onTurnEnded(completions::add));
 
-    try (AutonomousHost host =
+    try (AutonomousHost<String> host =
         Nessy.autonomous()
             .type("governed")
             .provider(scriptedProvider())

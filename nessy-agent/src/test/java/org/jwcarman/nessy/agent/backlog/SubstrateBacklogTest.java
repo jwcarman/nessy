@@ -1,0 +1,245 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.agent.backlog;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
+import org.jwcarman.nessy.agent.support.TestCodecs;
+import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.spi.substrate.Codec;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
+
+class SubstrateBacklogTest {
+
+  @Test
+  void aNonPositiveCapacityIsRejected() {
+    Substrate store = new InMemorySubstrate();
+    assertThatThrownBy(() -> new SubstrateBacklog<>(store, "agent-a", 0, TestCodecs.utf8String()))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void aFreshBacklogPollsEmpty() {
+    var backlog =
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
+    assertThat(backlog.poll()).isEmpty();
+  }
+
+  @Test
+  void addedObservationsPollInFifoOrder() {
+    var backlog =
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, TestCodecs.utf8String());
+    backlog.add("a");
+    backlog.add("b");
+    backlog.add("c");
+    assertThat(backlog.poll()).contains("a");
+    assertThat(backlog.poll()).contains("b");
+    assertThat(backlog.poll()).contains("c");
+    assertThat(backlog.poll()).isEmpty();
+  }
+
+  @Test
+  void addBeyondCapacityThrowsTheRejection() {
+    var backlog =
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
+    backlog.add("a");
+    backlog.add("b");
+    assertThatThrownBy(() -> backlog.add("c"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("capacity 2");
+  }
+
+  @Test
+  void pollingFreesCapacity() {
+    var backlog =
+        new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 2, TestCodecs.utf8String());
+    backlog.add("a");
+    backlog.add("b");
+    assertThat(backlog.poll()).contains("a");
+    backlog.add("c");
+    assertThat(backlog.poll()).contains("b");
+    assertThat(backlog.poll()).contains("c");
+    assertThat(backlog.poll()).isEmpty();
+  }
+
+  @Test
+  void twoViewsOverOneSubstrateShareTheQueue() {
+    Substrate store = new InMemorySubstrate();
+    var writer = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
+    var reader = new SubstrateBacklog<>(store, "agent-a", 4, TestCodecs.utf8String());
+
+    writer.add("first");
+    writer.add("second");
+
+    assertThat(reader.poll()).contains("first");
+    assertThat(reader.poll()).contains("second");
+    assertThat(reader.poll()).isEmpty();
+  }
+
+  @Test
+  void addRetriesAfterLosingAWriteConflictAndTheElementStillLands() {
+    Substrate raceStore =
+        new RaceOnceOnWriteSubstrate(new InMemorySubstrate(), racedInDocument("raced-in"));
+    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 2, TestCodecs.utf8String());
+
+    backlog.add("mine");
+
+    assertThat(backlog.poll()).contains("raced-in");
+    assertThat(backlog.poll()).contains("mine");
+    assertThat(backlog.poll()).isEmpty();
+  }
+
+  @Test
+  void pollRetriesAfterLosingAWriteConflictAndStillRemovesExactlyItsElement() {
+    Substrate substrate = new InMemorySubstrate();
+    var seeded = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
+    seeded.add("a");
+    seeded.add("b");
+
+    Substrate raceStore = new RaceOnceOnWriteSubstrate(substrate, racedInDocument("a", "b", "c"));
+    var backlog = new SubstrateBacklog<>(raceStore, "agent-a", 3, TestCodecs.utf8String());
+
+    assertThat(backlog.poll()).contains("a");
+
+    var reader = new SubstrateBacklog<>(substrate, "agent-a", 3, TestCodecs.utf8String());
+    assertThat(reader.poll()).contains("b");
+    assertThat(reader.poll()).contains("c");
+    assertThat(reader.poll()).isEmpty();
+  }
+
+  /**
+   * Spec §6.4: the stored document is a JSON array whose elements are the base64 of each
+   * observation's {@code codec.encode(o)} — uniform regardless of what the codec's shape actually
+   * is. Proven here with a record-typed backlog: the raw substrate document is read directly,
+   * asserted to be base64 (not the record's plain JSON), and decoded back through the codec to the
+   * original record.
+   */
+  @Test
+  void aRecordTypedBacklogStoresBase64OfTheEncodedElementsInTheRawDocument()
+      throws JsonProcessingException {
+    record Note(String text, int priority) {}
+
+    Substrate substrate = new InMemorySubstrate();
+    ObjectMapper mapper = TestMappers.plainlyPinned();
+    Codec<Note> codec = Codec.json(mapper, Note.class);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 4, codec);
+
+    var note = new Note("check the oven", 3);
+    backlog.add(note);
+
+    Substrate.Document doc = substrate.read("backlog", "agent-a").orElseThrow();
+    String rawJson = new String(doc.payload(), StandardCharsets.UTF_8);
+    assertThat(rawJson).doesNotContain("check the oven");
+
+    String[] elements = TestMappers.plainlyPinned().readValue(rawJson, String[].class);
+    assertThat(elements).isNotEmpty().hasSize(1);
+    byte[] decodedBytes = Base64.getDecoder().decode(elements[0]);
+    Note decodedNote = codec.decode(decodedBytes);
+    assertThat(decodedNote).isEqualTo(note);
+
+    assertThat(backlog.poll()).contains(note);
+  }
+
+  /**
+   * Final review round (T1): negative coverage for the hand-written envelope parser's malformed-
+   * payload branches. Each seeds the substrate directly with a payload {@code readQueue} cannot
+   * parse and asserts {@code poll()} fails loudly rather than silently misreading it.
+   */
+  @Test
+  void pollRejectsAPayloadThatIsNotAnArrayAtAll() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "not an array".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  @Test
+  void pollRejectsAnUnquotedElement() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "[abc]".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  @Test
+  void pollRejectsAnEmptyEnvelopeThatIsNotTheEmptyArrayLiteral() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  @Test
+  void pollRejectsAnEnvelopeMissingItsClosingBracket() {
+    Substrate substrate = new InMemorySubstrate();
+    substrate.write("backlog", "agent-a", "[\"abc\"".getBytes(StandardCharsets.UTF_8), 0L);
+    var backlog = new SubstrateBacklog<>(substrate, "agent-a", 2, TestCodecs.utf8String());
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("malformed backlog payload");
+  }
+
+  /**
+   * Final review round (T2): the poison-decode contract. A codec that throws on decode still lets
+   * {@code poll()} remove the element from the queue before decoding is attempted — the exception
+   * propagates, but the element is gone, so a second {@code poll()} reaches the next element (or
+   * empty) rather than looping forever on the same poison element.
+   */
+  @Test
+  void pollConsumesAPoisonElementBeforePropagatingItsDecodeFailureThenReachesTheNextElement() {
+    Codec<String> poisonOnFirst = TestCodecs.poisonOnDecode("boom", "a");
+    var backlog = new SubstrateBacklog<>(new InMemorySubstrate(), "agent-a", 3, poisonOnFirst);
+    backlog.add("a");
+    backlog.add("b");
+
+    assertThatThrownBy(backlog::poll)
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("boom");
+
+    assertThat(backlog.poll()).contains("b");
+    assertThat(backlog.poll()).isEmpty();
+  }
+
+  private static byte[] racedInDocument(String... elements) {
+    List<String> base64 =
+        List.of(elements).stream()
+            .map(e -> Base64.getEncoder().encodeToString(e.getBytes(StandardCharsets.UTF_8)))
+            .toList();
+    return TestMappers.plainlyPinned()
+        .valueToTree(base64)
+        .toString()
+        .getBytes(StandardCharsets.UTF_8);
+  }
+}

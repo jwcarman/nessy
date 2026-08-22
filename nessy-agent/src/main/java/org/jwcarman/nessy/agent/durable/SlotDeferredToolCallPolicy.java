@@ -36,16 +36,20 @@ import org.jwcarman.nessy.durable.DurableComputationBackend;
 public final class SlotDeferredToolCallPolicy implements DeferredToolCallPolicy {
 
   private final DurableComputationBackend backend;
+  private final ScopeResumption scopeResumption;
 
-  public SlotDeferredToolCallPolicy(DurableComputationBackend backend) {
+  public SlotDeferredToolCallPolicy(
+      DurableComputationBackend backend, ScopeResumption scopeResumption) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
+    this.scopeResumption =
+        Objects.requireNonNull(scopeResumption, "scopeResumption must not be null");
   }
 
   @Override
   public ToolExecution onDeferred(ToolCall call, CallAddress address) {
     ComputationId slotId = address.execution();
     backend.create(slotId);
-    return switch (backend.await(slotId, ScopeResumption.continuationFor(address, call))) {
+    return switch (backend.await(slotId, scopeResumption.continuationFor(address, call))) {
       case AwaitResult.AlreadyCompleted(var outcome) ->
           new ToolExecution.Immediate(DurableOutcomes.toToolOutcome(outcome));
       case AwaitResult.Registered() -> new ToolExecution.Deferred(slotId);

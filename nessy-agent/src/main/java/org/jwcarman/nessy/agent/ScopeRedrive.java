@@ -35,21 +35,21 @@ public final class ScopeRedrive implements ContinuationHandler {
 
   public static final String TYPE = "REDRIVE_SCOPE";
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
-
   private final AgentResolver resolver;
+  private final ObjectMapper mapper;
 
-  public ScopeRedrive(AgentResolver resolver) {
+  public ScopeRedrive(AgentResolver resolver, ObjectMapper mapper) {
     this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   /**
    * Equal addresses produce equal {@link Continuation}s, so the backend's set dedups
    * re-registration.
    */
-  public static Continuation continuationFor(CallAddress address) {
+  public Continuation continuationFor(CallAddress address) {
     Objects.requireNonNull(address, "address must not be null");
-    ObjectNode data = MAPPER.createObjectNode();
+    ObjectNode data = mapper.createObjectNode();
     data.put("agentType", address.agentType());
     data.put("agentId", address.agentId());
     return new Continuation(TYPE, data.toString());
@@ -59,7 +59,7 @@ public final class ScopeRedrive implements ContinuationHandler {
   public void completed(Continuation continuation, Outcome outcome) {
     JsonNode data;
     try {
-      data = MAPPER.readTree(continuation.data());
+      data = mapper.readTree(continuation.data());
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("undecodable REDRIVE_SCOPE continuation", e);
     }

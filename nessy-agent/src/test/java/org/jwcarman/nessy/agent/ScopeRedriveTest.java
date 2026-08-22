@@ -29,18 +29,19 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.DurableDecisions;
 import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.durable.StoredComputations;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
-import org.jwcarman.nessy.agent.store.StoredAgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestAgents;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
@@ -102,8 +103,10 @@ class ScopeRedriveTest {
     var pump = new PumpedExecutor();
     var memory = new VerbatimMemory();
     var substrate = new InMemorySubstrate();
-    var store = new StoredAgentStateStore(substrate, "demo", Clock.systemUTC());
-    var backend = new StoredComputations(substrate);
+    var store =
+        new SubstrateAgentStateStore(
+            substrate, "demo", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
     var narrator = new RecordingTurnObserver();
     var type = AgentType.of("approver");
     var id = AgentId.of("demo");
@@ -129,10 +132,17 @@ class ScopeRedriveTest {
           }
         };
 
+    var scopeResumption = new ScopeResumption((t, i, e) -> {}, TestMappers.plainlyPinned());
     var counting =
         new CountingToolCallExecutor(
             new RegistryToolCallExecutor(
-                registry, type, id, narrator, pump, new SlotDeferredToolCallPolicy(backend)));
+                registry,
+                type,
+                id,
+                narrator,
+                pump,
+                new SlotDeferredToolCallPolicy(backend, scopeResumption),
+                TestMappers.plainlyPinned()));
 
     Supplier<DefaultAgent<String>> agents =
         () ->
@@ -162,8 +172,8 @@ class ScopeRedriveTest {
     assertThat(counting.invocations).isEqualTo(1);
 
     var address = new CallAddress(type.name(), id.value(), call.id());
-    var continuation = ScopeRedrive.continuationFor(address);
-    var redrive = new ScopeRedrive(resolver);
+    var redrive = new ScopeRedrive(resolver, TestMappers.plainlyPinned());
+    var continuation = redrive.continuationFor(address);
 
     redrive.completed(continuation, DurableDecisions.granted());
     pump.pumpUntilQuiet();
@@ -176,7 +186,7 @@ class ScopeRedriveTest {
   @Test
   void anUndecodableRedriveContinuationFailsLoudly() {
     AgentResolver resolver = (t, i) -> null;
-    var redrive = new ScopeRedrive(resolver);
+    var redrive = new ScopeRedrive(resolver, TestMappers.plainlyPinned());
     var continuation = new Continuation("REDRIVE_SCOPE", "{");
     var outcome = DurableDecisions.granted();
 
@@ -187,7 +197,7 @@ class ScopeRedriveTest {
   @Test
   void aRedriveContinuationMissingTheAgentIdFailsLoudlyNotWithAnNpe() {
     AgentResolver resolver = (t, i) -> null;
-    var redrive = new ScopeRedrive(resolver);
+    var redrive = new ScopeRedrive(resolver, TestMappers.plainlyPinned());
     var continuation = new Continuation("REDRIVE_SCOPE", "{\"agentType\":\"a\"}");
     var outcome = DurableDecisions.granted();
 

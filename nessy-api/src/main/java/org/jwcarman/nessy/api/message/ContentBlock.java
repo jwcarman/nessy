@@ -15,7 +15,25 @@
  */
 package org.jwcarman.nessy.api.message;
 
-/** One piece of a message. Messages are lists of these, not strings. */
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
+/**
+ * One piece of a message. Messages are lists of these, not strings.
+ *
+ * <p>Carries a {@code "type"} discriminator naming the record on the wire (substrate spec §7):
+ * {@code text}, {@code image}, {@code thinking}, {@code redacted-thinking}, {@code tool-use},
+ * {@code tool-result}. The values are a compatibility surface and must never change.
+ */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes({
+  @JsonSubTypes.Type(value = TextBlock.class, name = "text"),
+  @JsonSubTypes.Type(value = ImageBlock.class, name = "image"),
+  @JsonSubTypes.Type(value = ThinkingBlock.class, name = "thinking"),
+  @JsonSubTypes.Type(value = RedactedThinkingBlock.class, name = "redacted-thinking"),
+  @JsonSubTypes.Type(value = ToolUseBlock.class, name = "tool-use"),
+  @JsonSubTypes.Type(value = ToolResultBlock.class, name = "tool-result")
+})
 public sealed interface ContentBlock
     permits TextBlock,
         ToolUseBlock,

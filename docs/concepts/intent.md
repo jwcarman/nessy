@@ -74,15 +74,17 @@ under `AuthzContext.DECLARED_INTENT_KEY` for a policy to read back through
 passes through untouched — a missing claim is a policy's own choice to
 weigh, not the enricher's failure to report.
 
-`StoredIntentStore<T>` is the shipped implementation: one document per
+`SubstrateIntentStore<T>` is the shipped implementation: one document per
 scope, `kind=intent`, written by a read-then-CAS retry loop over
 [`Substrate`](storage.md) — the same document the scope's state and
-backlog already live in, on the same substrate. Build one directly against
-whatever store the host is using:
+backlog already live in, on the same substrate. It stores through a
+`Codec<T>`; a constructor taking an `ObjectMapper` and the vocabulary class
+derives `Codec.json(mapper, vocabulary)` for you. Build one directly
+against whatever store the host is using:
 
 ```java
 var substrate = new InMemorySubstrate();
-var intentStore = new StoredIntentStore<>(substrate, "prod-eu", OpsIntent.class);
+var intentStore = new SubstrateIntentStore<>(substrate, "prod-eu", OpsIntent.class, mapper);
 ```
 
 ## `requireDeclared` — the teaching loop
@@ -163,5 +165,5 @@ one on the shape of the declaration, one on its content.
   `IntentTool` rides for free.
 - [Agent as Scope](agent-as-scope.md) — how a tool call, denied or
   approved, fits into the phase transition that carries a turn forward.
-- [Storage](storage.md) — the substrate `StoredIntentStore` rides, and why
+- [Storage](storage.md) — the substrate `SubstrateIntentStore` rides, and why
   `intent` is a reserved document kind.

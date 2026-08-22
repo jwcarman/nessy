@@ -71,6 +71,15 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
 
 ## Safety & governance
 
+- **`nessy-crypto`** *(designed)* — encryption-at-rest as an optional feature
+  jar: `AesCodec` (a `Codec<byte[]>` that chains via `then`) over plain JCA,
+  AES-GCM with a fresh nonce per write, a versioned key-id envelope, and a
+  `KeySource` seam (`current()` to encrypt, `byId()` to decrypt) so key
+  rotation never strands old rows. Shipped rather than left as an exercise
+  because envelope versioning and nonce discipline are the parts a
+  bring-your-own implementation gets wrong; deployments bring only their key
+  management (env, Vault, KMS). Likely lands alongside the JDBC substrate,
+  where at-rest encryption becomes a live question.
 The lens above exposes this theme as the roadmap's thinnest — the substrate
 (durable execution, full transcripts, per-tool grants, human approval gates)
 shipped early, but *policy* is still per-tool and binary. These close the gap:

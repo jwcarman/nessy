@@ -29,10 +29,10 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 public final class RaceOnceOnAppendSubstrate implements Substrate {
 
   private final Substrate delegate;
-  private final String competitorPayload;
+  private final byte[] competitorPayload;
   private boolean raced;
 
-  public RaceOnceOnAppendSubstrate(Substrate delegate, String competitorPayload) {
+  public RaceOnceOnAppendSubstrate(Substrate delegate, byte[] competitorPayload) {
     this.delegate = Objects.requireNonNull(delegate);
     this.competitorPayload = Objects.requireNonNull(competitorPayload);
   }
@@ -43,7 +43,7 @@ public final class RaceOnceOnAppendSubstrate implements Substrate {
   }
 
   @Override
-  public void write(String kind, String key, String payload, long expectedVersion) {
+  public void write(String kind, String key, byte[] payload, long expectedVersion) {
     delegate.write(kind, key, payload, expectedVersion);
   }
 
@@ -58,7 +58,7 @@ public final class RaceOnceOnAppendSubstrate implements Substrate {
   }
 
   @Override
-  public void append(String kind, String key, long expectedSeq, String payload) {
+  public void append(String kind, String key, long expectedSeq, byte[] payload) {
     if (!raced) {
       raced = true;
       delegate.append(kind, key, expectedSeq, competitorPayload); // someone else won first

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.durable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.SlotDocument;
 import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.AwaitResult;
 import org.jwcarman.nessy.durable.CompletionResult;
@@ -38,13 +40,15 @@ import org.jwcarman.nessy.durable.Outcome;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
-class StoredComputationsTest {
+class SubstrateComputationsTest {
 
   private static final ComputationId ID = ComputationId.of("tool:t:a:c1");
   private static final Continuation RESUME = new Continuation("RESUME_SCOPE", "{\"x\":1}");
 
   private final Substrate store = new InMemorySubstrate();
-  private final StoredComputations computations = new StoredComputations(store);
+  private final SubstrateComputations computations =
+      new SubstrateComputations(store, TestMappers.plainlyPinned());
+  private final OutcomeCodec codec = new OutcomeCodec(TestMappers.plainlyPinned());
 
   @Nested
   class CreatingASlot {
@@ -228,8 +232,8 @@ class StoredComputationsTest {
 
     @Test
     void twoInstancesOverOneKernelShareTheComputation() {
-      var writer = new StoredComputations(store);
-      var reader = new StoredComputations(store);
+      var writer = new SubstrateComputations(store, TestMappers.plainlyPinned());
+      var reader = new SubstrateComputations(store, TestMappers.plainlyPinned());
 
       writer.create(ID);
       writer.await(ID, RESUME);
@@ -276,10 +280,13 @@ class StoredComputationsTest {
     void completesFlipConflictRetriesToAlreadyTerminalWithTheCompetitorsOutcome() {
       computations.create(ID);
       var competitorOutcome = new Outcome.Failure("competitor");
-      String competitorPayload =
-          OutcomeCodec.toJson(
-              new SlotDocument(ComputationStatus.FAILED, competitorOutcome, List.of()));
-      var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
+      byte[] competitorPayload =
+          codec
+              .toJson(new SlotDocument(ComputationStatus.FAILED, competitorOutcome, List.of()))
+              .getBytes(StandardCharsets.UTF_8);
+      var raced =
+          new SubstrateComputations(
+              new RaceOnceOnWriteSubstrate(store, competitorPayload), TestMappers.plainlyPinned());
 
       CompletionResult result = raced.complete(ID, new Outcome.Success(ToolResult.ok("mine")));
 
@@ -291,9 +298,13 @@ class StoredComputationsTest {
     @Test
     void completesRulingSixAbsentConflictRetriesAndStillCompletes() {
       var id = ComputationId.of("tool:t:a:ruling-six-race");
-      String competitorPayload =
-          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()));
-      var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
+      byte[] competitorPayload =
+          codec
+              .toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()))
+              .getBytes(StandardCharsets.UTF_8);
+      var raced =
+          new SubstrateComputations(
+              new RaceOnceOnWriteSubstrate(store, competitorPayload), TestMappers.plainlyPinned());
 
       CompletionResult result = raced.complete(id, new Outcome.Success(ToolResult.ok("mine")));
 
@@ -305,9 +316,13 @@ class StoredComputationsTest {
     void awaitConflictRetriesAndKeepsBothContinuations() {
       computations.create(ID);
       var other = new Continuation("OTHER", "{}");
-      String competitorPayload =
-          OutcomeCodec.toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of(other)));
-      var raced = new StoredComputations(new RaceOnceOnWriteSubstrate(store, competitorPayload));
+      byte[] competitorPayload =
+          codec
+              .toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of(other)))
+              .getBytes(StandardCharsets.UTF_8);
+      var raced =
+          new SubstrateComputations(
+              new RaceOnceOnWriteSubstrate(store, competitorPayload), TestMappers.plainlyPinned());
 
       AwaitResult result = raced.await(ID, RESUME);
 

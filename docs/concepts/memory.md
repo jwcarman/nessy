@@ -48,16 +48,18 @@ It is synchronized because completions arrive on executor threads while the
 shell commits on others — a synchronized list is entirely adequate at
 conversation cadence. `Nessy.cli()` uses one of these per scope by default.
 
-## StoredMemory: the journal recipe
+## SubstrateMemory: the journal recipe
 
 A single `VerbatimMemory` is one scope's history, held in a Java list.
-`StoredMemory` is the shape a host's `memoryFactory` reaches for once more
+`SubstrateMemory` is the shape a host's `memoryFactory` reaches for once more
 than one scope needs to persist: a recipe over
 [`Substrate`](storage.md), `kind=memory`, one journal per scope, **one
-entry per message**:
+entry per message**, storing each message through a `Codec<Message>` — a
+constructor taking an `ObjectMapper` derives `Codec.json(mapper,
+Message.class)` for you:
 
 ```java
-public final class StoredMemory implements Memory {
+public final class SubstrateMemory implements Memory {
   public void remember(Message message) { /* append at head + 1, retry on conflict */ }
   public Context recall() { /* fold every entry from seq 1 forward */ }
 }
@@ -74,7 +76,7 @@ transcript only ever grows.
 Two views built over the same shared store observe each other's writes;
 losing one loses nothing. See [The Four Tiers](the-four-tiers.md) for the
 general shape and the MUST-return-views contract a memory factory has to
-honor, and [Storage](storage.md) for the substrate `StoredMemory` rides.
+honor, and [Storage](storage.md) for the substrate `SubstrateMemory` rides.
 
 !!! note "Single-node by construction, not a durable substrate on its own"
     `InMemorySubstrate` grows by one entry per distinct `(kind, key)`
@@ -117,7 +119,7 @@ exist at once, one riding the effect and one living in memory. Instead:
   reaches `Memory.remember` in the decide-commit-save-dispatch order.
 - [The Four Tiers](the-four-tiers.md) — substrates, views, and the
   MUST-return-views contract a `memoryFactory` has to honor.
-- [Storage](storage.md) — the substrate `StoredMemory` rides, and why
+- [Storage](storage.md) — the substrate `SubstrateMemory` rides, and why
   `memory` is a reserved journal kind.
 - [Getting Started](../guides/getting-started.md) — the CLI door and its
   default `VerbatimMemory`.

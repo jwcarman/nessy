@@ -75,8 +75,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private final Executor executor;
   private final DeferredToolCallPolicy deferredToolCallPolicy;
   private final Approver approver;
-
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private final ObjectMapper mapper;
 
   private static final String PARKING_UNAVAILABLE =
       "deferred execution is unavailable in this wiring; the desk arrives with the autonomous host";
@@ -85,18 +84,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       "approval is unavailable in this wiring; the desk arrives with the autonomous host";
 
   public RegistryToolCallExecutor(
-      ToolRegistry registry, AgentType type, AgentId id, TurnObserver turn, Executor executor) {
-    this(registry, type, id, turn, executor, defaultPolicy(turn));
-  }
-
-  public RegistryToolCallExecutor(
       ToolRegistry registry,
       AgentType type,
       AgentId id,
       TurnObserver turn,
       Executor executor,
-      DeferredToolCallPolicy deferredToolCallPolicy) {
-    this(registry, type, id, turn, executor, deferredToolCallPolicy, defaultApprover());
+      ObjectMapper mapper) {
+    this(registry, type, id, turn, executor, defaultPolicy(turn), mapper);
   }
 
   public RegistryToolCallExecutor(
@@ -106,7 +100,19 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       TurnObserver turn,
       Executor executor,
       DeferredToolCallPolicy deferredToolCallPolicy,
-      Approver approver) {
+      ObjectMapper mapper) {
+    this(registry, type, id, turn, executor, deferredToolCallPolicy, defaultApprover(), mapper);
+  }
+
+  public RegistryToolCallExecutor(
+      ToolRegistry registry,
+      AgentType type,
+      AgentId id,
+      TurnObserver turn,
+      Executor executor,
+      DeferredToolCallPolicy deferredToolCallPolicy,
+      Approver approver,
+      ObjectMapper mapper) {
     this.registry = Objects.requireNonNull(registry, "registry must not be null");
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.id = Objects.requireNonNull(id, "id must not be null");
@@ -115,6 +121,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
     this.deferredToolCallPolicy =
         Objects.requireNonNull(deferredToolCallPolicy, "deferredToolCallPolicy must not be null");
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   @Override
@@ -176,8 +183,8 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
 
   private <T> Object convert(ToolCall call, Tool<T> tool) {
     return SealedInputs.isSealedInput(tool.inputType())
-        ? SealedInputs.bind(tool.inputType(), call.arguments(), MAPPER)
-        : MAPPER.convertValue(call.arguments(), tool.inputType());
+        ? SealedInputs.bind(tool.inputType(), call.arguments(), mapper)
+        : mapper.convertValue(call.arguments(), tool.inputType());
   }
 
   private <T> ToolExecution run(Tool<T> tool, Object input, ToolCall call, CallAddress address) {

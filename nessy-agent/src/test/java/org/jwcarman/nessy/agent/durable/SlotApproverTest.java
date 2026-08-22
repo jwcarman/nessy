@@ -17,11 +17,17 @@ package org.jwcarman.nessy.agent.durable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.ScopeRedrive;
+import org.jwcarman.nessy.agent.codec.Codecs;
+import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
@@ -37,9 +43,12 @@ class SlotApproverTest {
 
   private static final CallAddress ADDRESS = new CallAddress("test-agent-type", "a1", "c1");
 
-  private final StoredComputations backend = new StoredComputations(new InMemorySubstrate());
+  private final SubstrateComputations backend =
+      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
   private final List<ApprovalRequest> notified = new ArrayList<>();
-  private final SlotApprover approver = new SlotApprover(backend, notified::add);
+  private final ScopeRedrive scopeRedrive =
+      new ScopeRedrive((type, id) -> null, TestMappers.plainlyPinned());
+  private final SlotApprover approver = new SlotApprover(backend, notified::add, scopeRedrive);
 
   private ApprovalRequest requestFor(CallAddress address) {
     ObjectNode arguments = JsonNodeFactory.instance.objectNode();
@@ -106,5 +115,72 @@ class SlotApproverTest {
 
     assertThat(adjudication).isEqualTo(new Adjudication.Granted());
     assertThat(notified).isEmpty();
+  }
+
+  /**
+   * Fix round 1 (task 3 review): {@code copyAndPin} did not pin serialization inclusion, so a
+   * caller mapper configured with {@code NON_EMPTY} dropped the empty {@code continuations} array
+   * {@link SubstrateComputations#create} writes — the very next {@code await} then failed to parse
+   * its own just-written document. A full park round trip through a backend built from such a
+   * mapper is the regression guard.
+   */
+  @Test
+  void aParkRoundTripSurvivesAUserMapperConfiguredForNonEmptyInclusion() {
+    ObjectMapper userMapper =
+        new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
+    ObjectMapper pinned = Codecs.copyAndPin(userMapper);
+    SubstrateComputations nonEmptyBackend =
+        new SubstrateComputations(new InMemorySubstrate(), pinned);
+    List<ApprovalRequest> nonEmptyNotified = new ArrayList<>();
+    ScopeRedrive nonEmptyScopeRedrive = new ScopeRedrive((type, id) -> null, pinned);
+    SlotApprover nonEmptyApprover =
+        new SlotApprover(nonEmptyBackend, nonEmptyNotified::add, nonEmptyScopeRedrive);
+    ApprovalRequest request = requestFor(ADDRESS);
+
+    Adjudication adjudication = nonEmptyApprover.adjudicate(request);
+
+    assertThat(adjudication).isEqualTo(new Adjudication.Suspended(ADDRESS.approval()));
+
+    nonEmptyBackend.complete(ADDRESS.approval(), DurableDecisions.granted());
+    Adjudication decided = nonEmptyApprover.adjudicate(request);
+
+    assertThat(decided).isEqualTo(new Adjudication.Granted());
+  }
+
+  /**
+   * Final review round: two more pin-bypass routes to the same parks-break corruption. A caller
+   * mapper can configure {@code NON_EMPTY} on {@code List.class} specifically via {@code
+   * configOverride} — which {@code setPropertyInclusion}'s global {@code ALWAYS} does not out-rank
+   * — and can separately disable {@code WRITE_EMPTY_JSON_ARRAYS}. Closing only one of the two
+   * routes still drops the empty {@code continuations} array; both {@code Codecs#copyAndPin}'s
+   * {@code WRITE_EMPTY_JSON_ARRAYS} pin and {@code OutcomeCodec.SlotDocumentWire#continuations}'s
+   * per-field {@code @JsonInclude(ALWAYS)} are required together to survive this combination.
+   */
+  @Test
+  void aParkRoundTripSurvivesAUserMapperWithBothAListConfigOverrideAndEmptyArraysDisabled() {
+    ObjectMapper userMapper = new ObjectMapper();
+    userMapper
+        .configOverride(List.class)
+        .setInclude(
+            JsonInclude.Value.construct(
+                JsonInclude.Include.NON_EMPTY, JsonInclude.Include.NON_EMPTY));
+    userMapper.configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, false);
+    ObjectMapper pinned = Codecs.copyAndPin(userMapper);
+    SubstrateComputations hostileBackend =
+        new SubstrateComputations(new InMemorySubstrate(), pinned);
+    List<ApprovalRequest> hostileNotified = new ArrayList<>();
+    ScopeRedrive hostileScopeRedrive = new ScopeRedrive((type, id) -> null, pinned);
+    SlotApprover hostileApprover =
+        new SlotApprover(hostileBackend, hostileNotified::add, hostileScopeRedrive);
+    ApprovalRequest request = requestFor(ADDRESS);
+
+    Adjudication adjudication = hostileApprover.adjudicate(request);
+
+    assertThat(adjudication).isEqualTo(new Adjudication.Suspended(ADDRESS.approval()));
+
+    hostileBackend.complete(ADDRESS.approval(), DurableDecisions.granted());
+    Adjudication decided = hostileApprover.adjudicate(request);
+
+    assertThat(decided).isEqualTo(new Adjudication.Granted());
   }
 }

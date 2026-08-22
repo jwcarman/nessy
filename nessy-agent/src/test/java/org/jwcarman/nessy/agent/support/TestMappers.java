@@ -13,21 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.message;
+package org.jwcarman.nessy.agent.support;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jwcarman.nessy.agent.codec.Codecs;
 
 /**
- * Who a message came from.
- *
- * <p>There is no {@code SYSTEM} role: the system prompt is a separate field on {@code
- * ModelRequest}, not a message, because that is what the providers we target actually model.
- *
- * <p>Wire values are lower-case (substrate spec §7) and must never change.
+ * Test-only mapper source: recipes built directly in a test (bypassing {@code Nessy}'s builders)
+ * still need a pinned mapper (spec §7) rather than a bare {@link ObjectMapper} — this is that pin,
+ * applied to a fresh mapper each call so tests never share mutable mapper state.
  */
-public enum Role {
-  @JsonProperty("user")
-  USER,
-  @JsonProperty("assistant")
-  ASSISTANT
+public final class TestMappers {
+
+  private TestMappers() {}
+
+  public static ObjectMapper plainlyPinned() {
+    return Codecs.copyAndPin(new ObjectMapper());
+  }
 }

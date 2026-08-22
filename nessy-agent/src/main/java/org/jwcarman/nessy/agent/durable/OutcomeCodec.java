@@ -15,12 +15,14 @@
  */
 package org.jwcarman.nessy.agent.durable;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.ArrayList;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -30,15 +32,23 @@ import org.jwcarman.nessy.durable.Outcome;
 
 /**
  * Internal storage machinery: renders the {@code computation} document — {@code {status, outcome?,
- * continuations[]}} (substrate spec §6.5) — to and from the JSON the string-payload substrate
- * persists. Not API vocabulary; only {@link StoredComputations} calls this.
+ * continuations[]}} (substrate spec §6.5) — to and from the JSON the byte-payload substrate
+ * persists. Not API vocabulary; only {@link SubstrateComputations} calls this.
  *
- * <p>{@code outcome} carries a {@code "type"} discriminator (mirroring the {@code Schemas}/{@code
- * SealedInputs}/{@code MessageCodec} convention): {@code success}, {@code failure}, {@code
- * cancelled}. A {@code success} outcome's payload is itself discriminated as the closed vocabulary
- * substrate spec §7 mandates: {@code tool-result} ({@link ToolResult}) or {@code decision} ({@link
- * Decision}) — any other payload type is out of contract and rejected here, before any write.
- * Continuations serialize as {@code {type, data}} pairs, already opaque strings.
+ * <p>{@link Outcome}, {@link Decision}, and {@link ToolResult} live in {@code nessy-durable} and
+ * {@code nessy-api} respectively and stay Jackson-free by design ({@code nessy-durable} carries no
+ * Jackson dependency at all). So this codec binds a private, mapper-annotated wire shape instead
+ * (mirroring the {@code Schemas}/{@code SealedInputs}/{@code MessageCodec} discriminator
+ * convention) and hand-translates it to and from the domain types; that translation IS the
+ * closed-vocabulary door — a {@code Success} outcome whose payload is neither {@link ToolResult}
+ * nor {@link Decision} is rejected here, before any write.
+ *
+ * <p>The wire vocabulary this codec owns, a compatibility surface once emitted: an {@code outcome}
+ * carries a {@code "type"} discriminator naming it {@code success}, {@code failure}, or {@code
+ * cancelled}; a {@code success} outcome's {@code payload} carries its own {@code "type"}
+ * discriminator naming it {@code tool-result}, {@code allow}, or {@code deny}. An absent {@code
+ * outcome} (the {@code PENDING} case) omits the key entirely, matching the hand-rolled codec this
+ * one replaced.
  *
  * <p>Reads are tolerant: unknown fields are ignored. Malformed JSON or an unrecognized
  * discriminator fails loudly with an {@link IllegalArgumentException} naming the offense.
@@ -46,23 +56,27 @@ import org.jwcarman.nessy.durable.Outcome;
 final class OutcomeCodec {
 
   private static final String TYPE = "type";
-  private static final String STATUS = "status";
   private static final String OUTCOME = "outcome";
+  private static final String PAYLOAD = "payload";
   private static final String CONTINUATIONS = "continuations";
 
   private static final String TYPE_SUCCESS = "success";
   private static final String TYPE_FAILURE = "failure";
   private static final String TYPE_CANCELLED = "cancelled";
+  private static final Set<String> OUTCOME_TYPES =
+      Set.of(TYPE_SUCCESS, TYPE_FAILURE, TYPE_CANCELLED);
 
-  private static final String PAYLOAD = "payload";
   private static final String PAYLOAD_TOOL_RESULT = "tool-result";
-  private static final String PAYLOAD_DECISION = "decision";
+  private static final String PAYLOAD_ALLOW = "allow";
+  private static final String PAYLOAD_DENY = "deny";
+  private static final Set<String> PAYLOAD_TYPES =
+      Set.of(PAYLOAD_TOOL_RESULT, PAYLOAD_ALLOW, PAYLOAD_DENY);
 
-  private static final String DECISION_TYPE = "decisionType";
-  private static final String DECISION_ALLOW = "allow";
-  private static final String DECISION_DENY = "deny";
+  private final Codecs codecs;
 
-  private OutcomeCodec() {}
+  OutcomeCodec(ObjectMapper mapper) {
+    this.codecs = new Codecs(mapper);
+  }
 
   /**
    * The {@code computation} document's shape: {@code status} always present, {@code outcome} null
@@ -82,162 +96,203 @@ final class OutcomeCodec {
    * ToolResult} nor {@link Decision} throws {@link IllegalArgumentException} here — before the
    * caller writes anything.
    */
-  static String toJson(SlotDocument document) {
+  String toJson(SlotDocument document) {
     Objects.requireNonNull(document, "document must not be null");
-    ObjectNode root = Codecs.MAPPER.createObjectNode();
-    root.put(STATUS, document.status().name());
-    if (document.outcome() != null) {
-      root.set(OUTCOME, writeOutcome(document.outcome()));
-    }
-    ArrayNode continuations = root.putArray(CONTINUATIONS);
-    for (Continuation continuation : document.continuations()) {
-      continuations.add(
-          Codecs.MAPPER
-              .createObjectNode()
-              .put(TYPE, continuation.type())
-              .put("data", continuation.data()));
-    }
-    return root.toString();
+    return codecs.write(SlotDocumentWire.from(document));
   }
 
-  static SlotDocument document(String json) {
+  SlotDocument document(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    ObjectNode root = Codecs.readObject(json, "computation slot");
-    ComputationStatus status = readStatus(Codecs.requireText(root, STATUS, "computation slot"));
-    JsonNode outcomeNode = root.get(OUTCOME);
-    Outcome outcome =
-        outcomeNode == null || outcomeNode.isNull()
-            ? null
-            : readOutcome(Codecs.requireObject(outcomeNode, "outcome"));
-    ArrayNode continuationsNode = Codecs.requireArray(root, CONTINUATIONS, "computation slot");
-    List<Continuation> continuations = new ArrayList<>();
-    for (JsonNode node : continuationsNode) {
-      ObjectNode continuationNode = Codecs.requireObject(node, "continuation");
-      continuations.add(
-          new Continuation(
-              Codecs.requireText(continuationNode, TYPE, "continuation"),
-              Codecs.requireText(continuationNode, "data", "continuation")));
+    JsonNode root = codecs.readTree(json, "computation slot");
+    Codecs.requireArray(root, CONTINUATIONS, "computation slot");
+    requireKnownOutcomeVocabulary(root.get(OUTCOME));
+    return codecs.bind(root, SlotDocumentWire.class, "computation slot").toDomain();
+  }
+
+  /**
+   * The outcome and (for a success) payload discriminators, checked by hand before binding: the
+   * mapper's own unresolved-subtype message does not carry the "unknown outcome type"/"unknown
+   * success payload type" wording this codec's contract pins.
+   */
+  private static void requireKnownOutcomeVocabulary(JsonNode outcomeNode) {
+    if (outcomeNode == null || outcomeNode.isNull()) {
+      return;
     }
-    return new SlotDocument(status, outcome, continuations);
-  }
-
-  private static ComputationStatus readStatus(String statusText) {
-    try {
-      return ComputationStatus.valueOf(statusText);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("unknown computation status: " + statusText, e);
+    String outcomeType = textOrNull(outcomeNode, TYPE);
+    if (!OUTCOME_TYPES.contains(outcomeType)) {
+      throw new IllegalArgumentException(
+          "unknown outcome type: " + outcomeType + "; expected one of: " + OUTCOME_TYPES);
+    }
+    if (TYPE_SUCCESS.equals(outcomeType)) {
+      String payloadType = textOrNull(outcomeNode.get(PAYLOAD), TYPE);
+      if (!PAYLOAD_TYPES.contains(payloadType)) {
+        throw new IllegalArgumentException(
+            "unknown success payload type: " + payloadType + "; expected one of: " + PAYLOAD_TYPES);
+      }
     }
   }
 
-  private static ObjectNode writeOutcome(Outcome outcome) {
-    return switch (outcome) {
-      case Outcome.Success(Object value) -> writeSuccess(value);
-      case Outcome.Failure(String message) ->
-          Codecs.MAPPER.createObjectNode().put(TYPE, TYPE_FAILURE).put("message", message);
-      case Outcome.Cancelled(String reason) ->
-          Codecs.MAPPER.createObjectNode().put(TYPE, TYPE_CANCELLED).put("reason", reason);
-    };
+  private static String textOrNull(JsonNode node, String field) {
+    if (node == null) {
+      return null;
+    }
+    JsonNode value = node.get(field);
+    return value == null || value.isNull() ? null : value.asText();
   }
 
-  private static ObjectNode writeSuccess(Object value) {
-    ObjectNode node = Codecs.MAPPER.createObjectNode().put(TYPE, TYPE_SUCCESS);
-    node.set(PAYLOAD, writePayload(value));
-    return node;
+  private record SlotDocumentWire(
+      ComputationStatus status,
+      @JsonInclude(JsonInclude.Include.NON_NULL) OutcomeWire outcome,
+      @JsonInclude(JsonInclude.Include.ALWAYS) List<ContinuationWire> continuations) {
+
+    SlotDocumentWire {
+      Objects.requireNonNull(status, "status must not be null");
+    }
+
+    static SlotDocumentWire from(SlotDocument document) {
+      return new SlotDocumentWire(
+          document.status(),
+          document.outcome() == null ? null : OutcomeWire.from(document.outcome()),
+          document.continuations().stream().map(ContinuationWire::from).toList());
+    }
+
+    SlotDocument toDomain() {
+      return new SlotDocument(
+          status,
+          outcome == null ? null : outcome.toDomain(),
+          continuations == null
+              ? List.of()
+              : continuations.stream().map(ContinuationWire::toDomain).toList());
+    }
   }
 
-  private static ObjectNode writePayload(Object value) {
-    return switch (value) {
-      case ToolResult(String content, boolean isError) ->
-          Codecs.MAPPER
-              .createObjectNode()
-              .put(TYPE, PAYLOAD_TOOL_RESULT)
-              .put("content", content)
-              .put("isError", isError);
-      case Decision decision -> writeDecision(decision);
-      default ->
-          throw new IllegalArgumentException(
-              "unsupported success payload type: "
-                  + value.getClass().getName()
-                  + "; expected one of: "
-                  + ToolResult.class.getSimpleName()
-                  + ", "
-                  + Decision.class.getSimpleName());
-    };
+  private record ContinuationWire(String type, String data) {
+
+    ContinuationWire {
+      Objects.requireNonNull(type, "type must not be null");
+      Objects.requireNonNull(data, "data must not be null");
+    }
+
+    static ContinuationWire from(Continuation continuation) {
+      return new ContinuationWire(continuation.type(), continuation.data());
+    }
+
+    Continuation toDomain() {
+      return new Continuation(type, data);
+    }
   }
 
-  private static ObjectNode writeDecision(Decision decision) {
-    return switch (decision) {
-      case Decision.Allow ignored ->
-          Codecs.MAPPER
-              .createObjectNode()
-              .put(TYPE, PAYLOAD_DECISION)
-              .put(DECISION_TYPE, DECISION_ALLOW);
-      case Decision.Deny(String reason) ->
-          Codecs.MAPPER
-              .createObjectNode()
-              .put(TYPE, PAYLOAD_DECISION)
-              .put(DECISION_TYPE, DECISION_DENY)
-              .put("reason", reason);
-    };
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = TYPE)
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = SuccessWire.class, name = TYPE_SUCCESS),
+    @JsonSubTypes.Type(value = FailureWire.class, name = TYPE_FAILURE),
+    @JsonSubTypes.Type(value = CancelledWire.class, name = TYPE_CANCELLED)
+  })
+  private sealed interface OutcomeWire permits SuccessWire, FailureWire, CancelledWire {
+
+    Outcome toDomain();
+
+    static OutcomeWire from(Outcome outcome) {
+      return switch (outcome) {
+        case Outcome.Success(Object value) -> new SuccessWire(PayloadWire.from(value));
+        case Outcome.Failure(String message) -> new FailureWire(message);
+        case Outcome.Cancelled(String reason) -> new CancelledWire(reason);
+      };
+    }
   }
 
-  private static Outcome readOutcome(ObjectNode node) {
-    String type = Codecs.requireText(node, TYPE, "outcome");
-    return switch (type) {
-      case TYPE_SUCCESS -> readSuccess(node);
-      case TYPE_FAILURE ->
-          new Outcome.Failure(Codecs.requireText(node, "message", "failure outcome"));
-      case TYPE_CANCELLED ->
-          new Outcome.Cancelled(Codecs.requireText(node, "reason", "cancelled outcome"));
-      default ->
-          throw new IllegalArgumentException(
-              "unknown outcome type: "
-                  + type
-                  + "; expected one of: "
-                  + TYPE_SUCCESS
-                  + ", "
-                  + TYPE_FAILURE
-                  + ", "
-                  + TYPE_CANCELLED);
-    };
+  private record SuccessWire(PayloadWire payload) implements OutcomeWire {
+
+    SuccessWire {
+      Objects.requireNonNull(payload, "payload must not be null");
+    }
+
+    @Override
+    public Outcome toDomain() {
+      return new Outcome.Success(payload.toDomain());
+    }
   }
 
-  private static Outcome readSuccess(ObjectNode node) {
-    ObjectNode payloadNode =
-        Codecs.requireObject(Codecs.requireField(node, PAYLOAD, "success outcome"), PAYLOAD);
-    String payloadType = Codecs.requireText(payloadNode, TYPE, "success payload");
-    Object payload =
-        switch (payloadType) {
-          case PAYLOAD_TOOL_RESULT ->
-              new ToolResult(
-                  Codecs.requireText(payloadNode, "content", "tool-result payload"),
-                  Codecs.requireBoolean(payloadNode, "isError", "tool-result payload"));
-          case PAYLOAD_DECISION -> readDecision(payloadNode);
-          default ->
-              throw new IllegalArgumentException(
-                  "unknown success payload type: "
-                      + payloadType
-                      + "; expected one of: "
-                      + PAYLOAD_TOOL_RESULT
-                      + ", "
-                      + PAYLOAD_DECISION);
-        };
-    return new Outcome.Success(payload);
+  private record FailureWire(String message) implements OutcomeWire {
+
+    FailureWire {
+      Objects.requireNonNull(message, "message must not be null");
+    }
+
+    @Override
+    public Outcome toDomain() {
+      return new Outcome.Failure(message);
+    }
   }
 
-  private static Decision readDecision(ObjectNode node) {
-    String decisionType = Codecs.requireText(node, DECISION_TYPE, "decision payload");
-    return switch (decisionType) {
-      case DECISION_ALLOW -> Decision.allow();
-      case DECISION_DENY -> new Decision.Deny(Codecs.requireText(node, "reason", "deny decision"));
-      default ->
-          throw new IllegalArgumentException(
-              "unknown decision type: "
-                  + decisionType
-                  + "; expected one of: "
-                  + DECISION_ALLOW
-                  + ", "
-                  + DECISION_DENY);
-    };
+  private record CancelledWire(String reason) implements OutcomeWire {
+
+    CancelledWire {
+      Objects.requireNonNull(reason, "reason must not be null");
+    }
+
+    @Override
+    public Outcome toDomain() {
+      return new Outcome.Cancelled(reason);
+    }
+  }
+
+  /** The closed vocabulary a {@code Success} payload may hold — checked before any write. */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = TYPE)
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = ToolResultWire.class, name = PAYLOAD_TOOL_RESULT),
+    @JsonSubTypes.Type(value = AllowWire.class, name = PAYLOAD_ALLOW),
+    @JsonSubTypes.Type(value = DenyWire.class, name = PAYLOAD_DENY)
+  })
+  private sealed interface PayloadWire permits ToolResultWire, AllowWire, DenyWire {
+
+    Object toDomain();
+
+    static PayloadWire from(Object value) {
+      return switch (value) {
+        case ToolResult(String content, boolean isError) -> new ToolResultWire(content, isError);
+        case Decision.Allow ignored -> new AllowWire();
+        case Decision.Deny(String reason) -> new DenyWire(reason);
+        default ->
+            throw new IllegalArgumentException(
+                "unsupported success payload type: "
+                    + value.getClass().getName()
+                    + "; expected one of: "
+                    + ToolResult.class.getSimpleName()
+                    + ", "
+                    + Decision.class.getSimpleName());
+      };
+    }
+  }
+
+  private record ToolResultWire(String content, boolean isError) implements PayloadWire {
+
+    ToolResultWire {
+      Objects.requireNonNull(content, "content must not be null");
+    }
+
+    @Override
+    public Object toDomain() {
+      return new ToolResult(content, isError);
+    }
+  }
+
+  private record AllowWire() implements PayloadWire {
+    @Override
+    public Object toDomain() {
+      return Decision.allow();
+    }
+  }
+
+  private record DenyWire(String reason) implements PayloadWire {
+
+    DenyWire {
+      Objects.requireNonNull(reason, "reason must not be null");
+    }
+
+    @Override
+    public Object toDomain() {
+      return new Decision.Deny(reason);
+    }
   }
 }

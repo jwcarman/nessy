@@ -37,6 +37,14 @@ class SealedInputsTest {
 
   record CollidingType(String type) implements CollidingVocabulary {}
 
+  sealed interface NestedVocabulary permits Leaf, Nested {}
+
+  record Leaf(String value) implements NestedVocabulary {}
+
+  sealed interface Nested extends NestedVocabulary permits NestedLeaf {}
+
+  record NestedLeaf(String value) implements Nested {}
+
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   @Test
@@ -123,5 +131,20 @@ class SealedInputsTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("CollidingType")
         .hasMessageContaining("type");
+  }
+
+  /**
+   * Final review round: {@code getRecordComponents()} returns {@code null} (not throws) for a
+   * matched permit that is itself not a record — here a nested sealed interface permitted directly.
+   * Before the fix this reached a bare NPE through {@code Stream.of(null)}, violating {@code
+   * Codec}'s IllegalArgumentException javadoc contract.
+   */
+  @Test
+  void bindRejectsAMatchedPermitThatIsNotARecordNamingItRatherThanNpe() {
+    ObjectNode arguments = JsonNodeFactory.instance.objectNode().put("type", "Nested");
+
+    assertThatThrownBy(() -> SealedInputs.bind(NestedVocabulary.class, arguments, MAPPER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Nested");
   }
 }

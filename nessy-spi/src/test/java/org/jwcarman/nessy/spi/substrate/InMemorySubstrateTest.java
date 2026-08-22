@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -31,17 +32,25 @@ import org.junit.jupiter.api.Test;
 
 class InMemorySubstrateTest {
 
+  private static byte[] bytes(String text) {
+    return text.getBytes(UTF_8);
+  }
+
+  private static String text(byte[] bytes) {
+    return new String(bytes, UTF_8);
+  }
+
   @Nested
   class Documents {
 
     @Test
     void writeAtVersionZeroCreatesTheDocumentAtVersionOne() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "{\"phase\":\"idle\"}", 0L);
+      store.write("state", "agent-a", bytes("{\"phase\":\"idle\"}"), 0L);
       assertThat(store.read("state", "agent-a"))
           .contains(
               new Substrate.Document(
-                  "{\"phase\":\"idle\"}",
+                  bytes("{\"phase\":\"idle\"}"),
                   1L,
                   store.read("state", "agent-a").orElseThrow().updatedAt()));
     }
@@ -49,32 +58,32 @@ class InMemorySubstrateTest {
     @Test
     void aMatchingCasWriteIncrementsTheVersionByOne() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v1", 0L);
-      store.write("state", "agent-a", "v2", 1L);
+      store.write("state", "agent-a", bytes("v1"), 0L);
+      store.write("state", "agent-a", bytes("v2"), 1L);
       assertThat(store.read("state", "agent-a").orElseThrow().version()).isEqualTo(2L);
-      assertThat(store.read("state", "agent-a").orElseThrow().payload()).isEqualTo("v2");
+      assertThat(text(store.read("state", "agent-a").orElseThrow().payload())).isEqualTo("v2");
     }
 
     @Test
     void aCreateWriteAgainstAnAlreadyPresentDocumentThrowsConflict() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v1", 0L);
-      assertThatThrownBy(() -> store.write("state", "agent-a", "v2", 0L))
+      store.write("state", "agent-a", bytes("v1"), 0L);
+      assertThatThrownBy(() -> store.write("state", "agent-a", bytes("v2"), 0L))
           .isInstanceOf(ConflictException.class);
     }
 
     @Test
     void aStaleCasWriteThrowsConflict() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v1", 0L);
-      assertThatThrownBy(() -> store.write("state", "agent-a", "v2", 5L))
+      store.write("state", "agent-a", bytes("v1"), 0L);
+      assertThatThrownBy(() -> store.write("state", "agent-a", bytes("v2"), 5L))
           .isInstanceOf(ConflictException.class);
     }
 
     @Test
     void aStaleDeleteThrowsConflict() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v1", 0L);
+      store.write("state", "agent-a", bytes("v1"), 0L);
       assertThatThrownBy(() -> store.delete("state", "agent-a", 5L))
           .isInstanceOf(ConflictException.class);
     }
@@ -82,7 +91,7 @@ class InMemorySubstrateTest {
     @Test
     void aMatchingDeleteRemovesTheDocument() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v1", 0L);
+      store.write("state", "agent-a", bytes("v1"), 0L);
       store.delete("state", "agent-a", 1L);
       assertThat(store.read("state", "agent-a")).isEmpty();
     }
@@ -97,7 +106,7 @@ class InMemorySubstrateTest {
     @Test
     void deletingAPresentDocumentAtVersionZeroThrowsConflict() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v1", 0L);
+      store.write("state", "agent-a", bytes("v1"), 0L);
       assertThatThrownBy(() -> store.delete("state", "agent-a", 0L))
           .isInstanceOf(ConflictException.class);
     }
@@ -111,17 +120,17 @@ class InMemorySubstrateTest {
     @Test
     void keysComeBackInAscendingLexicographicOrderUpToTheLimit() {
       var store = new InMemorySubstrate();
-      store.write("state", "charlie", "v", 0L);
-      store.write("state", "alpha", "v", 0L);
-      store.write("state", "bravo", "v", 0L);
+      store.write("state", "charlie", bytes("v"), 0L);
+      store.write("state", "alpha", bytes("v"), 0L);
+      store.write("state", "bravo", bytes("v"), 0L);
       assertThat(store.keys("state", 2)).containsExactly("alpha", "bravo");
     }
 
     @Test
     void keysOnlyReportsTheRequestedKind() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v", 0L);
-      store.write("memory", "agent-a", "v", 0L);
+      store.write("state", "agent-a", bytes("v"), 0L);
+      store.write("memory", "agent-a", bytes("v"), 0L);
       assertThat(store.keys("state", 10)).containsExactly("agent-a");
     }
 
@@ -142,7 +151,7 @@ class InMemorySubstrateTest {
     @Test
     void nullKeyOnWriteThrowsNpeWithAMessage() {
       var store = new InMemorySubstrate();
-      assertThatThrownBy(() -> store.write("state", null, "v", 0L))
+      assertThatThrownBy(() -> store.write("state", null, bytes("v"), 0L))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("key");
     }
@@ -159,8 +168,46 @@ class InMemorySubstrateTest {
     void updatedAtComesFromTheInjectedClock() {
       var fixed = Instant.parse("2026-08-21T12:00:00Z");
       var store = new InMemorySubstrate(Clock.fixed(fixed, ZoneOffset.UTC));
-      store.write("state", "agent-a", "v1", 0L);
+      store.write("state", "agent-a", bytes("v1"), 0L);
       assertThat(store.read("state", "agent-a").orElseThrow().updatedAt()).isEqualTo(fixed);
+    }
+
+    @Test
+    void twoDocumentsWithEqualContentDistinctArraysAreEqual() {
+      var updatedAt = Instant.parse("2026-08-21T12:00:00Z");
+      var first = new Substrate.Document(bytes("same content"), 3L, updatedAt);
+      var second = new Substrate.Document(bytes("same content"), 3L, updatedAt);
+      assertThat(first.payload()).isNotSameAs(second.payload());
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+    }
+
+    @Test
+    void constructingADocumentWithANullPayloadThrowsNpeWithAMessage() {
+      var updatedAt = Instant.parse("2026-08-21T12:00:00Z");
+      assertThatThrownBy(() -> new Substrate.Document(null, 3L, updatedAt))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("payload");
+    }
+
+    @Test
+    void mutatingTheCallersArrayAfterWriteDoesNotChangeALaterRead() {
+      var store = new InMemorySubstrate();
+      byte[] payload = bytes("original");
+      store.write("state", "agent-a", payload, 0L);
+      payload[0] = (byte) 'X';
+      assertThat(text(store.read("state", "agent-a").orElseThrow().payload()))
+          .isEqualTo("original");
+    }
+
+    @Test
+    void mutatingAReturnedDocumentPayloadArrayDoesNotChangeTheStore() {
+      var store = new InMemorySubstrate();
+      store.write("state", "agent-a", bytes("original"), 0L);
+      byte[] returned = store.read("state", "agent-a").orElseThrow().payload();
+      returned[0] = (byte) 'X';
+      assertThat(text(store.read("state", "agent-a").orElseThrow().payload()))
+          .isEqualTo("original");
     }
   }
 
@@ -170,35 +217,35 @@ class InMemorySubstrateTest {
     @Test
     void appendAtSeqOneCreatesTheFirstEntry() {
       var store = new InMemorySubstrate();
-      store.append("memory", "agent-a", 1L, "first");
+      store.append("memory", "agent-a", 1L, bytes("first"));
       assertThat(store.entries("memory", "agent-a", 1L))
-          .extracting(Substrate.Entry::payload)
+          .extracting(entry -> text(entry.payload()))
           .containsExactly("first");
     }
 
     @Test
     void appendingAtHeadPlusOneAppendsAfterTheExistingEntry() {
       var store = new InMemorySubstrate();
-      store.append("memory", "agent-a", 1L, "first");
-      store.append("memory", "agent-a", 2L, "second");
+      store.append("memory", "agent-a", 1L, bytes("first"));
+      store.append("memory", "agent-a", 2L, bytes("second"));
       assertThat(store.entries("memory", "agent-a", 1L))
-          .extracting(Substrate.Entry::payload)
+          .extracting(entry -> text(entry.payload()))
           .containsExactly("first", "second");
     }
 
     @Test
     void appendingAtAnOccupiedSeqThrowsConflict() {
       var store = new InMemorySubstrate();
-      store.append("memory", "agent-a", 1L, "first");
-      assertThatThrownBy(() -> store.append("memory", "agent-a", 1L, "replacement"))
+      store.append("memory", "agent-a", 1L, bytes("first"));
+      assertThatThrownBy(() -> store.append("memory", "agent-a", 1L, bytes("replacement")))
           .isInstanceOf(ConflictException.class);
     }
 
     @Test
     void appendingPastAGapIsNotItselfAConflict() {
       var store = new InMemorySubstrate();
-      store.append("memory", "agent-a", 1L, "first");
-      store.append("memory", "agent-a", 5L, "farAhead");
+      store.append("memory", "agent-a", 1L, bytes("first"));
+      store.append("memory", "agent-a", 5L, bytes("farAhead"));
       assertThat(store.entries("memory", "agent-a", 1L))
           .extracting(Substrate.Entry::seq)
           .containsExactly(1L, 5L);
@@ -207,11 +254,11 @@ class InMemorySubstrateTest {
     @Test
     void entriesFromSeqSlicesInclusively() {
       var store = new InMemorySubstrate();
-      store.append("memory", "agent-a", 1L, "one");
-      store.append("memory", "agent-a", 2L, "two");
-      store.append("memory", "agent-a", 3L, "three");
+      store.append("memory", "agent-a", 1L, bytes("one"));
+      store.append("memory", "agent-a", 2L, bytes("two"));
+      store.append("memory", "agent-a", 3L, bytes("three"));
       assertThat(store.entries("memory", "agent-a", 2L))
-          .extracting(Substrate.Entry::payload)
+          .extracting(entry -> text(entry.payload()))
           .containsExactly("two", "three");
     }
 
@@ -225,7 +272,7 @@ class InMemorySubstrateTest {
     void appendedAtComesFromTheInjectedClock() {
       var fixed = Instant.parse("2026-08-21T12:00:00Z");
       var store = new InMemorySubstrate(Clock.fixed(fixed, ZoneOffset.UTC));
-      store.append("memory", "agent-a", 1L, "first");
+      store.append("memory", "agent-a", 1L, bytes("first"));
       assertThat(store.entries("memory", "agent-a", 1L).getFirst().appendedAt()).isEqualTo(fixed);
     }
 
@@ -235,6 +282,39 @@ class InMemorySubstrateTest {
       assertThatThrownBy(() -> store.append("memory", "agent-a", 1L, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("payload");
+    }
+
+    @Test
+    void mutatingTheCallersArrayAfterAppendDoesNotChangeALaterRead() {
+      var store = new InMemorySubstrate();
+      byte[] payload = bytes("original");
+      store.append("memory", "agent-a", 1L, payload);
+      payload[0] = (byte) 'X';
+      assertThat(text(store.entries("memory", "agent-a", 1L).getFirst().payload()))
+          .isEqualTo("original");
+    }
+
+    @Test
+    void mutatingAReturnedEntryPayloadArrayDoesNotChangeTheStore() {
+      var store = new InMemorySubstrate();
+      store.append("memory", "agent-a", 1L, bytes("original"));
+      byte[] returned = store.entries("memory", "agent-a", 1L).getFirst().payload();
+      returned[0] = (byte) 'X';
+      assertThat(text(store.entries("memory", "agent-a", 1L).getFirst().payload()))
+          .isEqualTo("original");
+    }
+
+    @Test
+    void twoEntriesWithEqualContentDistinctArraysAreEqualButDifferWhenSeqDiffers() {
+      var appendedAt = Instant.parse("2026-08-21T12:00:00Z");
+      var first = new Substrate.Entry(1L, bytes("same content"), appendedAt);
+      var second = new Substrate.Entry(1L, bytes("same content"), appendedAt);
+      var differentSeq = new Substrate.Entry(2L, bytes("same content"), appendedAt);
+
+      assertThat(first.payload()).isNotSameAs(second.payload());
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isNotEqualTo(differentSeq);
     }
   }
 
@@ -246,33 +326,34 @@ class InMemorySubstrateTest {
       var store = new InMemorySubstrate();
       store.batch(
           List.of(
-              new Substrate.Op.WriteDocument("state", "agent-a", "v1", 0L),
-              new Substrate.Op.AppendEntry("memory", "agent-a", 1L, "hello")));
-      assertThat(store.read("state", "agent-a").orElseThrow().payload()).isEqualTo("v1");
+              new Substrate.Op.WriteDocument("state", "agent-a", bytes("v1"), 0L),
+              new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes("hello"))));
+      assertThat(text(store.read("state", "agent-a").orElseThrow().payload())).isEqualTo("v1");
       assertThat(store.entries("memory", "agent-a", 1L))
-          .extracting(Substrate.Entry::payload)
+          .extracting(entry -> text(entry.payload()))
           .containsExactly("hello");
     }
 
     @Test
     void aBatchWithOneStaleOpAppliesNothing() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "original", 0L);
+      store.write("state", "agent-a", bytes("original"), 0L);
       List<Substrate.Op> ops =
           List.of(
-              new Substrate.Op.AppendEntry("memory", "agent-a", 1L, "hello"),
-              new Substrate.Op.WriteDocument("state", "agent-a", "stale", 99L));
+              new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes("hello")),
+              new Substrate.Op.WriteDocument("state", "agent-a", bytes("stale"), 99L));
 
       assertThatThrownBy(() -> store.batch(ops)).isInstanceOf(ConflictException.class);
 
-      assertThat(store.read("state", "agent-a").orElseThrow().payload()).isEqualTo("original");
+      assertThat(text(store.read("state", "agent-a").orElseThrow().payload()))
+          .isEqualTo("original");
       assertThat(store.entries("memory", "agent-a", 1L)).isEmpty();
     }
 
     @Test
     void aBatchDeleteRemovesTheDocument() {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v1", 0L);
+      store.write("state", "agent-a", bytes("v1"), 0L);
       store.batch(List.of(new Substrate.Op.DeleteDocument("state", "agent-a", 1L)));
       assertThat(store.read("state", "agent-a")).isEmpty();
     }
@@ -284,6 +365,33 @@ class InMemorySubstrateTest {
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("ops");
     }
+
+    @Test
+    void
+        twoWriteDocumentOpsWithEqualContentDistinctArraysAreEqualButDifferWhenExpectedVersionDiffers() {
+      var first = new Substrate.Op.WriteDocument("state", "agent-a", bytes("same content"), 0L);
+      var second = new Substrate.Op.WriteDocument("state", "agent-a", bytes("same content"), 0L);
+      var differentVersion =
+          new Substrate.Op.WriteDocument("state", "agent-a", bytes("same content"), 1L);
+
+      assertThat(first.payload()).isNotSameAs(second.payload());
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isNotEqualTo(differentVersion);
+    }
+
+    @Test
+    void twoAppendEntryOpsWithEqualContentDistinctArraysAreEqualButDifferWhenSeqDiffers() {
+      var first = new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes("same content"));
+      var second = new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes("same content"));
+      var differentSeq =
+          new Substrate.Op.AppendEntry("memory", "agent-a", 2L, bytes("same content"));
+
+      assertThat(first.payload()).isNotSameAs(second.payload());
+      assertThat(first).isEqualTo(second);
+      assertThat(first).hasSameHashCodeAs(second);
+      assertThat(first).isNotEqualTo(differentSeq);
+    }
   }
 
   @Nested
@@ -292,14 +400,14 @@ class InMemorySubstrateTest {
     @Test
     void racingCasWritersProduceExactlyOneWinnerPerRound() throws Exception {
       var store = new InMemorySubstrate();
-      store.write("state", "agent-a", "v0", 0L);
+      store.write("state", "agent-a", bytes("v0"), 0L);
       int racers = 16;
       List<Callable<Boolean>> attempts = new ArrayList<>();
       for (int i = 0; i < racers; i++) {
         attempts.add(
             () -> {
               try {
-                store.write("state", "agent-a", "v1", 1L);
+                store.write("state", "agent-a", bytes("v1"), 1L);
                 return true;
               } catch (ConflictException _) {
                 return false;
@@ -315,6 +423,26 @@ class InMemorySubstrateTest {
       assertThat(outcomes).isNotEmpty();
       assertThat(outcomes.stream().filter(Boolean::booleanValue).count()).isEqualTo(1L);
       assertThat(store.read("state", "agent-a").orElseThrow().version()).isEqualTo(2L);
+    }
+  }
+
+  @Nested
+  class ToStringHygieneOnTheArrayBearingRecords {
+
+    private static final String MARKER = "super-secret-marker-xyz";
+
+    @Test
+    void allFourArrayBearingRecordsReportPayloadSizeNeverPayloadContent() {
+      var now = Instant.parse("2026-08-21T12:00:00Z");
+      var document = new Substrate.Document(bytes(MARKER), 1L, now);
+      var entry = new Substrate.Entry(1L, bytes(MARKER), now);
+      var writeDocument = new Substrate.Op.WriteDocument("state", "agent-a", bytes(MARKER), 0L);
+      var appendEntry = new Substrate.Op.AppendEntry("memory", "agent-a", 1L, bytes(MARKER));
+
+      assertThat(document.toString()).contains("payloadBytes=").doesNotContain(MARKER);
+      assertThat(entry.toString()).contains("payloadBytes=").doesNotContain(MARKER);
+      assertThat(writeDocument.toString()).contains("payloadBytes=").doesNotContain(MARKER);
+      assertThat(appendEntry.toString()).contains("payloadBytes=").doesNotContain(MARKER);
     }
   }
 }

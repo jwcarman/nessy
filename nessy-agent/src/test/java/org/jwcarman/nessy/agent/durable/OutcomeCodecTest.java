@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.durable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,8 @@ import org.jwcarman.nessy.durable.Outcome;
 
 class OutcomeCodecTest {
 
+  private static final OutcomeCodec CODEC = new OutcomeCodec(new ObjectMapper());
+
   @Nested
   class ClosedVocabularyRoundTrips {
 
@@ -38,7 +41,7 @@ class OutcomeCodecTest {
       var outcome = new Outcome.Success(ToolResult.ok("42"));
       var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -48,7 +51,7 @@ class OutcomeCodecTest {
       var outcome = new Outcome.Success(ToolResult.error("boom"));
       var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -58,7 +61,7 @@ class OutcomeCodecTest {
       var outcome = new Outcome.Success(Decision.allow());
       var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -68,7 +71,7 @@ class OutcomeCodecTest {
       var outcome = new Outcome.Success(new Decision.Deny("not today"));
       var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -78,7 +81,7 @@ class OutcomeCodecTest {
       var outcome = new Outcome.Failure("it broke");
       var document = new SlotDocument(ComputationStatus.FAILED, outcome, List.of());
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -88,7 +91,7 @@ class OutcomeCodecTest {
       var outcome = new Outcome.Cancelled("nobody cares");
       var document = new SlotDocument(ComputationStatus.CANCELLED, outcome, List.of());
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -97,7 +100,7 @@ class OutcomeCodecTest {
     void aPendingDocumentHasNoOutcome() {
       var document = new SlotDocument(ComputationStatus.PENDING, null, List.of());
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isNull();
     }
@@ -108,9 +111,83 @@ class OutcomeCodecTest {
           List.of(new Continuation("RESUME_SCOPE", "{\"a\":1}"), new Continuation("TIMER", "{}"));
       var document = new SlotDocument(ComputationStatus.PENDING, null, continuations);
 
-      var roundTripped = OutcomeCodec.document(OutcomeCodec.toJson(document));
+      var roundTripped = CODEC.document(CODEC.toJson(document));
 
       assertThat(roundTripped.continuations()).containsExactlyElementsOf(continuations);
+    }
+  }
+
+  @Nested
+  class GoldenShapes {
+
+    @Test
+    void aToolResultSuccessEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.SUCCEEDED, new Outcome.Success(ToolResult.ok("42")), List.of());
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
+                  + "{\"type\":\"tool-result\",\"content\":\"42\",\"isError\":false}},"
+                  + "\"continuations\":[]}");
+    }
+
+    @Test
+    void anAllowDecisionSuccessEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.SUCCEEDED, new Outcome.Success(Decision.allow()), List.of());
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
+                  + "{\"type\":\"allow\"}},\"continuations\":[]}");
+    }
+
+    @Test
+    void aDenyDecisionSuccessEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.SUCCEEDED, new Outcome.Success(new Decision.Deny("no")), List.of());
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
+                  + "{\"type\":\"deny\",\"reason\":\"no\"}},\"continuations\":[]}");
+    }
+
+    @Test
+    void aFailureEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(ComputationStatus.FAILED, new Outcome.Failure("boom"), List.of());
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"FAILED\",\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"},"
+                  + "\"continuations\":[]}");
+    }
+
+    @Test
+    void aCancellationEmitsTheExactGoldenShape() {
+      var document =
+          new SlotDocument(ComputationStatus.CANCELLED, new Outcome.Cancelled("meh"), List.of());
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"CANCELLED\",\"outcome\":{\"type\":\"cancelled\",\"reason\":\"meh\"},"
+                  + "\"continuations\":[]}");
+    }
+
+    @Test
+    void aPendingDocumentEmitsTheExactGoldenShapeWithNoOutcomeKey() {
+      var document =
+          new SlotDocument(
+              ComputationStatus.PENDING, null, List.of(new Continuation("TIMER", "{}")));
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"status\":\"PENDING\",\"continuations\":[{\"type\":\"TIMER\",\"data\":\"{}\"}]}");
     }
   }
 
@@ -123,7 +200,7 @@ class OutcomeCodecTest {
           new SlotDocument(
               ComputationStatus.SUCCEEDED, new Outcome.Success("a bare string"), List.of());
 
-      assertThatThrownBy(() -> OutcomeCodec.toJson(document))
+      assertThatThrownBy(() -> CODEC.toJson(document))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unsupported success payload type");
     }
@@ -134,7 +211,7 @@ class OutcomeCodecTest {
 
     @Test
     void malformedJsonIsRejected() {
-      assertThatThrownBy(() -> OutcomeCodec.document("not json"))
+      assertThatThrownBy(() -> CODEC.document("not json"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -142,7 +219,7 @@ class OutcomeCodecTest {
     void anUnknownOutcomeTypeIsRejected() {
       String json =
           "{\"status\":\"FAILED\",\"outcome\":{\"type\":\"mystery\"},\"continuations\":[]}";
-      assertThatThrownBy(() -> OutcomeCodec.document(json))
+      assertThatThrownBy(() -> CODEC.document(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unknown outcome type");
     }
@@ -152,7 +229,7 @@ class OutcomeCodecTest {
       String json =
           "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":{\"type\":\"mystery\"}},"
               + "\"continuations\":[]}";
-      assertThatThrownBy(() -> OutcomeCodec.document(json))
+      assertThatThrownBy(() -> CODEC.document(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unknown success payload type");
     }
