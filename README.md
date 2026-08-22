@@ -83,7 +83,7 @@ ordinary `Tool<RestartInput>`, shaped just like `AddTool` above, granted
 ```java
 var pending = new LinkedBlockingQueue<ApprovalRequest>();
 
-try (AutonomousHost host =
+try (AutonomousHost<String> host =
     Nessy.autonomous()
         .provider(provider)
         .settings(settings)

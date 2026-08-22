@@ -21,13 +21,13 @@ degenerate single-node case of the same idea, not a different one.
 `Nessy.autonomous().substrate(Substrate)` is the one storage seam: every
 scope's state, memory (unless overridden), and backlog live as documents in
 that one store. State, memory, and backlog each ride a *recipe* over it —
-`StoredAgentStateStore`, `StoredMemory`, `StoredBacklog` — rather than a
-substrate of their own, so a scope's history is one shared object's
-problem, not three:
+`SubstrateAgentStateStore`, `SubstrateMemory`, `SubstrateBacklog<O>` —
+rather than a substrate of their own, so a scope's history is one shared
+object's problem, not three:
 
 ```java
 Function<String, Memory> memoryFactory =
-    id -> new StoredMemory(sharedStore, id);
+    id -> new SubstrateMemory(sharedStore, id, mapper);
 ```
 
 Losing a recipe instance loses nothing; two recipes built over the same id
@@ -37,9 +37,10 @@ evicts — a deliberate single-node, bounded-population posture, not a
 durable substrate.
 
 !!! warning "A factory MUST return a view over shared state, never fresh state"
-    `id -> new StoredMemory(new InMemorySubstrate(), id)` compiles and
-    looks identical to `id -> new StoredMemory(sharedStore, id)`, but it
-    silently loses history on every delivery: each call gets a fresh, empty
+    `id -> new SubstrateMemory(new InMemorySubstrate(), id, mapper)`
+    compiles and looks identical to
+    `id -> new SubstrateMemory(sharedStore, id, mapper)`, but it silently
+    loses history on every delivery: each call gets a fresh, empty
     substrate instead of a recipe over the id's real state. Factories handed
     to a harness must always build their recipe over one shared
     `Substrate`, never a new one per call.
@@ -61,7 +62,7 @@ try (CliAgent agent = Nessy.cli().provider(provider).settings(settings).tools(ne
 ```
 
 ```java
-try (AutonomousHost host =
+try (AutonomousHost<String> host =
     Nessy.autonomous()
         .provider(provider)
         .settings(settings)

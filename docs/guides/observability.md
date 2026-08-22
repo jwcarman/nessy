@@ -94,7 +94,7 @@ carries no per-call relay, since there is no caller thread parked on any one
 turn to hand it to:
 
 ```java
-AutonomousHost host =
+AutonomousHost<String> host =
     Nessy.autonomous()
         .provider(provider)
         .settings(settings)

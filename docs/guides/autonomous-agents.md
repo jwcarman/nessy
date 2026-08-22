@@ -10,7 +10,7 @@ primitive carry the wait.
 ## Building a host
 
 ```java
-try (AutonomousHost host =
+try (AutonomousHost<String> host =
     Nessy.autonomous()
         .type("ops")
         .provider(provider)
@@ -40,14 +40,21 @@ The builder surface, piece by piece:
   substrate document each recipe reads is what makes a scope's history survive
   from one delivery to the next.
 - **`memoryFactory(Function<String, Memory>)`** — overrides the default
-  `id -> new StoredMemory(store, id)` recipe with a caller-supplied
-  `Memory`. **Any override MUST return a view over shared state, never
-  freshly-created state** — the same discipline `StoredMemory` gets for
-  free by reading and writing through the shared store.
+  `id -> new SubstrateMemory(store, id, mapper)` recipe with a
+  caller-supplied `Memory`. **Any override MUST return a view over shared
+  state, never freshly-created state** — the same discipline
+  `SubstrateMemory` gets for free by reading and writing through the
+  shared store.
 - **`backend(DurableComputationBackend)`** — the shared durable computation
-  backend behind both desks; default `StoredComputations` over this
+  backend behind both desks; default `SubstrateComputations` over this
   builder's `substrate(...)`. Override only for a genuinely foreign engine
   (Restate, Temporal) — nobody implements this seam to get a database.
+- **`objectMapper(ObjectMapper)`** — the one mapper the host binds JSON
+  with; default a fresh `ObjectMapper`. `build()` pins a copy (lower-camel
+  naming, tolerant reads, no default typing — see
+  [Storage](../concepts/storage.md#the-one-mapper-story)) and threads that
+  one pinned copy through every recipe that binds JSON. User-registered
+  modules and serializers survive the copy.
 - **`approvalNotifier(Consumer<ApprovalRequest>)`** — fires once,
   point-to-point, the moment an approval slot is first asked. One recipient,
   never narrated — see [Durable Computation](../concepts/durable-computation.md).
@@ -61,13 +68,16 @@ The builder surface, piece by piece:
 
 ## Posting and the two desks
 
-`AutonomousHost` exposes three things:
+`AutonomousHost<O>` exposes three things:
 
 ```java
-public void post(String agentId, String text);   // enqueue one observation
+public void post(String agentId, O observation);  // enqueue one observation
 public ApprovalDesk approvals();                  // approve(id) / deny(id, reason)
 public CompletionDesk completions();               // complete(id, result) / fail(id, reason)
 ```
+
+The `String` door (`Nessy.autonomous()`) instantiates `O` as `String`; the
+typed door below opens any `O` you name.
 
 `post` enqueues a fact for that scope and returns immediately; the scope
 drains it on its own. Whatever comes back — text, a tool call, a park — is
@@ -188,6 +198,47 @@ Three things fall out of typing the intent:
 
 See [Intent](../concepts/intent.md) for the discriminator binding mechanics
 this rides on.
+
+## Typed observations
+
+`Nessy.autonomous()` posts `String` text. `Nessy.autonomous(Class<O>)` is
+the typed door: observations are any `O` you name, and `AutonomousHost<O>`
+carries that type all the way through `post`:
+
+```java
+record Note(String text, int priority) {}
+
+AutonomousHost<Note> host =
+    Nessy.autonomous(Note.class)
+        .provider(provider)
+        .settings(settings)
+        .substrate(substrate)
+        .renderer(note -> List.of(new TextBlock(note.text())))
+        .build();
+
+host.post("scope-1", new Note("check the oven", 3));
+```
+
+Two things the typed door asks of you that the `String` door presets for
+free:
+
+- **`.renderer(ObservationRenderer<O>)` is required.** The `String` door
+  presets a renderer that wraps the text in a `TextBlock`; the typed door
+  has no sensible default translation from an arbitrary `O` to inference
+  content, so `build()` rejects a builder that never called `.renderer(...)`,
+  naming the missing seam.
+- **The backlog codec has no override seam.** A posted `Note` is queued in
+  the same `backlog` document every observation rides (see
+  [Storage](../concepts/storage.md)), through `Codec.json(pinned,
+  Note.class)` — derived automatically from the builder's pinned
+  `ObjectMapper` and `observationType`. There is no `.backlogCodec(...)`
+  setter today; a custom stored shape for observations is parked, not
+  planned.
+
+A typed observation queued while its scope is busy survives in the backlog
+document exactly like a `String` one does — draining, staleness recovery,
+and multi-host takeover all work the same, because the backlog recipe never
+cared what `O` was.
 
 ## Tinkering: ApprovalPlayground
 

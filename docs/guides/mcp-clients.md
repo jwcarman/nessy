@@ -13,7 +13,7 @@ blanket "trust this server":
 
 ```java
 try (McpToolbox toolbox = McpToolbox.connect(transport, mapper);
-    AutonomousHost host =
+    AutonomousHost<String> host =
         Nessy.autonomous()
             .provider(provider)
             .settings(settings)
@@ -92,7 +92,7 @@ against, since it needs no credential of its own:
 try (McpToolbox toolbox =
         McpToolbox.connect(
             HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper);
-    AutonomousHost host =
+    AutonomousHost<String> host =
         Nessy.autonomous()
             .provider(provider)
             .settings(settings)
