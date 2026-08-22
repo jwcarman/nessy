@@ -329,11 +329,30 @@ sanctioned homes, neither shipped by Nessy:
   backend-agnostic; payloads transform passing through, metadata (`kind`,
   `key`, seq, version, timestamps) stays plaintext.
 
-Nessy ships no cryptography and mandates no envelope format — key management,
-algorithms, and payload envelopes belong to the deployment. The `byte[]`
-contract is the enterprise encryption-at-rest story: it guarantees any such
-wrapper composes cleanly, and databases' native at-rest encryption (TDE, KMS)
-remains the zero-code alternative below the seam.
+Nessy's core ships no cryptography and mandates no envelope format. Amended
+ruling (2026-08-21): encryption-at-rest DOES ship — later, as the optional
+feature jar **`nessy-crypto`** *(designed, on the roadmap)* — because nonce
+discipline and envelope versioning are exactly the parts a bring-your-own
+implementation gets catastrophically wrong. Its designed shape: `AesCodec
+implements Codec<byte[]>` over plain JCA (AES-GCM, fresh nonce per encode, no
+new dependencies), envelope `[version | key-id | nonce | ciphertext+tag]`, and
+a two-method key seam —
+
+```java
+public interface KeySource {
+  KeyRef current();               // (keyId, SecretKey) — encrypt with this
+  SecretKey byId(String keyId);   // decrypt whatever the row names
+}
+```
+
+— so rotation is "change what `current()` returns" and old rows keep
+decrypting. Deployments back `KeySource` with env, Vault, or KMS. Design fact
+that makes this safe: **nothing in the substrate design depends on
+payload-byte determinism** — CAS compares versions, dedup runs on ids inside
+decoded payloads — so a random-nonce `encode` is fully conformant. Until the
+jar lands, the `byte[]` contract guarantees any user-authored wrapper composes
+cleanly, and databases' native at-rest encryption (TDE, KMS) remains the
+zero-code alternative below the seam.
 
 ## 8. JDBC reference schema
 
