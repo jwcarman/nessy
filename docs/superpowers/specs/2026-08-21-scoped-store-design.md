@@ -7,6 +7,15 @@ but nothing in its API says "scope" — scope is a recipe convention, not a
 substrate concept. Renamed `Substrate`: the four-tiers vocabulary already calls
 this tier the substrate, and the type now *is* the tier's storage face. The
 "storage kernel" nickname is retired; prose says "the substrate."
+**Byte-and-codec ruling (2026-08-21, same day, ratified in conversation):**
+payloads are `byte[]`; each recipe takes an optional `Codec<T>`; Nessy is handed
+ONE `ObjectMapper` at the composition root; nessy-owned types carry Jackson
+annotations directly and the hand-rolled tree-walking codecs are deleted;
+recipes are renamed `Substrate*`; `SubstrateBacklog` and `AutonomousHost` are
+generic over the observation type. Details in §3, §6.4, §7. Driver: enterprise
+encryption-at-rest must be POSSIBLE (bytes make wrappers clean), Spring-native
+mapper injection must be the design (not an afterthought), and observations
+are typed by design — the String door is one instantiation, not the concept.
 **Amends:** `2026-08-18-agent-as-scope-design.md` (the substrate tier's storage face)
 **Supersedes:** `2026-08-20-durable-computation.md` §9 (backend SPI), §17–§22 (SQL
 reference, continuation table, outbox tables, SQL await/completion, outbox worker
@@ -46,8 +55,8 @@ everything else is a recipe.
 read / write-CAS / delete / keys, addressed by `(kind, key)`. The **journal** is
 immutable history: append / read-from, addressed by `(kind, key, seq)`. **batch**
 applies a list of document writes, document deletes, and journal appends
-all-or-nothing. Payloads are opaque strings (JSON by convention — the substrate
-never parses them). The store is the lock: every mutation carries a CAS
+all-or-nothing. Payloads are opaque byte arrays (UTF-8 JSON by convention —
+the substrate never parses them). The store is the lock: every mutation carries a CAS
 expectation, and a miss is a conflict, never a wait. Seven methods, two tables,
 and an adapter that implements them gets the entire system — state,
 transcripts, intent, backlogs, durable computations, the outbox.
@@ -61,29 +70,54 @@ public interface Substrate {
 
   // documents — mutable current-truth
   Optional<Document> read(String kind, String key);
-  void write(String kind, String key, String payload, long expectedVersion); // 0 = create
+  void write(String kind, String key, byte[] payload, long expectedVersion); // 0 = create
   void delete(String kind, String key, long expectedVersion);
   List<String> keys(String kind, int limit); // ascending key order
 
   // journal — immutable history
-  void append(String kind, String key, long expectedSeq, String payload); // create-only
+  void append(String kind, String key, long expectedSeq, byte[] payload); // create-only
   List<Entry> entries(String kind, String key, long fromSeq); // ascending, inclusive
 
   // atomicity — all-or-nothing across both shapes
   void batch(List<Op> ops);
 
-  record Document(String payload, long version, Instant updatedAt) {}
+  record Document(byte[] payload, long version, Instant updatedAt) {}
 
-  record Entry(long seq, String payload, Instant appendedAt) {}
+  record Entry(long seq, byte[] payload, Instant appendedAt) {}
 
   sealed interface Op {
-    record WriteDocument(String kind, String key, String payload, long expectedVersion)
+    record WriteDocument(String kind, String key, byte[] payload, long expectedVersion)
         implements Op {}
     record DeleteDocument(String kind, String key, long expectedVersion) implements Op {}
-    record AppendEntry(String kind, String key, long seq, String payload) implements Op {}
+    record AppendEntry(String kind, String key, long seq, byte[] payload) implements Op {}
   }
 }
 ```
+
+Array-bearing records (`Document`, `Entry`, `Op.WriteDocument`,
+`Op.AppendEntry`) MUST override `equals`/`hashCode`/`toString` on array
+*content* (`Arrays.equals`) and defensively copy the array in the compact
+constructor and the accessor — a record's default identity-equality on arrays
+would lie, and an aliased array would let a caller mutate stored truth behind
+the CAS.
+
+Beside the substrate lives the typed serialization seam:
+
+```java
+public interface Codec<T> {
+  byte[] encode(T value);
+  T decode(byte[] bytes);
+
+  static <T> Codec<T> json(ObjectMapper mapper, Class<T> type) { ... }
+}
+```
+
+`Codec.json` is the default for user-defined types: tolerant Jackson binding,
+UTF-8, the caller's mapper (so user-registered modules flow through). It binds
+sealed vocabularies the `SealedInputs` way — discriminator from the permitted
+subclasses — so user types never need annotations. Each recipe takes an
+optional `Codec<T>` for its stored shape, defaulting to the nessy-owned
+binding for core types.
 
 One conflict signal, same package:
 
@@ -118,8 +152,11 @@ symmetric noun pair is deliberate. `Op` members follow sealed-grammar etiquette
 4. **`keys` law.** Ascending lexicographic key order, at most `limit` results,
    `limit >= 1`. Because reserved queue kinds use UUIDv7 keys, key order is
    creation order — fairness for workers, free.
-5. **Opacity.** Payloads are non-null strings the substrate never inspects. JSON
-   is the house convention; the substrate contract says "string".
+5. **Opacity.** Payloads are non-null byte arrays the substrate never
+   inspects or constrains — an adapter MUST accept any bytes (no JSON-typed
+   columns, no charset assumptions). UTF-8 JSON is the house convention above
+   the seam; the substrate contract says "bytes". Implementations MUST NOT
+   alias caller arrays: copy on write, copy on read.
 6. **Time.** `updatedAt`/`appendedAt` come from the adapter's single time
    source. A shared-database adapter MUST use database server time
    (`CURRENT_TIMESTAMP`), not per-host clocks — staleness decisions read these
@@ -176,9 +213,16 @@ The transcript is the permanent record; nothing rewrites it.
 Ships in `nessy-intent` (§12).
 
 ### 6.4 Backlog
-`kind=backlog`, one document per scope holding the JSON array of pending
+`kind=backlog`, one document per scope holding the queue of pending
 observations, bounded (default 1024, checked in the recipe). `add`/`poll` are
-read-mutate-CAS loops.
+read-mutate-CAS loops. **Observations are typed**: `SubstrateBacklog<O>` takes
+a `Codec<O>` (default `Codec.json(mapper, observationType)`), and the stored
+document is a JSON array whose elements are the base64 of each encoded
+observation — uniform regardless of codec, and the backlog is self-draining
+transient state, so glance-readability yields to uniformity here. The
+`AutonomousHost` is generic over the same `O` (`post(String agentId, O
+observation)`); `Nessy.autonomous()` keeps the `String` text door as the
+default instantiation.
 
 ### 6.5 Durable computations
 `kind=computation`, `key = computationId`, one document:
@@ -195,7 +239,7 @@ onto CAS:
 
 `DurableComputationBackend` is **no longer an adapter SPI** — it remains as the
 internal vocabulary the desks and dispatcher speak, with the substrate recipe
-(`StoredComputations`, in `nessy-agent`) as its default and only shipped
+(`SubstrateComputations`, in `nessy-agent`) as its default and only shipped
 implementation. The builder's `backend(…)` seam survives for genuinely foreign
 engines (Restate, Temporal); nobody implements it to get a database.
 
@@ -231,18 +275,53 @@ hears about it.
 
 ## 7. The serialization seam
 
-Payload rendering lives in recipes, not the substrate, and is the one real
-engineering lift here:
+One `ObjectMapper`, injected at the composition root, used throughout:
 
-- Recipes serialize with Jackson to plain JSON — **zero Jackson annotations on
-  domain types** (house law: nessy-owned binding).
-- `Outcome.Success(Object)` payloads are a **closed vocabulary**: `ToolResult`
-  (completions desk) and `Decision` (approvals desk), stored with a type
-  discriminator. Completing with any other payload type is out of contract and
-  rejected at the door. Opening the vocabulary is a spec amendment.
-- **Payload evolution is ours, not ALTER TABLE's**: stored shapes evolve via
-  tolerant reads (unknown fields ignored, absent fields defaulted) in recipe
-  code. This discipline is permanent.
+- The builder takes `.objectMapper(ObjectMapper)` (Spring autoconfigure wires
+  the context's bean). Nessy calls `mapper.copy()` and **pins the
+  format-critical settings on the copy**: lower-camel property naming, tolerant
+  reads (unknown fields ignored), no default typing. User-registered modules
+  and serializers flow through; format-critical knobs do not — the stored
+  format is a compatibility surface and cannot float on presentation
+  preferences. The pinned copy feeds recipe default codecs, `SealedInputs`
+  binding, `Schemas` generation, and tool-result rendering. Static mappers are
+  forbidden; mappers are threaded, never ambient.
+- Model-provider wire mappers serve vendor protocol contracts, not user data;
+  they build from the same copy-and-pin path but their formats are pinned by
+  the vendor.
+
+The annotations law, restated at its true scope:
+
+- **User-authored types never require Jackson annotations.** Nessy binds them:
+  `SealedInputs` for tool inputs and intent vocabularies, `Codec.json` for
+  stored user shapes. This half is load-bearing API quality and permanent.
+- **Nessy-owned types carry Jackson annotations directly** (`@JsonTypeInfo`/
+  `@JsonSubTypes` on the sealed hierarchies — `ContentBlock`, `Phase`, the
+  computation document). The hand-rolled tree-walking codecs are deleted; the
+  mapper does the binding; the wire format is pinned by golden round-trip
+  tests, not by artisanal code. Discriminator values are unchanged (`text`,
+  `image`, `thinking`, `redacted-thinking`, `tool-use`, `tool-result`;
+  `idle`, `awaiting-model`, `awaiting-tools`).
+- Malformed stored payloads surface as `IllegalArgumentException` naming the
+  offense — Jackson exceptions never leak through a codec boundary.
+- `Outcome.Success(Object)` payloads remain a **closed vocabulary**
+  (`ToolResult`, `Decision`), validated before any write; opening it is a spec
+  amendment. Payload evolution remains tolerant-read discipline, permanently.
+
+Transforms (compression, encryption) are **patterns, not products**. Two
+sanctioned homes, neither shipped by Nessy:
+
+- **Wrap the codec** — a `Codec<T>` decorating a `Codec<T>`: per-kind control
+  (encrypt transcripts, leave state plain).
+- **Wrap the substrate** — a `Substrate` decorating a delegate: blanket,
+  backend-agnostic; payloads transform passing through, metadata (`kind`,
+  `key`, seq, version, timestamps) stays plaintext.
+
+Nessy ships no cryptography and mandates no envelope format — key management,
+algorithms, and payload envelopes belong to the deployment. The `byte[]`
+contract is the enterprise encryption-at-rest story: it guarantees any such
+wrapper composes cleanly, and databases' native at-rest encryption (TDE, KMS)
+remains the zero-code alternative below the seam.
 
 ## 8. JDBC reference schema
 
@@ -252,7 +331,7 @@ The whole system, two tables:
 CREATE TABLE nessy_document (
     kind        VARCHAR(64)   NOT NULL,
     doc_key     VARCHAR(255)  NOT NULL,
-    payload     TEXT          NOT NULL,   -- JSONB on Postgres, as an ops nicety only
+    payload     BYTEA         NOT NULL,   -- BLOB on Oracle/MySQL/H2; never a JSON-typed column
     version     BIGINT        NOT NULL,
     updated_at  TIMESTAMP(6)  NOT NULL,   -- database server time
     PRIMARY KEY (kind, doc_key)
@@ -262,7 +341,7 @@ CREATE TABLE nessy_journal (
     kind         VARCHAR(64)   NOT NULL,
     doc_key      VARCHAR(255)  NOT NULL,
     seq          BIGINT        NOT NULL,
-    payload      TEXT          NOT NULL,
+    payload      BYTEA         NOT NULL,
     appended_at  TIMESTAMP(6)  NOT NULL,
     PRIMARY KEY (kind, doc_key, seq)
 );
@@ -274,7 +353,11 @@ version = ?` (rowcount 0 **is** the conflict); `keys` = index range walk with
 `LIMIT`; `append` = `INSERT` (duplicate key is the conflict); `entries` = range
 `SELECT`; `batch` = one transaction. No secondary indexes; no `SELECT FOR
 UPDATE`. Dialects differ only in the payload column type and the duplicate-key
-error code — which is why dialect support is cheap.
+error code — which is why dialect support is cheap. Ops readability on
+untransformed payloads is one incantation away — `convert_from(payload,
+'UTF8')` on Postgres, the dialect's equivalent elsewhere; a JSON-typed column
+is forbidden because the contract promises to store *any* bytes (a wrapping
+transform's ciphertext included).
 
 ## 9. DynamoDB mapping
 
