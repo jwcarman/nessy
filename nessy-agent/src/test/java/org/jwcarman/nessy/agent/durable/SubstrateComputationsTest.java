@@ -18,98 +18,67 @@ package org.jwcarman.nessy.agent.durable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec.SlotDocument;
-import org.jwcarman.nessy.agent.support.RaceOnceOnWriteSubstrate;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.AwaitResult;
 import org.jwcarman.nessy.durable.CompletionResult;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.durable.PendingComputation;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class SubstrateComputationsTest {
 
   private static final ComputationId ID = ComputationId.of("tool:t:a:c1");
-  private static final Continuation RESUME = new Continuation("RESUME_SCOPE", "{\"x\":1}");
+  private static final ToolInvocationId INVOCATION = new ToolInvocationId("response-1", "c1");
+  private static final Continuation RETURN_ADDRESS = new Continuation("SCOPE_RESUME", "{\"x\":1}");
 
   private final Substrate store = new InMemorySubstrate();
   private final SubstrateComputations computations =
       new SubstrateComputations(store, TestMappers.plainlyPinned());
-  private final OutcomeCodec codec = new OutcomeCodec(TestMappers.plainlyPinned());
 
-  @Nested
-  class CreatingASlot {
-
-    @Test
-    void createIsGetOrCreate() {
-      assertThat(computations.create(ID).created()).isTrue();
-      assertThat(computations.create(ID).created()).isFalse();
-      assertThat(computations.status(ID)).contains(ComputationStatus.PENDING);
-    }
+  private static long outboxCount(Substrate store) {
+    return store.keys("outbox", 100).size();
   }
 
   @Nested
-  class Awaiting {
+  class CreatingAComputation {
 
     @Test
-    void awaitOnAPendingSlotRegistersDurably() {
-      computations.create(ID);
-      assertThat(computations.await(ID, RESUME)).isEqualTo(new AwaitResult.Registered());
-      assertThat(computations.continuationsOf(ID)).containsExactly(RESUME);
+    void createIsGetOrCreate() {
+      assertThat(computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty()).created())
+          .isTrue();
+      assertThat(computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty()).created())
+          .isFalse();
     }
 
     @Test
-    void reAwaitingTheSameContinuationIsOneRegistration() {
-      computations.create(ID);
-      computations.await(ID, RESUME);
-      computations.await(ID, RESUME);
-      assertThat(computations.continuationsOf(ID)).containsExactly(RESUME);
+    void aCreatedComputationIsFindable() {
+      computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
+
+      Optional<PendingComputation> found = computations.find(ID);
+
+      assertThat(found).isPresent();
+      assertThat(found.get().id()).isEqualTo(ID);
+      assertThat(found.get().invocation()).isEqualTo(INVOCATION);
+      assertThat(found.get().returnAddress()).isEqualTo(RETURN_ADDRESS);
+      assertThat(found.get().deadline()).isEmpty();
     }
 
     @Test
-    void duplicateContinuationRegistersOnceAcrossManyAwaits() {
-      computations.create(ID);
-      for (int i = 0; i < 5; i++) {
-        assertThat(computations.await(ID, RESUME)).isEqualTo(new AwaitResult.Registered());
-      }
-      assertThat(computations.continuationsOf(ID)).containsExactly(RESUME);
-    }
-
-    @Test
-    void awaitAfterCompletionReturnsTheOutcomeAndRegistersNothing() {
-      computations.create(ID);
-      computations.complete(ID, new Outcome.Success(ToolResult.ok("done")));
-      assertThat(computations.await(ID, RESUME))
-          .isEqualTo(new AwaitResult.AlreadyCompleted(new Outcome.Success(ToolResult.ok("done"))));
-      assertThat(computations.continuationsOf(ID)).isEmpty();
-    }
-
-    @Test
-    void awaitOnAnUnknownIdFailsLoudlyButStatusIsJustEmpty() {
-      var unknown = ComputationId.of("ghost");
-      assertThatThrownBy(() -> computations.await(unknown, RESUME))
-          .isInstanceOf(IllegalArgumentException.class);
-      assertThat(computations.status(unknown)).isEmpty();
-    }
-
-    @Test
-    void continuationsOfAnUnknownIdFailsLoudly() {
-      var unknown = ComputationId.of("ghost");
-      assertThatThrownBy(() -> computations.continuationsOf(unknown))
-          .isInstanceOf(IllegalArgumentException.class);
+    void findOnAnUnknownIdIsEmpty() {
+      assertThat(computations.find(ComputationId.of("ghost"))).isEmpty();
     }
   }
 
@@ -117,57 +86,52 @@ class SubstrateComputationsTest {
   class Completing {
 
     @Test
-    void completionFlipsExactlyOnce() {
-      computations.create(ID);
-      assertThat(computations.complete(ID, new Outcome.Success(ToolResult.ok("first"))))
-          .isEqualTo(CompletionResult.COMPLETED);
-      assertThat(computations.complete(ID, new Outcome.Failure("second")))
-          .isEqualTo(CompletionResult.ALREADY_TERMINAL);
-      assertThat(computations.status(ID)).contains(ComputationStatus.SUCCEEDED);
-      assertThat(computations.await(ID, RESUME))
-          .isEqualTo(new AwaitResult.AlreadyCompleted(new Outcome.Success(ToolResult.ok("first"))));
+    void completingATransfersOwnershipToTheOutboxAndRemovesTheComputation() {
+      computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
+
+      CompletionResult result =
+          computations.complete(ID, new Outcome.Success(ToolResult.ok("first")));
+
+      assertThat(result).isEqualTo(CompletionResult.TRANSFERRED);
+      assertThat(computations.find(ID)).isEmpty();
+      assertThat(outboxCount(store)).isEqualTo(1L);
     }
 
     @Test
-    void eachTerminalOutcomeMapsToItsStatus() {
-      var failed = ComputationId.of("f");
-      var cancelled = ComputationId.of("c");
-      computations.create(failed);
-      computations.create(cancelled);
-      computations.complete(failed, new Outcome.Failure("boom"));
-      computations.complete(cancelled, new Outcome.Cancelled("nobody cares"));
-      assertThat(computations.status(failed)).contains(ComputationStatus.FAILED);
-      assertThat(computations.status(cancelled)).contains(ComputationStatus.CANCELLED);
+    void completingAnAbsentComputationIsBenign() {
+      CompletionResult result =
+          computations.complete(ID, new Outcome.Success(ToolResult.ok("nobody home")));
+
+      assertThat(result).isEqualTo(CompletionResult.ALREADY_DONE);
+      assertThat(outboxCount(store)).isZero();
     }
 
     @Test
-    void completingAnUnknownIdBirthsTheSlotAlreadyTerminal() {
-      var id = ComputationId.of("tool:t:a:c9");
-      assertThat(computations.complete(id, new Outcome.Success(ToolResult.ok("early"))))
-          .isEqualTo(CompletionResult.COMPLETED);
-      assertThat(computations.status(id)).contains(ComputationStatus.SUCCEEDED);
+    void aSecondCompletionOnAnAlreadyTransferredComputationIsBenign() {
+      computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
+      computations.complete(ID, new Outcome.Success(ToolResult.ok("first")));
+
+      CompletionResult second = computations.complete(ID, new Outcome.Failure("second"));
+
+      assertThat(second).isEqualTo(CompletionResult.ALREADY_DONE);
+      assertThat(outboxCount(store)).isEqualTo(1L); // still exactly the one delivery
     }
 
     @Test
-    void createAfterAnEarlyCompletionFindsTheSlotAndAwaitAnswersAlreadyCompleted() {
-      var id = ComputationId.of("tool:t:a:c9");
-      computations.complete(id, new Outcome.Success(ToolResult.ok("early")));
-      assertThat(computations.create(id).created()).isFalse();
-      assertThat(computations.await(id, new Continuation("T", "{}")))
-          .isEqualTo(new AwaitResult.AlreadyCompleted(new Outcome.Success(ToolResult.ok("early"))));
+    void aForeignSuccessPayloadIsRejectedAndNothingIsWritten() {
+      computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
+      var foreign = new Outcome.Success("a bare string");
+
+      assertThatThrownBy(() -> computations.complete(ID, foreign))
+          .isInstanceOf(IllegalArgumentException.class);
+
+      assertThat(computations.find(ID)).isPresent();
+      assertThat(outboxCount(store)).isZero();
     }
 
     @Test
-    void anEarlyCompletionStillFlipsOnlyOnce() {
-      var id = ComputationId.of("tool:t:a:c9");
-      computations.complete(id, new Outcome.Success(ToolResult.ok("early")));
-      assertThat(computations.complete(id, new Outcome.Failure("late")))
-          .isEqualTo(CompletionResult.ALREADY_TERMINAL);
-    }
-
-    @Test
-    void racingCompletersProduceExactlyOneFlip() throws Exception {
-      computations.create(ID);
+    void racingCompletersProduceExactlyOneOwnershipTransfer() throws Exception {
+      computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
       int racers = 16;
       List<Callable<CompletionResult>> attempts = new ArrayList<>();
       for (int i = 0; i < racers; i++) {
@@ -181,13 +145,14 @@ class SubstrateComputationsTest {
         }
       }
       assertThat(results).isNotEmpty();
-      assertThat(results.stream().filter(r -> r == CompletionResult.COMPLETED).count())
+      assertThat(results.stream().filter(r -> r == CompletionResult.TRANSFERRED).count())
           .isEqualTo(1L);
+      assertThat(outboxCount(store)).isEqualTo(1L);
     }
 
     @Test
-    void twoRacingCompletesProduceExactlyOneCompletedAndOneAlreadyTerminal() throws Exception {
-      computations.create(ID);
+    void twoRacingCompletersProduceExactlyOneTransferredAndOneAlreadyDone() throws Exception {
+      computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
       var ready = new CountDownLatch(2);
       var go = new CountDownLatch(1);
       Callable<CompletionResult> first =
@@ -211,19 +176,8 @@ class SubstrateComputationsTest {
         results = List.of(futureA.get(), futureB.get());
       }
       assertThat(results).hasSize(2);
-      assertThat(results).filteredOn(r -> r == CompletionResult.COMPLETED).hasSize(1);
-      assertThat(results).filteredOn(r -> r == CompletionResult.ALREADY_TERMINAL).hasSize(1);
-    }
-
-    @Test
-    void aForeignSuccessPayloadIsRejectedAndTheDocumentStaysAbsent() {
-      var id = ComputationId.of("tool:t:a:c-foreign");
-      var foreign = new Outcome.Success("a bare string");
-
-      assertThatThrownBy(() -> computations.complete(id, foreign))
-          .isInstanceOf(IllegalArgumentException.class);
-
-      assertThat(store.read("computation", id.value())).isEmpty();
+      assertThat(results).filteredOn(r -> r == CompletionResult.TRANSFERRED).hasSize(1);
+      assertThat(results).filteredOn(r -> r == CompletionResult.ALREADY_DONE).hasSize(1);
     }
   }
 
@@ -235,99 +189,13 @@ class SubstrateComputationsTest {
       var writer = new SubstrateComputations(store, TestMappers.plainlyPinned());
       var reader = new SubstrateComputations(store, TestMappers.plainlyPinned());
 
-      writer.create(ID);
-      writer.await(ID, RESUME);
+      writer.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
+
+      assertThat(reader.find(ID)).isPresent();
+
       writer.complete(ID, new Outcome.Success(ToolResult.ok("shared")));
 
-      assertThat(reader.status(ID)).contains(ComputationStatus.SUCCEEDED);
-      assertThat(reader.continuationsOf(ID)).containsExactly(RESUME);
-      assertThat(reader.await(ID, RESUME))
-          .isEqualTo(
-              new AwaitResult.AlreadyCompleted(new Outcome.Success(ToolResult.ok("shared"))));
-    }
-  }
-
-  @Nested
-  class RaceFreeAwait {
-
-    @Test
-    void awaitAndCompleteCannotMissEachOther() throws Exception {
-      for (int round = 0; round < 100; round++) {
-        var id = ComputationId.of("race-" + round);
-        computations.create(id);
-        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
-          var awaited = pool.submit(() -> computations.await(id, RESUME));
-          var completed =
-              pool.submit(() -> computations.complete(id, new Outcome.Success(ToolResult.ok("v"))));
-          AwaitResult result = awaited.get();
-          completed.get();
-          if (result instanceof AwaitResult.Registered) {
-            assertThat(computations.continuationsOf(id)).containsExactly(RESUME);
-          } else {
-            assertThat(result)
-                .isEqualTo(
-                    new AwaitResult.AlreadyCompleted(new Outcome.Success(ToolResult.ok("v"))));
-          }
-        }
-      }
-    }
-  }
-
-  @Nested
-  class DeterministicConflictRetries {
-
-    @Test
-    void completesFlipConflictRetriesToAlreadyTerminalWithTheCompetitorsOutcome() {
-      computations.create(ID);
-      var competitorOutcome = new Outcome.Failure("competitor");
-      byte[] competitorPayload =
-          codec
-              .toJson(new SlotDocument(ComputationStatus.FAILED, competitorOutcome, List.of()))
-              .getBytes(StandardCharsets.UTF_8);
-      var raced =
-          new SubstrateComputations(
-              new RaceOnceOnWriteSubstrate(store, competitorPayload), TestMappers.plainlyPinned());
-
-      CompletionResult result = raced.complete(ID, new Outcome.Success(ToolResult.ok("mine")));
-
-      assertThat(result).isEqualTo(CompletionResult.ALREADY_TERMINAL);
-      assertThat(computations.await(ID, RESUME))
-          .isEqualTo(new AwaitResult.AlreadyCompleted(competitorOutcome));
-    }
-
-    @Test
-    void completesRulingSixAbsentConflictRetriesAndStillCompletes() {
-      var id = ComputationId.of("tool:t:a:ruling-six-race");
-      byte[] competitorPayload =
-          codec
-              .toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of()))
-              .getBytes(StandardCharsets.UTF_8);
-      var raced =
-          new SubstrateComputations(
-              new RaceOnceOnWriteSubstrate(store, competitorPayload), TestMappers.plainlyPinned());
-
-      CompletionResult result = raced.complete(id, new Outcome.Success(ToolResult.ok("mine")));
-
-      assertThat(result).isEqualTo(CompletionResult.COMPLETED);
-      assertThat(computations.status(id)).contains(ComputationStatus.SUCCEEDED);
-    }
-
-    @Test
-    void awaitConflictRetriesAndKeepsBothContinuations() {
-      computations.create(ID);
-      var other = new Continuation("OTHER", "{}");
-      byte[] competitorPayload =
-          codec
-              .toJson(new SlotDocument(ComputationStatus.PENDING, null, List.of(other)))
-              .getBytes(StandardCharsets.UTF_8);
-      var raced =
-          new SubstrateComputations(
-              new RaceOnceOnWriteSubstrate(store, competitorPayload), TestMappers.plainlyPinned());
-
-      AwaitResult result = raced.await(ID, RESUME);
-
-      assertThat(result).isEqualTo(new AwaitResult.Registered());
-      assertThat(computations.continuationsOf(ID)).containsExactlyInAnyOrder(other, RESUME);
+      assertThat(reader.find(ID)).isEmpty();
     }
   }
 }

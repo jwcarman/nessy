@@ -17,31 +17,24 @@ package org.jwcarman.nessy.agent.durable;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.CompletionResult;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.durable.Outcome;
 
 /**
- * The result door (§4.3 amendment): completes {@code tool:} slots — "what did it return?" — with a
- * {@code ToolResult}, addressed by the call's own deterministic identity. The desk holds no state
- * of its own, because the backend is the state. Re-drives re-derive the same id, so there is
- * exactly one handle per question, ever.
- *
- * <p>Complete-then-fire, at-least-once (plan decision 3): a handler throw during fire propagates
- * with the slot already terminal, leaving delivery deferred — no floor re-drives it promptly.
- * Prompt delivery (a sweeper, or the Plan-5 outbox) is future work; until it lands, a stranded
- * scope resumes only on its next observation or on a staleness re-drive.
+ * The result door (durable-deliveries spec §5): completes {@code tool:} computations — "what did it
+ * return?" — with a {@code ToolResult}, addressed by the call's own deterministic identity.
+ * Complete, then nudge the delivery worker, exactly as {@link ApprovalDesk} does; see its javadoc
+ * for why a second completion is not refused loudly.
  */
 public final class CompletionDesk {
 
   private final DurableComputationBackend backend;
-  private final ContinuationDispatcher dispatcher;
+  private final Runnable nudge;
 
-  public CompletionDesk(DurableComputationBackend backend, ContinuationDispatcher dispatcher) {
+  public CompletionDesk(DurableComputationBackend backend, Runnable nudge) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
-    this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher must not be null");
+    this.nudge = Objects.requireNonNull(nudge, "nudge must not be null");
   }
 
   public void complete(ComputationId id, ToolResult result) {
@@ -56,9 +49,7 @@ public final class CompletionDesk {
 
   private void finish(ComputationId id, Outcome outcome) {
     Objects.requireNonNull(id, "id must not be null");
-    if (backend.complete(id, outcome) == CompletionResult.ALREADY_TERMINAL) {
-      throw new IllegalStateException("already completed: " + id.value());
-    }
-    dispatcher.fire(backend.continuationsOf(id), outcome);
+    backend.complete(id, outcome);
+    nudge.run();
   }
 }

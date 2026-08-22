@@ -23,13 +23,13 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
-import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -52,15 +52,14 @@ import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ComputationStatus;
-import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.spi.model.ModelEvent;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * The narrated proof (the-slot plan, Task 6): a turn parks on approval, the instance becomes
- * garbage, and the approval builds a FRESH agent to finish the turn — the out-of-band bind of spec
- * §4.3, demonstrated in one lambda.
+ * The narrated proof (durable-deliveries spec §5): a turn parks on a durable tool, the instance
+ * becomes garbage, and the completion desk nudges a delivery worker built against a FRESH agent
+ * every time — the out-of-band bind of spec §4.3, and the delivery pipeline replacing what used to
+ * be a continuation dispatcher's live fire.
  */
 class DurableParkDemo {
 
@@ -89,17 +88,15 @@ class DurableParkDemo {
   }
 
   @Test
-  void aParkedTurnSurvivesInstanceDeathAndResumesOnAFreshAgent() {
+  void aParkedTurnSurvivesInstanceDeathAndResumesViaTheDeliveryPipeline() {
     // the durable world — everything an instance is NOT
     var pump = new PumpedExecutor();
-    var memory = new VerbatimMemory();
     var substrate = new InMemorySubstrate();
+    var memory = new SubstrateMemory(substrate, "demo", TestMappers.plainlyPinned());
     var store =
         new SubstrateAgentStateStore(
             substrate, "demo", Clock.systemUTC(), TestMappers.plainlyPinned());
     var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
-    var dispatcher = new ContinuationDispatcher();
-    var desk = new CompletionDesk(backend, dispatcher);
     var narrator = new RecordingTurnObserver();
     var type = AgentType.of("approver");
     var id = AgentId.of("demo");
@@ -129,7 +126,6 @@ class DurableParkDemo {
         };
 
     // a FRESH DefaultAgent over the shared world, every time anyone needs one
-    var scopeResumptionRef = new AtomicReference<ScopeResumption>();
     Supplier<DefaultAgent<String>> agents =
         () ->
             TestAgents.<String>wired(
@@ -145,26 +141,42 @@ class DurableParkDemo {
                     id,
                     narrator,
                     pump,
-                    new SlotDeferredToolCallPolicy(backend, scopeResumptionRef.get()),
+                    new ComputationDeferredToolCallPolicy(backend, TestMappers.plainlyPinned()),
                     TestMappers.plainlyPinned()),
                 AgentObserver.noop(),
                 false,
                 StalenessPolicy.never());
-
-    var scopeResumption =
-        new ScopeResumption(
-            (t, i, event) -> agents.get().deliver(event), TestMappers.plainlyPinned());
-    scopeResumptionRef.set(scopeResumption);
-    dispatcher.register(ScopeResumption.TYPE, scopeResumption);
+    var harness =
+        TestAgents.<String>harness(
+            memory,
+            store,
+            backlog,
+            text -> List.of(new TextBlock(text)),
+            new ProviderModelCallExecutor(
+                provider, TestSettings.settings(), registry, memory, narrator, pump),
+            new RegistryToolCallExecutor(
+                registry,
+                type,
+                id,
+                narrator,
+                pump,
+                new ComputationDeferredToolCallPolicy(backend, TestMappers.plainlyPinned()),
+                TestMappers.plainlyPinned()),
+            AgentObserver.noop(),
+            false,
+            StalenessPolicy.never());
+    AgentResolver resolver = (t, i) -> agents.get();
+    var worker = new DeliveryWorker<>(substrate, TestMappers.plainlyPinned(), harness, resolver);
+    var desk = new CompletionDesk(backend, worker::nudge);
 
     System.out.println("== turn begins ==");
     agents.get().observe("please restart prod");
     pump.pumpUntilQuiet();
 
-    var slot = ComputationId.of("tool:approver:demo:c1");
+    var computation = ComputationId.of("tool:approver:demo:c1");
     System.out.println("phase after park: " + store.load().phase().getClass().getSimpleName());
     assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
-    assertThat(backend.status(slot)).contains(ComputationStatus.PENDING);
+    assertThat(backend.find(computation)).isPresent();
     // only the observation is committed; the assistant tool-use turn is held back
     assertThat(memory.recall().messages())
         .containsExactly(Message.user(List.of(new TextBlock("please restart prod"))));
@@ -172,12 +184,12 @@ class DurableParkDemo {
     assertThat(narrator.events()).noneMatch(e -> e instanceof TurnEvent.ToolCallCompleted);
 
     System.out.println("== the instance is garbage; hours pass; any node may answer ==");
-    desk.complete(slot, ToolResult.ok("approved by jcarman"));
+    desk.complete(computation, ToolResult.ok("approved by jcarman"));
     pump.pumpUntilQuiet();
 
     System.out.println("final phase: " + store.load().phase());
     assertThat(store.load().phase()).isEqualTo(new Phase.Idle());
-    assertThat(backend.status(slot)).contains(ComputationStatus.SUCCEEDED);
+    assertThat(backend.find(computation)).isEmpty();
 
     List<Message> transcript = memory.recall().messages();
     System.out.println("transcript:");

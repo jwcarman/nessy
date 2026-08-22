@@ -22,16 +22,19 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.durable.Continuation;
-import org.jwcarman.nessy.durable.ContinuationHandler;
 import org.jwcarman.nessy.durable.Outcome;
 
 /**
- * The approval continuation (spec §4.3 amendment): a poke, not a payload. On fire, the scope
- * re-dispatches its outstanding effects unconditionally — staleness does not gate a decided
- * approval. The decision itself travels through the gate's own slot read, so the outcome carried by
- * the continuation is ignored here; only the scope coordinate matters.
+ * A poke, not a payload (durable-deliveries spec §5): on fire, the scope re-dispatches its
+ * outstanding {@code ExecuteTool} effects unconditionally — staleness does not gate a decided
+ * approval. Any decision the outcome carries is ignored here; only the scope coordinate matters,
+ * which is why this decodes any continuation whose data carries {@code agentType}/{@code agentId},
+ * including the richer {@code SCOPE_RESUME} shape the delivery worker reads for completions — the
+ * extra {@code call} field is simply unused. The delivery worker reuses this exact mechanism for an
+ * approval grant: the tool has not run yet, so there is no {@code ToolFinished} to fold — only a
+ * re-fire of the still-outstanding call.
  */
-public final class ScopeRedrive implements ContinuationHandler {
+public final class ScopeRedrive {
 
   public static final String TYPE = "REDRIVE_SCOPE";
 
@@ -55,7 +58,6 @@ public final class ScopeRedrive implements ContinuationHandler {
     return new Continuation(TYPE, data.toString());
   }
 
-  @Override
   public void completed(Continuation continuation, Outcome outcome) {
     JsonNode data;
     try {

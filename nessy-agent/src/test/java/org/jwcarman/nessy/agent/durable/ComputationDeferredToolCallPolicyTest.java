@@ -19,53 +19,48 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.ScopeResumption;
-import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ComputationStatus;
-import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.durable.PendingComputation;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
-class SlotDeferredToolCallPolicyTest {
+class ComputationDeferredToolCallPolicyTest {
 
   private final SubstrateComputations backend =
       new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
-  private final ScopeResumption scopeResumption =
-      new ScopeResumption((type, id, event) -> {}, TestMappers.plainlyPinned());
-  private final SlotDeferredToolCallPolicy policy =
-      new SlotDeferredToolCallPolicy(backend, scopeResumption);
+  private final ComputationDeferredToolCallPolicy policy =
+      new ComputationDeferredToolCallPolicy(backend, TestMappers.plainlyPinned());
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
   private static final CallAddress ADDRESS = new CallAddress("approver", "demo", "c1");
-  private static final ComputationId SLOT = ComputationId.of("tool:approver:demo:c1");
+  private static final ComputationId COMPUTATION = ComputationId.of("tool:approver:demo:c1");
 
   @Test
-  void aFirstParkCreatesTheSlotRegistersAndSuspends() {
-    assertThat(policy.onDeferred(CALL, ADDRESS)).isEqualTo(new ToolExecution.Deferred(SLOT));
-    assertThat(backend.status(SLOT)).contains(ComputationStatus.PENDING);
-    assertThat(backend.continuationsOf(SLOT)).hasSize(1);
+  void aFirstDeferralCreatesTheComputationAndSuspends() {
+    assertThat(policy.onDeferred(CALL, ADDRESS)).isEqualTo(new ToolExecution.Deferred(COMPUTATION));
+    assertThat(backend.find(COMPUTATION)).isPresent();
   }
 
   @Test
-  void aReDriveFindsTheExistingSlotAndStaysSuspended() {
+  void aReDriveFindsTheExistingComputationAndStaysSuspended() {
     policy.onDeferred(CALL, ADDRESS);
-    assertThat(policy.onDeferred(CALL, ADDRESS)).isEqualTo(new ToolExecution.Deferred(SLOT));
-    assertThat(backend.create(SLOT).created()).isFalse();
-    assertThat(backend.continuationsOf(SLOT)).hasSize(1);
+
+    assertThat(policy.onDeferred(CALL, ADDRESS)).isEqualTo(new ToolExecution.Deferred(COMPUTATION));
+
+    PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
+    assertThat(pending.returnAddress().type()).isEqualTo("SCOPE_RESUME");
   }
 
   @Test
-  void anAnswerThatArrivedWhileAwayDeliversNow() {
-    backend.create(SLOT);
-    backend.complete(SLOT, new Outcome.Success(ToolResult.ok("pre-approved")));
-    assertThat(policy.onDeferred(CALL, ADDRESS))
-        .isEqualTo(
-            new ToolExecution.Immediate(new ToolOutcome.Returned(ToolResult.ok("pre-approved"))));
+  void theReturnAddressCarriesTheCall() {
+    policy.onDeferred(CALL, ADDRESS);
+
+    PendingComputation pending = backend.find(COMPUTATION).orElseThrow();
+    assertThat(pending.returnAddress().data()).contains("restart_prod").contains("demo");
+    assertThat(pending.invocation().callId()).isEqualTo("c1");
   }
 }

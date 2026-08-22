@@ -27,8 +27,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.durable.DurableDecisions;
-import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
@@ -132,7 +132,6 @@ class ScopeRedriveTest {
           }
         };
 
-    var scopeResumption = new ScopeResumption((t, i, e) -> {}, TestMappers.plainlyPinned());
     var counting =
         new CountingToolCallExecutor(
             new RegistryToolCallExecutor(
@@ -141,7 +140,7 @@ class ScopeRedriveTest {
                 id,
                 narrator,
                 pump,
-                new SlotDeferredToolCallPolicy(backend, scopeResumption),
+                new ComputationDeferredToolCallPolicy(backend, TestMappers.plainlyPinned()),
                 TestMappers.plainlyPinned()));
 
     Supplier<DefaultAgent<String>> agents =

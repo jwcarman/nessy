@@ -23,7 +23,8 @@ import org.jwcarman.nessy.spi.approval.Adjudication;
 
 /**
  * The one mapping from a durable outcome to the approval grammar (spec §4.3 amendment): the
- * approval slot completes with a {@code Decision} — answering "no" is a successful adjudication.
+ * approval computation completes with a {@code Decision} — answering "no" is a successful
+ * adjudication.
  */
 public final class DurableDecisions {
 
@@ -41,10 +42,12 @@ public final class DurableDecisions {
     return new Outcome.Success(new Decision.Deny(reason));
   }
 
-  /** {@code slot} names the id in an unexpected-payload message; it carries no other duty. */
-  public static Adjudication toAdjudication(Outcome outcome, ComputationId slot) {
+  /**
+   * {@code computation} names the id in an unexpected-payload message; it carries no other duty.
+   */
+  public static Adjudication toAdjudication(Outcome outcome, ComputationId computation) {
     Objects.requireNonNull(outcome, "outcome must not be null");
-    Objects.requireNonNull(slot, "slot must not be null");
+    Objects.requireNonNull(computation, "computation must not be null");
     return switch (outcome) {
       case Outcome.Success(Decision.Allow()) -> new Adjudication.Granted();
       case Outcome.Success(Decision.Deny(String reason)) -> new Adjudication.Refused(reason);
@@ -52,8 +55,8 @@ public final class DurableDecisions {
           new Adjudication.Refused(
               "unexpected approval payload: "
                   + value.getClass().getName()
-                  + " (slot "
-                  + slot.value()
+                  + " (computation "
+                  + computation.value()
                   + ")");
       case Outcome.Failure(String message) -> new Adjudication.Refused(message);
       case Outcome.Cancelled(String reason) -> new Adjudication.Refused("cancelled: " + reason);

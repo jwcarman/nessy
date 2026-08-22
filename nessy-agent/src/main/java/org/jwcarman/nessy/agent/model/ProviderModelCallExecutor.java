@@ -102,7 +102,7 @@ public final class ProviderModelCallExecutor implements ModelCallExecutor {
 
   /**
    * Mints the {@link ModelResponseId} for this response here, at arrival — never in the reducer
-   * (durable-parcels spec §2 purity law): a CAS-retry re-handling the same {@code ModelFinished}
+   * (durable-deliveries spec §2 purity law): a CAS-retry re-handling the same {@code ModelFinished}
    * event must fold to identical state, which only holds if the id already rode in on the event.
    */
   private ModelOutcome stream(ModelRequest request) {

@@ -113,7 +113,7 @@ public sealed interface Phase {
    * @param pending the still-outstanding tool-call ids; normalized to a sorted, unmodifiable set so
    *     wire serialization is deterministic without codec-side sorting
    * @param responseId the id of the model response that produced {@code assistantTurn} — carried on
-   *     the wire (durable-parcels spec §2), never generated here (the reducer stays a pure fold)
+   *     the wire (durable-deliveries spec §2), never generated here (the reducer stays a pure fold)
    */
   record AwaitingTools(
       Message assistantTurn,

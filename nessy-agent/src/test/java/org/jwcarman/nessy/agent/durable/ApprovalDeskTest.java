@@ -16,67 +16,62 @@
 package org.jwcarman.nessy.agent.durable;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
-import org.jwcarman.nessy.durable.ContinuationDispatcher;
-import org.jwcarman.nessy.durable.Outcome;
-import org.jwcarman.nessy.spi.approval.Adjudication;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * The approve/deny door: two decisions, one vocabulary — {@code Decision} (spec §4.3 amendment).
+ * The approve/deny door: two decisions, one vocabulary — {@code Decision} (durable-deliveries spec
+ * §5).
  */
 class ApprovalDeskTest {
 
-  private record Fired(Continuation continuation, Outcome outcome) {}
-
   private final SubstrateComputations backend =
       new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
-  private final ContinuationDispatcher dispatcher = new ContinuationDispatcher();
-  private final List<Fired> fired = new ArrayList<>();
-  private final ApprovalDesk desk = new ApprovalDesk(backend, dispatcher);
+  private int nudges;
+  private final ApprovalDesk desk = new ApprovalDesk(backend, () -> nudges++);
 
-  private static final ComputationId SLOT = ComputationId.of("approval:t:a:c1");
-  private static final Continuation REDRIVE = new Continuation("REDRIVE_SCOPE", "{}");
+  private static final ComputationId COMPUTATION = ComputationId.of("approval:t:a:c1");
+  private static final ToolInvocationId INVOCATION = new ToolInvocationId("response-1", "c1");
+  private static final Continuation RETURN_ADDRESS = new Continuation("SCOPE_RESUME", "{}");
 
   private void park() {
-    dispatcher.register("REDRIVE_SCOPE", (c, o) -> fired.add(new Fired(c, o)));
-    backend.create(SLOT);
-    backend.await(SLOT, REDRIVE);
+    backend.create(COMPUTATION, INVOCATION, RETURN_ADDRESS, Optional.empty());
   }
 
   @Test
-  void approvingCompletesTheSlotWithAllowAndFiresContinuations() {
+  void approvingTransfersOwnershipAndNudgesTheWorker() {
     park();
-    desk.approve(SLOT);
-    assertThat(backend.status(SLOT)).contains(ComputationStatus.SUCCEEDED);
-    assertThat(fired).hasSize(1);
-    assertThat(DurableDecisions.toAdjudication(fired.get(0).outcome(), SLOT))
-        .isEqualTo(new Adjudication.Granted());
+
+    desk.approve(COMPUTATION);
+
+    assertThat(backend.find(COMPUTATION)).isEmpty();
+    assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void denyingCompletesTheSlotWithTheDenyDecision() {
+  void denyingTransfersOwnershipAndNudgesTheWorker() {
     park();
-    desk.deny(SLOT, "no");
-    assertThat(fired).hasSize(1);
-    assertThat(DurableDecisions.toAdjudication(fired.get(0).outcome(), SLOT))
-        .isEqualTo(new Adjudication.Refused("no"));
+
+    desk.deny(COMPUTATION, "no");
+
+    assertThat(backend.find(COMPUTATION)).isEmpty();
+    assertThat(nudges).isEqualTo(1);
   }
 
   @Test
-  void aSecondDecisionIsRefusedLoudly() {
+  void aSecondDecisionOnAnAlreadyTransferredComputationIsBenignNotAThrow() {
     park();
-    desk.approve(SLOT);
-    assertThatThrownBy(() -> desk.deny(SLOT, "no"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("already decided");
+    desk.approve(COMPUTATION);
+
+    assertThatCode(() -> desk.deny(COMPUTATION, "too late")).doesNotThrowAnyException();
+
+    assertThat(nudges).isEqualTo(2); // both decisions nudge; the worker's own drain is idempotent
   }
 }

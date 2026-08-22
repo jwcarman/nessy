@@ -18,9 +18,9 @@ package org.jwcarman.nessy.agent;
 import org.jwcarman.nessy.api.Identifiers;
 
 /**
- * A Nessy-generated identity for one committed model response (durable-parcels spec §2). Minted in
- * the model-call executor when the response arrives — never in the reducer, which stays a pure fold
- * (purity law: re-handling the same event must yield identical state). Closes the
+ * A Nessy-generated identity for one committed model response (durable-deliveries spec §2). Minted
+ * in the model-call executor when the response arrives — never in the reducer, which stays a pure
+ * fold (purity law: re-handling the same event must yield identical state). Closes the
  * provider-uniqueness hole a raw {@code ToolCall.id()} leaves open, since provider call ids are not
  * contractually unique over an agent's lifetime.
  */

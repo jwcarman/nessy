@@ -22,6 +22,7 @@ import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
+import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 
 /**
  * The long-running door (§7.1, §4.3 second-wave amendment): many scopes, one process, one shared
@@ -37,20 +38,23 @@ public final class AutonomousHost<O> implements AutoCloseable {
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
   private final Harness<O> harness;
+  private final DeliveryWorker<O> worker;
 
   /**
    * {@code owned} is null when the caller supplied its own executor — {@link #close()} then does
-   * nothing.
+   * nothing to it (the worker's own heartbeat thread is always stopped, regardless).
    */
   AutonomousHost(
       ExecutorService owned,
       ApprovalDesk approvals,
       CompletionDesk completions,
-      Harness<O> harness) {
+      Harness<O> harness,
+      DeliveryWorker<O> worker) {
     this.owned = owned;
     this.approvals = Objects.requireNonNull(approvals, "approvals must not be null");
     this.completions = Objects.requireNonNull(completions, "completions must not be null");
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
+    this.worker = Objects.requireNonNull(worker, "worker must not be null");
   }
 
   /** One observation through the front door; the scope drains it at Idle (spec §3.3). */
@@ -72,6 +76,7 @@ public final class AutonomousHost<O> implements AutoCloseable {
 
   @Override
   public void close() {
+    worker.close();
     if (owned != null) {
       owned.close();
     }

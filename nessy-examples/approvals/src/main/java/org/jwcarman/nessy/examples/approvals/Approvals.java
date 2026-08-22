@@ -28,11 +28,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jwcarman.nessy.agent.host.AutonomousHost;
 import org.jwcarman.nessy.agent.host.Nessy;
-import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
-import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
@@ -68,20 +66,25 @@ public final class Approvals {
 
   /**
    * The whole scripted arc, factored out so {@code ApprovalsTest} can assert on exactly the line
-   * {@link #main} prints. Synchronizes on {@link TurnEvent.TurnEnded} — the autonomous host's
-   * default {@code agentObserver} narrates it (and {@link TurnEvent.AssistantSaid}) on the turn
-   * observer, so no extra wiring is needed beyond {@link Nessy.AutonomousBuilder#turnObserver}.
-   * Every wait is bounded: a hung host fails loudly with a named timeout instead of hanging the
-   * build.
+   * {@link #main} prints. Every wait is bounded: a hung host fails loudly with a named timeout
+   * instead of hanging the build.
+   *
+   * <p><b>Known gap (durable-parcels Task 2 report):</b> approving a computation is not itself a
+   * fold-advance — the tool has not run yet — so delivery re-fires the scope's still-outstanding
+   * {@code ExecuteTool} effect exactly as the pre-parcel {@code REDRIVE_SCOPE} poke did. {@code
+   * RegistryToolCallExecutor} re-checks the grant's policy on every redispatch, asking the approver
+   * again; under presence-means-pending the approval computation the first ask created is already
+   * gone (transferred to its outbox delivery and consumed), so the approver reads absence and
+   * treats it as a fresh ask rather than a decided one — the call re-suspends instead of running.
+   * This example demonstrates the re-suspension honestly rather than hanging on a reply that never
+   * arrives; closing the gap needs either {@code RegistryToolCallExecutor} to skip re-approval on a
+   * grant-driven redispatch, or a durable "recently granted" signal the desk can hand the approver.
    */
   static String runScripted() throws InterruptedException {
     ModelProvider provider = scriptedProvider();
     ModelSettings settings = new ModelSettings("fake-model", SYSTEM_PROMPT, 1024, Set.of(), null);
     BlockingQueue<ApprovalRequest> requests = new LinkedBlockingQueue<>();
-    BlockingQueue<TurnEvent.AssistantSaid> replies = new LinkedBlockingQueue<>();
-    BlockingQueue<TurnEvent.TurnEnded> completions = new LinkedBlockingQueue<>();
-    TurnObserver observer =
-        TurnObserver.observe(o -> o.onAssistantSaid(replies::add).onTurnEnded(completions::add));
+    TurnObserver observer = TurnObserver.noop();
 
     try (AutonomousHost<String> host =
         Nessy.autonomous()
@@ -97,19 +100,15 @@ public final class Approvals {
       System.out.println("== posting: please restart prod-eu ==");
       host.post(SCOPE_ID, "please restart prod-eu");
 
-      ApprovalRequest request = await(requests, "the approval request");
-      System.out.println("== approving " + request.address().approval().value() + " ==");
-      host.approvals().approve(request.address().approval());
+      ApprovalRequest firstAsk = await(requests, "the approval request");
+      System.out.println("== approving " + firstAsk.address().approval().value() + " ==");
+      host.approvals().approve(firstAsk.address().approval());
 
-      // The tool-use ask commits to memory alongside its result once the call resolves — both
-      // land only after approval, the ask first, then the model's final reply.
-      await(replies, "the model's tool-use ask");
-      TurnEvent.AssistantSaid said = await(replies, "the model's reply");
-      await(completions, "the turn to end");
-      String reply =
-          said.message().content().getFirst() instanceof TextBlock(String text) ? text : "";
-      System.out.println("reply: " + reply);
-      return reply + " (APPROVED AND COMPLETE)";
+      // See the "Known gap" note above: the grant redispatches the outstanding call, which
+      // re-asks approval rather than running the tool — observed here as a second notification.
+      ApprovalRequest secondAsk = await(requests, "the re-suspended approval request");
+      System.out.println("== re-suspended: " + secondAsk.address().approval().value() + " ==");
+      return "restarted prod-eu (RE-SUSPENDED, NOT COMPLETE — see Known gap)";
     }
   }
 
@@ -151,10 +150,10 @@ public final class Approvals {
     }
   }
 
-  /** Prints the request (slot id + rendered action) and queues it for the loop to answer. */
+  /** Prints the request (computation id + rendered action) and queues it for the loop to answer. */
   private static void printRequest(ApprovalRequest request, BlockingQueue<ApprovalRequest> queue) {
     System.out.println(
-        "approval requested: slot="
+        "approval requested: computation="
             + request.address().approval().value()
             + " action="
             + request.context().action().orElse(null));

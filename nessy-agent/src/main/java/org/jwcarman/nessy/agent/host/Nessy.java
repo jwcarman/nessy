@@ -33,16 +33,14 @@ import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.Binding;
 import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.ResolvingAgentBinder;
-import org.jwcarman.nessy.agent.ScopeRedrive;
-import org.jwcarman.nessy.agent.ScopeResumption;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
-import org.jwcarman.nessy.agent.durable.SlotApprover;
-import org.jwcarman.nessy.agent.durable.SlotDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.ComputationApprover;
+import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
+import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
@@ -60,7 +58,6 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.durable.ContinuationDispatcher;
 import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
@@ -331,7 +328,10 @@ public final class Nessy {
       return this;
     }
 
-    /** Fires once, point-to-point, the moment an approval slot is first asked (§4.3 amendment). */
+    /**
+     * Fires once, point-to-point, the moment an approval computation is first asked (§4.3
+     * amendment).
+     */
     public AutonomousBuilder<O> approvalNotifier(Consumer<ApprovalRequest> approvalNotifier) {
       this.approvalNotifier =
           Objects.requireNonNull(approvalNotifier, "approvalNotifier must not be null");
@@ -438,7 +438,6 @@ public final class Nessy {
       AgentObserver effectiveAgentObserver =
           agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
 
-      var dispatcher = new ContinuationDispatcher();
       var hostRef = new AtomicReference<AutonomousHost<O>>();
       AgentResolver resolver =
           (type, id) -> {
@@ -447,8 +446,6 @@ public final class Nessy {
             }
             return hostRef.get().agentFor(id);
           };
-      var scopeResumption = new ScopeResumption(new ResolvingAgentBinder(resolver), pinned);
-      var scopeRedrive = new ScopeRedrive(resolver, pinned);
 
       Harness<O> harness =
           Harness.of(
@@ -470,17 +467,16 @@ public final class Nessy {
                       binding.id(),
                       turnObserver,
                       exec,
-                      new SlotDeferredToolCallPolicy(effectiveBackend, scopeResumption),
-                      new SlotApprover(effectiveBackend, approvalNotifier, scopeRedrive),
+                      new ComputationDeferredToolCallPolicy(effectiveBackend, pinned),
+                      new ComputationApprover(effectiveBackend, approvalNotifier, pinned),
                       pinned));
 
-      dispatcher.register(ScopeResumption.TYPE, scopeResumption);
-      dispatcher.register(ScopeRedrive.TYPE, scopeRedrive);
-
-      var approvals = new ApprovalDesk(effectiveBackend, dispatcher);
-      var completions = new CompletionDesk(effectiveBackend, dispatcher);
-      var host = new AutonomousHost<>(owned, approvals, completions, harness);
+      var worker = new DeliveryWorker<>(effectiveSubstrate, pinned, harness, resolver);
+      var approvals = new ApprovalDesk(effectiveBackend, worker::nudge);
+      var completions = new CompletionDesk(effectiveBackend, worker::nudge);
+      var host = new AutonomousHost<>(owned, approvals, completions, harness, worker);
       hostRef.set(host);
+      worker.start();
       return host;
     }
   }

@@ -20,35 +20,35 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
+import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
 /**
- * Internal storage machinery: renders the {@code computation} document — {@code {status, outcome?,
- * continuations[]}} (substrate spec §6.5) — to and from the JSON the byte-payload substrate
- * persists. Not API vocabulary; only {@link SubstrateComputations} calls this.
+ * Internal storage machinery: renders the two documents the {@code computation} and {@code outbox}
+ * recipes persist (durable-deliveries spec §3, §4) to and from the JSON the byte-payload substrate
+ * stores. Not API vocabulary; only {@link SubstrateComputations} calls this.
  *
  * <p>{@link Outcome}, {@link Decision}, and {@link ToolResult} live in {@code nessy-durable} and
- * {@code nessy-api} respectively and stay Jackson-free by design ({@code nessy-durable} carries no
- * Jackson dependency at all). So this codec binds a private, mapper-annotated wire shape instead
- * (mirroring the {@code Schemas}/{@code SealedInputs}/{@code MessageCodec} discriminator
- * convention) and hand-translates it to and from the domain types; that translation IS the
- * closed-vocabulary door — a {@code Success} outcome whose payload is neither {@link ToolResult}
- * nor {@link Decision} is rejected here, before any write.
+ * {@code nessy-api} respectively and stay Jackson-free by design. This codec binds a private,
+ * mapper-annotated wire shape instead and hand-translates it to and from the domain types; that
+ * translation IS the closed-vocabulary door for the delivery's outcome payload — a {@code Success}
+ * outcome whose payload is neither {@link ToolResult} nor {@link Decision} is rejected here, before
+ * any write.
  *
- * <p>The wire vocabulary this codec owns, a compatibility surface once emitted: an {@code outcome}
- * carries a {@code "type"} discriminator naming it {@code success}, {@code failure}, or {@code
- * cancelled}; a {@code success} outcome's {@code payload} carries its own {@code "type"}
- * discriminator naming it {@code tool-result}, {@code allow}, or {@code deny}. An absent {@code
- * outcome} (the {@code PENDING} case) omits the key entirely, matching the hand-rolled codec this
- * one replaced.
+ * <p>The wire vocabulary this codec owns, a compatibility surface once emitted: a {@code
+ * computation} document is {@code {invocation: {responseId, callId}, returnAddress: {type, data},
+ * deadline?}}; an {@code outbox} delivery is {@code {destination: {type, data}, outcome: {type,
+ * ...}}}, whose {@code outcome} carries a {@code "type"} discriminator naming it {@code success},
+ * {@code failure}, or {@code cancelled}, and whose {@code success} payload carries its own {@code
+ * "type"} discriminator naming it {@code tool-result}, {@code allow}, or {@code deny}.
  *
  * <p>Reads are tolerant: unknown fields are ignored. Malformed JSON or an unrecognized
  * discriminator fails loudly with an {@link IllegalArgumentException} naming the offense.
@@ -56,10 +56,10 @@ import org.jwcarman.nessy.durable.Outcome;
 final class OutcomeCodec {
 
   private static final String TYPE = "type";
-  private static final String OUTCOME = "outcome";
   private static final String PAYLOAD = "payload";
-  private static final String CONTINUATIONS = "continuations";
-  private static final String COMPUTATION_SLOT = "computation slot";
+  private static final String OUTCOME = "outcome";
+  private static final String DELIVERY = "delivery";
+  private static final String COMPUTATION = "computation";
 
   private static final String TYPE_SUCCESS = "success";
   private static final String TYPE_FAILURE = "failure";
@@ -79,17 +79,35 @@ final class OutcomeCodec {
     this.codecs = new Codecs(mapper);
   }
 
-  /**
-   * The {@code computation} document's shape: {@code status} always present, {@code outcome} null
-   * while {@code PENDING}.
-   */
-  record SlotDocument(ComputationStatus status, Outcome outcome, List<Continuation> continuations) {
+  /** The {@code computation} document's shape: presence alone means pending (spec §3). */
+  record PendingDocument(
+      ToolInvocationId invocation, Continuation returnAddress, Optional<Instant> deadline) {
 
-    SlotDocument {
-      Objects.requireNonNull(status, "status must not be null");
-      Objects.requireNonNull(continuations, "continuations must not be null");
-      continuations = List.copyOf(continuations);
+    PendingDocument {
+      Objects.requireNonNull(invocation, "invocation must not be null");
+      Objects.requireNonNull(returnAddress, "returnAddress must not be null");
+      Objects.requireNonNull(deadline, "deadline must not be null");
     }
+  }
+
+  /** The {@code outbox} delivery's shape (spec §4): a payload plus an address label. */
+  record DeliveryDocument(Continuation destination, Outcome outcome) {
+
+    DeliveryDocument {
+      Objects.requireNonNull(destination, "destination must not be null");
+      Objects.requireNonNull(outcome, "outcome must not be null");
+    }
+  }
+
+  String toJson(PendingDocument document) {
+    Objects.requireNonNull(document, "document must not be null");
+    return codecs.write(PendingDocumentWire.from(document));
+  }
+
+  PendingDocument pendingDocument(String json) {
+    Objects.requireNonNull(json, "json must not be null");
+    JsonNode root = codecs.readTree(json, COMPUTATION);
+    return codecs.bind(root, PendingDocumentWire.class, COMPUTATION).toDomain();
   }
 
   /**
@@ -97,17 +115,16 @@ final class OutcomeCodec {
    * ToolResult} nor {@link Decision} throws {@link IllegalArgumentException} here — before the
    * caller writes anything.
    */
-  String toJson(SlotDocument document) {
+  String toJson(DeliveryDocument document) {
     Objects.requireNonNull(document, "document must not be null");
-    return codecs.write(SlotDocumentWire.from(document));
+    return codecs.write(DeliveryDocumentWire.from(document));
   }
 
-  SlotDocument document(String json) {
+  DeliveryDocument deliveryDocument(String json) {
     Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = codecs.readTree(json, COMPUTATION_SLOT);
-    Codecs.requireArray(root, CONTINUATIONS, COMPUTATION_SLOT);
+    JsonNode root = codecs.readTree(json, DELIVERY);
     requireKnownOutcomeVocabulary(root.get(OUTCOME));
-    return codecs.bind(root, SlotDocumentWire.class, COMPUTATION_SLOT).toDomain();
+    return codecs.bind(root, DeliveryDocumentWire.class, DELIVERY).toDomain();
   }
 
   /**
@@ -141,29 +158,66 @@ final class OutcomeCodec {
     return value == null || value.isNull() ? null : value.asText();
   }
 
-  private record SlotDocumentWire(
-      ComputationStatus status,
-      @JsonInclude(JsonInclude.Include.NON_NULL) OutcomeWire outcome,
-      @JsonInclude(JsonInclude.Include.ALWAYS) List<ContinuationWire> continuations) {
+  /**
+   * {@code deadlineEpochMilli} rather than a Jackson-bound {@link Instant} directly: the pinned
+   * mapper carries no JSR-310 module (spec §7 pins lower-camel naming and tolerant reads, not a
+   * date/time module a caller may not want), so the wire shape stays a plain {@code Long}.
+   */
+  private record PendingDocumentWire(
+      ToolInvocationIdWire invocation,
+      ContinuationWire returnAddress,
+      @JsonInclude(JsonInclude.Include.NON_NULL) Long deadlineEpochMilli) {
 
-    SlotDocumentWire {
-      Objects.requireNonNull(status, "status must not be null");
+    PendingDocumentWire {
+      Objects.requireNonNull(invocation, "invocation must not be null");
+      Objects.requireNonNull(returnAddress, "returnAddress must not be null");
     }
 
-    static SlotDocumentWire from(SlotDocument document) {
-      return new SlotDocumentWire(
-          document.status(),
-          document.outcome() == null ? null : OutcomeWire.from(document.outcome()),
-          document.continuations().stream().map(ContinuationWire::from).toList());
+    static PendingDocumentWire from(PendingDocument document) {
+      return new PendingDocumentWire(
+          ToolInvocationIdWire.from(document.invocation()),
+          ContinuationWire.from(document.returnAddress()),
+          document.deadline().map(Instant::toEpochMilli).orElse(null));
     }
 
-    SlotDocument toDomain() {
-      return new SlotDocument(
-          status,
-          outcome == null ? null : outcome.toDomain(),
-          continuations == null
-              ? List.of()
-              : continuations.stream().map(ContinuationWire::toDomain).toList());
+    PendingDocument toDomain() {
+      return new PendingDocument(
+          invocation.toDomain(),
+          returnAddress.toDomain(),
+          Optional.ofNullable(deadlineEpochMilli).map(Instant::ofEpochMilli));
+    }
+  }
+
+  private record ToolInvocationIdWire(String responseId, String callId) {
+
+    ToolInvocationIdWire {
+      Objects.requireNonNull(responseId, "responseId must not be null");
+      Objects.requireNonNull(callId, "callId must not be null");
+    }
+
+    static ToolInvocationIdWire from(ToolInvocationId invocation) {
+      return new ToolInvocationIdWire(invocation.responseId(), invocation.callId());
+    }
+
+    ToolInvocationId toDomain() {
+      return new ToolInvocationId(responseId, callId);
+    }
+  }
+
+  private record DeliveryDocumentWire(ContinuationWire destination, OutcomeWire outcome) {
+
+    DeliveryDocumentWire {
+      Objects.requireNonNull(destination, "destination must not be null");
+      Objects.requireNonNull(outcome, "outcome must not be null");
+    }
+
+    static DeliveryDocumentWire from(DeliveryDocument document) {
+      return new DeliveryDocumentWire(
+          ContinuationWire.from(document.destination()), OutcomeWire.from(document.outcome()));
+    }
+
+    DeliveryDocument toDomain() {
+      return new DeliveryDocument(destination.toDomain(), outcome.toDomain());
     }
   }
 

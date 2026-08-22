@@ -104,8 +104,8 @@ class AwaitingModelPhaseTest {
   class Purity {
 
     /**
-     * The purity law (durable-parcels spec §2): {@code Phase.handle} never mints its own id, so a
-     * CAS-retry re-handling the same committed {@code ModelFinished} event against fresh state
+     * The purity law (durable-deliveries spec §2): {@code Phase.handle} never mints its own id, so
+     * a CAS-retry re-handling the same committed {@code ModelFinished} event against fresh state
      * folds to identical state — the carried {@code responseId} included — every time.
      */
     @Test

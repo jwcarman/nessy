@@ -15,8 +15,14 @@
  */
 package org.jwcarman.nessy.durable;
 
-/** Whether this completion attempt was the flip (durable spec §10, §23 — idempotent completion). */
+/**
+ * Whether this completion attempt was the ownership transfer (durable-deliveries spec §3): {@code
+ * TRANSFERRED} means this call durably moved the pending computation into its outbox delivery;
+ * {@code ALREADY_DONE} means the computation was absent — completed earlier by another racer, or
+ * never created at all. The two causes are indistinguishable and equally benign under at-least-once
+ * result delivery (ruling 6, reversed): completion never creates records.
+ */
 public enum CompletionResult {
-  COMPLETED,
-  ALREADY_TERMINAL
+  TRANSFERRED,
+  ALREADY_DONE
 }

@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.durable;
 
 /**
- * The logical identity of one tool invocation (durable-parcels spec §2): a model response paired
+ * The logical identity of one tool invocation (durable-deliveries spec §2): a model response paired
  * with the provider's call id inside that response. Stable across every redispatch and replay —
  * unlike a bare provider {@code ToolCall.id()}, which is not contractually unique over an agent's
  * lifetime, pairing it with the {@code responseId} that minted it closes that hole. Pure strings,

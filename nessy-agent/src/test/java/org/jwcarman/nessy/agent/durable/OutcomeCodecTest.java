@@ -19,39 +19,76 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
+import java.time.Instant;
+import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec.SlotDocument;
+import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
+import org.jwcarman.nessy.agent.durable.OutcomeCodec.PendingDocument;
 import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.ComputationStatus;
 import org.jwcarman.nessy.durable.Continuation;
 import org.jwcarman.nessy.durable.Outcome;
+import org.jwcarman.nessy.durable.ToolInvocationId;
 
 class OutcomeCodecTest {
 
   private static final OutcomeCodec CODEC = new OutcomeCodec(new ObjectMapper());
+  private static final ToolInvocationId INVOCATION = new ToolInvocationId("response-1", "call-1");
+  private static final Continuation RETURN_ADDRESS = new Continuation("SCOPE_RESUME", "{\"a\":1}");
 
   @Nested
-  class ClosedVocabularyRoundTrips {
+  class PendingComputationRoundTrips {
+
+    @Test
+    void aDeadlinelessPendingDocumentRoundTripsEqual() {
+      var document = new PendingDocument(INVOCATION, RETURN_ADDRESS, Optional.empty());
+
+      var roundTripped = CODEC.pendingDocument(CODEC.toJson(document));
+
+      assertThat(roundTripped).isEqualTo(document);
+    }
+
+    @Test
+    void aDeadlinedPendingDocumentRoundTripsEqual() {
+      var deadline = Instant.parse("2026-08-22T12:00:00Z");
+      var document = new PendingDocument(INVOCATION, RETURN_ADDRESS, Optional.of(deadline));
+
+      var roundTripped = CODEC.pendingDocument(CODEC.toJson(document));
+
+      assertThat(roundTripped).isEqualTo(document);
+    }
+
+    @Test
+    void aDeadlinelessPendingDocumentEmitsTheExactGoldenShapeWithNoDeadlineKey() {
+      var document = new PendingDocument(INVOCATION, RETURN_ADDRESS, Optional.empty());
+
+      assertThat(CODEC.toJson(document))
+          .isEqualTo(
+              "{\"invocation\":{\"responseId\":\"response-1\",\"callId\":\"call-1\"},"
+                  + "\"returnAddress\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"}}");
+    }
+  }
+
+  @Nested
+  class DeliveryClosedVocabularyRoundTrips {
 
     @Test
     void aToolResultSuccessRoundTripsEqual() {
       var outcome = new Outcome.Success(ToolResult.ok("42"));
-      var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
-      var roundTripped = CODEC.document(CODEC.toJson(document));
+      var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
 
-      assertThat(roundTripped.outcome()).isEqualTo(outcome);
+      assertThat(roundTripped).isEqualTo(document);
     }
 
     @Test
     void anErroredToolResultSuccessRoundTripsEqual() {
       var outcome = new Outcome.Success(ToolResult.error("boom"));
-      var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
-      var roundTripped = CODEC.document(CODEC.toJson(document));
+      var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -59,9 +96,9 @@ class OutcomeCodecTest {
     @Test
     void anAllowDecisionSuccessRoundTripsEqual() {
       var outcome = new Outcome.Success(Decision.allow());
-      var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
-      var roundTripped = CODEC.document(CODEC.toJson(document));
+      var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -69,9 +106,9 @@ class OutcomeCodecTest {
     @Test
     void aDenyDecisionSuccessRoundTripsEqual() {
       var outcome = new Outcome.Success(new Decision.Deny("not today"));
-      var document = new SlotDocument(ComputationStatus.SUCCEEDED, outcome, List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
-      var roundTripped = CODEC.document(CODEC.toJson(document));
+      var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -79,9 +116,9 @@ class OutcomeCodecTest {
     @Test
     void aFailureRoundTripsEqual() {
       var outcome = new Outcome.Failure("it broke");
-      var document = new SlotDocument(ComputationStatus.FAILED, outcome, List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
-      var roundTripped = CODEC.document(CODEC.toJson(document));
+      var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
     }
@@ -89,105 +126,67 @@ class OutcomeCodecTest {
     @Test
     void aCancellationRoundTripsEqual() {
       var outcome = new Outcome.Cancelled("nobody cares");
-      var document = new SlotDocument(ComputationStatus.CANCELLED, outcome, List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
-      var roundTripped = CODEC.document(CODEC.toJson(document));
+      var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
 
       assertThat(roundTripped.outcome()).isEqualTo(outcome);
-    }
-
-    @Test
-    void aPendingDocumentHasNoOutcome() {
-      var document = new SlotDocument(ComputationStatus.PENDING, null, List.of());
-
-      var roundTripped = CODEC.document(CODEC.toJson(document));
-
-      assertThat(roundTripped.outcome()).isNull();
-    }
-
-    @Test
-    void continuationsRoundTripInOrder() {
-      var continuations =
-          List.of(new Continuation("RESUME_SCOPE", "{\"a\":1}"), new Continuation("TIMER", "{}"));
-      var document = new SlotDocument(ComputationStatus.PENDING, null, continuations);
-
-      var roundTripped = CODEC.document(CODEC.toJson(document));
-
-      assertThat(roundTripped.continuations()).containsExactlyElementsOf(continuations);
     }
   }
 
   @Nested
-  class GoldenShapes {
+  class DeliveryGoldenShapes {
 
     @Test
     void aToolResultSuccessEmitsTheExactGoldenShape() {
-      var document =
-          new SlotDocument(
-              ComputationStatus.SUCCEEDED, new Outcome.Success(ToolResult.ok("42")), List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success(ToolResult.ok("42")));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
-              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
-                  + "{\"type\":\"tool-result\",\"content\":\"42\",\"isError\":false}},"
-                  + "\"continuations\":[]}");
+              "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"},"
+                  + "\"outcome\":{\"type\":\"success\",\"payload\":"
+                  + "{\"type\":\"tool-result\",\"content\":\"42\",\"isError\":false}}}");
     }
 
     @Test
     void anAllowDecisionSuccessEmitsTheExactGoldenShape() {
-      var document =
-          new SlotDocument(
-              ComputationStatus.SUCCEEDED, new Outcome.Success(Decision.allow()), List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success(Decision.allow()));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
-              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
-                  + "{\"type\":\"allow\"}},\"continuations\":[]}");
+              "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"},"
+                  + "\"outcome\":{\"type\":\"success\",\"payload\":{\"type\":\"allow\"}}}");
     }
 
     @Test
     void aDenyDecisionSuccessEmitsTheExactGoldenShape() {
       var document =
-          new SlotDocument(
-              ComputationStatus.SUCCEEDED, new Outcome.Success(new Decision.Deny("no")), List.of());
+          new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success(new Decision.Deny("no")));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
-              "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":"
-                  + "{\"type\":\"deny\",\"reason\":\"no\"}},\"continuations\":[]}");
+              "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"},"
+                  + "\"outcome\":{\"type\":\"success\",\"payload\":{\"type\":\"deny\",\"reason\":\"no\"}}}");
     }
 
     @Test
     void aFailureEmitsTheExactGoldenShape() {
-      var document =
-          new SlotDocument(ComputationStatus.FAILED, new Outcome.Failure("boom"), List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Failure("boom"));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
-              "{\"status\":\"FAILED\",\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"},"
-                  + "\"continuations\":[]}");
+              "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"},"
+                  + "\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"}}");
     }
 
     @Test
     void aCancellationEmitsTheExactGoldenShape() {
-      var document =
-          new SlotDocument(ComputationStatus.CANCELLED, new Outcome.Cancelled("meh"), List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Cancelled("meh"));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
-              "{\"status\":\"CANCELLED\",\"outcome\":{\"type\":\"cancelled\",\"reason\":\"meh\"},"
-                  + "\"continuations\":[]}");
-    }
-
-    @Test
-    void aPendingDocumentEmitsTheExactGoldenShapeWithNoOutcomeKey() {
-      var document =
-          new SlotDocument(
-              ComputationStatus.PENDING, null, List.of(new Continuation("TIMER", "{}")));
-
-      assertThat(CODEC.toJson(document))
-          .isEqualTo(
-              "{\"status\":\"PENDING\",\"continuations\":[{\"type\":\"TIMER\",\"data\":\"{}\"}]}");
+              "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{\\\"a\\\":1}\"},"
+                  + "\"outcome\":{\"type\":\"cancelled\",\"reason\":\"meh\"}}");
     }
   }
 
@@ -196,9 +195,7 @@ class OutcomeCodecTest {
 
     @Test
     void aSuccessPayloadOutsideTheClosedVocabularyIsRejected() {
-      var document =
-          new SlotDocument(
-              ComputationStatus.SUCCEEDED, new Outcome.Success("a bare string"), List.of());
+      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success("a bare string"));
 
       assertThatThrownBy(() -> CODEC.toJson(document))
           .isInstanceOf(IllegalArgumentException.class)
@@ -210,16 +207,23 @@ class OutcomeCodecTest {
   class MalformedInput {
 
     @Test
-    void malformedJsonIsRejected() {
-      assertThatThrownBy(() -> CODEC.document("not json"))
+    void malformedPendingJsonIsRejected() {
+      assertThatThrownBy(() -> CODEC.pendingDocument("not json"))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void malformedDeliveryJsonIsRejected() {
+      assertThatThrownBy(() -> CODEC.deliveryDocument("not json"))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void anUnknownOutcomeTypeIsRejected() {
       String json =
-          "{\"status\":\"FAILED\",\"outcome\":{\"type\":\"mystery\"},\"continuations\":[]}";
-      assertThatThrownBy(() -> CODEC.document(json))
+          "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{}\"},"
+              + "\"outcome\":{\"type\":\"mystery\"}}";
+      assertThatThrownBy(() -> CODEC.deliveryDocument(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unknown outcome type");
     }
@@ -227,9 +231,9 @@ class OutcomeCodecTest {
     @Test
     void anUnknownSuccessPayloadTypeIsRejected() {
       String json =
-          "{\"status\":\"SUCCEEDED\",\"outcome\":{\"type\":\"success\",\"payload\":{\"type\":\"mystery\"}},"
-              + "\"continuations\":[]}";
-      assertThatThrownBy(() -> CODEC.document(json))
+          "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":\"{}\"},"
+              + "\"outcome\":{\"type\":\"success\",\"payload\":{\"type\":\"mystery\"}}}";
+      assertThatThrownBy(() -> CODEC.deliveryDocument(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unknown success payload type");
     }

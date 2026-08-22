@@ -24,7 +24,7 @@ import java.util.Objects;
  * §10.11's staleness judgment, named: is this quiet phase dead enough for the recovery arm to
  * re-fire it (§6.1)? The {@link Clock} lives inside the policy, not the shell — the policy owns
  * time, and phase-awareness is the point: an implementation may consult {@code phase} to decide
- * that a scope quiet on purpose (suspended on an approval slot, say) is not stale at all.
+ * that a scope quiet on purpose (suspended on an approval computation, say) is not stale at all.
  */
 @FunctionalInterface
 public interface StalenessPolicy {
