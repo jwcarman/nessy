@@ -17,26 +17,41 @@ package org.jwcarman.nessy.agent.support;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.Remembrance;
 
-/** Remembers in order; recall is an executor concern the shell never touches. */
+/**
+ * Remembers every {@link Remembrance} in order, raw ({@link #facts()}), and delegates the
+ * provider-legal reassembly to a {@link VerbatimMemory} so {@link #remembered()} exposes the same
+ * reconstructed message sequence {@link #recall()} would hand a model — the shape most tests here
+ * actually want to assert on.
+ */
 public final class RecordingMemory implements Memory {
 
-  private final List<Message> remembered = new ArrayList<>();
+  private final List<Remembrance> facts = new ArrayList<>();
+  private final VerbatimMemory delegate = new VerbatimMemory();
 
   @Override
-  public void remember(Message message) {
-    remembered.add(message);
+  public void remember(Remembrance remembrance) {
+    facts.add(remembrance);
+    delegate.remember(remembrance);
   }
 
   @Override
   public Context recall() {
-    return Context.of(List.copyOf(remembered));
+    return delegate.recall();
   }
 
+  /** Every remembered fact, in remember order — raw, one entry per {@link #remember} call. */
+  public List<Remembrance> facts() {
+    return List.copyOf(facts);
+  }
+
+  /** The reassembled message sequence {@link #recall()} would produce. */
   public List<Message> remembered() {
-    return List.copyOf(remembered);
+    return delegate.recall().messages();
   }
 }

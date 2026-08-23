@@ -82,13 +82,21 @@ Handling one event is four steps, always in this order:
 
 ```java
 private void applyOnce(State state, AgentEvent event) {
-  Transition t = state.phase().handle(event);      // decide before committing
+  Transition t = state.phase().handle(event);       // decide before committing
   if (t.isIgnored()) { ... return; }
-  t.commit().forEach(binding.memory()::remember);   // commit before dispatch
+  remember(state.phase(), event, t);                // remember before commit
   binding.store().save(new State(t.next(), state.version()));
   t.effects().forEach(this::dispatch);
 }
 ```
+
+`remember` maps the event and its transition onto the `Remembrance` the
+fold implies — a `UserMessage`, an `AssistantMessage`, or a `ToolExchange`
+(remembrance spec §2) — and hands it to `binding.memory()`. Memory is not
+part of any atomic batch here: it is simply the first write, ahead of the
+state save, per `Memory`'s own append-before-commit law. See
+[Memory](memory.md) for the full vocabulary and the three laws that govern
+it.
 
 Save-before-dispatch is what makes the crash story clean: a phase saved to
 the store never *overstates* progress, because nothing dispatches until the

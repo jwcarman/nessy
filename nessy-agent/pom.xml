@@ -67,5 +67,13 @@
       <artifactId>assertj-core</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Test-only: SubstrateMemory and VerbatimMemory each run the MemoryContractTest conformance
+         suite (remembrance spec §5) against their own instance. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-testing</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

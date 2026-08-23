@@ -206,11 +206,16 @@ serialization; the substrate never sees anything but bytes.
   *is* the scope version: `SubstrateAgentStateStore.save` writes at
   `expectedVersion = state.version()`, and a lost race throws
   `StaleStateException`.
-- **Memory** (`kind=memory`) — one journal per scope, one entry per
-  message. `SubstrateMemory.remember` appends at `head + 1`; a conflicting
-  append means the head moved, so it re-reads and retries. `recall()` folds
-  every entry from seq 1 forward. Nothing here ever rewrites an entry — see
-  [Memory](memory.md).
+- **Memory** (`kind=memory`, plus `kind=memory-keys` for the idempotency
+  marker) — one journal per scope, one entry per `Remembrance`.
+  `SubstrateMemory.remember` is CAS-guarded against its marker document: a
+  key already known there makes `remember` a no-op; otherwise it appends at
+  `head + 1` in the same batch as the marker update, retrying on a lost
+  race. `recall()` folds every entry from seq 1 forward, reassembling
+  paired messages. Nothing here ever rewrites an entry — see
+  [Memory](memory.md). Memory is not part of the fold-advance batch below
+  (remembrance spec §1): a scope's `Memory` remembers before that batch
+  commits, never inside it.
 - **Backlog** (`kind=backlog`) — one document per scope holding the pending
   observations as a JSON array. **Observations are typed:**
   `SubstrateBacklog<O>` takes a `Codec<O>` — the `String` door defaults to a

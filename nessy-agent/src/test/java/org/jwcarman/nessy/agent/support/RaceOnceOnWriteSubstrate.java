@@ -25,7 +25,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * Simulates one lost race on {@link #write}: the first call to write is preceded by a competitor's
  * write (supplied by the test) landing first at the very {@code expectedVersion} the caller is
  * targeting, so the delegate throws a genuine {@code ConflictException}; every later write goes
- * straight through. Mirrors the {@code RaceOnceOnAppendSubstrate} convention.
+ * straight through.
  */
 public final class RaceOnceOnWriteSubstrate implements Substrate {
 

@@ -41,9 +41,11 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
+import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.ThrowingThenDelegatingMemory;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
@@ -57,6 +59,7 @@ import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -356,17 +359,18 @@ class DeliveryWorkerTest {
   }
 
   /**
-   * F1: {@link #requirePlainSubstrateMemory} must run BEFORE the granted tool ever executes, not
-   * only before the fold-advance batch — otherwise a non-plain-Memory scope fires the tool's
-   * external side effect, then throws, the per-item catch in {@link #drainOnce()} logs it, the
-   * delivery survives untouched, and the NEXT heartbeat repeats the whole thing. Zero tests tripped
-   * this before the fix; this one pins the fail-loud-before-any-side-effect ordering down.
+   * Remembrance spec §1: memory left the atomic batch, so the worker no longer inspects what kind
+   * of {@code Memory} a scope is wired with — the retired {@code requirePlainSubstrateMemory} guard
+   * this class used to run before every granted tool. A genuinely non-substrate {@code Memory}
+   * (here, {@link VerbatimMemory}, which keeps its own in-process list and never touches the
+   * worker's substrate at all) is now a first-class citizen: the tool runs, its outcome folds, and
+   * the delivery is consumed exactly as it would be over a {@link SubstrateMemory}.
    */
   @Nested
-  class NonPlainMemoryGuard {
+  class AnyMemoryIsFirstClass {
 
     @Test
-    void aNonPlainMemoryScopeFailsLoudlyBeforeTheToolEverRunsAndLeavesTheDeliveryInPlace() {
+    void aNonSubstrateMemoryScopeRunsTheToolAndConsumesTheDelivery() {
       var mapper = TestMappers.plainlyPinned();
       var store = new InMemorySubstrate();
       var tool = new CountingTool();
@@ -375,12 +379,11 @@ class DeliveryWorkerTest {
       var executor =
           new RegistryToolCallExecutor(
               registry, TYPE, ID, new RecordingTurnObserver(), pump, mapper);
-      // a non-plain Memory: VerbatimMemory keeps its own in-process list, never writes through the
-      // worker's substrate at all — exactly the wiring requirePlainSubstrateMemory must catch.
+      var memory = new VerbatimMemory();
       Harness<String> harness =
           TestAgents.harness(
               TYPE,
-              new VerbatimMemory(),
+              memory,
               new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper),
               new NoopBacklog(),
               text -> List.of(new TextBlock(text)),
@@ -398,11 +401,78 @@ class DeliveryWorkerTest {
           "grant",
           new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(Decision.allow())));
 
-      worker.nudge(); // must not throw out of nudge() — the per-item catch absorbs it
+      worker.nudge();
+      pump.pumpUntilQuiet();
 
-      assertThat(tool.invocations).hasValue(0); // the tool never ran
-      assertThat(store.keys(Kinds.outbox(TYPE), 10))
-          .containsExactly("grant"); // the delivery survives
+      assertThat(tool.invocations).hasValue(1); // the tool ran
+      assertThat(store.keys(Kinds.outbox(TYPE), 10)).isEmpty(); // the delivery is consumed
+    }
+  }
+
+  /**
+   * Remembrance spec §1 law 1 (fix round 1 Q1): a throwing {@code remember} must abort the fold
+   * attempt BEFORE the commit batch ever runs — the delivery stays exactly as it was, undeleted,
+   * and the scope's state is untouched, not partially advanced. Once memory heals, the very next
+   * redrive folds cleanly: the delivery is consumed, the phase advances, and — because the first
+   * attempt's {@code remember} never got far enough to record anything — there is exactly one
+   * {@link Remembrance.ToolExchange} for the call, not two.
+   */
+  @Nested
+  class AThrowingMemoryLeavesTheDeliveryPendingThenHealsOnRedrive {
+
+    @Test
+    void aThrowingRememberAbortsBeforeTheCommitBatchThenHealsOnTheNextNudge() {
+      var mapper = TestMappers.plainlyPinned();
+      var store = new InMemorySubstrate();
+      var stateCodec = new StateCodec(mapper);
+      byte[] statePayload = stateCodec.toJson(awaitingOneCall()).getBytes(StandardCharsets.UTF_8);
+      store.write("state", ID.value(), statePayload, 0);
+      long versionBefore = store.read("state", ID.value()).orElseThrow().version();
+
+      writeDelivery(
+          store,
+          mapper,
+          "d1",
+          new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("restarted"))));
+
+      var recording = new RecordingMemory();
+      var memory = new ThrowingThenDelegatingMemory(recording, 1); // throws once, then heals
+      Harness<String> harness =
+          TestAgents.harness(
+              TYPE,
+              memory,
+              new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper),
+              new NoopBacklog(),
+              text -> List.of(new TextBlock(text)),
+              new NoopModelCallExecutor(),
+              new NoopToolCallExecutor(),
+              AgentObserver.noop(),
+              false,
+              StalenessPolicy.never());
+      var worker =
+          new DeliveryWorker<String>(store, mapper, harness, (t, i) -> null, Duration.ofHours(1));
+
+      worker.nudge(); // the throwing arm — must not throw out of nudge() itself
+
+      assertThat(store.keys(Kinds.outbox(TYPE), 10)).containsExactly("d1"); // survives, undeleted
+      assertThat(store.read("state", ID.value()).orElseThrow().version()).isEqualTo(versionBefore);
+
+      worker.nudge(); // memory has healed — the redrive folds cleanly
+
+      assertThat(store.keys(Kinds.outbox(TYPE), 10)).isEmpty(); // consumed
+      Phase folded =
+          stateCodec.phase(
+              new String(
+                  store.read("state", ID.value()).orElseThrow().payload(), StandardCharsets.UTF_8));
+      assertThat(folded).isInstanceOf(Phase.AwaitingModel.class); // phase advanced
+
+      List<Remembrance.ToolExchange> exchangesForTheCall =
+          recording.facts().stream()
+              .filter(Remembrance.ToolExchange.class::isInstance)
+              .map(Remembrance.ToolExchange.class::cast)
+              .filter(exchange -> exchange.call().id().equals(CALL.id()))
+              .toList();
+      assertThat(exchangesForTheCall).hasSize(1); // exactly one, despite the failed first attempt
     }
   }
 }

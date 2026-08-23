@@ -184,11 +184,19 @@ approver.
 2. loads the scope's state and lets the pure reducer fold the outcome into
    it (`ToolFinished`, or the reducer's own no-op for an already-reconciled
    call);
-3. commits one substrate batch — journal appends for any committed
-   messages, the CAS state write, and the delivery's own removal — the
-   atomic turn-advance the substrate's `batch` exists for;
-4. dispatches the transition's effects, after that commit, unchanged from
+3. remembers every `Remembrance` the fold implies through the scope's
+   `Memory` (remembrance spec §1) — before the next step, never inside it;
+4. commits one substrate batch — the CAS state write and the delivery's own
+   removal, nothing else — the atomic turn-advance the substrate's `batch`
+   exists for;
+5. dispatches the transition's effects, after that commit, unchanged from
    every other transition in the shell.
+
+A `remember` that throws aborts the attempt before step 4 ever runs: the
+delivery stays pending, and the next heartbeat (or `nudge()`) redrives it —
+re-remembering the same keys converges rather than duplicating anything
+(`Memory`'s own idempotence law). See [Memory](memory.md) for the full
+three-law story.
 
 A CAS miss re-reads and re-handles. A crash anywhere leaves the delivery
 pending, and redelivery just re-runs a pure fold — the reducer itself is

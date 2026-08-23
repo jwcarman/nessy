@@ -1016,11 +1016,10 @@ class NessyHarnessDoorTest {
           entries.stream()
               .map(e -> new String(e.payload(), StandardCharsets.UTF_8))
               .collect(Collectors.joining("\n"));
-      assertThat(allPayloads)
-          .contains("\"toolUseId\"")
-          .contains("\"isError\"")
-          .doesNotContain("tool_use_id")
-          .doesNotContain("is_error");
+      // Remembrance spec §2: a completed tool call stores as a ToolExchange (the call and its
+      // result, paired), not a bare ToolResultBlock — so "toolUseId" no longer appears on the
+      // wire here; "isError" (from the exchange's result) still pins camelCase either way.
+      assertThat(allPayloads).contains("\"isError\"").doesNotContain("is_error");
     }
 
     @Test

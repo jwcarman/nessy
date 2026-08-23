@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.spi.Remembrance;
 
 class VerbatimMemoryTest {
 
@@ -31,18 +32,27 @@ class VerbatimMemoryTest {
   @Test
   void rememberedMessagesRecallInOrder() {
     var memory = new VerbatimMemory();
-    memory.remember(Message.user("first"));
-    memory.remember(Message.user("second"));
+    memory.remember(new Remembrance.UserMessage("turn-1", Message.user("first")));
+    memory.remember(new Remembrance.UserMessage("turn-2", Message.user("second")));
     assertThat(memory.recall().messages())
         .containsExactly(Message.user("first"), Message.user("second"));
   }
 
   @Test
+  void rememberingTheSameKeyTwiceConvergesToOneFact() {
+    var memory = new VerbatimMemory();
+    var remembrance = new Remembrance.UserMessage("turn-1", Message.user("only once"));
+    memory.remember(remembrance);
+    memory.remember(remembrance);
+    assertThat(memory.recall().messages()).containsExactly(Message.user("only once"));
+  }
+
+  @Test
   void recallReturnsASnapshotNotALiveView() {
     var memory = new VerbatimMemory();
-    memory.remember(Message.user("one"));
+    memory.remember(new Remembrance.UserMessage("turn-1", Message.user("one")));
     List<Message> snapshot = memory.recall().messages();
-    memory.remember(Message.user("two"));
+    memory.remember(new Remembrance.UserMessage("turn-2", Message.user("two")));
     assertThat(snapshot).hasSize(1);
   }
 }

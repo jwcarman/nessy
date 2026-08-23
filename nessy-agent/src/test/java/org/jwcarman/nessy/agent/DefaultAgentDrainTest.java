@@ -16,8 +16,10 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +33,7 @@ import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.ThrowingThenDelegatingMemory;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -167,6 +170,54 @@ class DefaultAgentDrainTest {
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).containsExactly("hello");
     assertThat(f.store.load().phase()).isEqualTo(new Phase.AwaitingModel());
+  }
+
+  @Test
+  void aThrowingMemorySurfacesToTheCallerAndReQueuesTheObservationThenHealsOnTheNextDrive() {
+    // Memory's own law 1, the shell path's half (remembrance spec §1, fix round 1 Q3): a
+    // throwing remember() is NOT swallowed-and-continued here (that would hot-loop a permanently
+    // broken Memory forever) — the observation goes back to the backlog, exactly like the
+    // stale-state race above, and the exception surfaces to whoever called observe(). Once memory
+    // heals, the next drive() (not another observe() — that would enqueue a SECOND "hello"
+    // alongside the one already re-queued) drains the preserved observation exactly once.
+    var store =
+        new SubstrateAgentStateStore(
+            new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
+    var backlogQueue = new ArrayDeque<String>();
+    Backlog<String> backlog =
+        new Backlog<>() {
+          @Override
+          public void add(String observation) {
+            backlogQueue.add(observation);
+          }
+
+          @Override
+          public Optional<String> poll() {
+            return Optional.ofNullable(backlogQueue.poll());
+          }
+        };
+    var recording = new RecordingMemory();
+    var memory = new ThrowingThenDelegatingMemory(recording, 1); // throws once, then heals
+    var agent =
+        TestAgents.<String>wired(
+            memory,
+            store,
+            backlog,
+            text -> List.of(new TextBlock(text)),
+            sink -> {},
+            (call, responseId, sink) -> {},
+            new RecordingObserver(),
+            false,
+            StalenessPolicy.never());
+
+    assertThatThrownBy(() -> agent.observe("hello")).isInstanceOf(IllegalStateException.class);
+    assertThat(backlogQueue).containsExactly("hello"); // preserved, not lost
+
+    agent.drive(); // memory has healed — drains the preserved observation exactly once
+
+    assertThat(backlogQueue).isEmpty();
+    assertThat(recording.remembered())
+        .containsExactly(Message.user(List.of(new TextBlock("hello"))));
   }
 
   @Test

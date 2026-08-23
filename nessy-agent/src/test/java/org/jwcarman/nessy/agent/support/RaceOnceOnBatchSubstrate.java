@@ -28,7 +28,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * op in the caller's batch that targets that same document under CAS genuinely conflicts and the
  * whole batch is rejected atomically — nothing in it applies, including any {@code AppendEntry} ops
  * riding alongside. Every later {@code batch} call goes straight through. Mirrors the {@code
- * RaceOnceOnWriteSubstrate}/{@code RaceOnceOnAppendSubstrate} convention.
+ * RaceOnceOnWriteSubstrate} convention.
  */
 public final class RaceOnceOnBatchSubstrate implements Substrate {
 

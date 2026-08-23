@@ -253,12 +253,11 @@ public final class Harness<O> {
   }
 
   /**
-   * The id-keyed seam {@link DeliveryWorker}'s {@code requirePlainSubstrateMemory} guard reads
-   * through (harness-first spec §4, the Binding demotion): equivalent to {@code
-   * binding(id).memory()}, without exposing {@link Binding} across the package line.
-   * Package-private by design (fix round F2): the worker's own seam, not a door — the public roster
-   * stops at {@link #type()}, {@link #bind(AgentId)}, {@link #approvals()}, {@link #completions()},
-   * and {@link #shutdown()}.
+   * The id-keyed seam {@link DeliveryWorker} remembers a scope's tool-delivery facts through
+   * (remembrance spec §1) — equivalent to {@code binding(id).memory()}, without exposing {@link
+   * Binding} across the package line. Package-private by design (fix round F2): the worker's own
+   * seam, not a door — the public roster stops at {@link #type()}, {@link #bind(AgentId)}, {@link
+   * #approvals()}, {@link #completions()}, and {@link #shutdown()}.
    */
   Memory memoryFor(AgentId id) {
     Objects.requireNonNull(id, "id must not be null");

@@ -15,29 +15,35 @@
  */
 package org.jwcarman.nessy.agent.memory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.jwcarman.nessy.api.message.Context;
-import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.Remembrance;
 
 /**
- * Remembers everything, verbatim, in order — the cli() default (§7.1). Thread-safe because
- * completions arrive on executor threads while the shell commits on others; a synchronized list is
- * entirely adequate at conversation cadence.
+ * Remembers everything, in order — the cli() default (§7.1). Idempotent by key, exactly as the SPI
+ * requires (remembrance spec §1 law 2): a {@link LinkedHashMap} keyed on {@link Remembrance#key()}
+ * both dedups a repeated key and preserves first-remembered order. Thread-safe because completions
+ * arrive on executor threads while the shell commits on others; a synchronized map is entirely
+ * adequate at conversation cadence. {@link #recall()} reassembles through {@link RemembranceFold},
+ * the same pairing logic {@link SubstrateMemory} shares.
  */
 public final class VerbatimMemory implements Memory {
 
-  private final List<Message> messages = new ArrayList<>();
+  private final Map<String, Remembrance> remembered = new LinkedHashMap<>();
 
   @Override
-  public synchronized void remember(Message message) {
-    messages.add(Objects.requireNonNull(message, "message must not be null"));
+  public synchronized void remember(Remembrance remembrance) {
+    Objects.requireNonNull(remembrance, "remembrance must not be null");
+    remembered.putIfAbsent(remembrance.key(), remembrance);
   }
 
   @Override
   public synchronized Context recall() {
-    return Context.of(List.copyOf(messages));
+    RemembranceFold fold = new RemembranceFold();
+    remembered.values().forEach(fold::add);
+    return fold.toContext();
   }
 }

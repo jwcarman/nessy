@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.message.ThinkingBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.model.Capability;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelEvent;
@@ -155,7 +156,7 @@ class ProviderModelCallExecutorTest {
   @Test
   void theRequestCarriesTheRecalledContext() {
     var memory = new VerbatimMemory();
-    memory.remember(Message.user("earlier"));
+    memory.remember(new Remembrance.UserMessage("turn-1", Message.user("earlier")));
     var turn = new RecordingTurnObserver();
     var pump = new PumpedExecutor();
     var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("ok"))));

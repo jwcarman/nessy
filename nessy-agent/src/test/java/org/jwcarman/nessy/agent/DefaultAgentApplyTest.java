@@ -98,7 +98,7 @@ class DefaultAgentApplyTest {
             turnBlocks, List.of(CALL_A, CALL_B), ModelResponseId.of("response-1")));
     f.model.enqueue(
         new ModelOutcome.Responded(
-            List.of(new TextBlock("both done")), List.of(), ModelResponseId.of("response-1")));
+            List.of(new TextBlock("both done")), List.of(), ModelResponseId.of("response-2")));
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
     f.tools.answer("b", new ToolOutcome.Returned(ToolResult.ok("restarted")));
     f.agent.observe("do both");
@@ -124,7 +124,7 @@ class DefaultAgentApplyTest {
         new ModelOutcome.Responded(turnBlocks, List.of(CALL_A), ModelResponseId.of("response-1")));
     f.model.enqueue(
         new ModelOutcome.Responded(
-            List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-1")));
+            List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-2")));
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
     f.agent.observe("go");
     f.pump.pumpUntilQuiet();
@@ -164,11 +164,23 @@ class DefaultAgentApplyTest {
     inner.save(new State(awaiting, 0L)); // now at v1
     var aFinished =
         new AgentEvent.ToolFinished(CALL_A, new ToolOutcome.Returned(ToolResult.ok("42")));
-    var competitorState = new State(awaiting.handle(aFinished).next(), 1L);
-    var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
+    var aTransition = awaiting.handle(aFinished);
+    var f = new AgentFixture(new RaceOnceStore(inner, new State(aTransition.next(), 1L)), false);
+    // The competitor's own fold, off-thread from this test's real agent, also remembers its
+    // ToolExchange BEFORE its own commit (remembrance spec §1 law 1) — the same
+    // ToolFoldRemembrance mapping the real agent below uses, so the two converge on shared keys
+    // exactly as two racing DeliveryWorker/DefaultAgent instances over one substrate would.
+    ToolFoldRemembrance.remember(
+        f.memory,
+        AgentType.of("fixture"),
+        AgentId.of("agent"),
+        awaiting,
+        CALL_A,
+        new ToolOutcome.Returned(ToolResult.ok("42")),
+        aTransition);
     f.model.enqueue(
         new ModelOutcome.Responded(
-            List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-1")));
+            List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-2")));
     f.agent.deliver(
         new AgentEvent.ToolFinished(CALL_B, new ToolOutcome.Returned(ToolResult.ok("ok"))));
     f.pump.pumpUntilQuiet();
