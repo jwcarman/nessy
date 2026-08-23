@@ -22,6 +22,12 @@ package org.jwcarman.nessy.agent;
  * {@link Agent} type (harness-first spec §4, the Binding demotion) rather than the concrete {@link
  * DefaultAgent} — its one concrete-type dependency dissolved once {@link Harness#bind(AgentId)}
  * became the only door callers (including white-box test fixtures) need.
+ *
+ * <p>The returned {@link Agent} MUST be one Nessy's own doors produced — in practice always a
+ * {@link DefaultAgent} handed back by {@link Harness#bind(AgentId)}. A foreign {@link Agent}
+ * implementation is not a supported answer: {@link ResolvingAgentBinder}, the one consumer of this
+ * resolver, rejects it with an {@link IllegalStateException} the instant it tries to unwrap one
+ * that is not a {@code DefaultAgent}.
  */
 @FunctionalInterface
 public interface AgentResolver {

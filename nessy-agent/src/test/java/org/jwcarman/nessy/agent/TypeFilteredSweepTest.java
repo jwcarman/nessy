@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent.durable;
+package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -30,17 +31,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentResolver;
-import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.ModelResponseId;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.StateCodec;
+import org.jwcarman.nessy.agent.durable.OutcomeCodec;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.PendingDocument;
+import org.jwcarman.nessy.agent.durable.ScopeRouting;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -288,6 +283,25 @@ class TypeFilteredSweepTest {
               invocation, returnAddress, Optional.of(Instant.now().minusSeconds(1)));
       byte[] payload = codec.toJson(pending).getBytes(StandardCharsets.UTF_8);
       store.write("computation", key, payload, 0);
+    }
+  }
+
+  @Nested
+  class AgentTypeValidation {
+
+    /**
+     * F1 (blocking, correctness): the type threads straight into colon-delimited computation keys
+     * ({@code tool:<agentType>:<agentId>:...}) — a colon in the type would make {@link
+     * DeliveryWorker}'s reaper key-segment filter misparse the key and silently skip this harness's
+     * own computations forever. Rejecting it at construction, with a message naming the offending
+     * value, catches the mistake at the door instead of as a silent reaping failure downstream.
+     */
+    @Test
+    void anAgentTypeNameContainingAColonIsRejectedWithATeachingMessage() {
+      assertThatThrownBy(() -> AgentType.of("ops:eu"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("ops:eu")
+          .hasMessageContaining(":");
     }
   }
 }

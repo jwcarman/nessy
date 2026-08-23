@@ -28,6 +28,16 @@ import org.jwcarman.nessy.agent.Harness;
  * harness they just built, and a test class pairs one {@code @AfterEach} calling {@link
  * #shutdownAllTracked()} with every test method that (transitively) builds one, reclaiming the
  * accumulating heartbeat threads without touching each test method's body.
+ *
+ * <p><b>Invariant this choke point depends on:</b> {@link #TRACKED} is one JVM-global list, shared
+ * by every test class that calls {@link #track}. That is correct only because {@code nessy-agent}'s
+ * surefire run is single-threaded — no {@code junit-platform.properties} in this module enables
+ * parallel execution. If parallelism were ever turned on here, two test classes running
+ * concurrently would race this same list: one class's {@link #shutdownAllTracked()} could shut down
+ * a harness another class's still-running test method was mid-use of (cross-shutdown), and {@link
+ * #shutdownAllTracked()}'s own {@code forEach}-then-{@code clear} is not atomic against a
+ * concurrent {@link #track}. Keep this list's safety tied to that single-threaded run, not to
+ * anything in this class itself.
  */
 public final class HarnessTeardown {
 

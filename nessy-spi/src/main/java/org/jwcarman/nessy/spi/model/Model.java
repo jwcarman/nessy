@@ -22,8 +22,10 @@ import java.util.Set;
  *
  * <p>A flyweight over its {@link ModelProvider} gateway's shared client — cheap to create, safe to
  * share, the thing a harness actually consumes. Where the gateway answers for a whole vendor
- * lineup, a {@code Model} answers only for the one id it was bound to: its {@link #capabilities()}
- * are honest per-model facts, not a vendor-wide guess.
+ * lineup, a {@code Model} answers only for the one id it was bound to: {@link #capabilities()} is
+ * WHERE a per-model answer belongs — this interface does not require every implementation to
+ * already answer that precisely; a vendor whose lineup shares one capability set today may still
+ * answer per-vendor here, as the four vendor implementations' own javadocs say.
  */
 public interface Model {
 

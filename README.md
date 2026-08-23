@@ -239,7 +239,7 @@ for applications that want it.
     <artifactId>nessy-model-env</artifactId>
   </dependency>
 
-  <!-- ScriptedModelProvider: the offline, no-key test double — see the docs
+  <!-- ScriptedModel: the offline, no-key test double — see the docs
        site's Testing guide. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>

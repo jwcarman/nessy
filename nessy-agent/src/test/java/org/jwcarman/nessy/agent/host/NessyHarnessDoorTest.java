@@ -743,7 +743,8 @@ class NessyHarnessDoorTest {
                               .systemPrompt(TestSettings.SYSTEM_PROMPT)
                               .settings(settings)))
           .isInstanceOf(NullPointerException.class)
-          .hasMessageContaining("renderer");
+          .hasMessageContaining("renderer must not be null")
+          .hasMessageContaining(".renderer(ObservationRenderer)");
     }
 
     /**

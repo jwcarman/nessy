@@ -28,7 +28,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;

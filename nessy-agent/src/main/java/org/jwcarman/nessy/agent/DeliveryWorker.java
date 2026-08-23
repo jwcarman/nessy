@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.agent.durable;
+package org.jwcarman.nessy.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -26,24 +26,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jwcarman.nessy.agent.AgentBinder;
-import org.jwcarman.nessy.agent.AgentEvent;
-import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentResolver;
-import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.DurableOutcomes;
-import org.jwcarman.nessy.agent.Effect;
-import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.ModelResponseId;
-import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.ResolvingAgentBinder;
-import org.jwcarman.nessy.agent.State;
-import org.jwcarman.nessy.agent.ToolError;
-import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.codec.StateCodec;
+import org.jwcarman.nessy.agent.durable.OutcomeCodec;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
 import org.jwcarman.nessy.agent.durable.OutcomeCodec.PendingDocument;
+import org.jwcarman.nessy.agent.durable.ScopeRouting;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
@@ -104,7 +93,7 @@ import org.slf4j.LoggerFactory;
  * reach it; a non-substrate {@code Memory} (e.g. an in-process test double) never sees these
  * appends, because there is no substrate underneath it to batch into.
  */
-public final class DeliveryWorker<O> implements AutoCloseable {
+final class DeliveryWorker<O> implements AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(DeliveryWorker.class);
   private static final String OUTBOX_KIND = "outbox";
@@ -156,8 +145,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
 
   private volatile boolean closed;
 
-  public DeliveryWorker(
-      Substrate store, ObjectMapper mapper, Harness<O> harness, AgentResolver resolver) {
+  DeliveryWorker(Substrate store, ObjectMapper mapper, Harness<O> harness, AgentResolver resolver) {
     this(store, mapper, harness, resolver, DEFAULT_POLL_INTERVAL);
   }
 
@@ -181,7 +169,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     this.heartbeat.setDaemon(true);
   }
 
-  public void start() {
+  void start() {
     heartbeat.start();
   }
 
@@ -190,7 +178,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * completing desk calls this after its own commit, and a nudge failure must not surface as if the
    * desk's own {@code complete()} had failed.
    */
-  public void nudge() {
+  void nudge() {
     safeDrainOnce();
   }
 

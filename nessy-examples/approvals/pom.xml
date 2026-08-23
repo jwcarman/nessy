@@ -30,7 +30,7 @@
 
   <artifactId>nessy-example-approvals</artifactId>
   <name>Nessy Example: Approvals</name>
-  <description>The autonomous door plus a desk: one DURABLE tool behind requireApproval(), a
+  <description>The harness door plus a desk: one DURABLE tool behind requireApproval(), a
     console loop, and a scripted arc that needs no key</description>
 
   <properties>

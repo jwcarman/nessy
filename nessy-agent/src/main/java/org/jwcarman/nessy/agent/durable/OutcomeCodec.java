@@ -34,7 +34,10 @@ import org.jwcarman.nessy.durable.ToolInvocationId;
 /**
  * Internal storage machinery: renders the two documents the {@code computation} and {@code outbox}
  * recipes persist (durable-deliveries spec §3, §4) to and from the JSON the byte-payload substrate
- * stores. Not API vocabulary; only {@link SubstrateComputations} calls this.
+ * stores. Not application vocabulary — no user-facing type refers to it — but public (harness-first
+ * fix round F2) so {@link org.jwcarman.nessy.agent.DeliveryWorker}, moved out of this package to
+ * reach {@link org.jwcarman.nessy.agent.Harness}'s package-private seams, can still read and write
+ * these documents; {@link SubstrateComputations} is the other caller.
  *
  * <p>{@link Outcome}, {@link Decision}, and {@link ToolResult} live in {@code nessy-durable} and
  * {@code nessy-api} respectively and stay Jackson-free by design. This codec binds a private,
@@ -53,7 +56,7 @@ import org.jwcarman.nessy.durable.ToolInvocationId;
  * <p>Reads are tolerant: unknown fields are ignored. Malformed JSON or an unrecognized
  * discriminator fails loudly with an {@link IllegalArgumentException} naming the offense.
  */
-final class OutcomeCodec {
+public final class OutcomeCodec {
 
   private static final String TYPE = "type";
   private static final String PAYLOAD = "payload";
@@ -78,15 +81,15 @@ final class OutcomeCodec {
 
   private final Codecs codecs;
 
-  OutcomeCodec(ObjectMapper mapper) {
+  public OutcomeCodec(ObjectMapper mapper) {
     this.codecs = new Codecs(mapper);
   }
 
   /** The {@code computation} document's shape: presence alone means pending (spec §3). */
-  record PendingDocument(
+  public record PendingDocument(
       ToolInvocationId invocation, Continuation returnAddress, Optional<Instant> deadline) {
 
-    PendingDocument {
+    public PendingDocument {
       Objects.requireNonNull(invocation, "invocation must not be null");
       Objects.requireNonNull(returnAddress, "returnAddress must not be null");
       Objects.requireNonNull(deadline, "deadline must not be null");
@@ -94,20 +97,20 @@ final class OutcomeCodec {
   }
 
   /** The {@code outbox} delivery's shape (spec §4): a payload plus an address label. */
-  record DeliveryDocument(Continuation destination, Outcome outcome) {
+  public record DeliveryDocument(Continuation destination, Outcome outcome) {
 
-    DeliveryDocument {
+    public DeliveryDocument {
       Objects.requireNonNull(destination, "destination must not be null");
       Objects.requireNonNull(outcome, "outcome must not be null");
     }
   }
 
-  String toJson(PendingDocument document) {
+  public String toJson(PendingDocument document) {
     Objects.requireNonNull(document, "document must not be null");
     return codecs.write(PendingDocumentWire.from(document));
   }
 
-  PendingDocument pendingDocument(String json) {
+  public PendingDocument pendingDocument(String json) {
     Objects.requireNonNull(json, "json must not be null");
     JsonNode root = codecs.readTree(json, COMPUTATION);
     return codecs.bind(root, PendingDocumentWire.class, COMPUTATION).toDomain();
@@ -118,12 +121,12 @@ final class OutcomeCodec {
    * ToolResult} nor {@link Decision} throws {@link IllegalArgumentException} here — before the
    * caller writes anything.
    */
-  String toJson(DeliveryDocument document) {
+  public String toJson(DeliveryDocument document) {
     Objects.requireNonNull(document, "document must not be null");
     return codecs.write(DeliveryDocumentWire.from(document));
   }
 
-  DeliveryDocument deliveryDocument(String json) {
+  public DeliveryDocument deliveryDocument(String json) {
     Objects.requireNonNull(json, "json must not be null");
     JsonNode root = codecs.readTree(json, DELIVERY);
     requireKnownOutcomeVocabulary(root.get(OUTCOME));
@@ -142,7 +145,7 @@ final class OutcomeCodec {
    * {@link #deliveryDocument} would have thrown later — this method never swallows a genuine parse
    * failure into an empty result.
    */
-  Optional<String> peekDestinationAgentType(String json) {
+  public Optional<String> peekDestinationAgentType(String json) {
     Objects.requireNonNull(json, "json must not be null");
     JsonNode root = codecs.readTree(json, DELIVERY);
     JsonNode destination = root.get(DESTINATION);

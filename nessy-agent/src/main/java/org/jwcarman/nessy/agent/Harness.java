@@ -20,7 +20,6 @@ import java.util.Objects;
 import java.util.function.Function;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
-import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
@@ -98,7 +97,6 @@ public final class Harness<O> {
     this.worker = new DeliveryWorker<>(substrate, mapper, this, this::resolve);
     this.approvals = new ApprovalDesk(backend, worker::nudge);
     this.completions = new CompletionDesk(backend, worker::nudge);
-    worker.start();
   }
 
   /**
@@ -125,20 +123,28 @@ public final class Harness<O> {
       Substrate substrate,
       ObjectMapper mapper,
       DurableComputationBackend backend) {
-    return new Harness<>(
-        type,
-        renderer,
-        observer,
-        drainOnIdle,
-        stalenessPolicy,
-        memoryFactory,
-        storeFactory,
-        backlogFactory,
-        modelExecutorFactory,
-        toolExecutorFactory,
-        substrate,
-        mapper,
-        backend);
+    Harness<O> harness =
+        new Harness<>(
+            type,
+            renderer,
+            observer,
+            drainOnIdle,
+            stalenessPolicy,
+            memoryFactory,
+            storeFactory,
+            backlogFactory,
+            modelExecutorFactory,
+            toolExecutorFactory,
+            substrate,
+            mapper,
+            backend);
+    // Started here, after the constructor returns, not inside it: the heartbeat thread reads
+    // `harness` (via DeliveryWorker's own field) the instant it runs, and starting a thread from
+    // inside a constructor risks handing that thread a `this` reference before the object is fully
+    // and safely published to other threads (no-`this`-escape). Starting after `new Harness<>(...)`
+    // returns guarantees safe publication.
+    harness.worker.start();
+    return harness;
   }
 
   public AgentType type() {
@@ -223,9 +229,11 @@ public final class Harness<O> {
    * the Binding demotion): equivalent to {@code modelExecutor(binding(id))}, without exposing
    * {@link Binding} across the package line — the model executor factory only ever needed the
    * scope's {@link Memory}, so this reads straight off {@code memoryFactory} rather than stamping a
-   * whole {@link Binding} just to reach one field of it.
+   * whole {@link Binding} just to reach one field of it. Package-private by design (fix round F2):
+   * the worker's own seam, not a door — the public roster stops at {@link #type()}, {@link
+   * #bind(AgentId)}, {@link #approvals()}, {@link #completions()}, and {@link #shutdown()}.
    */
-  public ModelCallExecutor modelExecutorFor(AgentId id) {
+  ModelCallExecutor modelExecutorFor(AgentId id) {
     return modelExecutorFactory.apply(memoryFor(id));
   }
 
@@ -233,9 +241,11 @@ public final class Harness<O> {
    * The id-keyed seam {@link DeliveryWorker} dispatches tool calls through (harness-first spec §4,
    * the Binding demotion): equivalent to {@code toolExecutor(binding(id))}, without exposing {@link
    * Binding} across the package line — the tool executor factory only ever needed the scope's
-   * {@link AgentId} itself.
+   * {@link AgentId} itself. Package-private by design (fix round F2): the worker's own seam, not a
+   * door — the public roster stops at {@link #type()}, {@link #bind(AgentId)}, {@link
+   * #approvals()}, {@link #completions()}, and {@link #shutdown()}.
    */
-  public ToolCallExecutor toolExecutorFor(AgentId id) {
+  ToolCallExecutor toolExecutorFor(AgentId id) {
     return toolExecutorFactory.apply(id);
   }
 
@@ -243,8 +253,11 @@ public final class Harness<O> {
    * The id-keyed seam {@link DeliveryWorker}'s {@code requirePlainSubstrateMemory} guard reads
    * through (harness-first spec §4, the Binding demotion): equivalent to {@code
    * binding(id).memory()}, without exposing {@link Binding} across the package line.
+   * Package-private by design (fix round F2): the worker's own seam, not a door — the public roster
+   * stops at {@link #type()}, {@link #bind(AgentId)}, {@link #approvals()}, {@link #completions()},
+   * and {@link #shutdown()}.
    */
-  public Memory memoryFor(AgentId id) {
+  Memory memoryFor(AgentId id) {
     Objects.requireNonNull(id, "id must not be null");
     return memoryFactory.apply(id.value());
   }
@@ -264,6 +277,10 @@ public final class Harness<O> {
    * The harness is kept, never closed, by application code — this door exists for a container's
    * destroy callback or a test's teardown, never application hygiene. Deliberately not {@link
    * AutoCloseable}: nothing reaches for this by accident through try-with-resources.
+   *
+   * <p>Stops the heartbeat only — it does not wait for it. Any model call or tool execution already
+   * in flight on the model/tool executors keeps running to completion (or failure) on its own
+   * thread; this method neither awaits nor cancels it.
    */
   public void shutdown() {
     worker.close();

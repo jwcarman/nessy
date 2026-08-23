@@ -56,7 +56,7 @@ ModelProvider provider = GeminiModelProvider.fromEnv();
 ## Retries
 
 Unlike `nessy-model-anthropic` and `nessy-model-openai`, this module ships no `RETRYABLE`
-predicate for `RetryingModelProvider.of` yet — it arrives once real Gemini failure modes have been
+predicate for `RetryingModel.wrap` yet — it arrives once real Gemini failure modes have been
 observed live, rather than guessed at from the SDK's exception hierarchy alone.
 
 ## Capabilities

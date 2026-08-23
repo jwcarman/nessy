@@ -12,8 +12,8 @@ empty grant list — so watching costs nothing until something is plugged in.
 
 `TurnObserver` sees the live story of one turn: the model speaking and
 thinking, homework requested and decided, homework settled, the turn's
-close. It is bound per entry — the observer handed to `tell`/`resume` sees
-only the segment that call starts, and nothing after a park. An autonomous
+close. It is bound per entry — the observer handed to `observe`/`drive` sees
+only the segment that call starts, and nothing after a park. An unattended
 scope with no observer wired runs every turn against `TurnObserver.noop()`
 and loses nothing it needed.
 

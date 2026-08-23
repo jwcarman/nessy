@@ -40,9 +40,9 @@ public interface ToolCallExecutor {
    * where the gate has already run for this exact invocation — a granted approval's tool call, or
    * the reaper's redispatch of a {@code RETRYABLE} overdue computation — never for a fresh
    * dispatch. Callers need the outcome in hand, synchronously, before they decide what to commit:
-   * {@link org.jwcarman.nessy.agent.durable.DeliveryWorker}'s grant arm decides which atomic batch
-   * to build from it, and the reaper decides whether to fold an immediate answer straight into the
-   * pipeline (spec §6) rather than leave its computation orphaned.
+   * {@code org.jwcarman.nessy.agent.DeliveryWorker}'s grant arm decides which atomic batch to build
+   * from it, and the reaper decides whether to fold an immediate answer straight into the pipeline
+   * (spec §6) rather than leave its computation orphaned.
    *
    * <p>{@code alsoCommit} is the transfer-then-dispatch door (spec §5a invariant 5, honesty
    * amendment): when present and the invocation defers, an implementation that can must commit
@@ -54,9 +54,9 @@ public interface ToolCallExecutor {
    * {@code Tool} contract, not "nothing to duplicate." What the batch DOES guarantee is the
    * single-winner property within one host: two concurrent claimants racing the same batch leave
    * exactly one committed (the worker's own claim, not this batch, is what makes that true — see
-   * {@link org.jwcarman.nessy.agent.durable.DeliveryWorker}'s javadoc). The default throws: only
-   * {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} implements this meaningfully,
-   * and nothing calls it on a {@link ToolCallExecutor} without a gate to skip.
+   * {@code org.jwcarman.nessy.agent.DeliveryWorker}'s javadoc). The default throws: only {@link
+   * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor} implements this meaningfully, and
+   * nothing calls it on a {@link ToolCallExecutor} without a gate to skip.
    */
   default ToolExecution executeGrantedToolNow(
       ToolCall call,

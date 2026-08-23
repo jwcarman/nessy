@@ -31,7 +31,6 @@ import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.durable.ComputationApprover;
 import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
@@ -144,13 +143,20 @@ public final class HarnessConfig<O> {
     return this;
   }
 
-  /** The tool grants every scope carries, authority and all. */
+  /**
+   * The tool grants every scope carries, authority and all. Shares one slot with {@link
+   * #tools(Tool[])} — whichever of the two is called last wins; calling both is not additive.
+   */
   public HarnessConfig<O> grants(ToolGrant... grants) {
     this.grants = List.of(Objects.requireNonNull(grants, "grants must not be null"));
     return this;
   }
 
-  /** Sugar: each tool granted an answered-allow authority, via {@link ToolRegistry#of(Tool...)}. */
+  /**
+   * Sugar: each tool granted an answered-allow authority, via {@link ToolRegistry#of(Tool...)}.
+   * Shares one slot with {@link #grants(ToolGrant...)} — whichever of the two is called last wins;
+   * calling both is not additive.
+   */
   public HarnessConfig<O> tools(Tool<?>... tools) {
     Objects.requireNonNull(tools, "tools must not be null");
     this.grants = ToolRegistry.of(tools).grants();
@@ -192,7 +198,7 @@ public final class HarnessConfig<O> {
    * over this builder's {@link #substrate(Substrate)}. Override for a genuinely foreign engine
    * (Restate, Temporal) — nobody implements this seam to get a database (spec §6.5).
    *
-   * <p><b>Integration contract:</b> the {@link DeliveryWorker} reads completions from this
+   * <p><b>Integration contract:</b> the {@code DeliveryWorker} reads completions from this
    * builder's {@link #substrate(Substrate)} — specifically, {@code kind=outbox} delivery documents
    * ({@code {destination, outcome}}, spec §4) — never from the backend directly. A foreign {@code
    * DurableComputationBackend} MUST write those same {@code outbox} documents into this substrate
@@ -305,9 +311,14 @@ public final class HarnessConfig<O> {
           "systemPrompt must not be null — Nessy.harness(...) requires .systemPrompt(String)"
               + " inside the customizer; it is required, harness-level configuration (spec §3, §7)");
     }
+    if (renderer == null) {
+      throw new NullPointerException(
+          "renderer must not be null — the typed door (Nessy.harness(Class, HarnessCustomizer))"
+              + " requires .renderer(ObservationRenderer) inside the customizer; unlike the String"
+              + " door, which presets one, the typed door has no default renderer for O");
+    }
     ModelSettings effectiveSettings = settings != null ? settings : ModelSettings.defaults();
-    ObservationRenderer<O> effectiveRenderer =
-        Objects.requireNonNull(renderer, "renderer must not be null");
+    ObservationRenderer<O> effectiveRenderer = renderer;
     ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
     // the String door (Nessy.harness()) presets backlogCodec to STRING_CODEC; the typed door
     // (Nessy.harness(Class)) always derives it here — no override seam (parked for James).

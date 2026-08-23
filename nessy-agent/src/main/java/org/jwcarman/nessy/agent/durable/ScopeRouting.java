@@ -32,9 +32,11 @@ import org.jwcarman.nessy.durable.Continuation;
  * belongs, and everything the grant arm needs to redispatch the call past the gate with its real
  * {@code CallAddress}/{@code ToolInvocationId}, with no fold read and no re-derivation (spec §5a).
  * Both {@link ComputationDeferredToolCallPolicy} and {@link ComputationApprover} build this same
- * shape; the worker is the one consumer that reads it back.
+ * shape; {@link org.jwcarman.nessy.agent.DeliveryWorker} is the one consumer that reads it back —
+ * public (harness-first fix round F2) because that worker now lives outside this package, moved to
+ * reach {@link org.jwcarman.nessy.agent.Harness}'s package-private seams.
  */
-final class ScopeRouting {
+public final class ScopeRouting {
 
   static final String TYPE = "SCOPE_RESUME";
 
@@ -55,7 +57,7 @@ final class ScopeRouting {
    * is never reaped for retry (durable-deliveries spec §6), only for its (absent, by design)
    * deadline.
    */
-  static Continuation continuationFor(
+  public static Continuation continuationFor(
       ObjectMapper mapper, String agentType, String agentId, String responseId, ToolCall call) {
     return writeCommon(
         mapper, agentType, agentId, responseId, call, Optional.empty(), Optional.empty());
@@ -68,7 +70,7 @@ final class ScopeRouting {
    * lookup, no separately-persisted creation timestamp. {@link ComputationDeferredToolCallPolicy}
    * is the one caller.
    */
-  static Continuation continuationFor(
+  public static Continuation continuationFor(
       ObjectMapper mapper,
       String agentType,
       String agentId,
@@ -105,7 +107,7 @@ final class ScopeRouting {
     return new Continuation(TYPE, data.toString());
   }
 
-  record Routing(
+  public record Routing(
       String agentType,
       String agentId,
       String responseId,
@@ -113,7 +115,7 @@ final class ScopeRouting {
       RetrySemantics retrySemantics,
       Optional<Duration> timeout) {}
 
-  static Routing decode(ObjectMapper mapper, Continuation continuation) {
+  public static Routing decode(ObjectMapper mapper, Continuation continuation) {
     JsonNode data;
     try {
       data = mapper.readTree(continuation.data());

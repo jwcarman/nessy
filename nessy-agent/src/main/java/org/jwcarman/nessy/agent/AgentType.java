@@ -22,6 +22,15 @@ public record AgentType(String name) {
     if (name == null || name.isBlank()) {
       throw new IllegalArgumentException("agent type name must not be blank");
     }
+    if (name.indexOf(':') >= 0) {
+      throw new IllegalArgumentException(
+          "agent type name must not contain ':': \""
+              + name
+              + "\" — the type threads into colon-delimited computation keys"
+              + " (tool:<agentType>:<agentId>:...), and a colon in the type would make the"
+              + " reaper's key-segment filter misparse and silently skip this harness's own"
+              + " computations forever");
+    }
   }
 
   public static AgentType of(String name) {
