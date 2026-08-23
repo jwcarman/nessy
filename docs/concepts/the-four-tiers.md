@@ -82,7 +82,7 @@ public final class Harness<O> {
       Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      DurableComputationBackend backend) { ... }
+      SubstrateComputations backend) { ... }
 
   public Agent<O> bind(AgentId id) { ... }
   public ApprovalDesk approvals() { ... }

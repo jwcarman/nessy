@@ -21,14 +21,13 @@ import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.durable.SubstrateComputations;
+import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -160,7 +159,7 @@ public final class TestAgents {
       StalenessPolicy stalenessPolicy) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    DurableComputationBackend backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
+    SubstrateComputations backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
     Harness<O> harness =
         Harness.of(
             type,

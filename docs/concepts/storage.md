@@ -150,7 +150,7 @@ built on the substrate:
 
 ## Recipes, not more SPI
 
-`Memory`, `AgentStateStore`, `Backlog<O>`, and `DurableComputationBackend`
+`Memory`, `AgentStateStore`, `Backlog<O>`, and `SubstrateComputations`
 survive as vocabulary — floor, not ceiling — with a substrate recipe as each
 one's default and only shipped implementation. A recipe owns its
 serialization; the substrate never sees anything but bytes.
@@ -180,9 +180,10 @@ serialization; the substrate never sees anything but bytes.
   presence alone means pending. `SubstrateComputations` (`nessy-agent`)
   maps `create` onto a plain CAS write and `complete` onto one atomic
   `batch` that deletes the computation and creates its outbox delivery.
-  `DurableComputationBackend` is no longer an adapter SPI; `.backend(...)`
-  on the builder survives only as an override seam for a genuinely foreign
-  engine (Restate, Temporal) — see
+  There is no adapter SPI above it — the `Substrate` it rides is the seam
+  a host swaps; `.backend(SubstrateComputations)` on the builder overrides
+  only which instance (which `Substrate`/`ObjectMapper` pairing) the
+  harness uses — see
   [Durable Computation](durable-computation.md).
 - **The outbox** (`kind=outbox`) — one document per pending delivery, a
   UUIDv7 key so `keys("outbox", n)` scans oldest-first, holding `{

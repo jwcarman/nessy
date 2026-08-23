@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.spi.approval;
 
-import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.api.computation.ComputationId;
 
 /** How one {@code RequireApproval} got adjudicated (spec §4.3 amendment). */
 public sealed interface Adjudication {

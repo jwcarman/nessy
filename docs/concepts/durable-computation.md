@@ -63,14 +63,17 @@ error, an approval denied. A thrown Java exception is reserved for the
 computation *infrastructure* breaking, which is a different problem than
 the work coming back negative.
 
-The backend is three operations:
+`SubstrateComputations` (`nessy-agent`) is the computation store: three
+operations, over one [`Substrate`](storage.md) — there is no adapter seam
+above it, because the `Substrate` beneath it already is the seam a host
+swaps:
 
 ```java
-public interface DurableComputationBackend {
-  CreateResult create(ComputationId id, ToolInvocationId invocation,
+public final class SubstrateComputations {
+  public CreateResult create(ComputationId id, ToolInvocationId invocation,
                       Continuation returnAddress, Optional<Instant> deadline);
-  CompletionResult complete(ComputationId id, Outcome outcome);
-  Optional<PendingComputation> find(ComputationId id);
+  public CompletionResult complete(ComputationId id, Outcome outcome);
+  public Optional<PendingComputation> find(ComputationId id);
 }
 ```
 
@@ -89,11 +92,10 @@ ignorable under at-least-once delivery, so completing an unknown id is
 never an error. Two racing completers land on exactly one winner; the loser
 observes absence and moves on.
 
-`DurableComputationBackend` is no longer an adapter SPI a database
-implements — it's internal vocabulary. `SubstrateComputations`
-(`nessy-agent`) is its default and only shipped implementation, a recipe
-over [`Substrate`](storage.md) — see [Storage](storage.md) for the document
-shapes it writes.
+There was never a second implementation to swap in, so there's no adapter
+interface pretending otherwise: `Harness`, `HarnessConfig`, `DeliveryWorker`,
+and both desks all hold `SubstrateComputations` concretely — see
+[Storage](storage.md) for the document shapes it writes.
 
 ## Identity: what stays stable across a redispatch
 

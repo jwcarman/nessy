@@ -27,7 +27,7 @@ import java.util.Objects;
 /**
  * Internal storage machinery: the mapper-binding boundary every codec that renders the byte-payload
  * substrate's JSON relies on (spec §7). Public so recipes outside the {@code codec} package (e.g.
- * {@code org.jwcarman.nessy.agent.durable.OutcomeCodec}) can reuse the same tolerant-read/exception
+ * {@code org.jwcarman.nessy.agent.OutcomeCodec}) can reuse the same tolerant-read/exception
  * conventions instead of duplicating them; still not API vocabulary — nessy-owned types carry their
  * own Jackson annotations (spec §7), this class carries none.
  *

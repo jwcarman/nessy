@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.agent;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.computation.Outcome;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.Outcome;
 
 /**
  * The one mapping between a durable outcome and the tool grammar — checked casts, in-band failures,

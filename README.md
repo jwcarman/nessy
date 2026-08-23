@@ -183,12 +183,6 @@ for applications that want it.
 
 ```xml
 <dependencies>
-  <!-- The durable computation primitive — nessy-api and nessy-agent both build on this. -->
-  <dependency>
-    <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-durable</artifactId>
-  </dependency>
-
   <!-- The shared vocabulary: Tool, ToolGrant, UsagePolicy, the authorization chokepoint. -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>

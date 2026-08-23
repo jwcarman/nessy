@@ -25,13 +25,13 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.ComputationApprover;
+import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.StalenessPolicy;
+import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
-import org.jwcarman.nessy.agent.durable.ComputationApprover;
-import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
-import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
@@ -46,7 +46,6 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.api.tool.ToolRegistry;
 import org.jwcarman.nessy.api.turn.TurnObserver;
-import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.model.Model;
@@ -72,7 +71,7 @@ public final class HarnessConfig<O> {
   private List<ToolGrant> grants = List.of();
   private Function<String, Memory> memoryFactory;
   private Substrate substrate;
-  private DurableComputationBackend backend;
+  private SubstrateComputations backend;
   private Consumer<ApprovalRequest> approvalNotifier = request -> {};
   private TurnObserver turnObserver = TurnObserver.noop();
   // null until the caller sets one — finish() defaults it to a TurnNarrationAdapter over
@@ -194,19 +193,19 @@ public final class HarnessConfig<O> {
   }
 
   /**
-   * The shared durable computation backend behind both desks; default {@link SubstrateComputations}
-   * over this builder's {@link #substrate(Substrate)}. Override for a genuinely foreign engine
-   * (Restate, Temporal) — nobody implements this seam to get a database (spec §6.5).
+   * The shared computation store behind both desks; default a fresh {@link SubstrateComputations}
+   * over this builder's {@link #substrate(Substrate)}. There is no adapter seam above this — the
+   * {@link Substrate} it rides IS the seam a host swaps (durable-dissolves spec §2); override this
+   * setter only to share one {@link SubstrateComputations} instance across builders, or to hand it
+   * a different {@link Substrate}/{@link ObjectMapper} pairing than this config's own.
    *
    * <p><b>Integration contract:</b> the {@code DeliveryWorker} reads completions from this
    * builder's {@link #substrate(Substrate)} — specifically, {@code kind=outbox} delivery documents
-   * ({@code {destination, outcome}}, spec §4) — never from the backend directly. A foreign {@code
-   * DurableComputationBackend} MUST write those same {@code outbox} documents into this substrate
-   * on {@code complete()}; that write is the only way a completion ever reaches a parked scope. A
-   * backend that completes computations some other way (its own store, its own callback) parks
-   * every scope's completion forever — this config does not police that, so get the write right.
+   * ({@code {destination, outcome}}, spec §4) — never from the backend directly. Whatever {@link
+   * Substrate} this backend is constructed over MUST be the same one this builder uses, or its
+   * completions never reach a parked scope.
    */
-  public HarnessConfig<O> backend(DurableComputationBackend backend) {
+  public HarnessConfig<O> backend(SubstrateComputations backend) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     return this;
   }
@@ -342,7 +341,7 @@ public final class HarnessConfig<O> {
         id ->
             new SubstrateBacklog<>(
                 effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec, pinned);
-    DurableComputationBackend effectiveBackend =
+    SubstrateComputations effectiveBackend =
         backend != null ? backend : new SubstrateComputations(effectiveSubstrate, pinned);
     AgentObserver effectiveAgentObserver =
         agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);

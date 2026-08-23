@@ -56,11 +56,6 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-durable</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-testing</artifactId>
                 <version>${project.version}</version>
             </dependency>

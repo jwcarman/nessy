@@ -108,12 +108,11 @@ through line by line.
 
 ## The module map
 
-Five modules, each with a persona in mind:
+Four modules, each with a persona in mind:
 
 | Module | Depends on | Who compiles against it |
 |---|---|---|
-| `nessy-durable` | — | the durable-computation primitive everything else builds on |
-| `nessy-api` | `nessy-durable` | tool, policy, and enricher authors — the shared vocabulary: `Tool`, `ToolGrant`, messages, the authorization grammar |
+| `nessy-api` | — | tool, policy, and enricher authors — the shared vocabulary: `Tool`, `ToolGrant`, messages, the authorization grammar, and the durable-computation primitive (`ComputationId` and friends) everything else builds on |
 | `nessy-spi` | `nessy-api` | adapter authors — a custom `Memory`, approver, or `Substrate` implementation |
 | `nessy-agent` | `nessy-api`, `nessy-spi` | application builders — the machine, the `Nessy` front door, and the shipped kit (`VerbatimMemory`, `InMemorySubstrate`, the storage recipes) |
 | `nessy-intent` | `nessy-api`, `nessy-spi` | applications that want the declared-intent claim channel — `IntentTool`, `IntentStore`, `IntentEnricher` |

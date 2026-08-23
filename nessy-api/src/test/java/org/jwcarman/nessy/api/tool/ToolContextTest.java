@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.durable.ToolInvocationId;
+import org.jwcarman.nessy.api.computation.ToolInvocationId;
 
 class ToolContextTest {
 

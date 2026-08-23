@@ -28,24 +28,18 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.codec.StateCodec;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec.PendingDocument;
-import org.jwcarman.nessy.agent.durable.ScopeRouting;
-import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.computation.ComputationId;
+import org.jwcarman.nessy.api.computation.Outcome;
+import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.DurableComputationBackend;
-import org.jwcarman.nessy.durable.Outcome;
-import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.spi.substrate.Substrate.Op.AppendEntry;
@@ -126,7 +120,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
   private final MessageCodec messageCodec;
   private final Harness<O> harness;
   private final AgentBinder binder;
-  private final DurableComputationBackend computations;
+  private final SubstrateComputations computations;
   private final ObjectMapper mapper;
   private final Thread heartbeat;
 
@@ -265,7 +259,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
     if (isForeignTypeDelivery(json)) {
       return; // spec §5: another harness's type — untouched by this sweep
     }
-    DeliveryDocument delivery = codec.deliveryDocument(json);
+    OutcomeCodec.DeliveryDocument delivery = codec.deliveryDocument(json);
     ScopeRouting.Routing routing = ScopeRouting.decode(mapper, delivery.destination());
     AgentType type = AgentType.of(routing.agentType());
     AgentId id = AgentId.of(routing.agentId());
@@ -514,7 +508,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
     if (doc.isEmpty()) {
       return; // completed (or never existed) by the time this sweep reached it
     }
-    PendingDocument pending =
+    OutcomeCodec.PendingDocument pending =
         codec.pendingDocument(new String(doc.get().payload(), StandardCharsets.UTF_8));
     Optional<Instant> deadline = pending.deadline();
     if (deadline.isEmpty() || deadline.get().isAfter(Instant.now())) {
@@ -545,7 +539,10 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * #nudge()} — exactly as the normal delivery arm folds any other completion.
    */
   private void reapRetryable(
-      String key, long version, PendingDocument pending, ScopeRouting.Routing routing) {
+      String key,
+      long version,
+      OutcomeCodec.PendingDocument pending,
+      ScopeRouting.Routing routing) {
     Duration timeout =
         routing
             .timeout()
@@ -559,7 +556,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
     byte[] payload =
         codec
             .toJson(
-                new PendingDocument(
+                new OutcomeCodec.PendingDocument(
                     pending.invocation(), pending.returnAddress(), Optional.of(bumped)))
             .getBytes(StandardCharsets.UTF_8);
     try {

@@ -55,7 +55,6 @@
 
   <modules>
     <module>nessy-bom</module>
-    <module>nessy-durable</module>
     <module>nessy-api</module>
     <module>nessy-spi</module>
     <module>nessy-agent</module>

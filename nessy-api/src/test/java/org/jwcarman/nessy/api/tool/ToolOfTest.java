@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.durable.ToolInvocationId;
+import org.jwcarman.nessy.api.computation.ToolInvocationId;
 
 class ToolOfTest {
 

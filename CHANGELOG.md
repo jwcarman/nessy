@@ -534,3 +534,22 @@ sequence of renames and interim shapes that produced it.
   directly, and `EnvModelProviders.select()`'s `Selection` carries a
   `Model` alongside the chosen provider's name rather than a
   `ModelProvider`. See [Providers](https://jwcarman.github.io/nessy/guides/providers/).
+- **Durable dissolves: the spine stops pretending to be a tier.** The
+  `nessy-durable` module and the `org.jwcarman.nessy.agent.durable` package
+  are gone — a separate durability tier no longer names anything real once
+  the deliveries reform made the computation pipeline the only execution
+  path, in-memory and JDBC alike. `DurableComputationBackend` is deleted
+  outright: there was exactly one implementation and no swap story, so
+  `Harness`, `HarnessConfig`, `DeliveryWorker`, and both desks now hold
+  `SubstrateComputations` concretely — the `Substrate` beneath it is the one
+  seam a host swaps. Its vocabulary records relocate by consumer need,
+  smallest surface wins: `ComputationId`, `ToolInvocationId`, `Continuation`,
+  `Outcome`, `PendingComputation`, `CreateResult`, and `CompletionResult`
+  move to the new `org.jwcarman.nessy.api.computation` package in
+  `nessy-api`, public because `SubstrateComputations`'s own public
+  `create`/`complete`/`find` methods expose all seven. `OutcomeCodec` and
+  `ScopeRouting` return to package-private, reversing the harness-first fix
+  round's disclosed widening now that their one caller, `DeliveryWorker`,
+  sits back in the same package. Behavior is unchanged — this is relocation
+  and dead-abstraction deletion, not a semantics change. See
+  [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/).

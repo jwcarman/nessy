@@ -17,9 +17,9 @@ package org.jwcarman.nessy.agent.spi;
 
 import java.util.Optional;
 import org.jwcarman.nessy.agent.ModelResponseId;
+import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**

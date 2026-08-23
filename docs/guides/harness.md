@@ -82,11 +82,11 @@ The builder surface, piece by piece:
   state, never freshly-created state** — the same discipline
   `SubstrateMemory` gets for free by reading and writing through the
   shared substrate.
-- **`.backend(DurableComputationBackend)`** — the shared durable
-  computation backend behind both desks; default `SubstrateComputations`
-  over this config's `.substrate(...)`. Override only for a genuinely
-  foreign engine (Restate, Temporal) — nobody implements this seam to get
-  a database.
+- **`.backend(SubstrateComputations)`** — the shared computation store
+  behind both desks; default a fresh `SubstrateComputations` over this
+  config's `.substrate(...)`. There is no adapter seam above it — override
+  only to share one instance across configs, or to pair it with a
+  different `Substrate`/`ObjectMapper`.
 - **`.objectMapper(ObjectMapper)`** — the one mapper the harness binds
   JSON with; default a fresh `ObjectMapper`. Nessy pins a copy (lower-camel
   naming, tolerant reads, no default typing — see

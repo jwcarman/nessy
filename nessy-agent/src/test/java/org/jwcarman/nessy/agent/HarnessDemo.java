@@ -24,7 +24,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -38,7 +37,6 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -109,7 +107,7 @@ class HarnessDemo {
     // ---- the harness: the recipe, id-free — and one bind stamps this scope's handles ----
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var lifeSupportMapper = TestMappers.plainlyPinned();
-    DurableComputationBackend backend =
+    SubstrateComputations backend =
         new SubstrateComputations(lifeSupportSubstrate, lifeSupportMapper);
     var harness =
         Harness.<String>of(

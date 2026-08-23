@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
-import org.jwcarman.nessy.durable.ComputationId;
+import org.jwcarman.nessy.api.computation.ComputationId;
 
 /**
  * Where one tool call's durable questions live (spec §10.9): stamped by the executor — the one

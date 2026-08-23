@@ -20,7 +20,6 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -32,7 +31,6 @@ import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.TextBlock;
-import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -65,7 +63,7 @@ final class AgentFixture {
     // substrate — decoupled from whatever substrate the caller-supplied `store` above lives on.
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    DurableComputationBackend backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
+    SubstrateComputations backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
     Harness<String> harness =
         Harness.of(
             AgentType.of("fixture"),

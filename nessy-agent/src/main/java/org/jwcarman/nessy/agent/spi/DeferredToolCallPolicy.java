@@ -17,11 +17,11 @@ package org.jwcarman.nessy.agent.spi;
 
 import java.time.Duration;
 import java.util.Optional;
+import org.jwcarman.nessy.api.computation.ComputationId;
+import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
-import org.jwcarman.nessy.durable.ComputationId;
-import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
@@ -64,8 +64,8 @@ public interface DeferredToolCallPolicy {
    * would now decide {@code Allow} never gets the chance to double-execute), no re-run of the
    * tool's own side effect, no second approval ask (the approver is never even reached). The
    * default answers empty — a wiring with nothing durable to check has nothing to absorb; {@link
-   * org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy} is the one implementation
-   * that answers meaningfully.
+   * org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy} is the one implementation that
+   * answers meaningfully.
    */
   default Optional<ComputationId> pendingComputation(CallAddress address) {
     return Optional.empty();

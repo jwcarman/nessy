@@ -32,10 +32,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.codec.StateCodec;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec.DeliveryDocument;
-import org.jwcarman.nessy.agent.durable.OutcomeCodec.PendingDocument;
-import org.jwcarman.nessy.agent.durable.ScopeRouting;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -47,6 +43,9 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.api.computation.Continuation;
+import org.jwcarman.nessy.api.computation.Outcome;
+import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
@@ -54,9 +53,6 @@ import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.durable.Continuation;
-import org.jwcarman.nessy.durable.Outcome;
-import org.jwcarman.nessy.durable.ToolInvocationId;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -163,7 +159,9 @@ class TypeFilteredSweepTest {
         ScopeRouting.continuationFor(mapper, type.name(), id.value(), "response-1", CALL);
     var outcome = new Outcome.Success(ToolResult.ok("restarted"));
     byte[] payload =
-        codec.toJson(new DeliveryDocument(destination, outcome)).getBytes(StandardCharsets.UTF_8);
+        codec
+            .toJson(new OutcomeCodec.DeliveryDocument(destination, outcome))
+            .getBytes(StandardCharsets.UTF_8);
     store.write("outbox", key, payload, 0);
   }
 
@@ -279,7 +277,7 @@ class TypeFilteredSweepTest {
       var invocation = new ToolInvocationId("response-1", CALL.id());
       // already overdue: the deadline is in the past the instant this is written
       var pending =
-          new PendingDocument(
+          new OutcomeCodec.PendingDocument(
               invocation, returnAddress, Optional.of(Instant.now().minusSeconds(1)));
       byte[] payload = codec.toJson(pending).getBytes(StandardCharsets.UTF_8);
       store.write("computation", key, payload, 0);

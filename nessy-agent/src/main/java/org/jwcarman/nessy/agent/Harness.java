@@ -18,15 +18,12 @@ package org.jwcarman.nessy.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.function.Function;
-import org.jwcarman.nessy.agent.durable.ApprovalDesk;
-import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
-import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -77,7 +74,7 @@ public final class Harness<O> {
       Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      DurableComputationBackend backend) {
+      SubstrateComputations backend) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.observer = Objects.requireNonNull(observer, "observer must not be null");
@@ -122,7 +119,7 @@ public final class Harness<O> {
       Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      DurableComputationBackend backend) {
+      SubstrateComputations backend) {
     Harness<O> harness =
         new Harness<>(
             type,

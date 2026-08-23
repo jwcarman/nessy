@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
-import org.jwcarman.nessy.durable.ToolInvocationId;
+import org.jwcarman.nessy.api.computation.ToolInvocationId;
 
 /**
  * What a tool learns about the invocation it is serving.

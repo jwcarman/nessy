@@ -24,9 +24,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.DurableDecisions;
 import org.jwcarman.nessy.agent.Phase;
-import org.jwcarman.nessy.agent.durable.DurableDecisions;
-import org.jwcarman.nessy.agent.durable.SubstrateComputations;
+import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
@@ -214,7 +214,7 @@ class GrantSurvivalTest {
    * transfer-then-dispatch): the granted tool genuinely defers, so the grant's transfer batch is
    * {@code [create tool computation, delete delivery]} rather than the immediate arm's fold-advance
    * batch. The eventual answer arrives through the normal completion door — {@link
-   * org.jwcarman.nessy.agent.durable.CompletionDesk}, addressed by the SAME deterministic {@code
+   * org.jwcarman.nessy.agent.CompletionDesk}, addressed by the SAME deterministic {@code
    * ComputationId} the approval request's own address derives — and folds through host B exactly
    * like any other durable completion.
    */
