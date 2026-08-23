@@ -18,6 +18,7 @@ package org.jwcarman.nessy.spi.substrate;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.function.UnaryOperator;
 
 /**
@@ -46,6 +47,15 @@ final class SubstrateDocumentStore<T> implements DocumentStore<T> {
   @Override
   public boolean exists(String key) {
     return substrate.read(kind, key).isPresent();
+  }
+
+  @Override
+  public OptionalLong version(String key) {
+    return substrate
+        .read(kind, key)
+        .map(Substrate.Document::version)
+        .map(OptionalLong::of)
+        .orElse(OptionalLong.empty());
   }
 
   @Override

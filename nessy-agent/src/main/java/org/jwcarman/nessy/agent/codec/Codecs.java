@@ -15,14 +15,11 @@
  */
 package org.jwcarman.nessy.agent.codec;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.Objects;
+import org.jwcarman.nessy.spi.substrate.SubstrateSupport;
 
 /**
  * Internal storage machinery: the mapper-binding boundary every codec that renders the byte-payload
@@ -50,43 +47,15 @@ public final class Codecs {
   }
 
   /**
-   * {@code mapper.copy()} with the format-critical settings pinned (spec §7): lower-camel property
-   * naming, tolerant reads (unknown fields ignored), no default typing. User-registered modules and
-   * serializers survive the copy — only the wire-format knobs are pinned, since the stored format
-   * is a compatibility surface and cannot float on presentation preferences. {@code
-   * FAIL_ON_EMPTY_BEANS} is also disabled on the copy so a zero-component wire record (e.g. an
-   * outcome variant with no payload) still renders rather than throwing.
-   *
-   * <p>Serialization inclusion is pinned to {@code ALWAYS}: a caller mapper configured for {@code
-   * NON_EMPTY} (or any other omit-if-default policy) would otherwise survive the copy and drop
-   * empty or absent fields from the wire — a recipe whose document round-trips through its own
-   * canonical constructor (spec §7) then fails to parse the very document it just wrote. {@code
-   * WRITE_EMPTY_JSON_ARRAYS} is pinned {@code true} for the same reason: a per-type {@code
-   * configOverride} on the caller's mapper can still ask for {@code NON_EMPTY} on a specific class,
-   * and the pin alone does not out-rank that override — a wire record with a collection field that
-   * must always render carries its own {@code @JsonInclude(ALWAYS)} to close that route. Root
-   * wrapping is pinned off both directions for the same reason: it is a presentation preference,
-   * not a format the stored bytes can float on.
-   *
-   * <p>What the pin does <em>not</em> defend against: a caller mapper with {@code
-   * MapperFeature.USE_ANNOTATIONS} disabled, a caller-installed {@code setVisibility} override, or
-   * {@code WRITE_SINGLE_ELEM_ARRAYS_UNWRAPPED} enabled. These disable binding wholesale rather than
-   * merely omitting empty values, so they are not format-critical settings this pin can restore —
-   * they fail loudly at read time instead, and that failure is the caller's own foot.
+   * {@code mapper.copy()} with the format-critical settings pinned (spec §7) — delegates to {@link
+   * SubstrateSupport#copyAndPin(ObjectMapper)} (typed-stores fix round 1, Q1): the single source of
+   * truth for the pinned knob list lives in {@code nessy-spi} now, so a document's format-critical
+   * settings are pinned identically whether the mapper reaches a recipe through a harness's {@code
+   * .objectMapper(ObjectMapper)} or through a substrate's own {@code codecs()} — no duplicated knob
+   * list to drift between the two.
    */
   public static ObjectMapper copyAndPin(ObjectMapper mapper) {
-    Objects.requireNonNull(mapper, "mapper must not be null");
-    return mapper
-        .copy()
-        .setPropertyNamingStrategy(PropertyNamingStrategies.LOWER_CAMEL_CASE)
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-        .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
-        .setPropertyInclusion(
-            JsonInclude.Value.construct(JsonInclude.Include.ALWAYS, JsonInclude.Include.ALWAYS))
-        .configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, true)
-        .configure(SerializationFeature.WRAP_ROOT_VALUE, false)
-        .configure(DeserializationFeature.UNWRAP_ROOT_VALUE, false)
-        .deactivateDefaultTyping();
+    return SubstrateSupport.copyAndPin(mapper);
   }
 
   /** {@code json} parsed to a tree, or a malformed-payload {@link IllegalArgumentException}. */

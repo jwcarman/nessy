@@ -71,10 +71,15 @@ JournalStore<Message> transcript = substrate.journal("memory", Message.class);
 (a `CodecFactory`) unless a `Codec<T>` is supplied directly, bypassing the
 factory for a caller-owned binding (a transform, a test probe). Every
 substrate implementation gets its `CodecFactory` for free by extending
-`SubstrateSupport`, which owns one pinned, standard `ObjectMapper` per
-substrate instance (never a shared static) — overriding that mapper at
-construction (`new InMemorySubstrate(mapper)`) *is* the codec extension
-point; there is no separate per-feature codec seam to thread anymore.
+`SubstrateSupport`, which owns one `ObjectMapper` per substrate instance
+(never a shared static) — and "pinned" here means genuinely copy-and-pinned:
+`SubstrateSupport.copyAndPin` (the single source of truth for the
+format-critical knob list — see "The one-mapper story" below) runs on BOTH
+the default, standard mapper and any caller-supplied one, so a document's
+stored format is safe regardless of who constructs the substrate. Overriding
+the mapper at construction (`new InMemorySubstrate(mapper)`) *is* the codec
+extension point; there is no separate per-feature codec seam to thread
+anymore.
 
 `DocumentStore<T>` reads back a `Versioned<T>` (value plus version, the same
 pairing `Substrate.Document` always carried) and owns the read-modify-write
@@ -265,6 +270,15 @@ reads (unknown fields ignored), no default typing, `ALWAYS` inclusion, no
 root wrapping. User-registered modules and serializers survive the copy;
 only the wire-format knobs are pinned, because the stored format is a
 compatibility surface and cannot float on presentation preferences.
+
+`SubstrateSupport.copyAndPin` (`nessy-spi`) is the single source of truth for
+this knob list — the host module's own `Codecs.copyAndPin` (`nessy-agent`)
+delegates to it rather than carrying a second copy. `SubstrateSupport`
+applies it to every substrate's mapper, default or caller-supplied alike, so
+`Substrate#codecs()` is stored-format-safe no matter who constructed the
+substrate — a caller supplying their own `Substrate` implementation, or a
+bare `new InMemorySubstrate()` with no manual pin call, gets the identical
+pin a harness's `.objectMapper(ObjectMapper)` path always has.
 
 Two horror stories are why the pin exists, not a hypothetical:
 

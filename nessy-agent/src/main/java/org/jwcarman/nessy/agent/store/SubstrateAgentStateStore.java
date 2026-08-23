@@ -27,7 +27,6 @@ import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
-import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code state} recipe (substrate spec §6.1): one document per scope, keyed by {@code agentId}.
@@ -83,7 +82,11 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
     try {
       documents.write(agentId, state.phase(), state.version());
     } catch (ConflictException _) {
-      long actual = documents.read(agentId).map(Versioned::version).orElse(0L);
+      // Non-decoding version() read (typed-stores fix round 1, Q6): the conflict is already known
+      // — this is only naming the actual version for StaleStateException's message — so a foreign-
+      // shaped winner (a different Phase-incompatible payload at this key) must surface as the
+      // conflict it is, not as an unrelated decode failure masking it.
+      long actual = documents.version(agentId).orElse(0L);
       throw new StaleStateException(state.version(), actual);
     }
   }

@@ -19,6 +19,16 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -440,6 +450,60 @@ class InMemorySubstrateTest {
       assertThat(entry.toString()).contains("payloadBytes=").doesNotContain(MARKER);
       assertThat(writeDocument.toString()).contains("payloadBytes=").doesNotContain(MARKER);
       assertThat(appendEntry.toString()).contains("payloadBytes=").doesNotContain(MARKER);
+    }
+  }
+
+  @Nested
+  class TheCodecExtensionPoint {
+
+    record Marked(String value) {}
+
+    /**
+     * Writes {@code value} prefixed {@code "MARKED:"} — a registered serializer, not a format knob.
+     */
+    private static final class MarkedSerializer extends JsonSerializer<Marked> {
+      @Override
+      public void serialize(Marked value, JsonGenerator gen, SerializerProvider serializers)
+          throws IOException {
+        gen.writeStartObject();
+        gen.writeStringField("value", "MARKED:" + value.value());
+        gen.writeEndObject();
+      }
+    }
+
+    private static final class MarkedDeserializer extends JsonDeserializer<Marked> {
+      @Override
+      public Marked deserialize(JsonParser parser, DeserializationContext context)
+          throws IOException {
+        ObjectNode node = parser.getCodec().readTree(parser);
+        String raw = node.get("value").asText();
+        return new Marked(raw.substring("MARKED:".length()));
+      }
+    }
+
+    /**
+     * Typed-stores fix round 1, Q2: a mapper handed to {@code new InMemorySubstrate(mapper)} must
+     * actually be the mapper {@link Substrate#codecs()} binds through — not silently discarded for
+     * a bare default. A registered serializer/deserializer module (not a pin-overridden format knob
+     * like naming strategy or inclusion) proves the caller's own mapper configuration is live: it
+     * must be visible in the raw stored bytes, and the round trip must use it too. This test fails
+     * against a {@code SubstrateSupport} that ignores its {@code ObjectMapper} constructor argument
+     * — the stored bytes would read plain {@code {"value":"hello"}} instead.
+     */
+    @Test
+    void aRegisteredModuleSurvivesPinningAndIsVisibleInTheStoredBytes() {
+      SimpleModule module = new SimpleModule();
+      module.addSerializer(Marked.class, new MarkedSerializer());
+      module.addDeserializer(Marked.class, new MarkedDeserializer());
+      ObjectMapper customMapper = new ObjectMapper().registerModule(module);
+      InMemorySubstrate substrate = new InMemorySubstrate(customMapper);
+      DocumentStore<Marked> marks = substrate.document("marks", Marked.class);
+
+      marks.write("a", new Marked("hello"), 0L);
+
+      byte[] rawPayload = substrate.read("marks", "a").orElseThrow().payload();
+      assertThat(new String(rawPayload, UTF_8)).contains("MARKED:hello");
+      assertThat(marks.read("a")).contains(new Versioned<>(new Marked("hello"), 1L));
     }
   }
 }

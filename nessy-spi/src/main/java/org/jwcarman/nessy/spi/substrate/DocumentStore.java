@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spi.substrate;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.function.UnaryOperator;
 
 /**
@@ -46,6 +47,15 @@ public interface DocumentStore<T> {
    * needlessly widen the window between the check and a concurrent writer's own commit).
    */
   boolean exists(String key);
+
+  /**
+   * The current version at {@code key} without decoding the payload — the version-only sibling of
+   * {@link #exists(String)}: a caller that needs the CAS token but not the value (a best-effort
+   * cleanup, a version-only compare-and-swap over a foreign-shaped incumbent) can avoid paying a
+   * decode cost, and avoid failing on an undecodable payload, that {@link #read(String)} cannot
+   * avoid. Empty iff {@link #exists(String)} is false.
+   */
+  OptionalLong version(String key);
 
   /**
    * Writes {@code value} at {@code key} under CAS, exactly as {@link Substrate#write(String,

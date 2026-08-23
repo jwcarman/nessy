@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.CodecFactory;
+import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -88,6 +89,35 @@ class SubstrateIntentStoreTest {
       writer.declare(new Intent("restart prod-eu to clear the stuck deploy"));
 
       assertThat(reader.latest()).contains(new Intent("restart prod-eu to clear the stuck deploy"));
+    }
+  }
+
+  @Nested
+  class Declare_over_a_foreign_shape {
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    @JsonSubTypes({@JsonSubTypes.Type(value = Restart.class, name = "Restart")})
+    sealed interface ForeignVocabulary permits Restart {}
+
+    record Restart(String target, String reason) implements ForeignVocabulary {}
+
+    /**
+     * Typed-stores fix round 1, Q3: {@code declare} is documented "last write wins" without
+     * qualification — {@link DocumentStore#update} would decode the incumbent before discarding it,
+     * which throws when a second store shares the key with an incompatible vocabulary, silently
+     * narrowing that contract. A version-only CAS loop restores the blind overwrite.
+     */
+    @Test
+    void blindlyOverwritesAnIncumbentItsOwnCodecCannotDecode() {
+      var substrate = new InMemorySubstrate();
+      var plainStore = new SubstrateIntentStore<>(substrate, "agent-a", Intent.class, MAPPER);
+      var foreignStore =
+          new SubstrateIntentStore<>(substrate, "agent-a", ForeignVocabulary.class, MAPPER);
+      plainStore.declare(new Intent("a plain declaration, no \"type\" discriminator at all"));
+
+      foreignStore.declare(new Restart("prod-eu", "stuck deploy"));
+
+      assertThat(foreignStore.latest()).contains(new Restart("prod-eu", "stuck deploy"));
     }
   }
 

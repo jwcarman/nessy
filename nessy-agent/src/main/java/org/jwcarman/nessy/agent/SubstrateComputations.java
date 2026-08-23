@@ -192,13 +192,18 @@ public final class SubstrateComputations {
         // happened) is best-effort cleaned up here too, so presence-means-pending is not left
         // permanently violated by a redrive's own re-create; a lost race on the delete just means
         // another racer (or a later reap/redrive) already did or will — never this call's problem
-        // to retry over, since the fold itself already converged.
+        // to retry over, since the fold itself already converged. A non-decoding version() read
+        // (typed-stores fix round 1, Q5) rather than a full read(): this is a best-effort cleanup,
+        // not a value-consuming one, so an undecodable stray payload must not throw out of it; the
+        // delete targets the OBSERVED version, so a delete-and-recreate racing between the exists()
+        // check above and this cleanup conflicts into the same no-op BASE's raw-delete discipline
+        // always had, rather than silently deleting a DIFFERENT computation that just landed there.
         computations
-            .read(id.value())
+            .version(id.value())
             .ifPresent(
-                versioned -> {
+                version -> {
                   try {
-                    store.batch(List.of(computations.deleteOp(id.value(), versioned.version())));
+                    store.batch(List.of(computations.deleteOp(id.value(), version)));
                   } catch (ConflictException _) {
                     // already deleted by another racer, or mutated further — not this call's
                     // concern once the fold has converged

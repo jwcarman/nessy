@@ -19,15 +19,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.spi.substrate.Codec;
+import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code intent} recipe (substrate spec §6.3): one document per scope, keyed by {@code
- * agentId}, holding the latest declaration — last write wins via {@link DocumentStore#update}'s
- * read-then-CAS retry loop (typed-stores spec §1 ruling 1), the same read-decide-CAS shape the
- * substrate's other recipes ride.
+ * agentId}, holding the latest declaration — last write wins, blindly, via a version-only CAS retry
+ * loop over {@link DocumentStore#version(String)} (typed-stores fix round 1, Q3): the documented
+ * contract is "last write wins" full stop, not "last write wins unless the incumbent happens to be
+ * a foreign shape" — {@link DocumentStore#update} would decode the incumbent before discarding it,
+ * narrowing that contract for a caller sharing a key across declaration types.
  *
  * <p>The stored shape is a {@link Codec}{@code <T>} (spec §3, §7): the {@link
  * #SubstrateIntentStore(Substrate, String, Class, ObjectMapper)} constructor defaults it to {@link
@@ -67,7 +70,15 @@ public final class SubstrateIntentStore<T> implements IntentStore<T> {
   @Override
   public void declare(T declaration) {
     Objects.requireNonNull(declaration, "declaration must not be null");
-    documents.update(agentId, declaration, current -> declaration);
+    while (true) {
+      long expectedVersion = documents.version(agentId).orElse(0L);
+      try {
+        documents.write(agentId, declaration, expectedVersion);
+        return;
+      } catch (ConflictException _) {
+        // another writer declared between our version read and our write; retry
+      }
+    }
   }
 
   @Override

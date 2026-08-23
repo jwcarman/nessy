@@ -29,9 +29,11 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -623,6 +625,101 @@ class NessyHarnessDoorTest {
    * HarnessCustomizer)} opens the typed door, the backlog codec defaults to {@code
    * Codec.json(pinned, observationType)} (spec §6.4).
    */
+  /**
+   * Typed-stores fix round 1, Q1: {@link HarnessConfig#finish()} derives the backlog codec from
+   * {@code effectiveSubstrate.codecs()} — a caller-supplied {@link Substrate} must therefore be
+   * just as format-pinned (lower-camel naming, tolerant reads, {@code ALWAYS} inclusion) as the
+   * harness's own default substrate, or the stored backlog format floats depending on who
+   * constructed the substrate.
+   */
+  @Nested
+  class CallerSuppliedSubstrateStaysFormatPinned {
+
+    record Note(String text, int priority) {}
+
+    /**
+     * A bare {@code new InMemorySubstrate()} — no manual pin call of its own, the exact caller
+     * shape Q1's regression exposed — must still tolerate an unknown field on a stored backlog
+     * element exactly as the default (no {@code .substrate(...)}) path does: {@code
+     * FAIL_ON_UNKNOWN_PROPERTIES} pinned {@code false} is what {@link
+     * org.jwcarman.nessy.spi.substrate.SubstrateSupport#copyAndPin} guarantees now regardless of
+     * who constructed the substrate.
+     */
+    @Test
+    void anExtraFieldOnAStoredBacklogElementIsToleratedOverACallerSuppliedSubstrate()
+        throws JsonProcessingException {
+      var substrate = new InMemorySubstrate();
+      var scopeId = "scope-1";
+      var pumpA = new PumpedExecutor();
+      var providerA = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("reply"))));
+      var harnessA =
+          Nessy.harness(
+              Note.class,
+              h ->
+                  h.model(providerA)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pumpA)
+                      .substrate(substrate)
+                      .renderer(note -> List.of(new TextBlock(note.text()))));
+      HarnessTeardown.track(harnessA);
+
+      // Primes the scope busy (Idle -> AwaitingModel); pumpA is never pumped, so the SECOND
+      // observe below lands in the backlog document instead of draining immediately.
+      harnessA.bind(AgentId.of(scopeId)).observe(new Note("prime", 1));
+      harnessA.bind(AgentId.of(scopeId)).observe(new Note("check the oven", 3));
+
+      // Rewrites the pending element's own JSON to carry an unknown "futureField" property — a
+      // stored-format compatibility scenario (a newer schema version's payload read by older
+      // code), not something this harness's own encode path would ever produce itself.
+      Substrate.Document backlogDoc = substrate.read("backlog", scopeId).orElseThrow();
+      ObjectMapper plain = TestMappers.plainlyPinned();
+      String[] elements =
+          plain.readValue(new String(backlogDoc.payload(), StandardCharsets.UTF_8), String[].class);
+      assertThat(elements).hasSize(1);
+      String innerJson =
+          new String(Base64.getDecoder().decode(elements[0]), StandardCharsets.UTF_8);
+      ObjectNode mutated = (ObjectNode) plain.readTree(innerJson);
+      mutated.put("futureField", "not yet invented");
+      elements[0] = Base64.getEncoder().encodeToString(plain.writeValueAsBytes(mutated));
+      substrate.write("backlog", scopeId, plain.writeValueAsBytes(elements), backlogDoc.version());
+
+      // harnessA is abandoned here: pumpA is never pumped.
+
+      var pumpB = new PumpedExecutor();
+      var providerB =
+          new ScriptedModel(
+              List.of(
+                  List.of(new ModelEvent.TextChunk("reply to prime")),
+                  List.of(new ModelEvent.TextChunk("reply to pending"))));
+      var harnessB =
+          Nessy.harness(
+              Note.class,
+              h ->
+                  h.model(providerB)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings())
+                      .executor(pumpB)
+                      .substrate(substrate)
+                      .renderer(note -> List.of(new TextBlock(note.text())))
+                      .staleness((phase, lastSaved) -> true));
+      HarnessTeardown.track(harnessB);
+
+      // Re-fires harness A's stuck turn; its completion drains the pending (now extra-field-
+      // carrying) Note by the recipe's own drainOnIdle wiring — this throws if the caller-supplied
+      // substrate's codec factory is not tolerant-read pinned.
+      harnessB.bind(AgentId.of(scopeId)).drive();
+      pumpB.pumpUntilQuiet();
+
+      var memory = new SubstrateMemory(substrate, scopeId, TestMappers.plainlyPinned());
+      List<Message> messages = memory.recall().messages();
+      assertThat(messages)
+          .isNotEmpty()
+          .anyMatch(m -> m.content().contains(new TextBlock("check the oven")))
+          .anyMatch(m -> m.content().contains(new TextBlock("reply to pending")));
+    }
+  }
+
   @Nested
   class TypedObservations {
 

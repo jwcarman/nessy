@@ -236,9 +236,55 @@ class DocumentStoreTest {
   }
 
   @Nested
+  class Keys {
+
+    @Test
+    void keysComeBackAscendingUpToTheLimit() {
+      DocumentStore<Counter> counters = new InMemorySubstrate().document("counters", Counter.class);
+      counters.write("b", new Counter(2), 0L);
+      counters.write("a", new Counter(1), 0L);
+
+      assertThat(counters.keys(10)).containsExactly("a", "b");
+    }
+
+    @Test
+    void keysTruncateAtTheLimit() {
+      DocumentStore<Counter> counters = new InMemorySubstrate().document("counters", Counter.class);
+      counters.write("a", new Counter(1), 0L);
+      counters.write("b", new Counter(2), 0L);
+
+      assertThat(counters.keys(1)).containsExactly("a");
+    }
+  }
+
+  @Nested
+  class VersionAccessor {
+
+    @Test
+    void versionIsEmptyForAnAbsentKey() {
+      DocumentStore<Counter> counters = new InMemorySubstrate().document("counters", Counter.class);
+
+      assertThat(counters.version("a")).isEmpty();
+    }
+
+    @Test
+    void versionMatchesTheWrittenDocumentsVersionWithoutDecodingIt() {
+      InMemorySubstrate substrate = new InMemorySubstrate();
+      DocumentStore<Counter> lossy =
+          new SubstrateDocumentStore<>(
+              substrate, "counters", new ByteRoundTripEnforcement.LossyCodec());
+      lossy.write("a", new Counter(1), 0L);
+
+      // a codec that can never decode still reports its version correctly — version() never
+      // decodes, the version-only sibling of exists().
+      assertThat(lossy.version("a")).hasValue(1L);
+    }
+  }
+
+  @Nested
   class KindExplicitMinting {
 
-    record Widget(String name) {}
+    record Widget(String value) {}
 
     @Test
     void twoTypesMintedOverTwoKindsOnOneSubstrateDoNotCrossTalk() {
@@ -261,10 +307,14 @@ class DocumentStoreTest {
 
       // same kind string, different Class<T> tokens at the mint — the kind is the storage
       // identity, not the Java type, so a document written through one shape reads back through
-      // an incompatible shape as a decode failure, not silent corruption.
-      counters.write("a", new Counter(7), 0L);
+      // an incompatible shape as a decode failure, not silent corruption. Both records share the
+      // "value" property name but not its type: a missing property would just default under the
+      // pinned mapper's tolerant reads (spec §7), but a String "value" cannot coerce into
+      // Counter's int "value" — a genuine type mismatch, which fails regardless of tolerant-read
+      // pinning.
+      widgets.write("a", new Widget("gizmo"), 0L);
 
-      assertThatThrownBy(() -> widgets.read("a")).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> counters.read("a")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
