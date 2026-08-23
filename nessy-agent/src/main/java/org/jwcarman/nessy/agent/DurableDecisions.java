@@ -28,21 +28,22 @@ import org.jwcarman.nessy.spi.approval.Adjudication;
  * adjudication.
  *
  * <p>{@code mapper} threads through every door here (computation-identity spec §2 addendum): {@link
- * Outcome.Success#value()} is now a data-born {@link JsonNode}, not a raw {@link Decision}, so
- * building or reading one needs the pinned mapper's encoding — {@link ApprovalDesk} reaches it
- * through its own {@link SubstrateComputations#encodeSuccess}; this class is the standalone door
- * for callers that talk to a {@link SubstrateComputations} backend directly, without a desk in
- * between (white-box tests over the grant arm's own mechanics).
+ * Outcome.Success#value()} is a data-born {@link JsonNode}, not a raw {@link Decision}, so building
+ * or reading one needs the pinned mapper's encoding. Package-private (fix round 1, Q4): {@link
+ * ApprovalDesk#approve}/{@link ApprovalDesk#deny} are this class's one production caller, and every
+ * white-box test over the grant arm's own mechanics lives in this same package (or reaches this
+ * door through a locally-built {@link ApprovalDesk} of its own — see {@code GrantSurvivalTest}).
+ * There is no cross-package caller left to force this public.
  */
-public final class DurableDecisions {
+final class DurableDecisions {
 
   private DurableDecisions() {}
 
-  public static Outcome granted(ObjectMapper mapper) {
+  static Outcome granted(ObjectMapper mapper) {
     return new Outcome.Success(encode(mapper, Decision.allow()));
   }
 
-  public static Outcome denied(ObjectMapper mapper, String reason) {
+  static Outcome denied(ObjectMapper mapper, String reason) {
     Objects.requireNonNull(reason, "reason must not be null");
     if (reason.isBlank()) {
       throw new IllegalArgumentException("reason must not be blank");
@@ -58,7 +59,7 @@ public final class DurableDecisions {
   /**
    * {@code computation} names the id in an unexpected-payload message; it carries no other duty.
    */
-  public static Adjudication toAdjudication(
+  static Adjudication toAdjudication(
       ObjectMapper mapper, Outcome outcome, ComputationId computation) {
     Objects.requireNonNull(mapper, "mapper must not be null");
     Objects.requireNonNull(outcome, "outcome must not be null");

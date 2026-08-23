@@ -104,12 +104,6 @@ class HarnessApprovalDemo {
             TestMappers.plainlyPinned(),
             Kinds.computation(AgentType.of("ops")),
             Kinds.outbox(AgentType.of("ops")));
-    var approvalBackend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.approval(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var call =
         new ToolCall(
@@ -145,7 +139,8 @@ class HarnessApprovalDemo {
       var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
       var computation =
           new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c1").approval();
-      assertThat(approvalBackend.find(computation)).isPresent();
+      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
+          .isPresent();
       assertThat(requests).hasSize(1);
       assertThat(requests.getFirst().context().action()).contains("restart prod-eu");
       assertThat(requests.getFirst().id()).isEqualTo(computation);
@@ -161,7 +156,8 @@ class HarnessApprovalDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
-      assertThat(approvalBackend.find(computation)).isEmpty();
+      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
+          .isEmpty();
     } finally {
       harness.shutdown();
     }

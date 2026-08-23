@@ -102,7 +102,7 @@ public final class SubstrateComputations {
     return value;
   }
 
-  public CreateResult create(
+  CreateResult create(
       ComputationId id,
       ToolInvocationId invocation,
       Continuation returnAddress,
@@ -114,9 +114,8 @@ public final class SubstrateComputations {
    * The T2/T3-sanctioned ops seam (durable-deliveries spec §5a invariant 5): {@code alsoCommit}
    * rides the SAME {@link Substrate#batch} as the computation's own creation — the grant arm's
    * transfer-then-dispatch shape composes this with a grant delivery's {@code DeleteDocument} so
-   * the two either both land or neither does. Package-visible only: {@code alsoCommit} carries raw
-   * {@link Substrate.Op}s, an internal wiring detail this class's public {@link #create} overload
-   * never exposes.
+   * the two either both land or neither does. {@code alsoCommit} carries raw {@link Substrate.Op}s,
+   * an internal wiring detail the 4-arg {@link #create} overload above never exposes.
    */
   CreateResult create(
       ComputationId id,
@@ -159,7 +158,7 @@ public final class SubstrateComputations {
         computationKind, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
   }
 
-  public CompletionResult complete(ComputationId id, Outcome outcome) {
+  CompletionResult complete(ComputationId id, Outcome outcome) {
     Objects.requireNonNull(id, ID_NULL_MESSAGE);
     Objects.requireNonNull(outcome, "outcome must not be null");
     // Validate before touching the store: a foreign Success payload throws here (spec §7),
@@ -180,6 +179,17 @@ public final class SubstrateComputations {
         // completers of the SAME still-pending computation is unaffected: neither sees a delivery
         // yet, so both proceed to race the batch itself, and the loser's next iteration finds the
         // computation genuinely absent (ALREADY_DONE), not a stray delivery to converge on.
+        // The stray computation this branch found (recreated after the real transfer already
+        // happened) is best-effort cleaned up here too, so presence-means-pending is not left
+        // permanently violated by a redrive's own re-create; a lost race on the delete just means
+        // another racer (or a later reap/redrive) already did or will — never this call's problem
+        // to retry over, since the fold itself already converged.
+        try {
+          store.delete(computationKind, id.value(), doc.get().version());
+        } catch (ConflictException _) {
+          // already deleted by another racer, or mutated further — not this call's concern once
+          // the fold has converged
+        }
         return CompletionResult.TRANSFERRED;
       }
       PendingDocument pending =
@@ -202,7 +212,7 @@ public final class SubstrateComputations {
     }
   }
 
-  public Optional<PendingComputation> find(ComputationId id) {
+  Optional<PendingComputation> find(ComputationId id) {
     Objects.requireNonNull(id, ID_NULL_MESSAGE);
     return store
         .read(computationKind, id.value())

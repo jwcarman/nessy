@@ -34,7 +34,8 @@ class ApprovalDeskTest {
       new SubstrateComputations(
           new InMemorySubstrate(), TestMappers.plainlyPinned(), "approval", "outbox");
   private int nudges;
-  private final ApprovalDesk desk = new ApprovalDesk(backend, () -> nudges++);
+  private final ApprovalDesk desk =
+      new ApprovalDesk(backend, TestMappers.plainlyPinned(), () -> nudges++);
 
   private static final ComputationId COMPUTATION = ComputationId.of("approval:t:a:c1");
   private static final ToolInvocationId INVOCATION = new ToolInvocationId("response-1", "c1");

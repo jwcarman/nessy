@@ -94,7 +94,7 @@ public final class Harness<O> {
     Objects.requireNonNull(approvalBackend, "approvalBackend must not be null");
     Objects.requireNonNull(executionBackend, "executionBackend must not be null");
     this.worker = new DeliveryWorker<>(substrate, mapper, this, this::resolve);
-    this.approvals = new ApprovalDesk(approvalBackend, worker::nudge);
+    this.approvals = new ApprovalDesk(approvalBackend, mapper, worker::nudge);
     this.completions = new CompletionDesk(executionBackend, worker::nudge);
   }
 

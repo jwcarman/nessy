@@ -15,8 +15,8 @@
  */
 package org.jwcarman.nessy.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
-import org.jwcarman.nessy.api.Decision;
 import org.jwcarman.nessy.api.tool.ComputationId;
 
 /**
@@ -28,14 +28,21 @@ import org.jwcarman.nessy.api.tool.ComputationId;
  *
  * <p>This backend is the approval-kind instance (computation-identity spec §3) — {@code
  * approval/&lt;agentType&gt;} — never the execution one {@link CompletionDesk} holds.
+ *
+ * <p>{@code approve}/{@code deny} route through {@link DurableDecisions} (fix round 1, Q4): the one
+ * place a {@code Decision} becomes an {@code Outcome} — {@code mapper} is threaded through here
+ * purely so this desk can reach that one door, not because this class has any encoding logic of its
+ * own.
  */
 public final class ApprovalDesk {
 
   private final SubstrateComputations backend;
+  private final ObjectMapper mapper;
   private final Runnable nudge;
 
-  public ApprovalDesk(SubstrateComputations backend, Runnable nudge) {
+  public ApprovalDesk(SubstrateComputations backend, ObjectMapper mapper, Runnable nudge) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
+    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.nudge = Objects.requireNonNull(nudge, "nudge must not be null");
   }
 
@@ -44,20 +51,16 @@ public final class ApprovalDesk {
    * adjudication.
    */
   public void approve(ComputationId id) {
-    decide(id, Decision.allow());
+    decide(id, DurableDecisions.granted(mapper));
   }
 
   public void deny(ComputationId id, String reason) {
-    Objects.requireNonNull(reason, "reason must not be null");
-    if (reason.isBlank()) {
-      throw new IllegalArgumentException("reason must not be blank");
-    }
-    decide(id, new Decision.Deny(reason));
+    decide(id, DurableDecisions.denied(mapper, reason));
   }
 
-  private void decide(ComputationId id, Decision decision) {
+  private void decide(ComputationId id, Outcome outcome) {
     Objects.requireNonNull(id, "id must not be null");
-    backend.complete(id, new Outcome.Success(backend.encodeSuccess(decision)));
+    backend.complete(id, outcome);
     nudge.run();
   }
 }

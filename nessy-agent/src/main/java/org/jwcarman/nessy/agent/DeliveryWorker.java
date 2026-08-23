@@ -268,10 +268,12 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * ever find this delivery left over to reprocess. This is NOT "closed at every committed point"
    * unqualified, though: the grant's OWN completion batch (approval computation deleted, this
    * delivery created) is itself a committed point at which neither the approval nor the tool
-   * computation exists — between that batch and this worker draining it, a staleness redrive still
-   * re-asks the approver, because the delivery's key is random and not derivable from the call's
-   * address. Closing that window needs a design ruling (a deterministic grant-delivery key, or an
-   * explicit granted marker) — PARKED, not fixed here.
+   * computation exists. That window is closed now (computation-identity spec §4): the grant
+   * delivery sits at the completed approval computation's own deterministic id, and {@link
+   * ComputationDeferredToolCallPolicy#pendingComputation} checks that exact key (via {@link
+   * SubstrateComputations#deliveryPending}) before ever reaching the approver again — so a
+   * staleness redrive landing between the grant's completion batch and this worker's drain absorbs
+   * at the gate instead of re-asking.
    */
   private void deliverGrant(String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
     if (!claiming.add(key)) {

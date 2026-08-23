@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -184,7 +186,7 @@ class GrantDeliveryPendingWindowTest {
   }
 
   @Test
-  void aReplayedGrantOnTheSameApprovalIdConvergesRatherThanDuplicatingTheDelivery() {
+  void aSecondCompletionAfterTheTransferIsAlreadyDoneAndLeavesOneDelivery() {
     var mapper = TestMappers.plainlyPinned();
     var substrate = new InMemorySubstrate();
     var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
@@ -204,13 +206,59 @@ class GrantDeliveryPendingWindowTest {
         approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
     assertThat(substrate.keys("outbox", 10)).hasSize(1);
 
-    // a replayed completion of the SAME already-transferred id: the computation is gone, so this
-    // is the ordinary ALREADY_DONE path — still exactly one delivery, never a duplicate.
+    // a second completion after the transfer: the computation is already gone (deleted by the
+    // first), so this is the ordinary ALREADY_DONE path — still exactly one delivery, never a
+    // duplicate. This does NOT exercise the deterministic-key convergence rail (see the sibling
+    // test below for that): the computation being absent short-circuits complete() before it ever
+    // reaches the deliveryPending check.
     CompletionResult second =
         approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
 
     assertThat(first).isEqualTo(CompletionResult.TRANSFERRED);
     assertThat(second).isEqualTo(CompletionResult.ALREADY_DONE);
     assertThat(substrate.keys("outbox", 10)).hasSize(1);
+  }
+
+  /**
+   * The deterministic-key convergence rail itself (computation-identity spec §4): the computation
+   * is STILL PRESENT (unlike the sibling test above, where it's already gone) — simulating a
+   * redrive that re-created the computation after an earlier grant already transferred it, or a
+   * genuinely concurrent completer landing after another has already written the delivery but
+   * before this one's own read-then-batch. {@code complete()} must find the delivery already
+   * sitting at the deterministic key and converge to {@code TRANSFERRED} without attempting (and
+   * failing) a write to that same key — proving the {@code deliveryPending} pre-batch check, not
+   * merely the ordinary absent-computation path. A revert of that check would instead spin the
+   * retry loop forever (the delivery write can never succeed once occupied) or throw, either way
+   * failing this test.
+   */
+  @Test
+  @Timeout(10)
+  void aDeliveryAlreadyPresentAtTheDeterministicKeyConvergesWithTheComputationStillPresent() {
+    var mapper = TestMappers.plainlyPinned();
+    var substrate = new InMemorySubstrate();
+    var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
+    var address = new CallAddress("test", "test-scope", "r1", "c1");
+    var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+    var continuation = ScopeRouting.continuationFor(mapper, "test", "test-scope", "r1", call);
+    approvalBackend.create(
+        address.approval(), new ToolInvocationId("r1", "c1"), continuation, Optional.empty());
+
+    // the delivery already sits at the computation's own deterministic key — as if an earlier
+    // completion attempt had already transferred it, and the computation was somehow recreated
+    // (or a concurrent completer is about to lose this exact race) — written directly, bypassing
+    // complete(), so the computation document is left in place for this test's own call to find.
+    var codec = new OutcomeCodec(mapper);
+    var deliveryPayload =
+        codec.toJson(
+            new OutcomeCodec.DeliveryDocument(continuation, DurableDecisions.granted(mapper)));
+    substrate.write(
+        "outbox", address.approval().value(), deliveryPayload.getBytes(StandardCharsets.UTF_8), 0);
+
+    CompletionResult result =
+        approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
+
+    assertThat(result).isEqualTo(CompletionResult.TRANSFERRED);
+    assertThat(substrate.keys("outbox", 10)).containsExactly(address.approval().value());
+    assertThat(approvalBackend.find(address.approval())).isEmpty();
   }
 }

@@ -197,11 +197,13 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
   private ToolExecution gate(ToolGrant grant, ToolCall call, CallAddress address) {
     Optional<ComputationId> pending = deferredToolCallPolicy.pendingComputation(address);
     if (pending.isPresent()) {
-      // ownership-split absorption (spec §5a, §6): a staleness redrive reached a call whose
-      // approval is still pending, or whose tool computation already exists — the ask, or the
-      // work, is already in flight from an earlier pass through this exact gate. Absorb here,
-      // before the policy (which could be non-constant) or its enrichers run again, before the
-      // tool runs again, and before the approver is ever asked again.
+      // ownership-split absorption (spec §5a, §6; computation-identity spec §4): a staleness
+      // redrive reached a call whose approval is still pending, whose tool computation already
+      // exists, or whose grant/completion already folded into an undrained outbox delivery under
+      // its own deterministic key — the ask, or the work, is already in flight from an earlier
+      // pass through this exact gate. Absorb here, before the policy (which could be non-constant)
+      // or its enrichers run again, before the tool runs again, and before the approver is ever
+      // asked again.
       return new ToolExecution.Deferred(pending.get());
     }
     Object input = convert(call, grant.tool());

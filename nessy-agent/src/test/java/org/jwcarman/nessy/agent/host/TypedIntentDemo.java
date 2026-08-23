@@ -191,12 +191,6 @@ class TypedIntentDemo {
             TestMappers.plainlyPinned(),
             Kinds.computation(AgentType.of("ops")),
             Kinds.outbox(AgentType.of("ops")));
-    var approvalBackend =
-        new SubstrateComputations(
-            substrate,
-            TestMappers.plainlyPinned(),
-            Kinds.approval(AgentType.of("ops")),
-            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(
@@ -254,7 +248,8 @@ class TypedIntentDemo {
       var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
       var computation =
           new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c3").approval();
-      assertThat(approvalBackend.find(computation)).isPresent();
+      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
+          .isPresent();
       assertThat(requests).hasSize(1);
       ApprovalRequest request = requests.getFirst();
       assertThat(request.context().declaredIntent(OpsIntent.class))
@@ -269,7 +264,8 @@ class TypedIntentDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
-      assertThat(approvalBackend.find(computation)).isEmpty();
+      assertThat(substrate.read(Kinds.approval(AgentType.of("ops")), computation.value()))
+          .isEmpty();
     } finally {
       harness.shutdown();
     }

@@ -58,6 +58,19 @@ class CallAddressTest {
     assertThat(address.execution()).isNotEqualTo(other.execution());
   }
 
+  /**
+   * Pins the length-prefix property the class javadoc claims: a naive delimiter-join (plain
+   * concatenation with a separator, no length prefix) would collide these two tuples — {@code "a:b"
+   * + "c"} and {@code "a" + "b:c"} render identically once joined — so this only stays distinct
+   * because each field's own byte length is digested ahead of it.
+   */
+  @Test
+  void fieldsWithEmbeddedDelimitersDoNotCollide() {
+    var first = new CallAddress("a:b", "c", "r", "x");
+    var second = new CallAddress("a", "b:c", "r", "x");
+    assertThat(first.approval()).isNotEqualTo(second.approval());
+  }
+
   @Test
   void derivedIdsCarryNoColonDelimitedFormat() {
     var address = new CallAddress("ops", "prod-1", "r7", "c42");

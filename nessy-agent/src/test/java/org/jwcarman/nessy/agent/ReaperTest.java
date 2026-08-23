@@ -402,7 +402,7 @@ class ReaperTest {
     // 1000 deadline-less decoy documents in the SAME kind as the real overdue one below — a
     // narrow keys() fetch would let these alone crowd out the real tool computation.
     for (int i = 0; i < 1000; i++) {
-      String key = "decoy-r%04d-c1".formatted(i);
+      String key = "zz-decoy-r%04d-c1".formatted(i);
       substrate.write(computationKind, key, new byte[] {0}, 0);
     }
 

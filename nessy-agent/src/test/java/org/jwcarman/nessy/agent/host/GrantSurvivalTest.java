@@ -25,8 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.ApprovalDesk;
 import org.jwcarman.nessy.agent.CallAddress;
-import org.jwcarman.nessy.agent.DurableDecisions;
 import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.SubstrateComputations;
@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -100,8 +101,7 @@ class GrantSurvivalTest {
    * this test white-box-rebuilds it from the request's display fields plus {@code responseId} to
    * derive the execution id the eventual tool computation lands under.
    */
-  private static org.jwcarman.nessy.api.tool.ComputationId toolComputationFor(
-      ApprovalRequest request) {
+  private static ComputationId toolComputationFor(ApprovalRequest request) {
     return new CallAddress(
             request.agentType(), request.agentId(), request.responseId(), request.call().id())
         .execution();
@@ -150,7 +150,10 @@ class GrantSurvivalTest {
               mapper,
               Kinds.approval(AgentType.of("ops")),
               Kinds.outbox(AgentType.of("ops")));
-      backendOverSameSubstrate.complete(firstAsk.id(), DurableDecisions.granted(mapper));
+      // A local, silently-nudging ApprovalDesk over the SAME backend/substrate — the same
+      // shape harnessA.approvals() has, but with a no-op nudge, so harness A's own worker is
+      // never touched by this grant.
+      new ApprovalDesk(backendOverSameSubstrate, mapper, () -> {}).approve(firstAsk.id());
     } finally {
       harnessA.shutdown();
     }
@@ -282,7 +285,10 @@ class GrantSurvivalTest {
               mapper,
               Kinds.approval(AgentType.of("ops")),
               Kinds.outbox(AgentType.of("ops")));
-      backendOverSameSubstrate.complete(firstAsk.id(), DurableDecisions.granted(mapper));
+      // A local, silently-nudging ApprovalDesk over the SAME backend/substrate — the same
+      // shape harnessA.approvals() has, but with a no-op nudge, so harness A's own worker is
+      // never touched by this grant.
+      new ApprovalDesk(backendOverSameSubstrate, mapper, () -> {}).approve(firstAsk.id());
     } finally {
       harnessA.shutdown();
     }
