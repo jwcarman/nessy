@@ -137,9 +137,13 @@ public final class Console implements AutoCloseable {
                     ended.failed()
                         ? new TurnOutcome.Failed(ended.failureReason())
                         : new TurnOutcome.Replied(lastAssistantText.get()));
-            default -> {
-              // narration only — this wait cares about the settled outcome alone
-            }
+            case TurnEvent.TextDelta _ -> {}
+            case TurnEvent.ThinkingDelta _ -> {}
+            case TurnEvent.RedactedThinking _ -> {}
+            case TurnEvent.ToolCallRequested _ -> {}
+            case TurnEvent.ToolCallDecided _ -> {}
+            case TurnEvent.ToolCallCompleted _ -> {}
+            case TurnEvent.ToolCallProgressed _ -> {}
           }
         };
     try (Subscription subscription = agent.subscribe(capture)) {

@@ -25,6 +25,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.ScriptedModel;
@@ -212,6 +214,82 @@ class ConsoleTest {
         assertThat(viaRelay).hasSize(1);
         assertThat(viaSubscriber).hasSize(1);
       }
+    }
+  }
+
+  @Nested
+  class Lifecycle {
+
+    /**
+     * Migrated from the retired {@code CliAgentTest} (fix round 1, finding 2a): {@code
+     * Nessy.cli()}'s build runs its {@link org.jwcarman.nessy.agent.Harness} through the same
+     * compiler every door shares, so it starts a delivery heartbeat exactly like any other
+     * harness's — {@link Console#close()} must quiesce it, or the ephemeral-CLI charter (one turn,
+     * then gone) is violated by a stranded daemon thread. Enumerated by name prefix rather than a
+     * new public seam: {@code DeliveryWorker}'s heartbeat thread is always named {@code
+     * "nessy-delivery"}.
+     */
+    @Test
+    void closing_the_console_leaves_no_live_delivery_heartbeat_thread()
+        throws InterruptedException {
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+      long before = liveDeliveryThreadCount();
+
+      var captured = new ByteArrayOutputStream();
+      var console =
+          Nessy.cli()
+              .model(model)
+              .systemPrompt(TestSettings.SYSTEM_PROMPT)
+              .settings(TestSettings.settings())
+              .in(new ByteArrayInputStream("hello\n".getBytes(StandardCharsets.UTF_8)))
+              .out(new PrintStream(captured, true, StandardCharsets.UTF_8))
+              .build();
+      console.run();
+      assertThat(captured.toString(StandardCharsets.UTF_8)).isEqualTo("hello back\n");
+      assertThat(liveDeliveryThreadCount()).isEqualTo(before + 1);
+
+      console.close();
+
+      // Thread#interrupt() is asynchronous — give the heartbeat a moment to actually stop.
+      long deadline = System.currentTimeMillis() + 2000;
+      long after = liveDeliveryThreadCount();
+      while (after > before && System.currentTimeMillis() < deadline) {
+        Thread.sleep(20);
+        after = liveDeliveryThreadCount();
+      }
+      assertThat(after).isEqualTo(before);
+    }
+
+    private static long liveDeliveryThreadCount() {
+      return Thread.getAllStackTraces().keySet().stream()
+          .filter(Thread::isAlive)
+          .filter(t -> t.getName().equals("nessy-delivery"))
+          .count();
+    }
+
+    /**
+     * Migrated from the retired {@code CliAgentTest} (fix round 1, finding 2b): {@link
+     * Console#close()}'s {@code ownsExecutor} conditional is console-specific and was untested —
+     * this must fail against a flipped {@code if}. A caller-supplied executor is never the
+     * console's to close.
+     */
+    @Test
+    void a_caller_supplied_executor_survives_console_close() {
+      ExecutorService callerExecutor = Executors.newVirtualThreadPerTaskExecutor();
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+      try (var console =
+          Nessy.cli()
+              .model(model)
+              .systemPrompt(TestSettings.SYSTEM_PROMPT)
+              .settings(TestSettings.settings())
+              .executor(callerExecutor)
+              .in(new ByteArrayInputStream("hello\n".getBytes(StandardCharsets.UTF_8)))
+              .out(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
+              .build()) {
+        console.run();
+      }
+      assertThat(callerExecutor.isShutdown()).isFalse();
+      callerExecutor.close();
     }
   }
 }
