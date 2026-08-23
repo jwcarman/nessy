@@ -40,7 +40,11 @@ parked until ids travel to untrusted parties.
   or delimiter-escaped encoding — no ambiguity between tuples; hex or
   base64url rendering. `CallAddress.approval()`/`.execution()` keep their
   signatures and become the digest sites; `ComputationId` stays an opaque
-  wrapper.
+  wrapper and moves to `org.jwcarman.nessy.api.tool` beside `CallAddress`
+  (whittle ruling, James 2026-08-23): the `api.computation` package dies —
+  its other residents sink into `nessy-agent` at minimal visibility, public
+  only where a desk signature forces them; demos/tests move into the package
+  or through the desks rather than holding members public.
 - Determinism-from-the-fold is unchanged law (durable-deliveries §2): same
   fold, same tuple, same id.
 
