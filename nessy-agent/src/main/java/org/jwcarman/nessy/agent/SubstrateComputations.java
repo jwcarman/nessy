@@ -196,8 +196,8 @@ public final class SubstrateComputations {
         // to retry over, since the fold itself already converged. A non-decoding version() read
         // (typed-stores fix round 1, Q5) rather than a full read(): this is a best-effort cleanup,
         // not a value-consuming one, so an undecodable stray payload must not throw out of it; the
-        // delete targets the OBSERVED version, so a delete-and-recreate racing between the exists()
-        // check above and this cleanup conflicts into the same no-op BASE's raw-delete discipline
+        // delete targets the OBSERVED version, so a delete-and-recreate racing between this
+        // cleanup's version() read and its delete conflicts into the same no-op BASE's discipline
         // always had, rather than silently deleting a DIFFERENT computation that just landed there.
         computations
             .version(id.value())

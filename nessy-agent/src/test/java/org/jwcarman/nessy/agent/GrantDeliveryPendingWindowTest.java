@@ -209,8 +209,8 @@ class GrantDeliveryPendingWindowTest {
     // a second completion after the transfer: the computation is already gone (deleted by the
     // first), so this is the ordinary ALREADY_DONE path — still exactly one delivery, never a
     // duplicate. This does NOT exercise the deterministic-key convergence rail (see the sibling
-    // test below for that): the computation being absent short-circuits complete() before it ever
-    // reaches the deliveryPending check.
+    // test below for that): the computation being absent takes the ALREADY_DONE arm even though a
+    // delivery is present — the converge branch is never entered.
     CompletionResult second =
         approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
 
