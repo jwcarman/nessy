@@ -1,7 +1,8 @@
 # Harness First — the agent API people imagine
 
 **Date:** 2026-08-22
-**Status:** Ratified (James, in conversation, 2026-08-22)
+**Status:** Ratified (James, in conversation, 2026-08-22); §7 model split
+ratified 2026-08-23 ("I like it")
 **Amends:** `2026-08-18-agent-as-scope-design.md` §10.11 (the tier boundary
 moves: the harness absorbs the host tier's machinery) and
 `2026-08-22-durable-deliveries-design.md` (the worker/desks/reaper's home).
@@ -17,14 +18,19 @@ Ask Nessy for a harness; keep it forever; bind any id into a transient agent;
 tell it things. Durability is a property of the substrate, not the API:
 
 ```java
-var harness = Nessy.harness(h -> h             // built once, kept — immortal
-        .provider(provider)                    // the one required dependency
+var anthropic = AnthropicModelProvider.fromEnv();   // vendor gateway — one per app
+
+var harness = Nessy.harness(h -> h                  // built once, kept — immortal
+        .model(anthropic.model("claude-sonnet-5"))  // the one required dependency
         .systemPrompt("You are the ops assistant.")
-        .tools(restart, diagnose)              // bare tools, allow-by-default
-        .substrate(jdbc));                     // default: in-memory
+        .tools(restart, diagnose)                   // bare tools, allow-by-default
+        .substrate(jdbc));                          // default: in-memory
 
 harness.bind(AgentId.of("ops-agent-1")).observe("restart prod-eu");
 ```
+
+This snippet RUNS — nothing else is required. Settings are optional (§7);
+the model handle arrives already knowing who it is.
 
 The identical program is a toy on the in-memory substrate and a durable,
 resumable, any-host system on JDBC — one line differs. That is the whole
@@ -54,10 +60,13 @@ compose inside the lambda; there is deliberately no second door.
 
 ## 3. The builder minimum
 
-- `.provider(ModelProvider)` — required, explicit (no env fallback; the one
-  true dependency stays visible).
-- `.systemPrompt(String)` — first-class sugar; the full `ModelSettings`
-  object remains for model id / max-tokens / the rest.
+- `.model(Model)` — required, explicit (no env fallback; the one true
+  dependency stays visible). A `Model` is a bound handle from a vendor
+  gateway (§7); the harness never sees the gateway itself.
+- `.systemPrompt(String)` — first-class, harness-level configuration; it no
+  longer lives on `ModelSettings` (§7). `.settings(ModelSettings)` is the
+  OPTIONAL tuning bag — max-tokens, requested capabilities, context window —
+  with honest defaults when omitted.
 - `.tools(Tool...)` — allow-by-default sugar (the same allow-sugar the
   Spring design specified for bare Tool beans); `.grants(ToolGrant...)`
   stays beside it as the governed path; docs teach the graduation.
@@ -107,5 +116,52 @@ unchanged.)
 
 `AutonomousHost` (public type), `Binding` (public surface), the grant-ceremony
 requirement on the five-minute path, `post(String, ...)` as the tell verb
-(binding + `observe` is the story; prose may say "tell"), and the pretense
-that the harness needs a compiler other than Nessy.
+(binding + `observe` is the story; prose may say "tell"), the pretense that
+the harness needs a compiler other than Nessy, and — per §7 —
+`ModelRequest.model`, `ModelSettings.model`, `ModelSettings.systemPrompt`,
+and the harness-level `.provider(...)` door.
+
+## 7. The model split (amendment, 2026-08-23)
+
+**A model provider provides models.** Today's `ModelProvider` is one
+transport pretending to be every model at its vendor: it answers
+`capabilities()` statically while accepting any model string per request —
+an answer that is per-model in reality (thinking, context size, schema
+support all vary across a lineup). The split gives each word its meaning:
+
+```java
+public interface Model {
+  ModelStream stream(ModelRequest request);   // the thing that runs requests
+  Set<Capability> capabilities();             // honest per-model
+  String id();                                // "claude-opus-5" — banners, logs
+}
+```
+
+- **`ModelProvider` is the vendor gateway** — the application singleton
+  holding the SDK client, credentials, transport. Its job: `Model
+  model(String id)` — a cheap, immutable, bound handle over the shared
+  client. Vendor-level facts stay on the gateway/module: the `RETRYABLE`
+  classification, `name()`. `capabilities()` moves OFF the gateway onto
+  `Model`.
+- **One model per handle** is the contract. Two agents on two models is two
+  handles from one gateway — `anthropic.model("claude-opus-5")` and
+  `anthropic.model("claude-haiku-4-5")` — feeding two harnesses. No model
+  string threads through requests; the wire modules read their own pinned
+  id.
+- **`ModelRequest` loses `model`.** The request describes the turn (context,
+  system prompt, max tokens, tools, requested capabilities, response
+  schema); the handle it is sent to knows which model runs it. The
+  executor-stamped `ModelRequest` IS the dispatch-stamped work order the
+  reducer stays blind to — the reducer emits the `CallModel` effect bare,
+  and the harness-owned executor stamps prompt and tuning at call time, as
+  it already does.
+- **`ModelSettings` becomes the optional tuning bag**: `maxTokens` (default
+  8192), requested `capabilities`, `contextWindow`. `model` and
+  `systemPrompt` leave it — the handle knows the former, the harness owns
+  the latter.
+- **Wrappers rebase one level down**: retry wraps the thing that runs
+  requests, so `RetryingModelProvider` becomes a retrying `Model`
+  decorator; the vendor `RETRYABLE` predicates feed it unchanged.
+- **Env selection returns a handle**: an environment naming vendor + model
+  resolves to exactly one bound `Model`; `EnvModelProviders.select()`'s
+  `Selection` carries it.
