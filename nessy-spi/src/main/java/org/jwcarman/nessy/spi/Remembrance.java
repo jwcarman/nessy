@@ -28,12 +28,14 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * — the turn identity {@link Memory}'s idempotence law converges on.
  *
  * <p>The members map one-to-one onto the three fold moments (spec §2): an observation folds into a
- * {@link UserMessage} (keyed by an opaque, per-fold identity); a model turn without pending tool
- * calls folds into an {@link AssistantMessage} (keyed by its committed {@code ModelResponseId}); a
- * completed tool call folds into a {@link ToolExchange} (keyed by its execution {@code
- * ComputationId}) — one exchange per call id, carrying the call and its result together so the
- * pairing invariant survives even when the result folds long after the call, and even when a memory
- * implementation never sees the two arrive in the same batch.
+ * {@link UserMessage} (keyed by an opaque, per-fold identity); a model turn folds into an {@link
+ * AssistantMessage} (keyed by its committed {@code ModelResponseId}) — whether or not it carries
+ * {@code tool_use} blocks; a completed tool call folds into a {@link ToolExchange} (keyed by its
+ * execution {@code ComputationId}) — one exchange per call id, carrying the call and its result
+ * together so the pairing invariant survives even when the result folds long after the call, and
+ * even when a memory implementation never sees the two arrive in the same batch, or in the same
+ * order: {@link AssistantMessage}'s own javadoc spells out the ordering {@link Memory#recall()}
+ * owes.
  *
  * <p>Benign redundancy is deliberate: an {@link AssistantMessage} may already carry {@code
  * tool_use} blocks naming the same calls a later {@link ToolExchange} answers — a memory
@@ -70,7 +72,15 @@ public sealed interface Remembrance {
     }
   }
 
-  /** A model turn with no pending tool calls — the assistant's final word for that turn. */
+  /**
+   * A model turn — the assistant's word, whether it ends the turn or opens a fan-out. {@code
+   * message} may carry {@code tool_use} blocks: when it does, its {@link ToolExchange}s may
+   * remember AFTER this fact does (an earlier-answering sibling call folds — and is remembered —
+   * before every pending call has finished, so this message and some of its own exchanges can
+   * arrive in either order). {@link Memory#recall()} withholds an {@code AssistantMessage} that
+   * names {@code tool_use} call ids until every one of them has a matching {@link ToolExchange}
+   * remembered somewhere, then emits the two together (spec §3).
+   */
   record AssistantMessage(String key, Message message) implements Remembrance {
     public AssistantMessage {
       requireKey(key);

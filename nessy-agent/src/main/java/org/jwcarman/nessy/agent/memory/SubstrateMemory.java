@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.spi.Memory;
@@ -31,19 +30,33 @@ import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.JournalStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
-import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code memory} recipe (substrate spec §6.2, remembrance spec §3): one journal per scope,
- * keyed by {@code agentId}, one entry per {@link Remembrance}. Idempotence is a small per-scope
- * marker document ({@link RememberedKeys}, kind {@code memory-keys}), CAS-written in the SAME
- * {@link Substrate#batch} as the journal append it guards — {@link #remember(Remembrance)} is a
- * no-op the instant a {@link Remembrance#key()} is already present there, which is how
- * re-remembering the same key converges to one remembered fact (the SPI's own idempotence law); a
- * lost CAS on that batch (a genuine race — near-zero in practice since a scope's own fold is
- * already serialized upstream) just re-reads both documents and retries. {@link #recall()} folds
- * every entry from seq 1 through {@link RemembranceFold}, the same reassembly {@link
- * VerbatimMemory} shares.
+ * keyed by {@code agentId}, one entry per {@link Remembrance}. Idempotence is a per-remembrance
+ * {@link RememberedMarker} document (kind {@code memory-keys}, key {@code agentId + "/" +
+ * remembrance.key()}), CAS-written CREATE-ONLY in the SAME {@link Substrate#batch} as the journal
+ * append it guards: the marker create succeeding IS "not yet remembered"; a {@link
+ * ConflictException} on that exact marker IS "already remembered" — {@link #remember(Remembrance)}
+ * is then a no-op, which is how re-remembering the same key converges to one remembered fact (the
+ * SPI's own idempotence law). This is O(1) per call and never reads a growing list: fix round 1 Q5
+ * retired the earlier one-document-per-scope-list design, which would have decoded and rewritten an
+ * ever-larger document on every single {@code remember}.
+ *
+ * <p>{@link #remember(Remembrance)} never decodes the transcript to find the next sequence — it
+ * reads the RAW {@link Substrate#entries(String, String, long)} (undecoded {@code byte[]} payloads,
+ * the {@code DeliveryWorker#currentMemoryHead} shape this class inherited) and takes the last seq +
+ * 1. This matters for a caller-supplied {@link Codec}: its decode failures stay confined to {@link
+ * #recall()}, the only place this class ever decodes a stored entry to append one (fix round 1 Q5).
+ *
+ * <p>On a lost race (a genuine one — near-zero in practice since a scope's own fold is already
+ * serialized upstream), the batch's {@link ConflictException} is disambiguated by checking whether
+ * THIS remembrance's own marker now exists: if it does, a racer remembered the same key first and
+ * this call converges (returns); if it does not, the conflict was the journal append losing a seq
+ * race against a DIFFERENT remembrance, and the loop retries with a freshly re-read head.
+ *
+ * <p>{@link #recall()} folds every entry from seq 1 through {@link RemembranceFold}, the same
+ * reassembly {@link VerbatimMemory} shares.
  *
  * <p>Wire compatibility (spec §6): a transcript written before this reform is a bare {@code
  * Message} per entry, with no {@code "type"} discriminator — the decoder recognizes the absence of
@@ -67,7 +80,7 @@ public final class SubstrateMemory implements Memory {
   private final Substrate store;
   private final String agentId;
   private final JournalStore<JournalEntry> journal;
-  private final DocumentStore<RememberedKeys> keys;
+  private final DocumentStore<RememberedMarker> markers;
 
   /**
    * Defaults the stored shape to the built-in {@link Remembrance} JSON binding over {@code mapper}.
@@ -80,7 +93,7 @@ public final class SubstrateMemory implements Memory {
             KIND,
             new DefaultJournalEntryCodec(
                 Objects.requireNonNull(mapper, "mapper must not be null")));
-    this.keys = store.document(KEYS_KIND, RememberedKeys.class);
+    this.markers = store.document(KEYS_KIND, RememberedMarker.class);
   }
 
   /**
@@ -95,31 +108,28 @@ public final class SubstrateMemory implements Memory {
         store.journal(
             KIND,
             new CustomJournalEntryCodec(Objects.requireNonNull(codec, "codec must not be null")));
-    this.keys = store.document(KEYS_KIND, RememberedKeys.class);
+    this.markers = store.document(KEYS_KIND, RememberedMarker.class);
   }
 
   @Override
   public void remember(Remembrance remembrance) {
     Objects.requireNonNull(remembrance, "remembrance must not be null");
+    String markerKey = markerKey(remembrance.key());
     while (true) {
-      Optional<Versioned<RememberedKeys>> current = keys.read(agentId);
-      RememberedKeys currentKeys = current.map(Versioned::value).orElse(RememberedKeys.EMPTY);
-      if (currentKeys.contains(remembrance.key())) {
-        return; // already remembered — converges (remembrance spec §1 law 2)
-      }
-      long nextSeq = journal.entries(agentId, 1).size() + 1L;
-      long expectedVersion = current.map(Versioned::version).orElse(0L);
+      long nextSeq = rawHeadSeq() + 1L;
       List<Substrate.Op> ops =
           List.of(
               journal.appendOp(agentId, nextSeq, new JournalEntry.Fresh(remembrance)),
-              keys.writeOp(agentId, currentKeys.plus(remembrance.key()), expectedVersion));
+              markers.writeOp(markerKey, new RememberedMarker(remembrance.key()), 0L));
       try {
         store.batch(ops);
         return;
       } catch (ConflictException _) {
-        // a racer appended (or bumped the keys marker) first — re-read the head and the marker
-        // and retry; if the racer remembered this SAME key, the next iteration's contains()
-        // check absorbs it instead of duplicating anything.
+        if (markers.exists(markerKey)) {
+          return; // this exact key was already remembered — converges (remembrance spec §1 law 2)
+        }
+        // else: the journal append lost a seq race against a DIFFERENT remembrance — re-read the
+        // raw head and retry with a fresh seq
       }
     }
   }
@@ -134,6 +144,16 @@ public final class SubstrateMemory implements Memory {
       }
     }
     return fold.toContext();
+  }
+
+  /** The RAW (undecoded) journal head — see this class's own javadoc for why. */
+  private long rawHeadSeq() {
+    List<Substrate.Entry> entries = store.entries(KIND, agentId, 1);
+    return entries.isEmpty() ? 0L : entries.getLast().seq();
+  }
+
+  private String markerKey(String remembranceKey) {
+    return agentId + "/" + remembranceKey;
   }
 
   /**

@@ -113,10 +113,15 @@ public final class DefaultAgent<O> implements Agent<O> {
    * The three fold moments (remembrance spec §2), mapped from the event {@code t} folded FROM
    * {@code priorPhase}: an observation remembers a fresh {@link Remembrance.UserMessage} (this
    * shell layer mints its own opaque key — nothing upstream hands it a stable one, unlike the
-   * durable layer's {@code ModelResponseId}/execution {@code ComputationId}); a model turn with no
-   * pending tool calls remembers a {@link Remembrance.AssistantMessage} keyed by its own committed
-   * response id; a tool completion folds through {@link ToolFoldRemembrance}, the same mapping
-   * {@link DeliveryWorker} uses for the durable arm of the very same fold moment.
+   * durable layer's {@code ModelResponseId}/execution {@code ComputationId}); a model turn that
+   * ends the turn outright (no pending tool calls) remembers a {@link Remembrance.AssistantMessage}
+   * keyed by its own committed response id right here — a model turn that OPENS a fan-out instead
+   * defers its {@link Remembrance.AssistantMessage} to {@link ToolFoldRemembrance}, which remembers
+   * it alongside whichever tool call completes the batch (see that class's own javadoc, and {@link
+   * Remembrance.AssistantMessage}'s, for the arrival-order story {@link
+   * org.jwcarman.nessy.spi.Memory#recall()} owes); a tool completion always folds through {@link
+   * ToolFoldRemembrance}, the same mapping {@link DeliveryWorker} uses for the durable arm of the
+   * very same fold moment.
    */
   private void remember(Phase priorPhase, AgentEvent event, Transition t) {
     Memory memory = binding.memory();
@@ -169,6 +174,15 @@ public final class DefaultAgent<O> implements Agent<O> {
     } catch (StaleStateException _) {
       binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
       harness.observer().observationRequeued(observation);
+    } catch (RuntimeException e) {
+      // A genuine failure inside applyOnce (e.g. a throwing Memory#remember — Memory's own law 1,
+      // the non-durable shell arm): the observation goes back to the backlog exactly as the
+      // stale-state race above does, so it is not lost. Unlike a stale race — an ordinary,
+      // expected condition this shell absorbs and keeps draining past — this is NOT swallowed:
+      // silently continuing to drain would hot-loop a permanently broken Memory forever. The
+      // exception surfaces to whoever called observe()/drive(), which decides whether to retry.
+      binding.backlog().add(observation);
+      throw e;
     }
   }
 

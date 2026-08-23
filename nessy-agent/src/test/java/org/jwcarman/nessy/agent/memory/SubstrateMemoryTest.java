@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
@@ -33,6 +34,7 @@ import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.Codec;
+import org.jwcarman.nessy.spi.substrate.CodecFactory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -63,22 +65,41 @@ class SubstrateMemoryTest {
   }
 
   @Test
-  void rememberRetriesAfterLosingAConflictOnTheGuardingBatch() {
+  void rememberRetriesAfterLosingASeqRaceOnTheJournalAppend() {
+    // A DIFFERENT remembrance's entry lands at the seq this remember() computed, between its raw
+    // head read and its own batch — a genuine race (fix round 1 Q5): the batch conflicts, the
+    // marker for THIS key never got created, so the loop re-reads the raw head and retries.
     Substrate delegate = new InMemorySubstrate();
-    // A competitor bumps the "memory-keys" marker doc mid-flight — the same doc remember()'s own
-    // batch CASes against — so remember()'s first attempt genuinely conflicts and must retry.
-    byte[] competitorKeysPayload =
-        delegate
-            .codecs()
-            .codec(RememberedKeys.class)
-            .encode(new RememberedKeys(List.of("someone-else")));
+    byte[] competitorPayload =
+        CODEC.toJson(Message.user("stole the slot")).getBytes(StandardCharsets.UTF_8);
     Substrate racing =
-        new RaceOnceOnBatchSubstrate(delegate, KEYS_KIND, "agent-a", competitorKeysPayload);
+        new RaceOnceOnJournalAppendViaBatch(delegate, MEMORY_KIND, "agent-a", competitorPayload);
     var memory = new SubstrateMemory(racing, "agent-a", TestMappers.plainlyPinned());
 
     memory.remember(new Remembrance.UserMessage("turn-1", Message.user("mine")));
 
-    assertThat(memory.recall().messages()).containsExactly(Message.user("mine"));
+    assertThat(delegate.entries(MEMORY_KIND, "agent-a", 1)).hasSize(2);
+  }
+
+  @Test
+  void aMarkerConflictConverges() {
+    // A competitor's marker for the EXACT SAME remembrance key already exists by the time this
+    // remember()'s own batch tries to create it — the create-only marker write conflicts, and
+    // markers.exists(...) now being true is how remember() tells "raced to remember the same
+    // fact" apart from "raced against a different one" (fix round 1 Q5).
+    Substrate delegate = new InMemorySubstrate();
+    CodecFactory codecs = delegate.codecs();
+    byte[] competitorMarkerPayload =
+        codecs.codec(RememberedMarker.class).encode(new RememberedMarker("turn-1"));
+    Substrate racing =
+        new RaceOnceOnBatchSubstrate(
+            delegate, KEYS_KIND, "agent-a/turn-1", competitorMarkerPayload);
+    var memory = new SubstrateMemory(racing, "agent-a", TestMappers.plainlyPinned());
+
+    memory.remember(new Remembrance.UserMessage("turn-1", Message.user("mine")));
+
+    // the marker conflict converged: remember() returned without appending its own entry at all
+    assertThat(delegate.entries(MEMORY_KIND, "agent-a", 1)).isEmpty();
   }
 
   @Test
@@ -149,6 +170,75 @@ class SubstrateMemoryTest {
       byte[] rawPayload = substrate.entries(MEMORY_KIND, "agent-a", 1).getFirst().payload();
       assertThat(MarkerBytesCodec.isMarked(rawPayload)).isTrue();
       assertThat(memory.recall().messages()).containsExactly(Message.user("mine"));
+    }
+  }
+
+  /**
+   * Test-local: injects one competing raw journal append, via {@link #batch}, the instant before
+   * delegating the real batch — the one shape {@code SubstrateMemory#remember}'s own retry loop
+   * exists to survive. Deliberately not a shared support class (fix round 1 Q7 retired the
+   * general-purpose {@code RaceOnceOnAppendSubstrate}): this scenario is specific to a journal
+   * append riding inside a {@code batch()} call, which nothing else in this module needs to race.
+   */
+  private static final class RaceOnceOnJournalAppendViaBatch implements Substrate {
+
+    private final Substrate delegate;
+    private final String kind;
+    private final String key;
+    private final byte[] competitorPayload;
+    private boolean raced;
+
+    RaceOnceOnJournalAppendViaBatch(
+        Substrate delegate, String kind, String key, byte[] competitorPayload) {
+      this.delegate = delegate;
+      this.kind = kind;
+      this.key = key;
+      this.competitorPayload = competitorPayload;
+    }
+
+    @Override
+    public Optional<Document> read(String kind, String key) {
+      return delegate.read(kind, key);
+    }
+
+    @Override
+    public void write(String kind, String key, byte[] payload, long expectedVersion) {
+      delegate.write(kind, key, payload, expectedVersion);
+    }
+
+    @Override
+    public void delete(String kind, String key, long expectedVersion) {
+      delegate.delete(kind, key, expectedVersion);
+    }
+
+    @Override
+    public List<String> keys(String kind, int limit) {
+      return delegate.keys(kind, limit);
+    }
+
+    @Override
+    public void append(String kind, String key, long expectedSeq, byte[] payload) {
+      delegate.append(kind, key, expectedSeq, payload);
+    }
+
+    @Override
+    public List<Entry> entries(String kind, String key, long fromSeq) {
+      return delegate.entries(kind, key, fromSeq);
+    }
+
+    @Override
+    public void batch(List<Op> ops) {
+      if (!raced) {
+        raced = true;
+        long nextSeq = delegate.entries(kind, key, 1).size() + 1L;
+        delegate.append(kind, key, nextSeq, competitorPayload); // someone else appended first
+      }
+      delegate.batch(ops);
+    }
+
+    @Override
+    public CodecFactory codecs() {
+      return delegate.codecs();
     }
   }
 }

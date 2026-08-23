@@ -60,10 +60,15 @@ final class ToolFoldRemembrance {
         new CallAddress(type.name(), id.value(), awaiting.responseId().value(), call.id());
     memory.remember(
         new Remembrance.ToolExchange(address.execution().value(), call, toToolResult(outcome)));
+    // AwaitingTools#handle commits [assistantTurn, toolResults] together, exactly once, on the
+    // call that completes the whole batch — never fewer than both, never just one. Testing
+    // non-empty and reading getFirst() (the assistantTurn) rather than pinning the exact size
+    // keeps this call site untangled from that internal shape; Context's own validating
+    // constructor is what actually enforces the pairing invariant on the wire.
     List<Message> commit = transition.commit();
-    if (commit.size() == 2) {
+    if (!commit.isEmpty()) {
       memory.remember(
-          new Remembrance.AssistantMessage(awaiting.responseId().value(), commit.get(0)));
+          new Remembrance.AssistantMessage(awaiting.responseId().value(), commit.getFirst()));
     }
   }
 

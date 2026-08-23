@@ -313,17 +313,18 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * <p><b>Transfer-then-dispatch (spec §5a invariant 5):</b> {@link #claiming} is the single-winner
    * mechanism — see its own javadoc for why a version-bump alone is not enough. Only the claim's
    * winner dispatches. An immediate outcome's grant delivery is then consumed by {@link
-   * #foldGrantedResult}'s own batch — journal appends, state CAS, and the delivery's removal at the
-   * current version, the same shape {@link #deliverCompletion} uses. A deferred outcome's transfer
-   * — {@code [create tool computation, delete delivery]} — is composed into ONE {@link
-   * Substrate#batch} by {@link ComputationDeferredToolCallPolicy#onDeferred} via the {@code
-   * alsoCommit} door, before control returns here — so once that batch commits, there is no window
-   * where the computation exists and this delivery still does, and no way for a real completion to
-   * ever find this delivery left over to reprocess. This is NOT "closed at every committed point"
-   * unqualified, though: the grant's OWN completion batch (approval computation deleted, this
-   * delivery created) is itself a committed point at which neither the approval nor the tool
-   * computation exists. That window is closed now (computation-identity spec §4): the grant
-   * delivery sits at the completed approval computation's own deterministic id, and {@link
+   * #foldGrantedResult}'s own batch — the state CAS and the delivery's removal at the current
+   * version (memory has left this batch entirely — remembrance spec §1), the same shape {@link
+   * #deliverCompletion} uses. A deferred outcome's transfer — {@code [create tool computation,
+   * delete delivery]} — is composed into ONE {@link Substrate#batch} by {@link
+   * ComputationDeferredToolCallPolicy#onDeferred} via the {@code alsoCommit} door, before control
+   * returns here — so once that batch commits, there is no window where the computation exists and
+   * this delivery still does, and no way for a real completion to ever find this delivery left over
+   * to reprocess. This is NOT "closed at every committed point" unqualified, though: the grant's
+   * OWN completion batch (approval computation deleted, this delivery created) is itself a
+   * committed point at which neither the approval nor the tool computation exists. That window is
+   * closed now (computation-identity spec §4): the grant delivery sits at the completed approval
+   * computation's own deterministic id, and {@link
    * ComputationDeferredToolCallPolicy#pendingComputation} checks that exact key (via {@link
    * SubstrateComputations#deliveryPending}) before ever reaching the approver again — so a
    * staleness redrive landing between the grant's completion batch and this worker's drain absorbs
@@ -340,6 +341,21 @@ final class DeliveryWorker<O> implements AutoCloseable {
     }
   }
 
+  /**
+   * <b>Honest exposure window (remembrance spec §1, F1's retirement):</b> the plain-{@code Memory}
+   * guard this method used to run BEFORE {@code executeGrantedToolNow} is gone — any {@code Memory}
+   * is first-class now (spec §1) — so there is no guard left to fail loudly ahead of the tool's
+   * external side effect. What that means concretely: the tool below runs first; only afterward,
+   * inside {@link #foldGrantedResult}, does anything remember the outcome. If that {@code remember}
+   * throws (a foreign store is down, say), this grant delivery survives undeleted and the NEXT
+   * heartbeat re-claims it and re-runs {@code executeGrantedToolNow} — re-firing the tool's
+   * external side effect again, exactly as durable-deliveries spec §5a's at-least-once honesty
+   * already promises for every granted tool, just over a wider window than before (the old guard
+   * shrank this window to zero for a plain {@code SubstrateMemory}; it does not anymore, for any
+   * {@code Memory}). Two designs would close this — persisting the tool's outcome before ever
+   * remembering it, or a memory-liveness probe ahead of dispatch — and both are raised to James
+   * separately rather than decided here.
+   */
   private void deliverClaimedGrant(
       String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
     // Non-decoding version() read (THE TOCTOU LESSON): only the CAS token is needed here, never

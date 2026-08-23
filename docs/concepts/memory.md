@@ -35,8 +35,13 @@ public sealed interface Remembrance {
 ```
 
 - An observation folds into a `UserMessage`.
-- A model turn with no pending tool calls folds into an `AssistantMessage`,
-  keyed by its committed `ModelResponseId`.
+- A model turn folds into an `AssistantMessage`, keyed by its committed
+  `ModelResponseId` — whether or not it carries `tool_use` blocks. When it
+  does, its `ToolExchange`s may remember *after* it does (the exchange for a
+  call that finishes before its siblings is remembered the moment it
+  finishes; the assistant message itself is remembered only once every
+  sibling has answered) — `recall()` withholds the assistant message until
+  every one of its call ids has a matching exchange, however the two arrive.
 - A completed tool call folds into a `ToolExchange` — the call and its
   result, paired, never split — keyed by its execution `ComputationId`. One
   exchange per call id, even when the result folds long after the call: the
@@ -67,16 +72,25 @@ both emit together.
 Interrogating "does memory have to be atomically consistent with the fold?"
 showed the answer was never load-bearing. Three laws replace it:
 
-1. **Append before commit — the caller's law.** Whoever folds a durable
+1. **Append before commit — the caller's law.** Whoever folds a
    transition remembers every `Remembrance` the fold implies *before*
-   committing its own state. A `remember` that throws (a foreign store is
-   down, say) aborts the attempt before anything commits: the caller's work
-   stays pending and the natural redrive tries again later — backpressure,
-   not a torn commit.
+   committing its own state. A `remember` that throws aborts the attempt
+   before anything commits — but what "stays pending" means differs by
+   caller: the durable, outbox-driven fold (`DeliveryWorker`) leaves the
+   delivery undeleted, and the next heartbeat (or `nudge()`) redrives it —
+   at-least-once, no caller-visible failure. The non-durable shell fold
+   (`DefaultAgent`) re-queues the observation onto its own backlog and lets
+   the exception surface to whoever called `observe()` — there is no
+   heartbeat to redrive it silently, so the caller sees the failure and
+   decides whether to retry. Either way, the work this attempt would have
+   committed is preserved, not lost.
 2. **Remember is idempotent by turn identity — the implementor's law.**
    Every `Remembrance` carries its own opaque `key()`; remembering the same
    key twice must converge to one remembered fact, and `recall()` must
-   return messages in the order they were first remembered. At-least-once
+   return messages in the order they were first remembered — except an
+   `AssistantMessage` naming `tool_use` call ids, which withholds until
+   every one of them has a matching `ToolExchange` remembered somewhere,
+   then emits together with the results message it pairs with. At-least-once
    execution, exactly-once effect — the same move deliveries already made.
 3. **Memory-ahead is benign.** Between a caller's own remember and its own
    commit, a memory may hold a fact the caller has not yet committed
@@ -114,13 +128,18 @@ A single `VerbatimMemory` is one scope's history, held in a Java map.
 `SubstrateMemory` is the shape a host's `memoryFactory` reaches for once more
 than one scope needs to persist: a recipe over
 [`Substrate`](storage.md), `kind=memory`, one journal per scope, **one
-entry per `Remembrance`**. Idempotence is a small per-scope marker document
-(`kind=memory-keys`) CAS-written in the *same* substrate batch as the
-journal append it guards: `remember` is a no-op the instant a key is already
-present there, which is how re-remembering the same key converges to one
-fact. A lost CAS on that guarding batch — a genuine race, near-zero in
-practice since a scope's own fold is already serialized upstream — just
-re-reads both documents and retries.
+entry per `Remembrance`**. Idempotence is one create-only marker document
+*per remembered key* (`kind=memory-keys`, key = `agentId + "/" +
+remembrance.key()`), CAS-written in the *same* substrate batch as the
+journal append it guards — never a single per-scope list that would grow
+and get rewritten on every call. The marker create succeeding IS "not yet
+remembered"; a conflict on that exact create IS "already remembered",
+which is how re-remembering the same key converges to one fact, in O(1),
+with no read before the write. A lost race on the guarding batch — genuine,
+near-zero in practice since a scope's own fold is already serialized
+upstream — re-reads the journal's raw head and retries; `remember` never
+decodes the transcript to find that head, so a caller-supplied codec's
+decode failures stay confined to `recall()`.
 
 ```java
 public final class SubstrateMemory implements Memory {
@@ -183,13 +202,18 @@ exist at once, one riding the effect and one living in memory. Instead:
 ## Backpressure, not corruption
 
 A `Memory` backed by a foreign store that goes down does not corrupt a
-scope's history or fold a turn twice: `remember` throws, the caller's
-attempt aborts before its own commit, and the delivery — or, on the
-non-durable shell path, the observation — stays exactly where it was,
-waiting for the next heartbeat or the next `nudge()`. Once the foreign store
-recovers, the same at-least-once retry that already governs every delivery
-in this system carries memory along for free: the same keys, remembered
-again, converge to the same facts.
+scope's history or fold a turn twice: `remember` throws, and the caller's
+attempt aborts before its own commit. What happens next depends on which
+caller: the durable, outbox-driven fold leaves the delivery exactly where
+it was, waiting for the next heartbeat or the next `nudge()` — no exception
+escapes to anything outside the worker. The non-durable shell fold instead
+re-queues the observation onto its own backlog and lets the exception
+surface to whoever called `observe()` — there is no heartbeat backing that
+path, so the caller finds out and decides whether to retry. Either way,
+once the foreign store recovers, the same at-least-once retry that already
+governs delivery redrive (or the caller's own next `observe()`/`drive()`)
+carries memory along for free: the same keys, remembered again, converge to
+the same facts.
 
 ## Where next
 
