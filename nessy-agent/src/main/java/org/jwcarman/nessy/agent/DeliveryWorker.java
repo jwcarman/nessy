@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
@@ -37,10 +38,12 @@ import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.DocumentStore;
+import org.jwcarman.nessy.spi.substrate.JournalStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
-import org.jwcarman.nessy.spi.substrate.Substrate.Op.AppendEntry;
-import org.jwcarman.nessy.spi.substrate.Substrate.Op.WriteDocument;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,8 +111,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
 
   private final Substrate store;
   private final OutcomeCodec codec;
-  private final StateCodec stateCodec;
-  private final MessageCodec messageCodec;
   private final Harness<O> harness;
   private final AgentBinder binder;
   private final SubstrateComputations computations;
@@ -117,6 +118,22 @@ final class DeliveryWorker<O> implements AutoCloseable {
   private final String outboxKind;
   private final ObjectMapper mapper;
   private final Thread heartbeat;
+
+  /** The {@code outbox/<agentType>} kind, typed over this worker's own {@link OutcomeCodec}. */
+  private final DocumentStore<OutcomeCodec.DeliveryDocument> outbox;
+
+  /** The {@code computation/<agentType>} kind (execution only — spec §3), typed the same way. */
+  private final DocumentStore<OutcomeCodec.PendingDocument> pendingComputations;
+
+  /** The {@code state} kind, typed over {@link StateCodec} — the scope's phase. */
+  private final DocumentStore<Phase> states;
+
+  /**
+   * The {@code memory} kind, typed over {@link MessageCodec} — bytes identical to what {@link
+   * SubstrateMemory} itself appends (this class's javadoc explains why the two must land in the
+   * same batch), since both bind the same mapper instance through the same encode logic.
+   */
+  private final JournalStore<Message> memory;
 
   /**
    * The grant arm's single-winner mechanism (spec §5a invariant 5, fix round 2 item (c)): a bare
@@ -146,17 +163,85 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.codec = new OutcomeCodec(mapper);
-    this.stateCodec = new StateCodec(mapper);
-    this.messageCodec = new MessageCodec(mapper);
+    StateCodec stateCodec = new StateCodec(mapper);
+    MessageCodec messageCodec = new MessageCodec(mapper);
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     Objects.requireNonNull(resolver, "resolver must not be null");
     this.binder = new ResolvingAgentBinder(resolver);
     this.computationKind = Kinds.computation(harness.type());
     this.outboxKind = Kinds.outbox(harness.type());
     this.computations = new SubstrateComputations(store, mapper, computationKind, outboxKind);
+    this.outbox = store.document(outboxKind, deliveryDocumentCodec(codec));
+    this.pendingComputations = store.document(computationKind, pendingDocumentCodec(codec));
+    this.states = store.document(STATE_KIND, stateCodec(stateCodec));
+    this.memory = store.journal(MEMORY_KIND, messageCodec(messageCodec));
     Objects.requireNonNull(pollInterval, "pollInterval must not be null");
     this.heartbeat = new Thread(() -> heartbeatLoop(pollInterval), "nessy-delivery");
     this.heartbeat.setDaemon(true);
+  }
+
+  /** Adapts {@link OutcomeCodec#toJson(OutcomeCodec.PendingDocument)}/{@code pendingDocument}. */
+  private static Codec<OutcomeCodec.PendingDocument> pendingDocumentCodec(OutcomeCodec codec) {
+    return new Codec<>() {
+      @Override
+      public byte[] encode(OutcomeCodec.PendingDocument value) {
+        return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
+      }
+
+      @Override
+      public OutcomeCodec.PendingDocument decode(byte[] bytes) {
+        return codec.pendingDocument(new String(bytes, StandardCharsets.UTF_8));
+      }
+    };
+  }
+
+  /** Adapts {@link OutcomeCodec#toJson(OutcomeCodec.DeliveryDocument)}/{@code deliveryDocument}. */
+  private static Codec<OutcomeCodec.DeliveryDocument> deliveryDocumentCodec(OutcomeCodec codec) {
+    return new Codec<>() {
+      @Override
+      public byte[] encode(OutcomeCodec.DeliveryDocument value) {
+        return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
+      }
+
+      @Override
+      public OutcomeCodec.DeliveryDocument decode(byte[] bytes) {
+        return codec.deliveryDocument(new String(bytes, StandardCharsets.UTF_8));
+      }
+    };
+  }
+
+  /** Adapts {@link StateCodec}'s String-JSON binding to the byte-oriented {@link Codec} seam. */
+  private static Codec<Phase> stateCodec(StateCodec codec) {
+    return new Codec<>() {
+      @Override
+      public byte[] encode(Phase value) {
+        return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
+      }
+
+      @Override
+      public Phase decode(byte[] bytes) {
+        return codec.phase(new String(bytes, StandardCharsets.UTF_8));
+      }
+    };
+  }
+
+  /**
+   * Adapts {@link MessageCodec}'s String-JSON binding to the byte-oriented {@link Codec} seam —
+   * byte-identical to {@link SubstrateMemory}'s own private adapter, since both wrap the same
+   * mapper instance through the same {@link MessageCodec} logic.
+   */
+  private static Codec<Message> messageCodec(MessageCodec codec) {
+    return new Codec<>() {
+      @Override
+      public byte[] encode(Message value) {
+        return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
+      }
+
+      @Override
+      public Message decode(byte[] bytes) {
+        return codec.message(new String(bytes, StandardCharsets.UTF_8));
+      }
+    };
   }
 
   void start() {
@@ -217,7 +302,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * each is guarded individually and logged rather than left to abort the whole scan.
    */
   private void drainOnce() {
-    for (String key : store.keys(outboxKind, SCAN_LIMIT)) {
+    for (String key : outbox.keys(SCAN_LIMIT)) {
       try {
         deliverOne(key);
       } catch (RuntimeException e) {
@@ -227,14 +312,13 @@ final class DeliveryWorker<O> implements AutoCloseable {
   }
 
   private void deliverOne(String key) {
-    Optional<Substrate.Document> doc = store.read(outboxKind, key);
+    Optional<Versioned<OutcomeCodec.DeliveryDocument>> doc = outbox.read(key);
     if (doc.isEmpty()) {
       return; // already delivered by another drain — deliveries are pending-only (spec §4)
     }
-    String json = new String(doc.get().payload(), StandardCharsets.UTF_8);
     // spec §3: this worker's own outboxKind (outbox/<agentType>) never holds another harness
     // type's deliveries — isolation by construction, no runtime type peek needed anymore.
-    OutcomeCodec.DeliveryDocument delivery = codec.deliveryDocument(json);
+    OutcomeCodec.DeliveryDocument delivery = doc.get().value();
     ScopeRouting.Routing routing = ScopeRouting.decode(mapper, delivery.destination());
     AgentType type = AgentType.of(routing.agentType());
     AgentId id = AgentId.of(routing.agentId());
@@ -288,8 +372,11 @@ final class DeliveryWorker<O> implements AutoCloseable {
 
   private void deliverClaimedGrant(
       String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
-    Optional<Substrate.Document> fresh = store.read(outboxKind, key);
-    if (fresh.isEmpty()) {
+    // Non-decoding version() read (THE TOCTOU LESSON): only the CAS token is needed here, never
+    // the decoded delivery — a decoding read() would widen this presence-check window in exactly
+    // the racing hot path spec §1.5's carve-out was opened to close.
+    OptionalLong currentVersion = outbox.version(key);
+    if (currentVersion.isEmpty()) {
       return; // already delivered by another drain
     }
     // F1: the guard runs BEFORE the tool ever executes — a scope wired with a Memory this worker
@@ -298,13 +385,12 @@ final class DeliveryWorker<O> implements AutoCloseable {
     // sweep gets another chance once the wiring is fixed, rather than spinning on a permanently
     // re-executed side effect.
     requirePlainSubstrateMemory(id);
-    long currentVersion = fresh.get().version();
 
     CallAddress address =
         new CallAddress(
             routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
     ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
-    Substrate.Op deleteOp = new Substrate.Op.DeleteDocument(outboxKind, key, currentVersion);
+    Substrate.Op deleteOp = outbox.deleteOp(key, currentVersion.getAsLong());
 
     ToolCallExecutor executor = harness.toolExecutorFor(id);
     ToolExecution result =
@@ -332,38 +418,17 @@ final class DeliveryWorker<O> implements AutoCloseable {
     // requirePlainSubstrateMemory already ran in deliverClaimedGrant, before the tool executed
     // (F1) — not repeated here.
     while (true) {
-      Optional<Substrate.Document> deliveryDoc = store.read(outboxKind, deliveryKey);
-      if (deliveryDoc.isEmpty()) {
+      // Non-decoding version() read (THE TOCTOU LESSON): only the CAS token this delete needs,
+      // never the decoded delivery — see deliverClaimedGrant's own note on this same shape.
+      OptionalLong deliveryVersion = outbox.version(deliveryKey);
+      if (deliveryVersion.isEmpty()) {
         return; // another drain already delivered this delivery
       }
-      Optional<Substrate.Document> stateDoc = store.read(STATE_KIND, id.value());
-      State state =
-          stateDoc
-              .map(
-                  d ->
-                      new State(
-                          stateCodec.phase(new String(d.payload(), StandardCharsets.UTF_8)),
-                          d.version()))
-              .orElseGet(State::initial);
+      State state = readState(id);
       var event = new AgentEvent.ToolFinished(call, outcome);
       var transition = state.phase().handle(event);
-      List<Substrate.Op> ops = new ArrayList<>();
-      if (!transition.isIgnored()) {
-        long seq = currentMemoryHead(id);
-        for (Message message : transition.commit()) {
-          seq++;
-          ops.add(
-              new AppendEntry(
-                  MEMORY_KIND,
-                  id.value(),
-                  seq,
-                  messageCodec.toJson(message).getBytes(StandardCharsets.UTF_8)));
-        }
-        byte[] statePayload = stateCodec.toJson(transition.next()).getBytes(StandardCharsets.UTF_8);
-        ops.add(new WriteDocument(STATE_KIND, id.value(), statePayload, state.version()));
-      }
-      ops.add(
-          new Substrate.Op.DeleteDocument(outboxKind, deliveryKey, deliveryDoc.get().version()));
+      List<Substrate.Op> ops =
+          foldOps(id, state, transition, deliveryKey, deliveryVersion.getAsLong());
       try {
         store.batch(ops);
       } catch (ConflictException _) {
@@ -380,39 +445,17 @@ final class DeliveryWorker<O> implements AutoCloseable {
       AgentType type, AgentId id, String callId, ToolOutcome outcome, String deliveryKey) {
     requirePlainSubstrateMemory(id);
     while (true) {
-      Optional<Substrate.Document> deliveryDoc = store.read(outboxKind, deliveryKey);
-      if (deliveryDoc.isEmpty()) {
+      // Non-decoding version() read (THE TOCTOU LESSON): only the CAS token this delete needs.
+      OptionalLong deliveryVersion = outbox.version(deliveryKey);
+      if (deliveryVersion.isEmpty()) {
         return; // another drain already delivered this delivery
       }
-      Optional<Substrate.Document> stateDoc = store.read(STATE_KIND, id.value());
-      State state =
-          stateDoc
-              .map(
-                  d ->
-                      new State(
-                          stateCodec.phase(new String(d.payload(), StandardCharsets.UTF_8)),
-                          d.version()))
-              .orElseGet(State::initial);
+      State state = readState(id);
       var call = routingCall(state, callId);
       var event = new AgentEvent.ToolFinished(call, outcome);
       var transition = state.phase().handle(event);
-      List<Substrate.Op> ops = new ArrayList<>();
-      if (!transition.isIgnored()) {
-        long seq = currentMemoryHead(id);
-        for (Message message : transition.commit()) {
-          seq++;
-          ops.add(
-              new AppendEntry(
-                  MEMORY_KIND,
-                  id.value(),
-                  seq,
-                  messageCodec.toJson(message).getBytes(StandardCharsets.UTF_8)));
-        }
-        byte[] statePayload = stateCodec.toJson(transition.next()).getBytes(StandardCharsets.UTF_8);
-        ops.add(new WriteDocument(STATE_KIND, id.value(), statePayload, state.version()));
-      }
-      ops.add(
-          new Substrate.Op.DeleteDocument(outboxKind, deliveryKey, deliveryDoc.get().version()));
+      List<Substrate.Op> ops =
+          foldOps(id, state, transition, deliveryKey, deliveryVersion.getAsLong());
       try {
         store.batch(ops);
       } catch (ConflictException _) {
@@ -423,6 +466,35 @@ final class DeliveryWorker<O> implements AutoCloseable {
       }
       return;
     }
+  }
+
+  /** The current scope state — a genuine value read, since the fold needs its decoded phase. */
+  private State readState(AgentId id) {
+    return states
+        .read(id.value())
+        .map(v -> new State(v.value(), v.version()))
+        .orElseGet(State::initial);
+  }
+
+  /**
+   * The one atomic batch a fold-advance commits (spec §5): journal appends for whatever the
+   * transition commits, the CAS state write, and the delivery's own removal — composed through the
+   * typed {@link #memory}/{@link #states}/{@link #outbox} views' op-minting doors, the SAME shape
+   * BASE built by hand.
+   */
+  private List<Substrate.Op> foldOps(
+      AgentId id, State state, Transition transition, String deliveryKey, long deliveryVersion) {
+    List<Substrate.Op> ops = new ArrayList<>();
+    if (!transition.isIgnored()) {
+      long seq = currentMemoryHead(id);
+      for (Message message : transition.commit()) {
+        seq++;
+        ops.add(memory.appendOp(id.value(), seq, message));
+      }
+      ops.add(states.writeOp(id.value(), transition.next(), state.version()));
+    }
+    ops.add(outbox.deleteOp(deliveryKey, deliveryVersion));
+    return ops;
   }
 
   /**
@@ -441,7 +513,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * a runtime filter over the keys this sweep fetches.
    */
   void reapOnce() {
-    for (String key : store.keys(computationKind, REAP_KEY_SCAN_LIMIT)) {
+    for (String key : pendingComputations.keys(REAP_KEY_SCAN_LIMIT)) {
       try {
         reapOne(key);
       } catch (RuntimeException e) {
@@ -451,12 +523,11 @@ final class DeliveryWorker<O> implements AutoCloseable {
   }
 
   private void reapOne(String key) {
-    Optional<Substrate.Document> doc = store.read(computationKind, key);
+    Optional<Versioned<OutcomeCodec.PendingDocument>> doc = pendingComputations.read(key);
     if (doc.isEmpty()) {
       return; // completed (or never existed) by the time this sweep reached it
     }
-    OutcomeCodec.PendingDocument pending =
-        codec.pendingDocument(new String(doc.get().payload(), StandardCharsets.UTF_8));
+    OutcomeCodec.PendingDocument pending = doc.get().value();
     Optional<Instant> deadline = pending.deadline();
     if (deadline.isEmpty() || deadline.get().isAfter(Instant.now())) {
       return; // deadline-less waits indefinitely (spec §6); not yet overdue waits its turn
@@ -500,14 +571,11 @@ final class DeliveryWorker<O> implements AutoCloseable {
                             + " continuation — invariant violated: a deadline implies a timeout"
                             + " (durable-deliveries spec §6)"));
     Instant bumped = Instant.now().plus(timeout);
-    byte[] payload =
-        codec
-            .toJson(
-                new OutcomeCodec.PendingDocument(
-                    pending.invocation(), pending.returnAddress(), Optional.of(bumped)))
-            .getBytes(StandardCharsets.UTF_8);
+    OutcomeCodec.PendingDocument bumpedPending =
+        new OutcomeCodec.PendingDocument(
+            pending.invocation(), pending.returnAddress(), Optional.of(bumped));
     try {
-      store.write(computationKind, key, payload, version);
+      pendingComputations.write(key, bumpedPending, version);
     } catch (ConflictException _) {
       return; // another worker's bump or completion won the race
     }
