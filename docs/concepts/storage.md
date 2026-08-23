@@ -50,7 +50,7 @@ stored truth behind the CAS.
 `org.jwcarman.nessy.spi.substrate` (module `nessy-spi`) is the whole package:
 `Substrate`, `Codec`, `ConflictException`, and `InMemorySubstrate` — the
 reference substrate, shipped alongside the contract so a feature jar can
-test against it without depending on `nessy-agent`. `Nessy.autonomous()`
+test against it without depending on `nessy-agent`. `Nessy.harness(...)`
 defaults to a fresh `InMemorySubstrate`; supply a durable implementation
 through `.substrate(Substrate)` to persist every scope beyond the process.
 
@@ -167,7 +167,7 @@ serialization; the substrate never sees anything but bytes.
 - **Backlog** (`kind=backlog`) — one document per scope holding the pending
   observations as a JSON array. **Observations are typed:**
   `SubstrateBacklog<O>` takes a `Codec<O>` — the `String` door defaults to a
-  trivial UTF-8 codec, the typed door (`Nessy.autonomous(Class<O>)`) derives
+  trivial UTF-8 codec, the typed door (`Nessy.harness(Class<O>, ...)`) derives
   `Codec.json(mapper, observationType)` automatically. The stored document
   is a JSON array whose *elements* are the base64 of each encoded
   observation — uniform regardless of what codec produced the bytes,
@@ -189,7 +189,7 @@ serialization; the substrate never sees anything but bytes.
   destination: {type, data}, outcome: {type, ...} }`. Deliveries are
   pending-only: delivering deletes them, in the same batch as the fold it
   advances. `DeliveryWorker` (`nessy-agent`) is the one consumer — a
-  heartbeat thread per host, plus an immediate synchronous drain
+  heartbeat thread per harness, plus an immediate synchronous drain
   (`nudge()`) right after any completion commits, so the heartbeat is the
   recovery net rather than the happy-path latency. `SubstrateComputations`
   writes each delivery as the second half of the same `complete()` batch
@@ -208,9 +208,9 @@ serialization; the substrate never sees anything but bytes.
 
 ## The one-mapper story
 
-One `ObjectMapper` is handed to a host builder — `.objectMapper(ObjectMapper)`
-on both `Nessy.cli()` and `Nessy.autonomous()` — and everything downstream
-binds through it. `build()` calls `mapper.copy()` and pins the
+One `ObjectMapper` is handed to a harness config — `.objectMapper(ObjectMapper)`
+on both `Nessy.cli()` and `Nessy.harness(...)` — and everything downstream
+binds through it. Nessy calls `mapper.copy()` and pins the
 format-critical settings on the copy: lower-camel property naming, tolerant
 reads (unknown fields ignored), no default typing, `ALWAYS` inclusion, no
 root wrapping. User-registered modules and serializers survive the copy;
@@ -334,7 +334,7 @@ the delivery-pipeline recipes above and
 
 ## Where next
 
-- [The Four Tiers](the-four-tiers.md) — where `Substrate` sits as the
+- [The Tiers](the-four-tiers.md) — where `Substrate` sits as the
   substrate tier's one storage face.
 - [Memory](memory.md) — the journal recipe in full, and why the transcript
   is never rewritten.

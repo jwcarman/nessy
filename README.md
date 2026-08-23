@@ -25,8 +25,10 @@ the front door: enough to run something real and decide what to install.
 
 ## The five-minute example
 
-Export a key and run — this one makes a real network call to a real model,
-a fraction of a cent on a small model for a prompt this size:
+Ask Nessy for a harness; keep it forever; bind any id into a transient
+agent; tell it things. Durability is a property of the substrate, not the
+API. Export a key and run — this one makes a real network call to a real
+model, a fraction of a cent on a small model for a prompt this size:
 
 ```bash
 export ANTHROPIC_API_KEY=...
@@ -45,67 +47,74 @@ class AddTool implements Tool<Add> {
     }
 }
 
-AnthropicModelProvider provider = AnthropicModelProvider.fromEnv();
-ModelSettings settings = new ModelSettings(
-    "claude-haiku-4-5-20251001", "You are a terse assistant.", 1024, Set.of(), null);
+var anthropic = AnthropicModelProvider.fromEnv();   // vendor gateway — one per app
 
-try (CliAgent agent = Nessy.cli().provider(provider).settings(settings).tools(new AddTool()).build()) {
-    String reply = agent.converse("what is 2+2?");
-    System.out.println(reply);
-    // The answer is 4.
-}
+var harness = Nessy.harness(h -> h                  // built once, kept — immortal
+        .model(anthropic.model("claude-sonnet-5"))  // the one required dependency
+        .systemPrompt("You are a terse assistant.")
+        .tools(new AddTool()));                     // bare tools, allow-by-default
+
+harness.bind(AgentId.of("scope-1")).observe("what is 2+2?");
+// The answer is 4 — narrated through a TurnObserver, not returned here.
 ```
 
-`OPENAI_API_KEY` and `OpenAiModelProvider.fromEnv()` are the one-line swap for
-OpenAI instead, with nothing else about the shape above changing.
-`EnvModelProviders.fromEnv()` (from `nessy-model-env`) reads whichever key is
-set and picks the provider for you, so an application switches providers by
-switching an environment variable, not its code.
+This snippet runs — nothing else is required. `OPENAI_API_KEY` and
+`OpenAiModelProvider.fromEnv()` are the one-line swap for OpenAI instead,
+with nothing else about the shape above changing. `EnvModelProviders.fromEnv()`
+(from `nessy-model-env`) reads whichever key is set and picks the model for
+you, so an application switches vendors by switching an environment
+variable, not its code.
 
-`Nessy.cli()` is the interactive front door: one scope for the process, one
-turn at a time, the caller's thread parks on the reply — the shape a REPL or
-a one-shot script both want. `CliAgent#converse(String)` sends one line and
-blocks for the answer; `.tools(Tool<?>...)` grants each tool an answered-allow
-policy for you (reach for `ToolGrant.grant(...)` directly, as in the capability
-table below, when a tool needs real authority rules). Every config default
-already works: an in-memory `Memory`, a fresh virtual-thread executor the
-`try`-with-resources closes for you. The smallest useful agent is a provider,
-`ModelSettings`, and nothing else.
+`Nessy.harness(HarnessCustomizer<String>)` is the one front door: the
+lambda fills in a live `HarnessConfig`, and Nessy alone turns it into the
+finished, kept `Harness` the instant the lambda returns. `harness.bind(id)`
+returns a plain, transient `Agent<String>` — thin, never closeable, holding
+nothing; `.observe(observation)` enqueues one fact for that scope and
+returns immediately. `.tools(Tool<?>...)` grants each tool an
+answered-allow policy for you (reach for `ToolGrant.grant(...)` directly,
+as in the capability table below, when a tool needs real authority rules).
+Every other config default already works: an in-memory `Memory` per scope,
+a fresh in-memory `Substrate`, a virtual-thread executor the harness owns
+for as long as the process runs. The smallest useful harness is a model, a
+system prompt, and nothing else.
 
-For a host that keeps running without a human driving each turn, there's a
-second front door — `Nessy.autonomous()` — built the same way, but posting
-observations instead of blocking calls, and fronted by an `ApprovalDesk` for
-whatever a tool's policy decides needs a human. `RestartTool` here is an
-ordinary `Tool<RestartInput>`, shaped just like `AddTool` above, granted
-`UsagePolicy.requireApproval()` instead of `allow()` and an `ActionContributor`
-(`RESTART_ACTION`) stating what the call will do:
+The harness is kept, not closed — no `try`-with-resources anywhere in this
+example, or any example on the docs site. Its life-support (the delivery
+worker, the approval and completion desks, the reaper sweep) runs on
+daemon threads for as long as the process does; `harness.shutdown()`
+exists for a container's destroy callback, never application hygiene.
+
+The same harness fronts a tool that needs a human, with an `ApprovalDesk`.
+`RestartTool` here is an ordinary `Tool<RestartInput>`, shaped just like
+`AddTool` above, granted `UsagePolicy.requireApproval()` instead of
+`allow()` and an `ActionContributor` (`RESTART_ACTION`) stating what the
+call will do:
 
 ```java
 var pending = new LinkedBlockingQueue<ApprovalRequest>();
 
-try (AutonomousHost<String> host =
-    Nessy.autonomous()
-        .provider(provider)
-        .settings(settings)
-        .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-        // The default substrate is a fresh InMemorySubstrate — durable only for this
-        // process's lifetime. Supply .substrate(Substrate) with a durable implementation
-        // in production so a suspended approval survives a restart.
-        .approvalNotifier(pending::add)
-        .build()) {
+var harness =
+    Nessy.harness(
+        h ->
+            h.model(anthropic.model("claude-sonnet-5"))
+                .systemPrompt("You are the ops assistant.")
+                .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                // The default substrate is a fresh InMemorySubstrate — durable only for this
+                // process's lifetime. Supply .substrate(Substrate) with a durable implementation
+                // in production so a suspended approval survives a restart.
+                .approvalNotifier(pending::add));
 
-    host.post("ops", "restart prod-1");
+harness.bind(AgentId.of("ops")).observe("restart prod-1");
 
-    ApprovalRequest request = pending.take();
-    host.approvals().approve(request.address().approval());
-}
+ApprovalRequest request = pending.take();
+harness.approvals().approve(request.address().approval());
 ```
 
-`post(agentId, observation)` enqueues one fact for that scope and returns
+`.observe(observation)` enqueues a fact for that scope and returns
 immediately; the scope drains it, and if `RestartTool`'s grant requires
 approval, the call suspends on a durable computation and `approvalNotifier`
 fires once with the `ApprovalRequest` — `request.address().approval()` is
-the computation id `host.approvals().approve(...)`/`.deny(..., reason)`
+the computation id `harness.approvals().approve(...)`/`.deny(..., reason)`
 decides. Nothing here holds a thread open waiting; whether that computation
 outlives a restart of the process that opened it depends entirely on the
 `Substrate` behind `.substrate(...)` — the in-memory default does not, a
@@ -115,17 +124,17 @@ the docs site for the rest of the walkthrough, and
 [Storage](https://jwcarman.github.io/nessy/concepts/storage/) for the
 substrate underneath every store.
 
-Under both front doors, an agent is assembled in four tiers: a **substrate**
-holds the durable state — one `Substrate` (in-memory here, JDBC or another
-durable backend in production) — and can be shared across many hosts; a
-**host** is one process's assembly around a substrate — the doors, desks,
-and dispatcher shown above; a **harness** is a recipe compiled once per
-agent type, holding the model-call and tool-call machinery; and a
-**binding** straps one scope's id to that harness for the length of a
-single delivery. `.substrate(Substrate)`, and the `memoryFactory` override
-that rides it, each hand back a view over the shared substrate rather than
-fresh state, which is what makes a scope's history survive from one
-delivery to the next.
+An agent is assembled in three tiers: a **substrate** holds the durable
+state — one `Substrate` (in-memory here, JDBC or another durable backend in
+production) — and can be shared across many processes; a **harness** is a
+recipe compiled once per agent type, immortal for the life of the process
+that holds it, carrying the model-call and tool-call machinery plus its own
+life-support (the worker, the desks, the reaper); and a **binding** straps
+one scope's id to that harness on demand, for the length of a single
+delivery. `.substrate(Substrate)`, and the `memoryFactory` override that
+rides it, each hand back a view over the shared substrate rather than fresh
+state, which is what makes a scope's history survive from one delivery to
+the next.
 
 ## Try it
 
@@ -136,7 +145,7 @@ public API only — no key, no network, scripted providers throughout:
 # hello: one tool, one turn, the five-minute promise above, for real
 ./mvnw -q -pl nessy-examples/hello -am compile exec:java -Dexec.args=--scripted
 
-# approvals: the autonomous door plus a desk — a restart parks for a human
+# approvals: a harness plus an approval desk — a restart parks for a human
 ./mvnw -q -pl nessy-examples/approvals -am compile exec:java -Dexec.args=--scripted
 
 # governed: the full gate — declared intent, risk threshold, one narrated turn
@@ -192,7 +201,7 @@ for applications that want it.
     <artifactId>nessy-spi</artifactId>
   </dependency>
 
-  <!-- The agent runtime and both front doors: Nessy.cli() and Nessy.autonomous(). -->
+  <!-- The agent runtime and both front doors: Nessy.harness(...) and Nessy.cli(). -->
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-agent</artifactId>
@@ -260,21 +269,20 @@ framework. The docs site page teaches the whole story; this is just the map.
 | Intent — the claim channel a model states and an enricher may trust | [Intent](https://jwcarman.github.io/nessy/concepts/intent/) |
 | Memory — the SPI a model call's context is actually built from | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
 | Storage — the two-shape kernel every store in Nessy is a recipe over | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
-| Providers — four native model providers plus every OpenAI-compatible endpoint | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
+| Providers — a vendor gateway per model provider, plus every OpenAI-compatible endpoint | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
 | MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
-| Autonomous agents — the posting door, approval desks, durable backends | [Autonomous Agents](https://jwcarman.github.io/nessy/guides/autonomous-agents/) |
+| The harness — kept, not closed; `bind`/`observe`, approval desks, durable backends | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
 | Observability — turn narration, shell narration, and the authorization report | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
 
-A few seams the site doesn't have a dedicated page for yet: the
-`RetryingModelProvider` decorator for wrapping any `ModelProvider` with a
-retry policy, and `ModelSettings.contextWindow()`, a declared-but-unconsumed
-token-budget dial reserved for a future token-aware `Memory`. Both exist in
-`nessy-spi` today; see the Javadoc until they get a home on the site.
+A few seams the site doesn't have a dedicated page for yet:
+`ModelSettings.contextWindow()`, a declared-but-unconsumed token-budget
+dial reserved for a future token-aware `Memory`. It exists in `nessy-spi`
+today; see the Javadoc until it gets a home on the site.
 
 A standalone examples module is planned but not yet in the tree.
 Until it lands, the runnable proofs live in `nessy-agent`'s test sources:
 five `*Demo` classes (`HarnessDemo`, `DurableParkDemo`, `TypedIntentDemo`,
-`GovernedTurnDemo`, `AutonomousApprovalDemo`) exercise a whole turn each
+`GovernedTurnDemo`, `HarnessApprovalDemo`) exercise a whole turn each
 under `./mvnw test`, and `ApprovalPlayground` is an IDE-run tinker door — a
 real provider key, a restart tool gated on human approval, typed at the
 console.

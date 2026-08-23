@@ -1,36 +1,82 @@
 # Providers
 
-`Nessy.harness(h -> h.provider(provider))` takes any `ModelProvider`. Four native modules ship
-today — `nessy-model-anthropic`, `nessy-model-openai`, `nessy-model-gemini`,
-and `nessy-model-bedrock` — and a fifth, `nessy-model-env`, picks between
-them from the environment so an application can switch providers by
-switching a variable, not its code. `OpenAiModelProvider` also reaches every
-service that speaks OpenAI's wire protocol, covered below.
+A model provider provides models. `ModelProvider` is the vendor gateway —
+an application singleton holding the SDK client, credentials, and
+transport for one vendor. It does not run requests itself; it hands out
+`Model` handles that do:
 
-All four native providers are live-validated against their real APIs —
+```java
+public interface ModelProvider {
+  Model model(String id);
+  default String name() { ... }
+}
+
+public interface Model {
+  ModelStream stream(ModelRequest request);
+  Set<Capability> capabilities();
+  String id();
+}
+```
+
+`.model(id)` binds a cheap, immutable handle to one model id, sharing the
+gateway's client. `Model` is what `Nessy.harness(h -> h.model(...))`
+consumes — the harness never sees the gateway itself. `capabilities()`
+lives on the handle, not the gateway, because it is a per-model fact, not a
+vendor-wide guess: a lineup's thinking support, context size, and schema
+support vary model to model, even at the same vendor.
+
+Four native gateway modules ship today — `nessy-model-anthropic`,
+`nessy-model-openai`, `nessy-model-gemini`, and `nessy-model-bedrock` — and
+a fifth, `nessy-model-env`, picks between them from the environment and
+hands back a bound `Model` directly, so an application can switch vendors
+by switching a variable, not its code. `OpenAiModelProvider` also reaches
+every service that speaks OpenAI's wire protocol, covered below.
+
+All four native gateways are live-validated against their real APIs —
 Gemini on 2026-08-15 including the tool-call round trip with real thought
 signatures, and Bedrock on 2026-08-16 including the tool round trip through
 the ConverseStream bridge.
 
-## Building one directly
+## One gateway, many handles
+
+One gateway per application; as many `Model` handles as you need. Two
+agents on two models is two handles drawn from the same gateway, feeding
+two harnesses:
+
+```java
+var anthropic = AnthropicModelProvider.fromEnv();
+
+var fast = anthropic.model("claude-haiku-4-5");
+var strong = anthropic.model("claude-opus-5");
+
+var triageHarness = Nessy.harness(h -> h.model(fast).systemPrompt(triagePrompt));
+var reviewHarness = Nessy.harness(h -> h.model(strong).systemPrompt(reviewPrompt));
+```
+
+No model string threads through a `ModelRequest` — the request describes
+the turn (context, system prompt, max tokens, tools, requested
+capabilities, response schema), and the handle it is sent to already knows
+which model runs it.
+
+## Building a gateway directly
 
 Each provider module builds a `ModelProvider` the same way — a static
 `create(ProviderCustomizer)` factory over a config, not a builder:
 
 ```java
-ModelProvider provider = AnthropicModelProvider.create(c -> c.apiKey(key));
+ModelProvider anthropic = AnthropicModelProvider.create(c -> c.apiKey(key));
 ```
 
 ```java
-ModelProvider provider = OpenAiModelProvider.create(c -> c.apiKey(key));
+ModelProvider openai = OpenAiModelProvider.create(c -> c.apiKey(key));
 ```
 
 ```java
-ModelProvider provider = GeminiModelProvider.create(c -> c.apiKey(key));
+ModelProvider gemini = GeminiModelProvider.create(c -> c.apiKey(key));
 ```
 
 ```java
-ModelProvider provider = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1));
+ModelProvider bedrock = BedrockModelProvider.create(c -> c.region(Region.US_EAST_1));
 ```
 
 Each also ships a `fromEnv()` static — the blessed one-call shape,
@@ -38,7 +84,8 @@ equivalent to `create(config -> config.fromEnv())` — that delegates to that
 provider's own seam-integrity read of the environment:
 
 ```java
-ModelProvider provider = AnthropicModelProvider.fromEnv();
+ModelProvider anthropic = AnthropicModelProvider.fromEnv();
+Model claude = anthropic.model("claude-sonnet-5");
 ```
 
 For Anthropic and OpenAI this resolves to the underlying SDK's own
@@ -60,10 +107,10 @@ that's the whole point, so any key just works with no per-provider
 dependency choice left to the consumer:
 
 ```java
-ModelProvider provider = EnvModelProviders.fromEnv();
+Model model = EnvModelProviders.fromEnv();
 ```
 
-`fromEnv()` decides which provider to build from what it finds in the
+`fromEnv()` decides which gateway to build from what it finds in the
 environment, checked in this order:
 
 - `ANTHROPIC_API_KEY` → Anthropic.
@@ -74,7 +121,7 @@ environment, checked in this order:
 - `XAI_API_KEY` → OpenAI wired to `https://api.x.ai/v1` — Grok as a
   zero-code env citizen.
 
-Exactly one key present chooses that provider outright. Two or more present
+Exactly one key present chooses that gateway outright. Two or more present
 are broken by `NESSY_PROVIDER` (`anthropic`/`openai`/`gemini`/`xai`, alias
 `grok`, case-insensitive): an explicit, recognized choice naming a key that
 is actually present is silent; anything else falls back to the first
@@ -89,38 +136,39 @@ even as a participant in the tiebreak above. The only way to choose it is
 outright regardless of which other keys happen to be set. See
 [Bedrock](#bedrock) below for why.
 
-Each provider is built the same way its own module builds one from an
+Each gateway is built the same way its own module builds one from an
 explicit key — not that provider's own `fromEnv()`. The choice
 `EnvModelProviders` makes from the environment is the choice that gets
 built, not a second, independent read underneath it. One consequence: only
 the API key (and, for OpenAI, `OPENAI_BASE_URL`) is read. Other SDK-level
-environment variables are silently ignored here — construct the provider
+environment variables are silently ignored here — construct the gateway
 directly when one of those is needed.
 
 ### Picking a model too — `select()`
 
-`fromEnv()` returns only the `ModelProvider`. `select()` returns a
-`Selection` — the provider, its lowercase name (`"anthropic"`/`"openai"`/
-`"gemini"`/`"xai"`/`"bedrock"`, the same vocabulary `NESSY_PROVIDER`
-accepts), and a model — so an application that wants to show or log what was
-picked (a demo's banner, for instance) doesn't have to re-derive the
-provider's identity itself via `instanceof`: the knowledge of which provider
-was chosen, and which model goes with it, belongs to the selector, not the
-caller.
+`fromEnv()` returns only the bound `Model`. `select()` returns a
+`Selection` — the model handle, and the chosen gateway's lowercase name
+(`"anthropic"`/`"openai"`/`"gemini"`/`"xai"`/`"bedrock"`, the same
+vocabulary `NESSY_PROVIDER` accepts) — so an application that wants to show
+or log what was picked (a demo's banner, for instance) doesn't have to
+re-derive the gateway's identity itself via `instanceof`: the knowledge of
+which vendor was chosen, and which model goes with it, belongs to the
+selector, not the caller.
 
 ```java
 EnvModelProviders.Selection selection = EnvModelProviders.select();
-ModelProvider provider = selection.provider();
+Model model = selection.model();
+String vendor = selection.providerName();
 ```
 
 The model comes from `NESSY_MODEL` when that variable is set and
-non-blank — it wins outright, regardless of which provider was chosen. This
-is the one way to name a model whose provider instance can't reveal it on
+non-blank — it wins outright, regardless of which gateway was chosen. This
+is the one way to name a model whose gateway instance can't reveal it on
 its own: a Grok model reached through `OpenAiModelProvider`'s base-url
 override looks, by type, exactly like an OpenAI model, so nothing else can
 tell `select()` which model name is right for it. The same applies to
 OpenRouter and LM Studio models reached the same way. Without `NESSY_MODEL`,
-`select()` falls back to a small, cheap default for the chosen provider
+`select()` falls back to a small, cheap default for the chosen gateway
 (Anthropic's Haiku, OpenAI's `gpt-4o-mini`, Gemini's `gemini-3.6-flash`,
 `grok-4.6` for xAI — live-validated 2026-08-16, including a multi-tool turn
 with an approval gate — or, for Bedrock, `us.anthropic.claude-haiku-4-5-20251001-v1:0`,
@@ -130,7 +178,7 @@ live-validated 2026-08-16).
 `ApprovalPlayground` (`nessy-agent`'s test sources, an IDE-run tinker door —
 see the Javadoc on the class itself) is this in practice: one `main`, no
 `if` branch for which provider module to import, because `select()` already
-decided both the provider and the model.
+decided both the vendor and the model:
 
 ```java
 EnvModelProviders.Selection selection;
@@ -141,7 +189,29 @@ try {
     System.exit(1);
     return;
 }
+
+var harness = Nessy.harness(h -> h.model(selection.model()).systemPrompt("You are a terse assistant."));
 ```
+
+## Retrying: `RetryingModel`
+
+Wrappers rebase one level down, on the thing that actually runs requests —
+the model handle, not the gateway. `RetryingModel` retries the *opening* of
+a model stream, with exponential backoff:
+
+```java
+Model resilient = RetryingModel.wrap(claude, RetryPolicy.defaults(), AnthropicModelProvider.RETRYABLE);
+
+var harness = Nessy.harness(h -> h.model(resilient).systemPrompt(prompt));
+```
+
+Only the initial `stream()` call is retried — once events flow, tokens have
+already been fed downstream, and a mid-stream failure propagates rather
+than transparently re-calling and replaying the turn from the top. Which
+failures are retryable is vendor-specific (a 429 is not an auth error), so
+each vendor module publishes its own predicate —
+`AnthropicModelProvider.RETRYABLE` above, `OpenAiModelProvider.RETRYABLE`
+for the OpenAI-compatible universe.
 
 ## Gemini
 
@@ -171,7 +241,7 @@ one turn, plus usage reporting. Thinking output is not yet mapped — Gemini's
 Tool calls carry real continuity: the stream captures each function call's
 `thoughtSignature` and the request builder replays it verbatim on the next
 turn. A history with no stored signature — one predating this capture, or
-authored by another provider in a mixed setup — replays with Google's own
+authored by another vendor in a mixed setup — replays with Google's own
 documented skip-validation sentinel instead of failing the call, at the cost
 of degraded reasoning continuity for that one call only.
 
@@ -214,17 +284,17 @@ is the escape hatch for a fully preconfigured async SDK client.
 
 **Close ownership is not symmetric.** `BedrockModelProvider` is
 `AutoCloseable` — the real client holds Netty resources (an event-loop
-group, a connection pool) that outlive one `stream()` call. Closing the
-provider closes that client only when the provider built it itself (the
-`region`/`credentialsProvider`/`fromEnv()` path); a client handed in via
-`.client(...)` is the caller's own to close, on whatever lifecycle the
-caller built it against — the provider never closes it, since it never
-opened it either.
+group, a connection pool) that outlive one model handle's `stream()` call.
+Closing the gateway closes that client only when the gateway built it
+itself (the `region`/`credentialsProvider`/`fromEnv()` path); a client
+handed in via `.client(...)` is the caller's own to close, on whatever
+lifecycle the caller built it against — the gateway never closes it, since
+it never opened it either.
 
 **Explicit selection only.** `EnvModelProviders` never chooses Bedrock by
 key presence, classpath presence, or any other ambient signal —
 `NESSY_PROVIDER=bedrock` is the only door, checked before any other
-provider's candidacy is even computed. This is not an oversight: AWS
+gateway's candidacy is even computed. This is not an oversight: AWS
 credentials (and, on some platforms, even `AWS_REGION` itself — AWS Lambda
 sets it automatically) are ambient on a large fraction of machines, so
 letting their mere presence win, or even enter a tiebreak, would silently
@@ -335,7 +405,7 @@ itself.
 
 `OPENAI_BASE_URL`, set alongside `OPENAI_API_KEY`, makes any of these a
 zero-code env citizen too: `EnvModelProviders.fromEnv()` layers it onto the
-OpenAI provider exactly as shown above, the same way it wires Grok.
+OpenAI gateway exactly as shown above, the same way it wires Grok.
 
 ### Anthropic-compatible endpoints
 
@@ -386,11 +456,10 @@ $ OPENAI_API_KEY=lm-studio OPENAI_BASE_URL=http://127.0.0.1:1234/v1 \
 
 ## Where next
 
-- [Getting Started](getting-started.md) — the smallest agent, provider swap
+- [Getting Started](getting-started.md) — the smallest harness, model swap
   included.
-- [Autonomous Agents](autonomous-agents.md) — the second front door a
-  provider and `ModelSettings` build the same way.
-- [Observability](observability.md) — narrating what a provider's model
-  calls actually do, turn by turn.
+- [The harness guide](harness.md) — the door a `Model` handle feeds.
+- [Observability](observability.md) — narrating what a model handle's calls
+  actually do, turn by turn.
 - [Durable Computation](../concepts/durable-computation.md) — what a
-  `Harness` built from a provider actually gives you.
+  `Harness` built from a model handle actually gives you.

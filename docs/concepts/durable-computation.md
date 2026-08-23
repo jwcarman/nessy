@@ -157,7 +157,7 @@ pending, and redelivery just re-runs a pure fold — the reducer itself is
 the dedup, so a duplicate delivery costs a wasted read, never a duplicate
 effect.
 
-`DeliveryWorker` runs one heartbeat thread per host. `nudge()` runs an
+`DeliveryWorker` runs one heartbeat thread per harness. `nudge()` runs an
 immediate, synchronous drain right after a completion commits — the
 heartbeat is the recovery net, never the happy-path latency. There is no
 live `ContinuationDispatcher` fire path anymore: continuations are read by
@@ -247,17 +247,17 @@ the tool defers, the process that dispatched it disappears, and a
 completely different process eventually completes the computation:
 
 ```java
-host.post("prod-eu", "please restart prod-eu");
+harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
 // ... the tool defers; DeliveryWorker has nothing to drain yet ...
 
 ApprovalRequest request = requests.getFirst();
-host.approvals().approve(request.address().approval());
+harness.approvals().approve(request.address().approval());
 // ... any node, any time later: complete() transfers ownership to a
 //     delivery, the worker drains it, and the turn completes ...
 ```
 
 The instance that dispatched the call never has to still be running. The
-transcript reads as one continuous turn regardless of how many hosts or
+transcript reads as one continuous turn regardless of how many processes or
 how much wall-clock time separates the ask from the answer.
 
 ## Honest limits
@@ -275,8 +275,9 @@ softening them would promise more than the design gives:
   tool's external start and that commit leaves the delivery to be
   redriven — at-least-once, the same contract every tool already signs up
   to.
-- **A single-winner claim is per-host, not per-cluster.** Within one host,
-  draining a grant's delivery has exactly one winner. Across hosts, the
+- **A single-winner claim is per-harness, not per-cluster.** Within one
+  harness, draining a grant's delivery has exactly one winner. Across
+  processes sharing the same substrate and agent type, the
   same grant delivery can be drained more than once until an outbox lease
   lands with the first durable (non-in-memory) substrate adapter — parked,
   not built. Until then, a tool's `execute()` can run more than once for
@@ -319,7 +320,7 @@ pipeline actually gives.
 
 ## Where next
 
-- [Autonomous Agents](../guides/autonomous-agents.md) — the builder surface
+- [The harness guide](../guides/harness.md) — the builder surface
   that wires a backend behind both desks, and the approval arc end to end.
 - [Authorization](authorization.md) — the ladder whose `RequireApproval`
   verdict is what puts a call in front of the approval gate in the first

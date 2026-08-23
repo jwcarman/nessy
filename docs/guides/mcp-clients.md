@@ -12,24 +12,27 @@ A server offering ten tools yields ten separate grant decisions, never one
 blanket "trust this server":
 
 ```java
-try (McpToolbox toolbox = McpToolbox.connect(transport, mapper);
-    AutonomousHost<String> host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(settings)
-            .grants(
-                ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
-                ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
-            .approvalNotifier(pending::add)
-            .build()) {
-  host.post("agent-1", "find the cheapest flight and buy it");
-}
+McpToolbox toolbox = McpToolbox.connect(transport, mapper);
+var harness =
+    Nessy.harness(
+        h ->
+            h.model(claude)
+                .systemPrompt(prompt)
+                .grants(
+                    ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
+                    ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
+                .approvalNotifier(pending::add));
+harness.bind(AgentId.of("agent-1")).observe("find the cheapest flight and buy it");
 ```
 
-Both resources share one `try`-with-resources on purpose: a granted `Tool`
-keeps working only as long as the session that produced it is open, and the
-host may still be running turns against it, so the toolbox must outlive
-every scope that was granted its tools — closing it early fails any
+The toolbox is deliberately not opened in a `try`-with-resources here: a
+granted `Tool` keeps working only as long as the session that produced it
+is open, and the harness — kept, not closed, running for as long as the
+process does — may still be running turns against it at any time. The
+toolbox must outlive every scope that was granted its tools, which in
+practice means it lives exactly as long as the harness does, closed by the
+same infrastructure hook (a container's destroy callback, alongside
+`harness.shutdown()`) rather than a block exit. Closing it early fails any
 in-flight or future call on those tools loud, not silently.
 
 `toolbox.tool(name)` fails loud — `NoSuchElementException` naming every tool
@@ -89,21 +92,20 @@ researching public GitHub repositories — a convenient real server to import
 against, since it needs no credential of its own:
 
 ```java
-try (McpToolbox toolbox =
-        McpToolbox.connect(
-            HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper);
-    AutonomousHost<String> host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(settings)
-            .grants(
-                ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
-                ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
-                ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
-            .approvalNotifier(pending::add)
-            .build()) {
-  host.post("researcher", "what does jwcarman/nessy's harness module do?");
-}
+McpToolbox toolbox =
+    McpToolbox.connect(
+        HttpClientStreamableHttpTransport.builder(DEEPWIKI_URL).build(), mapper);
+var harness =
+    Nessy.harness(
+        h ->
+            h.model(claude)
+                .systemPrompt(prompt)
+                .grants(
+                    ToolGrant.grant(toolbox.tool("read_wiki_structure"), UsagePolicy.allow()),
+                    ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
+                    ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
+                .approvalNotifier(pending::add));
+harness.bind(AgentId.of("researcher")).observe("what does jwcarman/nessy's harness module do?");
 ```
 
 `read_wiki_structure` and `read_wiki_contents` are free — the agent can look
@@ -111,8 +113,8 @@ around and read without asking. `ask_question` is DeepWiki's own
 AI-in-the-loop tool (it burns DeepWiki's own model budget to answer), so
 it's the one gated behind `requireApproval()`: the `ApprovalRequest` that
 reaches `pending` carries the rendered action for a human to read before
-`host.approvals().approve(...)` lets the call out to a remote server. See
-[Autonomous Agents](autonomous-agents.md) for the rest of that flow.
+`harness.approvals().approve(...)` lets the call out to a remote server. See
+[The harness guide](harness.md) for the rest of that flow.
 
 Tool names granted this way are verified against the live server, not
 guessed from documentation. That's the covenant of importing someone else's
@@ -152,5 +154,5 @@ noisily at startup rather than silently doing the wrong thing mid-turn.
   order.
 - [Authorization](../concepts/authorization.md) — `ActionContributor`,
   enrichers, and the policy an MCP tool's grant is judged by.
-- [Autonomous Agents](autonomous-agents.md) — the approval desk a
+- [The harness guide](harness.md) — the approval desk a
   `requireApproval()` grant on an imported tool routes through.

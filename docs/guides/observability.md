@@ -86,20 +86,20 @@ blocks on). There is no public seam today for a `Nessy.cli()` caller to also
 attach a streaming renderer alongside it — the relay is the CLI's own
 internal wiring, not yet an exposed extension point.
 
-### The autonomous `turnObserver` seam
+### The harness's `turnObserver` seam
 
-`Nessy.autonomous()` takes a `TurnObserver` directly, wired once at
-`build()` time and shared by every scope the host serves — `AutonomousBuilder`
+`Nessy.harness(...)` takes a `TurnObserver` directly, wired once inside the
+customizer and shared by every scope the harness serves — `HarnessConfig`
 carries no per-call relay, since there is no caller thread parked on any one
 turn to hand it to:
 
 ```java
-AutonomousHost<String> host =
-    Nessy.autonomous()
-        .provider(provider)
-        .settings(settings)
-        .turnObserver(TurnObserver.logging(logger, "ops"))
-        .build();
+var harness =
+    Nessy.harness(
+        h ->
+            h.model(claude)
+                .systemPrompt(prompt)
+                .turnObserver(TurnObserver.logging(logger, "ops")));
 ```
 
 The default is `TurnObserver.noop()`.
@@ -136,11 +136,11 @@ public interface AgentObserver {
 - **`observationRequeued`** — an observation lost the idle race and went
   back to the backlog.
 
-`AgentObserver.noop()` is the default everywhere a host is built without
-one, via `AutonomousBuilder#agentObserver(AgentObserver)`.
+`AgentObserver.noop()` is the default everywhere a harness is built without
+one, via `HarnessConfig#agentObserver(AgentObserver)`.
 
 None of these events originate from a live wait. `DeliveryWorker` — one
-heartbeat thread per host, plus an immediate synchronous drain right after
+heartbeat thread per harness, plus an immediate synchronous drain right after
 any completion commits — is what turns a pending outbox delivery back into
 an `applied` (or `ignored`) fact on this same observer; a grant's dispatch
 and a durable tool's eventual result both surface here exactly like any
@@ -190,7 +190,7 @@ for the full grammar of what a grant's story can say.
 
 - [Authorization](../concepts/authorization.md) — the trust gradient
   `ToolCallDecided` and `AuthorizationReport` both describe.
-- [Autonomous Agents](autonomous-agents.md) — `Nessy.autonomous()`'s full
+- [The harness guide](harness.md) — `Nessy.harness(...)`'s full
   builder surface, `turnObserver` and `agentObserver` alongside it.
 - [Durable Computation](../concepts/durable-computation.md) — the shell,
   the fold, and the events `AgentObserver` narrates the outcome of.

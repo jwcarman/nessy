@@ -473,3 +473,64 @@ sequence of renames and interim shapes that produced it.
   drained is not yet closed, so a redrive landing exactly there still
   re-asks the approver — both parked, not fixed, and named as such in
   [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/).
+- **Harness first: one door, kept forever.** `Nessy.harness(HarnessCustomizer<String>)`
+  and `Nessy.harness(Class<O>, HarnessCustomizer<O>)` replace `Nessy.autonomous()`
+  as the application front door — the `String` and typed-observation doors
+  respectively, both reached through the same customizer grammar
+  `Tool.of(type, customizer)` already teaches: the lambda fills in a
+  `HarnessConfig` (renamed from the old `AutonomousBuilder`, identical
+  setters, no public `build()`), and Nessy alone turns it into the finished
+  `Harness` the instant the lambda returns. The harness is immortal, not
+  closeable: no example anywhere on the site opens one in a
+  `try`-with-resources any more. Its life-support — the delivery worker,
+  the approval and completion desks, the reaper sweep — moved in from the
+  now-deleted `AutonomousHost`: `harness.approvals()` and
+  `harness.completions()` are the harness's own desks, and `shutdown()` is
+  the one undecorated lifecycle method, documented as infrastructure-only
+  (a container's destroy callback, a test's teardown) rather than
+  application hygiene. `harness.bind(AgentId)` returns a plain `Agent<O>`
+  directly — `Binding` leaves the public surface entirely, demoted to
+  internal wiring — and `.observe(observation)` replaces `post(id,
+  observation)` as the tell verb; `bind(id).observe(...)` is now the whole
+  story. Grant ceremony is no longer required on the five-minute path:
+  `.tools(Tool<?>...)` grants allow-by-default sugar the same as it always
+  did, just one call away from `harness.bind(id).observe(...)` rather than
+  behind a builder's `build()`. **One harness per agent type per
+  substrate** is now a stated contract: two harnesses sharing both a type
+  and a substrate would double-drain each other's deliveries, since each
+  harness's worker and reaper sweep every record carrying that type
+  regardless of which harness produced it — a new type-filtered-sweep law
+  keeps different types on one shared substrate from ever touching each
+  other's records. "Host" retires to meaning your process — the JVM that
+  keeps a harness reference alive, nothing more; the four-tier vocabulary
+  (substrate, host, harness, binding) becomes three (substrate, harness,
+  binding). See [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/),
+  [the harness guide](https://jwcarman.github.io/nessy/guides/harness/)
+  (renamed from the old Autonomous Agents guide), and
+  [The Tiers](https://jwcarman.github.io/nessy/concepts/the-four-tiers/).
+- **The model split: a provider provides models.** `ModelProvider` — one
+  transport that used to answer `capabilities()` for a whole vendor lineup
+  while accepting any model string per request — splits into a vendor
+  gateway and a bound handle. `ModelProvider` is now the application
+  singleton holding the SDK client and credentials; its one job is `Model
+  model(String id)`, a cheap, immutable handle bound to one model id,
+  sharing the gateway's client. `Model` is the thing that actually runs
+  requests — `stream(ModelRequest)`, `capabilities()` (now honestly
+  per-model, not a vendor-wide guess), and `id()` — and it is what
+  `HarnessConfig#model(Model)` and `Nessy.cli()`'s `CliBuilder#model(Model)`
+  consume; the harness never sees the gateway itself. Two agents on two
+  models is two handles drawn from one gateway
+  (`anthropic.model("claude-opus-5")`, `anthropic.model("claude-haiku-4-5")`)
+  feeding two harnesses — no model string threads through a `ModelRequest`
+  any more, since the handle it is sent to already knows which model runs
+  it. `.systemPrompt(String)` moves off `ModelSettings` onto the harness
+  config directly, required with no settings fallback; `ModelSettings`
+  keeps only the optional tuning bag (`maxTokens`, requested
+  `capabilities`, `contextWindow`) and loses both `model` and
+  `systemPrompt`. Wrappers rebase one level down: `RetryingModelProvider`
+  becomes `RetryingModel`, a decorator over the thing that runs requests
+  rather than the gateway, with each vendor's `RETRYABLE` predicate feeding
+  it unchanged. `EnvModelProviders.fromEnv()` now returns a bound `Model`
+  directly, and `EnvModelProviders.select()`'s `Selection` carries a
+  `Model` alongside the chosen provider's name rather than a
+  `ModelProvider`. See [Providers](https://jwcarman.github.io/nessy/guides/providers/).

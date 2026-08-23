@@ -77,7 +77,7 @@ nav:
   - Home: index.md
   - Concepts:
       - Agent as Scope: concepts/agent-as-scope.md
-      - The Four Tiers: concepts/the-four-tiers.md
+      - The Tiers: concepts/the-four-tiers.md
       - Durable Computation: concepts/durable-computation.md
       - Tools: concepts/tools.md
       - Authorization: concepts/authorization.md
@@ -86,7 +86,7 @@ nav:
       - Storage: concepts/storage.md
   - Guides:
       - Getting Started: guides/getting-started.md
-      - Autonomous Agents: guides/autonomous-agents.md
+      - Harness: guides/harness.md
       - Providers: guides/providers.md
       - MCP Clients: guides/mcp-clients.md
       - Observability: guides/observability.md
