@@ -226,5 +226,40 @@ class AgentAskTest {
 
       assertThat(harness.hasSubscribers(id)).isFalse();
     }
+
+    @Test
+    void ask_leaks_no_subscription_for_a_failed_turn() {
+      Model exploding =
+          new Model() {
+            @Override
+            public ModelStream stream(ModelRequest request) {
+              throw new IllegalStateException("boom");
+            }
+
+            @Override
+            public Set<Capability> capabilities() {
+              return Set.of();
+            }
+
+            @Override
+            public String id() {
+              return "exploding";
+            }
+          };
+      var harness =
+          Nessy.harness(
+              h ->
+                  h.model(exploding)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings()));
+      HarnessTeardown.track(harness);
+      var id = AgentId.of("scope-1");
+      var agent = harness.bind(id);
+
+      TurnOutcome outcome = agent.ask("hello");
+
+      assertThat(outcome).isInstanceOf(TurnOutcome.Failed.class);
+      assertThat(harness.hasSubscribers(id)).isFalse();
+    }
   }
 }
