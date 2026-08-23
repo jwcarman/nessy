@@ -16,38 +16,25 @@
 package org.jwcarman.nessy.agent.host;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.Harness;
-import org.jwcarman.nessy.agent.Kinds;
-import org.jwcarman.nessy.agent.StalenessPolicy;
-import org.jwcarman.nessy.agent.SubstrateComputations;
-import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
-import org.jwcarman.nessy.agent.codec.Codecs;
-import org.jwcarman.nessy.agent.memory.VerbatimMemory;
-import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
-import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
-import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
-import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
-import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.model.Model;
 import org.jwcarman.nessy.spi.model.ModelSettings;
 import org.jwcarman.nessy.spi.substrate.Codec;
-import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
-import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /** The front doors (§7.1). Builders wire existing seams; they never own machinery. */
 public final class Nessy {
@@ -124,9 +111,11 @@ public final class Nessy {
     private Memory memory;
     private String id = "cli";
     private String typeName = "cli";
-    private List<Tool<?>> tools = List.of();
+    private Consumer<HarnessConfig<String>> toolConfigurer = config -> {};
     private ExecutorService executor;
     private ObjectMapper objectMapper = new ObjectMapper();
+    private InputStream in = System.in;
+    private PrintStream out = System.out;
 
     /** Reachable only through {@link Nessy#cli()}. */
     private CliBuilder() {}
@@ -152,7 +141,11 @@ public final class Nessy {
       return this;
     }
 
-    /** The conversation store; defaults to a fresh {@link VerbatimMemory} per build. */
+    /**
+     * The conversation store; defaults to a fresh view over this build's own in-memory substrate
+     * ({@link HarnessConfig#memoryFactory}'s own default) — a fresh, empty conversation every
+     * build, exactly as before.
+     */
     public CliBuilder memory(Memory memory) {
       this.memory = Objects.requireNonNull(memory, "memory must not be null");
       return this;
@@ -170,9 +163,27 @@ public final class Nessy {
       return this;
     }
 
-    /** The tools the model may call during a turn. */
+    /**
+     * The tools the model may call during a turn, each granted an answered-allow authority (sugar
+     * over {@link org.jwcarman.nessy.api.tool.ToolRegistry#of(Tool...)}). Shares one slot with
+     * {@link #grants(ToolGrant...)} — whichever of the two is called last wins; calling both is not
+     * additive.
+     */
     public CliBuilder tools(Tool<?>... tools) {
-      this.tools = List.of(Objects.requireNonNull(tools, "tools must not be null"));
+      Objects.requireNonNull(tools, "tools must not be null");
+      this.toolConfigurer = config -> config.tools(tools);
+      return this;
+    }
+
+    /**
+     * The tool grants every turn carries, authority and all — the door a §5a approval-gated tool
+     * needs, since {@link #tools(Tool...)}'s sugar only ever grants an answered-allow authority.
+     * Shares one slot with {@link #tools(Tool...)} — whichever of the two is called last wins;
+     * calling both is not additive.
+     */
+    public CliBuilder grants(ToolGrant... grants) {
+      Objects.requireNonNull(grants, "grants must not be null");
+      this.toolConfigurer = config -> config.grants(grants);
       return this;
     }
 
@@ -193,64 +204,65 @@ public final class Nessy {
       return this;
     }
 
-    public CliAgent build() {
+    /**
+     * The built {@link Console}'s input; default {@link System#in}. Overriding it is how a
+     * scripted-IO test — or an embedding app driving the console over piped streams instead of a
+     * real terminal — replaces the console's terminal without touching {@link Console} itself.
+     */
+    public CliBuilder in(InputStream in) {
+      this.in = Objects.requireNonNull(in, "in must not be null");
+      return this;
+    }
+
+    /** The built {@link Console}'s output; default {@link System#out}. See {@link #in}. */
+    public CliBuilder out(PrintStream out) {
+      this.out = Objects.requireNonNull(out, "out must not be null");
+      return this;
+    }
+
+    /**
+     * Sugar composing a harness with a fresh {@link Console} (spec §3): builds the SAME kept {@link
+     * Harness} every door in this class produces — through {@link
+     * Nessy#harness(HarnessCustomizer)}, not a bespoke wiring of its own — so the cli door gets
+     * exactly the generic door's correct fanout-routed narration and its {@link
+     * org.jwcarman.nessy.agent.ComputationApprover}-backed §5a gate for free: an approval-requiring
+     * tool call PARKS here exactly as it does everywhere else, which is what makes {@link
+     * Console#approver()} reachable at all. (Fix round context: an earlier hand-rolled wiring here
+     * pointed its {@link org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter} straight at {@code
+     * relay}, bypassing the harness's internal per-id fanout entirely — {@code AssistantSaid}/
+     * {@code TurnEnded} reached {@code relay} but never an {@link Agent#subscribe}d observer, so
+     * {@link Agent#ask} hung forever on a cli-built agent. Delegating to the generic door retires
+     * that wiring outright: {@code relay}, passed below as this harness's {@code turnObserver()},
+     * is composed as one more subscriber inside the SAME internal fanout every id-scoped subscriber
+     * shares — {@code relay} and any {@code subscribe}d observer (including {@link Agent#ask}'s own
+     * capture) each see every event exactly once, never twice, and neither starves the other.)
+     */
+    public Console build() {
       Objects.requireNonNull(model, MODEL_MUST_NOT_BE_NULL);
       Objects.requireNonNull(systemPrompt, SYSTEM_PROMPT_MUST_NOT_BE_NULL);
       ModelSettings effectiveSettings = settings != null ? settings : ModelSettings.defaults();
-      ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
       boolean ownsExecutor = executor == null;
       ExecutorService exec = ownsExecutor ? Executors.newVirtualThreadPerTaskExecutor() : executor;
-      Memory effectiveMemory = memory != null ? memory : new VerbatimMemory();
       var relay = new RelayTurnObserver();
-      ToolRegistry registry = ToolRegistry.of(tools.toArray(Tool[]::new));
-      ToolRegistry limited = ToolRegistry.limited(registry, CompletionPolicy.AWAITABLE);
-      var agentId = AgentId.of(id);
-      var agentType = AgentType.of(typeName);
-      Substrate substrate = new InMemorySubstrate();
-      var store = new SubstrateAgentStateStore(substrate, id, Clock.systemUTC(), pinned);
-      var backlog = new SubstrateBacklog<>(substrate, id, 1024, STRING_CODEC, pinned);
-      String outboxKind = Kinds.outbox(agentType);
-      var approvalBackend =
-          new SubstrateComputations(substrate, pinned, Kinds.approval(agentType), outboxKind);
-      var executionBackend =
-          new SubstrateComputations(substrate, pinned, Kinds.computation(agentType), outboxKind);
+      Memory constantMemory = memory;
       Harness<String> harness =
-          Harness.of(
-              agentType,
-              text -> List.of(new TextBlock(text)),
-              // Ignores the per-id TurnObserver it is handed and always targets `relay` directly
-              // — the CLI's own single-scope, id-free wiring, unchanged by front-ends spec §1's
-              // per-id default (that default only applies when no agentObserver override is
-              // supplied at all; this builder always supplies one).
-              perIdTurnObserver -> new TurnNarrationAdapter(relay),
-              relay,
-              false,
-              StalenessPolicy.never(),
-              rawId -> effectiveMemory,
-              rawId -> store,
-              rawId -> backlog,
-              (scopeMemory, scopeTurnObserver) ->
-                  new ProviderModelCallExecutor(
-                      model,
-                      systemPrompt,
-                      effectiveSettings,
-                      limited,
-                      scopeMemory,
-                      scopeTurnObserver,
-                      exec),
-              (scopeId, scopeTurnObserver) ->
-                  new RegistryToolCallExecutor(
-                      limited, agentType, scopeId, scopeTurnObserver, exec, pinned),
-              substrate,
-              pinned,
-              approvalBackend,
-              executionBackend,
-              // No ComputationApprover in this wiring (the plain RegistryToolCallExecutor
-              // constructor above refuses approval in-band) — nothing ever notifies into this
-              // map, so an empty one is exactly as inert as it looks.
-              new ConcurrentHashMap<>());
-      Agent<String> agent = harness.bind(agentId);
-      return new CliAgent(agent, harness, relay, exec, ownsExecutor);
+          Nessy.harness(
+              config -> {
+                config
+                    .model(model)
+                    .systemPrompt(systemPrompt)
+                    .settings(effectiveSettings)
+                    .type(typeName)
+                    .executor(exec)
+                    .objectMapper(objectMapper)
+                    .turnObserver(relay);
+                toolConfigurer.accept(config);
+                if (constantMemory != null) {
+                  config.memoryFactory(rawId -> constantMemory);
+                }
+              });
+      Agent<String> agent = harness.bind(AgentId.of(id));
+      return new Console(agent, harness, relay, in, out, exec, ownsExecutor);
     }
   }
 }

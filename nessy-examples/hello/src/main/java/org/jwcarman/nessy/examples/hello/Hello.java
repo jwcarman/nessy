@@ -17,9 +17,13 @@ package org.jwcarman.nessy.examples.hello;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Set;
-import org.jwcarman.nessy.agent.host.CliAgent;
+import org.jwcarman.nessy.agent.host.Console;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.model.env.EnvModelProviders;
@@ -59,16 +63,21 @@ public final class Hello {
                 t.description("Adds two integers.")
                     .executes(calc -> String.valueOf(calc.left() + calc.right())));
 
-    try (CliAgent agent =
+    var input = new ByteArrayInputStream((QUESTION + "\n").getBytes(StandardCharsets.UTF_8));
+    var captured = new ByteArrayOutputStream();
+    try (Console console =
         Nessy.cli()
             .model(model)
             .systemPrompt(SYSTEM_PROMPT)
             .settings(settings)
             .tools(calculator)
+            .in(input)
+            .out(new PrintStream(captured, true, StandardCharsets.UTF_8))
             .build()) {
-      String reply = agent.converse(QUESTION);
-      return reply + " (COMPLETE)";
+      console.run();
     }
+    String reply = captured.toString(StandardCharsets.UTF_8).stripTrailing();
+    return reply + " (COMPLETE)";
   }
 
   private static ScriptedModel scriptedModel() {

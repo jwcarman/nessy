@@ -170,6 +170,57 @@ at a JDBC (or other durable) implementation and the same program survives a
 restart, resumes a parked approval days later, and answers from any node
 holding the same harness's type — see [Storage](../concepts/storage.md).
 
+## `tell` and `ask`
+
+`tell(observation)` is fire-and-forget: enqueue a fact, return immediately,
+watch the reply through a `TurnObserver` (see
+[Observability](observability.md)). `ask(observation)` is the pattern built
+on top, for the common case of wanting the turn's own outcome back as a
+value:
+
+```java
+TurnOutcome outcome = harness.bind(AgentId.of("scope-1")).ask("what is 2+2?");
+```
+
+`TurnOutcome` is a sealed three-way: `Replied(String text)` — the
+assistant's final reply; `Parked(ApprovalRequest ask)` — the turn suspended
+on a §5a approval, carrying the ticket `harness.approvals().approve(id)`/
+`.deny(id, reason)` answers; `Failed(String reason)` — the turn ended in
+failure, narrated honestly rather than thrown. `ask` blocks the calling
+thread until one of the three settles; `agent.subscribe(TurnObserver)`
+underneath it is the lower-level door — a `Subscription` your code can hold
+onto for as long as it wants to keep watching an id's turns, closed to stop.
+
+## The cli door
+
+`Nessy.cli()` is the fastest way to a terminal conversation — sugar over the
+exact same kept `Harness` every other door builds, composed with a
+`Console` that owns the terminal:
+
+```java
+try (Console console =
+    Nessy.cli()
+        .model(anthropic.model("claude-sonnet-5"))
+        .systemPrompt("You are a terse assistant.")
+        .tools(addTool)
+        .build()) {
+  console.run(); // reads System.in, prints to System.out, until EOF
+}
+```
+
+`console.run()` is the read-`ask`-print loop: a line in, `ask(...)`, then
+`Replied` prints the reply, `Parked` hands the ticket to
+`console.approver()` (renders it, reads `y`/`n`(+reason), answers through
+`harness.approvals()`) and waits for the same turn to settle, and `Failed`
+prints the reason honestly. `.grants(ToolGrant...)` reaches the cli door's
+harness the same way `.tools(Tool...)` does, for a tool that needs a real
+policy rather than allow-by-default — including `UsagePolicy.requireApproval()`,
+which `console.approver()` exists to answer. `.in(InputStream)`/
+`.out(PrintStream)` swap the terminal for scripted streams — how a test (or
+an embedding app) drives the console without a real one; see
+`nessy-examples/hello` for a scripted, key-free, runnable copy of the
+snippet above.
+
 ## Verify it against the real test
 
 `NessyHarnessDoorTest` in `nessy-agent` exercises exactly this shape — the

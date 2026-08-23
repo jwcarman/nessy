@@ -18,6 +18,10 @@ package org.jwcarman.nessy.agent.host;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -45,16 +49,23 @@ class CliLiveSmokeTest {
 
     var selection = EnvModelProviders.select();
     var settings = new ModelSettings(64, Set.of(), null);
+    var input =
+        new ByteArrayInputStream(
+            "Reply with exactly the word: pong\n".getBytes(StandardCharsets.UTF_8));
+    var captured = new ByteArrayOutputStream();
 
-    try (var agent =
+    try (var console =
         Nessy.cli()
             .model(selection.model())
             .systemPrompt("You are a terse assistant.")
             .settings(settings)
+            .in(input)
+            .out(new PrintStream(captured, true, StandardCharsets.UTF_8))
             .build()) {
-      String reply = agent.converse("Reply with exactly the word: pong");
-      assertThat(reply).isNotBlank();
+      console.run();
     }
+
+    assertThat(captured.toString(StandardCharsets.UTF_8)).isNotBlank();
   }
 
   private static boolean anyProviderKeyPresent() {

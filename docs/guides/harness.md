@@ -133,6 +133,72 @@ from the shared substrate; two deliveries to the same scope, each through a
 brand-new binding, still see each other's history because the substrate
 underneath persists it, not any cache in front of it.
 
+## `subscribe` and `ask`
+
+`Agent#subscribe(TurnObserver)` returns a `Subscription` — the one
+closeable in the API, because it is the only thing holding a routing entry
+open. It routes into a fanout the harness carries per agent id, alongside
+the harness's own configured `turnObserver`: both a `subscribe`d observer
+and the global one see every event a bound id's turns narrate —
+`TextDelta`, `ThinkingDelta`, `RedactedThinking`, the `ToolCall*` trio,
+`AssistantSaid`, and `TurnEnded` — exactly once each, whether the turn
+settles synchronously inside `tell`/`drive` or a worker-driven delivery
+folds it days later. Close the `Subscription` to stop listening; dropping
+it unclosed leaks one routing entry, never a thread.
+
+`Agent#ask(O)` is a pattern over exactly that door, not new machinery:
+subscribe a private capture, `tell`, block for the turn's own outcome,
+close. It resolves a sealed `TurnOutcome`:
+
+```java
+sealed interface TurnOutcome {
+  record Replied(String text) implements TurnOutcome {}
+  record Parked(ApprovalRequest ask) implements TurnOutcome {}
+  record Failed(String reason) implements TurnOutcome {}
+}
+```
+
+`Replied` and `Failed` read straight off `AssistantSaid`/`TurnEnded` — the
+same two events `subscribe` always delivered. `Parked` resolves
+off-channel, through the same approval notifier `.approvalNotifier(...)`
+already fires into, since a parked call is never narrated as a `TurnEvent`
+at all (see "The approval arc" below) — `ask` registers its own wait for
+the next `ApprovalRequest` on that id before ever calling `tell`, so a
+turn that parks synchronously, inside the very call that registers it,
+still resolves to `Parked` rather than hanging.
+
+## The console
+
+`Nessy.cli()` composes the same kept `Harness` this whole page describes
+with a `Console` — the terminal front end, in `nessy-agent`'s host
+package:
+
+```java
+try (Console console =
+    Nessy.cli()
+        .model(claude)
+        .systemPrompt("You are the ops assistant.")
+        .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+        .build()) {
+  console.run();
+}
+```
+
+`console.approver()` is the §5a immediate-decision arm as a face: it
+renders the flattened `ApprovalRequest` (`id`, `call`, `agentType`,
+`agentId`), reads `y`/`n`(+reason), and answers through
+`harness.approvals().approve(id)`/`.deny(id, reason)` — the exact same desk
+"The approval arc" below describes, reached by hand instead of read back
+off a notifier. `console.run()` is the read-`ask`-print loop: a `Replied`
+prints; a `Parked` hands the ticket to `approver()` and waits for the same
+turn to settle before printing what it settled on; a `Failed` prints the
+reason honestly. `Nessy.cli()`'s builder mirrors `HarnessConfig`'s own surface for the
+pieces a terminal session needs (`.model`, `.systemPrompt`, `.settings`,
+`.grants`/`.tools`, `.objectMapper`) — its substrate is always a fresh
+in-memory one, not a setting — plus `.in(InputStream)`/`.out(PrintStream)`
+to swap the real terminal for scripted streams in a test or an embedding
+app.
+
 ## Durability is a property of the substrate
 
 The identical harness is a toy on the in-memory substrate and a durable,

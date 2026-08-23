@@ -25,6 +25,48 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **`tell`/`ask`/`subscribe`, and the console.** `Agent#observe` is renamed
+  `Agent#tell` — the caller-perspective, fire-and-forget verb; `drive()` is
+  unchanged, the manual pump. `Agent#subscribe(TurnObserver)` returns a
+  `Subscription` (`nessy-api`, `AutoCloseable`, idempotent close, never
+  throws) routing into a per-agent-id fanout the harness now carries
+  internally (`TurnFanout`) — a subscriber sees `TextDelta`, `ThinkingDelta`,
+  `RedactedThinking`, `ToolCallRequested`/`Decided`/`Completed`/`Progressed`,
+  `AssistantSaid`, and `TurnEnded` for its id, whether the turn settles
+  synchronously or a worker-driven delivery folds it days later; the
+  harness's own configured `turnObserver` rides the same fanout as one more
+  subscriber, running last and unguarded, so a throwing global observer
+  keeps its long-standing abort-the-call meaning without starving any
+  `subscribe`d observer of the event first. `Agent#ask(O)` is the pattern
+  built on top — subscribe a private capture, `tell`, block for the turn's
+  own outcome, close — resolving a sealed `TurnOutcome`
+  (`Replied(String)`/`Parked(ApprovalRequest)`/`Failed(String)`, in
+  `nessy-agent`) read entirely off that same event grammar: `Replied` and
+  `Failed` from `AssistantSaid`/`TurnEnded`, `Parked` off-channel through the
+  harness's existing §5a approval notifier, since a parked call is never
+  narrated at all. Zero new event types.
+
+  `Console` (`nessy-agent`'s host package) is the CLI front end: `approver()`
+  renders a flattened `ApprovalRequest` (`id`, `call`, `agentType`,
+  `agentId`) and reads y/n(+reason), answering through
+  `Harness#approvals()` by `request.id()`; `run()` is the read-`ask`-print
+  loop — `Replied` prints, `Parked` hands off to the approver face and
+  waits for the same turn to settle, `Failed` says so honestly. `Nessy.cli()`
+  keeps its builder shape and now composes a real kept `Harness` (via
+  `Nessy.harness`, not a bespoke wiring of its own) with a fresh `Console`;
+  `.build()` returns `Console`, not the retired `CliAgent`. This closes a
+  real bug in the old wiring: `CliAgent`'s narrator pointed straight at its
+  `RelayTurnObserver` instead of the per-id fanout the generic door already
+  routes through, so `ask` hung forever on a cli-built agent whenever a tool
+  call needed approval — delegating to the shared door fixes it by
+  construction, and gives the cli door the same `ComputationApprover`-backed
+  §5a park it always should have had. `CliBuilder` gains `.grants(ToolGrant...)`
+  (sharing one slot with `.tools(Tool...)`, matching `HarnessConfig`) and
+  `.in(InputStream)`/`.out(PrintStream)` overrides for embedding or
+  scripted-IO testing; its default conversation store moves from a bespoke
+  `VerbatimMemory` to the same in-memory-substrate-backed `Memory` every
+  other harness door defaults to.
+
 - **Typed stores: `DocumentStore<T>`/`JournalStore<T>` over the substrate,
   a substrate-level codec factory, op minting.** `Substrate` gains
   `document(kind, Class<T>|Codec<T>)` and `journal(kind, Class<T>|Codec<T>)`

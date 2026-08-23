@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolGrant;
 
 class NessyCliBuilderTest {
 
@@ -69,5 +70,24 @@ class NessyCliBuilderTest {
   void aNullObjectMapperIsRejectedByItsSetter() {
     var builder = Nessy.cli();
     assertThatThrownBy(() -> builder.objectMapper(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void aNullGrantsArrayIsRejectedByItsSetter() {
+    var builder = Nessy.cli();
+    assertThatThrownBy(() -> builder.grants((ToolGrant[]) null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void aNullInIsRejectedByItsSetter() {
+    var builder = Nessy.cli();
+    assertThatThrownBy(() -> builder.in(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void aNullOutIsRejectedByItsSetter() {
+    var builder = Nessy.cli();
+    assertThatThrownBy(() -> builder.out(null)).isInstanceOf(NullPointerException.class);
   }
 }
