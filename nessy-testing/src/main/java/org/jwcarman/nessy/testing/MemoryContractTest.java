@@ -34,7 +34,7 @@ import org.jwcarman.nessy.spi.Remembrance;
  * the {@link Remembrance.ToolExchange} pairing invariant never splits; re-delivery of facts already
  * remembered is tolerated. A third-party {@code Memory} extends this class directly and implements
  * {@link #freshMemory()} — the one abstract member — to run every test here against its own
- * instance, exactly as {@link org.jwcarman.nessy.agent.memory.SubstrateMemory} (nessy-agent) does.
+ * instance, exactly as the substrate-backed memory in {@code nessy-agent} does.
  *
  * <p>Public and main-scope, on purpose (spec §5): a conformance suite that only test-scoped code
  * could see would be unusable by a Memory implementation living outside this repository. Pulls in
