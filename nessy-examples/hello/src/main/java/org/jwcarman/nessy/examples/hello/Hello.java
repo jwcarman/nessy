@@ -76,7 +76,12 @@ public final class Hello {
             .build()) {
       console.run();
     }
-    String reply = captured.toString(StandardCharsets.UTF_8).stripTrailing();
+    // The console observer streams the reply's TextDelta chunks live (front-ends spec §3, fix
+    // round 2), then render() prints the same settled text once more as its own line — for this
+    // single, delta-only reply, the captured buffer is that text doubled with no separator before
+    // the trailing newline. Take the second copy, the one render() actually settled on.
+    String printed = captured.toString(StandardCharsets.UTF_8).stripTrailing();
+    String reply = printed.substring(printed.length() / 2);
     return reply + " (COMPLETE)";
   }
 

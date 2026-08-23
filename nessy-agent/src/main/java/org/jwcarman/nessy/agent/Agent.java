@@ -54,6 +54,25 @@ public interface Agent<O> {
    * {@code Replied} carries the assistant's final text; {@code Parked} carries the §5a {@link
    * org.jwcarman.nessy.spi.approval.ApprovalRequest} the turn suspended on; {@code Failed} carries
    * {@code TurnEnded}'s own reason.
+   *
+   * <p><b>The blocking contract, stated plainly (fix round 2, I1):</b> this call blocks the
+   * caller's thread until this id's next {@code TurnEnded} — indefinitely, with no timeout. There
+   * is no {@code Duration} overload; adding one is a real design question (what should the caller
+   * get back on expiry, and does it leak the waiter this method itself registers?) deferred to
+   * James, not something to bolt on here. Two ordinary-looking calls block forever rather than
+   * resolve wrong: a renderer that declines the observation (an empty render, spec §3.7) never
+   * dispatches anything, so no {@code TurnEnded} ever fires; and telling an id that already has an
+   * unrelated turn in flight queues behind it rather than starting fresh.
+   *
+   * <p><b>One in-flight {@code ask} per id, and first-{@code TurnEnded}-wins</b> (fix round 2, I2):
+   * a second, concurrent {@code ask} on the SAME id throws {@link IllegalStateException} rather
+   * than silently orphaning the first call's waiter (see {@link Harness#awaitApproval(AgentId)}) —
+   * this method does not queue or coalesce concurrent calls on one id. Within a single call,
+   * resolution has no turn identity to key on (no new {@code TurnEvent} exists for it): the capture
+   * completes on whichever {@code TurnEnded} for this id arrives FIRST after {@code subscribe},
+   * which is correct only because nothing else is racing to tell this id at the same time — a scope
+   * already mid-turn from an unrelated {@code tell}/{@code drive} when {@code ask} is called can
+   * resolve to THAT turn's outcome, not the observation this call just told.
    */
   TurnOutcome ask(O observation);
 }

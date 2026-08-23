@@ -19,15 +19,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
@@ -94,25 +91,9 @@ public final class DefaultAgent<O> implements Agent<O> {
     Objects.requireNonNull(observation, "observation must not be null");
     AgentId id = binding.id();
     CompletableFuture<TurnOutcome> outcome = new CompletableFuture<>();
-    AtomicReference<String> lastAssistantText = new AtomicReference<>();
-    TurnObserver capture =
-        event -> {
-          switch (event) {
-            case TurnEvent.AssistantSaid said -> lastAssistantText.set(joinedText(said.message()));
-            case TurnEvent.TurnEnded ended ->
-                outcome.complete(
-                    ended.failed()
-                        ? new TurnOutcome.Failed(ended.failureReason())
-                        : new TurnOutcome.Replied(lastAssistantText.get()));
-            case TurnEvent.TextDelta _ -> {}
-            case TurnEvent.ThinkingDelta _ -> {}
-            case TurnEvent.RedactedThinking _ -> {}
-            case TurnEvent.ToolCallRequested _ -> {}
-            case TurnEvent.ToolCallDecided _ -> {}
-            case TurnEvent.ToolCallCompleted _ -> {}
-            case TurnEvent.ToolCallProgressed _ -> {}
-          }
-        };
+    TurnObserver capture = TurnOutcome.capturing(outcome);
+    // awaitApproval throws if a previous ask on this id is still in flight (fix round 2, I2b) —
+    // before subscribe ever runs, so nothing is left half-registered.
     CompletableFuture<ApprovalRequest> approvalWait = harness.awaitApproval(id);
     approvalWait.thenAccept(request -> outcome.complete(new TurnOutcome.Parked(request)));
     try (Subscription subscription = subscribe(capture)) {
@@ -121,17 +102,6 @@ public final class DefaultAgent<O> implements Agent<O> {
     } finally {
       harness.cancelApprovalWait(id, approvalWait);
     }
-  }
-
-  /** The message's {@link TextBlock} content, concatenated in order — no separator, no filler. */
-  private static String joinedText(Message message) {
-    StringBuilder joined = new StringBuilder();
-    for (ContentBlock block : message.content()) {
-      if (block instanceof TextBlock(String text)) {
-        joined.append(text);
-      }
-    }
-    return joined.toString();
   }
 
   @Override

@@ -65,7 +65,9 @@ class CliLiveSmokeTest {
       console.run();
     }
 
-    assertThat(captured.toString(StandardCharsets.UTF_8)).isNotBlank();
+    assertThat(captured.toString(StandardCharsets.UTF_8))
+        .isNotBlank()
+        .doesNotContain("turn failed");
   }
 
   private static boolean anyProviderKeyPresent() {

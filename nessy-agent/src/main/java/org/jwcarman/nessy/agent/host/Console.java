@@ -25,13 +25,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.TurnOutcome;
-import org.jwcarman.nessy.api.message.ContentBlock;
-import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
@@ -42,19 +38,26 @@ import org.jwcarman.nessy.spi.approval.ApprovalRequest;
  * and answers §5a approvals through {@link #approver()}. Built only by {@link
  * Nessy.CliBuilder#build()} — the sugar door composing a harness (in-memory substrate, this
  * console's own approver, and {@code relay} as the harness's live narration channel) with a fresh
- * {@code Console}.
+ * {@code Console}, which installs itself as {@code relay}'s one delegate at construction — every
+ * id's {@code TextDelta} streams live to the console's output, flushed per delta, the instant it
+ * narrates, since {@code relay} is still the harness's global observer underneath.
  *
  * <p><b>Resuming a parked turn</b> (the runner's "re-asks"): {@link #run()} answers a {@link
  * TurnOutcome.Parked} by handing the ticket to {@link #approver()}, then waits for the SAME turn to
  * settle — subscribing before deciding (the same race-avoidance order {@link Agent#ask} itself
  * uses), never by telling a fresh observation, since that would silently enqueue a second, unwanted
  * user turn behind the one still in flight. Detecting parking is off-channel (a {@code TurnEvent}
- * is never emitted for it), so this stays a package-private, public-{@link Agent}-API- only
- * approximation of {@link Agent#ask}'s own mechanics: a tool call that requires a SECOND, nested
- * approval while this wait is already in flight settles once that second request is separately
- * decided (through this same {@link #approver()}, e.g. via a later prompt), but this method has no
- * way to surface that second ticket itself — it can only keep waiting for the turn's eventual
- * {@code TurnEnded}. A single approval gate per turn, the common case, resolves cleanly.
+ * is never emitted for it), so this stays a package-private, public-{@link Agent}-API-only
+ * approximation of {@link Agent#ask}'s own mechanics — with an honest, uncorrected gap: {@link
+ * #run()}'s loop is single-threaded, blocked inside {@link #decideAndAwait} waiting on the turn's
+ * {@code TurnEnded} the instant a decision is made. If that SAME turn parks a SECOND time before
+ * settling, nothing here is reading the console's input to answer it — this call has no way to
+ * surface the second ticket, and {@link #run()} hangs on it UNRECOVERABLY (no timeout, matching
+ * {@link Agent#ask}'s own honest blocking contract). The only way out is a door other than this
+ * console's own stdin: decide the second ticket directly through {@link Harness#approvals()} — from
+ * another thread, another process sharing the same substrate, or a debugger — which lets the turn
+ * finish and this call return. A single approval gate per turn, the overwhelmingly common case,
+ * resolves cleanly either way.
  */
 public final class Console implements AutoCloseable {
 
@@ -84,6 +87,21 @@ public final class Console implements AutoCloseable {
     this.out = Objects.requireNonNull(out, "out must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
     this.ownsExecutor = ownsExecutor;
+    // The spec §3 console observer (fix round 2, M9): installs itself as relay's one delegate, so
+    // every id's TextDelta streams live to `out`, flushed per delta, the instant it narrates —
+    // exactly-once via the SAME relay/global path the fanout composition already guarantees (relay
+    // is this console's harness's configured turnObserver, composed as fanout's one global
+    // subscriber; see Nessy.CliBuilder#build()). No other event type prints here — AssistantSaid's
+    // full, settled text and TurnEnded's failure are `render`'s job alone, off the returned
+    // TurnOutcome, so the two never race or duplicate.
+    relay.set(this::narrateLive);
+  }
+
+  private void narrateLive(TurnEvent event) {
+    if (event instanceof TurnEvent.TextDelta delta) {
+      out.print(delta.text());
+      out.flush();
+    }
   }
 
   /**
@@ -111,41 +129,26 @@ public final class Console implements AutoCloseable {
     }
   }
 
+  /**
+   * {@link #decideAndAwait} can only ever settle on {@code Replied} or {@code Failed} — its capture
+   * completes {@code outcome} on {@code TurnEnded} alone, so a {@code Parked} return value is not
+   * expressible here (unlike {@link Agent#ask}, which has an off-channel park-detection seam this
+   * package-private, public-API-only approximation does not — see the class javadoc). No loop: one
+   * decision, one wait.
+   */
   private TurnOutcome settle(TurnOutcome outcome) {
-    TurnOutcome current = outcome;
-    while (current instanceof TurnOutcome.Parked parked) {
-      current = decideAndAwait(parked.ask());
-    }
-    return current;
+    return outcome instanceof TurnOutcome.Parked parked ? decideAndAwait(parked.ask()) : outcome;
   }
 
   /**
    * Subscribes before deciding — the same ordering {@link Agent#ask} uses to avoid a synchronous
    * resumption racing ahead of the wait that is meant to catch it — then hands {@code request} to
-   * {@link #approver()} and blocks for the turn's next {@code TurnEnded} (or a further {@code
-   * Parked}, handled by {@link #settle}'s own loop on the value this returns).
+   * {@link #approver()} and blocks for the turn's next {@code TurnEnded}. See the class javadoc for
+   * what happens if the SAME turn parks again before that arrives.
    */
   private TurnOutcome decideAndAwait(ApprovalRequest request) {
     CompletableFuture<TurnOutcome> outcome = new CompletableFuture<>();
-    AtomicReference<String> lastAssistantText = new AtomicReference<>("");
-    TurnObserver capture =
-        event -> {
-          switch (event) {
-            case TurnEvent.AssistantSaid said -> lastAssistantText.set(joinedText(said.message()));
-            case TurnEvent.TurnEnded ended ->
-                outcome.complete(
-                    ended.failed()
-                        ? new TurnOutcome.Failed(ended.failureReason())
-                        : new TurnOutcome.Replied(lastAssistantText.get()));
-            case TurnEvent.TextDelta _ -> {}
-            case TurnEvent.ThinkingDelta _ -> {}
-            case TurnEvent.RedactedThinking _ -> {}
-            case TurnEvent.ToolCallRequested _ -> {}
-            case TurnEvent.ToolCallDecided _ -> {}
-            case TurnEvent.ToolCallCompleted _ -> {}
-            case TurnEvent.ToolCallProgressed _ -> {}
-          }
-        };
+    TurnObserver capture = TurnOutcome.capturing(outcome);
     try (Subscription subscription = agent.subscribe(capture)) {
       approver().decide(request);
       return outcome.join();
@@ -168,16 +171,6 @@ public final class Console implements AutoCloseable {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
-  }
-
-  private static String joinedText(Message message) {
-    StringBuilder joined = new StringBuilder();
-    for (ContentBlock block : message.content()) {
-      if (block instanceof TextBlock(String text)) {
-        joined.append(text);
-      }
-    }
-    return joined.toString();
   }
 
   /**

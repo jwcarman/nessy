@@ -26,9 +26,10 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  *
  * <p>Narration, not record: none of these ever fold into conversation state. The roster is chosen
  * so a sitting consumer can tell the turn's story from these events alone — the model speaking and
- * thinking, homework requested, the gate's verdict, homework settled. Delivered to the {@link
- * TurnObserver} bound at entry ({@code tell} or {@code resume}); the observer sees the segment it
- * holds, and anything it missed is in the facts.
+ * thinking, homework requested, the gate's verdict, homework settled. Delivered to whichever {@link
+ * TurnObserver}(s) a host's fanout routes to for the id in question — a host is free to route an
+ * id's whole worker-inclusive stream to one subscriber, or to several; this type carries no opinion
+ * on that routing, only the grammar delivered through it.
  *
  * <p>Sealed-grammar etiquette: core switches over this type are exhaustive with no {@code default}
  * arm; extender code is advised to include one for forward tolerance across majors.

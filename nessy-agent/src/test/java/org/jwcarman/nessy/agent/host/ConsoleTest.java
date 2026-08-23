@@ -72,7 +72,9 @@ class ConsoleTest {
               .build()) {
         console.run();
       }
-      assertThat(captured.toString(StandardCharsets.UTF_8)).isEqualTo("hello back\n");
+      // the console observer streams TextDelta live (fix round 2, M9), so "hello back" appears
+      // once as it streams and again as render()'s final settled line — contains, not equals.
+      assertThat(captured.toString(StandardCharsets.UTF_8)).contains("hello back");
     }
 
     @Test
@@ -245,7 +247,8 @@ class ConsoleTest {
               .out(new PrintStream(captured, true, StandardCharsets.UTF_8))
               .build();
       console.run();
-      assertThat(captured.toString(StandardCharsets.UTF_8)).isEqualTo("hello back\n");
+      // the console observer streams TextDelta live (fix round 2, M9); contains, not equals.
+      assertThat(captured.toString(StandardCharsets.UTF_8)).contains("hello back");
       assertThat(liveDeliveryThreadCount()).isEqualTo(before + 1);
 
       console.close();
@@ -290,6 +293,39 @@ class ConsoleTest {
       }
       assertThat(callerExecutor.isShutdown()).isFalse();
       callerExecutor.close();
+    }
+  }
+
+  @Nested
+  class LiveStreaming {
+
+    /**
+     * The spec §3 console observer, delivered (fix round 2, M9): {@code relay} streams every {@code
+     * TextDelta} to {@code out} live, flushed per delta, the instant it narrates — well before
+     * {@code render()} prints the turn's final, settled {@code Replied} line off the returned
+     * {@link org.jwcarman.nessy.agent.TurnOutcome}. Two scripted chunks concatenate to the same
+     * text as the final line, so the streamed prefix and the final line are distinguishable only by
+     * position and the trailing newline {@code render()} alone adds.
+     */
+    @Test
+    void a_scripted_turns_deltas_appear_on_out_before_the_final_replied_line() {
+      var model =
+          new ScriptedModel(
+              List.of(List.of(new ModelEvent.TextChunk("Hel"), new ModelEvent.TextChunk("lo!"))));
+      var captured = new ByteArrayOutputStream();
+      try (var console =
+          Nessy.cli()
+              .model(model)
+              .systemPrompt(TestSettings.SYSTEM_PROMPT)
+              .settings(TestSettings.settings())
+              .in(new ByteArrayInputStream("hi\n".getBytes(StandardCharsets.UTF_8)))
+              .out(new PrintStream(captured, true, StandardCharsets.UTF_8))
+              .build()) {
+        console.run();
+      }
+      // "Hel" + "lo!" streamed live (no newline, one flush each), then "Hello!\n" as render()'s
+      // own, separate final line — the deltas are unmistakably BEFORE it, not folded into it.
+      assertThat(captured.toString(StandardCharsets.UTF_8)).isEqualTo("Hello!Hello!\n");
     }
   }
 }

@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
+import org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
@@ -429,6 +430,80 @@ class AgentSubscriptionTest {
       assertThat(wellBehaved.events()).isNotEmpty();
       var scopeState = new SubstrateAgentStateStore(substrate, scopeId, Clock.systemUTC(), mapper);
       assertThat(scopeState.load().phase()).isEqualTo(new Phase.Idle());
+    }
+  }
+
+  @Nested
+  class GlobalObserverRunsLast {
+
+    /**
+     * Fix round 2, I4: pins {@link TurnFanout}'s ordering the other direction from {@link
+     * SubscriberThrowIsolation} — a throwing GLOBAL observer (the harness's own configured {@code
+     * turnObserver}) must never starve a {@code subscribe}d recorder of the same event, because the
+     * fanout delivers to every subscriber first, individually isolated, and only THEN to the global
+     * observer, unguarded. If the ordering were ever reversed, a throwing global would abort the
+     * narration before the subscriber saw anything.
+     */
+    @Test
+    void a_throwing_global_observer_never_starves_a_subscribed_recorder_of_the_same_event() {
+      var mapper = TestMappers.plainlyPinned();
+      var substrate = new InMemorySubstrate();
+      var type = AgentType.of("subscription-global-throw");
+      var outboxKind = Kinds.outbox(type);
+      var approvalBackend =
+          new SubstrateComputations(substrate, mapper, Kinds.approval(type), outboxKind);
+      var executionBackend =
+          new SubstrateComputations(substrate, mapper, Kinds.computation(type), outboxKind);
+      var pump = new PumpedExecutor();
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+      ToolCallExecutor noTools = (call, responseId, sink) -> {};
+      String scopeId = "scope-a";
+      TurnObserver throwingGlobal =
+          event -> {
+            if (event instanceof TurnEvent.AssistantSaid) {
+              throw new RuntimeException("global boom");
+            }
+          };
+
+      Harness<String> harness =
+          Harness.of(
+              type,
+              text -> List.of(new TextBlock(text)),
+              TurnNarrationAdapter::new,
+              throwingGlobal,
+              false,
+              StalenessPolicy.never(),
+              rawId -> new SubstrateMemory(substrate, rawId, mapper),
+              rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
+              rawId -> new QueueBacklog(),
+              (memory, turnObserver) ->
+                  new ProviderModelCallExecutor(
+                      model,
+                      TestSettings.SYSTEM_PROMPT,
+                      TestSettings.settings(),
+                      TestSettings.emptyRegistry(),
+                      memory,
+                      turnObserver,
+                      pump),
+              (id, turnObserver) -> noTools,
+              substrate,
+              mapper,
+              approvalBackend,
+              executionBackend,
+              new ConcurrentHashMap<>());
+      HarnessTeardown.track(harness);
+
+      var agent = harness.bind(AgentId.of(scopeId));
+      var recorder = new RecordingTurnObserver();
+
+      try (Subscription subscription = agent.subscribe(recorder)) {
+        agent.tell("go");
+        pump.pumpUntilQuiet();
+      }
+
+      assertThat(recorder.events())
+          .isNotEmpty()
+          .anyMatch(event -> event instanceof TurnEvent.AssistantSaid);
     }
   }
 

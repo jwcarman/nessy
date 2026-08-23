@@ -243,19 +243,33 @@ public final class Harness<O> {
    * the request on to the caller's own configured notifier. Registering before {@code tell} avoids
    * the obvious race; a stale, never-completed registration left behind by a turn that replied or
    * failed instead of parking is the caller's job to retire via {@link #cancelApprovalWait}.
+   *
+   * <p><b>One in-flight registration per id</b> (fix round 2, I2b): a {@code putIfAbsent}-style
+   * guard refuses a SECOND registration for an id that already has one live, throwing rather than
+   * silently overwriting it — an overwrite would orphan the first caller's waiter forever (nothing
+   * would ever complete it, since the notifier only ever completes whichever registration is
+   * CURRENTLY in the map). This mirrors the retired {@code CliAgent}'s own one-turn-in-flight
+   * precedent for the same reason: a second concurrent {@link DefaultAgent#ask} on one id is a
+   * caller bug, not a queueable request.
+   *
+   * @throws IllegalStateException if {@code id} already has a live, uncompleted registration
    */
   CompletableFuture<ApprovalRequest> awaitApproval(AgentId id) {
     Objects.requireNonNull(id, "id must not be null");
     CompletableFuture<ApprovalRequest> future = new CompletableFuture<>();
-    approvalWaiters.put(id, future);
+    CompletableFuture<ApprovalRequest> existing = approvalWaiters.putIfAbsent(id, future);
+    if (existing != null) {
+      throw new IllegalStateException("a previous ask is still in flight for this id");
+    }
     return future;
   }
 
   /**
    * Retires {@code id}'s registration from {@link #awaitApproval(AgentId)} — but only if it is
    * still exactly {@code future}: a registration the capturing notifier already completed and
-   * removed, or one a LATER {@code ask} on the same id already replaced, is left alone rather than
-   * torn out from under its new owner.
+   * removed is left alone rather than torn out from under whatever completed it. (A LATER {@code
+   * ask} on the same id can no longer have replaced it first — {@link #awaitApproval} refuses a
+   * second live registration outright, fix round 2, I2b.)
    */
   void cancelApprovalWait(AgentId id, CompletableFuture<ApprovalRequest> future) {
     approvalWaiters.remove(id, future);

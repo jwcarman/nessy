@@ -31,7 +31,7 @@ sequence of renames and interim shapes that produced it.
   `Subscription` (`nessy-api`, `AutoCloseable`, idempotent close, never
   throws) routing into a per-agent-id fanout the harness now carries
   internally (`TurnFanout`) — a subscriber sees `TextDelta`, `ThinkingDelta`,
-  `RedactedThinking`, `ToolCallRequested`/`Decided`/`Completed`/`Progressed`,
+  `RedactedThinking`, `ToolCallRequested`/`Completed`/`Progressed`,
   `AssistantSaid`, and `TurnEnded` for its id, whether the turn settles
   synchronously or a worker-driven delivery folds it days later; the
   harness's own configured `turnObserver` rides the same fanout as one more

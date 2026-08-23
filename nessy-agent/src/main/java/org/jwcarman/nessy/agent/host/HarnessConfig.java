@@ -238,7 +238,7 @@ public final class HarnessConfig<O> {
    * The absent audience by default; every scope's turns narrate here. Front-ends spec §2: this
    * stays working exactly as before — the finished {@link Harness} composes it as one more
    * subscriber in its internal per-id fanout, alongside whatever a scope's own {@link
-   * org.jwcarman.nessy.agent.Agent#subscribe} adds later. It runs first and unguarded on every
+   * org.jwcarman.nessy.agent.Agent#subscribe} adds later. It runs last and unguarded on every
    * emission, so a throwing observer keeps its long-standing meaning ({@link TurnObserver}'s own
    * javadoc); a {@code subscribe}d observer, by contrast, is isolated — its throw is logged and
    * dropped, never propagated.

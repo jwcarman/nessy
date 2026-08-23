@@ -12,10 +12,14 @@ empty grant list — so watching costs nothing until something is plugged in.
 
 `TurnObserver` sees the live story of one turn: the model speaking and
 thinking, homework requested and decided, homework settled, the turn's
-close. It is bound per entry — the observer handed to `tell`/`drive` sees
-only the segment that call starts, and nothing after a park. An unattended
-scope with no observer wired runs every turn against `TurnObserver.noop()`
-and loses nothing it needed.
+close. No observer is handed to `tell`/`drive` directly — an observer
+reaches an id's turns by `Agent#subscribe`ing to the harness's internal
+per-id fanout, which is worker-inclusive: a subscriber registered before a
+park still sees the turn that resumes it, even though the resumption folds
+on the harness's own worker thread, not the one that called `tell`. The
+harness's own configured `turnObserver` rides the same fanout as one more
+subscriber. An unattended scope with no observer wired runs every turn
+against `TurnObserver.noop()` and loses nothing it needed.
 
 ```java
 public sealed interface TurnEvent {

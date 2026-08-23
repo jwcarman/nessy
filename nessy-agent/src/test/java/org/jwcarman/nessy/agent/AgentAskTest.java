@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.List;
@@ -260,6 +261,42 @@ class AgentAskTest {
 
       assertThat(outcome).isInstanceOf(TurnOutcome.Failed.class);
       assertThat(harness.hasSubscribers(id)).isFalse();
+    }
+  }
+
+  @Nested
+  class OneInFlightPerId {
+
+    /**
+     * Fix round 2, I2b: {@link Harness#awaitApproval(AgentId)}'s {@code putIfAbsent}-style guard —
+     * a second registration for an id that already has one live throws rather than silently
+     * overwriting it (which would orphan the first caller's waiter forever). Proven directly
+     * against the seam {@code ask} itself calls, rather than by racing two real threads: {@code
+     * ask}'s very first act is registering this wait, before it ever tells anything, so
+     * pre-registering it here and then calling {@code ask} reaches the exact same guard a genuine
+     * concurrent second caller would.
+     */
+    @Test
+    void a_second_ask_on_an_id_with_a_live_registration_throws_instead_of_orphaning_the_first() {
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+      var harness =
+          Nessy.harness(
+              h ->
+                  h.model(model)
+                      .systemPrompt(TestSettings.SYSTEM_PROMPT)
+                      .settings(TestSettings.settings()));
+      HarnessTeardown.track(harness);
+      var id = AgentId.of("scope-1");
+      var agent = harness.bind(id);
+      var alreadyInFlight = harness.awaitApproval(id);
+
+      try {
+        assertThatThrownBy(() -> agent.ask("hello"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("previous ask");
+      } finally {
+        harness.cancelApprovalWait(id, alreadyInFlight);
+      }
     }
   }
 }
