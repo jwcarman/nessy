@@ -188,7 +188,7 @@ class GrantRaceTest {
             substrate, mapper, harness, (t, i) -> agent, java.time.Duration.ofHours(1));
 
     for (int i = 0; i < ITERATIONS; i++) {
-      agent.observe("go");
+      agent.tell("go");
       pump.pumpUntilQuiet();
       assertThat(notifications).hasSize(i + 1);
       ApprovalRequest request = notifications.get(i);

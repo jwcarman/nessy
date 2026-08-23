@@ -166,7 +166,7 @@ class DefaultAgentDrainTest {
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var competitorState = new State(new Phase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
-    f.agent.observe("hello");
+    f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).containsExactly("hello");
     assertThat(f.store.load().phase()).isEqualTo(new Phase.AwaitingModel());
@@ -177,8 +177,8 @@ class DefaultAgentDrainTest {
     // Memory's own law 1, the shell path's half (remembrance spec §1, fix round 1 Q3): a
     // throwing remember() is NOT swallowed-and-continued here (that would hot-loop a permanently
     // broken Memory forever) — the observation goes back to the backlog, exactly like the
-    // stale-state race above, and the exception surfaces to whoever called observe(). Once memory
-    // heals, the next drive() (not another observe() — that would enqueue a SECOND "hello"
+    // stale-state race above, and the exception surfaces to whoever called tell(). Once memory
+    // heals, the next drive() (not another tell() — that would enqueue a SECOND "hello"
     // alongside the one already re-queued) drains the preserved observation exactly once.
     var store =
         new SubstrateAgentStateStore(
@@ -210,7 +210,7 @@ class DefaultAgentDrainTest {
             false,
             StalenessPolicy.never());
 
-    assertThatThrownBy(() -> agent.observe("hello")).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> agent.tell("hello")).isInstanceOf(IllegalStateException.class);
     assertThat(backlogQueue).containsExactly("hello"); // preserved, not lost
 
     agent.drive(); // memory has healed — drains the preserved observation exactly once
@@ -233,8 +233,8 @@ class DefaultAgentDrainTest {
     f.model.enqueue(
         new ModelOutcome.Responded(
             List.of(new TextBlock("two")), List.of(), ModelResponseId.of("response-1")));
-    f.agent.observe("first");
-    f.agent.observe("second"); // arrives mid-turn; queues
+    f.agent.tell("first");
+    f.agent.tell("second"); // arrives mid-turn; queues
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).isEmpty();
     assertThat(f.model.callCount()).isEqualTo(2);
@@ -250,8 +250,8 @@ class DefaultAgentDrainTest {
     f.model.enqueue(
         new ModelOutcome.Responded(
             List.of(new TextBlock("one")), List.of(), ModelResponseId.of("response-1")));
-    f.agent.observe("first");
-    f.agent.observe("second");
+    f.agent.tell("first");
+    f.agent.tell("second");
     f.pump.pumpUntilQuiet();
     assertThat(f.backlogQueue).containsExactly("second"); // waits for the client's next stream
     f.model.enqueue(
@@ -269,7 +269,7 @@ class DefaultAgentDrainTest {
             new InMemorySubstrate(), "agent", Clock.systemUTC(), TestMappers.plainlyPinned());
     var competitorState = new State(new Phase.AwaitingModel(), 0L);
     var f = new AgentFixture(new RaceOnceStore(inner, competitorState), false);
-    f.agent.observe("hello");
+    f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.observer.requeued()).containsExactly("hello");
   }

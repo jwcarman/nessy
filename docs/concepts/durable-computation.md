@@ -295,7 +295,7 @@ the tool defers, the process that dispatched it disappears, and a
 completely different process eventually completes the computation:
 
 ```java
-harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
 // ... the tool defers; DeliveryWorker has nothing to drain yet ...
 
 ApprovalRequest request = requests.getFirst();

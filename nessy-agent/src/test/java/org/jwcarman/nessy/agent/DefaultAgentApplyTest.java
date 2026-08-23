@@ -66,7 +66,7 @@ class DefaultAgentApplyTest {
     f.model.enqueue(
         new ModelOutcome.Responded(
             List.of(new TextBlock("hello back")), List.of(), ModelResponseId.of("response-1")));
-    f.agent.observe("hello");
+    f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
     assertThat(f.memory.remembered())
@@ -82,7 +82,7 @@ class DefaultAgentApplyTest {
     f.model.enqueue(
         new ModelOutcome.Responded(
             List.of(new TextBlock("ok")), List.of(), ModelResponseId.of("response-1")));
-    f.agent.observe("hello");
+    f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.model.memorySizesAtCall()).isNotEmpty();
     assertThat(f.model.memorySizesAtCall().getFirst()).isEqualTo(1);
@@ -101,7 +101,7 @@ class DefaultAgentApplyTest {
             List.of(new TextBlock("both done")), List.of(), ModelResponseId.of("response-2")));
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
     f.tools.answer("b", new ToolOutcome.Returned(ToolResult.ok("restarted")));
-    f.agent.observe("do both");
+    f.agent.tell("do both");
     f.pump.pumpUntilQuiet();
     assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
     assertThat(f.tools.executed()).containsExactly(CALL_A, CALL_B);
@@ -126,7 +126,7 @@ class DefaultAgentApplyTest {
         new ModelOutcome.Responded(
             List.of(new TextBlock("done")), List.of(), ModelResponseId.of("response-2")));
     f.tools.answer("a", new ToolOutcome.Returned(ToolResult.ok("42")));
-    f.agent.observe("go");
+    f.agent.tell("go");
     f.pump.pumpUntilQuiet();
     var rememberedBefore = f.memory.remembered();
     f.agent.deliver(
@@ -140,7 +140,7 @@ class DefaultAgentApplyTest {
   void aModelFailureEndsTheTurnQuietlyInBand() {
     var f = new AgentFixture();
     f.model.enqueue(new ModelOutcome.Failed("overloaded"));
-    f.agent.observe("hello");
+    f.agent.tell("hello");
     f.pump.pumpUntilQuiet();
     assertThat(f.store.load().phase()).isEqualTo(new Phase.Idle());
     assertThat(f.memory.remembered())
@@ -208,7 +208,7 @@ class DefaultAgentApplyTest {
             List.of(new TextBlock("no tool blocks")),
             List.of(CALL_A),
             ModelResponseId.of("response-1")));
-    f.agent.observe("go");
+    f.agent.tell("go");
     f.pump.pumpUntilQuiet();
     assertThat(f.observer.applyFailures()).hasSize(1);
     assertThat(f.store.load().phase()).isEqualTo(new Phase.AwaitingModel());
@@ -244,7 +244,7 @@ class DefaultAgentApplyTest {
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());
-    agent.observe("hi");
+    agent.tell("hi");
     assertThat(versionsAtCall).isNotEmpty();
     assertThat(versionsAtCall.getFirst()).isEqualTo(1L); // post-save version, not the loaded 0
   }

@@ -22,7 +22,7 @@ var harness =
                     ToolGrant.grant(toolbox.tool("search"), UsagePolicy.allow()),
                     ToolGrant.grant(toolbox.tool("purchase"), UsagePolicy.requireApproval()))
                 .approvalNotifier(pending::add));
-harness.bind(AgentId.of("agent-1")).observe("find the cheapest flight and buy it");
+harness.bind(AgentId.of("agent-1")).tell("find the cheapest flight and buy it");
 ```
 
 The toolbox is deliberately not opened in a `try`-with-resources here: a
@@ -105,7 +105,7 @@ var harness =
                     ToolGrant.grant(toolbox.tool("read_wiki_contents"), UsagePolicy.allow()),
                     ToolGrant.grant(toolbox.tool("ask_question"), UsagePolicy.requireApproval()))
                 .approvalNotifier(pending::add));
-harness.bind(AgentId.of("researcher")).observe("what does jwcarman/nessy's harness module do?");
+harness.bind(AgentId.of("researcher")).tell("what does jwcarman/nessy's harness module do?");
 ```
 
 `read_wiki_structure` and `read_wiki_contents` are free — the agent can look

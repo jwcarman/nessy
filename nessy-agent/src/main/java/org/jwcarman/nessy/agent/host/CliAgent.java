@@ -68,7 +68,7 @@ public final class CliAgent implements AutoCloseable {
     var waiter = new AwaitingReply();
     current = waiter;
     relay.set(waiter);
-    agent.observe(line);
+    agent.tell(line);
     return waiter.await(timeout);
   }
 

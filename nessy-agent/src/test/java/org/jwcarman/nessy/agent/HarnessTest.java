@@ -522,9 +522,9 @@ class HarnessTest {
               b -> TOOLS);
 
       Agent<String> agent = harness.bind(AgentId.of("scope-a"));
-      agent.observe("hello");
+      agent.tell("hello");
 
-      // observe() drove the scope from Idle: the observation was drained and applied, not left
+      // tell() drove the scope from Idle: the observation was drained and applied, not left
       // sitting in the backlog — proven by reading the SAME id's backlog back through the raw
       // binding door, over the same shared substrate.
       var binding = harness.binding(AgentId.of("scope-a"));

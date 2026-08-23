@@ -130,7 +130,7 @@ class HarnessApprovalDemo {
                     .executor(pump));
     try {
       System.out.println("== the model asks to restart prod-eu ==");
-      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+      harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
       pump.pumpUntilQuiet();
 
       System.out.println(
@@ -202,7 +202,7 @@ class HarnessApprovalDemo {
                     .executor(pump));
     try {
       System.out.println("== the model asks to restart prod-eu ==");
-      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+      harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
       pump.pumpUntilQuiet();
 
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);

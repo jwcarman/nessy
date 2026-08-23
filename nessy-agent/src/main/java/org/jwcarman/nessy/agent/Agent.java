@@ -23,7 +23,7 @@ package org.jwcarman.nessy.agent;
 public interface Agent<O> {
 
   /** Enqueue one ambient world fact; the backlog coalesces however it likes (§3.3). */
-  void observe(O observation);
+  void tell(O observation);
 
   /** Make this scope make progress: drain at Idle, re-fire when stale, else nothing (§6.1). */
   void drive();

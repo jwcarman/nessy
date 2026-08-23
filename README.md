@@ -54,7 +54,7 @@ var harness = Nessy.harness(h -> h                  // built once, kept — immo
         .systemPrompt("You are a terse assistant.")
         .tools(new AddTool()));                     // bare tools, allow-by-default
 
-harness.bind(AgentId.of("scope-1")).observe("what is 2+2?");
+harness.bind(AgentId.of("scope-1")).tell("what is 2+2?");
 // The answer is 4 — narrated through a TurnObserver, not returned here.
 ```
 
@@ -69,7 +69,7 @@ variable, not its code.
 lambda fills in a live `HarnessConfig`, and Nessy alone turns it into the
 finished, kept `Harness` the instant the lambda returns. `harness.bind(id)`
 returns a plain, transient `Agent<String>` — thin, never closeable, holding
-nothing; `.observe(observation)` enqueues one fact for that scope and
+nothing; `.tell(observation)` enqueues one fact for that scope and
 returns immediately. `.tools(Tool<?>...)` grants each tool an
 answered-allow policy for you (reach for `ToolGrant.grant(...)` directly,
 as in the capability table below, when a tool needs real authority rules).
@@ -104,13 +104,13 @@ var harness =
                 // in production so a suspended approval survives a restart.
                 .approvalNotifier(pending::add));
 
-harness.bind(AgentId.of("ops")).observe("restart prod-1");
+harness.bind(AgentId.of("ops")).tell("restart prod-1");
 
 ApprovalRequest request = pending.take();
 harness.approvals().approve(request.id());
 ```
 
-`.observe(observation)` enqueues a fact for that scope and returns
+`.tell(observation)` enqueues a fact for that scope and returns
 immediately; the scope drains it, and if `RestartTool`'s grant requires
 approval, the call suspends on a durable computation and `approvalNotifier`
 fires once with the `ApprovalRequest` — `request.id()` is
@@ -265,7 +265,7 @@ framework. The docs site page teaches the whole story; this is just the map.
 | Storage — the two-shape kernel every store in Nessy is a recipe over | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
 | Providers — a vendor gateway per model provider, plus every OpenAI-compatible endpoint | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
 | MCP — import a remote server's tools as ordinary grants | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
-| The harness — kept, not closed; `bind`/`observe`, approval desks, durable backends | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
+| The harness — kept, not closed; `bind`/`tell`, approval desks, durable backends | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
 | Observability — turn narration, shell narration, and the authorization report | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
 
 A few seams the site doesn't have a dedicated page for yet:

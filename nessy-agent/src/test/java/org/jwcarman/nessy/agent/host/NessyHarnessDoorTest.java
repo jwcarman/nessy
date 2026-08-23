@@ -77,7 +77,7 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
 /**
  * {@link Nessy#harness(HarnessCustomizer)}/{@link Nessy#harness(Class, HarnessCustomizer)} — the
  * one door (harness-first spec §2) — replace what this file used to cover through the deleted
- * long-running host shim: {@code observe} through {@code bind(id)} in place of {@code post}, the
+ * long-running host shim: {@code tell} through {@code bind(id)} in place of {@code post}, the
  * harness kept rather than closed, and the customizer form in place of a builder's {@code build()}.
  */
 class NessyHarnessDoorTest {
@@ -109,7 +109,7 @@ class NessyHarnessDoorTest {
                         id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
     HarnessTeardown.track(harness);
 
-    harness.bind(AgentId.of("scope-1")).observe("hello");
+    harness.bind(AgentId.of("scope-1")).tell("hello");
     pump.pumpUntilQuiet();
 
     Memory memory = captured.get("scope-1");
@@ -137,7 +137,7 @@ class NessyHarnessDoorTest {
                     .turnObserver(observer));
     HarnessTeardown.track(harness);
 
-    harness.bind(AgentId.of("scope-1")).observe("hello");
+    harness.bind(AgentId.of("scope-1")).tell("hello");
     pump.pumpUntilQuiet();
 
     List<TurnEvent> events = observer.events();
@@ -177,7 +177,7 @@ class NessyHarnessDoorTest {
                     .agentObserver(AgentObserver.noop()));
     HarnessTeardown.track(harness);
 
-    harness.bind(AgentId.of("scope-1")).observe("hello");
+    harness.bind(AgentId.of("scope-1")).tell("hello");
     pump.pumpUntilQuiet();
 
     List<TurnEvent> events = observer.events();
@@ -219,7 +219,7 @@ class NessyHarnessDoorTest {
                     .turnObserver(throwing));
     HarnessTeardown.track(harness);
 
-    harness.bind(AgentId.of("scope-1")).observe("hello");
+    harness.bind(AgentId.of("scope-1")).tell("hello");
     pump.pumpUntilQuiet();
 
     var scopeOneState =
@@ -249,9 +249,9 @@ class NessyHarnessDoorTest {
                         id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
     HarnessTeardown.track(harness);
 
-    harness.bind(AgentId.of("a")).observe("hello from a");
+    harness.bind(AgentId.of("a")).tell("hello from a");
     pump.pumpUntilQuiet();
-    harness.bind(AgentId.of("b")).observe("hello from b");
+    harness.bind(AgentId.of("b")).tell("hello from b");
     pump.pumpUntilQuiet();
 
     List<Message> aMessages = captured.get("a").recall().messages();
@@ -299,7 +299,7 @@ class NessyHarnessDoorTest {
               h.executor(pumpOne).substrate(substrateOne);
             });
     HarnessTeardown.track(harnessOne);
-    harnessOne.bind(AgentId.of("shared-scope")).observe("message one");
+    harnessOne.bind(AgentId.of("shared-scope")).tell("message one");
     pumpOne.pumpUntilQuiet();
 
     var substrateTwo = new InMemorySubstrate();
@@ -311,7 +311,7 @@ class NessyHarnessDoorTest {
               h.executor(pumpTwo).substrate(substrateTwo);
             });
     HarnessTeardown.track(harnessTwo);
-    harnessTwo.bind(AgentId.of("shared-scope")).observe("message two");
+    harnessTwo.bind(AgentId.of("shared-scope")).tell("message two");
     pumpTwo.pumpUntilQuiet();
 
     List<ModelRequest> requests = provider.requests();
@@ -367,7 +367,7 @@ class NessyHarnessDoorTest {
               h -> h.model(model).systemPrompt(TestSettings.SYSTEM_PROMPT).executor(pump));
       HarnessTeardown.track(harness);
 
-      harness.bind(AgentId.of("scope-1")).observe("hello");
+      harness.bind(AgentId.of("scope-1")).tell("hello");
       pump.pumpUntilQuiet();
 
       ModelRequest request = model.requests().getFirst();
@@ -402,7 +402,7 @@ class NessyHarnessDoorTest {
     /**
      * The §1 snippet's own claim: a harness built with ONLY {@code .model(...)}, {@code
      * .systemPrompt(...)}, {@code .tools(...)} — no settings, no substrate, no type — accepts
-     * {@code bind(id).observe(...)} and completes a turn.
+     * {@code bind(id).tell(...)} and completes a turn.
      */
     @Test
     void theSpecSnippetsBareMinimumAcceptsAnObservationAndCompletesATurn() {
@@ -414,7 +414,7 @@ class NessyHarnessDoorTest {
               h -> h.model(model).systemPrompt(TestSettings.SYSTEM_PROMPT).tools().executor(pump));
       HarnessTeardown.track(harness);
 
-      harness.bind(AgentId.of("scope-1")).observe("restart prod-eu");
+      harness.bind(AgentId.of("scope-1")).tell("restart prod-eu");
       pump.pumpUntilQuiet();
 
       List<Message> messages = model.requests().getFirst().context().messages();
@@ -446,7 +446,7 @@ class NessyHarnessDoorTest {
                       .approvalNotifier(requests::add));
       HarnessTeardown.track(harness);
 
-      harness.bind(AgentId.of("scope-1")).observe("please restart");
+      harness.bind(AgentId.of("scope-1")).tell("please restart");
       pump.pumpUntilQuiet();
 
       assertThat(requests).hasSize(1);
@@ -511,9 +511,9 @@ class NessyHarnessDoorTest {
                         id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
     HarnessTeardown.track(harness);
 
-    harness.bind(AgentId.of("scope-1")).observe("first message");
+    harness.bind(AgentId.of("scope-1")).tell("first message");
     pump.pumpUntilQuiet();
-    harness.bind(AgentId.of("scope-1")).observe("second message");
+    harness.bind(AgentId.of("scope-1")).tell("second message");
     pump.pumpUntilQuiet();
 
     List<Message> messages = captured.get("scope-1").recall().messages();
@@ -554,9 +554,9 @@ class NessyHarnessDoorTest {
                     .substrate(substrate));
     HarnessTeardown.track(harness);
 
-    harness.bind(AgentId.of("scope-1")).observe("first message");
+    harness.bind(AgentId.of("scope-1")).tell("first message");
     pump.pumpUntilQuiet();
-    harness.bind(AgentId.of("scope-1")).observe("second message");
+    harness.bind(AgentId.of("scope-1")).tell("second message");
     pump.pumpUntilQuiet();
 
     // a fresh recipe instance the harness never held a reference to — the substrate, not the
@@ -594,7 +594,7 @@ class NessyHarnessDoorTest {
                     .executor(pumpA)
                     .substrate(substrate));
     HarnessTeardown.track(harnessA);
-    harnessA.bind(AgentId.of("shared-scope")).observe("message one");
+    harnessA.bind(AgentId.of("shared-scope")).tell("message one");
     pumpA.pumpUntilQuiet();
 
     var pumpB = new PumpedExecutor();
@@ -608,7 +608,7 @@ class NessyHarnessDoorTest {
                     .executor(pumpB)
                     .substrate(substrate));
     HarnessTeardown.track(harnessB);
-    harnessB.bind(AgentId.of("shared-scope")).observe("message two");
+    harnessB.bind(AgentId.of("shared-scope")).tell("message two");
     pumpB.pumpUntilQuiet();
 
     List<ModelRequest> requestsToHarnessB = providerB.requests();
@@ -665,9 +665,9 @@ class NessyHarnessDoorTest {
       HarnessTeardown.track(harnessA);
 
       // Primes the scope busy (Idle -> AwaitingModel); pumpA is never pumped, so the SECOND
-      // observe below lands in the backlog document instead of draining immediately.
-      harnessA.bind(AgentId.of(scopeId)).observe(new Note("prime", 1));
-      harnessA.bind(AgentId.of(scopeId)).observe(new Note("check the oven", 3));
+      // tell below lands in the backlog document instead of draining immediately.
+      harnessA.bind(AgentId.of(scopeId)).tell(new Note("prime", 1));
+      harnessA.bind(AgentId.of(scopeId)).tell(new Note("check the oven", 3));
 
       // Rewrites the pending element's own JSON to carry an unknown "futureField" property — a
       // stored-format compatibility scenario (a newer schema version's payload read by older
@@ -760,18 +760,18 @@ class NessyHarnessDoorTest {
                       .renderer(note -> List.of(new TextBlock(note.text()))));
       HarnessTeardown.track(harnessA);
 
-      // Primes the scope busy: drained synchronously (Idle -> AwaitingModel) as part of observe()
+      // Primes the scope busy: drained synchronously (Idle -> AwaitingModel) as part of tell()
       // itself, dispatching a model-call effect onto pumpA — never pumped below, so harness A's
       // turn never completes and the scope is left stuck at AwaitingModel.
-      harnessA.bind(AgentId.of(scopeId)).observe(new Note("prime", 1));
+      harnessA.bind(AgentId.of(scopeId)).tell(new Note("prime", 1));
 
       var pending = new Note("check the oven", 3);
       // The scope isn't Idle any more, so drive() declines to drain this one — it sits in the
       // backlog document, the claim under test.
-      harnessA.bind(AgentId.of(scopeId)).observe(pending);
+      harnessA.bind(AgentId.of(scopeId)).tell(pending);
 
       // The raw backlog document holds exactly the pending Note: "prime" already drained out as
-      // part of the first observe, "check the oven" sat back down because the scope was busy.
+      // part of the first tell, "check the oven" sat back down because the scope was busy.
       Substrate.Document backlogDoc = substrate.read("backlog", scopeId).orElseThrow();
       String[] backlogElements =
           TestMappers.plainlyPinned()
@@ -963,7 +963,7 @@ class NessyHarnessDoorTest {
                       .turnObserver(observer));
       HarnessTeardown.track(harness);
 
-      harness.bind(AgentId.of("scope-1")).observe("charge please");
+      harness.bind(AgentId.of("scope-1")).tell("charge please");
       pump.pumpUntilQuiet();
 
       var completed =
@@ -1007,7 +1007,7 @@ class NessyHarnessDoorTest {
                       .tools(new EchoTool()));
       HarnessTeardown.track(harness);
 
-      harness.bind(AgentId.of("scope-1")).observe("hi");
+      harness.bind(AgentId.of("scope-1")).tell("hi");
       pump.pumpUntilQuiet();
 
       List<Substrate.Entry> entries = substrate.entries("memory", "scope-1", 1);

@@ -180,9 +180,7 @@ class GovernedTurnDemo {
                     .executor(pump));
     try {
       System.out.println("== the model declares intent, then asks to restart prod-eu ==");
-      harness
-          .bind(AgentId.of("prod-eu"))
-          .observe("please restart prod-eu to clear the stuck deploy");
+      harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
       System.out.println("intent recorded: " + intentStore.latest());
@@ -267,9 +265,7 @@ class GovernedTurnDemo {
                     .executor(pump));
     try {
       System.out.println("== the risk assessor reports VERY_HIGH severity ==");
-      harness
-          .bind(AgentId.of("prod-eu"))
-          .observe("please restart prod-eu to clear the stuck deploy");
+      harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
@@ -329,9 +325,7 @@ class GovernedTurnDemo {
                     .executor(pump));
     try {
       System.out.println("== no risk assessor is wired; the threshold fails closed ==");
-      harness
-          .bind(AgentId.of("prod-eu"))
-          .observe("please restart prod-eu to clear the stuck deploy");
+      harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
       assertThat(requests).isEmpty();

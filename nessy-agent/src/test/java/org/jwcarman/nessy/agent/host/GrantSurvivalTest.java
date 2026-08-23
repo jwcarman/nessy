@@ -137,7 +137,7 @@ class GrantSurvivalTest {
                     .approvalNotifier(requestsA::add)
                     .executor(pumpA));
     try {
-      harnessA.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+      harnessA.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
       pumpA.pumpUntilQuiet();
       assertThat(requestsA).hasSize(1);
       firstAsk = requestsA.getFirst();
@@ -275,7 +275,7 @@ class GrantSurvivalTest {
                     .approvalNotifier(requestsA::add)
                     .executor(pumpA));
     try {
-      harnessA.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+      harnessA.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
       pumpA.pumpUntilQuiet();
       assertThat(requestsA).hasSize(1);
       firstAsk = requestsA.getFirst();

@@ -153,8 +153,8 @@ class HarnessDemo {
     tools.answer("c2", new ToolOutcome.Returned(ToolResult.ok("refund queued")));
 
     // ---- one observation, whole turn ----
-    System.out.println("observe(\"refund order 42\")");
-    agent.observe("refund order 42");
+    System.out.println("tell(\"refund order 42\")");
+    agent.tell("refund order 42");
     System.out.println("pump...");
     pump.pumpUntilQuiet();
 

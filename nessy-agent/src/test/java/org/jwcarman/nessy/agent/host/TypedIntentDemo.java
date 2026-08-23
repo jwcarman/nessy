@@ -237,7 +237,7 @@ class TypedIntentDemo {
                     .executor(pump));
     try {
       System.out.println("== the model asks to restart prod-eu with no declared intent ==");
-      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+      harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
       pump.pumpUntilQuiet();
 
       System.out.println("intent recorded: " + intentStore.latest());
@@ -325,7 +325,7 @@ class TypedIntentDemo {
                     .executor(pump));
     try {
       System.out.println("== the model declares prod-eu, then tries to restart prod-us instead ==");
-      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-us");
+      harness.bind(AgentId.of("prod-eu")).tell("please restart prod-us");
       pump.pumpUntilQuiet();
 
       assertThat(requests).isEmpty();
@@ -392,7 +392,7 @@ class TypedIntentDemo {
                     .executor(pump));
     try {
       System.out.println("== the model declares a shape outside the vocabulary ==");
-      harness.bind(AgentId.of("prod-eu")).observe("please nuke x");
+      harness.bind(AgentId.of("prod-eu")).tell("please nuke x");
       pump.pumpUntilQuiet();
 
       System.out.println("intent recorded: " + intentStore.latest());

@@ -126,7 +126,7 @@ public final class Governed {
                     .substrate(substrate));
     try {
       System.out.println("== posting: please restart prod-eu ==");
-      harness.bind(AgentId.of(SCOPE_ID)).observe("please restart prod-eu");
+      harness.bind(AgentId.of(SCOPE_ID)).tell("please restart prod-eu");
 
       TurnEvent.ToolCallCompleted bounce =
           await(toolCompletions, "the bounced restart's completion");

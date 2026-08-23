@@ -61,12 +61,12 @@ var harness = Nessy.harness(h -> h                  // built once, kept — immo
         .systemPrompt("You are a terse assistant.")
         .tools(new AddTool()));                     // bare tools, allow-by-default
 
-harness.bind(AgentId.of("scope-1")).observe("what is 2+2?");
+harness.bind(AgentId.of("scope-1")).tell("what is 2+2?");
 ```
 
 This snippet runs — nothing else is required. `harness.bind(id)` returns a
 plain, transient `Agent<String>` — thin, never closeable, holding nothing.
-`.observe(observation)` enqueues one fact for that scope and returns
+`.tell(observation)` enqueues one fact for that scope and returns
 immediately; the reply is narrated, not returned — see
 [Observability](guides/observability.md). `.tools(Tool<?>...)` grants each
 tool an answered-allow policy for you; reach for `ToolGrant.grant(...)`
@@ -89,7 +89,7 @@ var harness =
                 .grants(ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
                 .approvalNotifier(pending::add));
 
-harness.bind(AgentId.of("ops")).observe("restart prod-1");
+harness.bind(AgentId.of("ops")).tell("restart prod-1");
 
 ApprovalRequest request = pending.take();
 harness.approvals().approve(request.id());

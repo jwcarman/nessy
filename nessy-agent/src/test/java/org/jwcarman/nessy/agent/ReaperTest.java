@@ -245,7 +245,7 @@ class ReaperTest {
         new RecordingParkingTool(RetrySemantics.RETRYABLE, Optional.of(Duration.ofMillis(1)));
     var world = worldFor(tool, new InMemorySubstrate());
 
-    world.agent().observe("go");
+    world.agent().tell("go");
     world.pump().pumpUntilQuiet();
     assertThat(tool.invocations).hasSize(1);
     Thread.sleep(5); // let the 1ms timeout genuinely elapse
@@ -267,7 +267,7 @@ class ReaperTest {
         new RecordingParkingTool(RetrySemantics.NON_RETRYABLE, Optional.of(Duration.ofMillis(1)));
     var world = worldFor(tool, new InMemorySubstrate());
 
-    world.agent().observe("go");
+    world.agent().tell("go");
     world.pump().pumpUntilQuiet();
     assertThat(tool.invocations).hasSize(1);
     Thread.sleep(5); // let the 1ms timeout genuinely elapse
@@ -284,7 +284,7 @@ class ReaperTest {
     var tool = new RecordingParkingTool(RetrySemantics.RETRYABLE, Optional.empty());
     var world = worldFor(tool, new InMemorySubstrate());
 
-    world.agent().observe("go");
+    world.agent().tell("go");
     world.pump().pumpUntilQuiet();
     assertThat(tool.invocations).hasSize(1);
 
@@ -306,7 +306,7 @@ class ReaperTest {
     var backing = new InMemorySubstrate();
     var world = worldFor(tool, backing);
 
-    world.agent().observe("go");
+    world.agent().tell("go");
     world.pump().pumpUntilQuiet();
     assertThat(tool.invocations).hasSize(1);
     Thread.sleep(5); // let the 1ms timeout genuinely elapse
@@ -344,7 +344,7 @@ class ReaperTest {
     var tool = new RecordingParkThenReadyTool();
     var world = worldFor(tool, new InMemorySubstrate());
 
-    world.agent().observe("go");
+    world.agent().tell("go");
     world.pump().pumpUntilQuiet();
     assertThat(tool.invocations).hasSize(1);
     Thread.sleep(5); // let the 1ms timeout genuinely elapse
@@ -394,7 +394,7 @@ class ReaperTest {
     var testType = AgentType.of("test");
     var computationKind = Kinds.computation(testType);
 
-    world.agent().observe("go");
+    world.agent().tell("go");
     world.pump().pumpUntilQuiet();
     assertThat(tool.invocations).hasSize(1);
     Thread.sleep(5); // let the 1ms timeout genuinely elapse

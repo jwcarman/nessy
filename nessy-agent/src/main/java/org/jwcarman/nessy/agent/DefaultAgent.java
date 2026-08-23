@@ -50,7 +50,7 @@ public final class DefaultAgent<O> implements Agent<O> {
   }
 
   @Override
-  public void observe(O observation) {
+  public void tell(O observation) {
     binding.backlog().add(observation);
     drive();
   }
@@ -180,7 +180,7 @@ public final class DefaultAgent<O> implements Agent<O> {
       // stale-state race above does, so it is not lost. Unlike a stale race — an ordinary,
       // expected condition this shell absorbs and keeps draining past — this is NOT swallowed:
       // silently continuing to drain would hot-loop a permanently broken Memory forever. The
-      // exception surfaces to whoever called observe()/drive(), which decides whether to retry.
+      // exception surfaces to whoever called tell()/drive(), which decides whether to retry.
       binding.backlog().add(observation);
       throw e;
     }

@@ -198,7 +198,7 @@ class DurableParkDemo {
     var desk = new CompletionDesk(backend, worker::nudge);
 
     System.out.println("== turn begins ==");
-    agents.get().observe("please restart prod");
+    agents.get().tell("please restart prod");
     pump.pumpUntilQuiet();
 
     System.out.println("phase after park: " + store.load().phase().getClass().getSimpleName());

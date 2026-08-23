@@ -80,7 +80,7 @@ showed the answer was never load-bearing. Three laws replace it:
    delivery undeleted, and the next heartbeat (or `nudge()`) redrives it —
    at-least-once, no caller-visible failure. The non-durable shell fold
    (`DefaultAgent`) re-queues the observation onto its own backlog and lets
-   the exception surface to whoever called `observe()` — there is no
+   the exception surface to whoever called `tell()` — there is no
    heartbeat to redrive it silently, so the caller sees the failure and
    decides whether to retry. Either way, the work this attempt would have
    committed is preserved, not lost.
@@ -208,10 +208,10 @@ caller: the durable, outbox-driven fold leaves the delivery exactly where
 it was, waiting for the next heartbeat or the next `nudge()` — no exception
 escapes to anything outside the worker. The non-durable shell fold instead
 re-queues the observation onto its own backlog and lets the exception
-surface to whoever called `observe()` — there is no heartbeat backing that
+surface to whoever called `tell()` — there is no heartbeat backing that
 path, so the caller finds out and decides whether to retry. Either way,
 once the foreign store recovers, the same at-least-once retry that already
-governs delivery redrive (or the caller's own next `observe()`/`drive()`)
+governs delivery redrive (or the caller's own next `tell()`/`drive()`)
 carries memory along for free: the same keys, remembered again, converge to
 the same facts.
 

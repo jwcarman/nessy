@@ -13,7 +13,7 @@ var harness = Nessy.harness(h -> h                  // built once, kept — immo
         .tools(restart, diagnose)                   // bare tools, allow-by-default
         .substrate(jdbc));                           // default: in-memory
 
-harness.bind(AgentId.of("ops-agent-1")).observe("restart prod-eu");
+harness.bind(AgentId.of("ops-agent-1")).tell("restart prod-eu");
 ```
 
 This snippet runs — nothing else is required. The identical program is a
@@ -125,7 +125,7 @@ var harness =
                 .systemPrompt("You are a terse assistant.")
                 .tools(addTool));
 
-harness.bind(AgentId.of("scope-1")).observe("what is 2+2?");
+harness.bind(AgentId.of("scope-1")).tell("what is 2+2?");
 ```
 
 `Nessy.harness(HarnessCustomizer<String>)` is the one door: the lambda
@@ -141,11 +141,11 @@ type name. The smallest useful harness is a model, a system prompt, and
 nothing else.
 
 `harness.bind(id)` returns a plain, transient `Agent<String>` — it holds
-nothing, so there is nothing to leak by dropping it. `.observe(...)`
+nothing, so there is nothing to leak by dropping it. `.tell(...)`
 enqueues one fact for that scope and returns immediately; the reply is
 narrated, not returned — see
 [Observability](observability.md) for wiring up a `TurnObserver` to watch
-turns happen, and [the harness guide](harness.md) for `bind`/`observe`,
+turns happen, and [the harness guide](harness.md) for `bind`/`tell`,
 `approvals()`/`completions()`, and everything else the harness carries.
 
 ## The durability move
@@ -187,7 +187,7 @@ Or run a runnable proof with no key at all:
 
 ## Where next
 
-- [The harness guide](harness.md) — kept-not-closed, `bind`/`observe`,
+- [The harness guide](harness.md) — kept-not-closed, `bind`/`tell`,
   `approvals()`/`completions()`, and the one-type-per-harness contract.
 - [Durable Computation](../concepts/durable-computation.md) — the
   ownership-transfer pipeline the harness's worker and desks are built on.

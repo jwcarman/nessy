@@ -107,7 +107,7 @@ public final class ApprovalPlayground {
       } else if (line.startsWith("deny ") && open != null) {
         harness.approvals().deny(pending.poll().id(), line.substring(5));
       } else {
-        harness.bind(AgentId.of("tinker")).observe(line);
+        harness.bind(AgentId.of("tinker")).tell(line);
       }
     }
   }

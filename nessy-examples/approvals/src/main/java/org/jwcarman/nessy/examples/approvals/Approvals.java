@@ -108,7 +108,7 @@ public final class Approvals {
                     .turnObserver(observer));
     try {
       System.out.println("== posting: please restart prod-eu ==");
-      harness.bind(AgentId.of(SCOPE_ID)).observe("please restart prod-eu");
+      harness.bind(AgentId.of(SCOPE_ID)).tell("please restart prod-eu");
 
       ApprovalRequest firstAsk = await(requests, "the approval request");
       System.out.println("== approving " + firstAsk.id().value() + " ==");
@@ -169,7 +169,7 @@ public final class Approvals {
       } else if (line.startsWith("deny ") && open != null) {
         harness.approvals().deny(pending.poll().id(), line.substring(5));
       } else {
-        harness.bind(AgentId.of(SCOPE_ID)).observe(line);
+        harness.bind(AgentId.of(SCOPE_ID)).tell(line);
       }
     }
   }

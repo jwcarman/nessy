@@ -113,7 +113,7 @@ class ThreeRuntimeProcessLossTest {
                     .substrate(substrate)
                     .executor(pumpA));
     try {
-      harnessA.bind(AgentId.of("central-scope")).observe("please run the central op");
+      harnessA.bind(AgentId.of("central-scope")).tell("please run the central op");
       pumpA.pumpUntilQuiet();
     } finally {
       harnessA.shutdown();

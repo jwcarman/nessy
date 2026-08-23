@@ -641,3 +641,13 @@ sequence of renames and interim shapes that produced it.
   any `Memory` — including a third party's — extends to prove it honors the
   three laws; `SubstrateMemory` and `VerbatimMemory` both pass it. See
   [Memory](https://jwcarman.github.io/nessy/concepts/memory/).
+- **The tell rename: `Agent#observe` becomes `Agent#tell`.** One
+  pre-1.0 sweep, no alias, no deprecation limbo — `agent.tell(observation)`
+  is now the caller-perspective verb for enqueueing one ambient world fact
+  (Akka prior art); `drive()` is unchanged. The fold-internal "observation"
+  vocabulary — the `O` type parameter, `ObservationRenderer`,
+  `AgentObserver`, backlog naming, the `Observed` event — is untouched;
+  only the public `Agent` method that took an observation renames. See
+  [the harness guide](https://jwcarman.github.io/nessy/guides/harness/)
+  (design of record:
+  `docs/superpowers/specs/2026-08-23-front-ends-design.md` §1/§5).

@@ -32,7 +32,7 @@ import org.jwcarman.nessy.api.message.Context;
  *       leaves the delivery undeleted, and the next heartbeat (or {@code nudge()}) redrives it —
  *       at-least-once, no caller-visible failure. The non-durable shell fold ({@code DefaultAgent})
  *       re-queues the observation onto its backlog and lets the exception surface to whoever called
- *       {@code observe()} — there is no heartbeat to redrive it silently, so the caller sees the
+ *       {@code tell()} — there is no heartbeat to redrive it silently, so the caller sees the
  *       failure and decides whether to retry. Either way, the work this attempt would have
  *       committed is preserved, not lost. This implementation contract does not live here — it
  *       binds callers, not implementors.

@@ -14,11 +14,11 @@ var harness =
                 .substrate(substrate)
                 .approvalNotifier(requests::add));
 
-harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
 ```
 
 `harness.bind(id)` returns a plain `Agent<O>` — thin, transient, holding
-nothing. `.observe(observation)` enqueues a fact for that scope and returns
+nothing. `.tell(observation)` enqueues a fact for that scope and returns
 immediately; the reply is narrated, not returned — see
 [Observability](observability.md) for `TurnObserver`.
 
@@ -114,17 +114,17 @@ regardless of which harness instance produced it. Give two harnesses over
 one substrate distinct types, or give them distinct substrates. This is a
 contract the caller keeps, not something the builder can check for you.
 
-## `bind` and `observe`
+## `bind` and `tell`
 
 ```java
-harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
 ```
 
 `bind(AgentId)` stamps a fresh, transient `Agent<O>` over the harness's
 shared substrate — cheap, thin, never closeable, holding no state of its
-own. `observe(O)` enqueues a fact for that scope and returns immediately;
+own. `tell(O)` enqueues a fact for that scope and returns immediately;
 whatever comes back — text, a tool call, a park — is observed only through
-`turnObserver`, never returned from `observe`. `drive()` is the other
+`turnObserver`, never returned from `tell`. `drive()` is the other
 half of `Agent<O>`: make this scope make progress — drain at idle, re-fire
 a stale phase, else do nothing.
 
@@ -145,10 +145,10 @@ substrate:
 var substrate = new InMemorySubstrate(); // or a durable Substrate
 
 var harnessA = Nessy.harness(h -> h.model(claude).systemPrompt(prompt).substrate(substrate));
-harnessA.bind(AgentId.of("shared-scope")).observe("message one");
+harnessA.bind(AgentId.of("shared-scope")).tell("message one");
 
 var harnessB = Nessy.harness(h -> h.model(claude).systemPrompt(prompt).substrate(substrate));
-harnessB.bind(AgentId.of("shared-scope")).observe("message two");
+harnessB.bind(AgentId.of("shared-scope")).tell("message two");
 // harness B's model call carries harness A's turn, read back from the substrate
 ```
 
@@ -174,7 +174,7 @@ var harness =
                 .substrate(substrate)
                 .approvalNotifier(requests::add));
 
-harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
+harness.bind(AgentId.of("prod-eu")).tell("please restart prod-eu");
 // ... turn runs, the tool call parks in the approval/ops kind ...
 
 ApprovalRequest request = requests.getFirst();
@@ -300,7 +300,7 @@ this rides on.
 `Nessy.harness(HarnessCustomizer<String>)` observes `String` text.
 `Nessy.harness(Class<O>, HarnessCustomizer<O>)` is the typed door:
 observations are any `O` you name, and `Harness<O>` carries that type all
-the way through `bind`/`observe`:
+the way through `bind`/`tell`:
 
 ```java
 record Note(String text, int priority) {}
@@ -314,7 +314,7 @@ var harness =
                 .substrate(substrate)
                 .renderer(note -> List.of(new TextBlock(note.text()))));
 
-harness.bind(AgentId.of("scope-1")).observe(new Note("check the oven", 3));
+harness.bind(AgentId.of("scope-1")).tell(new Note("check the oven", 3));
 ```
 
 Two things the typed door asks of you that the `String` door presets for
@@ -357,7 +357,7 @@ var harness =
                 .approvalNotifier(pending::add)
                 .turnObserver(event -> System.out.println("  [turn] " + event)));
 // ... read lines; "approve" / "deny <reason>" answer pending.peek();
-//     everything else is harness.bind(AgentId.of("tinker")).observe(line) ...
+//     everything else is harness.bind(AgentId.of("tinker")).tell(line) ...
 ```
 
 Run it from the IDE with a provider key set — see
