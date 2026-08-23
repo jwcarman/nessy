@@ -93,3 +93,36 @@ Execution semantics, the §5a gate, fold purity, retry/deadline semantics,
 the per-harness reaper and worker ownership, wire formats of continuations
 and outcomes, test coverage meaning. Pre-1.0: stored-format compatibility is
 not owed; no migration.
+
+## 6. The continuation audit (James, in conversation, 2026-08-23)
+
+Field-by-field, every persisted continuation field has a named consumer;
+nothing to delete, nothing missing. Ruled belt-and-suspenders:
+
+- **`responseId` stays in the identity digest and both continuations** as
+  the assertion fence: completion must be able to assert it is returning a
+  tool result for the RIGHT model response. The invariant "no new turn
+  until every tool call of the previous one completes" (staleness re-fires
+  the SAME outstanding effects — a scope suspended on an approval is quiet
+  on purpose, never stale; turns are never abandoned) does NOT make the
+  fence redundant, because at-least-once execution leaks zombies forward
+  in time: a re-fired duplicate of turn R's call can complete AFTER R
+  advanced, and callIds carry no cross-turn uniqueness guarantee — without
+  responseId in the digest, that late completion would land on a new
+  turn's same-callId computation. With it, the zombie targets R's key,
+  finds nothing, no-ops.
+- **The full `ToolCall` (id, name, arguments) stays in both continuations**
+  (callId reuse is assumed real): the approval arm dispatches from it on
+  grant (§5a, no fold read); the execution arm needs it for the reaper's
+  RETRYABLE re-dispatch and for handing memory the complete
+  `Remembrance.ToolExchange` pair at fold time.
+- **`retrySemantics`/`timeout`** ride the execution arm only (approvals
+  wait forever), serving the reaper's bump-or-fail with no registry
+  lookup.
+- **`ApprovalRequest` loses `responseId`** — the un-ratified fifth field
+  reverts to the ratified four `{id, call, agentType, agentId}`. The
+  approval machinery sources the committed responseId from the agent's
+  state at ASK time, where the no-new-turn invariant guarantees exactly
+  one candidate; the continuation (pinned at that same moment) remains
+  the durable carrier. The request is a human decision surface, not a
+  routing packet.
