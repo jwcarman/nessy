@@ -169,25 +169,26 @@ public final class SubstrateComputations {
     // leaving the store untouched.
     codec.toJson(new DeliveryDocument(new Continuation("VALIDATION", "{}"), outcome));
     while (true) {
-      // Presence-only checks first (spec ruling: {@link DocumentStore#exists} never decodes) —
-      // mirrors the pre-typed-stores hot path, which read the raw {@code Substrate.Document} here
-      // without ever decoding it: decoding the computation's payload is deferred to the one branch
-      // that actually needs its content, so this loop's two racing-thread observation points stay
-      // as tight as the byte-level implementation's were (a wider window here measurably changes
-      // which branch a concurrent racer takes, not just how fast it gets there).
+      // Presence-only checks first (spec ruling: {@link DocumentStore#exists} never decodes), and
+      // ORDER IS LOAD-BEARING (the 2026-08-23 CI flake): the delivery observation must come BEFORE
+      // the computation observation. With the old exists-then-pending order, a losing racer could
+      // observe the computation as present (stale, pre-winner-commit) and then observe the
+      // winner's just-written delivery — and take this converge branch for a SECOND TRANSFERRED.
+      // Pending-first closes that: a delivery is only ever written by the batch that atomically
+      // deletes its computation, so a computation observed AFTER a pending delivery can only be a
+      // redrive's re-create — the genuine converge case — never a live racer's stale sighting.
+      boolean deliveryAlreadyPending = deliveryPending(id);
       if (!computations.exists(id.value())) {
         return CompletionResult.ALREADY_DONE;
       }
-      if (deliveryPending(id)) {
-        // the deterministic delivery key already carries a document for THIS id, even though the
-        // computation is (still, or again) present — this exact fold already happened (a replayed
-        // completion, or a redrive that re-created the computation after an earlier grant already
-        // transferred it); converge rather than attempt a write that can never succeed against a
-        // delivery that is never going to vanish on its own (spec §4). Checked BEFORE attempting
-        // the batch — not merely on a caught conflict — so an ordinary race between two live
-        // completers of the SAME still-pending computation is unaffected: neither sees a delivery
-        // yet, so both proceed to race the batch itself, and the loser's next iteration finds the
-        // computation genuinely absent (ALREADY_DONE), not a stray delivery to converge on.
+      if (deliveryAlreadyPending) {
+        // delivery observed, then computation observed present: this exact fold already happened
+        // (a replayed completion, or a redrive that re-created the computation after an earlier
+        // grant already transferred it); converge rather than attempt a write that can never
+        // succeed against a delivery that is never going to vanish on its own (spec §4). An
+        // ordinary race between two live completers of the SAME still-pending computation cannot
+        // land here: neither sees a delivery before the winning batch commits, and the loser's
+        // next iteration re-observes pending-then-absent — ALREADY_DONE, never converge.
         // The stray computation this branch found (recreated after the real transfer already
         // happened) is best-effort cleaned up here too, so presence-means-pending is not left
         // permanently violated by a redrive's own re-create; a lost race on the delete just means

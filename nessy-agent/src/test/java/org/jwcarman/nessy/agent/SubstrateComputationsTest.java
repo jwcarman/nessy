@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
 import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.WinnerBetweenChecksSubstrate;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -148,6 +149,38 @@ class SubstrateComputationsTest {
       assertThat(results.stream().filter(r -> r == CompletionResult.TRANSFERRED).count())
           .isEqualTo(1L);
       assertThat(outboxCount(store)).isEqualTo(1L);
+    }
+
+    /**
+     * The 2026-08-23 CI flake, pinned deterministically: the winner's transfer lands BETWEEN the
+     * loser's first observation of the computation key and its next observation. Under the pre-fix
+     * exists-then-pending order the loser saw the stale computation, then the winner's fresh
+     * delivery, and took the converge branch for a second {@code TRANSFERRED}; pending-first makes
+     * the loser re-observe and land on {@code ALREADY_DONE}. One transfer, one delivery, always.
+     */
+    @Test
+    void aWinnerCommittingBetweenTheLosersPresenceChecksYieldsAlreadyDoneNotASecondTransfer() {
+      var backing = new InMemorySubstrate();
+      var winnerSide =
+          new SubstrateComputations(backing, TestMappers.plainlyPinned(), "computation", "outbox");
+      winnerSide.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
+
+      var winnerOutcome = success(ToolResult.ok("winner"));
+      var raced =
+          new WinnerBetweenChecksSubstrate(
+              backing,
+              "computation",
+              ID.value(),
+              () ->
+                  assertThat(winnerSide.complete(ID, winnerOutcome))
+                      .isEqualTo(CompletionResult.TRANSFERRED));
+      var loser =
+          new SubstrateComputations(raced, TestMappers.plainlyPinned(), "computation", "outbox");
+
+      var loserOutcome = success(ToolResult.ok("loser"));
+      assertThat(loser.complete(ID, loserOutcome)).isEqualTo(CompletionResult.ALREADY_DONE);
+      assertThat(outboxCount(backing)).isEqualTo(1L);
+      assertThat(backing.read("computation", ID.value())).isEmpty();
     }
 
     @Test
