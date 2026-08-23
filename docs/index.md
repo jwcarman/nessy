@@ -92,7 +92,7 @@ var harness =
 harness.bind(AgentId.of("ops")).observe("restart prod-1");
 
 ApprovalRequest request = pending.take();
-harness.approvals().approve(request.address().approval());
+harness.approvals().approve(request.id());
 ```
 
 If `RestartTool`'s grant requires approval, the call suspends on a durable

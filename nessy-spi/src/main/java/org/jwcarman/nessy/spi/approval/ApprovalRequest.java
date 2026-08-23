@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.spi.approval;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 
@@ -27,12 +27,32 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * else an enricher deposited (principal, risk, declared intent), off {@code context} — {@link
  * AuthzContext#action()}, {@link AuthzContext#principal()}, {@link AuthzContext#risk()}, {@link
  * AuthzContext#declaredIntent()}.
+ *
+ * <p>{@code id} is the ticket (computation-identity spec §1, §4 addendum): the approval's own
+ * opaque {@link ComputationId}, already derived by the caller — the taught path back is {@code
+ * harness.approvals().approve(request.id())} (or {@code deny}). {@code CallAddress} no longer
+ * travels here — it stayed a wiring-internal detail ({@code CallAddress} moved into {@code
+ * nessy-agent}) rather than crossing this SPI boundary. {@code agentType}/{@code agentId} are plain
+ * strings, for display only. {@code responseId} is the one addition beyond that display pair: a
+ * computation-backed approver (see {@code ComputationApprover}) must still persist a resumable
+ * return address keyed to the exact model response that produced {@code call} — the same
+ * provider-uniqueness reason {@code CallAddress} itself carries {@code responseId} — and there is
+ * no other channel back to it once {@code CallAddress} leaves the record.
  */
-public record ApprovalRequest(CallAddress address, ToolCall call, AuthzContext context) {
+public record ApprovalRequest(
+    ComputationId id,
+    ToolCall call,
+    String agentType,
+    String agentId,
+    String responseId,
+    AuthzContext context) {
 
   public ApprovalRequest {
-    Objects.requireNonNull(address, "address must not be null");
+    Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(call, "call must not be null");
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(responseId, "responseId must not be null");
     Objects.requireNonNull(context, "context must not be null");
   }
 }

@@ -13,12 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.computation;
+package org.jwcarman.nessy.api.tool;
 
 /**
- * The durable computation's stable identity (durable spec §7). Deterministic ids are the caller's
- * duty: derive them from the work's coordinates, never mint fresh ones per attempt (preamble ruling
- * 4).
+ * The durable computation's stable identity (durable spec §7; computation-identity spec §1, §2):
+ * opaque and one-way — a digest over the identity tuple {@code CallAddress.approval()}/{@code
+ * CallAddress.execution()} (the durable-wiring module) derive it from, carrying no extractable
+ * structure. Deterministic ids are the caller's duty: derive them from the work's coordinates,
+ * never mint fresh ones per attempt (preamble ruling 4). Nothing anywhere parses a {@code value()}
+ * back apart — the system only ever needs address → id, never the reverse, because a continuation
+ * carries the address as data.
  */
 public record ComputationId(String value) {
 

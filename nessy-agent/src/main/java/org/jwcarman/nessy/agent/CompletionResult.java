@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.computation;
+package org.jwcarman.nessy.agent;
 
 /**
  * Whether this completion attempt was the ownership transfer (durable-deliveries spec §3): {@code
@@ -21,8 +21,13 @@ package org.jwcarman.nessy.api.computation;
  * {@code ALREADY_DONE} means the computation was absent — completed earlier by another racer, or
  * never created at all. The two causes are indistinguishable and equally benign under at-least-once
  * result delivery (ruling 6, reversed): completion never creates records.
+ *
+ * <p>Package-private (computation-identity spec §2 addendum, the whittle ruling): {@link
+ * SubstrateComputations#complete} is the one public-facing return, called from every package that
+ * reaches a backend, but never captured into a named local outside {@code org.jwcarman.nessy.agent}
+ * — no desk's public signature carries it.
  */
-public enum CompletionResult {
+enum CompletionResult {
   TRANSFERRED,
   ALREADY_DONE
 }

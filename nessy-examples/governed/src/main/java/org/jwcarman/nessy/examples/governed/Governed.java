@@ -140,11 +140,11 @@ public final class Governed {
       ApprovalRequest request = await(approvalRequests, "the approval request");
       System.out.println(
           "parked: computation="
-              + request.address().approval().value()
+              + request.id().value()
               + " action="
               + request.context().action().orElse(null));
 
-      harness.approvals().approve(request.address().approval());
+      harness.approvals().approve(request.id());
       System.out.println("approved");
 
       // The grant arc (durable-deliveries spec §5a): the delivery worker dispatches the call

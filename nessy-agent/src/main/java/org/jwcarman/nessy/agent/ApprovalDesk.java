@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.agent;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Outcome;
+import org.jwcarman.nessy.api.Decision;
+import org.jwcarman.nessy.api.tool.ComputationId;
 
 /**
  * The approve/deny door (durable-deliveries spec §5), addressed by the computation's own
@@ -25,6 +25,9 @@ import org.jwcarman.nessy.api.computation.Outcome;
  * Complete, then nudge the delivery worker: a completed-or-absent id is equally benign under
  * at-least-once delivery (ruling 6, reversed) — there is no "already decided" to refuse loudly,
  * because there is nothing left to read once the answer has transferred to its delivery.
+ *
+ * <p>This backend is the approval-kind instance (computation-identity spec §3) — {@code
+ * approval/&lt;agentType&gt;} — never the execution one {@link CompletionDesk} holds.
  */
 public final class ApprovalDesk {
 
@@ -41,17 +44,20 @@ public final class ApprovalDesk {
    * adjudication.
    */
   public void approve(ComputationId id) {
-    decide(id, DurableDecisions.granted());
+    decide(id, Decision.allow());
   }
 
   public void deny(ComputationId id, String reason) {
     Objects.requireNonNull(reason, "reason must not be null");
-    decide(id, DurableDecisions.denied(reason));
+    if (reason.isBlank()) {
+      throw new IllegalArgumentException("reason must not be blank");
+    }
+    decide(id, new Decision.Deny(reason));
   }
 
-  private void decide(ComputationId id, Outcome outcome) {
+  private void decide(ComputationId id, Decision decision) {
     Objects.requireNonNull(id, "id must not be null");
-    backend.complete(id, outcome);
+    backend.complete(id, new Outcome.Success(backend.encodeSuccess(decision)));
     nudge.run();
   }
 }

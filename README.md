@@ -107,13 +107,13 @@ var harness =
 harness.bind(AgentId.of("ops")).observe("restart prod-1");
 
 ApprovalRequest request = pending.take();
-harness.approvals().approve(request.address().approval());
+harness.approvals().approve(request.id());
 ```
 
 `.observe(observation)` enqueues a fact for that scope and returns
 immediately; the scope drains it, and if `RestartTool`'s grant requires
 approval, the call suspends on a durable computation and `approvalNotifier`
-fires once with the `ApprovalRequest` — `request.address().approval()` is
+fires once with the `ApprovalRequest` — `request.id()` is
 the computation id `harness.approvals().approve(...)`/`.deny(..., reason)`
 decides. Nothing here holds a thread open waiting; whether that computation
 outlives a restart of the process that opened it depends entirely on the

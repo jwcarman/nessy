@@ -16,8 +16,7 @@
 package org.jwcarman.nessy.agent;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Outcome;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -25,6 +24,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * return?" — with a {@code ToolResult}, addressed by the call's own deterministic identity.
  * Complete, then nudge the delivery worker, exactly as {@link ApprovalDesk} does; see its javadoc
  * for why a second completion is not refused loudly.
+ *
+ * <p>This backend is the execution-kind instance (computation-identity spec §3) — {@code
+ * computation/&lt;agentType&gt;} — never the approval one {@link ApprovalDesk} holds.
  */
 public final class CompletionDesk {
 
@@ -38,7 +40,7 @@ public final class CompletionDesk {
 
   public void complete(ComputationId id, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
-    finish(id, new Outcome.Success(result));
+    finish(id, new Outcome.Success(backend.encodeSuccess(result)));
   }
 
   public void fail(ComputationId id, String reason) {

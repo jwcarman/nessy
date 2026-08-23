@@ -17,9 +17,11 @@ intermediate container.
 
 ## Presence means pending
 
-A computation is addressed by a `ComputationId`, a deterministic string
-derived from the work's own coordinates — never a fresh random id per
-attempt:
+A computation is addressed by a `ComputationId`, opaque and one-way — a
+SHA-256 digest over the work's own coordinates, deterministic (same
+coordinates, same id) but carrying no extractable structure. Nothing
+anywhere parses one back apart; the caller who needs the coordinates again
+already has them as data, on the continuation:
 
 ```java
 public record ComputationId(String value) {
@@ -51,12 +53,17 @@ happened.
 What a computation completes with is a value, not an exception:
 
 ```java
-public sealed interface Outcome {
-  record Success(Object value) implements Outcome {}
+sealed interface Outcome {
+  record Success(JsonNode value) implements Outcome {}
   record Failure(String message) implements Outcome {}
   record Cancelled(String reason) implements Outcome {}
 }
 ```
+
+`Success` carries its payload data-born — an already-encoded `JsonNode`, not
+a raw Java object — because every value that ever flows through it is
+*either* a `ToolResult` *or* a `Decision`, never exclusively one, so the
+component can't narrow to either alone.
 
 An `Outcome.Failure` is the work's own failure — a tool that returned an
 error, an approval denied. A thrown Java exception is reserved for the
@@ -66,16 +73,27 @@ the work coming back negative.
 `SubstrateComputations` (`nessy-agent`) is the computation store: three
 operations, over one [`Substrate`](storage.md) — there is no adapter seam
 above it, because the `Substrate` beneath it already is the seam a host
-swaps:
+swaps. Each instance is kind-scoped to exactly one purpose for one agent
+type — `computation/<agentType>` for executions, `approval/<agentType>` for
+approvals — sharing one `outbox/<agentType>` between them:
 
 ```java
 public final class SubstrateComputations {
+  public SubstrateComputations(Substrate store, ObjectMapper mapper,
+                                String computationKind, String outboxKind);
   public CreateResult create(ComputationId id, ToolInvocationId invocation,
                       Continuation returnAddress, Optional<Instant> deadline);
   public CompletionResult complete(ComputationId id, Outcome outcome);
   public Optional<PendingComputation> find(ComputationId id);
 }
 ```
+
+A harness holds two instances — one over `computation/<agentType>` behind
+`CompletionDesk`, one over `approval/<agentType>` behind `ApprovalDesk` —
+never a single shared kind distinguished by a key prefix. Isolation between
+agent types is by construction now: two harnesses of different types over
+one substrate never share a kind, so neither's worker or reaper ever reads
+or skips the other's records.
 
 `create` carries the continuation — the return address is durable before
 any dispatch, so the register-after-create window that an earlier design
@@ -117,29 +135,47 @@ public record ToolInvocationId(String responseId, String callId) {}
 
 A bare provider call id is not contractually unique over an agent's
 lifetime; pairing it with the response that minted it closes that hole.
-Every tool invocation carries its `ToolInvocationId` — via `ToolContext` —
-for logging, correlation, and as a natural idempotency key.
+`ToolContext` no longer exposes this pair directly, though: it hands a tool
+the opaque execution `ComputationId` instead — `invocation` — the stable
+idempotency key a tool wants for logging, correlation, or deduplicating an
+external effect under at-least-once redelivery, carrying no extractable
+structure a tool could parse back apart.
 
 `ComputationId` itself stays deterministic, derived from the fold's own
-coordinates:
+coordinates — but opaquely now, a digest rather than a readable string:
 
 ```java
 public record CallAddress(String agentType, String agentId,
                           String responseId, String callId) {
-  public ComputationId approval() { ... }  // "approval:type:id:responseId:callId"
-  public ComputationId execution() { ... } // "tool:type:id:responseId:callId"
+  public ComputationId approval() { ... }  // SHA-256("approval", type, id, responseId, callId)
+  public ComputationId execution() { ... } // SHA-256("execution", type, id, responseId, callId)
 }
 ```
 
-Deterministic still means recomputable from committed state — that's what
-gives a redrive its O(1) lookup and `create` its natural idempotence.
+Both derivations digest a length-prefixed encoding of the tuple — `purpose`
+(`"approval"` or `"execution"`) plus the four coordinates — through SHA-256,
+rendered lowercase hex. The length prefix on every field closes the
+concatenation-ambiguity hole a plain delimiter leaves open; `purpose` is the
+one differentiator between the two derivations, so an approval and an
+execution over the identical remaining tuple never collide. Deterministic
+still means recomputable from committed state — that's what gives a redrive
+its O(1) lookup and `create` its natural idempotence — but nothing about an
+agent's topology is recoverable from an id that leaks into a log, URL, or
+callback.
 
 ## The delivery: the outbox, built
 
-A delivery is one outbox document — `kind=outbox`, a UUIDv7 key so
-`keys("outbox", n)` scans oldest-first, holding `{ destination, outcome }`.
-Deliveries are pending-only: delivering deletes them. See
-[Storage](storage.md) for the wire shape.
+A delivery is one outbox document — `kind=outbox/<agentType>`, keyed by the
+completed computation's own `ComputationId` (deterministic, not a fresh
+random key per completion), holding `{ destination, outcome }`. Deliveries
+are pending-only: delivering deletes them. See [Storage](storage.md) for
+the wire shape.
+
+The deterministic key is what closes the grant-delivery-pending window (see
+Honest limits, below): a replayed completion of the same id converges on
+the same delivery key instead of minting a second one, and the gate can
+check for a pending delivery under that exact key before ever re-asking the
+approver.
 
 `DeliveryWorker` is the one consumer. For each pending delivery it:
 
@@ -225,7 +261,9 @@ deadline and waits indefinitely — legitimate for an approval, which may
 sit for days waiting on a person.
 
 The reaper is the delivery worker's second sweep, on the same heartbeat:
-scan `computation` documents, decode each, and compare its deadline.
+scan `computation/<agentType>` documents, decode each, and compare its
+deadline. Approvals live in their own `approval/<agentType>` kind, never
+scanned here — deadline-less by design, and never reapable.
 Presence-means-pending is what keeps this scan cheap — the table only ever
 holds what's currently parked. Deadline-less computations are skipped; an
 overdue one splits two ways:
@@ -253,7 +291,7 @@ harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
 // ... the tool defers; DeliveryWorker has nothing to drain yet ...
 
 ApprovalRequest request = requests.getFirst();
-harness.approvals().approve(request.address().approval());
+harness.approvals().approve(request.id());
 // ... any node, any time later: complete() transfers ownership to a
 //     delivery, the worker drains it, and the turn completes ...
 ```
@@ -287,27 +325,22 @@ softening them would promise more than the design gives:
   single-winner regardless, because that's the transfer batch's CAS, not
   the external side effect.
 - **The window right after a grant completes and before its delivery
-  drains is not yet closed.** In that window neither the approval
-  computation nor a tool computation exists, so a staleness redrive
-  landing there re-asks the approver — the delivery's key is random, not
-  derivable from the call's address. Closing it needs a deterministic
-  grant-delivery key or an explicit granted marker; it's parked, not fixed.
-  The absorption guarantee that does hold: a pending ask absorbs a redrive,
-  and in-flight work absorbs one — only this one already-granted-but-
-  undrained instant does not.
-- **The reaper's scan has a cap, and pending approvals used to be able to
-  starve it.** `keys()` returns lexicographically, and `"approval:"` sorts
-  before `"tool:"` — since an approval is deadline-less by design and never
-  reapable, 1000+ pending approvals could fill the whole scan and make every
-  real tool deadline unreachable, silently, forever. Closing that took two
-  changes together: the reaper's own key fetch is now wider than the
-  delivery sweep's (fetching bare keys is metadata-cheap, so a generous
-  window is a fair trade), and it skips the `"approval:"` prefix before it
-  ever reads a computation document. Neither change removes the cap itself —
-  it's wider, not gone: a backlog of 20,000+ pending computations, approvals
-  or real tool work alike, can still starve a sweep. The real fix — a keys
-  cursor on the `Substrate` seam, so a sweep can page rather than being
-  capped at any fixed width — is parked, not built.
+  drains is now closed.** Presence-means-pending still leaves no residue in
+  either computation kind once the transfer batch commits, but the delivery
+  itself now sits at a key the gate *can* derive — the completed
+  computation's own deterministic id. The gate's absorption check looks in
+  both computation kinds and for a pending delivery under that key before
+  ever re-asking the approver, so a staleness redrive landing in the old
+  "pending window" absorbs instead.
+- **The reaper's scan still has a cap** — a bounded key fetch, not the
+  unbounded cursor a real fix needs. Approvals no longer share the reaper's
+  kind at all (they live in their own `approval/<agentType>` keyspace), so
+  the old failure mode — 1000+ pending approvals crowding a shared scan and
+  starving every real tool deadline behind them — cannot occur anymore by
+  construction. A backlog of deadline-less *tool* computations in the same
+  kind as a genuinely overdue one can still, in principle, exceed the cap.
+  The real fix — a keys cursor on the `Substrate` seam, so a sweep can page
+  rather than being capped at any fixed width — is parked, not built.
 
 None of this is exactly-once anywhere it isn't claimed. What's promised —
 stable identity, durable routing, at-least-once delivery — is what the

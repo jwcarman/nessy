@@ -23,6 +23,9 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.CallAddress;
+import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -33,7 +36,6 @@ import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.computation.ComputationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
@@ -146,7 +148,18 @@ class GovernedTurnDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
+    var backend =
+        new SubstrateComputations(
+            substrate,
+            TestMappers.plainlyPinned(),
+            Kinds.computation(AgentType.of("ops")),
+            Kinds.outbox(AgentType.of("ops")));
+    var approvalBackend =
+        new SubstrateComputations(
+            substrate,
+            TestMappers.plainlyPinned(),
+            Kinds.approval(AgentType.of("ops")),
+            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
@@ -187,14 +200,14 @@ class GovernedTurnDemo {
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
       var parkedResponseId = ((Phase.AwaitingTools) prodEuState.load().phase()).responseId();
       var computation =
-          ComputationId.of("approval:ops:prod-eu:" + parkedResponseId.value() + ":c1");
-      assertThat(backend.find(computation)).isPresent();
+          new CallAddress("ops", "prod-eu", parkedResponseId.value(), "c1").approval();
+      assertThat(approvalBackend.find(computation)).isPresent();
 
       assertThat(requests).isNotEmpty();
       assertThat(requests).hasSize(1);
       ApprovalRequest request = requests.getFirst();
       System.out.println("approval request context: " + request.context());
-      assertThat(request.address().approval()).isEqualTo(computation);
+      assertThat(request.id()).isEqualTo(computation);
       assertThat(request.context().action()).contains("restart prod-eu");
       assertThat(request.context().declaredIntent())
           .contains(new Intent("restart prod-eu to clear the stuck deploy"));
@@ -212,7 +225,7 @@ class GovernedTurnDemo {
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
-      assertThat(backend.find(computation)).isEmpty();
+      assertThat(approvalBackend.find(computation)).isEmpty();
     } finally {
       harness.shutdown();
     }
@@ -225,7 +238,12 @@ class GovernedTurnDemo {
     var prodEuState =
         new SubstrateAgentStateStore(
             substrate, "prod-eu", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
+    var backend =
+        new SubstrateComputations(
+            substrate,
+            TestMappers.plainlyPinned(),
+            Kinds.computation(AgentType.of("ops")),
+            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());
@@ -280,7 +298,12 @@ class GovernedTurnDemo {
   void withNoRiskAssessorWiredTheThresholdFailsClosed() {
     var pump = new PumpedExecutor();
     var substrate = new InMemorySubstrate();
-    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
+    var backend =
+        new SubstrateComputations(
+            substrate,
+            TestMappers.plainlyPinned(),
+            Kinds.computation(AgentType.of("ops")),
+            Kinds.outbox(AgentType.of("ops")));
     var requests = new CopyOnWriteArrayList<ApprovalRequest>();
     var intentStore =
         new SubstrateIntentStore<>(substrate, "prod-eu", Intent.class, TestMappers.plainlyPinned());

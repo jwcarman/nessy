@@ -17,9 +17,9 @@ package org.jwcarman.nessy.agent.spi;
 
 import java.time.Duration;
 import java.util.Optional;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.agent.CallAddress;
+import org.jwcarman.nessy.agent.ToolInvocationId;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.substrate.Substrate;

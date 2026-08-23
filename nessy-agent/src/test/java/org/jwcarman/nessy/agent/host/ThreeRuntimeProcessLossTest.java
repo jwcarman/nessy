@@ -23,7 +23,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.CompletionDesk;
+import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -34,9 +36,9 @@ import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.computation.ComputationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -118,18 +120,25 @@ class ThreeRuntimeProcessLossTest {
     }
     // harnessA's worker is now quiesced. The one pending computation exists only as durable state
     // in `substrate`.
-    List<String> computationKeys = substrate.keys("computation", 10);
+    List<String> computationKeys = substrate.keys(Kinds.computation(AgentType.of("ops")), 10);
     assertThat(computationKeys).hasSize(1);
     var computationId = ComputationId.of(computationKeys.getFirst());
 
     // Runtime B: not a host at all — a bare backend + desk, wired to no worker, built fresh over
     // the same substrate. This is the "fresh SubstrateComputations+desk" leg of the §9 sentence.
-    var backendB = new SubstrateComputations(substrate, mapper);
+    var backendB =
+        new SubstrateComputations(
+            substrate,
+            mapper,
+            Kinds.computation(AgentType.of("ops")),
+            Kinds.outbox(AgentType.of("ops")));
     var deskB = new CompletionDesk(backendB, () -> {});
     deskB.complete(computationId, ToolResult.ok("central op done"));
 
-    assertThat(substrate.read("computation", computationId.value())).isEmpty();
-    assertThat(substrate.keys("outbox", 10)).hasSize(1); // the completion survives as a delivery
+    assertThat(substrate.read(Kinds.computation(AgentType.of("ops")), computationId.value()))
+        .isEmpty();
+    assertThat(substrate.keys(Kinds.outbox(AgentType.of("ops")), 10))
+        .hasSize(1); // the completion survives as a delivery
 
     // Runtime C: a fresh host, knowing nothing of A or B, whose own heartbeat is the only thing
     // that ever drains the delivery.
@@ -147,11 +156,12 @@ class ThreeRuntimeProcessLossTest {
                     .executor(pumpC));
     try {
       long deadline = System.currentTimeMillis() + 20_000;
-      while (!substrate.keys("outbox", 10).isEmpty() && System.currentTimeMillis() < deadline) {
+      while (!substrate.keys(Kinds.outbox(AgentType.of("ops")), 10).isEmpty()
+          && System.currentTimeMillis() < deadline) {
         Thread.sleep(50);
         pumpC.pumpUntilQuiet();
       }
-      assertThat(substrate.keys("outbox", 10)).isEmpty();
+      assertThat(substrate.keys(Kinds.outbox(AgentType.of("ops")), 10)).isEmpty();
     } finally {
       harnessC.shutdown();
     }

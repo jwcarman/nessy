@@ -24,27 +24,27 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.PendingComputation;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class ComputationDeferredToolCallPolicyTest {
 
+  private final InMemorySubstrate substrate = new InMemorySubstrate();
+
+  private final SubstrateComputations approvalBackend =
+      new SubstrateComputations(substrate, TestMappers.plainlyPinned(), "approval", "outbox");
   private final SubstrateComputations backend =
-      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
+      new SubstrateComputations(substrate, TestMappers.plainlyPinned(), "computation", "outbox");
   private final ComputationDeferredToolCallPolicy policy =
-      new ComputationDeferredToolCallPolicy(backend, TestMappers.plainlyPinned());
+      new ComputationDeferredToolCallPolicy(approvalBackend, backend, TestMappers.plainlyPinned());
 
   private static final ToolCall CALL =
       new ToolCall("c1", "restart_prod", JsonNodeFactory.instance.objectNode());
   private static final CallAddress ADDRESS = new CallAddress("approver", "demo", "r1", "c1");
   private static final ToolInvocationId INVOCATION = new ToolInvocationId("r1", "c1");
-  private static final ComputationId COMPUTATION = ComputationId.of("tool:approver:demo:r1:c1");
+  private static final ComputationId COMPUTATION = ADDRESS.execution();
 
   @Test
   void aFirstDeferralCreatesTheComputationAndSuspends() {
@@ -150,7 +150,7 @@ class ComputationDeferredToolCallPolicyTest {
   void pendingComputationFindsAPendingApproval() {
     assertThat(policy.pendingComputation(ADDRESS)).isEmpty();
 
-    backend.create(
+    approvalBackend.create(
         ADDRESS.approval(), INVOCATION, new Continuation("SCOPE_RESUME", "{}"), Optional.empty());
 
     assertThat(policy.pendingComputation(ADDRESS)).contains(ADDRESS.approval());

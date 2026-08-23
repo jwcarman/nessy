@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -24,32 +25,38 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.OutcomeCodec.DeliveryDocument;
 import org.jwcarman.nessy.agent.OutcomeCodec.PendingDocument;
-import org.jwcarman.nessy.api.Identifiers;
-import org.jwcarman.nessy.api.computation.CompletionResult;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.CreateResult;
-import org.jwcarman.nessy.api.computation.Outcome;
-import org.jwcarman.nessy.api.computation.PendingComputation;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.spi.substrate.Substrate.Op.DeleteDocument;
 import org.jwcarman.nessy.spi.substrate.Substrate.Op.WriteDocument;
 
 /**
- * The {@code computation} and {@code outbox} recipes, together (durable-deliveries spec §3, §4):
- * presence means pending — one document per computation, {@code kind=computation}, {@code
+ * The {@code computation} and {@code outbox} recipes, together (durable-deliveries spec §3, §4;
+ * computation-identity spec §3): presence means pending — one document per computation, {@code
  * key=id.value()}, holding {@code {invocation, returnAddress, deadline?}}; one document per pending
- * result, {@code kind=outbox}, a UUIDv7 key, holding {@code {destination, outcome}}.
+ * result, in the SAME outbox kind, {@code key=} the completed computation's own id, holding {@code
+ * {destination, outcome}}.
+ *
+ * <p><b>Kind-scoped, one instance per (agent type, purpose) pair</b> (spec §3): {@code
+ * computationKind} is either {@code computation/<agentType>} (execution) or {@code
+ * approval/<agentType>} (approval) — never both — and {@code outboxKind} is {@code
+ * outbox/<agentType>}, shared by both purposes for one agent type since a completion of either kind
+ * lands in the same outbox. Isolation across agent types is by construction now: two harnesses of
+ * different types over one substrate never share a kind, so neither's worker or reaper ever reads
+ * or skips the other's records — no runtime type filter is needed anymore.
  *
  * <p>{@link #create} is a plain CAS write at version 0 — get-or-create, no read-decide loop needed
  * since a computation is never mutated after creation. {@link #complete} is the ownership transfer
  * (spec §7 invariant 5): read the computation, then one substrate {@link Substrate#batch} deletes
- * it and creates its delivery atomically; a lost race on the delete means a competitor already
- * transferred it, so this call re-reads and finds it absent — {@link
- * CompletionResult#ALREADY_DONE}. Completing an id that was never created, or was already
- * completed, is the same benign absence (ruling 6, reversed: completion never creates records).
+ * it and creates its delivery atomically, under the completed computation's OWN id (spec §4,
+ * deterministic delivery keys) — a lost race on the delete means a competitor already transferred
+ * it, so this call re-reads and finds it absent — {@link CompletionResult#ALREADY_DONE}; a lost
+ * race on the delivery's own creation, when a document already sits at that exact deterministic
+ * key, means THIS EXACT fold already happened — convergence, not a fresh conflict to retry into
+ * (spec §4: "a replayed creation under the same deterministic key converges instead of
+ * duplicating"). Completing an id that was never created, or was already completed, is the same
+ * benign absence (ruling 6, reversed: completion never creates records).
  *
  * <p>There is no adapter SPI above this — the {@link Substrate} beneath it is the seam a host swaps
  * (durable-dissolves spec §2). {@link OutcomeCodec} renders the payloads.
@@ -64,16 +71,35 @@ import org.jwcarman.nessy.spi.substrate.Substrate.Op.WriteDocument;
  */
 public final class SubstrateComputations {
 
-  private static final String COMPUTATION_KIND = "computation";
-  private static final String OUTBOX_KIND = "outbox";
   private static final String ID_NULL_MESSAGE = "id must not be null";
 
   private final Substrate store;
   private final OutcomeCodec codec;
+  private final String computationKind;
+  private final String outboxKind;
 
-  public SubstrateComputations(Substrate store, ObjectMapper mapper) {
+  /**
+   * @param computationKind this instance's own kind — {@code computation/<agentType>} for an
+   *     execution-purposed instance, {@code approval/<agentType>} for an approval-purposed one
+   *     (computation-identity spec §3); never shared between the two purposes for one agent type
+   * @param outboxKind {@code outbox/<agentType>} — shared by both purposes for one agent type,
+   *     since either kind of computation's completion lands in the same outbox
+   */
+  public SubstrateComputations(
+      Substrate store, ObjectMapper mapper, String computationKind, String outboxKind) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.codec = new OutcomeCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
+    this.computationKind =
+        requireNonBlank(computationKind, "computationKind must not be null or blank");
+    this.outboxKind = requireNonBlank(outboxKind, "outboxKind must not be null or blank");
+  }
+
+  private static String requireNonBlank(String value, String message) {
+    Objects.requireNonNull(value, message);
+    if (value.isBlank()) {
+      throw new IllegalArgumentException(message);
+    }
+    return value;
   }
 
   public CreateResult create(
@@ -130,7 +156,7 @@ public final class SubstrateComputations {
     Objects.requireNonNull(deadline, "deadline must not be null");
     String payload = codec.toJson(new PendingDocument(invocation, returnAddress, deadline));
     return new WriteDocument(
-        COMPUTATION_KIND, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
+        computationKind, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
   }
 
   public CompletionResult complete(ComputationId id, Outcome outcome) {
@@ -140,9 +166,21 @@ public final class SubstrateComputations {
     // leaving the store untouched.
     codec.toJson(new DeliveryDocument(new Continuation("VALIDATION", "{}"), outcome));
     while (true) {
-      Optional<Substrate.Document> doc = store.read(COMPUTATION_KIND, id.value());
+      Optional<Substrate.Document> doc = store.read(computationKind, id.value());
       if (doc.isEmpty()) {
         return CompletionResult.ALREADY_DONE;
+      }
+      if (deliveryPending(id)) {
+        // the deterministic delivery key already carries a document for THIS id, even though the
+        // computation is (still, or again) present — this exact fold already happened (a replayed
+        // completion, or a redrive that re-created the computation after an earlier grant already
+        // transferred it); converge rather than attempt a write that can never succeed against a
+        // delivery that is never going to vanish on its own (spec §4). Checked BEFORE attempting
+        // the batch — not merely on a caught conflict — so an ordinary race between two live
+        // completers of the SAME still-pending computation is unaffected: neither sees a delivery
+        // yet, so both proceed to race the batch itself, and the loser's next iteration finds the
+        // computation genuinely absent (ALREADY_DONE), not a stray delivery to converge on.
+        return CompletionResult.TRANSFERRED;
       }
       PendingDocument pending =
           codec.pendingDocument(new String(doc.get().payload(), StandardCharsets.UTF_8));
@@ -152,8 +190,8 @@ public final class SubstrateComputations {
               .getBytes(StandardCharsets.UTF_8);
       List<Substrate.Op> ops =
           List.of(
-              new DeleteDocument(COMPUTATION_KIND, id.value(), doc.get().version()),
-              new WriteDocument(OUTBOX_KIND, Identifiers.next(), deliveryPayload, 0));
+              new DeleteDocument(computationKind, id.value(), doc.get().version()),
+              new WriteDocument(outboxKind, id.value(), deliveryPayload, 0));
       try {
         store.batch(ops);
         return CompletionResult.TRANSFERRED;
@@ -167,11 +205,34 @@ public final class SubstrateComputations {
   public Optional<PendingComputation> find(ComputationId id) {
     Objects.requireNonNull(id, ID_NULL_MESSAGE);
     return store
-        .read(COMPUTATION_KIND, id.value())
+        .read(computationKind, id.value())
         .map(doc -> codec.pendingDocument(new String(doc.payload(), StandardCharsets.UTF_8)))
         .map(
             pending ->
                 new PendingComputation(
                     id, pending.invocation(), pending.returnAddress(), pending.deadline()));
+  }
+
+  /**
+   * Whether a delivery already sits at {@code id}'s own deterministic outbox key (computation-
+   * identity spec §4) — the ownership-split absorption gate's other half ({@link
+   * ComputationDeferredToolCallPolicy#pendingComputation}): a computation kind lookup alone misses
+   * a grant that has already folded into its delivery but has not yet drained, since
+   * presence-means- pending leaves no residue in the computation kind once the transfer batch
+   * commits.
+   */
+  boolean deliveryPending(ComputationId id) {
+    Objects.requireNonNull(id, ID_NULL_MESSAGE);
+    return store.read(outboxKind, id.value()).isPresent();
+  }
+
+  /**
+   * The closed-vocabulary encode door, exposed to this package's desks (computation-identity spec
+   * §2 addendum): {@link ApprovalDesk} and {@link CompletionDesk} hold a backend already, so they
+   * reach the pinned mapper's encoding through it rather than each carrying their own {@link
+   * ObjectMapper}.
+   */
+  JsonNode encodeSuccess(Object value) {
+    return codec.encodeSuccess(value);
   }
 }

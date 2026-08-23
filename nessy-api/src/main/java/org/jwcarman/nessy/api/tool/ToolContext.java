@@ -16,23 +16,23 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 
 /**
  * What a tool learns about the invocation it is serving.
  *
- * @param invocationId this invocation's logical identity (durable-deliveries spec §2) — stable
- *     across every redispatch and replay; a tool wants this for logging, correlation, or an
- *     idempotency key
+ * @param invocation this execution's opaque, stable idempotency key (computation-identity spec §4
+ *     addendum): the execution {@link ComputationId} — stable across every redispatch and replay, a
+ *     tool wants this for logging, correlation, or deduplicating an external effect under
+ *     at-least-once redelivery. Carries no extractable structure (spec §1) — a tool reads it as an
+ *     opaque token, never parses it. Replaces the former {@code address}/{@code invocationId} pair:
+ *     no current tool or example reads the structured coordinates, only this one stable token.
  */
-public record ToolContext(
-    ToolCall call, ToolEventListener events, CallAddress address, ToolInvocationId invocationId) {
+public record ToolContext(ToolCall call, ToolEventListener events, ComputationId invocation) {
 
   public ToolContext {
     Objects.requireNonNull(call, "call must not be null");
     Objects.requireNonNull(events, "events must not be null");
-    Objects.requireNonNull(address, "address must not be null");
-    Objects.requireNonNull(invocationId, "invocationId must not be null");
+    Objects.requireNonNull(invocation, "invocation must not be null");
   }
 
   /**

@@ -15,51 +15,80 @@
  */
 package org.jwcarman.nessy.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Outcome;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 
 /**
  * The one mapping from a durable outcome to the approval grammar (spec §4.3 amendment): the
  * approval computation completes with a {@code Decision} — answering "no" is a successful
  * adjudication.
+ *
+ * <p>{@code mapper} threads through every door here (computation-identity spec §2 addendum): {@link
+ * Outcome.Success#value()} is now a data-born {@link JsonNode}, not a raw {@link Decision}, so
+ * building or reading one needs the pinned mapper's encoding — {@link ApprovalDesk} reaches it
+ * through its own {@link SubstrateComputations#encodeSuccess}; this class is the standalone door
+ * for callers that talk to a {@link SubstrateComputations} backend directly, without a desk in
+ * between (white-box tests over the grant arm's own mechanics).
  */
 public final class DurableDecisions {
 
   private DurableDecisions() {}
 
-  public static Outcome granted() {
-    return new Outcome.Success(Decision.allow());
+  public static Outcome granted(ObjectMapper mapper) {
+    return new Outcome.Success(encode(mapper, Decision.allow()));
   }
 
-  public static Outcome denied(String reason) {
+  public static Outcome denied(ObjectMapper mapper, String reason) {
     Objects.requireNonNull(reason, "reason must not be null");
     if (reason.isBlank()) {
       throw new IllegalArgumentException("reason must not be blank");
     }
-    return new Outcome.Success(new Decision.Deny(reason));
+    return new Outcome.Success(encode(mapper, new Decision.Deny(reason)));
+  }
+
+  private static JsonNode encode(ObjectMapper mapper, Decision decision) {
+    Objects.requireNonNull(mapper, "mapper must not be null");
+    return new OutcomeCodec(mapper).encodeSuccess(decision);
   }
 
   /**
    * {@code computation} names the id in an unexpected-payload message; it carries no other duty.
    */
-  public static Adjudication toAdjudication(Outcome outcome, ComputationId computation) {
+  public static Adjudication toAdjudication(
+      ObjectMapper mapper, Outcome outcome, ComputationId computation) {
+    Objects.requireNonNull(mapper, "mapper must not be null");
     Objects.requireNonNull(outcome, "outcome must not be null");
     Objects.requireNonNull(computation, "computation must not be null");
     return switch (outcome) {
-      case Outcome.Success(Decision.Allow()) -> new Adjudication.Granted();
-      case Outcome.Success(Decision.Deny(String reason)) -> new Adjudication.Refused(reason);
-      case Outcome.Success(Object value) ->
+      case Outcome.Success(JsonNode value) -> toAdjudication(mapper, value, computation);
+      case Outcome.Failure(String message) -> new Adjudication.Refused(message);
+      case Outcome.Cancelled(String reason) -> new Adjudication.Refused("cancelled: " + reason);
+    };
+  }
+
+  private static Adjudication toAdjudication(
+      ObjectMapper mapper, JsonNode payload, ComputationId computation) {
+    Object decoded;
+    try {
+      decoded = new OutcomeCodec(mapper).decodeSuccess(payload);
+    } catch (IllegalArgumentException e) {
+      return new Adjudication.Refused(
+          "unexpected approval payload: " + payload + " (computation " + computation.value() + ")");
+    }
+    return switch (decoded) {
+      case Decision.Allow _ -> new Adjudication.Granted();
+      case Decision.Deny(String reason) -> new Adjudication.Refused(reason);
+      default ->
           new Adjudication.Refused(
               "unexpected approval payload: "
-                  + value.getClass().getName()
+                  + decoded.getClass().getName()
                   + " (computation "
                   + computation.value()
                   + ")");
-      case Outcome.Failure(String message) -> new Adjudication.Refused(message);
-      case Outcome.Cancelled(String reason) -> new Adjudication.Refused("cancelled: " + reason);
     };
   }
 }

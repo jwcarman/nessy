@@ -63,10 +63,17 @@ final class AgentFixture {
     // substrate — decoupled from whatever substrate the caller-supplied `store` above lives on.
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    SubstrateComputations backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
+    var fixtureType = AgentType.of("fixture");
+    String outboxKind = Kinds.outbox(fixtureType);
+    SubstrateComputations approvalBackend =
+        new SubstrateComputations(
+            lifeSupportSubstrate, mapper, Kinds.approval(fixtureType), outboxKind);
+    SubstrateComputations executionBackend =
+        new SubstrateComputations(
+            lifeSupportSubstrate, mapper, Kinds.computation(fixtureType), outboxKind);
     Harness<String> harness =
         Harness.of(
-            AgentType.of("fixture"),
+            fixtureType,
             text -> List.of(new TextBlock(text)),
             observer,
             drainOnIdle,
@@ -78,7 +85,8 @@ final class AgentFixture {
             binding -> tools,
             lifeSupportSubstrate,
             mapper,
-            backend);
+            approvalBackend,
+            executionBackend);
     HarnessTeardown.track(harness);
     this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));
   }

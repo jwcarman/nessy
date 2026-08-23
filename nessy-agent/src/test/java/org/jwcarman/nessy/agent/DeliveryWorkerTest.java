@@ -47,8 +47,6 @@ import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.Outcome;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
@@ -148,7 +146,7 @@ class DeliveryWorkerTest {
         codec
             .toJson(new OutcomeCodec.DeliveryDocument(destination, outcome))
             .getBytes(StandardCharsets.UTF_8);
-    store.write("outbox", key, payload, 0);
+    store.write(Kinds.outbox(TYPE), key, payload, 0);
   }
 
   @Nested
@@ -166,14 +164,18 @@ class DeliveryWorkerTest {
       // own batch — a genuine version bump the worker must retry past, not a semantic change
       var raced = new RaceOnceOnBatchSubstrate(backing, "state", ID.value(), statePayload);
 
-      writeDelivery(raced, mapper, "d1", new Outcome.Success(ToolResult.ok("restarted")));
+      writeDelivery(
+          raced,
+          mapper,
+          "d1",
+          new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("restarted"))));
       var worker = workerOver(raced, mapper, (type, id) -> null);
 
       worker.nudge();
 
       List<Substrate.Entry> journal = raced.entries("memory", ID.value(), 1);
       assertThat(journal).hasSize(2); // exactly the assistant turn + the tool result, once
-      assertThat(raced.keys("outbox", 10)).isEmpty();
+      assertThat(raced.keys(Kinds.outbox(TYPE), 10)).isEmpty();
       assertThat(raced.read("state", ID.value())).isPresent();
       Phase folded =
           stateCodec.phase(
@@ -194,14 +196,22 @@ class DeliveryWorkerTest {
       byte[] statePayload = stateCodec.toJson(awaitingOneCall()).getBytes(StandardCharsets.UTF_8);
       store.write("state", ID.value(), statePayload, 0);
 
-      writeDelivery(store, mapper, "d1", new Outcome.Success(ToolResult.ok("first")));
-      writeDelivery(store, mapper, "d2", new Outcome.Success(ToolResult.ok("second")));
+      writeDelivery(
+          store,
+          mapper,
+          "d1",
+          new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("first"))));
+      writeDelivery(
+          store,
+          mapper,
+          "d2",
+          new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("second"))));
       var worker = workerOver(store, mapper, (type, id) -> null);
 
       worker.nudge();
 
       assertThat(store.entries("memory", ID.value(), 1)).hasSize(2); // one fold, not two
-      assertThat(store.keys("outbox", 10)).isEmpty(); // both deliveries consumed
+      assertThat(store.keys(Kinds.outbox(TYPE), 10)).isEmpty(); // both deliveries consumed
       Phase folded =
           stateCodec.phase(
               new String(
@@ -221,14 +231,18 @@ class DeliveryWorkerTest {
       byte[] statePayload = stateCodec.toJson(awaitingOneCall()).getBytes(StandardCharsets.UTF_8);
       store.write("state", ID.value(), statePayload, 0);
 
-      store.write("outbox", "bad", "not json at all".getBytes(StandardCharsets.UTF_8), 0);
-      writeDelivery(store, mapper, "good", new Outcome.Success(ToolResult.ok("restarted")));
+      store.write(Kinds.outbox(TYPE), "bad", "not json at all".getBytes(StandardCharsets.UTF_8), 0);
+      writeDelivery(
+          store,
+          mapper,
+          "good",
+          new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("restarted"))));
       var worker = workerOver(store, mapper, (type, id) -> null);
 
       worker.nudge();
 
       assertThat(store.entries("memory", ID.value(), 1)).hasSize(2); // the good delivery folded
-      assertThat(store.keys("outbox", 10))
+      assertThat(store.keys(Kinds.outbox(TYPE), 10))
           .containsExactly("bad"); // left in place — never silently dropped
     }
 
@@ -239,7 +253,7 @@ class DeliveryWorkerTest {
       var stateCodec = new StateCodec(mapper);
       byte[] statePayload = stateCodec.toJson(awaitingOneCall()).getBytes(StandardCharsets.UTF_8);
       store.write("state", ID.value(), statePayload, 0);
-      store.write("outbox", "bad", "not json at all".getBytes(StandardCharsets.UTF_8), 0);
+      store.write(Kinds.outbox(TYPE), "bad", "not json at all".getBytes(StandardCharsets.UTF_8), 0);
 
       var memory = new SubstrateMemory(store, ID.value(), mapper);
       var stateStore = new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper);
@@ -262,7 +276,12 @@ class DeliveryWorkerTest {
         worker.start();
         Thread.sleep(100); // a few heartbeat ticks over the undecodable delivery, unharmed
 
-        writeDelivery(store, mapper, "good", new Outcome.Success(ToolResult.ok("restarted")));
+        writeDelivery(
+            store,
+            mapper,
+            "good",
+            new Outcome.Success(
+                new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("restarted"))));
 
         List<Substrate.Entry> journal = List.of();
         long deadline = System.currentTimeMillis() + 3000;
@@ -272,7 +291,7 @@ class DeliveryWorkerTest {
         }
 
         assertThat(journal).hasSize(2); // the heartbeat picked it up on its own, no nudge() called
-        assertThat(store.keys("outbox", 10)).containsExactly("bad");
+        assertThat(store.keys(Kinds.outbox(TYPE), 10)).containsExactly("bad");
       } finally {
         worker.close();
       }
@@ -293,13 +312,18 @@ class DeliveryWorkerTest {
       store.write("state", ID.value(), statePayload, 0);
       long versionBefore = store.read("state", ID.value()).orElseThrow().version();
 
-      writeDelivery(store, mapper, "stale", new Outcome.Success(ToolResult.ok("too late")));
+      writeDelivery(
+          store,
+          mapper,
+          "stale",
+          new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(ToolResult.ok("too late"))));
       var worker = workerOver(store, mapper, (type, id) -> null);
 
       worker.nudge();
 
       assertThat(store.entries("memory", ID.value(), 1)).isEmpty(); // nothing to fold
-      assertThat(store.keys("outbox", 10)).isEmpty(); // the stale delivery is still consumed
+      assertThat(store.keys(Kinds.outbox(TYPE), 10))
+          .isEmpty(); // the stale delivery is still consumed
       assertThat(store.read("state", ID.value()).orElseThrow().version()).isEqualTo(versionBefore);
     }
   }
@@ -368,12 +392,17 @@ class DeliveryWorkerTest {
       var worker =
           new DeliveryWorker<String>(store, mapper, harness, (t, i) -> null, Duration.ofHours(1));
 
-      writeDelivery(store, mapper, "grant", new Outcome.Success(Decision.allow()));
+      writeDelivery(
+          store,
+          mapper,
+          "grant",
+          new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(Decision.allow())));
 
       worker.nudge(); // must not throw out of nudge() — the per-item catch absorbs it
 
       assertThat(tool.invocations).hasValue(0); // the tool never ran
-      assertThat(store.keys("outbox", 10)).containsExactly("grant"); // the delivery survives
+      assertThat(store.keys(Kinds.outbox(TYPE), 10))
+          .containsExactly("grant"); // the delivery survives
     }
   }
 }

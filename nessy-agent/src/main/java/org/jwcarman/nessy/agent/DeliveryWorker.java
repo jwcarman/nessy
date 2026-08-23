@@ -32,11 +32,8 @@ import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Outcome;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.message.Message;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -90,25 +87,20 @@ import org.slf4j.LoggerFactory;
 final class DeliveryWorker<O> implements AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(DeliveryWorker.class);
-  private static final String OUTBOX_KIND = "outbox";
   private static final String STATE_KIND = "state";
   private static final String MEMORY_KIND = "memory";
-  private static final String COMPUTATION_KIND = "computation";
   private static final String TIMEOUT_NON_RETRYABLE = "TIMEOUT_NON_RETRYABLE";
-  // matches org.jwcarman.nessy.api.tool.CallAddress#approval()'s own derivation prefix
-  private static final String APPROVAL_PREFIX = "approval:";
   private static final int SCAN_LIMIT = 1000;
 
   /**
-   * F2: the computation sweep's own key fetch, wider than {@link #SCAN_LIMIT}. {@code keys()} is
-   * lexicographic and {@code "approval:"} sorts before {@code "tool:"} — a single {@code
-   * keys(COMPUTATION_KIND, SCAN_LIMIT)} call would let 1000 pending approvals (deadline-less, never
-   * reapable) fill the entire result and truncate every {@code "tool:"} key out of it before the
-   * sweep ever saw one, no matter how cheaply the loop below skips what it does see. Fetching KEYS
-   * (not documents) is metadata-cheap, so a much wider window here is a fair trade: it does not
-   * raise the delivery sweep's own {@link #SCAN_LIMIT}, and it is still a bounded cap, not the
-   * unbounded cursor the real fix needs — an approval (or tool) backlog past THIS width can still
-   * starve the reaper. Parked, per {@code docs/concepts/durable-computation.md}'s Honest limits.
+   * The reap sweep's own key fetch, wider than {@link #SCAN_LIMIT} (F2, pre-dating kind-scoping):
+   * fetching KEYS (not documents) is metadata-cheap, so a wider window here is a fair trade — it
+   * does not raise the delivery sweep's own {@link #SCAN_LIMIT}, and it is still a bounded cap, not
+   * the unbounded cursor the real fix needs. Approvals no longer share this kind at all
+   * (computation-identity spec §3: {@code approval/<agentType>} is its own kind, never reaped,
+   * never scanned here), so the width is now purely about a tool-computation backlog past this cap
+   * still being able to starve the reaper — parked, per {@code
+   * docs/concepts/durable-computation.md}'s Honest limits.
    */
   private static final int REAP_KEY_SCAN_LIMIT = 20_000;
 
@@ -121,6 +113,8 @@ final class DeliveryWorker<O> implements AutoCloseable {
   private final Harness<O> harness;
   private final AgentBinder binder;
   private final SubstrateComputations computations;
+  private final String computationKind;
+  private final String outboxKind;
   private final ObjectMapper mapper;
   private final Thread heartbeat;
 
@@ -157,7 +151,9 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     Objects.requireNonNull(resolver, "resolver must not be null");
     this.binder = new ResolvingAgentBinder(resolver);
-    this.computations = new SubstrateComputations(store, mapper);
+    this.computationKind = Kinds.computation(harness.type());
+    this.outboxKind = Kinds.outbox(harness.type());
+    this.computations = new SubstrateComputations(store, mapper, computationKind, outboxKind);
     Objects.requireNonNull(pollInterval, "pollInterval must not be null");
     this.heartbeat = new Thread(() -> heartbeatLoop(pollInterval), "nessy-delivery");
     this.heartbeat.setDaemon(true);
@@ -221,7 +217,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * each is guarded individually and logged rather than left to abort the whole scan.
    */
   private void drainOnce() {
-    for (String key : store.keys(OUTBOX_KIND, SCAN_LIMIT)) {
+    for (String key : store.keys(outboxKind, SCAN_LIMIT)) {
       try {
         deliverOne(key);
       } catch (RuntimeException e) {
@@ -230,35 +226,14 @@ final class DeliveryWorker<O> implements AutoCloseable {
     }
   }
 
-  /**
-   * The outbox arm of the type-filtered sweep (spec §5, new law): peeks the delivery's destination
-   * continuation for its {@code agentType} — via {@link OutcomeCodec#peekDestinationAgentType}, a
-   * minimal parse that stops well short of {@link OutcomeCodec#deliveryDocument}'s full bind and
-   * {@link ScopeRouting}'s full routing decode (both validate the call/outcome shape this filter
-   * never needs) — and compares it to this worker's own harness type, BEFORE any of that further
-   * decoding runs. A delivery whose destination SHAPE the peek cannot read (no {@code destination},
-   * or a non-textual {@code data}) falls through unfiltered — this method returns {@code false},
-   * and the full decode below runs and reports whatever is really wrong. Unparseable JSON is a
-   * different case: {@link OutcomeCodec#peekDestinationAgentType} throws straight out of the peek
-   * itself, same as the full decode would have — {@link #drainOnce()}'s per-key guard catches it
-   * either way, so nothing here is silently skipped.
-   */
-  private boolean isForeignTypeDelivery(String json) {
-    return codec
-        .peekDestinationAgentType(json)
-        .map(agentType -> !agentType.equals(harness.type().name()))
-        .orElse(false);
-  }
-
   private void deliverOne(String key) {
-    Optional<Substrate.Document> doc = store.read(OUTBOX_KIND, key);
+    Optional<Substrate.Document> doc = store.read(outboxKind, key);
     if (doc.isEmpty()) {
       return; // already delivered by another drain — deliveries are pending-only (spec §4)
     }
     String json = new String(doc.get().payload(), StandardCharsets.UTF_8);
-    if (isForeignTypeDelivery(json)) {
-      return; // spec §5: another harness's type — untouched by this sweep
-    }
+    // spec §3: this worker's own outboxKind (outbox/<agentType>) never holds another harness
+    // type's deliveries — isolation by construction, no runtime type peek needed anymore.
     OutcomeCodec.DeliveryDocument delivery = codec.deliveryDocument(json);
     ScopeRouting.Routing routing = ScopeRouting.decode(mapper, delivery.destination());
     AgentType type = AgentType.of(routing.agentType());
@@ -311,7 +286,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
 
   private void deliverClaimedGrant(
       String key, AgentType type, AgentId id, ScopeRouting.Routing routing) {
-    Optional<Substrate.Document> fresh = store.read(OUTBOX_KIND, key);
+    Optional<Substrate.Document> fresh = store.read(outboxKind, key);
     if (fresh.isEmpty()) {
       return; // already delivered by another drain
     }
@@ -327,7 +302,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
         new CallAddress(
             routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
     ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
-    Substrate.Op deleteOp = new Substrate.Op.DeleteDocument(OUTBOX_KIND, key, currentVersion);
+    Substrate.Op deleteOp = new Substrate.Op.DeleteDocument(outboxKind, key, currentVersion);
 
     ToolCallExecutor executor = harness.toolExecutorFor(id);
     ToolExecution result =
@@ -355,7 +330,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
     // requirePlainSubstrateMemory already ran in deliverClaimedGrant, before the tool executed
     // (F1) — not repeated here.
     while (true) {
-      Optional<Substrate.Document> deliveryDoc = store.read(OUTBOX_KIND, deliveryKey);
+      Optional<Substrate.Document> deliveryDoc = store.read(outboxKind, deliveryKey);
       if (deliveryDoc.isEmpty()) {
         return; // another drain already delivered this delivery
       }
@@ -386,7 +361,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
         ops.add(new WriteDocument(STATE_KIND, id.value(), statePayload, state.version()));
       }
       ops.add(
-          new Substrate.Op.DeleteDocument(OUTBOX_KIND, deliveryKey, deliveryDoc.get().version()));
+          new Substrate.Op.DeleteDocument(outboxKind, deliveryKey, deliveryDoc.get().version()));
       try {
         store.batch(ops);
       } catch (ConflictException _) {
@@ -403,7 +378,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
       AgentType type, AgentId id, String callId, ToolOutcome outcome, String deliveryKey) {
     requirePlainSubstrateMemory(id);
     while (true) {
-      Optional<Substrate.Document> deliveryDoc = store.read(OUTBOX_KIND, deliveryKey);
+      Optional<Substrate.Document> deliveryDoc = store.read(outboxKind, deliveryKey);
       if (deliveryDoc.isEmpty()) {
         return; // another drain already delivered this delivery
       }
@@ -435,7 +410,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
         ops.add(new WriteDocument(STATE_KIND, id.value(), statePayload, state.version()));
       }
       ops.add(
-          new Substrate.Op.DeleteDocument(OUTBOX_KIND, deliveryKey, deliveryDoc.get().version()));
+          new Substrate.Op.DeleteDocument(outboxKind, deliveryKey, deliveryDoc.get().version()));
       try {
         store.batch(ops);
       } catch (ConflictException _) {
@@ -456,27 +431,15 @@ final class DeliveryWorker<O> implements AutoCloseable {
    * delivery sweep, just without a public door of its own (the reaper's public entry stays the
    * heartbeat; nothing external calls this directly).
    *
-   * <p>F2: {@code keys()} is lexicographic, and {@code "approval:"} sorts before {@code "tool:"}
-   * ({@link org.jwcarman.nessy.api.tool.CallAddress}'s own prefixes) — an approval is deadline-less
-   * by design (spec §5a: approvals wait indefinitely) and NEVER reapable, so a scope carrying 1000+
-   * pending approvals would otherwise fill every sweep's key fetch and starve every real tool
-   * deadline behind them, silently, forever (see {@link #REAP_KEY_SCAN_LIMIT}'s own javadoc for why
-   * the fetch itself had to widen, not just this loop). Skipping the {@code "approval:"} prefix
-   * before ever reading the document is still worth doing on top of that: a backlog past {@link
-   * #REAP_KEY_SCAN_LIMIT} — approvals or tool computations alike — can still starve the reaper. The
-   * real fix (a {@code Substrate} keys cursor, so a sweep can page rather than being capped) is
-   * parked; see {@code docs/concepts/durable-computation.md}'s Honest limits.
+   * <p>Approvals no longer share this kind at all (computation-identity spec §3): {@code
+   * approval/<agentType>} is its own kind, so this sweep — scanning {@link #computationKind}
+   * (execution only) — never sees one to skip, and never sees another harness type's computations
+   * either, since {@link #computationKind} is this worker's own {@code computation/<agentType>}.
+   * Isolation and the deadline-less-approval exclusion are both by construction now; neither needs
+   * a runtime filter over the keys this sweep fetches.
    */
   void reapOnce() {
-    String ownType = harness.type().name();
-    for (String key : store.keys(COMPUTATION_KIND, REAP_KEY_SCAN_LIMIT)) {
-      if (key.startsWith(APPROVAL_PREFIX)) {
-        continue; // never reapable — deadline-less by design; would otherwise starve tool deadlines
-      }
-      if (isForeignTypeComputation(key, ownType)) {
-        continue; // spec §5: another harness's type — string-prefix filter on the KEY, no read
-        // needed
-      }
+    for (String key : store.keys(computationKind, REAP_KEY_SCAN_LIMIT)) {
       try {
         reapOne(key);
       } catch (RuntimeException e) {
@@ -485,26 +448,8 @@ final class DeliveryWorker<O> implements AutoCloseable {
     }
   }
 
-  /**
-   * The computation arm of the type-filtered sweep (spec §5, new law): a {@code tool:} key's second
-   * colon-delimited segment IS its {@code agentType} ({@link
-   * org.jwcarman.nessy.api.tool.CallAddress#execution()}'s own derivation) — filtering on the KEY
-   * costs no document read at all, cheaper even than the outbox arm's minimal JSON peek. A key
-   * whose shape this filter cannot parse (fewer than two colons) falls through unfiltered, so a
-   * genuinely malformed key still reaches {@link #reapOne}'s own decode failure instead of being
-   * silently skipped here.
-   */
-  private static boolean isForeignTypeComputation(String key, String ownType) {
-    int start = key.indexOf(':') + 1;
-    int end = key.indexOf(':', start);
-    if (start == 0 || end < 0) {
-      return false;
-    }
-    return !ownType.contentEquals(key.subSequence(start, end));
-  }
-
   private void reapOne(String key) {
-    Optional<Substrate.Document> doc = store.read(COMPUTATION_KIND, key);
+    Optional<Substrate.Document> doc = store.read(computationKind, key);
     if (doc.isEmpty()) {
       return; // completed (or never existed) by the time this sweep reached it
     }
@@ -560,7 +505,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
                     pending.invocation(), pending.returnAddress(), Optional.of(bumped)))
             .getBytes(StandardCharsets.UTF_8);
     try {
-      store.write(COMPUTATION_KIND, key, payload, version);
+      store.write(computationKind, key, payload, version);
     } catch (ConflictException _) {
       return; // another worker's bump or completion won the race
     }
@@ -576,7 +521,7 @@ final class DeliveryWorker<O> implements AutoCloseable {
             .executeGrantedToolNow(routing.call(), address, pending.invocation(), Optional.empty());
     switch (result) {
       case ToolExecution.Immediate(ToolOutcome outcome) -> {
-        computations.complete(ComputationId.of(key), DurableOutcomes.toOutcome(outcome));
+        computations.complete(ComputationId.of(key), toOutcome(outcome));
         nudge(); // the result rides the normal delivery pipeline into the fold (spec §6)
       }
       case ToolExecution.Deferred(_) -> {
@@ -666,26 +611,46 @@ final class DeliveryWorker<O> implements AutoCloseable {
   /**
    * {@code Success(Decision.Allow)} is empty — a grant, not a completion; every other outcome
    * (including a denial, whose reason becomes the tool's in-band failure) maps to a {@link
-   * ToolOutcome}, mirroring {@link DurableOutcomes#toToolOutcome(Outcome)}'s own arms for the
-   * genuinely-durable-tool payloads — inlined here (rather than delegated with a fallback default)
-   * so a future {@link Outcome} variant fails this switch at compile time, the same exhaustiveness
-   * discipline {@link DurableDecisions#toAdjudication} already holds to.
+   * ToolOutcome}. {@link Outcome.Success#value()} is a data-born {@link
+   * com.fasterxml.jackson.databind.JsonNode} now (computation-identity spec §2 addendum), so this
+   * decodes it back to its domain payload through {@link #codec} before switching on it — inlined
+   * here (rather than delegated with a fallback default) so a future {@link Outcome} variant fails
+   * this switch at compile time.
    */
-  private static Optional<ToolOutcome> toToolOutcome(Outcome outcome) {
+  private Optional<ToolOutcome> toToolOutcome(Outcome outcome) {
     return switch (outcome) {
-      case Outcome.Success(Decision.Allow()) -> Optional.empty();
-      case Outcome.Success(Decision.Deny(String reason)) ->
-          Optional.of(new ToolOutcome.Failed(new ToolError(reason)));
-      case Outcome.Success(Object value) when value instanceof ToolResult result ->
-          Optional.of(new ToolOutcome.Returned(result));
-      case Outcome.Success(Object value) ->
-          Optional.of(
-              new ToolOutcome.Failed(
-                  new ToolError("unexpected durable payload: " + value.getClass().getName())));
+      case Outcome.Success(var payload) -> toToolOutcome(codec.decodeSuccess(payload));
       case Outcome.Failure(String message) ->
           Optional.of(new ToolOutcome.Failed(new ToolError(message)));
       case Outcome.Cancelled(String reason) ->
           Optional.of(new ToolOutcome.Failed(new ToolError("cancelled: " + reason)));
+    };
+  }
+
+  /**
+   * The reverse mapping: a reaper redispatch that answers immediately (spec §6, F2) rides this into
+   * {@code complete(id, outcome)} so its computation is consumed by the normal pipeline rather than
+   * orphaned — the replacement for the retired {@code DurableOutcomes.toOutcome}, now that building
+   * an {@code Outcome.Success} needs {@link #codec}'s pinned-mapper encoding.
+   */
+  private Outcome toOutcome(ToolOutcome outcome) {
+    return switch (outcome) {
+      case ToolOutcome.Returned(ToolResult result) ->
+          new Outcome.Success(codec.encodeSuccess(result));
+      case ToolOutcome.Failed(ToolError error) -> new Outcome.Failure(error.message());
+    };
+  }
+
+  private static Optional<ToolOutcome> toToolOutcome(Object value) {
+    return switch (value) {
+      case Decision.Allow _ -> Optional.empty();
+      case Decision.Deny(String reason) ->
+          Optional.of(new ToolOutcome.Failed(new ToolError(reason)));
+      case ToolResult result -> Optional.of(new ToolOutcome.Returned(result));
+      default ->
+          Optional.of(
+              new ToolOutcome.Failed(
+                  new ToolError("unexpected durable payload: " + value.getClass().getName())));
     };
   }
 }

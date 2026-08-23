@@ -50,21 +50,16 @@ import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 /**
- * The §5a honesty amendment's PARKED gap, pinned as current behavior (durable-deliveries spec §5a,
- * "The grant-delivery-pending window"): between a grant's completion batch (approval computation
- * deleted, delivery created) and a worker draining that delivery, neither the approval nor the tool
- * computation exists for the call's address — presence-means-pending leaves no residue there. A
- * staleness redrive landing in exactly that window therefore does not absorb; it re-asks the
- * approver, because the delivery is keyed randomly and is not derivable from the call's address
- * (spec: "Closing it needs a ruling — a deterministic grant-delivery key or an explicit granted
- * marker — PARKED on the decision list"). This test pins the CURRENT re-ask behavior, not the ideal
- * one: the day that parked ruling lands, the fix should flip {@code notifications} from size 2 back
- * to size 1 here, not require someone to divine what "fixed" looks like.
- *
- * <p>A wrong implementation that already closed the gap (silently absorbing the redrive) would fail
- * this test by asserting {@code notifications.hasSize(2)} against an actual size of 1 — which is
- * exactly the desired failure mode: the assertion breaks loudly and points straight at the spec
- * paragraph to update.
+ * The §5a honesty amendment's window, now shut (computation-identity spec §4): between a grant's
+ * completion batch (approval computation deleted, delivery created under the completed
+ * computation's OWN deterministic key) and a worker draining that delivery, neither the approval
+ * nor the tool computation exists for the call's address — presence-means-pending leaves no residue
+ * there — but the delivery itself now sits at a key the gate CAN derive: {@code
+ * address.approval()}, the same id the grant just completed. {@link
+ * ComputationDeferredToolCallPolicy#pendingComputation} checks that key too now (via {@link
+ * SubstrateComputations#deliveryPending}), so a staleness redrive landing squarely in the old
+ * "pending window" absorbs instead of re-asking the approver — this test proves that shut window,
+ * where the sibling {@code GrantDeliveryPendingWindowTest} used to pin the open one.
  */
 class GrantDeliveryPendingWindowTest {
 
@@ -116,15 +111,17 @@ class GrantDeliveryPendingWindowTest {
   }
 
   @Test
-  void aStalenessRedriveLandingAfterAGrantButBeforeItsDeliveryIsDrainedReAsksTheApprover() {
+  void aStalenessRedriveLandingAfterAGrantButBeforeItsDeliveryIsDrainedAbsorbsRatherThanReasking() {
     var mapper = TestMappers.plainlyPinned();
     var substrate = new InMemorySubstrate();
     var memory = new VerbatimMemory();
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-    var backend = new SubstrateComputations(substrate, mapper);
+    var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
+    var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
     var notifications = new ArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(backend, notifications::add, mapper);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(backend, mapper);
+    var approver = new ComputationApprover(approvalBackend, notifications::add, mapper);
+    var deferredPolicy =
+        new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
     var tool = new RecordingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();
@@ -166,22 +163,54 @@ class GrantDeliveryPendingWindowTest {
     assertThat(notifications).hasSize(1);
 
     // Grant it directly — the transfer batch deletes the approval computation and creates the
-    // grant's outbox delivery. No DeliveryWorker exists in this harness-only fixture, so the
-    // delivery is deliberately left undrained: this IS the pending window.
-    var address = notifications.getFirst().address();
-    backend.complete(address.approval(), DurableDecisions.granted());
-    assertThat(backend.find(address.approval())).isEmpty();
-    assertThat(backend.find(address.execution())).isEmpty(); // no tool computation either — yet
-    assertThat(substrate.keys("outbox", 10)).hasSize(1); // the grant survives only as this
+    // grant's outbox delivery UNDER THE APPROVAL COMPUTATION'S OWN ID (spec §4). No DeliveryWorker
+    // exists in this harness-only fixture, so the delivery is deliberately left undrained: this IS
+    // the pending window.
+    var address = new CallAddress("test", "test-scope", "r1", "c1");
+    approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
+    assertThat(approvalBackend.find(address.approval())).isEmpty();
+    assertThat(executionBackend.find(address.execution())).isEmpty(); // no tool computation yet
+    assertThat(substrate.keys("outbox", 10)).containsExactly(address.approval().value());
 
-    // Second redrive lands squarely inside the pending window.
+    // Second redrive lands squarely inside the pending window: the gate's pendingComputation check
+    // now finds the undrained delivery at address.approval()'s own key and absorbs — no second ask,
+    // no second tool execution.
     agent.redispatch();
     pump.pumpUntilQuiet();
 
-    // CURRENT documented behavior (spec §5a honesty amendment, parked): the redrive finds neither
-    // computation present, treats c1 as a fresh call, and re-asks. Fixing the parked gap should
-    // turn this back into hasSize(1).
-    assertThat(notifications).hasSize(2);
+    assertThat(notifications).hasSize(1); // the window is shut: no re-ask
     assertThat(tool.invocations).hasValue(0); // the tool itself never ran a second time
+    assertThat(substrate.keys("outbox", 10)).containsExactly(address.approval().value());
+  }
+
+  @Test
+  void aReplayedGrantOnTheSameApprovalIdConvergesRatherThanDuplicatingTheDelivery() {
+    var mapper = TestMappers.plainlyPinned();
+    var substrate = new InMemorySubstrate();
+    var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
+    var address = new CallAddress("test", "test-scope", "r1", "c1");
+    approvalBackend.create(
+        address.approval(),
+        new ToolInvocationId("r1", "c1"),
+        ScopeRouting.continuationFor(
+            mapper,
+            "test",
+            "test-scope",
+            "r1",
+            new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode())),
+        Optional.empty());
+
+    CompletionResult first =
+        approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
+    assertThat(substrate.keys("outbox", 10)).hasSize(1);
+
+    // a replayed completion of the SAME already-transferred id: the computation is gone, so this
+    // is the ordinary ALREADY_DONE path — still exactly one delivery, never a duplicate.
+    CompletionResult second =
+        approvalBackend.complete(address.approval(), DurableDecisions.granted(mapper));
+
+    assertThat(first).isEqualTo(CompletionResult.TRANSFERRED);
+    assertThat(second).isEqualTo(CompletionResult.ALREADY_DONE);
+    assertThat(substrate.keys("outbox", 10)).hasSize(1);
   }
 }

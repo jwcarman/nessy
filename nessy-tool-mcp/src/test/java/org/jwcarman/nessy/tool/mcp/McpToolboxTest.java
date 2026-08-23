@@ -30,9 +30,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -77,11 +76,7 @@ class McpToolboxTest {
 
   private static ToolContext contextFor(JsonNode arguments) {
     ToolCall call = new ToolCall("call-1", "echo", arguments);
-    return new ToolContext(
-        call,
-        ToolEventListener.noop(),
-        new CallAddress("test-agent", "test-scope", "r1", call.id()),
-        new ToolInvocationId("r1", call.id()));
+    return new ToolContext(call, ToolEventListener.noop(), ComputationId.of("execution-id"));
   }
 
   private static ToolResult readyResult(Awaited<ToolResult> awaited) {

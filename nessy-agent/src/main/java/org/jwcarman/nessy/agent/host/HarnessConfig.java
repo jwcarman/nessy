@@ -28,6 +28,7 @@ import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ComputationApprover;
 import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.Harness;
+import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
@@ -193,17 +194,27 @@ public final class HarnessConfig<O> {
   }
 
   /**
-   * The shared computation store behind both desks; default a fresh {@link SubstrateComputations}
-   * over this builder's {@link #substrate(Substrate)}. There is no adapter seam above this — the
-   * {@link Substrate} it rides IS the seam a host swaps (durable-dissolves spec §2); override this
-   * setter only to share one {@link SubstrateComputations} instance across builders, or to hand it
-   * a different {@link Substrate}/{@link ObjectMapper} pairing than this config's own.
+   * The shared EXECUTION-kind computation store {@link org.jwcarman.nessy.agent.CompletionDesk} and
+   * {@link org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy} ride ({@code
+   * computation/&lt;agentType&gt;}, computation-identity spec §3); default a fresh {@link
+   * SubstrateComputations} over this builder's {@link #substrate(Substrate)} and {@link #type
+   * (String)}. There is no adapter seam above this — the {@link Substrate} it rides IS the seam a
+   * host swaps (durable-dissolves spec §2); override this setter only to share one {@link
+   * SubstrateComputations} instance across builders (e.g. simulating a runtime restart over the
+   * same substrate and type — kind-scoping makes two independently constructed instances
+   * functionally identical as long as they share both), or to hand it a different {@link
+   * Substrate}/{@link ObjectMapper} pairing than this config's own. The APPROVAL-kind store ({@code
+   * approval/&lt;agentType&gt;}) {@link org.jwcarman.nessy.agent.ApprovalDesk} and {@link
+   * org.jwcarman.nessy.agent.ComputationApprover} ride is always derived fresh from this same
+   * substrate/mapper/type — there is no override seam for it, since sharing only ever mattered for
+   * the substrate + kind strings, not Java object identity, and those are already shared by
+   * construction.
    *
    * <p><b>Integration contract:</b> the {@code DeliveryWorker} reads completions from this
-   * builder's {@link #substrate(Substrate)} — specifically, {@code kind=outbox} delivery documents
-   * ({@code {destination, outcome}}, spec §4) — never from the backend directly. Whatever {@link
-   * Substrate} this backend is constructed over MUST be the same one this builder uses, or its
-   * completions never reach a parked scope.
+   * builder's {@link #substrate(Substrate)} — specifically, {@code outbox/&lt;agentType&gt;}
+   * delivery documents ({@code {destination, outcome}}, spec §4) — never from the backend directly.
+   * Whatever {@link Substrate} this backend is constructed over MUST be the same one this builder
+   * uses, or its completions never reach a parked scope.
    */
   public HarnessConfig<O> backend(SubstrateComputations backend) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
@@ -341,8 +352,15 @@ public final class HarnessConfig<O> {
         id ->
             new SubstrateBacklog<>(
                 effectiveSubstrate, id, backlogCapacity, effectiveBacklogCodec, pinned);
-    SubstrateComputations effectiveBackend =
-        backend != null ? backend : new SubstrateComputations(effectiveSubstrate, pinned);
+    String executionKind = Kinds.computation(agentType);
+    String approvalKind = Kinds.approval(agentType);
+    String outboxKind = Kinds.outbox(agentType);
+    SubstrateComputations effectiveExecutionBackend =
+        backend != null
+            ? backend
+            : new SubstrateComputations(effectiveSubstrate, pinned, executionKind, outboxKind);
+    SubstrateComputations effectiveApprovalBackend =
+        new SubstrateComputations(effectiveSubstrate, pinned, approvalKind, outboxKind);
     AgentObserver effectiveAgentObserver =
         agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
     // Fix round 1 M1: snapshot these three fields into locals so the two executor factory
@@ -380,12 +398,15 @@ public final class HarnessConfig<O> {
                     scopeId,
                     effectiveTurnObserver,
                     exec,
-                    new ComputationDeferredToolCallPolicy(effectiveBackend, pinned),
-                    new ComputationApprover(effectiveBackend, effectiveApprovalNotifier, pinned),
+                    new ComputationDeferredToolCallPolicy(
+                        effectiveApprovalBackend, effectiveExecutionBackend, pinned),
+                    new ComputationApprover(
+                        effectiveApprovalBackend, effectiveApprovalNotifier, pinned),
                     pinned),
             effectiveSubstrate,
             pinned,
-            effectiveBackend);
+            effectiveApprovalBackend,
+            effectiveExecutionBackend);
 
     return harness;
   }

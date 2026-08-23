@@ -133,10 +133,16 @@ class GrantRaceTest {
     var substrate = new InMemorySubstrate();
     var memory = new SubstrateMemory(substrate, "test-scope", mapper);
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-    var backend = new SubstrateComputations(substrate, mapper);
+    var testType = AgentType.of("test");
+    var outboxKind = Kinds.outbox(testType);
+    var approvalBackend =
+        new SubstrateComputations(substrate, mapper, Kinds.approval(testType), outboxKind);
+    var executionBackend =
+        new SubstrateComputations(substrate, mapper, Kinds.computation(testType), outboxKind);
     var notifications = new CopyOnWriteArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(backend, notifications::add, mapper);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(backend, mapper);
+    var approver = new ComputationApprover(approvalBackend, notifications::add, mapper);
+    var deferredPolicy =
+        new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
     var tool = new CountingTool();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
     var pump = new PumpedExecutor();
@@ -188,7 +194,7 @@ class GrantRaceTest {
       ApprovalRequest request = notifications.get(i);
 
       // Grant it: the ownership transfer creates the outbox delivery both racers will drain.
-      backend.complete(request.address().approval(), DurableDecisions.granted());
+      approvalBackend.complete(request.id(), DurableDecisions.granted(mapper));
 
       ExecutorService pool = Executors.newFixedThreadPool(2);
       CountDownLatch ready = new CountDownLatch(2);

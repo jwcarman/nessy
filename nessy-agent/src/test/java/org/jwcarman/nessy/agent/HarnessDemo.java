@@ -107,11 +107,17 @@ class HarnessDemo {
     // ---- the harness: the recipe, id-free — and one bind stamps this scope's handles ----
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var lifeSupportMapper = TestMappers.plainlyPinned();
-    SubstrateComputations backend =
-        new SubstrateComputations(lifeSupportSubstrate, lifeSupportMapper);
+    var demoType = AgentType.of("demo");
+    var demoOutboxKind = Kinds.outbox(demoType);
+    SubstrateComputations approvalBackend =
+        new SubstrateComputations(
+            lifeSupportSubstrate, lifeSupportMapper, Kinds.approval(demoType), demoOutboxKind);
+    SubstrateComputations executionBackend =
+        new SubstrateComputations(
+            lifeSupportSubstrate, lifeSupportMapper, Kinds.computation(demoType), demoOutboxKind);
     var harness =
         Harness.<String>of(
-            AgentType.of("demo"),
+            demoType,
             text -> List.of(new TextBlock(text)),
             narrator,
             false,
@@ -123,7 +129,8 @@ class HarnessDemo {
             binding -> tools,
             lifeSupportSubstrate,
             lifeSupportMapper,
-            backend);
+            approvalBackend,
+            executionBackend);
     var agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("demo-scope")));
 
     // ---- script the world ----

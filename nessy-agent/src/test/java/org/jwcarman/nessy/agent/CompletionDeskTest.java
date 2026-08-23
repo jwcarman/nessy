@@ -21,9 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
@@ -31,7 +29,8 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 class CompletionDeskTest {
 
   private final SubstrateComputations backend =
-      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
+      new SubstrateComputations(
+          new InMemorySubstrate(), TestMappers.plainlyPinned(), "computation", "outbox");
   private int nudges;
   private final CompletionDesk desk = new CompletionDesk(backend, () -> nudges++);
 

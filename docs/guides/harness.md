@@ -175,21 +175,22 @@ var harness =
                 .approvalNotifier(requests::add));
 
 harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
-// ... turn runs, the tool call parks on approval:ops:prod-eu:<responseId>:c1 ...
+// ... turn runs, the tool call parks in the approval/ops kind ...
 
 ApprovalRequest request = requests.getFirst();
-// request.address().approval() is the computation id
+// request.id() is the ticket — the approval's own opaque ComputationId
 // request.context().action() is "restart prod-eu", from the ActionContributor
 
-harness.approvals().approve(request.address().approval());
+harness.approvals().approve(request.id());
 // ... any node, any time later; the call dispatches and the turn completes ...
 ```
 
-The arc: **park** — the gate sees `RequireApproval`, creates the
-`approval:` computation whose continuation carries the tool call itself
-(routing, invocation id, call name and arguments), and suspends;
-**notifier** — `approvalNotifier` fires once with the `ApprovalRequest`,
-carrying the computation id and the assembled `AuthzContext` (action,
+The arc: **park** — the gate sees `RequireApproval`, creates the approval
+computation (kind `approval/<agentType>`) whose continuation carries the
+tool call itself (routing, invocation id, call name and arguments), and
+suspends; **notifier** — `approvalNotifier` fires once with the
+`ApprovalRequest`, carrying the ticket (`id`), the plain-string
+`agentType`/`agentId` for display, and the assembled `AuthzContext` (action,
 declared intent, risk, principal — whatever the grant's enrichers
 deposited); **desk** — `harness.approvals().approve(...)` or `.deny(...,
 reason)` completes the computation with a `Decision`, which is itself the

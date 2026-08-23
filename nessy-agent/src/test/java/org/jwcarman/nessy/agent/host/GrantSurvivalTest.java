@@ -24,7 +24,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.DurableDecisions;
+import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -92,6 +95,18 @@ class GrantSurvivalTest {
   private static final ActionContributor<RestartInput, String> RESTART_ACTION =
       input -> "restart " + input.target();
 
+  /**
+   * {@code ApprovalRequest} no longer carries the full {@code CallAddress} (the whittle ruling) —
+   * this test white-box-rebuilds it from the request's display fields plus {@code responseId} to
+   * derive the execution id the eventual tool computation lands under.
+   */
+  private static org.jwcarman.nessy.api.tool.ComputationId toolComputationFor(
+      ApprovalRequest request) {
+    return new CallAddress(
+            request.agentType(), request.agentId(), request.responseId(), request.call().id())
+        .execution();
+  }
+
   @Test
   @Timeout(30)
   void aGrantWrittenBeforeItsHostsWorkerEverRunsSurvivesToAFreshHostsWorker()
@@ -129,15 +144,21 @@ class GrantSurvivalTest {
       // Grant it by writing DIRECTLY to the substrate, bypassing harnessA.approvals() — which
       // would have nudged harness A's own worker. Harness A's heartbeat is stopped (shutdown()
       // below) before it ever has a chance to run.
-      var backendOverSameSubstrate = new SubstrateComputations(substrate, mapper);
-      backendOverSameSubstrate.complete(firstAsk.address().approval(), DurableDecisions.granted());
+      var backendOverSameSubstrate =
+          new SubstrateComputations(
+              substrate,
+              mapper,
+              Kinds.approval(AgentType.of("ops")),
+              Kinds.outbox(AgentType.of("ops")));
+      backendOverSameSubstrate.complete(firstAsk.id(), DurableDecisions.granted(mapper));
     } finally {
       harnessA.shutdown();
     }
     // harnessA's worker is now quiesced, having never run even once since the grant. The grant
     // delivery exists ONLY as a document in `substrate` at this point.
 
-    assertThat(substrate.keys("outbox", 10)).hasSize(1); // the grant survives as durable state
+    assertThat(substrate.keys(Kinds.outbox(AgentType.of("ops")), 10))
+        .hasSize(1); // the grant survives as durable state
 
     var pumpB = new PumpedExecutor();
     var providerB =
@@ -161,12 +182,13 @@ class GrantSurvivalTest {
       // No new observation, no new approval — harness B knows nothing of harness A. Its own
       // heartbeat (the recovery net, spec §5) is the only thing that ever touches this grant.
       long deadline = System.currentTimeMillis() + 20_000;
-      while (!substrate.keys("outbox", 10).isEmpty() && System.currentTimeMillis() < deadline) {
+      while (!substrate.keys(Kinds.outbox(AgentType.of("ops")), 10).isEmpty()
+          && System.currentTimeMillis() < deadline) {
         Thread.sleep(50);
         pumpB.pumpUntilQuiet();
       }
 
-      assertThat(substrate.keys("outbox", 10)).isEmpty();
+      assertThat(substrate.keys(Kinds.outbox(AgentType.of("ops")), 10)).isEmpty();
       assertThat(requestsB).isEmpty(); // no re-ask on harness B either
     } finally {
       harnessB.shutdown();
@@ -254,8 +276,13 @@ class GrantSurvivalTest {
       assertThat(requestsA).hasSize(1);
       firstAsk = requestsA.getFirst();
 
-      var backendOverSameSubstrate = new SubstrateComputations(substrate, mapper);
-      backendOverSameSubstrate.complete(firstAsk.address().approval(), DurableDecisions.granted());
+      var backendOverSameSubstrate =
+          new SubstrateComputations(
+              substrate,
+              mapper,
+              Kinds.approval(AgentType.of("ops")),
+              Kinds.outbox(AgentType.of("ops")));
+      backendOverSameSubstrate.complete(firstAsk.id(), DurableDecisions.granted(mapper));
     } finally {
       harnessA.shutdown();
     }
@@ -265,7 +292,7 @@ class GrantSurvivalTest {
     var providerB =
         new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
     var requestsB = new CopyOnWriteArrayList<ApprovalRequest>();
-    var toolComputation = firstAsk.address().execution();
+    var toolComputation = toolComputationFor(firstAsk);
 
     var harnessB =
         Nessy.harness(
@@ -287,13 +314,17 @@ class GrantSurvivalTest {
       // delete delivery — one batch), and dispatches the tool, which defers again — durably, this
       // time.
       long transferDeadline = System.currentTimeMillis() + 20_000;
-      while (substrate.read("computation", toolComputation.value()).isEmpty()
+      while (substrate
+              .read(Kinds.computation(AgentType.of("ops")), toolComputation.value())
+              .isEmpty()
           && System.currentTimeMillis() < transferDeadline) {
         Thread.sleep(50);
         pumpB.pumpUntilQuiet();
       }
-      assertThat(substrate.read("computation", toolComputation.value())).isPresent();
-      assertThat(substrate.keys("outbox", 10)).isEmpty(); // the grant delivery is gone
+      assertThat(substrate.read(Kinds.computation(AgentType.of("ops")), toolComputation.value()))
+          .isPresent();
+      assertThat(substrate.keys(Kinds.outbox(AgentType.of("ops")), 10))
+          .isEmpty(); // the grant delivery is gone
       assertThat(requestsB).isEmpty(); // no re-ask
 
       // The eventual external answer arrives through the normal completion door.

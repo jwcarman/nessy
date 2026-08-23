@@ -29,10 +29,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.ComputationApprover;
 import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.SubstrateComputations;
+import org.jwcarman.nessy.agent.ToolInvocationId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
@@ -40,11 +42,9 @@ import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.tool.ActionContributor;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
+import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
@@ -468,8 +468,11 @@ class RegistryToolCallExecutorTest {
     var finished = runWithApprover(registry, call, new RecordingTurnObserver(), recordingApprover);
     assertThat(requests).hasSize(1);
     var request = requests.getFirst();
-    assertThat(request.address())
-        .isEqualTo(new CallAddress("cli", "cli", RESPONSE_ID.value(), "c1"));
+    assertThat(request.id())
+        .isEqualTo(new CallAddress("cli", "cli", RESPONSE_ID.value(), "c1").approval());
+    assertThat(request.agentType()).isEqualTo("cli");
+    assertThat(request.agentId()).isEqualTo("cli");
+    assertThat(request.responseId()).isEqualTo(RESPONSE_ID.value());
     assertThat(request.context().action()).contains("EchoInput[value=hi]");
     assertThat(request.context().agentName()).isEqualTo("cli");
     assertThat(request.context().principal()).contains("ada");
@@ -561,10 +564,13 @@ class RegistryToolCallExecutorTest {
   @Test
   void exactlyOneApproverNotificationSurvivesAStalenessRedriveAfterTheGrant() {
     var mapper = TestMappers.plainlyPinned();
-    var backend = new SubstrateComputations(new InMemorySubstrate(), mapper);
+    var substrate = new InMemorySubstrate();
+    var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
+    var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
     var notifications = new ArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(backend, notifications::add, mapper);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(backend, mapper);
+    var approver = new ComputationApprover(approvalBackend, notifications::add, mapper);
+    var deferredPolicy =
+        new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
     var registry =
         ToolRegistry.of(ToolGrant.grant(new ParkingDurableTool(), UsagePolicy.requireApproval()));
     var call =
@@ -591,12 +597,15 @@ class RegistryToolCallExecutorTest {
     assertThat(notifications).hasSize(1);
 
     // the grant already ran (elsewhere, via the grant arm) and turned the call into a durable
-    // tool computation — simulated directly, since this test is about the approver's count, not
-    // the grant arm's own mechanics (covered by GrantSurvivalTest and AbsorptionTest).
-    backend.create(
-        address.execution(),
+    // tool computation — simulated through the real policy's own onDeferred (the grant arm's own
+    // mechanics are covered by GrantSurvivalTest and AbsorptionTest; this test is about the
+    // approver's count), so no raw continuation construction is needed here.
+    deferredPolicy.onDeferred(
+        call,
+        address,
         new ToolInvocationId(RESPONSE_ID.value(), "c1"),
-        new Continuation("SCOPE_RESUME", "{}"),
+        RetrySemantics.NON_RETRYABLE,
+        Optional.empty(),
         Optional.empty());
 
     // a staleness redrive lands after the grant: the gate absorbs it via pendingComputation, before

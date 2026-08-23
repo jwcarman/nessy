@@ -104,7 +104,12 @@ class HarnessTest {
       Function<AgentId, ToolCallExecutor> toolExecutorFactory) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    SubstrateComputations backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
+    String outboxKind = Kinds.outbox(type);
+    SubstrateComputations approvalBackend =
+        new SubstrateComputations(lifeSupportSubstrate, mapper, Kinds.approval(type), outboxKind);
+    SubstrateComputations executionBackend =
+        new SubstrateComputations(
+            lifeSupportSubstrate, mapper, Kinds.computation(type), outboxKind);
     return Harness.of(
         type,
         renderer,
@@ -118,7 +123,8 @@ class HarnessTest {
         toolExecutorFactory,
         lifeSupportSubstrate,
         mapper,
-        backend);
+        approvalBackend,
+        executionBackend);
   }
 
   @Nested

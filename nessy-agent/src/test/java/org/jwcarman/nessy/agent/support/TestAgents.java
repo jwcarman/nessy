@@ -20,6 +20,7 @@ import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
+import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
@@ -159,7 +160,12 @@ public final class TestAgents {
       StalenessPolicy stalenessPolicy) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
-    SubstrateComputations backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
+    String outboxKind = Kinds.outbox(type);
+    SubstrateComputations approvalBackend =
+        new SubstrateComputations(lifeSupportSubstrate, mapper, Kinds.approval(type), outboxKind);
+    SubstrateComputations executionBackend =
+        new SubstrateComputations(
+            lifeSupportSubstrate, mapper, Kinds.computation(type), outboxKind);
     Harness<O> harness =
         Harness.of(
             type,
@@ -174,7 +180,8 @@ public final class TestAgents {
             binding -> tools,
             lifeSupportSubstrate,
             mapper,
-            backend);
+            approvalBackend,
+            executionBackend);
     HarnessTeardown.track(harness);
     return harness;
   }

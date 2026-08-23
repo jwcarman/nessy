@@ -17,7 +17,7 @@ package org.jwcarman.nessy.agent.spi;
 
 import java.util.Objects;
 import org.jwcarman.nessy.agent.ToolOutcome;
-import org.jwcarman.nessy.api.computation.ComputationId;
+import org.jwcarman.nessy.api.tool.ComputationId;
 
 /**
  * What executing a tool came to: an outcome in hand, or a reference to the durable computation that

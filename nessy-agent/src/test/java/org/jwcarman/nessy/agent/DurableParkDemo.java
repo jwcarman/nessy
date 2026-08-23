@@ -40,7 +40,6 @@ import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.computation.ComputationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolResultBlock;
@@ -104,9 +103,15 @@ class DurableParkDemo {
     var store =
         new SubstrateAgentStateStore(
             substrate, "demo", Clock.systemUTC(), TestMappers.plainlyPinned());
-    var backend = new SubstrateComputations(substrate, TestMappers.plainlyPinned());
-    var narrator = new RecordingTurnObserver();
     var type = AgentType.of("approver");
+    var outboxKind = Kinds.outbox(type);
+    var backend =
+        new SubstrateComputations(
+            substrate, TestMappers.plainlyPinned(), Kinds.computation(type), outboxKind);
+    var approvalBackend =
+        new SubstrateComputations(
+            substrate, TestMappers.plainlyPinned(), Kinds.approval(type), outboxKind);
+    var narrator = new RecordingTurnObserver();
     var id = AgentId.of("demo");
     var registry = ToolRegistry.of(new RiskyTool());
 
@@ -155,7 +160,8 @@ class DurableParkDemo {
                     id,
                     narrator,
                     pump,
-                    new ComputationDeferredToolCallPolicy(backend, TestMappers.plainlyPinned()),
+                    new ComputationDeferredToolCallPolicy(
+                        approvalBackend, backend, TestMappers.plainlyPinned()),
                     TestMappers.plainlyPinned()),
                 AgentObserver.noop(),
                 false,
@@ -181,7 +187,8 @@ class DurableParkDemo {
                 id,
                 narrator,
                 pump,
-                new ComputationDeferredToolCallPolicy(backend, TestMappers.plainlyPinned()),
+                new ComputationDeferredToolCallPolicy(
+                    approvalBackend, backend, TestMappers.plainlyPinned()),
                 TestMappers.plainlyPinned()),
             AgentObserver.noop(),
             false,
@@ -197,7 +204,8 @@ class DurableParkDemo {
     System.out.println("phase after park: " + store.load().phase().getClass().getSimpleName());
     assertThat(store.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
     var parkedResponseId = ((Phase.AwaitingTools) store.load().phase()).responseId();
-    var computation = ComputationId.of("tool:approver:demo:" + parkedResponseId.value() + ":c1");
+    var computation =
+        new CallAddress("approver", "demo", parkedResponseId.value(), "c1").execution();
     assertThat(backend.find(computation)).isPresent();
     // only the observation is committed; the assistant tool-use turn is held back
     assertThat(memory.recall().messages())

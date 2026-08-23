@@ -43,13 +43,9 @@ import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.Outcome;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -57,11 +53,15 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The type-filtered sweep (harness-first spec §5, new law): two harnesses of DIFFERENT {@link
- * AgentType}s sharing ONE substrate's outbox and computation keyspaces. Each worker's drain and
- * reap sweep must skip every record whose type is not its own harness's, before decoding further —
- * so a delivery or computation belonging to the OTHER type is left completely untouched (still
- * present, unmodified) by a sweep that isn't its own.
+ * Isolation by construction (computation-identity spec §3, superseding harness-first spec §5's
+ * runtime type-filtered sweep): two harnesses of DIFFERENT {@link AgentType}s sharing one substrate
+ * never share a kind — {@code outbox/alpha} and {@code outbox/beta} are different keyspaces, {@code
+ * computation/alpha} and {@code computation/beta} likewise — so a worker's drain and reap sweep
+ * simply never SEES the other type's records; there is no runtime filter left to prove. The three
+ * observables below are unchanged from the old type-filtered-sweep law: a foreign record's survival
+ * (byte-compare or presence), that only the record's own scope's memory grows, and that only the
+ * record's own executor fires — this test proves those same guarantees hold now that isolation is
+ * structural rather than a runtime check.
  */
 class TypeFilteredSweepTest {
 
@@ -106,7 +106,7 @@ class TypeFilteredSweepTest {
     }
   }
 
-  /** A {@code executeGrantedToolNow} double that counts its own invocations (spec §5's ask). */
+  /** A {@code executeGrantedToolNow} double that counts its own invocations. */
   private static final class CountingGrantedToolExecutor implements ToolCallExecutor {
     private final AtomicInteger invocations = new AtomicInteger();
 
@@ -157,12 +157,12 @@ class TypeFilteredSweepTest {
     var codec = new OutcomeCodec(mapper);
     Continuation destination =
         ScopeRouting.continuationFor(mapper, type.name(), id.value(), "response-1", CALL);
-    var outcome = new Outcome.Success(ToolResult.ok("restarted"));
+    var outcome = new Outcome.Success(codec.encodeSuccess(ToolResult.ok("restarted")));
     byte[] payload =
         codec
             .toJson(new OutcomeCodec.DeliveryDocument(destination, outcome))
             .getBytes(StandardCharsets.UTF_8);
-    store.write("outbox", key, payload, 0);
+    store.write(Kinds.outbox(type), key, payload, 0);
   }
 
   @Nested
@@ -187,16 +187,23 @@ class TypeFilteredSweepTest {
       var alphaWorker = workerOver(substrate, mapper, ALPHA, alphaId);
       var betaWorker = workerOver(substrate, mapper, BETA, betaId);
 
-      // alpha's sweep delivers only its own record — beta's is still sitting there, untouched
+      // alpha's kind (outbox/alpha) is a keyspace beta's delivery (outbox/beta) never enters —
+      // alpha's sweep delivers its own record; beta's is untouched because alpha's worker never
+      // even scans beta's kind
+      byte[] betaBefore =
+          substrate.read(Kinds.outbox(BETA), "beta-delivery").orElseThrow().payload();
       alphaWorker.nudge();
-      assertThat(substrate.keys("outbox", 10)).containsExactly("beta-delivery");
+      assertThat(substrate.keys(Kinds.outbox(ALPHA), 10)).isEmpty();
+      assertThat(substrate.keys(Kinds.outbox(BETA), 10)).containsExactly("beta-delivery");
+      assertThat(substrate.read(Kinds.outbox(BETA), "beta-delivery").orElseThrow().payload())
+          .isEqualTo(betaBefore);
       assertThat(substrate.entries("memory", alphaId.value(), 1)).isNotEmpty();
       assertThat(substrate.entries("memory", betaId.value(), 1)).isEmpty();
 
-      // beta's own sweep now delivers the one record left — proving it was never touched, not
-      // merely deferred
+      // beta's own sweep now delivers its own record — proving it was never touched, not merely
+      // deferred
       betaWorker.nudge();
-      assertThat(substrate.keys("outbox", 10)).isEmpty();
+      assertThat(substrate.keys(Kinds.outbox(BETA), 10)).isEmpty();
       assertThat(substrate.entries("memory", betaId.value(), 1)).isNotEmpty();
     }
   }
@@ -223,16 +230,18 @@ class TypeFilteredSweepTest {
       var alphaWorker = reaperWorkerOver(substrate, mapper, ALPHA, alphaId, alphaExecutor);
       var betaWorker = reaperWorkerOver(substrate, mapper, BETA, betaId, betaExecutor);
 
-      // alpha's reap sweep touches only its own computation: its counting executor fires once,
-      // beta's never fires, and beta's computation document is left exactly as it was
-      Optional<Substrate.Document> betaBefore = substrate.read("computation", betaKey.value());
+      // alpha's kind (computation/alpha) never holds beta's computation (computation/beta) — the
+      // reap sweep touches only its own kind: alpha's counting executor fires once, beta's never
+      // fires, and beta's computation document is left byte-for-byte as it was
+      Optional<Substrate.Document> betaBefore =
+          substrate.read(Kinds.computation(BETA), betaKey.value());
       alphaWorker.reapOnce();
       assertThat(alphaExecutor.invocations).hasValue(1);
       assertThat(betaExecutor.invocations).hasValue(0);
-      assertThat(substrate.read("computation", betaKey.value())).isEqualTo(betaBefore);
+      assertThat(substrate.read(Kinds.computation(BETA), betaKey.value())).isEqualTo(betaBefore);
 
       // beta's own sweep now reaps the one computation left untouched, proving it was never even
-      // peeked at by alpha's sweep above
+      // scanned by alpha's sweep above
       betaWorker.reapOnce();
       assertThat(betaExecutor.invocations).hasValue(1);
       assertThat(alphaExecutor.invocations).hasValue(1); // unchanged by beta's own sweep
@@ -280,7 +289,7 @@ class TypeFilteredSweepTest {
           new OutcomeCodec.PendingDocument(
               invocation, returnAddress, Optional.of(Instant.now().minusSeconds(1)));
       byte[] payload = codec.toJson(pending).getBytes(StandardCharsets.UTF_8);
-      store.write("computation", key, payload, 0);
+      store.write(Kinds.computation(type), key, payload, 0);
     }
   }
 
@@ -288,11 +297,11 @@ class TypeFilteredSweepTest {
   class AgentTypeValidation {
 
     /**
-     * F1 (blocking, correctness): the type threads straight into colon-delimited computation keys
-     * ({@code tool:<agentType>:<agentId>:...}) — a colon in the type would make {@link
-     * DeliveryWorker}'s reaper key-segment filter misparse the key and silently skip this harness's
-     * own computations forever. Rejecting it at construction, with a message naming the offending
-     * value, catches the mistake at the door instead of as a silent reaping failure downstream.
+     * Kind-name hygiene (computation-identity spec §3): the type threads into kind strings ({@code
+     * computation/<agentType>}, {@code approval/<agentType>}, {@code outbox/<agentType>}) — nothing
+     * parses those apart anymore, but a colon in the type would still make a kind string look like
+     * it carries a delimiter it does not. Rejecting it at construction, with a message naming the
+     * offending value, catches the mistake at the door.
      */
     @Test
     void anAgentTypeNameContainingAColonIsRejectedWithATeachingMessage() {

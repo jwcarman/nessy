@@ -13,14 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.computation;
+package org.jwcarman.nessy.agent;
 
 /**
  * The logical identity of one tool invocation (durable-deliveries spec §2): a model response paired
  * with the provider's call id inside that response. Stable across every redispatch and replay —
  * unlike a bare provider {@code ToolCall.id()}, which is not contractually unique over an agent's
  * lifetime, pairing it with the {@code responseId} that minted it closes that hole. Pure strings,
- * zero dependencies, matching {@link Continuation}'s style.
+ * zero dependencies.
+ *
+ * <p>Lives in {@code nessy-agent}, public (computation-identity spec §4 addendum): {@code
+ * ToolContext}'s last public forcer is gone — it now carries only the opaque execution {@link
+ * org.jwcarman.nessy.api.tool.ComputationId} — so this type no longer needs {@code nessy-api}. It
+ * still needs public visibility here because the durable-wiring SPI ({@link
+ * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#onDeferred}, {@link
+ * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow}), both in the cross-package
+ * {@code agent.spi}, still carry it across the package line.
  */
 public record ToolInvocationId(String responseId, String callId) {
 

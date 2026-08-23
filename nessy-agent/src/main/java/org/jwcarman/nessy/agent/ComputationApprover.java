@@ -19,38 +19,37 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.CreateResult;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.approval.Approver;
 
 /**
- * The computation-backed adjudicator (durable-deliveries spec §3, §5, §5a): create carries the
- * continuation, so the return address is durable before the call ever suspends. There is no
- * terminal residue to read back here (ruling 6, reversed) — every ask suspends; the decision,
- * whatever it is, arrives through the delivery worker, never through a second read of this
- * computation.
+ * The computation-backed adjudicator (durable-deliveries spec §3, §5, §5a; computation-identity
+ * spec §4 addendum): create carries the continuation, so the return address is durable before the
+ * call ever suspends. There is no terminal residue to read back here (ruling 6, reversed) — every
+ * ask suspends; the decision, whatever it is, arrives through the delivery worker, never through a
+ * second read of this computation.
+ *
+ * <p>{@code request.id()} is already the approval's own deterministic {@link ComputationId} — the
+ * caller (the gate) derived it before ever building the {@link ApprovalRequest}, since {@link
+ * CallAddress} no longer travels on the request (the whittle ruling). {@code request.responseId()}
+ * — the one addition beyond the request's display pair ({@code agentType}/{@code agentId}) — is
+ * what still lets this class build a resumable {@code ToolInvocationId} and continuation: there is
+ * no other channel back to the committed model response once the full address stops crossing this
+ * SPI boundary.
  *
  * <p>Two redrives land differently, and both are absorbed without a duplicate notification. WHILE
  * STILL PENDING: create-then-suspend is idempotent (submit-once) — a re-driven ask re-registers the
  * same continuation at the same deterministic id and never re-notifies, because {@code create} on
  * an already-present document is a CAS conflict, not a create. AFTER A GRANT: the grant arm (spec
  * §5a) never re-enters this class at all — it dispatches the call directly from the grant's own
- * continuation, past the gate. The one remaining exposure was a STALENESS redrive landing after the
- * grant, when this approval id has already been transferred to its outbox delivery and consumed
- * (presence-means-pending leaves no residue to read here) — that redrive used to reach this class,
- * find absence, and treat it as a fresh ask, re-creating and re-notifying. It no longer reaches
- * here: {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s gate checks {@link
- * org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy#pendingComputation} on the TOOL computation
- * id first (a grant that ran to a durable tool leaves that id present) and absorbs there, before
- * this approver — or the tool — ever runs again.
- *
- * <p>{@code invocation}'s {@code responseId} component is the real, committed {@code
- * ModelResponseId} — read off the address the gate stamps before the approval is ever asked
- * (durable-deliveries spec §2), not a provisional stand-in.
+ * continuation, past the gate. A STALENESS redrive landing after the grant but before its delivery
+ * drains is absorbed at the gate itself — {@link
+ * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s {@link
+ * ComputationDeferredToolCallPolicy#pendingComputation} checks both the computation kinds and the
+ * deterministic delivery key (computation-identity spec §4) before this approver, or the tool, ever
+ * runs again.
  */
 public final class ComputationApprover implements Approver {
 
@@ -67,12 +66,11 @@ public final class ComputationApprover implements Approver {
 
   @Override
   public Adjudication adjudicate(ApprovalRequest request) {
-    var address = request.address();
-    ComputationId computation = address.approval();
-    ToolInvocationId invocation = new ToolInvocationId(address.responseId(), request.call().id());
+    ComputationId computation = request.id();
+    ToolInvocationId invocation = new ToolInvocationId(request.responseId(), request.call().id());
     Continuation continuation =
         ScopeRouting.continuationFor(
-            mapper, address.agentType(), address.agentId(), address.responseId(), request.call());
+            mapper, request.agentType(), request.agentId(), request.responseId(), request.call());
     CreateResult created = backend.create(computation, invocation, continuation, Optional.empty());
     if (created.created()) {
       notifier.accept(request);

@@ -25,6 +25,37 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **Opaque computation identity, kind-scoped keyspaces, replayable delivery.**
+  `CallAddress.approval()`/`.execution()` derive a `ComputationId` by
+  digesting — SHA-256 over a length-prefixed encoding of `(purpose,
+  agentType, agentId, responseId, callId)`, lowercase hex — rather than
+  concatenating a colon-delimited string; the id carries no extractable
+  structure and nothing anywhere parses one back apart. Execution
+  computations, approval computations, and the outbox each get a
+  per-agent-type kind (`computation/<agentType>`, `approval/<agentType>`,
+  `outbox/<agentType>`) instead of one shared kind distinguished by a key
+  prefix, so isolation between agent types is by construction — the
+  type-filtered runtime sweep (`isForeignTypeComputation`, the `approval:`
+  key-prefix skip, the outbox minimal-peek foreign-type filter) is retired
+  along with it. A completion's delivery is now keyed by the completed
+  computation's own id, not a fresh random key; a replayed creation under
+  that key converges instead of duplicating, which closes the
+  grant-delivery-pending window a staleness redrive used to fall through
+  (`ComputationDeferredToolCallPolicy#pendingComputation` now also checks
+  for a pending delivery at that deterministic key). `ApprovalRequest`
+  (`nessy-spi`) carries the approval `ComputationId` directly (`id`) plus
+  plain `agentType`/`agentId`/`responseId` strings for display and
+  continuation-building, rather than the full `CallAddress`; `ToolContext`
+  (`nessy-api`) exposes a tool's stable idempotency key as a single opaque
+  `invocation` (`ComputationId`) rather than a structured address pair. The
+  `api.computation` package is retired: `ComputationId` moved beside
+  `CallAddress` (now in `nessy-agent`, alongside `ToolInvocationId`); the
+  rest of its residents (`Continuation`, `Outcome`, `PendingComputation`,
+  `CreateResult`, `CompletionResult`) sank into `nessy-agent`, package-private
+  except where a desk's signature forces otherwise. `Outcome.Success`
+  carries its payload data-born (an already-encoded `JsonNode`) rather than
+  a raw `Object`, since a `ToolResult` and a `Decision` both flow through it
+  and neither alone is the whole vocabulary.
 - **The front door.** `Nessy.harness(HarnessCustomizer)` builds a `Harness` —
   the infrastructure an application shares across every agent it builds:
   model provider, conversation store family, observation registry, object

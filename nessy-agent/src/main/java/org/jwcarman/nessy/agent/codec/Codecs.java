@@ -109,6 +109,15 @@ public final class Codecs {
     }
   }
 
+  /**
+   * {@code value} rendered to a {@link JsonNode} tree rather than a JSON string — the data-born
+   * door a caller uses to build a wire payload it will embed inside a larger document (e.g. {@code
+   * OutcomeCodec#encodeSuccess}) instead of re-parsing a serialized string back into a tree.
+   */
+  public JsonNode toTree(Object value) {
+    return mapper.valueToTree(value);
+  }
+
   /** {@code value} rendered to JSON, or an encoding-failure {@link IllegalArgumentException}. */
   public String write(Object value) {
     try {

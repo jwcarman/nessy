@@ -13,17 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.computation;
+package org.jwcarman.nessy.api.tool;
 
-import java.util.Objects;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Get-or-create's answer (preamble ruling 4): {@code created} is false when the computation already
- * existed — the submit-once discipline's signal not to re-submit external work.
- */
-public record CreateResult(ComputationId id, boolean created) {
+import org.junit.jupiter.api.Test;
 
-  public CreateResult {
-    Objects.requireNonNull(id, "id must not be null");
+class ComputationIdTest {
+
+  @Test
+  void aComputationIdCarriesItsValueAndRejectsBlank() {
+    assertThat(ComputationId.of("tool:a:b:c").value()).isEqualTo("tool:a:b:c");
+    assertThatThrownBy(() -> ComputationId.of(" ")).isInstanceOf(IllegalArgumentException.class);
   }
 }

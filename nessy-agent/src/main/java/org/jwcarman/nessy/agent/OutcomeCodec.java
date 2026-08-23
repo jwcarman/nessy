@@ -26,9 +26,6 @@ import java.util.Optional;
 import java.util.Set;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.Outcome;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 /**
@@ -62,9 +59,6 @@ final class OutcomeCodec {
   private static final String OUTCOME = "outcome";
   private static final String DELIVERY = "delivery";
   private static final String COMPUTATION = "computation";
-  private static final String DESTINATION = "destination";
-  private static final String DATA = "data";
-  private static final String AGENT_TYPE = "agentType";
 
   private static final String TYPE_SUCCESS = "success";
   private static final String TYPE_FAILURE = "failure";
@@ -116,12 +110,19 @@ final class OutcomeCodec {
   }
 
   /**
-   * Renders {@code document} to JSON. A {@code Success} outcome whose payload is neither {@link
-   * ToolResult} nor {@link Decision} throws {@link IllegalArgumentException} here — before the
-   * caller writes anything.
+   * Renders {@code document} to JSON. A {@code Success} outcome whose payload is not a known wire
+   * shape (rendered by {@link #encodeSuccess} — {@link ToolResult} or {@link Decision}, closed)
+   * throws {@link IllegalArgumentException} here — before the caller writes anything. {@link
+   * Outcome.Success#value()} is already a {@link JsonNode} by the time it reaches here
+   * (computation-identity spec §2 addendum), so this re-checks its {@code "type"} discriminator
+   * rather than re-deriving the shape from a domain object — the same defense-in-depth {@link
+   * #deliveryDocument} applies on the read side, now mirrored on write.
    */
   String toJson(DeliveryDocument document) {
     Objects.requireNonNull(document, "document must not be null");
+    if (document.outcome() instanceof Outcome.Success(JsonNode payload)) {
+      requireKnownSuccessPayload(payload);
+    }
     return codecs.write(DeliveryDocumentWire.from(document));
   }
 
@@ -133,33 +134,26 @@ final class OutcomeCodec {
   }
 
   /**
-   * The outbox arm's cheap peek (harness-first spec §5, new law): reads only {@code
-   * destination.data}'s {@code agentType} field, stopping well short of {@link #deliveryDocument}'s
-   * full bind (which also validates the outcome vocabulary) or {@link ScopeRouting}'s full routing
-   * decode (which also validates the call shape) — neither of those a type filter needs. Returns
-   * {@link Optional#empty()} when the JSON parses but does not carry a recognizable {@code
-   * destination.data.agentType} SHAPE (no {@code destination}, or a non-textual {@code data}) — the
-   * caller's own full decode then surfaces the real problem. Unparseable JSON is not that case: it
-   * throws {@link IllegalArgumentException} straight out of {@link Codecs#readTree}, here, same as
-   * {@link #deliveryDocument} would have thrown later — this method never swallows a genuine parse
-   * failure into an empty result.
+   * The closed-vocabulary encode door (computation-identity spec §2 addendum): {@code value} —
+   * exactly a {@link ToolResult} or a {@link Decision} — rendered to the wire {@link JsonNode}
+   * {@link Outcome.Success#value()} now carries directly (data-born, not object-born). The one site
+   * that knows the closed vocabulary; every {@code Outcome.Success} in this module is built by
+   * routing a domain payload through this method first. Throws {@link IllegalArgumentException} for
+   * any other payload type, exactly as the old direct-object {@code toJson} rejection did.
    */
-  Optional<String> peekDestinationAgentType(String json) {
-    Objects.requireNonNull(json, "json must not be null");
-    JsonNode root = codecs.readTree(json, DELIVERY);
-    JsonNode destination = root.get(DESTINATION);
-    if (destination == null) {
-      return Optional.empty();
-    }
-    JsonNode dataNode = destination.get(DATA);
-    if (dataNode == null || !dataNode.isTextual()) {
-      return Optional.empty();
-    }
-    JsonNode inner = codecs.readTree(dataNode.asText(), DESTINATION);
-    JsonNode agentType = inner.get(AGENT_TYPE);
-    return agentType == null || agentType.isNull()
-        ? Optional.empty()
-        : Optional.of(agentType.asText());
+  JsonNode encodeSuccess(Object value) {
+    return codecs.toTree(PayloadWire.from(value));
+  }
+
+  /**
+   * The reverse of {@link #encodeSuccess}: a wire-shaped {@link JsonNode} — either freshly encoded
+   * or read back off a stored delivery — decoded to its domain payload ({@link ToolResult} or
+   * {@link Decision}). An unrecognized {@code "type"} discriminator throws {@link
+   * IllegalArgumentException}, same as {@link #deliveryDocument}'s bind would.
+   */
+  Object decodeSuccess(JsonNode node) {
+    Objects.requireNonNull(node, "node must not be null");
+    return codecs.bind(node, PayloadWire.class, "success payload").toDomain();
   }
 
   /**
@@ -177,11 +171,16 @@ final class OutcomeCodec {
           "unknown outcome type: " + outcomeType + "; expected one of: " + OUTCOME_TYPES);
     }
     if (TYPE_SUCCESS.equals(outcomeType)) {
-      String payloadType = textOrNull(outcomeNode.get(PAYLOAD), TYPE);
-      if (!PAYLOAD_TYPES.contains(payloadType)) {
-        throw new IllegalArgumentException(
-            "unknown success payload type: " + payloadType + "; expected one of: " + PAYLOAD_TYPES);
-      }
+      requireKnownSuccessPayload(outcomeNode.get(PAYLOAD));
+    }
+  }
+
+  /** {@code payload}'s {@code "type"} discriminator, checked against the closed vocabulary. */
+  private static void requireKnownSuccessPayload(JsonNode payload) {
+    String payloadType = textOrNull(payload, TYPE);
+    if (!PAYLOAD_TYPES.contains(payloadType)) {
+      throw new IllegalArgumentException(
+          "unknown success payload type: " + payloadType + "; expected one of: " + PAYLOAD_TYPES);
     }
   }
 
@@ -284,14 +283,20 @@ final class OutcomeCodec {
 
     static OutcomeWire from(Outcome outcome) {
       return switch (outcome) {
-        case Outcome.Success(Object value) -> new SuccessWire(PayloadWire.from(value));
+        case Outcome.Success(JsonNode value) -> new SuccessWire(value);
         case Outcome.Failure(String message) -> new FailureWire(message);
         case Outcome.Cancelled(String reason) -> new CancelledWire(reason);
       };
     }
   }
 
-  private record SuccessWire(PayloadWire payload) implements OutcomeWire {
+  /**
+   * {@code payload} is already the wire-shaped {@link JsonNode} {@link Outcome.Success#value()}
+   * carries (computation-identity spec §2 addendum) — this class no longer hand-translates a domain
+   * {@link Object} into {@link PayloadWire} at write time; {@link #encodeSuccess} is the one door
+   * that does, upstream of every {@code Outcome.Success} this module ever constructs.
+   */
+  private record SuccessWire(JsonNode payload) implements OutcomeWire {
 
     SuccessWire {
       Objects.requireNonNull(payload, "payload must not be null");
@@ -299,7 +304,7 @@ final class OutcomeCodec {
 
     @Override
     public Outcome toDomain() {
-      return new Outcome.Success(payload.toDomain());
+      return new Outcome.Success(payload);
     }
   }
 

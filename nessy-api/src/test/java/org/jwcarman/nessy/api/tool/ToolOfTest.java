@@ -26,7 +26,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 
 class ToolOfTest {
 
@@ -36,11 +35,7 @@ class ToolOfTest {
 
   private static ToolContext contextFor(ToolEventListener listener) {
     ToolCall call = new ToolCall("c1", "create-account", JsonNodeFactory.instance.objectNode());
-    return new ToolContext(
-        call,
-        listener,
-        new CallAddress("test-agent", "test-scope", "r1", call.id()),
-        new ToolInvocationId("r1", call.id()));
+    return new ToolContext(call, listener, ComputationId.of("execution-id"));
   }
 
   private static ToolContext noopContext() {

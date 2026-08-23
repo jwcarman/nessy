@@ -26,10 +26,11 @@ public record AgentType(String name) {
       throw new IllegalArgumentException(
           "agent type name must not contain ':': \""
               + name
-              + "\" — the type threads into colon-delimited computation keys"
-              + " (tool:<agentType>:<agentId>:...), and a colon in the type would make the"
-              + " reaper's key-segment filter misparse and silently skip this harness's own"
-              + " computations forever");
+              + "\" — kind-name hygiene (computation-identity spec §3): the type threads into"
+              + " kind strings (computation/<agentType>, approval/<agentType>,"
+              + " outbox/<agentType>), and nothing parses those apart anymore, but a colon in the"
+              + " type would still make a kind string look like it carries a delimiter it does"
+              + " not — kind names stay boring on purpose");
     }
   }
 

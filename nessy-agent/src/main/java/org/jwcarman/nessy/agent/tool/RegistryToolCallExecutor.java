@@ -22,8 +22,10 @@ import java.util.concurrent.Executor;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
+import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.ModelResponseId;
 import org.jwcarman.nessy.agent.ToolError;
+import org.jwcarman.nessy.agent.ToolInvocationId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.codec.Codecs;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
@@ -31,9 +33,7 @@ import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -224,7 +224,14 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
           run(grant.tool(), input, call, address, invocation, Optional.empty());
       case PolicyDecision.Deny(String reason) -> new ToolExecution.Immediate(failed(call, reason));
       case PolicyDecision.RequireApproval _ ->
-          switch (approver.adjudicate(new ApprovalRequest(address, call, assembled))) {
+          switch (approver.adjudicate(
+              new ApprovalRequest(
+                  address.approval(),
+                  call,
+                  address.agentType(),
+                  address.agentId(),
+                  address.responseId(),
+                  assembled))) {
             case Adjudication.Granted _ ->
                 run(grant.tool(), input, call, address, invocation, Optional.empty());
             case Adjudication.Refused(String reason) ->
@@ -254,7 +261,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       ToolInvocationId invocation,
       Optional<Substrate.Op> alsoCommit) {
     T typed = tool.inputType().cast(input);
-    ToolContext context = new ToolContext(call, event -> narrate(call, event), address, invocation);
+    ToolContext context = new ToolContext(call, event -> narrate(call, event), address.execution());
     return switch (tool.execute(typed, context)) {
       case Awaited.Ready<ToolResult>(ToolResult value) -> {
         turn.on(new TurnEvent.ToolCallCompleted(call, value));

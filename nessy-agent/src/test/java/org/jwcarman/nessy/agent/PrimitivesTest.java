@@ -13,27 +13,37 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.computation;
+package org.jwcarman.nessy.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.api.tool.ComputationId;
+import org.jwcarman.nessy.api.tool.ToolResult;
 
+/**
+ * The whittled-in primitives (computation-identity spec §2 addendum): {@link Outcome}, {@link
+ * Continuation}, {@link PendingComputation}, {@link CreateResult}, and {@link CompletionResult}
+ * sank from {@code api.computation} into this package, package-private, alongside every caller.
+ */
 class PrimitivesTest {
 
-  @Test
-  void aComputationIdCarriesItsValueAndRejectsBlank() {
-    assertThat(ComputationId.of("tool:a:b:c").value()).isEqualTo("tool:a:b:c");
-    assertThatThrownBy(() -> ComputationId.of(" ")).isInstanceOf(IllegalArgumentException.class);
-  }
+  private static final OutcomeCodec CODEC = new OutcomeCodec(TestMappers.plainlyPinned());
 
   @Test
   void outcomesRejectNullPayloads() {
     assertThatThrownBy(() -> new Outcome.Success(null)).isInstanceOf(NullPointerException.class);
     assertThatThrownBy(() -> new Outcome.Failure(null)).isInstanceOf(NullPointerException.class);
     assertThatThrownBy(() -> new Outcome.Cancelled(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void aSuccessOutcomeCarriesItsEncodedPayload() {
+    var payload = CODEC.encodeSuccess(ToolResult.ok("42"));
+    assertThat(new Outcome.Success(payload).value()).isEqualTo(payload);
   }
 
   @Test
@@ -48,27 +58,6 @@ class PrimitivesTest {
   @Test
   void equalContinuationsAreOneRegistration() {
     assertThat(new Continuation("T", "d")).isEqualTo(new Continuation("T", "d"));
-  }
-
-  @Test
-  void aToolInvocationIdCarriesTheResponseAndCallIdsAndRejectsBlankOrNullComponents() {
-    var id = new ToolInvocationId("response-1", "call-1");
-    assertThat(id.responseId()).isEqualTo("response-1");
-    assertThat(id.callId()).isEqualTo("call-1");
-    assertThatThrownBy(() -> new ToolInvocationId(null, "call-1"))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ToolInvocationId(" ", "call-1"))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ToolInvocationId("response-1", null))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ToolInvocationId("response-1", " "))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void equalToolInvocationIdsAreOneIdentity() {
-    assertThat(new ToolInvocationId("response-1", "call-1"))
-        .isEqualTo(new ToolInvocationId("response-1", "call-1"));
   }
 
   @Test

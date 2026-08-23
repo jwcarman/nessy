@@ -74,7 +74,8 @@ public final class Harness<O> {
       Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      SubstrateComputations backend) {
+      SubstrateComputations approvalBackend,
+      SubstrateComputations executionBackend) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.observer = Objects.requireNonNull(observer, "observer must not be null");
@@ -90,10 +91,11 @@ public final class Harness<O> {
         Objects.requireNonNull(toolExecutorFactory, "toolExecutorFactory must not be null");
     Objects.requireNonNull(substrate, "substrate must not be null");
     Objects.requireNonNull(mapper, "mapper must not be null");
-    Objects.requireNonNull(backend, "backend must not be null");
+    Objects.requireNonNull(approvalBackend, "approvalBackend must not be null");
+    Objects.requireNonNull(executionBackend, "executionBackend must not be null");
     this.worker = new DeliveryWorker<>(substrate, mapper, this, this::resolve);
-    this.approvals = new ApprovalDesk(backend, worker::nudge);
-    this.completions = new CompletionDesk(backend, worker::nudge);
+    this.approvals = new ApprovalDesk(approvalBackend, worker::nudge);
+    this.completions = new CompletionDesk(executionBackend, worker::nudge);
   }
 
   /**
@@ -102,9 +104,11 @@ public final class Harness<O> {
    * customizer forms) and {@code Nessy.cli()}, not this factory, so this stays a plain composition
    * point rather than growing fluent setters of its own. No builder exists in user hands (spec §2):
    * each door hands a customizer a fresh config and turns it into a {@link Harness} atomically.
-   * {@code substrate}, {@code mapper}, and {@code backend} are this task's growth (harness-first
-   * spec §4): the life-support this constructor now owns needs them, where a builder used to wire
-   * the worker and desks itself.
+   * {@code substrate}, {@code mapper}, and the two kind-scoped backends (computation-identity spec
+   * §3: {@code approvalBackend} over {@code approval/<agentType>}, {@code executionBackend} over
+   * {@code computation/<agentType>}, sharing {@code outbox/<agentType>}) are this task's growth
+   * (harness-first spec §4): the life-support this constructor now owns needs them, where a builder
+   * used to wire the worker and desks itself.
    */
   public static <O> Harness<O> of(
       AgentType type,
@@ -119,7 +123,8 @@ public final class Harness<O> {
       Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
-      SubstrateComputations backend) {
+      SubstrateComputations approvalBackend,
+      SubstrateComputations executionBackend) {
     Harness<O> harness =
         new Harness<>(
             type,
@@ -134,7 +139,8 @@ public final class Harness<O> {
             toolExecutorFactory,
             substrate,
             mapper,
-            backend);
+            approvalBackend,
+            executionBackend);
     // Started here, after the constructor returns, not inside it: the heartbeat thread reads
     // `harness` (via DeliveryWorker's own field) the instant it runs, and starting a thread from
     // inside a constructor risks handing that thread a `this` reference before the object is fully

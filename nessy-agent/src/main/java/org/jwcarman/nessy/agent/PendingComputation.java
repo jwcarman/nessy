@@ -13,11 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.computation;
+package org.jwcarman.nessy.agent;
 
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.tool.ComputationId;
 
 /**
  * The whole of what "presence means pending" stores (durable-deliveries spec §3): the invocation
@@ -25,8 +26,12 @@ import java.util.Optional;
  * optional deadline. There is no status field and no outcome — presence alone is the pending
  * signal; the moment the work completes, {@code complete} deletes this and births the outbox
  * delivery that carries the result onward (spec §4).
+ *
+ * <p>Package-private (computation-identity spec §2 addendum, the whittle ruling): {@link
+ * SubstrateComputations#find} is this type's one public-facing return, and every caller of it lives
+ * in {@code org.jwcarman.nessy.agent}.
  */
-public record PendingComputation(
+record PendingComputation(
     ComputationId id,
     ToolInvocationId invocation,
     Continuation returnAddress,

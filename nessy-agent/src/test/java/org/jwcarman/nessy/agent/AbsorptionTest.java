@@ -36,11 +36,8 @@ import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
-import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.PolicyDecision;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -127,10 +124,12 @@ class AbsorptionTest {
     var substrate = new InMemorySubstrate();
     var memory = new VerbatimMemory();
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-    var backend = new SubstrateComputations(substrate, mapper);
+    var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
+    var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
     var notifications = new java.util.ArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(backend, notifications::add, mapper);
-    var deferredPolicy = new ComputationDeferredToolCallPolicy(backend, mapper);
+    var approver = new ComputationApprover(approvalBackend, notifications::add, mapper);
+    var deferredPolicy =
+        new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
     var tool = new RecordingTool();
     var policy = new CountingRequireApprovalPolicy();
     var registry = ToolRegistry.of(ToolGrant.grant(tool, policy));
@@ -144,7 +143,7 @@ class AbsorptionTest {
     // simulating a grant the grant arm already ran, whose own delivery this test does not need to
     // model, since the gate-level absorption only ever looks for the computation's presence.
     var c2Address = new CallAddress("test", "test-scope", "r1", "c2");
-    backend.create(
+    executionBackend.create(
         c2Address.execution(),
         new ToolInvocationId("r1", "c2"),
         new Continuation("SCOPE_RESUME", "{}"),

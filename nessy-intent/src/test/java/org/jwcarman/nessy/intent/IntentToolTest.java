@@ -26,8 +26,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolContext;
 import org.jwcarman.nessy.api.tool.ToolEventListener;
@@ -44,11 +43,7 @@ class IntentToolTest {
     var call =
         new ToolCall(
             "c0", "declare-intent", JsonNodeFactory.instance.objectNode().put("declaration", "x"));
-    return new ToolContext(
-        call,
-        ToolEventListener.noop(),
-        new CallAddress("ops", "prod-eu", "r0", "c0"),
-        new ToolInvocationId("r0", "c0"));
+    return new ToolContext(call, ToolEventListener.noop(), ComputationId.of("execution-id"));
   }
 
   @Nested

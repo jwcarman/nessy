@@ -448,7 +448,7 @@ class NessyHarnessDoorTest {
       pump.pumpUntilQuiet();
 
       assertThat(requests).hasSize(1);
-      assertThat(requests.getFirst().address().agentType()).isEqualTo("agent");
+      assertThat(requests.getFirst().agentType()).isEqualTo("agent");
     }
 
     record NoInput() {}

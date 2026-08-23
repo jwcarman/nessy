@@ -41,9 +41,8 @@ import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.agent.support.TestSettings;
 import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -81,7 +80,7 @@ class ReaperTest {
 
   /** Records every invocation's {@link ToolInvocationId} and never completes on its own. */
   private static final class RecordingParkingTool implements Tool<NoInput> {
-    private final List<ToolInvocationId> invocations = new CopyOnWriteArrayList<>();
+    private final List<ComputationId> invocations = new CopyOnWriteArrayList<>();
     private final RetrySemantics retrySemantics;
     private final Optional<Duration> timeout;
 
@@ -107,7 +106,7 @@ class ReaperTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-      invocations.add(context.invocationId());
+      invocations.add(context.invocation());
       return Awaited.deferred();
     }
 
@@ -128,7 +127,7 @@ class ReaperTest {
    * computation.
    */
   private static final class RecordingParkThenReadyTool implements Tool<NoInput> {
-    private final List<ToolInvocationId> invocations = new CopyOnWriteArrayList<>();
+    private final List<ComputationId> invocations = new CopyOnWriteArrayList<>();
 
     @Override
     public String name() {
@@ -147,7 +146,7 @@ class ReaperTest {
 
     @Override
     public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
-      invocations.add(context.invocationId());
+      invocations.add(context.invocation());
       if (invocations.size() == 1) {
         return Awaited.deferred();
       }
@@ -192,7 +191,12 @@ class ReaperTest {
     var mapper = TestMappers.plainlyPinned();
     var memory = new SubstrateMemory(substrate, "test-scope", mapper);
     var store = new SubstrateAgentStateStore(substrate, "test-scope", Clock.systemUTC(), mapper);
-    var backend = new SubstrateComputations(substrate, mapper);
+    var testType = AgentType.of("test");
+    var outboxKind = Kinds.outbox(testType);
+    var approvalBackend =
+        new SubstrateComputations(substrate, mapper, Kinds.approval(testType), outboxKind);
+    var backend =
+        new SubstrateComputations(substrate, mapper, Kinds.computation(testType), outboxKind);
     var narrator = new RecordingTurnObserver();
     var registry = ToolRegistry.of(tool);
     var pump = new PumpedExecutor();
@@ -208,7 +212,7 @@ class ReaperTest {
             AgentId.of("test-scope"),
             narrator,
             pump,
-            new ComputationDeferredToolCallPolicy(backend, mapper),
+            new ComputationDeferredToolCallPolicy(approvalBackend, backend, mapper),
             mapper);
     var harness =
         TestAgents.<String>harness(
@@ -252,7 +256,7 @@ class ReaperTest {
     world.pump().pumpUntilQuiet();
 
     assertThat(tool.invocations).hasSizeGreaterThanOrEqualTo(2);
-    Set<ToolInvocationId> distinct = Set.copyOf(tool.invocations);
+    Set<ComputationId> distinct = Set.copyOf(tool.invocations);
     assertThat(distinct).hasSize(1); // every redispatch reuses the exact same invocation id
   }
 
@@ -308,8 +312,9 @@ class ReaperTest {
     Thread.sleep(5); // let the 1ms timeout genuinely elapse
 
     // the current computation payload stands in for a competing worker's own winning CAS bump
-    String key = backing.keys("computation", 10).getFirst();
-    byte[] currentPayload = backing.read("computation", key).orElseThrow().payload();
+    var computationKind = Kinds.computation(AgentType.of("test"));
+    String key = backing.keys(computationKind, 10).getFirst();
+    byte[] currentPayload = backing.read(computationKind, key).orElseThrow().payload();
     var raced = new RaceOnceOnWriteSubstrate(backing, currentPayload);
     AgentResolver resolver = (t, i) -> world.agent();
     var racedWorker =
@@ -344,8 +349,14 @@ class ReaperTest {
     assertThat(tool.invocations).hasSize(1);
     Thread.sleep(5); // let the 1ms timeout genuinely elapse
 
-    var computations = new SubstrateComputations(world.substrate(), TestMappers.plainlyPinned());
-    String key = world.substrate().keys("computation", 10).getFirst();
+    var testType = AgentType.of("test");
+    var computations =
+        new SubstrateComputations(
+            world.substrate(),
+            TestMappers.plainlyPinned(),
+            Kinds.computation(testType),
+            Kinds.outbox(testType));
+    String key = world.substrate().keys(Kinds.computation(testType), 10).getFirst();
 
     world.worker().reapOnce(); // redispatches; the tool answers Ready this time
     world.pump().pumpUntilQuiet();
@@ -361,32 +372,38 @@ class ReaperTest {
   }
 
   /**
-   * F2: {@code keys()} is lexicographic and {@code "approval:"} sorts before {@code "tool:"} — a
-   * naive {@code keys(COMPUTATION_KIND, 1000)} fetch would let 1000+ pending approvals (deadline-
-   * less, never reapable) fill the whole result and truncate every {@code "tool:"} key out of it,
-   * starving the reaper of any real tool deadline behind them. This writes 1000 raw approval-
-   * prefixed documents directly (skipping the full approval-gate flow, which would be far slower
-   * for no additional coverage) plus one genuinely overdue tool computation, and checks the reaper
-   * still reaches and reaps the latter.
+   * Approvals no longer share the reaper's kind at all (computation-identity spec §3: {@code
+   * approval/<agentType>} is a separate keyspace from {@code computation/<agentType>}), so a
+   * pending-approval backlog can no longer crowd the reap sweep's key fetch out by construction —
+   * the scenario the old F2 fix defended against ({@code "approval:"} sorting before {@code
+   * "tool:"} inside one shared kind) cannot occur anymore. What remains a genuine risk is a backlog
+   * of DEADLINE-LESS tool computations (an un-timeout'd durable tool waits indefinitely, in the
+   * SAME {@code computation/<agentType>} kind as retryable ones) crowding out a genuinely overdue
+   * one within {@link DeliveryWorker}'s bounded {@code REAP_KEY_SCAN_LIMIT} fetch. This writes 1000
+   * raw deadline-less tool-computation documents directly (skipping the full deferral flow, which
+   * would be far slower for no additional coverage) plus one genuinely overdue tool computation,
+   * and checks the reaper still reaches and reaps the latter.
    */
   @Test
-  void aBacklogOf1000PendingApprovalsDoesNotStarveTheReaperOfAnOverdueToolComputation()
+  void aBacklogOf1000DeadlineLessToolComputationsDoesNotStarveTheReaperOfAnOverdueOne()
       throws InterruptedException {
     var tool =
         new RecordingParkingTool(RetrySemantics.NON_RETRYABLE, Optional.of(Duration.ofMillis(1)));
     var substrate = new InMemorySubstrate();
     var world = worldFor(tool, substrate);
+    var testType = AgentType.of("test");
+    var computationKind = Kinds.computation(testType);
 
     world.agent().observe("go");
     world.pump().pumpUntilQuiet();
     assertThat(tool.invocations).hasSize(1);
     Thread.sleep(5); // let the 1ms timeout genuinely elapse
 
-    // 1000 deadline-less approval-prefixed documents; "approval:" sorts before "tool:", so a
-    // narrow keys() fetch would let these alone crowd out the real tool computation below.
+    // 1000 deadline-less decoy documents in the SAME kind as the real overdue one below — a
+    // narrow keys() fetch would let these alone crowd out the real tool computation.
     for (int i = 0; i < 1000; i++) {
-      String key = "approval:test:test-scope:r%04d:c1".formatted(i);
-      substrate.write("computation", key, new byte[] {0}, 0);
+      String key = "decoy-r%04d-c1".formatted(i);
+      substrate.write(computationKind, key, new byte[] {0}, 0);
     }
 
     world.worker().reapOnce();

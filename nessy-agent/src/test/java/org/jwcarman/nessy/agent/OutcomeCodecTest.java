@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
@@ -26,9 +27,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.OutcomeCodec.DeliveryDocument;
 import org.jwcarman.nessy.agent.OutcomeCodec.PendingDocument;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.Outcome;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 
 class OutcomeCodecTest {
@@ -36,6 +34,10 @@ class OutcomeCodecTest {
   private static final OutcomeCodec CODEC = new OutcomeCodec(new ObjectMapper());
   private static final ToolInvocationId INVOCATION = new ToolInvocationId("response-1", "call-1");
   private static final Continuation RETURN_ADDRESS = new Continuation("SCOPE_RESUME", "{\"a\":1}");
+
+  private static Outcome.Success success(Object domainPayload) {
+    return new Outcome.Success(CODEC.encodeSuccess(domainPayload));
+  }
 
   @Nested
   class PendingComputationRoundTrips {
@@ -87,7 +89,7 @@ class OutcomeCodecTest {
 
     @Test
     void aToolResultSuccessRoundTripsEqual() {
-      var outcome = new Outcome.Success(ToolResult.ok("42"));
+      var outcome = success(ToolResult.ok("42"));
       var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
       var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
@@ -97,7 +99,7 @@ class OutcomeCodecTest {
 
     @Test
     void anErroredToolResultSuccessRoundTripsEqual() {
-      var outcome = new Outcome.Success(ToolResult.error("boom"));
+      var outcome = success(ToolResult.error("boom"));
       var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
       var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
@@ -107,7 +109,7 @@ class OutcomeCodecTest {
 
     @Test
     void anAllowDecisionSuccessRoundTripsEqual() {
-      var outcome = new Outcome.Success(Decision.allow());
+      var outcome = success(Decision.allow());
       var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
       var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
@@ -117,7 +119,7 @@ class OutcomeCodecTest {
 
     @Test
     void aDenyDecisionSuccessRoundTripsEqual() {
-      var outcome = new Outcome.Success(new Decision.Deny("not today"));
+      var outcome = success(new Decision.Deny("not today"));
       var document = new DeliveryDocument(RETURN_ADDRESS, outcome);
 
       var roundTripped = CODEC.deliveryDocument(CODEC.toJson(document));
@@ -151,7 +153,7 @@ class OutcomeCodecTest {
 
     @Test
     void aToolResultSuccessEmitsTheExactGoldenShape() {
-      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success(ToolResult.ok("42")));
+      var document = new DeliveryDocument(RETURN_ADDRESS, success(ToolResult.ok("42")));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
@@ -162,7 +164,7 @@ class OutcomeCodecTest {
 
     @Test
     void anAllowDecisionSuccessEmitsTheExactGoldenShape() {
-      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success(Decision.allow()));
+      var document = new DeliveryDocument(RETURN_ADDRESS, success(Decision.allow()));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
@@ -172,8 +174,7 @@ class OutcomeCodecTest {
 
     @Test
     void aDenyDecisionSuccessEmitsTheExactGoldenShape() {
-      var document =
-          new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success(new Decision.Deny("no")));
+      var document = new DeliveryDocument(RETURN_ADDRESS, success(new Decision.Deny("no")));
 
       assertThat(CODEC.toJson(document))
           .isEqualTo(
@@ -206,12 +207,18 @@ class OutcomeCodecTest {
   class RejectedPayloads {
 
     @Test
-    void aSuccessPayloadOutsideTheClosedVocabularyIsRejected() {
-      var document = new DeliveryDocument(RETURN_ADDRESS, new Outcome.Success("a bare string"));
-
-      assertThatThrownBy(() -> CODEC.toJson(document))
+    void encodingASuccessPayloadOutsideTheClosedVocabularyIsRejected() {
+      assertThatThrownBy(() -> CODEC.encodeSuccess("a bare string"))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unsupported success payload type");
+    }
+
+    @Test
+    void decodingAnUnrecognizedSuccessPayloadShapeIsRejected() {
+      var mystery = JsonNodeFactory.instance.objectNode().put("type", "mystery");
+
+      assertThatThrownBy(() -> CODEC.decodeSuccess(mystery))
+          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 
@@ -248,48 +255,6 @@ class OutcomeCodecTest {
       assertThatThrownBy(() -> CODEC.deliveryDocument(json))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unknown success payload type");
-    }
-  }
-
-  /**
-   * Fix round 1, item 4: {@link OutcomeCodec#peekDestinationAgentType} peeks a delivery's {@code
-   * agentType} without paying for the full decode (harness-first spec §5). Pins its two
-   * fall-through branches — an unreadable destination SHAPE returns empty rather than throwing —
-   * distinctly from unparseable JSON, which throws straight out of the peek.
-   */
-  @Nested
-  class DestinationAgentTypePeek {
-
-    @Test
-    void aWellFormedDestinationYieldsItsAgentType() {
-      String json =
-          "{\"destination\":{\"type\":\"SCOPE_RESUME\","
-              + "\"data\":\"{\\\"agentType\\\":\\\"alpha\\\"}\"},"
-              + "\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"}}";
-
-      assertThat(CODEC.peekDestinationAgentType(json)).contains("alpha");
-    }
-
-    @Test
-    void aDeliveryWithNoDestinationFieldFallsThroughEmptyRatherThanThrowing() {
-      String json = "{\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"}}";
-
-      assertThat(CODEC.peekDestinationAgentType(json)).isEmpty();
-    }
-
-    @Test
-    void aDestinationWhoseDataIsNotTextualFallsThroughEmptyRatherThanThrowing() {
-      String json =
-          "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":{\"agentType\":\"alpha\"}},"
-              + "\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"}}";
-
-      assertThat(CODEC.peekDestinationAgentType(json)).isEmpty();
-    }
-
-    @Test
-    void unparseableJsonThrowsStraightOutOfThePeekRatherThanFallingThroughEmpty() {
-      assertThatThrownBy(() -> CODEC.peekDestinationAgentType("not json at all"))
-          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 }

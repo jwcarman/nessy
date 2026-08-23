@@ -26,6 +26,7 @@ import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.Harness;
+import org.jwcarman.nessy.agent.Kinds;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
@@ -207,6 +208,11 @@ public final class Nessy {
       Substrate substrate = new InMemorySubstrate();
       var store = new SubstrateAgentStateStore(substrate, id, Clock.systemUTC(), pinned);
       var backlog = new SubstrateBacklog<>(substrate, id, 1024, STRING_CODEC, pinned);
+      String outboxKind = Kinds.outbox(agentType);
+      var approvalBackend =
+          new SubstrateComputations(substrate, pinned, Kinds.approval(agentType), outboxKind);
+      var executionBackend =
+          new SubstrateComputations(substrate, pinned, Kinds.computation(agentType), outboxKind);
       Harness<String> harness =
           Harness.of(
               agentType,
@@ -224,7 +230,8 @@ public final class Nessy {
                   new RegistryToolCallExecutor(limited, agentType, scopeId, relay, exec, pinned),
               substrate,
               pinned,
-              new SubstrateComputations(substrate, pinned));
+              approvalBackend,
+              executionBackend);
       Agent<String> agent = harness.bind(agentId);
       return new CliAgent(agent, harness, relay, exec, ownsExecutor);
     }

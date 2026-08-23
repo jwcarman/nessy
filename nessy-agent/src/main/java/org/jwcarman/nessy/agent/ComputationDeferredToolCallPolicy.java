@@ -23,19 +23,23 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
-import org.jwcarman.nessy.api.tool.CallAddress;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The durable wiring's answer to a deferral (durable-deliveries spec §3, §5, §5a, §6): create
- * carries the continuation — the return address is durable before any dispatch, so the register-
- * after-create window is unexpressible. Every deferral suspends; the eventual completion arrives
- * through the delivery worker, never here.
+ * The durable wiring's answer to a deferral (durable-deliveries spec §3, §5, §5a, §6;
+ * computation-identity spec §3, §4): create carries the continuation — the return address is
+ * durable before any dispatch, so the register- after-create window is unexpressible. Every
+ * deferral suspends; the eventual completion arrives through the delivery worker, never here.
+ *
+ * <p>Holds BOTH kind-scoped backends (spec §3): {@code executionBackend} ({@code
+ * computation/&lt;agentType&gt;}) is where {@link #onDeferred} creates a durable tool computation;
+ * {@code approvalBackend} ({@code approval/&lt;agentType&gt;}) is read-only here, needed only so
+ * {@link #pendingComputation} can also check whether an approval is (or was) in flight for {@code
+ * address} — the two kinds never overlap, so one instance's {@code find} can no longer answer for
+ * the other.
  *
  * <p>{@code invocation} arrives from the gate ({@link
  * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}) already carrying the committed {@code
@@ -46,41 +50,49 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * already reads, with no registry lookup.
  *
  * <p>{@code alsoCommit} (spec §5a invariant 5, transfer-then-dispatch) rides the SAME {@link
- * Substrate#batch} as this computation's creation, via {@link #backend}'s package-visible ops seam
- * — {@link SubstrateComputations} is the only implementation there is (durable-dissolves spec §2).
+ * Substrate#batch} as this computation's creation, via {@link #executionBackend}'s package-visible
+ * ops seam — {@link SubstrateComputations} is the only implementation there is (durable-dissolves
+ * spec §2).
  *
- * <p>{@link #pendingComputation} is the ownership-split absorption door (spec §5a, §6): {@link
- * org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s gate calls it before running the tool,
- * assembling enrichers, or asking the policy at all, on EVERY dispatch (fresh or redriven) — a
- * staleness redrive that reaches a call whose approval is still pending, or whose tool computation
- * already exists, absorbs there, silently, before the tool ever runs again, before the policy or
- * its enrichers ever run again, and before the approver is ever asked again. This replaces the
- * re-create-and-re-notify behavior {@link ComputationApprover}'s javadoc used to describe as the
- * known gap: that gap was a redrive reaching the APPROVER after the grant had already transferred
- * the work into a tool computation, reading absence at the (consumed) approval id, and treating it
- * as a fresh ask. The gate-level check now intercepts that redrive on the TOOL id before it ever
- * reaches the approver — and, separately, a redrive landing while the approval is still undecided
- * is intercepted on the APPROVAL id before the policy (which could be non-constant) ever runs a
- * second time.
+ * <p>{@link #pendingComputation} is the ownership-split absorption door (spec §5a, §6;
+ * computation-identity spec §4): {@link org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor}'s
+ * gate calls it before running the tool, assembling enrichers, or asking the policy at all, on
+ * EVERY dispatch (fresh or redriven) — a staleness redrive that reaches a call whose approval is
+ * still pending, whose tool computation already exists, OR whose grant/completion has already
+ * folded into an undrained outbox delivery under its own deterministic key, absorbs there,
+ * silently, before the tool ever runs again, before the policy or its enrichers ever run again, and
+ * before the approver is ever asked again. The delivery-key check is what closes the
+ * grant-delivery-pending window (durable-deliveries spec §5a honesty amendment, now shut): the OLD
+ * gap was a redrive reaching the APPROVER after the grant had already transferred the work into a
+ * delivery, finding absence in both computation kinds (presence- means-pending leaves no residue
+ * there), and treating it as a fresh ask.
  */
 public final class ComputationDeferredToolCallPolicy implements DeferredToolCallPolicy {
 
-  private final SubstrateComputations backend;
+  private final SubstrateComputations approvalBackend;
+  private final SubstrateComputations executionBackend;
   private final ObjectMapper mapper;
 
-  public ComputationDeferredToolCallPolicy(SubstrateComputations backend, ObjectMapper mapper) {
-    this.backend = Objects.requireNonNull(backend, "backend must not be null");
+  public ComputationDeferredToolCallPolicy(
+      SubstrateComputations approvalBackend,
+      SubstrateComputations executionBackend,
+      ObjectMapper mapper) {
+    this.approvalBackend =
+        Objects.requireNonNull(approvalBackend, "approvalBackend must not be null");
+    this.executionBackend =
+        Objects.requireNonNull(executionBackend, "executionBackend must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   @Override
   public Optional<ComputationId> pendingComputation(CallAddress address) {
     ComputationId approval = address.approval();
-    if (backend.find(approval).isPresent()) {
+    if (approvalBackend.find(approval).isPresent() || approvalBackend.deliveryPending(approval)) {
       return Optional.of(approval);
     }
     ComputationId execution = address.execution();
-    if (backend.find(execution).isPresent()) {
+    if (executionBackend.find(execution).isPresent()
+        || executionBackend.deliveryPending(execution)) {
       return Optional.of(execution);
     }
     return Optional.empty();
@@ -105,7 +117,7 @@ public final class ComputationDeferredToolCallPolicy implements DeferredToolCall
             retrySemantics,
             timeout);
     Optional<Instant> deadline = timeout.map(Instant.now()::plus);
-    backend.create(
+    executionBackend.create(
         id, invocation, continuation, deadline, alsoCommit.map(List::of).orElse(List.of()));
     return new ToolExecution.Deferred(id);
   }

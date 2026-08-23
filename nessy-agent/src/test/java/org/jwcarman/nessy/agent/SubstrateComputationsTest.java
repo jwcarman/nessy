@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -29,12 +30,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.RaceOnceOnBatchSubstrate;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.api.computation.CompletionResult;
-import org.jwcarman.nessy.api.computation.ComputationId;
-import org.jwcarman.nessy.api.computation.Continuation;
-import org.jwcarman.nessy.api.computation.Outcome;
-import org.jwcarman.nessy.api.computation.PendingComputation;
-import org.jwcarman.nessy.api.computation.ToolInvocationId;
+import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -47,10 +43,14 @@ class SubstrateComputationsTest {
 
   private final Substrate store = new InMemorySubstrate();
   private final SubstrateComputations computations =
-      new SubstrateComputations(store, TestMappers.plainlyPinned());
+      new SubstrateComputations(store, TestMappers.plainlyPinned(), "computation", "outbox");
 
   private static long outboxCount(Substrate store) {
     return store.keys("outbox", 100).size();
+  }
+
+  private Outcome.Success success(Object domainPayload) {
+    return new Outcome.Success(computations.encodeSuccess(domainPayload));
   }
 
   @Nested
@@ -90,8 +90,7 @@ class SubstrateComputationsTest {
     void completingATransfersOwnershipToTheOutboxAndRemovesTheComputation() {
       computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
 
-      CompletionResult result =
-          computations.complete(ID, new Outcome.Success(ToolResult.ok("first")));
+      CompletionResult result = computations.complete(ID, success(ToolResult.ok("first")));
 
       assertThat(result).isEqualTo(CompletionResult.TRANSFERRED);
       assertThat(computations.find(ID)).isEmpty();
@@ -100,8 +99,7 @@ class SubstrateComputationsTest {
 
     @Test
     void completingAnAbsentComputationIsBenign() {
-      CompletionResult result =
-          computations.complete(ID, new Outcome.Success(ToolResult.ok("nobody home")));
+      CompletionResult result = computations.complete(ID, success(ToolResult.ok("nobody home")));
 
       assertThat(result).isEqualTo(CompletionResult.ALREADY_DONE);
       assertThat(outboxCount(store)).isZero();
@@ -110,7 +108,7 @@ class SubstrateComputationsTest {
     @Test
     void aSecondCompletionOnAnAlreadyTransferredComputationIsBenign() {
       computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
-      computations.complete(ID, new Outcome.Success(ToolResult.ok("first")));
+      computations.complete(ID, success(ToolResult.ok("first")));
 
       CompletionResult second = computations.complete(ID, new Outcome.Failure("second"));
 
@@ -121,7 +119,8 @@ class SubstrateComputationsTest {
     @Test
     void aForeignSuccessPayloadIsRejectedAndNothingIsWritten() {
       computations.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
-      var foreign = new Outcome.Success("a bare string");
+      var foreign =
+          new Outcome.Success(JsonNodeFactory.instance.objectNode().put("type", "mystery"));
 
       assertThatThrownBy(() -> computations.complete(ID, foreign))
           .isInstanceOf(IllegalArgumentException.class);
@@ -136,7 +135,7 @@ class SubstrateComputationsTest {
       int racers = 16;
       List<Callable<CompletionResult>> attempts = new ArrayList<>();
       for (int i = 0; i < racers; i++) {
-        var outcome = new Outcome.Success(ToolResult.ok("winner-" + i));
+        var outcome = success(ToolResult.ok("winner-" + i));
         attempts.add(() -> computations.complete(ID, outcome));
       }
       List<CompletionResult> results = new ArrayList<>();
@@ -160,13 +159,13 @@ class SubstrateComputationsTest {
           () -> {
             ready.countDown();
             go.await();
-            return computations.complete(ID, new Outcome.Success(ToolResult.ok("a")));
+            return computations.complete(ID, success(ToolResult.ok("a")));
           };
       Callable<CompletionResult> second =
           () -> {
             ready.countDown();
             go.await();
-            return computations.complete(ID, new Outcome.Success(ToolResult.ok("b")));
+            return computations.complete(ID, success(ToolResult.ok("b")));
           };
       List<CompletionResult> results;
       try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
@@ -197,7 +196,8 @@ class SubstrateComputationsTest {
     @Test
     void aConflictingWriteBetweenReadAndBatchForcesCompleteToRetryAndLeavesExactlyOneDelivery() {
       var backing = new InMemorySubstrate();
-      var setup = new SubstrateComputations(backing, TestMappers.plainlyPinned());
+      var setup =
+          new SubstrateComputations(backing, TestMappers.plainlyPinned(), "computation", "outbox");
       setup.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
       byte[] computationPayload = backing.read("computation", ID.value()).orElseThrow().payload();
 
@@ -206,10 +206,10 @@ class SubstrateComputationsTest {
       // semantic change
       var raced =
           new RaceOnceOnBatchSubstrate(backing, "computation", ID.value(), computationPayload);
-      var computations = new SubstrateComputations(raced, TestMappers.plainlyPinned());
+      var computations =
+          new SubstrateComputations(raced, TestMappers.plainlyPinned(), "computation", "outbox");
 
-      CompletionResult result =
-          computations.complete(ID, new Outcome.Success(ToolResult.ok("first")));
+      CompletionResult result = computations.complete(ID, success(ToolResult.ok("first")));
 
       assertThat(result).isEqualTo(CompletionResult.TRANSFERRED);
       assertThat(computations.find(ID)).isEmpty();
@@ -222,14 +222,16 @@ class SubstrateComputationsTest {
 
     @Test
     void twoInstancesOverOneKernelShareTheComputation() {
-      var writer = new SubstrateComputations(store, TestMappers.plainlyPinned());
-      var reader = new SubstrateComputations(store, TestMappers.plainlyPinned());
+      var writer =
+          new SubstrateComputations(store, TestMappers.plainlyPinned(), "computation", "outbox");
+      var reader =
+          new SubstrateComputations(store, TestMappers.plainlyPinned(), "computation", "outbox");
 
       writer.create(ID, INVOCATION, RETURN_ADDRESS, Optional.empty());
 
       assertThat(reader.find(ID)).isPresent();
 
-      writer.complete(ID, new Outcome.Success(ToolResult.ok("shared")));
+      writer.complete(ID, success(ToolResult.ok("shared")));
 
       assertThat(reader.find(ID)).isEmpty();
     }

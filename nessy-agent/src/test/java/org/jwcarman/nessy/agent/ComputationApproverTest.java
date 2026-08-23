@@ -23,8 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.support.TestMappers;
-import org.jwcarman.nessy.api.computation.PendingComputation;
-import org.jwcarman.nessy.api.tool.CallAddress;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
 import org.jwcarman.nessy.spi.approval.Adjudication;
@@ -40,7 +38,8 @@ class ComputationApproverTest {
   private static final CallAddress ADDRESS = new CallAddress("test-agent-type", "a1", "r7", "c1");
 
   private final SubstrateComputations backend =
-      new SubstrateComputations(new InMemorySubstrate(), TestMappers.plainlyPinned());
+      new SubstrateComputations(
+          new InMemorySubstrate(), TestMappers.plainlyPinned(), "approval", "outbox");
   private final List<ApprovalRequest> notified = new ArrayList<>();
   private final ComputationApprover approver =
       new ComputationApprover(backend, notified::add, TestMappers.plainlyPinned());
@@ -49,7 +48,13 @@ class ComputationApproverTest {
     ObjectNode arguments = JsonNodeFactory.instance.objectNode();
     ToolCall call = new ToolCall(address.callId(), "some-tool", arguments);
     AuthzContext context = AuthzContext.of("test-agent", call);
-    return new ApprovalRequest(address, call, context);
+    return new ApprovalRequest(
+        address.approval(),
+        call,
+        address.agentType(),
+        address.agentId(),
+        address.responseId(),
+        context);
   }
 
   @Test

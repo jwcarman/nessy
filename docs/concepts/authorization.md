@@ -210,7 +210,9 @@ if (grant.policy() instanceof UsagePolicy.Static fixed) {
 switch (decision) {
   case Allow _            -> run(tool, input, call, address);
   case Deny(String reason)-> failed(call, reason);
-  case RequireApproval _  -> switch (approver.adjudicate(new ApprovalRequest(address, call, assembled))) {
+  case RequireApproval _  -> switch (approver.adjudicate(
+      new ApprovalRequest(address.approval(), call, address.agentType(), address.agentId(),
+                           address.responseId(), assembled))) {
       case Granted _              -> run(tool, input, call, address);
       case Refused(String reason) -> failed(call, reason);
       case Suspended(var computation) -> deferred(computation);

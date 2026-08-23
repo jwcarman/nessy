@@ -130,8 +130,9 @@ reserved — a feature jar declares its own kinds and must not reuse one:
 | `summary` | document | agentId | summarization sidecar (future) |
 | `intent` | document | agentId | `nessy-intent` |
 | `backlog` | document | agentId | backlog recipe |
-| `computation` | document | computationId | durable computations |
-| `outbox` | document | UUIDv7 | delivery pipeline |
+| `computation/<agentType>` | document | computationId | execution computations |
+| `approval/<agentType>` | document | computationId | approval computations |
+| `outbox/<agentType>` | document | computationId | delivery pipeline |
 
 ## Layout rules
 
@@ -174,35 +175,41 @@ serialization; the substrate never sees anything but bytes.
   because the backlog is self-draining transient state and glance-readability
   yields to uniformity here. `SubstrateBacklog#add`/`.poll` are
   read-mutate-CAS-retry loops; a full queue throws `IllegalStateException`.
-- **Durable computations** (`kind=computation`) — one document per pending
+- **Durable computations** (`kind=computation/<agentType>` for executions,
+  `kind=approval/<agentType>` for approvals — two separate kinds, never one
+  shared kind distinguished by a key prefix) — one document per pending
   computation: `{ invocation: {responseId, callId}, returnAddress: {type,
   data}, deadline? }`. There is no status field and no terminal record —
-  presence alone means pending. `SubstrateComputations` (`nessy-agent`)
-  maps `create` onto a plain CAS write and `complete` onto one atomic
-  `batch` that deletes the computation and creates its outbox delivery.
-  There is no adapter SPI above it — the `Substrate` it rides is the seam
-  a host swaps; `.backend(SubstrateComputations)` on the builder overrides
-  only which instance (which `Substrate`/`ObjectMapper` pairing) the
-  harness uses — see
+  presence alone means pending. `SubstrateComputations` (`nessy-agent`) is
+  kind-scoped per instance and maps `create` onto a plain CAS write and
+  `complete` onto one atomic `batch` that deletes the computation and
+  creates its outbox delivery. There is no adapter SPI above it — the
+  `Substrate` it rides is the seam a host swaps; `.backend(SubstrateComputations)`
+  on the builder overrides only the execution-kind instance (which
+  `Substrate`/`ObjectMapper` pairing) the harness uses — see
   [Durable Computation](durable-computation.md).
-- **The outbox** (`kind=outbox`) — one document per pending delivery, a
-  UUIDv7 key so `keys("outbox", n)` scans oldest-first, holding `{
-  destination: {type, data}, outcome: {type, ...} }`. Deliveries are
-  pending-only: delivering deletes them, in the same batch as the fold it
-  advances. `DeliveryWorker` (`nessy-agent`) is the one consumer — a
-  heartbeat thread per harness, plus an immediate synchronous drain
-  (`nudge()`) right after any completion commits, so the heartbeat is the
-  recovery net rather than the happy-path latency. `SubstrateComputations`
-  writes each delivery as the second half of the same `complete()` batch
-  that removes its computation, the transactional-outbox pattern by
-  construction — see [Durable Computation](durable-computation.md).
+- **The outbox** (`kind=outbox/<agentType>`, shared by both computation
+  kinds for one agent type) — one document per pending delivery, keyed by
+  the completed computation's own deterministic `ComputationId` (not a
+  fresh random key per completion), holding `{ destination: {type, data},
+  outcome: {type, ...} }`. Deliveries are pending-only: delivering deletes
+  them, in the same batch as the fold it advances. `DeliveryWorker`
+  (`nessy-agent`) is the one consumer — a heartbeat thread per harness,
+  plus an immediate synchronous drain (`nudge()`) right after any
+  completion commits, so the heartbeat is the recovery net rather than the
+  happy-path latency. `SubstrateComputations` writes each delivery as the
+  second half of the same `complete()` batch that removes its computation,
+  the transactional-outbox pattern by construction — see
+  [Durable Computation](durable-computation.md). Isolation across agent
+  types is by construction: two harnesses of different types over one
+  substrate never share a kind, so no runtime type filter is needed.
 - **Intent** (`kind=intent`) — one document per scope, last-write-wins via
   read-then-CAS retry, shipped in `nessy-intent` — see [Intent](intent.md).
 
 > **Discriminator conventions differ by kind.** Every polymorphic payload
 > above carries a `"type"` field, but its values aren't spelled the same
 > way: the message/phase/outcome codecs (`kind=memory`, `kind=state`,
-> `kind=computation`) write kebab-case values (`tool-use`, `redacted-thinking`,
+> `kind=computation/<agentType>`) write kebab-case values (`tool-use`, `redacted-thinking`,
 > `tool-result`), while the sealed intent vocabularies (`kind=intent`) write
 > the declared record's verbatim simple name (`Restart`, `Diagnose`). A
 > reader of the raw tables will see both conventions, one per kind.
@@ -329,7 +336,7 @@ the sidecar document; the journal underneath would never hear about it.
 
 This does not exist in `nessy-spi` or `nessy-agent` today — treat this
 section as forward-looking design, not an API reference. The outbox
-(`kind=outbox`) it was once specified alongside has since shipped — see
+(`kind=outbox/<agentType>`) it was once specified alongside has since shipped — see
 the delivery-pipeline recipes above and
 [Durable Computation](durable-computation.md).
 

@@ -111,8 +111,8 @@ public final class Approvals {
       harness.bind(AgentId.of(SCOPE_ID)).observe("please restart prod-eu");
 
       ApprovalRequest firstAsk = await(requests, "the approval request");
-      System.out.println("== approving " + firstAsk.address().approval().value() + " ==");
-      harness.approvals().approve(firstAsk.address().approval());
+      System.out.println("== approving " + firstAsk.id().value() + " ==");
+      harness.approvals().approve(firstAsk.id());
 
       String reply = await(replies, "the assistant's reply after the grant");
       System.out.println("== assistant replied: " + reply + " ==");
@@ -165,9 +165,9 @@ public final class Approvals {
       }
       ApprovalRequest open = pending.peek();
       if ("approve".equals(line) && open != null) {
-        harness.approvals().approve(pending.poll().address().approval());
+        harness.approvals().approve(pending.poll().id());
       } else if (line.startsWith("deny ") && open != null) {
-        harness.approvals().deny(pending.poll().address().approval(), line.substring(5));
+        harness.approvals().deny(pending.poll().id(), line.substring(5));
       } else {
         harness.bind(AgentId.of(SCOPE_ID)).observe(line);
       }
@@ -178,7 +178,7 @@ public final class Approvals {
   private static void printRequest(ApprovalRequest request, BlockingQueue<ApprovalRequest> queue) {
     System.out.println(
         "approval requested: computation="
-            + request.address().approval().value()
+            + request.id().value()
             + " action="
             + request.context().action().orElse(null));
     queue.add(request);
