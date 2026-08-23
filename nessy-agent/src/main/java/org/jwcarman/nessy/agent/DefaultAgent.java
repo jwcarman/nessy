@@ -21,7 +21,10 @@ import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.StaleStateException;
+import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.Remembrance;
 
 /**
  * The shell: load–handle–save–dispatch with a retry (§3.4). No concurrency machinery — the store's
@@ -97,12 +100,41 @@ public final class DefaultAgent<O> implements Agent<O> {
       harness.observer().ignored(event);
       return;
     }
-    t.commit().forEach(binding.memory()::remember); // commit before dispatch
+    remember(state.phase(), event, t); // remember before commit (remembrance spec §1 law 1)
     binding.store().save(new State(t.next(), state.version()));
     harness.observer().applied(event, t);
     t.effects().forEach(effect -> dispatch(effect, t.next()));
     if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
       drive(); // §3.1 — the drain-on-idle wiring's own drive executor
+    }
+  }
+
+  /**
+   * The three fold moments (remembrance spec §2), mapped from the event {@code t} folded FROM
+   * {@code priorPhase}: an observation remembers a fresh {@link Remembrance.UserMessage} (this
+   * shell layer mints its own opaque key — nothing upstream hands it a stable one, unlike the
+   * durable layer's {@code ModelResponseId}/execution {@code ComputationId}); a model turn with no
+   * pending tool calls remembers a {@link Remembrance.AssistantMessage} keyed by its own committed
+   * response id; a tool completion folds through {@link ToolFoldRemembrance}, the same mapping
+   * {@link DeliveryWorker} uses for the durable arm of the very same fold moment.
+   */
+  private void remember(Phase priorPhase, AgentEvent event, Transition t) {
+    Memory memory = binding.memory();
+    switch (event) {
+      case AgentEvent.Observed _ ->
+          memory.remember(new Remembrance.UserMessage(Identifiers.next(), t.commit().getFirst()));
+      case AgentEvent.ModelFinished(ModelOutcome.Responded(var _, var calls, var responseId))
+          when calls.isEmpty() ->
+          memory.remember(
+              new Remembrance.AssistantMessage(responseId.value(), t.commit().getFirst()));
+      case AgentEvent.ModelFinished _ -> {
+        // a deferred assistant turn (tool calls pending — the message rides AwaitingTools until
+        // every call answers) or a Failed outcome (Phase.AwaitingModel#handle discards it):
+        // nothing committed, nothing to remember yet.
+      }
+      case AgentEvent.ToolFinished(var call, var outcome) ->
+          ToolFoldRemembrance.remember(
+              memory, harness.type(), binding.id(), priorPhase, call, outcome, t);
     }
   }
 

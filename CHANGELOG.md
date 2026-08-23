@@ -611,3 +611,31 @@ sequence of renames and interim shapes that produced it.
   sits back in the same package. Behavior is unchanged — this is relocation
   and dead-abstraction deletion, not a semantics change. See
   [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/).
+- **Remembrance: memory leaves the fold-advance batch.** `Memory` is not
+  atomically consistent with a fold, by design — a genuinely foreign store
+  (a vector DB, Redis, a bespoke schema) can never join a substrate batch,
+  and interrogating the old atomicity requirement showed it was never
+  load-bearing. `Memory#remember(Message)` is replaced by
+  `Memory#remember(Remembrance)`: `Remembrance` (new, `nessy-spi`, beside
+  `Memory`) is a sealed vocabulary of three members — `UserMessage`,
+  `AssistantMessage`, `ToolExchange` — each carrying its own opaque turn
+  key, mapping one-to-one onto the three fold moments (an observation, a
+  tool-call-free model turn, and a completed tool call). Three laws govern
+  the SPI: append-before-commit (the caller's law — a throwing `remember`
+  aborts the attempt before anything commits, leaving the caller's work
+  pending for natural redrive); idempotent-by-key convergence and
+  recall-order (the implementor's law); memory-ahead-is-benign (documented,
+  tolerated). `DeliveryWorker`'s commit batch shrinks to `[state CAS,
+  delivery delete]` — memory ops have left it entirely, along with the
+  `requirePlainSubstrateMemory` guard, `SubstrateMemory#writesPlainlyTo`,
+  and `currentMemoryHead`, none of which name anything real once any
+  `Memory` implementation is first-class. `SubstrateMemory` rebases onto
+  the new SPI: idempotence is a small per-scope marker document
+  (`kind=memory-keys`), CAS-written in the same batch as the journal append
+  it guards; `recall()` reassembles paired messages from whatever order its
+  `Remembrance`s arrive in, and still reads transcripts written before this
+  reform (a bare `Message` per entry, no `"type"` discriminator) unchanged.
+  `nessy-testing` ships `MemoryContractTest`, a runnable conformance suite
+  any `Memory` — including a third party's — extends to prove it honors the
+  three laws; `SubstrateMemory` and `VerbatimMemory` both pass it. See
+  [Memory](https://jwcarman.github.io/nessy/concepts/memory/).

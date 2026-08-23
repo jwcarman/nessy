@@ -27,13 +27,10 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.agent.codec.StateCodec;
-import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
 import org.jwcarman.nessy.api.Decision;
-import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
 import org.jwcarman.nessy.api.tool.ToolCall;
@@ -41,7 +38,6 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
 import org.jwcarman.nessy.spi.substrate.DocumentStore;
-import org.jwcarman.nessy.spi.substrate.JournalStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 import org.jwcarman.nessy.spi.substrate.Versioned;
 import org.slf4j.Logger;
@@ -50,11 +46,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Delivery is fold-advance (durable-deliveries spec §5): the one consumer of outbox deliveries. Per
  * each delivery: read and decode it, resolve the destination scope from its continuation, reconcile
- * the pending call with its outcome through the pure reducer, commit one substrate batch — journal
- * appends for whatever the transition commits, the CAS state write, and the delivery's own removal
- * — then dispatch the transition's effects (commit-before-dispatch, unchanged law). A CAS miss
- * re-reads and re-handles; {@link org.jwcarman.nessy.agent.Transition#isIgnored()} means the batch
- * is just the delivery removal.
+ * the pending call with its outcome through the pure reducer, remember what the fold implies (see
+ * below), commit one substrate batch — the CAS state write and the delivery's own removal, nothing
+ * else (remembrance spec §1) — then dispatch the transition's effects (commit-before-dispatch,
+ * unchanged law). A CAS miss re-reads and re-handles; {@link
+ * org.jwcarman.nessy.agent.Transition#isIgnored()} means the batch is just the delivery removal.
  *
  * <p>An approval's {@code Allow} decision is not a completion — the tool has not run yet, so there
  * is no {@code ToolFinished} for the reducer to fold. That case dispatches the call directly
@@ -79,19 +75,21 @@ import org.slf4j.LoggerFactory;
  * org.jwcarman.nessy.agent.spi.ToolCallExecutor#executeGrantedToolNow}, the same {@code
  * ToolInvocationId} the computation already carries.
  *
- * <p>The journal writes go straight through the {@code Substrate} the {@code memory} recipe defines
- * (kind {@code memory}, keyed by agent id, {@link MessageCodec}-encoded) so they land in the SAME
- * batch as the state write and the delivery's own removal — this is what "one substrate batch"
- * (spec §5) means. It follows that a scope's {@link org.jwcarman.nessy.spi.Memory} must actually be
- * the substrate-backed {@link org.jwcarman.nessy.agent.memory.SubstrateMemory} for delivery to
- * reach it; a non-substrate {@code Memory} (e.g. an in-process test double) never sees these
- * appends, because there is no substrate underneath it to batch into.
+ * <p>Memory has left the atomic batch (remembrance spec §1): every remembrance a fold implies is
+ * remembered through {@link
+ * org.jwcarman.nessy.spi.Memory#remember(org.jwcarman.nessy.spi.Remembrance)} BEFORE the commit
+ * batch — {@code [state CAS, delivery delete]}, nothing else — ever runs. A throwing {@code
+ * remember} aborts the attempt before that batch, leaving the delivery pending for natural redrive;
+ * a successful {@code remember} that is later followed by a lost CAS on the batch just re-remembers
+ * the same keys on retry, which converges by the SPI's own idempotence law. This is what makes ANY
+ * {@link org.jwcarman.nessy.spi.Memory} — substrate-backed or a genuinely foreign store — a
+ * first-class citizen here: this worker no longer inspects what kind of {@code Memory} a scope is
+ * wired with.
  */
 final class DeliveryWorker<O> implements AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(DeliveryWorker.class);
   private static final String STATE_KIND = "state";
-  private static final String MEMORY_KIND = "memory";
   private static final String TIMEOUT_NON_RETRYABLE = "TIMEOUT_NON_RETRYABLE";
   private static final int SCAN_LIMIT = 1000;
 
@@ -129,13 +127,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
   private final DocumentStore<Phase> states;
 
   /**
-   * The {@code memory} kind, typed over {@link MessageCodec} — bytes identical to what {@link
-   * SubstrateMemory} itself appends (this class's javadoc explains why the two must land in the
-   * same batch), since both bind the same mapper instance through the same encode logic.
-   */
-  private final JournalStore<Message> memory;
-
-  /**
    * The grant arm's single-winner mechanism (spec §5a invariant 5, fix round 2 item (c)): a bare
    * key set, {@code add} as the claim, {@code remove} as the release. In-process only — this is NOT
    * a substrate write, and does not protect against any other {@code DeliveryWorker} instance, in
@@ -164,7 +155,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.codec = new OutcomeCodec(mapper);
     StateCodec stateCodec = new StateCodec(mapper);
-    MessageCodec messageCodec = new MessageCodec(mapper);
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     Objects.requireNonNull(resolver, "resolver must not be null");
     this.binder = new ResolvingAgentBinder(resolver);
@@ -174,7 +164,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
     this.outbox = store.document(outboxKind, deliveryDocumentCodec(codec));
     this.pendingComputations = store.document(computationKind, pendingDocumentCodec(codec));
     this.states = store.document(STATE_KIND, stateCodec(stateCodec));
-    this.memory = store.journal(MEMORY_KIND, messageCodec(messageCodec));
     Objects.requireNonNull(pollInterval, "pollInterval must not be null");
     this.heartbeat = new Thread(() -> heartbeatLoop(pollInterval), "nessy-delivery");
     this.heartbeat.setDaemon(true);
@@ -221,25 +210,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
       @Override
       public Phase decode(byte[] bytes) {
         return codec.phase(new String(bytes, StandardCharsets.UTF_8));
-      }
-    };
-  }
-
-  /**
-   * Adapts {@link MessageCodec}'s String-JSON binding to the byte-oriented {@link Codec} seam —
-   * byte-identical to {@link SubstrateMemory}'s own private adapter, since both wrap the same
-   * mapper instance through the same {@link MessageCodec} logic.
-   */
-  private static Codec<Message> messageCodec(MessageCodec codec) {
-    return new Codec<>() {
-      @Override
-      public byte[] encode(Message value) {
-        return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
-      }
-
-      @Override
-      public Message decode(byte[] bytes) {
-        return codec.message(new String(bytes, StandardCharsets.UTF_8));
       }
     };
   }
@@ -379,13 +349,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
     if (currentVersion.isEmpty()) {
       return; // already delivered by another drain
     }
-    // F1: the guard runs BEFORE the tool ever executes — a scope wired with a Memory this worker
-    // cannot batch into must fail loudly here, not after the tool's external side effect has
-    // already fired. The claim above is still released (the finally in deliverGrant), so a later
-    // sweep gets another chance once the wiring is fixed, rather than spinning on a permanently
-    // re-executed side effect.
-    requirePlainSubstrateMemory(id);
-
     CallAddress address =
         new CallAddress(
             routing.agentType(), routing.agentId(), routing.responseId(), routing.call().id());
@@ -415,8 +378,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
    */
   private void foldGrantedResult(
       AgentType type, AgentId id, ToolCall call, ToolOutcome outcome, String deliveryKey) {
-    // requirePlainSubstrateMemory already ran in deliverClaimedGrant, before the tool executed
-    // (F1) — not repeated here.
     while (true) {
       // Non-decoding version() read (THE TOCTOU LESSON): only the CAS token this delete needs,
       // never the decoded delivery — see deliverClaimedGrant's own note on this same shape.
@@ -427,12 +388,23 @@ final class DeliveryWorker<O> implements AutoCloseable {
       State state = readState(id);
       var event = new AgentEvent.ToolFinished(call, outcome);
       var transition = state.phase().handle(event);
+      if (!transition.isIgnored()) {
+        // remember BEFORE the commit batch (remembrance spec §1 law 1): a throwing remember
+        // propagates straight out of this method, before store.batch ever runs, leaving the
+        // delivery pending for natural redrive.
+        ToolFoldRemembrance.remember(
+            harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
+      }
       List<Substrate.Op> ops =
           foldOps(id, state, transition, deliveryKey, deliveryVersion.getAsLong());
       try {
         store.batch(ops);
       } catch (ConflictException _) {
-        continue; // lost the race — re-read state (or find the delivery already gone) and retry
+        // lost the race — re-read state (or find the delivery already gone) and retry; the
+        // remember above already ran, keyed by the call's execution ComputationId, so a retry
+        // that remembers the same keys again converges (remembrance spec §1 law 2) rather than
+        // duplicating anything.
+        continue;
       }
       if (!transition.isIgnored()) {
         dispatchEffects(type, id, transition.next(), transition.effects());
@@ -443,7 +415,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
 
   private void deliverCompletion(
       AgentType type, AgentId id, String callId, ToolOutcome outcome, String deliveryKey) {
-    requirePlainSubstrateMemory(id);
     while (true) {
       // Non-decoding version() read (THE TOCTOU LESSON): only the CAS token this delete needs.
       OptionalLong deliveryVersion = outbox.version(deliveryKey);
@@ -454,12 +425,23 @@ final class DeliveryWorker<O> implements AutoCloseable {
       var call = routingCall(state, callId);
       var event = new AgentEvent.ToolFinished(call, outcome);
       var transition = state.phase().handle(event);
+      if (!transition.isIgnored()) {
+        // remember BEFORE the commit batch (remembrance spec §1 law 1): a throwing remember
+        // propagates straight out of this method, before store.batch ever runs, leaving the
+        // delivery pending for natural redrive.
+        ToolFoldRemembrance.remember(
+            harness.memoryFor(id), type, id, state.phase(), call, outcome, transition);
+      }
       List<Substrate.Op> ops =
           foldOps(id, state, transition, deliveryKey, deliveryVersion.getAsLong());
       try {
         store.batch(ops);
       } catch (ConflictException _) {
-        continue; // lost the race — re-read state (or find the delivery already gone) and retry
+        // lost the race — re-read state (or find the delivery already gone) and retry; the
+        // remember above already ran, keyed by the call's execution ComputationId, so a retry
+        // that remembers the same keys again converges (remembrance spec §1 law 2) rather than
+        // duplicating anything.
+        continue;
       }
       if (!transition.isIgnored()) {
         dispatchEffects(type, id, transition.next(), transition.effects());
@@ -477,20 +459,14 @@ final class DeliveryWorker<O> implements AutoCloseable {
   }
 
   /**
-   * The one atomic batch a fold-advance commits (spec §5): journal appends for whatever the
-   * transition commits, the CAS state write, and the delivery's own removal — composed through the
-   * typed {@link #memory}/{@link #states}/{@link #outbox} views' op-minting doors, the SAME shape
-   * BASE built by hand.
+   * The one atomic batch a fold-advance commits (remembrance spec §1): the CAS state write and the
+   * delivery's own removal — memory has left this batch entirely; every remembrance the transition
+   * implied was already remembered by the caller before this method ever runs.
    */
   private List<Substrate.Op> foldOps(
       AgentId id, State state, Transition transition, String deliveryKey, long deliveryVersion) {
     List<Substrate.Op> ops = new ArrayList<>();
     if (!transition.isIgnored()) {
-      long seq = currentMemoryHead(id);
-      for (Message message : transition.commit()) {
-        seq++;
-        ops.add(memory.appendOp(id.value(), seq, message));
-      }
       ops.add(states.writeOp(id.value(), transition.next(), state.version()));
     }
     ops.add(outbox.deleteOp(deliveryKey, deliveryVersion));
@@ -601,36 +577,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
   }
 
   /**
-   * The loud guard F3 asks for: the worker's journal appends bypass {@link
-   * org.jwcarman.nessy.spi.Memory} entirely and write {@link MessageCodec}-encoded bytes straight
-   * into {@code store} (this class's javadoc explains why — one atomic batch). A scope wired with
-   * anything else — a different substrate, a transformed {@link
-   * org.jwcarman.nessy.spi.substrate.Codec}, a non-substrate {@code Memory} test double — would
-   * silently diverge from what {@link SubstrateMemory#recall()} decodes, or never see the append at
-   * all. Failing loudly here is deliberately narrower than fixing the seam itself: a {@code Memory}
-   * that contributes its own batch ops is parked for James, not built here.
-   *
-   * <p>Every caller runs this BEFORE any write, AND before any tool ever executes (F1): {@link
-   * #deliverClaimedGrant} calls it immediately after confirming the delivery is still present,
-   * ahead of {@code executeGrantedToolNow} — a non-plain {@code Memory} scope must never fire a
-   * granted tool's external side effect only to fail after the fact, on a delivery the next
-   * heartbeat would otherwise re-execute the same side effect against, forever.
-   */
-  private void requirePlainSubstrateMemory(AgentId id) {
-    var memory = harness.memoryFor(id);
-    if (!(memory instanceof SubstrateMemory substrateMemory)
-        || !substrateMemory.writesPlainlyTo(store)) {
-      throw new IllegalStateException(
-          "scope "
-              + id.value()
-              + " is wired with a Memory the delivery worker cannot batch into — its journal"
-              + " appends must be a plain SubstrateMemory over this worker's own substrate (see"
-              + " DeliveryWorker's class javadoc); a custom codec or a non-substrate Memory here"
-              + " would silently lose or corrupt this scope's completions");
-    }
-  }
-
-  /**
    * The pending call, re-derived from the currently-loaded phase's outstanding effects — the same
    * derivation {@link org.jwcarman.nessy.agent.DefaultAgent#redispatch()} relies on. Falls back to
    * a synthetic zero-argument call only if the phase no longer carries it (an already-reconciled or
@@ -643,11 +589,6 @@ final class DeliveryWorker<O> implements AutoCloseable {
       }
     }
     return new ToolCall(callId, "unknown", JsonNodeFactory.instance.objectNode());
-  }
-
-  private long currentMemoryHead(AgentId id) {
-    List<Substrate.Entry> entries = store.entries(MEMORY_KIND, id.value(), 1);
-    return entries.isEmpty() ? 0L : entries.getLast().seq();
   }
 
   /**

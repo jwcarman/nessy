@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -50,7 +51,7 @@ class HarnessTest {
   private static final Memory MEMORY =
       new Memory() {
         @Override
-        public void remember(Message message) {
+        public void remember(Remembrance remembrance) {
           // fixture only: this memory never needs to recall what it was told
         }
 
@@ -374,7 +375,7 @@ class HarnessTest {
       var bindingA = harness.binding(AgentId.of("scope-a"));
       var bindingB = harness.binding(AgentId.of("scope-b"));
 
-      bindingA.memory().remember(Message.user(List.of()));
+      bindingA.memory().remember(new Remembrance.UserMessage("key-a", Message.user(List.of())));
       bindingA
           .store()
           .save(new State(new Phase.AwaitingModel(), bindingA.store().load().version()));
@@ -409,7 +410,7 @@ class HarnessTest {
 
       var id = AgentId.of("shared-scope");
       var firstBind = harness.binding(id);
-      firstBind.memory().remember(Message.user(List.of()));
+      firstBind.memory().remember(new Remembrance.UserMessage("key-b", Message.user(List.of())));
       firstBind.backlog().add("hello");
 
       var secondBind = harness.binding(id);

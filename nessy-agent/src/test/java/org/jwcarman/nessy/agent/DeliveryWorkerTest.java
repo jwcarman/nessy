@@ -356,17 +356,18 @@ class DeliveryWorkerTest {
   }
 
   /**
-   * F1: {@link #requirePlainSubstrateMemory} must run BEFORE the granted tool ever executes, not
-   * only before the fold-advance batch — otherwise a non-plain-Memory scope fires the tool's
-   * external side effect, then throws, the per-item catch in {@link #drainOnce()} logs it, the
-   * delivery survives untouched, and the NEXT heartbeat repeats the whole thing. Zero tests tripped
-   * this before the fix; this one pins the fail-loud-before-any-side-effect ordering down.
+   * Remembrance spec §1: memory left the atomic batch, so the worker no longer inspects what kind
+   * of {@code Memory} a scope is wired with — the retired {@code requirePlainSubstrateMemory} guard
+   * this class used to run before every granted tool. A genuinely non-substrate {@code Memory}
+   * (here, {@link VerbatimMemory}, which keeps its own in-process list and never touches the
+   * worker's substrate at all) is now a first-class citizen: the tool runs, its outcome folds, and
+   * the delivery is consumed exactly as it would be over a {@link SubstrateMemory}.
    */
   @Nested
-  class NonPlainMemoryGuard {
+  class AnyMemoryIsFirstClass {
 
     @Test
-    void aNonPlainMemoryScopeFailsLoudlyBeforeTheToolEverRunsAndLeavesTheDeliveryInPlace() {
+    void aNonSubstrateMemoryScopeRunsTheToolAndConsumesTheDelivery() {
       var mapper = TestMappers.plainlyPinned();
       var store = new InMemorySubstrate();
       var tool = new CountingTool();
@@ -375,12 +376,11 @@ class DeliveryWorkerTest {
       var executor =
           new RegistryToolCallExecutor(
               registry, TYPE, ID, new RecordingTurnObserver(), pump, mapper);
-      // a non-plain Memory: VerbatimMemory keeps its own in-process list, never writes through the
-      // worker's substrate at all — exactly the wiring requirePlainSubstrateMemory must catch.
+      var memory = new VerbatimMemory();
       Harness<String> harness =
           TestAgents.harness(
               TYPE,
-              new VerbatimMemory(),
+              memory,
               new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper),
               new NoopBacklog(),
               text -> List.of(new TextBlock(text)),
@@ -398,11 +398,11 @@ class DeliveryWorkerTest {
           "grant",
           new Outcome.Success(new OutcomeCodec(mapper).encodeSuccess(Decision.allow())));
 
-      worker.nudge(); // must not throw out of nudge() — the per-item catch absorbs it
+      worker.nudge();
+      pump.pumpUntilQuiet();
 
-      assertThat(tool.invocations).hasValue(0); // the tool never ran
-      assertThat(store.keys(Kinds.outbox(TYPE), 10))
-          .containsExactly("grant"); // the delivery survives
+      assertThat(tool.invocations).hasValue(1); // the tool ran
+      assertThat(store.keys(Kinds.outbox(TYPE), 10)).isEmpty(); // the delivery is consumed
     }
   }
 }
