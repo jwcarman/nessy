@@ -17,12 +17,11 @@ Ask Nessy for a harness; keep it forever; bind any id into a transient agent;
 tell it things. Durability is a property of the substrate, not the API:
 
 ```java
-var harness = Nessy.harness()                  // built once, kept — immortal
+var harness = Nessy.harness(h -> h             // built once, kept — immortal
         .provider(provider)                    // the one required dependency
         .systemPrompt("You are the ops assistant.")
         .tools(restart, diagnose)              // bare tools, allow-by-default
-        .substrate(jdbc)                       // default: in-memory
-        .build();
+        .substrate(jdbc));                     // default: in-memory
 
 harness.bind(AgentId.of("ops-agent-1")).observe("restart prod-eu");
 ```
@@ -36,15 +35,22 @@ pitch, and the getting-started page opens with it.
 `Nessy` is the single front door — one class to remember, autocomplete as the
 tour:
 
-- `Nessy.harness()` — the String-observation five-minute path.
-- `Nessy.harness(Class<O>)` — typed observations; requires `.renderer(...)`.
+- `Nessy.harness(HarnessCustomizer<String>)` — the String-observation
+  five-minute path.
+- `Nessy.harness(Class<O>, HarnessCustomizer<O>)` — typed observations;
+  requires `.renderer(...)`.
 - `Nessy.cli()` — the ephemeral REPL door, unchanged by this reform.
 
-Each returns `Nessy.HarnessBuilder<O>` (the old `AutonomousBuilder`, renamed
-to what it now builds), terminating in `.build()` → `Harness<O>`. There is
-deliberately no second door: `Harness.of(...)` remains the internal compiler
-("Nessy is the harness's only compiler" — now stated as law in its javadoc),
-never user-facing.
+**The customizer is the house style** — the same grammar `Tool.of(type,
+customizer)` already teaches: the lambda receives a `HarnessConfig<O>` (the
+old `AutonomousBuilder`, renamed; identical setters, no terminal `build()`),
+the lambda closes, and Nessy constructs — atomically, internally. No
+half-configured builder object ever exists in user hands, which makes "Nessy
+is the harness's only compiler" true by shape rather than by javadoc (the
+law stays stated on `Harness.of(...)` regardless). `HarnessCustomizer<O>` +
+`HarnessConfig<O>` mirror `ToolCustomizer` + `ToolConfig`, one lesson for
+both. Other assembly styles (framework wiring, conditional configuration)
+compose inside the lambda; there is deliberately no second door.
 
 ## 3. The builder minimum
 
