@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -106,21 +107,22 @@ class AutonomousApprovalDemo {
                 List.of(new ModelEvent.ToolUseEmitted(call, null)),
                 List.of(new ModelEvent.TextChunk("Done — prod-eu restarted."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== the model asks to restart prod-eu ==");
-      host.post("prod-eu", "please restart prod-eu");
+      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
       pump.pumpUntilQuiet();
 
       System.out.println(
@@ -135,7 +137,7 @@ class AutonomousApprovalDemo {
       assertThat(requests.getFirst().address().approval()).isEqualTo(computation);
 
       System.out.println("== hours pass; every instance is garbage; any node may answer ==");
-      host.approvals().approve(computation);
+      harness.approvals().approve(computation);
       pump.pumpUntilQuiet();
 
       // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker reads the grant's
@@ -146,6 +148,8 @@ class AutonomousApprovalDemo {
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
       assertThat(backend.find(computation)).isEmpty();
+    } finally {
+      harness.shutdown();
     }
   }
 
@@ -167,21 +171,22 @@ class AutonomousApprovalDemo {
                 List.of(new ModelEvent.ToolUseEmitted(call, null)),
                 List.of(new ModelEvent.TextChunk("Understood — I will not restart prod-eu."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== the model asks to restart prod-eu ==");
-      host.post("prod-eu", "please restart prod-eu");
+      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
       pump.pumpUntilQuiet();
 
       assertThat(prodEuState.load().phase()).isInstanceOf(Phase.AwaitingTools.class);
@@ -191,7 +196,7 @@ class AutonomousApprovalDemo {
       assertThat(requests).hasSize(1);
 
       System.out.println("== the desk says no; the denial arrives in-band ==");
-      host.approvals().deny(computation, "not during business hours");
+      harness.approvals().deny(computation, "not during business hours");
       pump.pumpUntilQuiet();
 
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
@@ -203,6 +208,8 @@ class AutonomousApprovalDemo {
       assertThat(transcript).hasSize(4);
       assertThat(transcript.get(2).content())
           .contains(new ToolResultBlock("c1", "not during business hours", true));
+    } finally {
+      harness.shutdown();
     }
   }
 }

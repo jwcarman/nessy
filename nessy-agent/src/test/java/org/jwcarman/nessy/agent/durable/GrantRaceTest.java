@@ -31,7 +31,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -175,7 +174,7 @@ class GrantRaceTest {
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());
-    var agent = new DefaultAgent<String>(harness, harness.binding(AgentId.of("test-scope")));
+    var agent = harness.bind(AgentId.of("test-scope"));
     var worker =
         new DeliveryWorker<String>(
             substrate, mapper, harness, (t, i) -> agent, java.time.Duration.ofHours(1));

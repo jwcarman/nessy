@@ -26,10 +26,10 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentResolver;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.StalenessPolicy;
@@ -190,7 +190,7 @@ class ReaperTest {
       Substrate substrate,
       SubstrateAgentStateStore store,
       Harness<String> harness,
-      DefaultAgent<String> agent,
+      Agent<String> agent,
       DeliveryWorker<String> worker,
       PumpedExecutor pump) {}
 
@@ -229,7 +229,7 @@ class ReaperTest {
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());
-    var agent = new DefaultAgent<String>(harness, harness.binding(AgentId.of("test-scope")));
+    var agent = harness.bind(AgentId.of("test-scope"));
     AgentResolver resolver = (t, i) -> agent;
     var worker =
         new DeliveryWorker<String>(substrate, mapper, harness, resolver, Duration.ofHours(1));

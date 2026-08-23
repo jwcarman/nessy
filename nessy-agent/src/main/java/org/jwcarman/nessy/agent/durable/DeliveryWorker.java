@@ -31,7 +31,6 @@ import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentResolver;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.Binding;
 import org.jwcarman.nessy.agent.DurableOutcomes;
 import org.jwcarman.nessy.agent.Effect;
 import org.jwcarman.nessy.agent.Harness;
@@ -348,7 +347,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
     Substrate.Op deleteOp = new Substrate.Op.DeleteDocument(OUTBOX_KIND, key, currentVersion);
 
-    ToolCallExecutor executor = harness.toolExecutor(harness.binding(id));
+    ToolCallExecutor executor = harness.toolExecutorFor(id);
     ToolExecution result =
         executor.executeGrantedToolNow(routing.call(), address, invocation, Optional.of(deleteOp));
     switch (result) {
@@ -586,10 +585,9 @@ public final class DeliveryWorker<O> implements AutoCloseable {
             routing.agentId(),
             pending.invocation().responseId(),
             routing.call().id());
-    Binding<O> binding = harness.binding(AgentId.of(routing.agentId()));
     ToolExecution result =
         harness
-            .toolExecutor(binding)
+            .toolExecutorFor(AgentId.of(routing.agentId()))
             .executeGrantedToolNow(routing.call(), address, pending.invocation(), Optional.empty());
     switch (result) {
       case ToolExecution.Immediate(ToolOutcome outcome) -> {
@@ -619,7 +617,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * heartbeat would otherwise re-execute the same side effect against, forever.
    */
   private void requirePlainSubstrateMemory(AgentId id) {
-    var memory = harness.binding(id).memory();
+    var memory = harness.memoryFor(id);
     if (!(memory instanceof SubstrateMemory substrateMemory)
         || !substrateMemory.writesPlainlyTo(store)) {
       throw new IllegalStateException(
@@ -660,14 +658,13 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * total rather than assuming that invariant silently.
    */
   private void dispatchEffects(AgentType type, AgentId id, Phase phase, List<Effect> effects) {
-    Binding<O> binding = harness.binding(id);
     for (Effect effect : effects) {
       switch (effect) {
         case Effect.CallModel _ ->
-            harness.modelExecutor(binding).callModel(event -> binder.deliver(type, id, event));
+            harness.modelExecutorFor(id).callModel(event -> binder.deliver(type, id, event));
         case Effect.ExecuteTool(var call) ->
             harness
-                .toolExecutor(binding)
+                .toolExecutorFor(id)
                 .executeTool(call, responseIdOf(phase), event -> binder.deliver(type, id, event));
       }
     }

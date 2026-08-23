@@ -24,10 +24,16 @@ import org.jwcarman.nessy.spi.Memory;
  * The scope strapped in (§10.11): thin handles, stamped fresh per delivery by {@link
  * Harness#bind(AgentId)}. Cheap to build, cheap to discard — every field is a view over a shared
  * substrate (Task 2), never a copy, so binding twice for the same id sees the same world.
+ *
+ * <p>Package-private (harness-first spec §4, the Binding demotion): internal wiring, never
+ * application vocabulary. {@link Harness#bind(AgentId)} — the only door application code has —
+ * never returns one; {@link Harness}'s id-keyed seams ({@code modelExecutorFor}, {@code
+ * toolExecutorFor}, {@code memoryFor}) give the delivery worker what it needs without exposing this
+ * type across the package line.
  */
-public record Binding<O>(AgentId id, Memory memory, AgentStateStore store, Backlog<O> backlog) {
+record Binding<O>(AgentId id, Memory memory, AgentStateStore store, Backlog<O> backlog) {
 
-  public Binding {
+  Binding {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(memory, "memory must not be null");
     Objects.requireNonNull(store, "store must not be null");

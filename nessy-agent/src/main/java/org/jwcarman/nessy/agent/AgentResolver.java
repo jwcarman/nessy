@@ -18,10 +18,13 @@ package org.jwcarman.nessy.agent;
 /**
  * Binds a scope coordinate to its live instance (spec §4.3 amendment, extending the binder
  * principle): whoever implements this provably holds — or can construct — the scope's {@link
- * DefaultAgent}, exactly as {@link AgentBinder} does for ordinary delivery.
+ * Agent}, exactly as {@link AgentBinder} does for ordinary delivery. Returns the application-facing
+ * {@link Agent} type (harness-first spec §4, the Binding demotion) rather than the concrete {@link
+ * DefaultAgent} — its one concrete-type dependency dissolved once {@link Harness#bind(AgentId)}
+ * became the only door callers (including white-box test fixtures) need.
  */
 @FunctionalInterface
 public interface AgentResolver {
 
-  DefaultAgent<?> resolve(AgentType type, AgentId id);
+  Agent<?> resolve(AgentType type, AgentId id);
 }

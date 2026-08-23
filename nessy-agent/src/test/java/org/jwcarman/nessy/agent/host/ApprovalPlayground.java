@@ -20,6 +20,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CompletionPolicy;
 import org.jwcarman.nessy.api.tool.ActionContributor;
@@ -82,31 +83,31 @@ public final class ApprovalPlayground {
     var settings =
         new ModelSettings(selection.model(), "You are a terse assistant.", 1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ApprovalRequest>();
-    try (var host =
-        Nessy.autonomous()
-            .type("playground")
-            .provider(selection.provider())
-            .settings(settings)
-            .grants(
-                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .approvalNotifier(pending::add)
-            .turnObserver(event -> System.out.println("  [turn] " + event))
-            .build()) {
-      var console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-      System.out.println("say something ('approve', 'deny <reason>', 'quit'):");
-      String line;
-      while ((line = console.readLine()) != null) {
-        ApprovalRequest open = pending.peek();
-        if (line.equals("quit")) {
-          break;
-        }
-        if (line.equals("approve") && open != null) {
-          host.approvals().approve(pending.poll().address().approval());
-        } else if (line.startsWith("deny ") && open != null) {
-          host.approvals().deny(pending.poll().address().approval(), line.substring(5));
-        } else {
-          host.post("tinker", line);
-        }
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("playground")
+                    .provider(selection.provider())
+                    .settings(settings)
+                    .grants(
+                        ToolGrant.grant(
+                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .approvalNotifier(pending::add)
+                    .turnObserver(event -> System.out.println("  [turn] " + event)));
+    var console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+    System.out.println("say something ('approve', 'deny <reason>', 'quit'):");
+    String line;
+    while ((line = console.readLine()) != null) {
+      ApprovalRequest open = pending.peek();
+      if (line.equals("quit")) {
+        break;
+      }
+      if (line.equals("approve") && open != null) {
+        harness.approvals().approve(pending.poll().address().approval());
+      } else if (line.startsWith("deny ") && open != null) {
+        harness.approvals().deny(pending.poll().address().approval(), line.substring(5));
+      } else {
+        harness.bind(AgentId.of("tinker")).observe(line);
       }
     }
   }

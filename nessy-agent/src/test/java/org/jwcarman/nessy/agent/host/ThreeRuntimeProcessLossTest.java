@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
@@ -100,20 +101,23 @@ class ThreeRuntimeProcessLossTest {
     var pumpA = new PumpedExecutor();
     var providerA =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.ToolUseEmitted(call, null))));
-    try (var hostA =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(providerA)
-            .settings(TestSettings.settings())
-            .grants(ToolGrant.grant(new DeferringTool(), UsagePolicy.allow()))
-            .substrate(substrate)
-            .executor(pumpA)
-            .build()) {
-      hostA.post("central-scope", "please run the central op");
+    var harnessA =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(providerA)
+                    .settings(TestSettings.settings())
+                    .grants(ToolGrant.grant(new DeferringTool(), UsagePolicy.allow()))
+                    .substrate(substrate)
+                    .executor(pumpA));
+    try {
+      harnessA.bind(AgentId.of("central-scope")).observe("please run the central op");
       pumpA.pumpUntilQuiet();
+    } finally {
+      harnessA.shutdown();
     }
-    // hostA is now closed: its heartbeat thread stopped. The one pending computation exists only
-    // as durable state in `substrate`.
+    // harnessA's worker is now quiesced. The one pending computation exists only as durable state
+    // in `substrate`.
     List<String> computationKeys = substrate.keys("computation", 10);
     assertThat(computationKeys).hasSize(1);
     var computationId = ComputationId.of(computationKeys.getFirst());
@@ -132,21 +136,24 @@ class ThreeRuntimeProcessLossTest {
     var pumpC = new PumpedExecutor();
     var providerC =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("all done."))));
-    try (var hostC =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(providerC)
-            .settings(TestSettings.settings())
-            .grants(ToolGrant.grant(new DeferringTool(), UsagePolicy.allow()))
-            .substrate(substrate)
-            .executor(pumpC)
-            .build()) {
+    var harnessC =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(providerC)
+                    .settings(TestSettings.settings())
+                    .grants(ToolGrant.grant(new DeferringTool(), UsagePolicy.allow()))
+                    .substrate(substrate)
+                    .executor(pumpC));
+    try {
       long deadline = System.currentTimeMillis() + 20_000;
       while (!substrate.keys("outbox", 10).isEmpty() && System.currentTimeMillis() < deadline) {
         Thread.sleep(50);
         pumpC.pumpUntilQuiet();
       }
       assertThat(substrate.keys("outbox", 10)).isEmpty();
+    } finally {
+      harnessC.shutdown();
     }
 
     var state = new SubstrateAgentStateStore(substrate, "central-scope", Clock.systemUTC(), mapper);

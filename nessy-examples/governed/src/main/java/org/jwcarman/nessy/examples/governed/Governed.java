@@ -25,7 +25,8 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import org.jwcarman.nessy.agent.host.AutonomousHost;
+import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ToolGrant;
@@ -109,22 +110,22 @@ public final class Governed {
         TurnObserver.observe(
             o -> o.onToolCallCompleted(toolCompletions::add).onTurnEnded(completions::add));
 
-    try (AutonomousHost<String> host =
-        Nessy.autonomous()
-            .type("governed")
-            .provider(scriptedProvider())
-            .settings(settings)
-            .grants(
-                ToolGrant.grant(
-                    new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore))
-            .approvalNotifier(approvalRequests::add)
-            .turnObserver(observer)
-            .substrate(substrate)
-            .build()) {
-
+    Harness<String> harness =
+        Nessy.harness(
+            h ->
+                h.type("governed")
+                    .provider(scriptedProvider())
+                    .settings(settings)
+                    .grants(
+                        ToolGrant.grant(
+                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
+                        restartGrant(intentStore))
+                    .approvalNotifier(approvalRequests::add)
+                    .turnObserver(observer)
+                    .substrate(substrate));
+    try {
       System.out.println("== posting: please restart prod-eu ==");
-      host.post(SCOPE_ID, "please restart prod-eu");
+      harness.bind(AgentId.of(SCOPE_ID)).observe("please restart prod-eu");
 
       TurnEvent.ToolCallCompleted bounce =
           await(toolCompletions, "the bounced restart's completion");
@@ -142,7 +143,7 @@ public final class Governed {
               + " action="
               + request.context().action().orElse(null));
 
-      host.approvals().approve(request.address().approval());
+      harness.approvals().approve(request.address().approval());
       System.out.println("approved");
 
       // The grant arc (durable-deliveries spec §5a): the delivery worker dispatches the call
@@ -152,6 +153,8 @@ public final class Governed {
       TurnEvent.TurnEnded ended = await(completions, "the turn's completion");
       System.out.println("turn ended: failed=" + ended.failed());
       return new Result(bounce.result().content(), declaredTarget, "GOVERNED TURN COMPLETE");
+    } finally {
+      harness.shutdown();
     }
   }
 

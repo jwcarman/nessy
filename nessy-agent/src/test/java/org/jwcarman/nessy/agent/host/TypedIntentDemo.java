@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -211,23 +212,24 @@ class TypedIntentDemo {
                 List.of(new ModelEvent.ToolUseEmitted(retryAttempt, null)),
                 List.of(new ModelEvent.TextChunk("Done — prod-eu restarted."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(
-                    new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
+                        restartGrant(
+                            intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== the model asks to restart prod-eu with no declared intent ==");
-      host.post("prod-eu", "please restart prod-eu");
+      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
       pump.pumpUntilQuiet();
 
       System.out.println("intent recorded: " + intentStore.latest());
@@ -244,7 +246,7 @@ class TypedIntentDemo {
       assertThat(request.context().declaredIntent(OpsIntent.class))
           .contains(new Restart("prod-eu", "stuck deploy"));
 
-      host.approvals().approve(computation);
+      harness.approvals().approve(computation);
       pump.pumpUntilQuiet();
 
       // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker dispatches the
@@ -254,6 +256,8 @@ class TypedIntentDemo {
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
       assertThat(backend.find(computation)).isEmpty();
+    } finally {
+      harness.shutdown();
     }
   }
 
@@ -289,23 +293,23 @@ class TypedIntentDemo {
                 List.of(new ModelEvent.ToolUseEmitted(mismatchedAttempt, null)),
                 List.of(new ModelEvent.TextChunk("Understood — I will not restart prod-us."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(
-                    new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), true))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
+                        restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), true))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== the model declares prod-eu, then tries to restart prod-us instead ==");
-      host.post("prod-eu", "please restart prod-us");
+      harness.bind(AgentId.of("prod-eu")).observe("please restart prod-us");
       pump.pumpUntilQuiet();
 
       assertThat(requests).isEmpty();
@@ -320,6 +324,8 @@ class TypedIntentDemo {
       System.out.println("mismatch denial: " + mismatchDenial);
       assertThat(mismatchDenial.isError()).isTrue();
       assertThat(mismatchDenial.content()).contains("prod-eu").contains("prod-us");
+    } finally {
+      harness.shutdown();
     }
   }
 
@@ -347,23 +353,24 @@ class TypedIntentDemo {
                 List.of(new ModelEvent.ToolUseEmitted(unrepresentableDeclare, null)),
                 List.of(new ModelEvent.TextChunk("Understood — that shape is not supported."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(
-                    new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new IntentTool<>(OpsIntent.class, intentStore), UsagePolicy.allow()),
+                        restartGrant(
+                            intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH), false))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== the model declares a shape outside the vocabulary ==");
-      host.post("prod-eu", "please nuke x");
+      harness.bind(AgentId.of("prod-eu")).observe("please nuke x");
       pump.pumpUntilQuiet();
 
       System.out.println("intent recorded: " + intentStore.latest());
@@ -380,6 +387,8 @@ class TypedIntentDemo {
       System.out.println("binding error: " + bindingError);
       assertThat(bindingError.isError()).isTrue();
       assertThat(bindingError.content()).contains("Restart").contains("Diagnose");
+    } finally {
+      harness.shutdown();
     }
   }
 }

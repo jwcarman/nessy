@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.DurableDecisions;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
@@ -107,31 +108,34 @@ class GrantSurvivalTest {
     var requestsA = new CopyOnWriteArrayList<ApprovalRequest>();
 
     ApprovalRequest firstAsk;
-    try (var hostA =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(providerA)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .substrate(substrate)
-            .approvalNotifier(requestsA::add)
-            .executor(pumpA)
-            .build()) {
-
-      hostA.post("prod-eu", "please restart prod-eu");
+    var harnessA =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(providerA)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .substrate(substrate)
+                    .approvalNotifier(requestsA::add)
+                    .executor(pumpA));
+    try {
+      harnessA.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
       pumpA.pumpUntilQuiet();
       assertThat(requestsA).hasSize(1);
       firstAsk = requestsA.getFirst();
 
-      // Grant it by writing DIRECTLY to the substrate, bypassing hostA.approvals() — which would
-      // have nudged hostA's own worker. Host A dies (the try-with-resources close below) before
-      // its own heartbeat ever has a chance to run.
+      // Grant it by writing DIRECTLY to the substrate, bypassing harnessA.approvals() — which
+      // would have nudged harness A's own worker. Harness A's heartbeat is stopped (shutdown()
+      // below) before it ever has a chance to run.
       var backendOverSameSubstrate = new SubstrateComputations(substrate, mapper);
       backendOverSameSubstrate.complete(firstAsk.address().approval(), DurableDecisions.granted());
+    } finally {
+      harnessA.shutdown();
     }
-    // hostA is now closed: its heartbeat thread stopped, having never run even once since the
-    // grant. The grant delivery exists ONLY as a document in `substrate` at this point.
+    // harnessA's worker is now quiesced, having never run even once since the grant. The grant
+    // delivery exists ONLY as a document in `substrate` at this point.
 
     assertThat(substrate.keys("outbox", 10)).hasSize(1); // the grant survives as durable state
 
@@ -141,20 +145,21 @@ class GrantSurvivalTest {
             List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
     var requestsB = new CopyOnWriteArrayList<ApprovalRequest>();
 
-    try (var hostB =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(providerB)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .substrate(substrate)
-            .approvalNotifier(requestsB::add)
-            .executor(pumpB)
-            .build()) {
-
-      // No new post, no new approval — host B knows nothing of host A. Its own heartbeat (the
-      // recovery net, spec §5) is the only thing that ever touches this grant.
+    var harnessB =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(providerB)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .substrate(substrate)
+                    .approvalNotifier(requestsB::add)
+                    .executor(pumpB));
+    try {
+      // No new observation, no new approval — harness B knows nothing of harness A. Its own
+      // heartbeat (the recovery net, spec §5) is the only thing that ever touches this grant.
       long deadline = System.currentTimeMillis() + 20_000;
       while (!substrate.keys("outbox", 10).isEmpty() && System.currentTimeMillis() < deadline) {
         Thread.sleep(50);
@@ -162,7 +167,9 @@ class GrantSurvivalTest {
       }
 
       assertThat(substrate.keys("outbox", 10)).isEmpty();
-      assertThat(requestsB).isEmpty(); // no re-ask on host B either
+      assertThat(requestsB).isEmpty(); // no re-ask on harness B either
+    } finally {
+      harnessB.shutdown();
     }
 
     var state = new SubstrateAgentStateStore(substrate, "prod-eu", Clock.systemUTC(), mapper);
@@ -227,28 +234,32 @@ class GrantSurvivalTest {
     var requestsA = new CopyOnWriteArrayList<ApprovalRequest>();
 
     ApprovalRequest firstAsk;
-    try (var hostA =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(providerA)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(
-                    new DeferredRestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .substrate(substrate)
-            .approvalNotifier(requestsA::add)
-            .executor(pumpA)
-            .build()) {
-
-      hostA.post("prod-eu", "please restart prod-eu");
+    var harnessA =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(providerA)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new DeferredRestartTool(),
+                            RESTART_ACTION,
+                            UsagePolicy.requireApproval()))
+                    .substrate(substrate)
+                    .approvalNotifier(requestsA::add)
+                    .executor(pumpA));
+    try {
+      harnessA.bind(AgentId.of("prod-eu")).observe("please restart prod-eu");
       pumpA.pumpUntilQuiet();
       assertThat(requestsA).hasSize(1);
       firstAsk = requestsA.getFirst();
 
       var backendOverSameSubstrate = new SubstrateComputations(substrate, mapper);
       backendOverSameSubstrate.complete(firstAsk.address().approval(), DurableDecisions.granted());
+    } finally {
+      harnessA.shutdown();
     }
-    // hostA never nudged its own worker — the grant survives purely as substrate state.
+    // harnessA never nudged its own worker — the grant survives purely as substrate state.
 
     var pumpB = new PumpedExecutor();
     var providerB =
@@ -257,21 +268,24 @@ class GrantSurvivalTest {
     var requestsB = new CopyOnWriteArrayList<ApprovalRequest>();
     var toolComputation = firstAsk.address().execution();
 
-    try (var hostB =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(providerB)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(
-                    new DeferredRestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .substrate(substrate)
-            .approvalNotifier(requestsB::add)
-            .executor(pumpB)
-            .build()) {
-
-      // Host B's own heartbeat picks up the grant, transfers it (create tool computation, delete
-      // delivery — one batch), and dispatches the tool, which defers again — durably, this time.
+    var harnessB =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(providerB)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(
+                            new DeferredRestartTool(),
+                            RESTART_ACTION,
+                            UsagePolicy.requireApproval()))
+                    .substrate(substrate)
+                    .approvalNotifier(requestsB::add)
+                    .executor(pumpB));
+    try {
+      // Harness B's own heartbeat picks up the grant, transfers it (create tool computation,
+      // delete delivery — one batch), and dispatches the tool, which defers again — durably, this
+      // time.
       long transferDeadline = System.currentTimeMillis() + 20_000;
       while (substrate.read("computation", toolComputation.value()).isEmpty()
           && System.currentTimeMillis() < transferDeadline) {
@@ -283,7 +297,7 @@ class GrantSurvivalTest {
       assertThat(requestsB).isEmpty(); // no re-ask
 
       // The eventual external answer arrives through the normal completion door.
-      hostB.completions().complete(toolComputation, ToolResult.ok("restarted prod-eu"));
+      harnessB.completions().complete(toolComputation, ToolResult.ok("restarted prod-eu"));
 
       long foldDeadline = System.currentTimeMillis() + 20_000;
       var state = new SubstrateAgentStateStore(substrate, "prod-eu", Clock.systemUTC(), mapper);
@@ -293,6 +307,8 @@ class GrantSurvivalTest {
         pumpB.pumpUntilQuiet();
       }
       assertThat(state.load().phase()).isEqualTo(new Phase.Idle());
+    } finally {
+      harnessB.shutdown();
     }
 
     var memory = new SubstrateMemory(substrate, "prod-eu", mapper);

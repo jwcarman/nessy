@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.support;
 
+import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.DefaultAgent;
@@ -96,7 +97,12 @@ public final class TestAgents {
             observer,
             drainOnIdle,
             stalenessPolicy);
-    return new DefaultAgent<>(harness, harness.binding(AgentId.of("test-scope")));
+    // harness.bind(id) is the only door outside org.jwcarman.nessy.agent (harness-first spec §4,
+    // the Binding demotion) — Harness.bind always returns a DefaultAgent, so this cast is safe;
+    // this white-box fixture needs the concrete type for callers that reach for
+    // redispatch()/deliver() directly.
+    Agent<O> agent = harness.bind(AgentId.of("test-scope"));
+    return (DefaultAgent<O>) agent;
   }
 
   /**

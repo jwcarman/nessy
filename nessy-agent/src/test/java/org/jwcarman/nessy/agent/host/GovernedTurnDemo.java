@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.Phase;
 import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
@@ -156,22 +157,24 @@ class GovernedTurnDemo {
                 List.of(new ModelEvent.ToolUseEmitted(restartCall(), null)),
                 List.of(new ModelEvent.TextChunk("Done — prod-eu restarted."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
+                        restartGrant(intentStore, riskAssessor(Likelihood.HIGH, Impact.HIGH)))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== the model declares intent, then asks to restart prod-eu ==");
-      host.post("prod-eu", "please restart prod-eu to clear the stuck deploy");
+      harness
+          .bind(AgentId.of("prod-eu"))
+          .observe("please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
       System.out.println("intent recorded: " + intentStore.latest());
@@ -199,7 +202,7 @@ class GovernedTurnDemo {
           .contains(RiskAssessment.of(Likelihood.HIGH, Impact.HIGH, RiskFactors.DESTRUCTIVE));
 
       System.out.println("== the desk approves; the scope resumes ==");
-      host.approvals().approve(computation);
+      harness.approvals().approve(computation);
       pump.pumpUntilQuiet();
 
       // The grant arc (durable-deliveries spec §5a, Task 3): the delivery worker dispatches the
@@ -209,6 +212,8 @@ class GovernedTurnDemo {
       assertThat(prodEuState.load().phase()).isEqualTo(new Phase.Idle());
       assertThat(requests).hasSize(1);
       assertThat(backend.find(computation)).isEmpty();
+    } finally {
+      harness.shutdown();
     }
   }
 
@@ -230,22 +235,25 @@ class GovernedTurnDemo {
                 List.of(new ModelEvent.ToolUseEmitted(restartCall(), null)),
                 List.of(new ModelEvent.TextChunk("Understood — I will not restart prod-eu."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
-                restartGrant(intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
+                        restartGrant(
+                            intentStore, riskAssessor(Likelihood.VERY_HIGH, Impact.VERY_HIGH)))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== the risk assessor reports VERY_HIGH severity ==");
-      host.post("prod-eu", "please restart prod-eu to clear the stuck deploy");
+      harness
+          .bind(AgentId.of("prod-eu"))
+          .observe("please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
       System.out.println("final phase: " + prodEuState.load().phase().getClass().getSimpleName());
@@ -261,6 +269,8 @@ class GovernedTurnDemo {
       assertThat(restartResult.isError()).isTrue();
       assertThat(restartResult.content())
           .contains("risk severity VERY_HIGH meets or exceeds threshold VERY_HIGH");
+    } finally {
+      harness.shutdown();
     }
   }
 
@@ -279,23 +289,27 @@ class GovernedTurnDemo {
                 List.of(new ModelEvent.ToolUseEmitted(restartCall(), null)),
                 List.of(new ModelEvent.TextChunk("Understood — I will not restart prod-eu."))));
 
-    try (var host =
-        Nessy.autonomous()
-            .type("ops")
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .grants(
-                ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
-                restartGrant(
-                    List.of(new IntentEnricher(intentStore), Enrichers.principal(() -> "jcarman"))))
-            .substrate(substrate)
-            .backend(backend)
-            .approvalNotifier(requests::add)
-            .executor(pump)
-            .build()) {
-
+    var harness =
+        Nessy.harness(
+            h ->
+                h.type("ops")
+                    .provider(provider)
+                    .settings(TestSettings.settings())
+                    .grants(
+                        ToolGrant.grant(IntentTool.freeform(intentStore), UsagePolicy.allow()),
+                        restartGrant(
+                            List.of(
+                                new IntentEnricher(intentStore),
+                                Enrichers.principal(() -> "jcarman"))))
+                    .substrate(substrate)
+                    .backend(backend)
+                    .approvalNotifier(requests::add)
+                    .executor(pump));
+    try {
       System.out.println("== no risk assessor is wired; the threshold fails closed ==");
-      host.post("prod-eu", "please restart prod-eu to clear the stuck deploy");
+      harness
+          .bind(AgentId.of("prod-eu"))
+          .observe("please restart prod-eu to clear the stuck deploy");
       pump.pumpUntilQuiet();
 
       assertThat(requests).isEmpty();
@@ -307,6 +321,8 @@ class GovernedTurnDemo {
       System.out.println("restart result: " + restartResult);
       assertThat(restartResult.isError()).isTrue();
       assertThat(restartResult.content()).contains("no risk assessment deposited under RISK_KEY");
+    } finally {
+      harness.shutdown();
     }
   }
 }

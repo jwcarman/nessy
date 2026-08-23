@@ -26,7 +26,8 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import org.jwcarman.nessy.agent.host.AutonomousHost;
+import org.jwcarman.nessy.agent.AgentId;
+import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.host.Nessy;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
@@ -93,27 +94,30 @@ public final class Approvals {
                       }
                     }));
 
-    try (AutonomousHost<String> host =
-        Nessy.autonomous()
-            .type("approvals")
-            .provider(provider)
-            .settings(settings)
-            .grants(
-                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .approvalNotifier(request -> printRequest(request, requests))
-            .turnObserver(observer)
-            .build()) {
-
+    Harness<String> harness =
+        Nessy.harness(
+            h ->
+                h.type("approvals")
+                    .provider(provider)
+                    .settings(settings)
+                    .grants(
+                        ToolGrant.grant(
+                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .approvalNotifier(request -> printRequest(request, requests))
+                    .turnObserver(observer));
+    try {
       System.out.println("== posting: please restart prod-eu ==");
-      host.post(SCOPE_ID, "please restart prod-eu");
+      harness.bind(AgentId.of(SCOPE_ID)).observe("please restart prod-eu");
 
       ApprovalRequest firstAsk = await(requests, "the approval request");
       System.out.println("== approving " + firstAsk.address().approval().value() + " ==");
-      host.approvals().approve(firstAsk.address().approval());
+      harness.approvals().approve(firstAsk.address().approval());
 
       String reply = await(replies, "the assistant's reply after the grant");
       System.out.println("== assistant replied: " + reply + " ==");
       return "restarted prod-eu: " + reply;
+    } finally {
+      harness.shutdown();
     }
   }
 
@@ -132,35 +136,38 @@ public final class Approvals {
     var settings = new ModelSettings(selection.model(), SYSTEM_PROMPT, 1024, Set.of(), null);
     var pending = new LinkedBlockingQueue<ApprovalRequest>();
 
-    try (AutonomousHost<String> host =
-        Nessy.autonomous()
-            .type("approvals")
-            .provider(selection.provider())
-            .settings(settings)
-            .grants(
-                ToolGrant.grant(new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
-            .approvalNotifier(request -> printRequest(request, pending))
-            .turnObserver(
-                TurnObserver.observe(
-                    o ->
-                        o.onAssistantSaid(
-                            said -> System.out.println("says: " + said.message().content()))))
-            .build()) {
-      var console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-      System.out.println("say something ('approve', 'deny <reason>', 'quit'):");
-      String line;
-      while ((line = console.readLine()) != null) {
-        if ("quit".equals(line)) {
-          break;
-        }
-        ApprovalRequest open = pending.peek();
-        if ("approve".equals(line) && open != null) {
-          host.approvals().approve(pending.poll().address().approval());
-        } else if (line.startsWith("deny ") && open != null) {
-          host.approvals().deny(pending.poll().address().approval(), line.substring(5));
-        } else {
-          host.post(SCOPE_ID, line);
-        }
+    // The harness is immortal, not closeable (spec §4): it is kept for the process's lifetime, not
+    // shut down when this loop exits.
+    Harness<String> harness =
+        Nessy.harness(
+            h ->
+                h.type("approvals")
+                    .provider(selection.provider())
+                    .settings(settings)
+                    .grants(
+                        ToolGrant.grant(
+                            new RestartTool(), RESTART_ACTION, UsagePolicy.requireApproval()))
+                    .approvalNotifier(request -> printRequest(request, pending))
+                    .turnObserver(
+                        TurnObserver.observe(
+                            o ->
+                                o.onAssistantSaid(
+                                    said ->
+                                        System.out.println("says: " + said.message().content())))));
+    var console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+    System.out.println("say something ('approve', 'deny <reason>', 'quit'):");
+    String line;
+    while ((line = console.readLine()) != null) {
+      if ("quit".equals(line)) {
+        break;
+      }
+      ApprovalRequest open = pending.peek();
+      if ("approve".equals(line) && open != null) {
+        harness.approvals().approve(pending.poll().address().approval());
+      } else if (line.startsWith("deny ") && open != null) {
+        harness.approvals().deny(pending.poll().address().approval(), line.substring(5));
+      } else {
+        harness.bind(AgentId.of(SCOPE_ID)).observe(line);
       }
     }
   }

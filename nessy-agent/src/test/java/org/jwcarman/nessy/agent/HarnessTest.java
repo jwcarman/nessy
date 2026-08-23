@@ -102,8 +102,8 @@ class HarnessTest {
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<String>> backlogFactory,
-      Function<Binding<String>, ModelCallExecutor> modelExecutorFactory,
-      Function<Binding<String>, ToolCallExecutor> toolExecutorFactory) {
+      Function<Memory, ModelCallExecutor> modelExecutorFactory,
+      Function<AgentId, ToolCallExecutor> toolExecutorFactory) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     DurableComputationBackend backend = new SubstrateComputations(lifeSupportSubstrate, mapper);

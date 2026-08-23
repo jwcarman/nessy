@@ -32,6 +32,11 @@ public final class ResolvingAgentBinder implements AgentBinder {
 
   @Override
   public void deliver(AgentType type, AgentId id, AgentEvent event) {
-    resolver.resolve(type, id).deliver(event);
+    Agent<?> agent = resolver.resolve(type, id);
+    if (!(agent instanceof DefaultAgent<?> defaultAgent)) {
+      throw new IllegalStateException(
+          "resolved agent is not a DefaultAgent: " + agent.getClass().getName());
+    }
+    defaultAgent.deliver(event);
   }
 }

@@ -43,11 +43,11 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  *
  * <p>The host tier's machinery moved in here (harness-first spec §4): the {@link DeliveryWorker},
  * the {@link ApprovalDesk}/{@link CompletionDesk}, and the reaper sweep are constructed and
- * daemon-threaded by this class's own constructor, exactly as {@code AutonomousHost} used to build
- * them — {@code Nessy}'s builders now hand this constructor the substrate, mapper, and durable
- * computation backend those doors need, instead of wiring the worker themselves. The harness is
- * immortal, not closeable: {@link #shutdown()} is the one undecorated lifecycle door, and it exists
- * for infrastructure only.
+ * daemon-threaded by this class's own constructor, exactly as the now-deleted long-running host
+ * shim used to build them — {@code Nessy}'s builders now hand this constructor the substrate,
+ * mapper, and durable computation backend those doors need, instead of wiring the worker
+ * themselves. The harness is immortal, not closeable: {@link #shutdown()} is the one undecorated
+ * lifecycle door, and it exists for infrastructure only.
  */
 public final class Harness<O> {
 
@@ -59,8 +59,8 @@ public final class Harness<O> {
   private final Function<String, Memory> memoryFactory;
   private final Function<String, AgentStateStore> storeFactory;
   private final Function<String, Backlog<O>> backlogFactory;
-  private final Function<Binding<O>, ModelCallExecutor> modelExecutorFactory;
-  private final Function<Binding<O>, ToolCallExecutor> toolExecutorFactory;
+  private final Function<Memory, ModelCallExecutor> modelExecutorFactory;
+  private final Function<AgentId, ToolCallExecutor> toolExecutorFactory;
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
@@ -74,8 +74,8 @@ public final class Harness<O> {
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      Function<Binding<O>, ModelCallExecutor> modelExecutorFactory,
-      Function<Binding<O>, ToolCallExecutor> toolExecutorFactory,
+      Function<Memory, ModelCallExecutor> modelExecutorFactory,
+      Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
       DurableComputationBackend backend) {
@@ -118,8 +118,8 @@ public final class Harness<O> {
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      Function<Binding<O>, ModelCallExecutor> modelExecutorFactory,
-      Function<Binding<O>, ToolCallExecutor> toolExecutorFactory,
+      Function<Memory, ModelCallExecutor> modelExecutorFactory,
+      Function<AgentId, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
       DurableComputationBackend backend) {
@@ -154,18 +154,15 @@ public final class Harness<O> {
   }
 
   /**
-   * The raw scope handle {@link #bind(AgentId)} wraps for application code — kept public only
-   * because two nessy-agent internals reach across this class's package line for it directly:
-   * {@link DeliveryWorker}'s fold machinery (which dispatches through {@link
-   * #modelExecutor(Binding)} and {@link #toolExecutor(Binding)} without going through a scope's
-   * {@link DefaultAgent} shell) and this module's white-box test fixtures, which construct a {@link
-   * DefaultAgent} by hand to satisfy {@link AgentResolver}'s concrete return type. A
-   * package-private door was tried first and does not reach either caller — both live outside
-   * {@code org.jwcarman.nessy.agent} — so this stays the minimal honest path rather than a false
-   * demotion. Not application vocabulary: {@link Binding} is never returned by {@link
-   * #bind(AgentId)}, the only door application code has.
+   * The raw scope handle {@link #bind(AgentId)} wraps for application code — package-private
+   * (harness-first spec §4, the Binding demotion): {@link Binding} is internal wiring, never
+   * application vocabulary. {@link DeliveryWorker} no longer needs this door directly — its fold
+   * machinery dispatches through the id-keyed {@link #modelExecutorFor(AgentId)}/{@link
+   * #toolExecutorFor(AgentId)}/{@link #memoryFor(AgentId)} seams instead — and this module's
+   * white-box test fixtures re-seat onto {@link #bind(AgentId)} (now that {@link AgentResolver}
+   * accepts {@link Agent}) or onto those same id-keyed seams.
    */
-  public Binding<O> binding(AgentId id) {
+  Binding<O> binding(AgentId id) {
     Objects.requireNonNull(id, "id must not be null");
     String rawId = id.value();
     return new Binding<>(
@@ -203,20 +200,51 @@ public final class Harness<O> {
 
   /**
    * The per-scope model executor for {@code binding} — a plain field-holding object (§10.11).
-   * Public so the delivery worker (durable-deliveries spec §5) can dispatch a post-commit {@code
-   * CallModel} effect exactly as {@link DefaultAgent} does, without duplicating the harness's own
-   * factory wiring.
+   * Package-private: {@link DefaultAgent} is the one caller left; the delivery worker dispatches
+   * through {@link #modelExecutorFor(AgentId)} instead (harness-first spec §4, the Binding
+   * demotion).
    */
-  public ModelCallExecutor modelExecutor(Binding<O> binding) {
-    return modelExecutorFactory.apply(binding);
+  ModelCallExecutor modelExecutor(Binding<O> binding) {
+    return modelExecutorFactory.apply(binding.memory());
   }
 
   /**
-   * The per-scope tool executor for {@code binding} — a plain field-holding object (§10.11). Public
-   * for the same reason as {@link #modelExecutor(Binding)}.
+   * The per-scope tool executor for {@code binding} — a plain field-holding object (§10.11).
+   * Package-private for the same reason as {@link #modelExecutor(Binding)}.
    */
-  public ToolCallExecutor toolExecutor(Binding<O> binding) {
-    return toolExecutorFactory.apply(binding);
+  ToolCallExecutor toolExecutor(Binding<O> binding) {
+    return toolExecutorFactory.apply(binding.id());
+  }
+
+  /**
+   * The id-keyed seam {@link DeliveryWorker} dispatches model calls through (harness-first spec §4,
+   * the Binding demotion): equivalent to {@code modelExecutor(binding(id))}, without exposing
+   * {@link Binding} across the package line — the model executor factory only ever needed the
+   * scope's {@link Memory}, so this reads straight off {@code memoryFactory} rather than stamping a
+   * whole {@link Binding} just to reach one field of it.
+   */
+  public ModelCallExecutor modelExecutorFor(AgentId id) {
+    return modelExecutorFactory.apply(memoryFor(id));
+  }
+
+  /**
+   * The id-keyed seam {@link DeliveryWorker} dispatches tool calls through (harness-first spec §4,
+   * the Binding demotion): equivalent to {@code toolExecutor(binding(id))}, without exposing {@link
+   * Binding} across the package line — the tool executor factory only ever needed the scope's
+   * {@link AgentId} itself.
+   */
+  public ToolCallExecutor toolExecutorFor(AgentId id) {
+    return toolExecutorFactory.apply(id);
+  }
+
+  /**
+   * The id-keyed seam {@link DeliveryWorker}'s {@code requirePlainSubstrateMemory} guard reads
+   * through (harness-first spec §4, the Binding demotion): equivalent to {@code
+   * binding(id).memory()}, without exposing {@link Binding} across the package line.
+   */
+  public Memory memoryFor(AgentId id) {
+    Objects.requireNonNull(id, "id must not be null");
+    return memoryFactory.apply(id.value());
   }
 
   /** The approve/deny door (harness-first spec §4): this harness's own {@link ApprovalDesk}. */

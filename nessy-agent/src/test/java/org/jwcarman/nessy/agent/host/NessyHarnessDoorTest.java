@@ -64,24 +64,31 @@ import org.jwcarman.nessy.spi.model.ModelRequest;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
-class AutonomousHostTest {
+/**
+ * {@link Nessy#harness(HarnessCustomizer)}/{@link Nessy#harness(Class, HarnessCustomizer)} — the
+ * one door (harness-first spec §2) — replace what this file used to cover through the deleted
+ * long-running host shim: {@code observe} through {@code bind(id)} in place of {@code post}, the
+ * harness kept rather than closed, and the customizer form in place of a builder's {@code build()}.
+ */
+class NessyHarnessDoorTest {
 
   @Test
-  void aPlainTurnRunsToIdleThroughTheHost() {
+  void aPlainTurnRunsToIdleThroughTheHarness() {
     var pump = new PumpedExecutor();
     var provider =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     ConcurrentMap<String, Memory> captured = new ConcurrentHashMap<>();
 
-    var host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .executor(pump)
-            .memoryFactory(id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .build();
+    var harness =
+        Nessy.harness(
+            h ->
+                h.provider(provider)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .memoryFactory(
+                        id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
 
-    host.post("scope-1", "hello");
+    harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
 
     Memory memory = captured.get("scope-1");
@@ -94,21 +101,21 @@ class AutonomousHostTest {
   }
 
   @Test
-  void aDefaultBuiltHostNarratesExactlyOneAssistantSaidAndOneTurnEndedForACompletedTurn() {
+  void aDefaultBuiltHarnessNarratesExactlyOneAssistantSaidAndOneTurnEndedForACompletedTurn() {
     var pump = new PumpedExecutor();
     var provider =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     var observer = new RecordingTurnObserver();
 
-    var host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .executor(pump)
-            .turnObserver(observer)
-            .build();
+    var harness =
+        Nessy.harness(
+            h ->
+                h.provider(provider)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .turnObserver(observer));
 
-    host.post("scope-1", "hello");
+    harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
 
     List<TurnEvent> events = observer.events();
@@ -138,16 +145,16 @@ class AutonomousHostTest {
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
     var observer = new RecordingTurnObserver();
 
-    var host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .executor(pump)
-            .turnObserver(observer)
-            .agentObserver(AgentObserver.noop())
-            .build();
+    var harness =
+        Nessy.harness(
+            h ->
+                h.provider(provider)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .turnObserver(observer)
+                    .agentObserver(AgentObserver.noop()));
 
-    host.post("scope-1", "hello");
+    harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
 
     List<TurnEvent> events = observer.events();
@@ -179,16 +186,16 @@ class AutonomousHostTest {
           }
         };
 
-    var host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .executor(pump)
-            .substrate(substrate)
-            .turnObserver(throwing)
-            .build();
+    var harness =
+        Nessy.harness(
+            h ->
+                h.provider(provider)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .substrate(substrate)
+                    .turnObserver(throwing));
 
-    host.post("scope-1", "hello");
+    harness.bind(AgentId.of("scope-1")).observe("hello");
     pump.pumpUntilQuiet();
 
     var scopeOneState =
@@ -207,17 +214,18 @@ class AutonomousHostTest {
                 List.of(new ModelEvent.TextChunk("hi b"))));
     ConcurrentMap<String, Memory> captured = new ConcurrentHashMap<>();
 
-    var host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .executor(pump)
-            .memoryFactory(id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .build();
+    var harness =
+        Nessy.harness(
+            h ->
+                h.provider(provider)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .memoryFactory(
+                        id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
 
-    host.post("a", "hello from a");
+    harness.bind(AgentId.of("a")).observe("hello from a");
     pump.pumpUntilQuiet();
-    host.post("b", "hello from b");
+    harness.bind(AgentId.of("b")).observe("hello from b");
     pump.pumpUntilQuiet();
 
     List<Message> aMessages = captured.get("a").recall().messages();
@@ -232,41 +240,52 @@ class AutonomousHostTest {
   }
 
   /**
-   * F3: two {@code build()} calls from the SAME builder don't leak history between hosts. Memory
-   * independence is read straight off the model requests (the default {@code memoryFactory} is left
-   * untouched); substrate independence is read off two distinct {@link Substrate}s installed
-   * through the builder's one storage seam, {@link
-   * org.jwcarman.nessy.agent.host.Nessy.AutonomousBuilder#substrate} — {@code storeFactory} is gone
-   * (spec §12), so the seam that gives an honest window onto otherwise-opaque substrate state is
-   * now {@code substrate} itself — and this pins that a second host's first delivery to a scope
-   * starts from a fresh, unadvanced version, not one built on top of the first host's saves.
+   * F3: two harnesses built from the SAME base customization don't leak history between them. There
+   * is no shared, half-configured config object in user hands to reuse (harness-first spec §2) —
+   * each {@link Nessy#harness(HarnessCustomizer)} call gets its own fresh {@code HarnessConfig} —
+   * but a base {@link HarnessCustomizer} composed into two separate calls proves the same point:
+   * memory independence is read straight off the model requests (the default {@code memoryFactory}
+   * is left untouched); substrate independence is read off two distinct {@link Substrate}s
+   * installed through the config's one storage seam, {@link HarnessConfig#substrate} — and this
+   * pins that a second harness's first delivery to a scope starts from a fresh, unadvanced version,
+   * not one built on top of the first harness's saves.
    */
   @Test
-  void twoBuildCallsFromOneBuilderWithDistinctStoresDoNotLeakHistory() {
+  void twoHarnessesFromTheSameBaseCustomizationWithDistinctStoresDoNotLeakHistory() {
     var provider =
         new ScriptedModelProvider(
             List.of(
                 List.of(new ModelEvent.TextChunk("reply one")),
                 List.of(new ModelEvent.TextChunk("reply two"))));
 
-    var builder = Nessy.autonomous().provider(provider).settings(TestSettings.settings());
+    HarnessCustomizer<String> base = h -> h.provider(provider).settings(TestSettings.settings());
 
     var substrateOne = new InMemorySubstrate();
     var pumpOne = new PumpedExecutor();
-    var hostOne = builder.executor(pumpOne).substrate(substrateOne).build();
-    hostOne.post("shared-scope", "message one");
+    var harnessOne =
+        Nessy.harness(
+            h -> {
+              base.customize(h);
+              h.executor(pumpOne).substrate(substrateOne);
+            });
+    harnessOne.bind(AgentId.of("shared-scope")).observe("message one");
     pumpOne.pumpUntilQuiet();
 
     var substrateTwo = new InMemorySubstrate();
     var pumpTwo = new PumpedExecutor();
-    var hostTwo = builder.executor(pumpTwo).substrate(substrateTwo).build();
-    hostTwo.post("shared-scope", "message two");
+    var harnessTwo =
+        Nessy.harness(
+            h -> {
+              base.customize(h);
+              h.executor(pumpTwo).substrate(substrateTwo);
+            });
+    harnessTwo.bind(AgentId.of("shared-scope")).observe("message two");
     pumpTwo.pumpUntilQuiet();
 
     List<ModelRequest> requests = provider.requests();
     assertThat(requests).hasSize(2);
-    List<Message> secondHostMessages = requests.get(1).context().messages();
-    assertThat(secondHostMessages)
+    List<Message> secondHarnessMessages = requests.get(1).context().messages();
+    assertThat(secondHarnessMessages)
         .isNotEmpty()
         .noneMatch(m -> m.content().contains(new TextBlock("message one")));
 
@@ -276,32 +295,31 @@ class AutonomousHostTest {
     var stateTwo =
         new SubstrateAgentStateStore(
             substrateTwo, "shared-scope", Clock.systemUTC(), TestMappers.plainlyPinned());
-    long versionAfterHostOnesTurn = stateOne.load().version();
-    long versionAfterHostTwosTurn = stateTwo.load().version();
-    assertThat(versionAfterHostTwosTurn)
+    long versionAfterHarnessOnesTurn = stateOne.load().version();
+    long versionAfterHarnessTwosTurn = stateTwo.load().version();
+    assertThat(versionAfterHarnessTwosTurn)
         .as(
-            "host two's scope should run the same number of transitions as host one's, from a"
-                + " fresh version, not one already advanced by host one's saves")
-        .isEqualTo(versionAfterHostOnesTurn);
+            "harness two's scope should run the same number of transitions as harness one's,"
+                + " from a fresh version, not one already advanced by harness one's saves")
+        .isEqualTo(versionAfterHarnessOnesTurn);
   }
 
   @Test
-  void backlogCapacityRejectsLessThanOneAtBuildTimeConfiguration() {
-    var builder = Nessy.autonomous();
-
-    assertThatThrownBy(() -> builder.backlogCapacity(0))
+  void backlogCapacityRejectsLessThanOneInsideTheCustomizer() {
+    assertThatThrownBy(() -> Nessy.harness(h -> h.backlogCapacity(0)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("backlogCapacity must be at least 1");
   }
 
   /**
-   * There is no per-id wiring cache any more (§10.11): {@code agentFor(id)} binds a fresh handle
-   * from the shared substrate on every call. This is the reform's whole point in one test — two
+   * There is no per-id wiring cache any more (§10.11): {@code bind(id)} binds a fresh handle from
+   * the shared substrate on every call. This is the reform's whole point in one test — two
    * deliveries to the same scope, each through a brand-new binding, still see each other's history
    * because the substrate underneath persists it, not the (deleted) cache.
    */
   @Test
-  void aSecondPostToTheSameScopeSeesTheFirstPostsHistoryEvenThoughEveryDeliveryBindsAFreshHandle() {
+  void
+      aSecondObservationToTheSameScopeSeesTheFirstsHistoryEvenThoughEveryDeliveryBindsAFreshHandle() {
     var pump = new PumpedExecutor();
     var provider =
         new ScriptedModelProvider(
@@ -310,17 +328,18 @@ class AutonomousHostTest {
                 List.of(new ModelEvent.TextChunk("second reply"))));
     ConcurrentMap<String, Memory> captured = new ConcurrentHashMap<>();
 
-    var host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .executor(pump)
-            .memoryFactory(id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory()))
-            .build();
+    var harness =
+        Nessy.harness(
+            h ->
+                h.provider(provider)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .memoryFactory(
+                        id -> captured.computeIfAbsent(id, ignored -> new VerbatimMemory())));
 
-    host.post("scope-1", "first message");
+    harness.bind(AgentId.of("scope-1")).observe("first message");
     pump.pumpUntilQuiet();
-    host.post("scope-1", "second message");
+    harness.bind(AgentId.of("scope-1")).observe("second message");
     pump.pumpUntilQuiet();
 
     List<Message> messages = captured.get("scope-1").recall().messages();
@@ -334,12 +353,12 @@ class AutonomousHostTest {
 
   /**
    * The substrate reform's whole point (spec §12): durability lives in the {@link Substrate}, not
-   * in any object graph the builder happens to wire together. Neither {@code memoryFactory} nor
-   * {@code storeFactory} is overridden here — the host uses its default {@code id -> new
+   * in any object graph the config happens to wire together. Neither {@code memoryFactory} nor
+   * {@code storeFactory} is overridden here — the harness uses its default {@code id -> new
    * SubstrateMemory(substrate, id)} recipe over the one substrate this test supplies — so the only
    * thing tying the two deliveries together is the shared {@link Substrate}. Proof is read back
    * through a SECOND, independently-constructed {@code SubstrateMemory} over that same substrate: a
-   * fresh recipe instance, never touched by the host, still recalls both turns.
+   * fresh recipe instance, never touched by the harness, still recalls both turns.
    */
   @Test
   void twoDeliveriesToTheSameAgentShareOneSubstrateProvenByASecondMemoryBinding() {
@@ -351,21 +370,21 @@ class AutonomousHostTest {
                 List.of(new ModelEvent.TextChunk("second reply"))));
     var substrate = new InMemorySubstrate();
 
-    var host =
-        Nessy.autonomous()
-            .provider(provider)
-            .settings(TestSettings.settings())
-            .executor(pump)
-            .substrate(substrate)
-            .build();
+    var harness =
+        Nessy.harness(
+            h ->
+                h.provider(provider)
+                    .settings(TestSettings.settings())
+                    .executor(pump)
+                    .substrate(substrate));
 
-    host.post("scope-1", "first message");
+    harness.bind(AgentId.of("scope-1")).observe("first message");
     pump.pumpUntilQuiet();
-    host.post("scope-1", "second message");
+    harness.bind(AgentId.of("scope-1")).observe("second message");
     pump.pumpUntilQuiet();
 
-    // a fresh recipe instance the host never held a reference to — the substrate, not the object
-    // graph, is what makes this see both turns
+    // a fresh recipe instance the harness never held a reference to — the substrate, not the
+    // object graph, is what makes this see both turns
     var secondBindingOverTheSameStore =
         new SubstrateMemory(substrate, "scope-1", TestMappers.plainlyPinned());
     List<Message> messages = secondBindingOverTheSameStore.recall().messages();
@@ -378,45 +397,45 @@ class AutonomousHostTest {
   }
 
   /**
-   * The branch's headline claim, proven with two entirely separate hosts rather than two builds
-   * from one builder: durability lives in the {@link Substrate} itself, so a second host — built
-   * later, from its own builder, knowing nothing about the first — still inherits the first host's
-   * turn the moment it's pointed at the same substrate. The proof rides the model request host B's
-   * own provider recorded: its context carries host A's turn.
+   * The branch's headline claim, proven with two entirely separate harnesses rather than one
+   * customization reused: durability lives in the {@link Substrate} itself, so a second harness —
+   * built later, knowing nothing about the first — still inherits the first harness's turn the
+   * moment it's pointed at the same substrate. The proof rides the model request harness B's own
+   * provider recorded: its context carries harness A's turn.
    */
   @Test
-  void aSecondHostBuiltOverTheSameSubstrateInheritsTheFirstHostsTurn() {
+  void aSecondHarnessBuiltOverTheSameSubstrateInheritsTheFirstHarnessesTurn() {
     var substrate = new InMemorySubstrate();
 
     var pumpA = new PumpedExecutor();
     var providerA =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply one"))));
-    var hostA =
-        Nessy.autonomous()
-            .provider(providerA)
-            .settings(TestSettings.settings())
-            .executor(pumpA)
-            .substrate(substrate)
-            .build();
-    hostA.post("shared-scope", "message one");
+    var harnessA =
+        Nessy.harness(
+            h ->
+                h.provider(providerA)
+                    .settings(TestSettings.settings())
+                    .executor(pumpA)
+                    .substrate(substrate));
+    harnessA.bind(AgentId.of("shared-scope")).observe("message one");
     pumpA.pumpUntilQuiet();
 
     var pumpB = new PumpedExecutor();
     var providerB =
         new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply two"))));
-    var hostB =
-        Nessy.autonomous()
-            .provider(providerB)
-            .settings(TestSettings.settings())
-            .executor(pumpB)
-            .substrate(substrate)
-            .build();
-    hostB.post("shared-scope", "message two");
+    var harnessB =
+        Nessy.harness(
+            h ->
+                h.provider(providerB)
+                    .settings(TestSettings.settings())
+                    .executor(pumpB)
+                    .substrate(substrate));
+    harnessB.bind(AgentId.of("shared-scope")).observe("message two");
     pumpB.pumpUntilQuiet();
 
-    List<ModelRequest> requestsToHostB = providerB.requests();
-    assertThat(requestsToHostB).hasSize(1);
-    List<Message> secondTurnContext = requestsToHostB.get(0).context().messages();
+    List<ModelRequest> requestsToHarnessB = providerB.requests();
+    assertThat(requestsToHarnessB).hasSize(1);
+    List<Message> secondTurnContext = requestsToHarnessB.get(0).context().messages();
     assertThat(secondTurnContext)
         .isNotEmpty()
         .anyMatch(m -> m.content().contains(new TextBlock("message one")))
@@ -424,9 +443,9 @@ class AutonomousHostTest {
   }
 
   /**
-   * Task 5 (bytes-and-codecs): observations are typed — {@code Nessy.autonomous(Class)} opens the
-   * typed door, the backlog codec defaults to {@code Codec.json(pinned, observationType)} (spec
-   * §6.4).
+   * Task 5 (bytes-and-codecs): observations are typed — {@link Nessy#harness(Class,
+   * HarnessCustomizer)} opens the typed door, the backlog codec defaults to {@code
+   * Codec.json(pinned, observationType)} (spec §6.4).
    */
   @Nested
   class TypedObservations {
@@ -435,20 +454,20 @@ class AutonomousHostTest {
 
     /**
      * The headline claim: a typed observation posted while its scope is busy sits in the {@code
-     * backlog} document — not drained, not lost — and is still there for a SECOND host, built later
-     * over the same substrate, knowing nothing about the first. Host A primes the scope busy with
-     * one observation (drained synchronously into an {@code AwaitingModel} turn its own, never-
-     * pumped executor leaves permanently stuck) then posts the record under test, which {@code
-     * drive()} declines to drain because the scope isn't {@code Idle}. Host A is then abandoned.
-     * Host B — a fresh host, fresh executor, fresh provider — is built over that same {@link
-     * Substrate} with a staleness policy that treats the stuck phase as stale immediately, so one
-     * {@code drive()} call re-fires host A's stranded model call; that turn's completion lands the
-     * scope back at {@code Idle}, which (by the recipe's own {@code drainOnIdle} wiring) triggers
-     * the backlog drain that finally renders the pending {@code Note} — round-tripped through the
-     * queue's {@code Codec<Note>} — and drives its own scripted turn.
+     * backlog} document — not drained, not lost — and is still there for a SECOND harness, built
+     * later over the same substrate, knowing nothing about the first. Harness A primes the scope
+     * busy with one observation (drained synchronously into an {@code AwaitingModel} turn its own,
+     * never-pumped executor leaves permanently stuck) then observes the record under test, which
+     * {@code drive()} declines to drain because the scope isn't {@code Idle}. Harness A is then
+     * abandoned. Harness B — a fresh harness, fresh executor, fresh provider — is built over that
+     * same {@link Substrate} with a staleness policy that treats the stuck phase as stale
+     * immediately, so one {@code drive()} call re-fires harness A's stranded model call; that
+     * turn's completion lands the scope back at {@code Idle}, which (by the recipe's own {@code
+     * drainOnIdle} wiring) triggers the backlog drain that finally renders the pending {@code Note}
+     * — round-tripped through the queue's {@code Codec<Note>} — and drives its own scripted turn.
      */
     @Test
-    void aTypedRecordObservationSurvivesTheBacklogAcrossHostsAndDrivesAScriptedTurnOnHostB()
+    void aTypedRecordObservationSurvivesTheBacklogAcrossHarnessesAndDrivesAScriptedTurnOnHarnessB()
         throws JsonProcessingException {
       var substrate = new InMemorySubstrate();
       var scopeId = "scope-1";
@@ -456,34 +475,35 @@ class AutonomousHostTest {
       var pumpA = new PumpedExecutor();
       var providerA =
           new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("reply to prime"))));
-      var hostA =
-          Nessy.autonomous(Note.class)
-              .provider(providerA)
-              .settings(TestSettings.settings())
-              .executor(pumpA)
-              .substrate(substrate)
-              .renderer(note -> List.of(new TextBlock(note.text())))
-              .build();
+      var harnessA =
+          Nessy.harness(
+              Note.class,
+              h ->
+                  h.provider(providerA)
+                      .settings(TestSettings.settings())
+                      .executor(pumpA)
+                      .substrate(substrate)
+                      .renderer(note -> List.of(new TextBlock(note.text()))));
 
-      // Primes the scope busy: drained synchronously (Idle -> AwaitingModel) as part of post()
-      // itself, dispatching a model-call effect onto pumpA — never pumped below, so host A's turn
-      // never completes and the scope is left stuck at AwaitingModel.
-      hostA.post(scopeId, new Note("prime", 1));
+      // Primes the scope busy: drained synchronously (Idle -> AwaitingModel) as part of observe()
+      // itself, dispatching a model-call effect onto pumpA — never pumped below, so harness A's
+      // turn never completes and the scope is left stuck at AwaitingModel.
+      harnessA.bind(AgentId.of(scopeId)).observe(new Note("prime", 1));
 
       var pending = new Note("check the oven", 3);
       // The scope isn't Idle any more, so drive() declines to drain this one — it sits in the
       // backlog document, the claim under test.
-      hostA.post(scopeId, pending);
+      harnessA.bind(AgentId.of(scopeId)).observe(pending);
 
       // The raw backlog document holds exactly the pending Note: "prime" already drained out as
-      // part of the first post, "check the oven" sat back down because the scope was busy.
+      // part of the first observe, "check the oven" sat back down because the scope was busy.
       Substrate.Document backlogDoc = substrate.read("backlog", scopeId).orElseThrow();
       String[] backlogElements =
           TestMappers.plainlyPinned()
               .readValue(new String(backlogDoc.payload(), StandardCharsets.UTF_8), String[].class);
       assertThat(backlogElements).isNotEmpty().hasSize(1);
 
-      // hostA is abandoned here: pumpA is never pumped.
+      // harnessA is abandoned here: pumpA is never pumped.
 
       var pumpB = new PumpedExecutor();
       var providerB =
@@ -491,19 +511,20 @@ class AutonomousHostTest {
               List.of(
                   List.of(new ModelEvent.TextChunk("reply to prime")),
                   List.of(new ModelEvent.TextChunk("reply to pending"))));
-      var hostB =
-          Nessy.autonomous(Note.class)
-              .provider(providerB)
-              .settings(TestSettings.settings())
-              .executor(pumpB)
-              .substrate(substrate)
-              .renderer(note -> List.of(new TextBlock(note.text())))
-              .staleness((phase, lastSaved) -> true)
-              .build();
+      var harnessB =
+          Nessy.harness(
+              Note.class,
+              h ->
+                  h.provider(providerB)
+                      .settings(TestSettings.settings())
+                      .executor(pumpB)
+                      .substrate(substrate)
+                      .renderer(note -> List.of(new TextBlock(note.text())))
+                      .staleness((phase, lastSaved) -> true));
 
-      // No new observation posted on host B — drive() alone re-fires host A's stuck turn; its
-      // completion then drains the pending Note by the recipe's own drainOnIdle wiring.
-      hostB.agentFor(AgentId.of(scopeId)).drive();
+      // No new observation posted on harness B — drive() alone re-fires harness A's stuck turn;
+      // its completion then drains the pending Note by the recipe's own drainOnIdle wiring.
+      harnessB.bind(AgentId.of(scopeId)).drive();
       pumpB.pumpUntilQuiet();
 
       var memory = new SubstrateMemory(substrate, scopeId, TestMappers.plainlyPinned());
@@ -522,28 +543,32 @@ class AutonomousHostTest {
     }
 
     /**
-     * The typed door's required seam, enforced at {@code build()}: {@link
-     * Nessy.AutonomousBuilder#renderer} has no default for {@code O}, unlike the {@code String}
-     * door's preset lambda — a builder that never calls it fails loudly, naming {@code renderer}.
+     * The typed door's required seam: {@link HarnessConfig#renderer} has no default for {@code O},
+     * unlike the {@code String} door's preset lambda — a customizer that never calls it fails
+     * loudly, naming {@code renderer}.
      */
     @Test
-    void theTypedDoorWithoutARendererIsRejectedAtBuildTimeNamingTheRenderer() {
-      var builder =
-          Nessy.autonomous(Note.class)
-              .provider(new ScriptedModelProvider(List.of()))
-              .settings(TestSettings.settings());
-
-      assertThatThrownBy(builder::build)
+    void theTypedDoorWithoutARendererIsRejectedNamingTheRenderer() {
+      assertThatThrownBy(
+              () ->
+                  Nessy.harness(
+                      Note.class,
+                      h ->
+                          h.provider(new ScriptedModelProvider(List.of()))
+                              .settings(TestSettings.settings())))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("renderer");
     }
 
-    /** {@link Nessy#autonomous(Class)} rejects a null observation type up front, naming it. */
+    /**
+     * {@link Nessy#harness(Class, HarnessCustomizer)} rejects a null observation type up front,
+     * naming it.
+     */
     @Test
     void aNullObservationTypeIsRejectedByTheTypedDoor() {
       Class<Note> nullType = null;
 
-      assertThatThrownBy(() -> Nessy.autonomous(nullType))
+      assertThatThrownBy(() -> Nessy.harness(nullType, h -> {}))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("observationType");
     }
@@ -551,8 +576,8 @@ class AutonomousHostTest {
 
   /**
    * Task 3 (bytes-and-codecs): one mapper in, pinned copy throughout (spec §7). {@code
-   * .objectMapper(ObjectMapper)} feeds {@code build()}'s one pinned copy into every recipe that
-   * binds JSON — the tool-call binder included.
+   * .objectMapper(ObjectMapper)} feeds the finished harness's one pinned copy into every recipe
+   * that binds JSON — the tool-call binder included.
    */
   @Nested
   class ObjectMapperThreading {
@@ -642,17 +667,17 @@ class AutonomousHostTest {
                   List.of(new ModelEvent.TextChunk("charged"))));
       var observer = new RecordingTurnObserver();
 
-      var host =
-          Nessy.autonomous()
-              .provider(provider)
-              .settings(TestSettings.settings())
-              .executor(pump)
-              .objectMapper(userMapper)
-              .tools(new ChargeTool())
-              .turnObserver(observer)
-              .build();
+      var harness =
+          Nessy.harness(
+              h ->
+                  h.provider(provider)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .objectMapper(userMapper)
+                      .tools(new ChargeTool())
+                      .turnObserver(observer));
 
-      host.post("scope-1", "charge please");
+      harness.bind(AgentId.of("scope-1")).observe("charge please");
       pump.pumpUntilQuiet();
 
       var completed =
@@ -666,12 +691,12 @@ class AutonomousHostTest {
 
     /**
      * The pin holds even when the caller's own mapper is configured for something else entirely:
-     * {@code build()} pins lower-camel property naming on its copy (spec §7), so the substrate's
-     * stored JSON stays camelCase — {@code ToolResultBlock}'s golden fields, {@code toolUseId} and
-     * {@code isError} — regardless of what the caller's mapper prefers.
+     * the finished harness pins lower-camel property naming on its copy (spec §7), so the
+     * substrate's stored JSON stays camelCase — {@code ToolResultBlock}'s golden fields, {@code
+     * toolUseId} and {@code isError} — regardless of what the caller's mapper prefers.
      */
     @Test
-    void theBuilderPinsTheStoredFormatEvenWhenTheUsersMapperPrefersSnakeCase() {
+    void theHarnessPinsTheStoredFormatEvenWhenTheUsersMapperPrefersSnakeCase() {
       var substrate = new InMemorySubstrate();
       var snakeCaseMapper =
           new ObjectMapper().setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -684,17 +709,17 @@ class AutonomousHostTest {
                   List.of(new ModelEvent.ToolUseEmitted(call, null)),
                   List.of(new ModelEvent.TextChunk("done"))));
 
-      var host =
-          Nessy.autonomous()
-              .provider(provider)
-              .settings(TestSettings.settings())
-              .executor(pump)
-              .substrate(substrate)
-              .objectMapper(snakeCaseMapper)
-              .tools(new EchoTool())
-              .build();
+      var harness =
+          Nessy.harness(
+              h ->
+                  h.provider(provider)
+                      .settings(TestSettings.settings())
+                      .executor(pump)
+                      .substrate(substrate)
+                      .objectMapper(snakeCaseMapper)
+                      .tools(new EchoTool()));
 
-      host.post("scope-1", "hi");
+      harness.bind(AgentId.of("scope-1")).observe("hi");
       pump.pumpUntilQuiet();
 
       List<Substrate.Entry> entries = substrate.entries("memory", "scope-1", 1);
@@ -712,8 +737,8 @@ class AutonomousHostTest {
 
     @Test
     void aNullObjectMapperIsRejectedByItsSetter() {
-      var builder = Nessy.autonomous();
-      assertThatThrownBy(() -> builder.objectMapper(null)).isInstanceOf(NullPointerException.class);
+      assertThatThrownBy(() -> Nessy.harness(h -> h.objectMapper(null)))
+          .isInstanceOf(NullPointerException.class);
     }
   }
 }

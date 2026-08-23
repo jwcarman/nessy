@@ -37,7 +37,7 @@ public final class DefaultAgent<O> implements Agent<O> {
   private final ModelCallExecutor model;
   private final ToolCallExecutor tools;
 
-  public DefaultAgent(Harness<O> harness, Binding<O> binding) {
+  DefaultAgent(Harness<O> harness, Binding<O> binding) {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
     this.binding = Objects.requireNonNull(binding, "binding must not be null");
     this.model =
