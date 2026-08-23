@@ -105,6 +105,35 @@ class HarnessTest {
       Function<String, Backlog<String>> backlogFactory,
       BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
       BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
+    return harness(
+        type,
+        renderer,
+        observer,
+        TurnObserver.noop(),
+        stalenessPolicy,
+        memoryFactory,
+        storeFactory,
+        backlogFactory,
+        modelExecutorFactory,
+        toolExecutorFactory);
+  }
+
+  /**
+   * As the nine-arg overload, but naming {@code turnObserver} rather than defaulting it to {@link
+   * TurnObserver#noop()} — fix round 1, MINOR-6: {@link Guards#harnessRequiresATurnObserver()}
+   * needs a null to pass through.
+   */
+  private static Harness<String> harness(
+      AgentType type,
+      ObservationRenderer<String> renderer,
+      AgentObserver observer,
+      TurnObserver turnObserver,
+      StalenessPolicy stalenessPolicy,
+      Function<String, Memory> memoryFactory,
+      Function<String, AgentStateStore> storeFactory,
+      Function<String, Backlog<String>> backlogFactory,
+      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     String outboxKind = Kinds.outbox(type);
@@ -117,7 +146,7 @@ class HarnessTest {
         type,
         renderer,
         observer,
-        TurnObserver.noop(),
+        turnObserver,
         false,
         stalenessPolicy,
         memoryFactory,
@@ -202,6 +231,24 @@ class HarnessTest {
                   harness(
                       TYPE,
                       RENDERER,
+                      null,
+                      STALENESS_POLICY,
+                      id -> MEMORY,
+                      id -> STORE,
+                      id -> BACKLOG,
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void harnessRequiresATurnObserver() {
+      assertThatThrownBy(
+              () ->
+                  harness(
+                      TYPE,
+                      RENDERER,
+                      OBSERVER,
                       null,
                       STALENESS_POLICY,
                       id -> MEMORY,

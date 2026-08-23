@@ -44,15 +44,24 @@ import org.slf4j.LoggerFactory;
  * mid-sweep. Two ids never cross because {@link #emit} only ever reads the one list {@code
  * subscribers.get(id)} names.
  *
- * <p>Two audiences, two throw postures, both preserved from before this class existed: {@code
- * global} — the harness's configured {@code TurnObserver} ({@link
- * org.jwcarman.nessy.agent.host.HarnessConfig#turnObserver}), composed here as one more subscriber
- * per the spec — runs first and UNGUARDED, so a throw there keeps its long-standing meaning ({@link
- * TurnObserver}'s own javadoc: a throwing observer aborts the model-path call it narrates,
- * attributed to the caller's own {@code tell}). Every {@code subscribe}d observer runs after it,
- * individually isolated in a try/catch: a throw there is logged and dropped, never allowed to
- * poison the fold for the other subscribers or escape onto whatever thread narrated it — a worker's
- * heartbeat included.
+ * <p><b>Only an unclosed {@link Subscription} leaks anything</b> (spec §2) — a closed one must leak
+ * NOTHING, not even an empty map entry. {@link #subscribe} therefore mutates entirely inside {@link
+ * ConcurrentMap#compute}: create-or-append happens in one atomic step, so a subscribe can never
+ * observe (and silently write into) a list a concurrent {@link #close} has already detached from
+ * the map. {@link Registration#close()} mirrors this with {@link ConcurrentMap#computeIfPresent}:
+ * it removes the observer and hands back {@code null} when the list is now empty, so the map entry
+ * itself dies with its last subscriber rather than lingering as an empty list forever.
+ *
+ * <p>Two audiences, two throw postures, both preserved from before this class existed: every {@code
+ * subscribe}d observer runs first, individually isolated in a try/catch — a throw there is logged
+ * and dropped, never allowed to poison the fold for the other subscribers or escape onto whatever
+ * thread narrated it, a worker's heartbeat included. {@code global} — the harness's configured
+ * {@code TurnObserver} ({@link org.jwcarman.nessy.agent.host.HarnessConfig#turnObserver}), composed
+ * here as one more subscriber per the spec — runs LAST and UNGUARDED (fix round 1, MINOR-5): a
+ * throw there keeps its long-standing meaning ({@link TurnObserver}'s own javadoc: a throwing
+ * observer aborts the model-path call it narrates, attributed to the caller's own {@code tell}),
+ * and running it after the per-id subscribers means a buggy global observer can no longer starve
+ * them of an event it would have aborted on.
  */
 final class TurnFanout {
 
@@ -67,64 +76,86 @@ final class TurnFanout {
   }
 
   /**
-   * Adds {@code observer} to {@code id}'s routing list and hands back the {@link Subscription} that
-   * removes exactly this registration. Thread-safe under concurrent subscribe/close/emit for the
-   * same or different ids (see class javadoc).
+   * Adds {@code observer} to {@code id}'s routing list — created if absent — and hands back the
+   * {@link Subscription} that removes exactly this registration. The whole create-or-append happens
+   * inside one {@link ConcurrentMap#compute} call, so this can never race a concurrent {@link
+   * Registration#close()} into adding onto a list the map no longer references (see class javadoc).
    */
   Subscription subscribe(AgentId id, TurnObserver observer) {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(observer, "observer must not be null");
-    CopyOnWriteArrayList<TurnObserver> perId =
-        subscribers.computeIfAbsent(id, unused -> new CopyOnWriteArrayList<>());
-    perId.add(observer);
-    return new Registration(perId, observer);
+    subscribers.compute(
+        id,
+        (key, existing) -> {
+          CopyOnWriteArrayList<TurnObserver> perId =
+              existing != null ? existing : new CopyOnWriteArrayList<>();
+          perId.add(observer);
+          return perId;
+        });
+    return new Registration(id, observer);
   }
 
   /**
    * The {@link TurnObserver} {@link Harness} threads through its model- and tool-call executor
    * factories for {@code id}: every event either executor narrates arrives here and fans out to
-   * {@code global} plus {@code id}'s current subscribers, whichever call — synchronous or a later
+   * {@code id}'s current subscribers plus {@code global}, whichever call — synchronous or a later
    * worker-driven fold — happens to be narrating it.
    */
   TurnObserver observerFor(AgentId id) {
     return event -> emit(id, event);
   }
 
+  /**
+   * Test seam (fix round 1, IMPORTANT-1): true while {@code id} still has at least one live
+   * subscriber — false once the last one for it has closed, proving the map entry itself is gone,
+   * not merely emptied.
+   */
+  boolean hasSubscribers(AgentId id) {
+    return subscribers.containsKey(id);
+  }
+
   private void emit(AgentId id, TurnEvent event) {
-    global.on(event);
     CopyOnWriteArrayList<TurnObserver> perId = subscribers.get(id);
-    if (perId == null) {
-      return;
-    }
-    for (TurnObserver subscriber : perId) {
-      try {
-        subscriber.on(event);
-      } catch (RuntimeException e) {
-        log.warn(
-            "a subscriber for agent {} threw handling {}; isolated, the fold continues",
-            id.value(),
-            event.getClass().getSimpleName(),
-            e);
+    if (perId != null) {
+      for (TurnObserver subscriber : perId) {
+        try {
+          subscriber.on(event);
+        } catch (RuntimeException e) {
+          log.warn(
+              "a subscriber for agent {} threw handling {}; isolated, the fold continues",
+              id.value(),
+              event.getClass().getSimpleName(),
+              e);
+        }
       }
     }
+    // global runs last and unguarded (fix round 1, MINOR-5): its abort-the-call throw semantics
+    // are preserved exactly, while running it after the per-id subscribers means a throw there can
+    // no longer starve them of an event they would otherwise have received first.
+    global.on(event);
   }
 
   /** Idempotent via {@link AtomicBoolean}: a second {@link #close()} is a silent no-op. */
-  private static final class Registration implements Subscription {
+  private final class Registration implements Subscription {
 
-    private final CopyOnWriteArrayList<TurnObserver> perId;
+    private final AgentId id;
     private final TurnObserver observer;
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    private Registration(CopyOnWriteArrayList<TurnObserver> perId, TurnObserver observer) {
-      this.perId = perId;
+    private Registration(AgentId id, TurnObserver observer) {
+      this.id = id;
       this.observer = observer;
     }
 
     @Override
     public void close() {
       if (closed.compareAndSet(false, true)) {
-        perId.remove(observer);
+        subscribers.computeIfPresent(
+            id,
+            (key, perId) -> {
+              perId.remove(observer);
+              return perId.isEmpty() ? null : perId;
+            });
       }
     }
   }

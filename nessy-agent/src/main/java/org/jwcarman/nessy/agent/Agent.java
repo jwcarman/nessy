@@ -32,11 +32,19 @@ public interface Agent<O> {
   void drive();
 
   /**
-   * Subscribes {@code observer} to every turn this id narrates from here on (front-ends spec §2): a
-   * synchronous {@link #tell}/{@link #drive} already in flight and a delivery folding on the
-   * harness's own worker days later both reach it — the fanout lives inside the harness, scoped to
-   * this id, not on this thin handle. Close the returned {@link Subscription} to stop listening;
-   * dropping it unclosed leaks one routing entry, never a thread.
+   * Subscribes {@code observer} to this id's turns from here on (front-ends spec §2): a synchronous
+   * {@link #tell}/{@link #drive} already in flight and a delivery folding on the harness's own
+   * worker days later both reach it — the fanout lives inside the harness, scoped to this id, not
+   * on this thin handle. Close the returned {@link Subscription} to stop listening; dropping it
+   * unclosed leaks one routing entry, never a thread.
+   *
+   * <p><b>Delivered roster (not yet the whole grammar):</b> {@code observer} currently receives
+   * {@code TextDelta}, {@code ThinkingDelta}, {@code RedactedThinking}, {@code ToolCallRequested},
+   * {@code ToolCallCompleted}, and {@code ToolCallProgressed} — the events the model- and tool-call
+   * executors narrate directly. {@code AssistantSaid} and {@code TurnEnded} do NOT ride this
+   * channel yet; they still narrate only through the harness's separate, id-free {@code
+   * AgentObserver} wiring. Widening this to include them is later front-ends work (the {@code ask}
+   * pattern needs them), not something this method does today.
    */
   Subscription subscribe(TurnObserver observer);
 }

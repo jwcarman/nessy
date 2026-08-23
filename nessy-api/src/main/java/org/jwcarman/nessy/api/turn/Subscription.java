@@ -20,10 +20,18 @@ package org.jwcarman.nessy.api.turn;
  * the API, because it is the only thing that ever holds a routing entry. {@code close()} narrows
  * {@link AutoCloseable}'s checked {@code throws Exception} away entirely: dropping a routing entry
  * cannot fail, so there is nothing here to throw. Close is also idempotent — closing twice, or
- * closing after the subscribed-to scope is long gone, is a no-op either way.
+ * closing after the subscribed-to scope is long gone, is a no-op either way; a closed subscription
+ * leaks nothing at all, not even an empty routing entry — only an unclosed one leaks (exactly the
+ * one entry it holds, never a thread).
  *
- * <p>The routing entry this holds lives inside the harness, scoped to one agent id; dropping a
- * {@code Subscription} unclosed leaks exactly that one entry, never a thread.
+ * <p>{@code close()} stops future emissions from being handed to the observer; it does not
+ * synchronize with one already in flight on another thread — an event dispatch that started just
+ * before {@code close()} runs may still reach the observer after {@code close()} returns.
+ *
+ * <p>The observer behind this subscription currently hears only part of a turn's grammar — {@code
+ * TextDelta}, {@code ThinkingDelta}, {@code RedactedThinking}, {@code ToolCallRequested}, {@code
+ * ToolCallCompleted}, and {@code ToolCallProgressed}. {@code AssistantSaid} and {@code TurnEnded}
+ * do not ride this channel yet; see the subscribing door's own javadoc for why.
  */
 public interface Subscription extends AutoCloseable {
 

@@ -287,6 +287,14 @@ public final class Harness<O> {
     return fanout.subscribe(id, observer);
   }
 
+  /**
+   * Test seam (fix round 1, IMPORTANT-1): true while {@code id} still has at least one live
+   * subscriber in the internal fanout registry — false once the last one for it has closed.
+   */
+  boolean hasSubscribers(AgentId id) {
+    return fanout.hasSubscribers(id);
+  }
+
   /** The approve/deny door (harness-first spec §4): this harness's own {@link ApprovalDesk}. */
   public ApprovalDesk approvals() {
     return approvals;

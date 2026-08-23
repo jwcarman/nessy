@@ -360,13 +360,56 @@ class AgentSubscriptionTest {
   @Nested
   class SubscriberThrowIsolation {
 
+    /**
+     * Fix round 1, MINOR-4: asserts the scope itself lands on {@link Phase.Idle} — the same shape
+     * {@code NessyHarnessDoorTest.aThrowingTurnObserverDoesNotStallTheScopesEffectsOrCompletion}
+     * checks for the harness's global observer — so "never poisons the fold" is proven regardless
+     * of where in subscribe order the throwing observer sits, not just proven for the OTHER
+     * subscriber's event count.
+     */
     @Test
     void a_throwing_subscriber_is_isolated_and_never_poisons_the_fold_for_other_subscribers() {
-      var pump = new PumpedExecutor();
+      var mapper = TestMappers.plainlyPinned();
+      var substrate = new InMemorySubstrate();
       var type = AgentType.of("subscription-throw-isolation");
+      var outboxKind = Kinds.outbox(type);
+      var approvalBackend =
+          new SubstrateComputations(substrate, mapper, Kinds.approval(type), outboxKind);
+      var executionBackend =
+          new SubstrateComputations(substrate, mapper, Kinds.computation(type), outboxKind);
+      var pump = new PumpedExecutor();
       var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
-      Harness<String> harness = chatHarness(type, model, pump);
-      var agent = harness.bind(AgentId.of("scope-a"));
+      ToolCallExecutor noTools = (call, responseId, sink) -> {};
+      String scopeId = "scope-a";
+
+      Harness<String> harness =
+          Harness.of(
+              type,
+              text -> List.of(new TextBlock(text)),
+              AgentObserver.noop(),
+              TurnObserver.noop(),
+              false,
+              StalenessPolicy.never(),
+              rawId -> new SubstrateMemory(substrate, rawId, mapper),
+              rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
+              rawId -> new QueueBacklog(),
+              (memory, turnObserver) ->
+                  new ProviderModelCallExecutor(
+                      model,
+                      TestSettings.SYSTEM_PROMPT,
+                      TestSettings.settings(),
+                      TestSettings.emptyRegistry(),
+                      memory,
+                      turnObserver,
+                      pump),
+              (id, turnObserver) -> noTools,
+              substrate,
+              mapper,
+              approvalBackend,
+              executionBackend);
+      HarnessTeardown.track(harness);
+
+      var agent = harness.bind(AgentId.of(scopeId));
       var wellBehaved = new RecordingTurnObserver();
       TurnObserver throwing =
           event -> {
@@ -380,6 +423,38 @@ class AgentSubscriptionTest {
       }
 
       assertThat(wellBehaved.events()).isNotEmpty();
+      var scopeState = new SubstrateAgentStateStore(substrate, scopeId, Clock.systemUTC(), mapper);
+      assertThat(scopeState.load().phase()).isEqualTo(new Phase.Idle());
+    }
+  }
+
+  @Nested
+  class ClosingLeaksNothing {
+
+    /**
+     * Fix round 1, IMPORTANT-1: spec §2 says only an UNCLOSED subscription leaks a routing entry —
+     * a closed one must leak nothing at all, including the map entry itself. Proven through {@link
+     * Harness#hasSubscribers(AgentId)}, a package-private test seam onto the internal registry, not
+     * by inference from behavior.
+     */
+    @Test
+    void closing_the_last_subscription_for_an_id_removes_its_registry_entry_entirely() {
+      var pump = new PumpedExecutor();
+      var type = AgentType.of("subscription-leak-check");
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+      Harness<String> harness = chatHarness(type, model, pump);
+      var id = AgentId.of("scope-a");
+      var agent = harness.bind(id);
+      var recorder = new RecordingTurnObserver();
+
+      assertThat(harness.hasSubscribers(id)).isFalse();
+
+      Subscription subscription = agent.subscribe(recorder);
+      assertThat(harness.hasSubscribers(id)).isTrue();
+
+      subscription.close();
+
+      assertThat(harness.hasSubscribers(id)).isFalse();
     }
   }
 }
