@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,7 @@ import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
@@ -101,8 +103,8 @@ class HarnessTest {
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<String>> backlogFactory,
-      Function<Memory, ModelCallExecutor> modelExecutorFactory,
-      Function<AgentId, ToolCallExecutor> toolExecutorFactory) {
+      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory) {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     String outboxKind = Kinds.outbox(type);
@@ -115,6 +117,7 @@ class HarnessTest {
         type,
         renderer,
         observer,
+        TurnObserver.noop(),
         false,
         stalenessPolicy,
         memoryFactory,
@@ -170,8 +173,8 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      binding -> MODEL,
-                      binding -> TOOLS))
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -187,8 +190,8 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      binding -> MODEL,
-                      binding -> TOOLS))
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -204,8 +207,8 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      binding -> MODEL,
-                      binding -> TOOLS))
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -221,8 +224,8 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      binding -> MODEL,
-                      binding -> TOOLS))
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -238,8 +241,8 @@ class HarnessTest {
                       null,
                       id -> STORE,
                       id -> BACKLOG,
-                      binding -> MODEL,
-                      binding -> TOOLS))
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -255,8 +258,8 @@ class HarnessTest {
                       id -> MEMORY,
                       null,
                       id -> BACKLOG,
-                      binding -> MODEL,
-                      binding -> TOOLS))
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -272,8 +275,8 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       null,
-                      binding -> MODEL,
-                      binding -> TOOLS))
+                      (mem, obs) -> MODEL,
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -290,7 +293,7 @@ class HarnessTest {
                       id -> STORE,
                       id -> BACKLOG,
                       null,
-                      binding -> TOOLS))
+                      (id, obs) -> TOOLS))
           .isInstanceOf(NullPointerException.class);
     }
 
@@ -306,7 +309,7 @@ class HarnessTest {
                       id -> MEMORY,
                       id -> STORE,
                       id -> BACKLOG,
-                      binding -> MODEL,
+                      (mem, obs) -> MODEL,
                       null))
           .isInstanceOf(NullPointerException.class);
     }
@@ -322,8 +325,8 @@ class HarnessTest {
               id -> MEMORY,
               id -> STORE,
               id -> BACKLOG,
-              b -> null,
-              b -> TOOLS);
+              (mem, obs) -> null,
+              (id, obs) -> TOOLS);
       Binding<String> binding = harness.binding(AgentId.of("a"));
 
       assertThatThrownBy(() -> new DefaultAgent<>(harness, binding))
@@ -341,8 +344,8 @@ class HarnessTest {
               id -> MEMORY,
               id -> STORE,
               id -> BACKLOG,
-              b -> MODEL,
-              b -> null);
+              (mem, obs) -> MODEL,
+              (id, obs) -> null);
       Binding<String> binding = harness.binding(AgentId.of("a"));
 
       assertThatThrownBy(() -> new DefaultAgent<>(harness, binding))
@@ -369,8 +372,8 @@ class HarnessTest {
               id ->
                   new SubstrateBacklog<>(
                       substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
-              b -> MODEL,
-              b -> TOOLS);
+              (mem, obs) -> MODEL,
+              (id, obs) -> TOOLS);
 
       var bindingA = harness.binding(AgentId.of("scope-a"));
       var bindingB = harness.binding(AgentId.of("scope-b"));
@@ -405,8 +408,8 @@ class HarnessTest {
               id ->
                   new SubstrateBacklog<>(
                       substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
-              b -> MODEL,
-              b -> TOOLS);
+              (mem, obs) -> MODEL,
+              (id, obs) -> TOOLS);
 
       var id = AgentId.of("shared-scope");
       var firstBind = harness.binding(id);
@@ -434,7 +437,7 @@ class HarnessTest {
               id -> MEMORY,
               id -> STORE,
               id -> BACKLOG,
-              b -> {
+              (mem, obs) -> {
                 receivedByFactory.add(registry);
                 ModelCallExecutor fresh =
                     new ModelCallExecutor() {
@@ -446,7 +449,7 @@ class HarnessTest {
                 produced.add(fresh);
                 return fresh;
               },
-              b -> TOOLS);
+              (id, obs) -> TOOLS);
 
       harness.modelExecutor(harness.binding(AgentId.of("a")));
       harness.modelExecutor(harness.binding(AgentId.of("b")));
@@ -471,8 +474,8 @@ class HarnessTest {
               id -> MEMORY,
               id -> STORE,
               id -> BACKLOG,
-              b -> MODEL,
-              b -> {
+              (mem, obs) -> MODEL,
+              (id, obs) -> {
                 receivedByFactory.add(registry);
                 ToolCallExecutor fresh =
                     new ToolCallExecutor() {
@@ -518,8 +521,8 @@ class HarnessTest {
               id ->
                   new SubstrateBacklog<>(
                       substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
-              b -> MODEL,
-              b -> TOOLS);
+              (mem, obs) -> MODEL,
+              (id, obs) -> TOOLS);
 
       Agent<String> agent = harness.bind(AgentId.of("scope-a"));
       agent.tell("hello");

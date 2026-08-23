@@ -230,7 +230,15 @@ public final class HarnessConfig<O> {
     return this;
   }
 
-  /** The absent audience by default; every scope's turns narrate here. */
+  /**
+   * The absent audience by default; every scope's turns narrate here. Front-ends spec §2: this
+   * stays working exactly as before — the finished {@link Harness} composes it as one more
+   * subscriber in its internal per-id fanout, alongside whatever a scope's own {@link
+   * org.jwcarman.nessy.agent.Agent#subscribe} adds later. It runs first and unguarded on every
+   * emission, so a throwing observer keeps its long-standing meaning ({@link TurnObserver}'s own
+   * javadoc); a {@code subscribe}d observer, by contrast, is isolated — its throw is logged and
+   * dropped, never propagated.
+   */
   public HarnessConfig<O> turnObserver(TurnObserver turnObserver) {
     this.turnObserver = Objects.requireNonNull(turnObserver, "turnObserver must not be null");
     return this;
@@ -384,26 +392,27 @@ public final class HarnessConfig<O> {
             agentType,
             effectiveRenderer,
             effectiveAgentObserver,
+            effectiveTurnObserver,
             true,
             stalenessPolicy,
             effectiveMemoryFactory,
             effectiveStoreFactory,
             effectiveBacklogFactory,
-            scopeMemory ->
+            (scopeMemory, scopeTurnObserver) ->
                 new ProviderModelCallExecutor(
                     effectiveModel,
                     effectiveSystemPrompt,
                     effectiveSettings,
                     registry,
                     scopeMemory,
-                    effectiveTurnObserver,
+                    scopeTurnObserver,
                     exec),
-            scopeId ->
+            (scopeId, scopeTurnObserver) ->
                 new RegistryToolCallExecutor(
                     registry,
                     agentType,
                     scopeId,
-                    effectiveTurnObserver,
+                    scopeTurnObserver,
                     exec,
                     new ComputationDeferredToolCallPolicy(
                         effectiveApprovalBackend, effectiveExecutionBackend, pinned),

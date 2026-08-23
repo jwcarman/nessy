@@ -31,6 +31,7 @@ import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -76,13 +77,14 @@ final class AgentFixture {
             fixtureType,
             text -> List.of(new TextBlock(text)),
             observer,
+            TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,
             rawId -> memory,
             rawId -> store,
             rawId -> backlog,
-            binding -> model,
-            binding -> tools,
+            (mem, obs) -> model,
+            (id, obs) -> tools,
             lifeSupportSubstrate,
             mapper,
             approvalBackend,

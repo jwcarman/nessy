@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -120,13 +121,14 @@ class HarnessDemo {
             demoType,
             text -> List.of(new TextBlock(text)),
             narrator,
+            TurnObserver.noop(),
             false,
             StalenessPolicy.never(),
             rawId -> memory,
             rawId -> store,
             rawId -> backlog,
-            binding -> model,
-            binding -> tools,
+            (mem, obs) -> model,
+            (id, obs) -> tools,
             lifeSupportSubstrate,
             lifeSupportMapper,
             approvalBackend,

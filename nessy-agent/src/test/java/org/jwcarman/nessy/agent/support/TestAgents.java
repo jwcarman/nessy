@@ -29,6 +29,7 @@ import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
@@ -171,13 +172,14 @@ public final class TestAgents {
             type,
             renderer,
             observer,
+            TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,
             rawId -> memory,
             rawId -> store,
             rawId -> backlog,
-            binding -> model,
-            binding -> tools,
+            (mem, obs) -> model,
+            (id, obs) -> tools,
             lifeSupportSubstrate,
             mapper,
             approvalBackend,

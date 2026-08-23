@@ -17,6 +17,7 @@ package org.jwcarman.nessy.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -24,6 +25,8 @@ import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.api.turn.Subscription;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -55,8 +58,9 @@ public final class Harness<O> {
   private final Function<String, Memory> memoryFactory;
   private final Function<String, AgentStateStore> storeFactory;
   private final Function<String, Backlog<O>> backlogFactory;
-  private final Function<Memory, ModelCallExecutor> modelExecutorFactory;
-  private final Function<AgentId, ToolCallExecutor> toolExecutorFactory;
+  private final BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory;
+  private final BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory;
+  private final TurnFanout fanout;
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
@@ -65,13 +69,14 @@ public final class Harness<O> {
       AgentType type,
       ObservationRenderer<O> renderer,
       AgentObserver observer,
+      TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      Function<Memory, ModelCallExecutor> modelExecutorFactory,
-      Function<AgentId, ToolCallExecutor> toolExecutorFactory,
+      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
       SubstrateComputations approvalBackend,
@@ -79,6 +84,8 @@ public final class Harness<O> {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.observer = Objects.requireNonNull(observer, "observer must not be null");
+    this.fanout =
+        new TurnFanout(Objects.requireNonNull(turnObserver, "turnObserver must not be null"));
     this.drainOnIdle = drainOnIdle;
     this.stalenessPolicy =
         Objects.requireNonNull(stalenessPolicy, "stalenessPolicy must not be null");
@@ -114,13 +121,14 @@ public final class Harness<O> {
       AgentType type,
       ObservationRenderer<O> renderer,
       AgentObserver observer,
+      TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
       Function<String, Memory> memoryFactory,
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
-      Function<Memory, ModelCallExecutor> modelExecutorFactory,
-      Function<AgentId, ToolCallExecutor> toolExecutorFactory,
+      BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory,
+      BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory,
       Substrate substrate,
       ObjectMapper mapper,
       SubstrateComputations approvalBackend,
@@ -130,6 +138,7 @@ public final class Harness<O> {
             type,
             renderer,
             observer,
+            turnObserver,
             drainOnIdle,
             stalenessPolicy,
             memoryFactory,
@@ -216,7 +225,7 @@ public final class Harness<O> {
    * demotion).
    */
   ModelCallExecutor modelExecutor(Binding<O> binding) {
-    return modelExecutorFactory.apply(binding.memory());
+    return modelExecutorFactory.apply(binding.memory(), fanout.observerFor(binding.id()));
   }
 
   /**
@@ -224,7 +233,7 @@ public final class Harness<O> {
    * Package-private for the same reason as {@link #modelExecutor(Binding)}.
    */
   ToolCallExecutor toolExecutor(Binding<O> binding) {
-    return toolExecutorFactory.apply(binding.id());
+    return toolExecutorFactory.apply(binding.id(), fanout.observerFor(binding.id()));
   }
 
   /**
@@ -237,7 +246,7 @@ public final class Harness<O> {
    * #bind(AgentId)}, {@link #approvals()}, {@link #completions()}, and {@link #shutdown()}.
    */
   ModelCallExecutor modelExecutorFor(AgentId id) {
-    return modelExecutorFactory.apply(memoryFor(id));
+    return modelExecutorFactory.apply(memoryFor(id), fanout.observerFor(id));
   }
 
   /**
@@ -249,7 +258,7 @@ public final class Harness<O> {
    * #approvals()}, {@link #completions()}, and {@link #shutdown()}.
    */
   ToolCallExecutor toolExecutorFor(AgentId id) {
-    return toolExecutorFactory.apply(id);
+    return toolExecutorFactory.apply(id, fanout.observerFor(id));
   }
 
   /**
@@ -262,6 +271,20 @@ public final class Harness<O> {
   Memory memoryFor(AgentId id) {
     Objects.requireNonNull(id, "id must not be null");
     return memoryFactory.apply(id.value());
+  }
+
+  /**
+   * {@link Agent#subscribe(TurnObserver)}'s harness-side implementation (front-ends spec §2):
+   * routes into {@code id}'s slice of the internal {@link TurnFanout} registry every model- and
+   * tool-call executor this harness hands out already narrates through (see {@link
+   * #modelExecutorFor(AgentId)}/{@link #toolExecutorFor(AgentId)}, and {@link #modelExecutor
+   * (Binding)}/{@link #toolExecutor(Binding)}). Package-private — {@link DefaultAgent} is the only
+   * caller; application code reaches this only through {@link #bind(AgentId)}'s {@link
+   * Agent#subscribe(TurnObserver)} — the public roster stops at {@link #type()}, {@link
+   * #bind(AgentId)}, {@link #approvals()}, {@link #completions()}, and {@link #shutdown()}.
+   */
+  Subscription subscribe(AgentId id, TurnObserver observer) {
+    return fanout.subscribe(id, observer);
   }
 
   /** The approve/deny door (harness-first spec §4): this harness's own {@link ApprovalDesk}. */

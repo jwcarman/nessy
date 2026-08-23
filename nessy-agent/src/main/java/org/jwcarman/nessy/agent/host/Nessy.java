@@ -218,16 +218,24 @@ public final class Nessy {
               agentType,
               text -> List.of(new TextBlock(text)),
               new TurnNarrationAdapter(relay),
+              relay,
               false,
               StalenessPolicy.never(),
               rawId -> effectiveMemory,
               rawId -> store,
               rawId -> backlog,
-              scopeMemory ->
+              (scopeMemory, scopeTurnObserver) ->
                   new ProviderModelCallExecutor(
-                      model, systemPrompt, effectiveSettings, limited, scopeMemory, relay, exec),
-              scopeId ->
-                  new RegistryToolCallExecutor(limited, agentType, scopeId, relay, exec, pinned),
+                      model,
+                      systemPrompt,
+                      effectiveSettings,
+                      limited,
+                      scopeMemory,
+                      scopeTurnObserver,
+                      exec),
+              (scopeId, scopeTurnObserver) ->
+                  new RegistryToolCallExecutor(
+                      limited, agentType, scopeId, scopeTurnObserver, exec, pinned),
               substrate,
               pinned,
               approvalBackend,

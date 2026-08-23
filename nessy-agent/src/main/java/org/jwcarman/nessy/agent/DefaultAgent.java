@@ -23,6 +23,8 @@ import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.turn.Subscription;
+import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
 
@@ -53,6 +55,11 @@ public final class DefaultAgent<O> implements Agent<O> {
   public void tell(O observation) {
     binding.backlog().add(observation);
     drive();
+  }
+
+  @Override
+  public Subscription subscribe(TurnObserver observer) {
+    return harness.subscribe(binding.id(), observer);
   }
 
   @Override

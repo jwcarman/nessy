@@ -1,0 +1,385 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.agent;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import java.time.Clock;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.memory.SubstrateMemory;
+import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
+import org.jwcarman.nessy.agent.spi.AgentObserver;
+import org.jwcarman.nessy.agent.spi.Backlog;
+import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
+import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
+import org.jwcarman.nessy.agent.support.PumpedExecutor;
+import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
+import org.jwcarman.nessy.agent.support.ScriptedModel;
+import org.jwcarman.nessy.agent.support.TestMappers;
+import org.jwcarman.nessy.agent.support.TestSettings;
+import org.jwcarman.nessy.agent.tool.RegistryToolCallExecutor;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.api.tool.ToolContext;
+import org.jwcarman.nessy.api.tool.ToolGrant;
+import org.jwcarman.nessy.api.tool.ToolRegistry;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.tool.UsagePolicy;
+import org.jwcarman.nessy.api.turn.Subscription;
+import org.jwcarman.nessy.api.turn.TurnEvent;
+import org.jwcarman.nessy.api.turn.TurnObserver;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
+import org.jwcarman.nessy.spi.model.ModelEvent;
+import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+
+/**
+ * {@link Agent#subscribe(TurnObserver)} (front-ends spec §2): the harness-internal per-id fanout,
+ * proven worker-inclusive (a delivery folding on the harness's own worker still reaches a
+ * subscriber registered before the park), scoped (two ids never cross), closeable (idempotent, and
+ * stops further delivery), and isolating (a throwing subscriber never poisons the fold for anyone
+ * else). Every harness here is built through {@link Harness#of}'s real factories — the same wiring
+ * {@link org.jwcarman.nessy.agent.host.HarnessConfig} composes — so a subscription exercises the
+ * genuine per-id fanout, not a test double that ignores the {@link TurnObserver} a factory is
+ * handed.
+ */
+class AgentSubscriptionTest {
+
+  @AfterEach
+  void shutdownTrackedHarnesses() {
+    HarnessTeardown.shutdownAllTracked();
+  }
+
+  record NoInput() {}
+
+  /** A tool gated behind approval — records every actual execution. */
+  private static final class RecordingTool implements Tool<NoInput> {
+
+    private final AtomicInteger invocations = new AtomicInteger();
+
+    @Override
+    public String name() {
+      return "restart";
+    }
+
+    @Override
+    public String description() {
+      return "gated behind approval";
+    }
+
+    @Override
+    public Class<NoInput> inputType() {
+      return NoInput.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> execute(NoInput input, ToolContext context) {
+      invocations.incrementAndGet();
+      return Awaited.ready(ToolResult.ok("restarted"));
+    }
+  }
+
+  private static final class QueueBacklog implements Backlog<String> {
+    private final Deque<String> queue = new ArrayDeque<>();
+
+    @Override
+    public void add(String observation) {
+      queue.add(observation);
+    }
+
+    @Override
+    public Optional<String> poll() {
+      return Optional.ofNullable(queue.poll());
+    }
+  }
+
+  /**
+   * A no-tool harness over a scripted, text-only model: every {@code tell} that reaches the model
+   * narrates its deltas synchronously once {@code pump} is drained — no approval, no worker fold,
+   * just enough real wiring to prove the fanout routes correctly by id.
+   */
+  private static Harness<String> chatHarness(
+      AgentType type, ScriptedModel model, PumpedExecutor pump) {
+    var mapper = TestMappers.plainlyPinned();
+    var substrate = new InMemorySubstrate();
+    var outboxKind = Kinds.outbox(type);
+    var approvalBackend =
+        new SubstrateComputations(substrate, mapper, Kinds.approval(type), outboxKind);
+    var executionBackend =
+        new SubstrateComputations(substrate, mapper, Kinds.computation(type), outboxKind);
+    ToolCallExecutor noTools = (call, responseId, sink) -> {};
+    Harness<String> harness =
+        Harness.of(
+            type,
+            text -> List.of(new TextBlock(text)),
+            AgentObserver.noop(),
+            TurnObserver.noop(),
+            false,
+            StalenessPolicy.never(),
+            rawId -> new SubstrateMemory(substrate, rawId, mapper),
+            rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper),
+            rawId -> new QueueBacklog(),
+            (memory, turnObserver) ->
+                new ProviderModelCallExecutor(
+                    model,
+                    TestSettings.SYSTEM_PROMPT,
+                    TestSettings.settings(),
+                    TestSettings.emptyRegistry(),
+                    memory,
+                    turnObserver,
+                    pump),
+            (id, turnObserver) -> noTools,
+            substrate,
+            mapper,
+            approvalBackend,
+            executionBackend);
+    HarnessTeardown.track(harness);
+    return harness;
+  }
+
+  @Nested
+  class WorkerInclusiveDelivery {
+
+    /**
+     * The brief's central proof: subscribe before the turn parks on an approval, then grant it
+     * through {@link ApprovalDesk} — the same door a production caller uses — which nudges the
+     * harness's own daemon-threaded {@link DeliveryWorker}. The resumed turn's events (the tool's
+     * completion, then the second model call's reply) both reach the id's subscriber, even though
+     * neither runs on the {@link Agent} handle {@code tell} was originally called on — the worker
+     * folds through its own, freshly-bound {@link DefaultAgent} for the same id.
+     */
+    @Test
+    void
+        a_subscriber_registered_before_a_park_sees_the_turn_that_resumes_after_the_worker_folds_the_grant() {
+      var mapper = TestMappers.plainlyPinned();
+      var substrate = new InMemorySubstrate();
+      var type = AgentType.of("subscription-worker");
+      var outboxKind = Kinds.outbox(type);
+      var approvalBackend =
+          new SubstrateComputations(substrate, mapper, Kinds.approval(type), outboxKind);
+      var executionBackend =
+          new SubstrateComputations(substrate, mapper, Kinds.computation(type), outboxKind);
+      var notifications = new CopyOnWriteArrayList<ApprovalRequest>();
+      var tool = new RecordingTool();
+      var registry = ToolRegistry.of(ToolGrant.grant(tool, UsagePolicy.requireApproval()));
+      var pump = new PumpedExecutor();
+      var call = new ToolCall("c1", "restart", JsonNodeFactory.instance.objectNode());
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(new ModelEvent.ToolUseEmitted(call, null)),
+                  List.of(new ModelEvent.TextChunk("done"))));
+      java.util.function.Function<String, AgentStateStore> storeFactory =
+          rawId -> new SubstrateAgentStateStore(substrate, rawId, Clock.systemUTC(), mapper);
+
+      Harness<String> harness =
+          Harness.of(
+              type,
+              text -> List.of(new TextBlock(text)),
+              AgentObserver.noop(),
+              TurnObserver.noop(),
+              false,
+              StalenessPolicy.never(),
+              rawId -> new SubstrateMemory(substrate, rawId, mapper),
+              storeFactory,
+              rawId -> new QueueBacklog(),
+              (memory, turnObserver) ->
+                  new ProviderModelCallExecutor(
+                      model,
+                      TestSettings.SYSTEM_PROMPT,
+                      TestSettings.settings(),
+                      registry,
+                      memory,
+                      turnObserver,
+                      pump),
+              (id, turnObserver) ->
+                  new RegistryToolCallExecutor(
+                      registry,
+                      type,
+                      id,
+                      turnObserver,
+                      pump,
+                      new ComputationDeferredToolCallPolicy(
+                          approvalBackend, executionBackend, mapper),
+                      new ComputationApprover(
+                          approvalBackend,
+                          storeFactory.apply(id.value()),
+                          notifications::add,
+                          mapper),
+                      mapper),
+              substrate,
+              mapper,
+              approvalBackend,
+              executionBackend);
+      HarnessTeardown.track(harness);
+
+      var agent = harness.bind(AgentId.of("scope-a"));
+      var recorder = new RecordingTurnObserver();
+
+      try (Subscription subscription = agent.subscribe(recorder)) {
+        agent.tell("please restart");
+        pump.pumpUntilQuiet();
+
+        assertThat(notifications).hasSize(1); // parked: the tool call is awaiting approval
+
+        harness.approvals().approve(notifications.getFirst().id()); // grants and nudges the worker
+        pump.pumpUntilQuiet(); // drains the resumed model call the worker's fold dispatched
+
+        assertThat(tool.invocations).hasValue(1);
+        List<TurnEvent> events = recorder.events();
+        assertThat(events).isNotEmpty();
+        assertThat(events)
+            .anySatisfy(
+                event ->
+                    assertThat(event)
+                        .isInstanceOfSatisfying(
+                            TurnEvent.ToolCallCompleted.class,
+                            completed -> assertThat(completed.result().isError()).isFalse()));
+        assertThat(events)
+            .anySatisfy(
+                event ->
+                    assertThat(event)
+                        .isInstanceOfSatisfying(
+                            TurnEvent.TextDelta.class,
+                            delta -> assertThat(delta.text()).isEqualTo("done")));
+      }
+    }
+  }
+
+  @Nested
+  class Scoping {
+
+    @Test
+    void two_agent_ids_on_the_same_harness_never_cross_each_others_events() {
+      var pump = new PumpedExecutor();
+      var type = AgentType.of("subscription-scoping");
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(new ModelEvent.TextChunk("for a")),
+                  List.of(new ModelEvent.TextChunk("for b"))));
+      Harness<String> harness = chatHarness(type, model, pump);
+
+      var agentA = harness.bind(AgentId.of("scope-a"));
+      var agentB = harness.bind(AgentId.of("scope-b"));
+      var recorderA = new RecordingTurnObserver();
+      var recorderB = new RecordingTurnObserver();
+
+      try (Subscription subscriptionA = agentA.subscribe(recorderA);
+          Subscription subscriptionB = agentB.subscribe(recorderB)) {
+        agentA.tell("hello a");
+        pump.pumpUntilQuiet();
+        agentB.tell("hello b");
+        pump.pumpUntilQuiet();
+
+        assertThat(recorderA.events()).isNotEmpty().noneMatch(Scoping::sawTextForB);
+        assertThat(recorderB.events()).isNotEmpty().noneMatch(Scoping::sawTextForA);
+      }
+    }
+
+    private static boolean sawTextForB(TurnEvent event) {
+      return event instanceof TurnEvent.TextDelta(String text) && text.equals("for b");
+    }
+
+    private static boolean sawTextForA(TurnEvent event) {
+      return event instanceof TurnEvent.TextDelta(String text) && text.equals("for a");
+    }
+  }
+
+  @Nested
+  class CloseIsIdempotentAndStopsDelivery {
+
+    @Test
+    void closing_a_subscription_twice_is_a_silent_no_op() {
+      var pump = new PumpedExecutor();
+      var type = AgentType.of("subscription-close-idempotent");
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+      Harness<String> harness = chatHarness(type, model, pump);
+      var agent = harness.bind(AgentId.of("scope-a"));
+      var recorder = new RecordingTurnObserver();
+
+      Subscription subscription = agent.subscribe(recorder);
+      subscription.close();
+
+      assertThatCode(subscription::close).doesNotThrowAnyException();
+    }
+
+    @Test
+    void a_closed_subscription_receives_no_further_events() {
+      var pump = new PumpedExecutor();
+      var type = AgentType.of("subscription-close-stops-delivery");
+      var model =
+          new ScriptedModel(
+              List.of(
+                  List.of(new ModelEvent.TextChunk("first")),
+                  List.of(new ModelEvent.TextChunk("second"))));
+      Harness<String> harness = chatHarness(type, model, pump);
+      var agent = harness.bind(AgentId.of("scope-a"));
+      var recorder = new RecordingTurnObserver();
+
+      Subscription subscription = agent.subscribe(recorder);
+      agent.tell("go once");
+      pump.pumpUntilQuiet();
+      int seenBeforeClose = recorder.events().size();
+      assertThat(seenBeforeClose).isPositive();
+
+      subscription.close();
+      agent.tell("go twice");
+      pump.pumpUntilQuiet();
+
+      assertThat(recorder.events()).hasSize(seenBeforeClose);
+    }
+  }
+
+  @Nested
+  class SubscriberThrowIsolation {
+
+    @Test
+    void a_throwing_subscriber_is_isolated_and_never_poisons_the_fold_for_other_subscribers() {
+      var pump = new PumpedExecutor();
+      var type = AgentType.of("subscription-throw-isolation");
+      var model = new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("hi"))));
+      Harness<String> harness = chatHarness(type, model, pump);
+      var agent = harness.bind(AgentId.of("scope-a"));
+      var wellBehaved = new RecordingTurnObserver();
+      TurnObserver throwing =
+          event -> {
+            throw new RuntimeException("subscriber boom");
+          };
+
+      try (Subscription throwingSubscription = agent.subscribe(throwing);
+          Subscription wellBehavedSubscription = agent.subscribe(wellBehaved)) {
+        agent.tell("go");
+        pump.pumpUntilQuiet();
+      }
+
+      assertThat(wellBehaved.events()).isNotEmpty();
+    }
+  }
+}
