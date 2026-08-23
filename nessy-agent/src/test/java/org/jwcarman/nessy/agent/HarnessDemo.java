@@ -24,6 +24,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -37,7 +38,9 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /** Throwaway demo — not part of the suite's contract. Prints a whole turn. */
 class HarnessDemo {
@@ -104,6 +107,10 @@ class HarnessDemo {
         };
 
     // ---- the harness: the recipe, id-free — and one bind stamps this scope's handles ----
+    Substrate lifeSupportSubstrate = new InMemorySubstrate();
+    var lifeSupportMapper = TestMappers.plainlyPinned();
+    DurableComputationBackend backend =
+        new SubstrateComputations(lifeSupportSubstrate, lifeSupportMapper);
     var harness =
         Harness.<String>of(
             AgentType.of("demo"),
@@ -115,8 +122,11 @@ class HarnessDemo {
             rawId -> store,
             rawId -> backlog,
             binding -> model,
-            binding -> tools);
-    var agent = new DefaultAgent<>(harness, harness.bind(AgentId.of("demo-scope")));
+            binding -> tools,
+            lifeSupportSubstrate,
+            lifeSupportMapper,
+            backend);
+    var agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("demo-scope")));
 
     // ---- script the world ----
     var lookup =

@@ -163,7 +163,7 @@ class GrantRaceTest {
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());
-    var agent = new DefaultAgent<String>(harness, harness.bind(AgentId.of("test-scope")));
+    var agent = new DefaultAgent<String>(harness, harness.binding(AgentId.of("test-scope")));
     var worker =
         new DeliveryWorker<String>(
             substrate, mapper, harness, (t, i) -> agent, java.time.Duration.ofHours(1));

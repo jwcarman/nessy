@@ -26,6 +26,7 @@ import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.memory.SubstrateMemory;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -39,9 +40,12 @@ import org.jwcarman.nessy.agent.support.TestCodecs;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.tool.ToolCall;
+import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 class HarnessTest {
 
@@ -84,6 +88,12 @@ class HarnessTest {
   private static final StalenessPolicy STALENESS_POLICY = StalenessPolicy.never();
   private static final AgentType TYPE = AgentType.of("test");
 
+  /**
+   * Every {@link Harness} now owns its own life-support (spec §4) — a delivery worker, daemon-
+   * threaded — so this helper synthesizes its own throwaway, private {@link Substrate} for that
+   * purpose, entirely decoupled from whatever storage {@code memoryFactory}/{@code storeFactory}
+   * actually exercise in a given test.
+   */
   private static Harness<String> harness(
       AgentType type,
       ObservationRenderer<String> renderer,
@@ -94,6 +104,9 @@ class HarnessTest {
       Function<String, Backlog<String>> backlogFactory,
       Function<Binding<String>, ModelCallExecutor> modelExecutorFactory,
       Function<Binding<String>, ToolCallExecutor> toolExecutorFactory) {
+    Substrate lifeSupportSubstrate = new InMemorySubstrate();
+    var mapper = TestMappers.plainlyPinned();
+    DurableComputationBackend backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
     return Harness.of(
         type,
         renderer,
@@ -104,7 +117,10 @@ class HarnessTest {
         storeFactory,
         backlogFactory,
         modelExecutorFactory,
-        toolExecutorFactory);
+        toolExecutorFactory,
+        lifeSupportSubstrate,
+        mapper,
+        backend);
   }
 
   @Nested
@@ -303,7 +319,7 @@ class HarnessTest {
               id -> BACKLOG,
               b -> null,
               b -> TOOLS);
-      Binding<String> binding = harness.bind(AgentId.of("a"));
+      Binding<String> binding = harness.binding(AgentId.of("a"));
 
       assertThatThrownBy(() -> new DefaultAgent<>(harness, binding))
           .isInstanceOf(NullPointerException.class);
@@ -322,7 +338,7 @@ class HarnessTest {
               id -> BACKLOG,
               b -> MODEL,
               b -> null);
-      Binding<String> binding = harness.bind(AgentId.of("a"));
+      Binding<String> binding = harness.binding(AgentId.of("a"));
 
       assertThatThrownBy(() -> new DefaultAgent<>(harness, binding))
           .isInstanceOf(NullPointerException.class);
@@ -351,8 +367,8 @@ class HarnessTest {
               b -> MODEL,
               b -> TOOLS);
 
-      var bindingA = harness.bind(AgentId.of("scope-a"));
-      var bindingB = harness.bind(AgentId.of("scope-b"));
+      var bindingA = harness.binding(AgentId.of("scope-a"));
+      var bindingB = harness.binding(AgentId.of("scope-b"));
 
       bindingA.memory().remember(Message.user(List.of()));
       bindingA
@@ -388,11 +404,11 @@ class HarnessTest {
               b -> TOOLS);
 
       var id = AgentId.of("shared-scope");
-      var firstBind = harness.bind(id);
+      var firstBind = harness.binding(id);
       firstBind.memory().remember(Message.user(List.of()));
       firstBind.backlog().add("hello");
 
-      var secondBind = harness.bind(id);
+      var secondBind = harness.binding(id);
 
       assertThat(secondBind.memory().recall().messages()).isNotEmpty();
       assertThat(secondBind.backlog().poll()).contains("hello");
@@ -427,8 +443,8 @@ class HarnessTest {
               },
               b -> TOOLS);
 
-      harness.modelExecutor(harness.bind(AgentId.of("a")));
-      harness.modelExecutor(harness.bind(AgentId.of("b")));
+      harness.modelExecutor(harness.binding(AgentId.of("a")));
+      harness.modelExecutor(harness.binding(AgentId.of("b")));
 
       assertThat(produced).hasSize(2);
       assertThat(produced.get(0)).isNotSameAs(produced.get(1));
@@ -465,12 +481,50 @@ class HarnessTest {
                 return fresh;
               });
 
-      harness.toolExecutor(harness.bind(AgentId.of("a")));
-      harness.toolExecutor(harness.bind(AgentId.of("b")));
+      harness.toolExecutor(harness.binding(AgentId.of("a")));
+      harness.toolExecutor(harness.binding(AgentId.of("b")));
 
       assertThat(produced).hasSize(2);
       assertThat(produced.get(0)).isNotSameAs(produced.get(1));
       assertThat(receivedByFactory).isNotEmpty().allMatch(o -> o == registry);
+    }
+  }
+
+  /**
+   * Harness-first spec §4: {@code bind(AgentId)} is now the application door, returning {@link
+   * Agent}.
+   */
+  @Nested
+  class BindReturnsAnAgent {
+
+    @Test
+    void bindReturnsAnAgentThatDrainsIntoTheSameSubstrateBindingExposes() {
+      var substrate = new InMemorySubstrate();
+      Harness<String> harness =
+          harness(
+              TYPE,
+              text -> List.of(new TextBlock(text)),
+              OBSERVER,
+              STALENESS_POLICY,
+              id -> new SubstrateMemory(substrate, id, TestMappers.plainlyPinned()),
+              id ->
+                  new SubstrateAgentStateStore(
+                      substrate, id, Clock.systemUTC(), TestMappers.plainlyPinned()),
+              id ->
+                  new SubstrateBacklog<>(
+                      substrate, id, 16, TestCodecs.utf8String(), TestMappers.plainlyPinned()),
+              b -> MODEL,
+              b -> TOOLS);
+
+      Agent<String> agent = harness.bind(AgentId.of("scope-a"));
+      agent.observe("hello");
+
+      // observe() drove the scope from Idle: the observation was drained and applied, not left
+      // sitting in the backlog — proven by reading the SAME id's backlog back through the raw
+      // binding door, over the same shared substrate.
+      var binding = harness.binding(AgentId.of("scope-a"));
+      assertThat(binding.backlog().poll()).isEmpty();
+      assertThat(binding.memory().recall().messages()).isNotEmpty();
     }
   }
 }

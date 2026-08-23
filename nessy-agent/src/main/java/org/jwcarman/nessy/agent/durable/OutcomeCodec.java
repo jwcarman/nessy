@@ -60,6 +60,9 @@ final class OutcomeCodec {
   private static final String OUTCOME = "outcome";
   private static final String DELIVERY = "delivery";
   private static final String COMPUTATION = "computation";
+  private static final String DESTINATION = "destination";
+  private static final String DATA = "data";
+  private static final String AGENT_TYPE = "agentType";
 
   private static final String TYPE_SUCCESS = "success";
   private static final String TYPE_FAILURE = "failure";
@@ -125,6 +128,32 @@ final class OutcomeCodec {
     JsonNode root = codecs.readTree(json, DELIVERY);
     requireKnownOutcomeVocabulary(root.get(OUTCOME));
     return codecs.bind(root, DeliveryDocumentWire.class, DELIVERY).toDomain();
+  }
+
+  /**
+   * The outbox arm's cheap peek (harness-first spec §5, new law): reads only {@code
+   * destination.data}'s {@code agentType} field, stopping well short of {@link #deliveryDocument}'s
+   * full bind (which also validates the outcome vocabulary) or {@link ScopeRouting}'s full routing
+   * decode (which also validates the call shape) — neither of those a type filter needs. Empty when
+   * the JSON does not carry a recognizable {@code destination.data.agentType} shape; the caller's
+   * own full decode then surfaces the real problem.
+   */
+  Optional<String> peekDestinationAgentType(String json) {
+    Objects.requireNonNull(json, "json must not be null");
+    JsonNode root = codecs.readTree(json, DELIVERY);
+    JsonNode destination = root.get(DESTINATION);
+    if (destination == null) {
+      return Optional.empty();
+    }
+    JsonNode dataNode = destination.get(DATA);
+    if (dataNode == null || !dataNode.isTextual()) {
+      return Optional.empty();
+    }
+    JsonNode inner = codecs.readTree(dataNode.asText(), DESTINATION);
+    JsonNode agentType = inner.get(AGENT_TYPE);
+    return agentType == null || agentType.isNull()
+        ? Optional.empty()
+        : Optional.of(agentType.asText());
   }
 
   /**

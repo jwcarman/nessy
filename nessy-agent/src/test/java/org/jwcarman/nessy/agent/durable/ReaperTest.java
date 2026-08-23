@@ -217,7 +217,7 @@ class ReaperTest {
             AgentObserver.noop(),
             false,
             StalenessPolicy.never());
-    var agent = new DefaultAgent<String>(harness, harness.bind(AgentId.of("test-scope")));
+    var agent = new DefaultAgent<String>(harness, harness.binding(AgentId.of("test-scope")));
     AgentResolver resolver = (t, i) -> agent;
     var worker =
         new DeliveryWorker<String>(substrate, mapper, harness, resolver, Duration.ofHours(1));

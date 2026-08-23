@@ -148,6 +148,7 @@ class DurableParkDemo {
                 StalenessPolicy.never());
     var harness =
         TestAgents.<String>harness(
+            type,
             memory,
             store,
             backlog,

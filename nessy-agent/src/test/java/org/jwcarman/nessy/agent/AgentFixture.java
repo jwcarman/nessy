@@ -20,6 +20,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -30,7 +31,9 @@ import org.jwcarman.nessy.agent.support.ScriptedModelExecutor;
 import org.jwcarman.nessy.agent.support.ScriptedToolExecutor;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.TextBlock;
+import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /** One fully-wired agent on a pump; the fixture is the test's vocabulary. */
 final class AgentFixture {
@@ -57,6 +60,11 @@ final class AgentFixture {
 
   AgentFixture(AgentStateStore store, boolean drainOnIdle, StalenessPolicy stalenessPolicy) {
     this.store = store;
+    // this fixture's own harness owns its own life-support (spec §4) over a private, throwaway
+    // substrate — decoupled from whatever substrate the caller-supplied `store` above lives on.
+    Substrate lifeSupportSubstrate = new InMemorySubstrate();
+    var mapper = TestMappers.plainlyPinned();
+    DurableComputationBackend backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
     Harness<String> harness =
         Harness.of(
             AgentType.of("fixture"),
@@ -68,8 +76,11 @@ final class AgentFixture {
             rawId -> store,
             rawId -> backlog,
             binding -> model,
-            binding -> tools);
-    this.agent = new DefaultAgent<>(harness, harness.bind(AgentId.of("fixture-scope")));
+            binding -> tools,
+            lifeSupportSubstrate,
+            mapper,
+            backend);
+    this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));
   }
 
   AgentFixture(AgentStateStore store, boolean drainOnIdle) {

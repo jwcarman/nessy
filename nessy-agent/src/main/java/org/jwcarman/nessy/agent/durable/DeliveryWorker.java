@@ -249,13 +249,33 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     }
   }
 
+  /**
+   * The outbox arm of the type-filtered sweep (spec §5, new law): peeks the delivery's destination
+   * continuation for its {@code agentType} — via {@link OutcomeCodec#peekDestinationAgentType}, a
+   * minimal parse that stops well short of {@link OutcomeCodec#deliveryDocument}'s full bind and
+   * {@link ScopeRouting}'s full routing decode (both validate the call/outcome shape this filter
+   * never needs) — and compares it to this worker's own harness type, BEFORE any of that further
+   * decoding runs. A delivery whose destination shape the peek cannot read falls through to the
+   * full decode unfiltered, so a genuinely malformed document still fails loudly there instead of
+   * being silently skipped here.
+   */
+  private boolean isForeignTypeDelivery(String json) {
+    return codec
+        .peekDestinationAgentType(json)
+        .map(agentType -> !agentType.equals(harness.type().name()))
+        .orElse(false);
+  }
+
   private void deliverOne(String key) {
     Optional<Substrate.Document> doc = store.read(OUTBOX_KIND, key);
     if (doc.isEmpty()) {
       return; // already delivered by another drain — deliveries are pending-only (spec §4)
     }
-    DeliveryDocument delivery =
-        codec.deliveryDocument(new String(doc.get().payload(), StandardCharsets.UTF_8));
+    String json = new String(doc.get().payload(), StandardCharsets.UTF_8);
+    if (isForeignTypeDelivery(json)) {
+      return; // spec §5: another harness's type — untouched by this sweep
+    }
+    DeliveryDocument delivery = codec.deliveryDocument(json);
     ScopeRouting.Routing routing = ScopeRouting.decode(mapper, delivery.destination());
     AgentType type = AgentType.of(routing.agentType());
     AgentId id = AgentId.of(routing.agentId());
@@ -325,7 +345,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
     ToolInvocationId invocation = new ToolInvocationId(routing.responseId(), routing.call().id());
     Substrate.Op deleteOp = new Substrate.Op.DeleteDocument(OUTBOX_KIND, key, currentVersion);
 
-    ToolCallExecutor executor = harness.toolExecutor(harness.bind(id));
+    ToolCallExecutor executor = harness.toolExecutor(harness.binding(id));
     ToolExecution result =
         executor.executeGrantedToolNow(routing.call(), address, invocation, Optional.of(deleteOp));
     switch (result) {
@@ -464,9 +484,14 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * parked; see {@code docs/concepts/durable-computation.md}'s Honest limits.
    */
   void reapOnce() {
+    String ownType = harness.type().name();
     for (String key : store.keys(COMPUTATION_KIND, REAP_KEY_SCAN_LIMIT)) {
       if (key.startsWith(APPROVAL_PREFIX)) {
         continue; // never reapable — deadline-less by design; would otherwise starve tool deadlines
+      }
+      if (isForeignTypeComputation(key, ownType)) {
+        continue; // spec §5: another harness's type — string-prefix filter on the KEY, no read
+        // needed
       }
       try {
         reapOne(key);
@@ -474,6 +499,24 @@ public final class DeliveryWorker<O> implements AutoCloseable {
         log.warn("computation {} could not be reaped; skipped this sweep", key, e);
       }
     }
+  }
+
+  /**
+   * The computation arm of the type-filtered sweep (spec §5, new law): a {@code tool:} key's second
+   * colon-delimited segment IS its {@code agentType} ({@link
+   * org.jwcarman.nessy.api.tool.CallAddress#execution()}'s own derivation) — filtering on the KEY
+   * costs no document read at all, cheaper even than the outbox arm's minimal JSON peek. A key
+   * whose shape this filter cannot parse (fewer than two colons) falls through unfiltered, so a
+   * genuinely malformed key still reaches {@link #reapOne}'s own decode failure instead of being
+   * silently skipped here.
+   */
+  private static boolean isForeignTypeComputation(String key, String ownType) {
+    int start = key.indexOf(':') + 1;
+    int end = key.indexOf(':', start);
+    if (start == 0 || end < 0) {
+      return false;
+    }
+    return !ownType.contentEquals(key.subSequence(start, end));
   }
 
   private void reapOne(String key) {
@@ -540,7 +583,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
             routing.agentId(),
             pending.invocation().responseId(),
             routing.call().id());
-    Binding<O> binding = harness.bind(AgentId.of(routing.agentId()));
+    Binding<O> binding = harness.binding(AgentId.of(routing.agentId()));
     ToolExecution result =
         harness
             .toolExecutor(binding)
@@ -573,7 +616,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * heartbeat would otherwise re-execute the same side effect against, forever.
    */
   private void requirePlainSubstrateMemory(AgentId id) {
-    var memory = harness.bind(id).memory();
+    var memory = harness.binding(id).memory();
     if (!(memory instanceof SubstrateMemory substrateMemory)
         || !substrateMemory.writesPlainlyTo(store)) {
       throw new IllegalStateException(
@@ -614,7 +657,7 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * total rather than assuming that invariant silently.
    */
   private void dispatchEffects(AgentType type, AgentId id, Phase phase, List<Effect> effects) {
-    Binding<O> binding = harness.bind(id);
+    Binding<O> binding = harness.binding(id);
     for (Effect effect : effects) {
       switch (effect) {
         case Effect.CallModel _ ->

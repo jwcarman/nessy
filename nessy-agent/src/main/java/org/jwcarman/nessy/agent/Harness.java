@@ -15,24 +15,39 @@
  */
 package org.jwcarman.nessy.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.function.Function;
+import org.jwcarman.nessy.agent.durable.ApprovalDesk;
+import org.jwcarman.nessy.agent.durable.CompletionDesk;
+import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ObservationRenderer;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
+import org.jwcarman.nessy.durable.DurableComputationBackend;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
- * The recipe compiled (§10.11): one per {@link AgentType}, id-free, immortal. A harness is an agent
- * with the scope left blank — every id-free collaborator (the renderer, the observer, the
+ * The recipe compiled (§10.11), plus its life-support (harness-first spec §4): one per {@link
+ * AgentType}, id-free, immortal. Every id-free collaborator (the renderer, the observer, the
  * model-call and tool-call guts, the drain policy, the staleness policy) lives here exactly once,
  * built by {@link org.jwcarman.nessy.agent.host.Nessy}'s builders and never reconstructed per
- * delivery. {@link #bind(AgentId)} stamps the thin, id-specific handles — {@link Binding} — fresh
- * every time; binding is cheap because the factories it calls hand back views over shared substrate
- * (Task 2), never build new machinery.
+ * delivery — {@code Nessy} is the harness's only compiler; there is no other door to this class.
+ * {@link #bind(AgentId)} stamps a fresh, id-specific {@link DefaultAgent} every time; binding is
+ * cheap because the factories it calls hand back views over shared substrate, never build new
+ * machinery.
+ *
+ * <p>The host tier's machinery moved in here (harness-first spec §4): the {@link DeliveryWorker},
+ * the {@link ApprovalDesk}/{@link CompletionDesk}, and the reaper sweep are constructed and
+ * daemon-threaded by this class's own constructor, exactly as {@code AutonomousHost} used to build
+ * them — {@code Nessy}'s builders now hand this constructor the substrate, mapper, and durable
+ * computation backend those doors need, instead of wiring the worker themselves. The harness is
+ * immortal, not closeable: {@link #shutdown()} is the one undecorated lifecycle door, and it exists
+ * for infrastructure only.
  */
 public final class Harness<O> {
 
@@ -46,6 +61,9 @@ public final class Harness<O> {
   private final Function<String, Backlog<O>> backlogFactory;
   private final Function<Binding<O>, ModelCallExecutor> modelExecutorFactory;
   private final Function<Binding<O>, ToolCallExecutor> toolExecutorFactory;
+  private final DeliveryWorker<O> worker;
+  private final ApprovalDesk approvals;
+  private final CompletionDesk completions;
 
   private Harness(
       AgentType type,
@@ -57,7 +75,10 @@ public final class Harness<O> {
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
       Function<Binding<O>, ModelCallExecutor> modelExecutorFactory,
-      Function<Binding<O>, ToolCallExecutor> toolExecutorFactory) {
+      Function<Binding<O>, ToolCallExecutor> toolExecutorFactory,
+      Substrate substrate,
+      ObjectMapper mapper,
+      DurableComputationBackend backend) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.observer = Objects.requireNonNull(observer, "observer must not be null");
@@ -71,12 +92,22 @@ public final class Harness<O> {
         Objects.requireNonNull(modelExecutorFactory, "modelExecutorFactory must not be null");
     this.toolExecutorFactory =
         Objects.requireNonNull(toolExecutorFactory, "toolExecutorFactory must not be null");
+    Objects.requireNonNull(substrate, "substrate must not be null");
+    Objects.requireNonNull(mapper, "mapper must not be null");
+    Objects.requireNonNull(backend, "backend must not be null");
+    this.worker = new DeliveryWorker<>(substrate, mapper, this, this::resolve);
+    this.approvals = new ApprovalDesk(backend, worker::nudge);
+    this.completions = new CompletionDesk(backend, worker::nudge);
+    worker.start();
   }
 
   /**
    * The one caller of this private constructor: {@link org.jwcarman.nessy.agent.host.Nessy} is the
    * harness's only compiler — the two host builders are the doors, not this factory, so this stays
-   * a plain composition point rather than growing fluent setters of its own.
+   * a plain composition point rather than growing fluent setters of its own. {@code substrate},
+   * {@code mapper}, and {@code backend} are this task's growth (harness-first spec §4): the life-
+   * support this constructor now owns needs them, where a builder used to wire the worker and desks
+   * itself.
    */
   public static <O> Harness<O> of(
       AgentType type,
@@ -88,7 +119,10 @@ public final class Harness<O> {
       Function<String, AgentStateStore> storeFactory,
       Function<String, Backlog<O>> backlogFactory,
       Function<Binding<O>, ModelCallExecutor> modelExecutorFactory,
-      Function<Binding<O>, ToolCallExecutor> toolExecutorFactory) {
+      Function<Binding<O>, ToolCallExecutor> toolExecutorFactory,
+      Substrate substrate,
+      ObjectMapper mapper,
+      DurableComputationBackend backend) {
     return new Harness<>(
         type,
         renderer,
@@ -99,7 +133,10 @@ public final class Harness<O> {
         storeFactory,
         backlogFactory,
         modelExecutorFactory,
-        toolExecutorFactory);
+        toolExecutorFactory,
+        substrate,
+        mapper,
+        backend);
   }
 
   public AgentType type() {
@@ -107,14 +144,45 @@ public final class Harness<O> {
   }
 
   /**
-   * Stamps a fresh {@link Binding} for {@code id}: thin, no I/O — the factories hand back views
-   * over shared substrate, not new machinery (spec §10.11).
+   * The application door (harness-first spec §4): stamps a fresh {@link Binding} for {@code id} and
+   * wraps it in a fresh {@link DefaultAgent} — thin, no I/O, transient by contract, never
+   * closeable. {@link Binding} itself never crosses this door; it is internal wiring (see {@link
+   * #binding}).
    */
-  public Binding<O> bind(AgentId id) {
+  public Agent<O> bind(AgentId id) {
+    return new DefaultAgent<>(this, binding(id));
+  }
+
+  /**
+   * The raw scope handle {@link #bind(AgentId)} wraps for application code — kept public only
+   * because two nessy-agent internals reach across this class's package line for it directly:
+   * {@link DeliveryWorker}'s fold machinery (which dispatches through {@link
+   * #modelExecutor(Binding)} and {@link #toolExecutor(Binding)} without going through a scope's
+   * {@link DefaultAgent} shell) and this module's white-box test fixtures, which construct a {@link
+   * DefaultAgent} by hand to satisfy {@link AgentResolver}'s concrete return type. A
+   * package-private door was tried first and does not reach either caller — both live outside
+   * {@code org.jwcarman.nessy.agent} — so this stays the minimal honest path rather than a false
+   * demotion. Not application vocabulary: {@link Binding} is never returned by {@link
+   * #bind(AgentId)}, the only door application code has.
+   */
+  public Binding<O> binding(AgentId id) {
     Objects.requireNonNull(id, "id must not be null");
     String rawId = id.value();
     return new Binding<>(
         id, memoryFactory.apply(rawId), storeFactory.apply(rawId), backlogFactory.apply(rawId));
+  }
+
+  /**
+   * The internal {@link AgentResolver} the delivery worker binds against: a delivery already
+   * carries this harness's own type by the time it reaches the worker (the type-filtered sweep,
+   * spec §5, skips everything else before decoding this far), so the check below is defense in
+   * depth, not the primary filter.
+   */
+  private DefaultAgent<?> resolve(AgentType requestedType, AgentId id) {
+    if (!requestedType.equals(type)) {
+      throw new IllegalArgumentException("unknown agent type: " + requestedType.name());
+    }
+    return new DefaultAgent<>(this, binding(id));
   }
 
   ObservationRenderer<O> renderer() {
@@ -149,5 +217,25 @@ public final class Harness<O> {
    */
   public ToolCallExecutor toolExecutor(Binding<O> binding) {
     return toolExecutorFactory.apply(binding);
+  }
+
+  /** The approve/deny door (harness-first spec §4): this harness's own {@link ApprovalDesk}. */
+  public ApprovalDesk approvals() {
+    return approvals;
+  }
+
+  /** The completion door (harness-first spec §4): this harness's own {@link CompletionDesk}. */
+  public CompletionDesk completions() {
+    return completions;
+  }
+
+  /**
+   * Infrastructure-only (harness-first spec §4): quiesces this harness's delivery worker heartbeat.
+   * The harness is kept, never closed, by application code — this door exists for a container's
+   * destroy callback or a test's teardown, never application hygiene. Deliberately not {@link
+   * AutoCloseable}: nothing reaches for this by accident through try-with-resources.
+   */
+  public void shutdown() {
+    worker.close();
   }
 }

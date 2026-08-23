@@ -24,20 +24,15 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.AgentResolver;
 import org.jwcarman.nessy.agent.AgentType;
-import org.jwcarman.nessy.agent.Binding;
-import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.StalenessPolicy;
 import org.jwcarman.nessy.agent.backlog.SubstrateBacklog;
 import org.jwcarman.nessy.agent.codec.Codecs;
-import org.jwcarman.nessy.agent.durable.ApprovalDesk;
-import org.jwcarman.nessy.agent.durable.CompletionDesk;
 import org.jwcarman.nessy.agent.durable.ComputationApprover;
 import org.jwcarman.nessy.agent.durable.ComputationDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.durable.DeliveryWorker;
@@ -218,9 +213,12 @@ public final class Nessy {
                       provider, settings, limited, binding.memory(), relay, exec),
               binding ->
                   new RegistryToolCallExecutor(
-                      limited, agentType, binding.id(), relay, exec, pinned));
-      Binding<String> binding = harness.bind(agentId);
-      return new CliAgent(new DefaultAgent<>(harness, binding), relay, exec, ownsExecutor);
+                      limited, agentType, binding.id(), relay, exec, pinned),
+              substrate,
+              pinned,
+              new SubstrateComputations(substrate, pinned));
+      Agent<String> agent = harness.bind(agentId);
+      return new CliAgent(agent, relay, exec, ownsExecutor);
     }
   }
 
@@ -451,15 +449,6 @@ public final class Nessy {
       AgentObserver effectiveAgentObserver =
           agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
 
-      var hostRef = new AtomicReference<AutonomousHost<O>>();
-      AgentResolver resolver =
-          (type, id) -> {
-            if (!type.equals(agentType)) {
-              throw new IllegalArgumentException("unknown agent type: " + type.name());
-            }
-            return hostRef.get().agentFor(id);
-          };
-
       Harness<O> harness =
           Harness.of(
               agentType,
@@ -482,15 +471,12 @@ public final class Nessy {
                       exec,
                       new ComputationDeferredToolCallPolicy(effectiveBackend, pinned),
                       new ComputationApprover(effectiveBackend, approvalNotifier, pinned),
-                      pinned));
+                      pinned),
+              effectiveSubstrate,
+              pinned,
+              effectiveBackend);
 
-      var worker = new DeliveryWorker<>(effectiveSubstrate, pinned, harness, resolver);
-      var approvals = new ApprovalDesk(effectiveBackend, worker::nudge);
-      var completions = new CompletionDesk(effectiveBackend, worker::nudge);
-      var host = new AutonomousHost<>(owned, approvals, completions, harness, worker);
-      hostRef.set(host);
-      worker.start();
-      return host;
+      return new AutonomousHost<>(owned, harness);
     }
   }
 }

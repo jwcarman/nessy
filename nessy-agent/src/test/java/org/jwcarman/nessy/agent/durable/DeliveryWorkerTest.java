@@ -122,6 +122,7 @@ class DeliveryWorkerTest {
     var stateStore = new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper);
     Harness<String> harness =
         TestAgents.harness(
+            TYPE,
             memory,
             stateStore,
             new NoopBacklog(),
@@ -238,6 +239,7 @@ class DeliveryWorkerTest {
       var stateStore = new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper);
       Harness<String> harness =
           TestAgents.harness(
+              TYPE,
               memory,
               stateStore,
               new NoopBacklog(),
@@ -347,6 +349,7 @@ class DeliveryWorkerTest {
       // worker's substrate at all — exactly the wiring requirePlainSubstrateMemory must catch.
       Harness<String> harness =
           TestAgents.harness(
+              TYPE,
               new VerbatimMemory(),
               new SubstrateAgentStateStore(store, ID.value(), Clock.systemUTC(), mapper),
               new NoopBacklog(),

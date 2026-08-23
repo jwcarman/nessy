@@ -17,44 +17,32 @@ package org.jwcarman.nessy.agent.host;
 
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
+import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
-import org.jwcarman.nessy.agent.DefaultAgent;
 import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.durable.ApprovalDesk;
 import org.jwcarman.nessy.agent.durable.CompletionDesk;
-import org.jwcarman.nessy.agent.durable.DeliveryWorker;
 
 /**
- * The long-running door (§7.1, §4.3 second-wave amendment): many scopes, one process, one shared
- * backend behind the two desks. There is no per-id cache — every {@link #agentFor(AgentId)} call
- * binds a fresh {@link Harness#bind(AgentId)} handle and hands back a fresh {@link DefaultAgent}
- * (the transient-instance model, §4.3); the shared substrate (Task 2) behind the harness's
- * memory/store/backlog factories is what makes a stateless resolve correct — two binds for the same
- * id see the same world.
+ * The long-running door (§7.1): a thin delegating shim over its {@link Harness}, which now owns
+ * every piece of life-support this class used to build (harness-first spec §4) — the delivery
+ * worker, the desks, the reaper. {@code post} is bind-plus-observe; {@code approvals}/{@code
+ * completions} forward to the harness's own doors; {@link #close()} is the harness's {@link
+ * Harness#shutdown()}. This class survives Task 1 only as this shim; its deletion is a later task's
+ * job (harness-first plan) once callers migrate to {@code harness.bind(id).observe(...)} directly.
  */
 public final class AutonomousHost<O> implements AutoCloseable {
 
   private final ExecutorService owned;
-  private final ApprovalDesk approvals;
-  private final CompletionDesk completions;
   private final Harness<O> harness;
-  private final DeliveryWorker<O> worker;
 
   /**
    * {@code owned} is null when the caller supplied its own executor — {@link #close()} then does
-   * nothing to it (the worker's own heartbeat thread is always stopped, regardless).
+   * nothing to it (the harness's own worker heartbeat is always stopped, regardless).
    */
-  AutonomousHost(
-      ExecutorService owned,
-      ApprovalDesk approvals,
-      CompletionDesk completions,
-      Harness<O> harness,
-      DeliveryWorker<O> worker) {
+  AutonomousHost(ExecutorService owned, Harness<O> harness) {
     this.owned = owned;
-    this.approvals = Objects.requireNonNull(approvals, "approvals must not be null");
-    this.completions = Objects.requireNonNull(completions, "completions must not be null");
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
-    this.worker = Objects.requireNonNull(worker, "worker must not be null");
   }
 
   /** One observation through the front door; the scope drains it at Idle (spec §3.3). */
@@ -63,20 +51,20 @@ public final class AutonomousHost<O> implements AutoCloseable {
   }
 
   public ApprovalDesk approvals() {
-    return approvals;
+    return harness.approvals();
   }
 
   public CompletionDesk completions() {
-    return completions;
+    return harness.completions();
   }
 
-  DefaultAgent<O> agentFor(AgentId id) {
-    return new DefaultAgent<>(harness, harness.bind(id));
+  Agent<O> agentFor(AgentId id) {
+    return harness.bind(id);
   }
 
   @Override
   public void close() {
-    worker.close();
+    harness.shutdown();
     if (owned != null) {
       owned.close();
     }
