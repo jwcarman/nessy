@@ -45,8 +45,16 @@ once James names the sealed type; this reform does not touch the Memory SPI.
    during this round (a decoding read widening a presence-check window in a
    racing hot path — fixed with a no-decode `exists()`), and its rebase is
    deferred to a dedicated high-risk round with Opus review rather than
-   rushed here (controller ruling, 2026-08-23). Byte-level access otherwise
-   remains only inside the views and in tests that pin wire formats.
+   rushed here (controller ruling, 2026-08-23). That round landed and
+   CLOSED the carve-out (7f2538bc): the worker's batches compose through
+   op minting, byte-identical. Byte-level access otherwise remains only
+   inside the views, in tests that pin wire formats, and at two named
+   seq/timestamp-only sites that never touch a payload:
+   `SubstrateAgentStateStore#lastSaved` (Versioned carries no timestamp)
+   and `DeliveryWorker#currentMemoryHead` (needs only the head seq; the
+   typed journal route would decode the full transcript per fold). A
+   non-decoding head accessor on `JournalStore` would retire the second
+   site — offered, not landed; new SPI surface awaits James.
 
 ## 2. Shapes
 
