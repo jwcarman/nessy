@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.memory.VerbatimMemory;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -27,6 +28,7 @@ import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.Sink;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.RecordingAgentObserver;
 import org.jwcarman.nessy.agent.support.TestAgents;
 import org.jwcarman.nessy.agent.support.TestMappers;
@@ -39,6 +41,16 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * is never re-fired from here (spec §4.3 amendment).
  */
 class DefaultAgentRedispatchTest {
+
+  /**
+   * Fix round 1, item 5: reclaims every harness this test class built (directly or via {@link
+   * org.jwcarman.nessy.agent.support.TestAgents} / {@code AgentFixture}) — each now owns a live
+   * delivery-worker heartbeat (harness-first spec §4) that nothing else stops.
+   */
+  @AfterEach
+  void shutdownTrackedHarnesses() {
+    HarnessTeardown.shutdownAllTracked();
+  }
 
   private static final class CountingModelCallExecutor implements ModelCallExecutor {
     private int invocations;

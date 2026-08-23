@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
@@ -38,6 +39,7 @@ import org.jwcarman.nessy.agent.model.ProviderModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
@@ -71,6 +73,16 @@ import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
  * reaches the tool.
  */
 class GrantRaceTest {
+
+  /**
+   * Fix round 1, item 5: reclaims every harness this test class built (directly or via {@link
+   * org.jwcarman.nessy.agent.support.TestAgents} / {@code AgentFixture}) — each now owns a live
+   * delivery-worker heartbeat (harness-first spec §4) that nothing else stops.
+   */
+  @AfterEach
+  void shutdownTrackedHarnesses() {
+    HarnessTeardown.shutdownAllTracked();
+  }
 
   record NoInput() {}
 

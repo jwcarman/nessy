@@ -19,15 +19,22 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import org.jwcarman.nessy.agent.Agent;
+import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.narrate.AwaitingReply;
 
 /**
  * The interactive constant-id host (§1.1, §7.1): one scope for the process, one turn at a time, the
  * caller's thread parks on the reply.
+ *
+ * <p>Holds its {@link Harness} only to shut it down (fix round 1, item 1): {@code Nessy.cli()}'s
+ * build now runs its {@link Harness} through the same compiler every door shares, so it starts a
+ * delivery heartbeat exactly like an autonomous host's — {@link #close()} must quiesce it, or the
+ * ephemeral-CLI charter (one turn, then gone) is violated by a stranded daemon thread.
  */
 public final class CliAgent implements AutoCloseable {
 
   private final Agent<String> agent;
+  private final Harness<String> harness;
   private final RelayTurnObserver relay;
   private final ExecutorService executor;
   private final boolean ownsExecutor;
@@ -35,10 +42,12 @@ public final class CliAgent implements AutoCloseable {
 
   CliAgent(
       Agent<String> agent,
+      Harness<String> harness,
       RelayTurnObserver relay,
       ExecutorService executor,
       boolean ownsExecutor) {
     this.agent = Objects.requireNonNull(agent);
+    this.harness = Objects.requireNonNull(harness);
     this.relay = Objects.requireNonNull(relay);
     this.executor = Objects.requireNonNull(executor);
     this.ownsExecutor = ownsExecutor;
@@ -71,8 +80,14 @@ public final class CliAgent implements AutoCloseable {
     return current;
   }
 
+  /**
+   * Shuts down this agent's harness first (its worker heartbeat, spec §4), then closes the owned
+   * executor if any — the reverse of build-time construction order, and the ordering the reviewer
+   * asked for.
+   */
   @Override
   public void close() {
+    harness.shutdown();
     if (ownsExecutor) {
       executor.close();
     }

@@ -134,9 +134,13 @@ final class OutcomeCodec {
    * The outbox arm's cheap peek (harness-first spec §5, new law): reads only {@code
    * destination.data}'s {@code agentType} field, stopping well short of {@link #deliveryDocument}'s
    * full bind (which also validates the outcome vocabulary) or {@link ScopeRouting}'s full routing
-   * decode (which also validates the call shape) — neither of those a type filter needs. Empty when
-   * the JSON does not carry a recognizable {@code destination.data.agentType} shape; the caller's
-   * own full decode then surfaces the real problem.
+   * decode (which also validates the call shape) — neither of those a type filter needs. Returns
+   * {@link Optional#empty()} when the JSON parses but does not carry a recognizable {@code
+   * destination.data.agentType} SHAPE (no {@code destination}, or a non-textual {@code data}) — the
+   * caller's own full decode then surfaces the real problem. Unparseable JSON is not that case: it
+   * throws {@link IllegalArgumentException} straight out of {@link Codecs#readTree}, here, same as
+   * {@link #deliveryDocument} would have thrown later — this method never swallows a genuine parse
+   * failure into an empty result.
    */
   Optional<String> peekDestinationAgentType(String json) {
     Objects.requireNonNull(json, "json must not be null");

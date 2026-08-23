@@ -250,4 +250,46 @@ class OutcomeCodecTest {
           .hasMessageContaining("unknown success payload type");
     }
   }
+
+  /**
+   * Fix round 1, item 4: {@link OutcomeCodec#peekDestinationAgentType} peeks a delivery's {@code
+   * agentType} without paying for the full decode (harness-first spec §5). Pins its two
+   * fall-through branches — an unreadable destination SHAPE returns empty rather than throwing —
+   * distinctly from unparseable JSON, which throws straight out of the peek.
+   */
+  @Nested
+  class DestinationAgentTypePeek {
+
+    @Test
+    void aWellFormedDestinationYieldsItsAgentType() {
+      String json =
+          "{\"destination\":{\"type\":\"SCOPE_RESUME\","
+              + "\"data\":\"{\\\"agentType\\\":\\\"alpha\\\"}\"},"
+              + "\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"}}";
+
+      assertThat(CODEC.peekDestinationAgentType(json)).contains("alpha");
+    }
+
+    @Test
+    void aDeliveryWithNoDestinationFieldFallsThroughEmptyRatherThanThrowing() {
+      String json = "{\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"}}";
+
+      assertThat(CODEC.peekDestinationAgentType(json)).isEmpty();
+    }
+
+    @Test
+    void aDestinationWhoseDataIsNotTextualFallsThroughEmptyRatherThanThrowing() {
+      String json =
+          "{\"destination\":{\"type\":\"SCOPE_RESUME\",\"data\":{\"agentType\":\"alpha\"}},"
+              + "\"outcome\":{\"type\":\"failure\",\"message\":\"boom\"}}";
+
+      assertThat(CODEC.peekDestinationAgentType(json)).isEmpty();
+    }
+
+    @Test
+    void unparseableJsonThrowsStraightOutOfThePeekRatherThanFallingThroughEmpty() {
+      assertThatThrownBy(() -> CODEC.peekDestinationAgentType("not json at all"))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+  }
 }

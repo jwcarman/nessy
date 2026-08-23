@@ -24,6 +24,7 @@ import org.jwcarman.nessy.agent.durable.SubstrateComputations;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
@@ -80,6 +81,7 @@ final class AgentFixture {
             lifeSupportSubstrate,
             mapper,
             backend);
+    HarnessTeardown.track(harness);
     this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));
   }
 

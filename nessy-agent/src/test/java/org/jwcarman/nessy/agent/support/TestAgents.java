@@ -155,19 +155,22 @@ public final class TestAgents {
     Substrate lifeSupportSubstrate = new InMemorySubstrate();
     var mapper = TestMappers.plainlyPinned();
     DurableComputationBackend backend = new SubstrateComputations(lifeSupportSubstrate, mapper);
-    return Harness.of(
-        type,
-        renderer,
-        observer,
-        drainOnIdle,
-        stalenessPolicy,
-        rawId -> memory,
-        rawId -> store,
-        rawId -> backlog,
-        binding -> model,
-        binding -> tools,
-        lifeSupportSubstrate,
-        mapper,
-        backend);
+    Harness<O> harness =
+        Harness.of(
+            type,
+            renderer,
+            observer,
+            drainOnIdle,
+            stalenessPolicy,
+            rawId -> memory,
+            rawId -> store,
+            rawId -> backlog,
+            binding -> model,
+            binding -> tools,
+            lifeSupportSubstrate,
+            mapper,
+            backend);
+    HarnessTeardown.track(harness);
+    return harness;
   }
 }

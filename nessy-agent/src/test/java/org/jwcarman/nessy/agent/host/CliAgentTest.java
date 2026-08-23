@@ -25,6 +25,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.agent.Harness;
 import org.jwcarman.nessy.agent.support.LatchedModelProvider;
 import org.jwcarman.nessy.agent.support.ScriptedModelProvider;
 import org.jwcarman.nessy.agent.support.TestSettings;
@@ -48,6 +49,42 @@ class CliAgentTest {
     try (var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build()) {
       assertThat(agent.converse("hello")).isEqualTo("Hello back!");
     }
+  }
+
+  /**
+   * Fix round 1, item 1: {@code Nessy.cli()}'s build now runs its {@link Harness} through the same
+   * compiler every door shares, so it starts a delivery heartbeat exactly like an autonomous host's
+   * — {@link CliAgent#close()} must quiesce it, or the ephemeral-CLI charter (one turn, then gone)
+   * is violated by a stranded daemon thread. Enumerated by name prefix rather than a new public
+   * seam: {@code DeliveryWorker}'s heartbeat thread is always named {@code "nessy-delivery"}.
+   */
+  @Test
+  void closingACliAgentLeavesNoLiveDeliveryHeartbeatThread() throws InterruptedException {
+    var provider =
+        new ScriptedModelProvider(List.of(List.of(new ModelEvent.TextChunk("hello back"))));
+    long before = liveDeliveryThreadCount();
+
+    var agent = Nessy.cli().provider(provider).settings(TestSettings.settings()).build();
+    assertThat(agent.converse("hello")).isEqualTo("hello back");
+    assertThat(liveDeliveryThreadCount()).isEqualTo(before + 1);
+
+    agent.close();
+
+    // Thread#interrupt() is asynchronous — give the heartbeat a moment to actually stop.
+    long deadline = System.currentTimeMillis() + 2000;
+    long after = liveDeliveryThreadCount();
+    while (after > before && System.currentTimeMillis() < deadline) {
+      Thread.sleep(20);
+      after = liveDeliveryThreadCount();
+    }
+    assertThat(after).isEqualTo(before);
+  }
+
+  private static long liveDeliveryThreadCount() {
+    return Thread.getAllStackTraces().keySet().stream()
+        .filter(Thread::isAlive)
+        .filter(t -> t.getName().equals("nessy-delivery"))
+        .count();
   }
 
   @Test

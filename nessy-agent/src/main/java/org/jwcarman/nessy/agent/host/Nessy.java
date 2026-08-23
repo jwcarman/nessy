@@ -218,7 +218,7 @@ public final class Nessy {
               pinned,
               new SubstrateComputations(substrate, pinned));
       Agent<String> agent = harness.bind(agentId);
-      return new CliAgent(agent, relay, exec, ownsExecutor);
+      return new CliAgent(agent, harness, relay, exec, ownsExecutor);
     }
   }
 

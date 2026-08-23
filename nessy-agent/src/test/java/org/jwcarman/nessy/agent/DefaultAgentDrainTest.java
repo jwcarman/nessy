@@ -21,9 +21,11 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.RaceOnceStore;
 import org.jwcarman.nessy.agent.support.RecordingMemory;
 import org.jwcarman.nessy.agent.support.RecordingObserver;
@@ -34,6 +36,16 @@ import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class DefaultAgentDrainTest {
+
+  /**
+   * Fix round 1, item 5: reclaims every harness this test class built (directly or via {@link
+   * org.jwcarman.nessy.agent.support.TestAgents} / {@code AgentFixture}) — each now owns a live
+   * delivery-worker heartbeat (harness-first spec §4) that nothing else stops.
+   */
+  @AfterEach
+  void shutdownTrackedHarnesses() {
+    HarnessTeardown.shutdownAllTracked();
+  }
 
   @Test
   void aFailingRendererDiscardsTheObservationAndKeepsDraining() {

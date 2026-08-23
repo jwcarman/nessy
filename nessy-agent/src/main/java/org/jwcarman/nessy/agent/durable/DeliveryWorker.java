@@ -82,9 +82,9 @@ import org.slf4j.LoggerFactory;
  * unconditional re-fire, retired: nothing routes through it in production anymore) would re-run
  * policy and re-ask the approver on every grant (spec §5a).
  *
- * <p>One heartbeat thread per host, started by the host and stopped on {@link #close()}; {@link
- * #nudge()} runs an immediate, synchronous drain after every completion — the heartbeat is the
- * recovery net, never the happy-path latency (spec §5).
+ * <p>One heartbeat thread per harness, started by the harness and stopped on {@link #close()};
+ * {@link #nudge()} runs an immediate, synchronous drain after every completion — the heartbeat is
+ * the recovery net, never the happy-path latency (spec §5).
  *
  * <p>The reaper is this worker's second sweep, on the same heartbeat (spec §6): scan {@code
  * computation} documents, decode each, and compare its deadline. Deadline-less computations are
@@ -255,9 +255,12 @@ public final class DeliveryWorker<O> implements AutoCloseable {
    * minimal parse that stops well short of {@link OutcomeCodec#deliveryDocument}'s full bind and
    * {@link ScopeRouting}'s full routing decode (both validate the call/outcome shape this filter
    * never needs) — and compares it to this worker's own harness type, BEFORE any of that further
-   * decoding runs. A delivery whose destination shape the peek cannot read falls through to the
-   * full decode unfiltered, so a genuinely malformed document still fails loudly there instead of
-   * being silently skipped here.
+   * decoding runs. A delivery whose destination SHAPE the peek cannot read (no {@code destination},
+   * or a non-textual {@code data}) falls through unfiltered — this method returns {@code false},
+   * and the full decode below runs and reports whatever is really wrong. Unparseable JSON is a
+   * different case: {@link OutcomeCodec#peekDestinationAgentType} throws straight out of the peek
+   * itself, same as the full decode would have — {@link #drainOnce()}'s per-key guard catches it
+   * either way, so nothing here is silently skipped.
    */
   private boolean isForeignTypeDelivery(String json) {
     return codec

@@ -22,8 +22,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
+import org.jwcarman.nessy.agent.support.HarnessTeardown;
 import org.jwcarman.nessy.agent.support.TestClock;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.message.ContentBlock;
@@ -35,6 +37,16 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 
 class DefaultAgentRecoveryTest {
+
+  /**
+   * Fix round 1, item 5: reclaims every harness this test class built (directly or via {@link
+   * org.jwcarman.nessy.agent.support.TestAgents} / {@code AgentFixture}) — each now owns a live
+   * delivery-worker heartbeat (harness-first spec §4) that nothing else stops.
+   */
+  @AfterEach
+  void shutdownTrackedHarnesses() {
+    HarnessTeardown.shutdownAllTracked();
+  }
 
   private static final Instant T0 = Instant.parse("2026-08-20T12:00:00Z");
   private static final Duration THRESHOLD = Duration.ofMinutes(5);
