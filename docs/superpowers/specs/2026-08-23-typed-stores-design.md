@@ -36,13 +36,17 @@ once James names the sealed type; this reform does not touch the Memory SPI.
    `write`/`update` conveniences exist for single-store cases;
    `update(key, fn)` owns the read-modify-write CAS-retry loop once, for
    everyone.
-5. **Total migration.** Every feature rebases in this reform — backlog,
-   memory plumbing (internally; its SPI is untouched here), agent state,
-   computations/deliveries wire documents. After it, no feature performs a
-   raw byte read/write against the substrate outside the typed layer;
-   byte-level access remains only inside the views and in tests that pin
-   wire formats. A half-migrated codebase with two idioms is worse than
-   either — hence one round.
+5. **Total migration, one carve-out.** Every feature rebases in this
+   reform — backlog, memory plumbing (internally; its SPI is untouched
+   here), agent state, intents, computations/deliveries wire documents.
+   After it, no feature performs a raw byte read/write against the
+   substrate outside the typed layer, EXCEPT `DeliveryWorker`: rebasing the
+   four-kind atomic-batch concurrency hub surfaced a real TOCTOU regression
+   during this round (a decoding read widening a presence-check window in a
+   racing hot path — fixed with a no-decode `exists()`), and its rebase is
+   deferred to a dedicated high-risk round with Opus review rather than
+   rushed here (controller ruling, 2026-08-23). Byte-level access otherwise
+   remains only inside the views and in tests that pin wire formats.
 
 ## 2. Shapes
 
