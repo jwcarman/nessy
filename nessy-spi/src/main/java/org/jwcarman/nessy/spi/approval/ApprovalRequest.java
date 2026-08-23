@@ -33,26 +33,22 @@ import org.jwcarman.nessy.api.tool.authorization.AuthzContext;
  * harness.approvals().approve(request.id())} (or {@code deny}). {@code CallAddress} no longer
  * travels here — it stayed a wiring-internal detail ({@code CallAddress} moved into {@code
  * nessy-agent}) rather than crossing this SPI boundary. {@code agentType}/{@code agentId} are plain
- * strings, for display only. {@code responseId} is the one addition beyond that display pair: a
- * computation-backed approver (see {@code ComputationApprover}) must still persist a resumable
- * return address keyed to the exact model response that produced {@code call} — the same
- * provider-uniqueness reason {@code CallAddress} itself carries {@code responseId} — and there is
- * no other channel back to it once {@code CallAddress} leaves the record.
+ * strings, for display only.
+ *
+ * <p>{@code responseId} does NOT travel here (identity spec §6, the continuation audit): the
+ * un-ratified fifth field was reverted — this is a human decision surface, not a routing packet. A
+ * computation-backed approver (see {@code ComputationApprover}) that needs the committed model
+ * response to build its resumable return address reads it from the agent's own state at ask time
+ * instead.
  */
 public record ApprovalRequest(
-    ComputationId id,
-    ToolCall call,
-    String agentType,
-    String agentId,
-    String responseId,
-    AuthzContext context) {
+    ComputationId id, ToolCall call, String agentType, String agentId, AuthzContext context) {
 
   public ApprovalRequest {
     Objects.requireNonNull(id, "id must not be null");
     Objects.requireNonNull(call, "call must not be null");
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(responseId, "responseId must not be null");
     Objects.requireNonNull(context, "context must not be null");
   }
 }

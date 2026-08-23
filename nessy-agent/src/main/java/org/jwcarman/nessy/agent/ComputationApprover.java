@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.spi.approval.Adjudication;
 import org.jwcarman.nessy.spi.approval.ApprovalRequest;
@@ -33,11 +34,21 @@ import org.jwcarman.nessy.spi.approval.Approver;
  *
  * <p>{@code request.id()} is already the approval's own deterministic {@link ComputationId} — the
  * caller (the gate) derived it before ever building the {@link ApprovalRequest}, since {@link
- * CallAddress} no longer travels on the request (the whittle ruling). {@code request.responseId()}
- * — the one addition beyond the request's display pair ({@code agentType}/{@code agentId}) — is
- * what still lets this class build a resumable {@code ToolInvocationId} and continuation: there is
- * no other channel back to the committed model response once the full address stops crossing this
- * SPI boundary.
+ * CallAddress} no longer travels on the request (the whittle ruling). {@code responseId} does not
+ * travel on the request either (identity spec §6, the continuation audit): the request is a human
+ * decision surface, not a routing packet. This class sources it instead from {@code state}, the
+ * scope's own {@link AgentStateStore} — the narrowest existing seam, already owned by the harness
+ * for this exact scope. The invariant that makes that read sound: an agent never takes a new turn
+ * while the previous turn's tool calls are outstanding (staleness re-fires the SAME outstanding
+ * effects; a scope suspended on an approval is quiet on purpose, never stale — a turn is never
+ * ABANDONED). So at ask time — always reached from inside the gate's handling of the CURRENT turn's
+ * calls — the state loaded here is still that same turn's {@link Phase.AwaitingTools}, and its
+ * {@code responseId} IS the asking turn's committed response; there is no window in which a second
+ * turn could have started and overwritten it first.
+ *
+ * <p>The read is a helper's problem, not a caller's promise: {@link #committedResponseId()} still
+ * throws if it ever finds the scope in {@link Phase.Idle} or {@link Phase.AwaitingModel} — which
+ * would mean the invariant above was actually violated — rather than trust the invariant blindly.
  *
  * <p>Two redrives land differently, and both are absorbed without a duplicate notification. WHILE
  * STILL PENDING: create-then-suspend is idempotent (submit-once) — a re-driven ask re-registers the
@@ -54,12 +65,17 @@ import org.jwcarman.nessy.spi.approval.Approver;
 public final class ComputationApprover implements Approver {
 
   private final SubstrateComputations backend;
+  private final AgentStateStore state;
   private final Consumer<ApprovalRequest> notifier;
   private final ObjectMapper mapper;
 
   public ComputationApprover(
-      SubstrateComputations backend, Consumer<ApprovalRequest> notifier, ObjectMapper mapper) {
+      SubstrateComputations backend,
+      AgentStateStore state,
+      Consumer<ApprovalRequest> notifier,
+      ObjectMapper mapper) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
+    this.state = Objects.requireNonNull(state, "state must not be null");
     this.notifier = Objects.requireNonNull(notifier, "notifier must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
@@ -67,14 +83,32 @@ public final class ComputationApprover implements Approver {
   @Override
   public Adjudication adjudicate(ApprovalRequest request) {
     ComputationId computation = request.id();
-    ToolInvocationId invocation = new ToolInvocationId(request.responseId(), request.call().id());
+    String responseId = committedResponseId();
+    ToolInvocationId invocation = new ToolInvocationId(responseId, request.call().id());
     Continuation continuation =
         ScopeRouting.continuationFor(
-            mapper, request.agentType(), request.agentId(), request.responseId(), request.call());
+            mapper, request.agentType(), request.agentId(), responseId, request.call());
     CreateResult created = backend.create(computation, invocation, continuation, Optional.empty());
     if (created.created()) {
       notifier.accept(request);
     }
     return new Adjudication.Suspended(computation);
+  }
+
+  /**
+   * The read site for the no-new-turn invariant documented on the class: at ask time the scope is
+   * always still inside {@link Phase.AwaitingTools} for the turn that produced {@code
+   * request.call()}, so its {@code responseId} is unambiguously the asking turn's committed
+   * response. {@link Phase.Idle}/{@link Phase.AwaitingModel} here would mean that invariant broke —
+   * surfaced loudly rather than guessed at.
+   */
+  private String committedResponseId() {
+    return switch (state.load().phase()) {
+      case Phase.AwaitingTools awaiting -> awaiting.responseId().value();
+      case Phase.Idle _, Phase.AwaitingModel _ ->
+          throw new IllegalStateException(
+              "adjudicate reached with no turn awaiting tools in state; the no-new-turn invariant"
+                  + " was violated");
+    };
   }
 }

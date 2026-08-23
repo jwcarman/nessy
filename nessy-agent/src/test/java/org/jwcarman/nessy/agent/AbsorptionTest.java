@@ -127,7 +127,7 @@ class AbsorptionTest {
     var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
     var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
     var notifications = new java.util.ArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(approvalBackend, notifications::add, mapper);
+    var approver = new ComputationApprover(approvalBackend, store, notifications::add, mapper);
     var deferredPolicy =
         new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
     var tool = new RecordingTool();

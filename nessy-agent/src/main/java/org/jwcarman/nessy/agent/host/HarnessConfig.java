@@ -408,7 +408,10 @@ public final class HarnessConfig<O> {
                     new ComputationDeferredToolCallPolicy(
                         effectiveApprovalBackend, effectiveExecutionBackend, pinned),
                     new ComputationApprover(
-                        effectiveApprovalBackend, effectiveApprovalNotifier, pinned),
+                        effectiveApprovalBackend,
+                        effectiveStoreFactory.apply(scopeId.value()),
+                        effectiveApprovalNotifier,
+                        pinned),
                     pinned),
             effectiveSubstrate,
             pinned,

@@ -228,12 +228,7 @@ public final class RegistryToolCallExecutor implements ToolCallExecutor {
       case PolicyDecision.RequireApproval _ ->
           switch (approver.adjudicate(
               new ApprovalRequest(
-                  address.approval(),
-                  call,
-                  address.agentType(),
-                  address.agentId(),
-                  address.responseId(),
-                  assembled))) {
+                  address.approval(), call, address.agentType(), address.agentId(), assembled))) {
             case Adjudication.Granted _ ->
                 run(grant.tool(), input, call, address, invocation, Optional.empty());
             case Adjudication.Refused(String reason) ->

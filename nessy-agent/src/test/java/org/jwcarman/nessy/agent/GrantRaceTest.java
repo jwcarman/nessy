@@ -140,7 +140,7 @@ class GrantRaceTest {
     var executionBackend =
         new SubstrateComputations(substrate, mapper, Kinds.computation(testType), outboxKind);
     var notifications = new CopyOnWriteArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(approvalBackend, notifications::add, mapper);
+    var approver = new ComputationApprover(approvalBackend, store, notifications::add, mapper);
     var deferredPolicy =
         new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
     var tool = new CountingTool();

@@ -71,8 +71,10 @@ sequence of renames and interim shapes that produced it.
   (`ComputationDeferredToolCallPolicy#pendingComputation` now also checks
   for a pending delivery at that deterministic key). `ApprovalRequest`
   (`nessy-spi`) carries the approval `ComputationId` directly (`id`) plus
-  plain `agentType`/`agentId`/`responseId` strings for display and
-  continuation-building, rather than the full `CallAddress`; `ToolContext`
+  plain `agentType`/`agentId` strings for display, rather than the full
+  `CallAddress` — a computation-backed approver reads the committed
+  `responseId` it needs for continuation-building from the agent's own
+  state at ask time instead (identity spec §6); `ToolContext`
   (`nessy-api`) exposes a tool's stable idempotency key as a single opaque
   `invocation` (`ComputationId`) rather than a structured address pair. The
   `api.computation` package is retired: `ComputationId` moved beside

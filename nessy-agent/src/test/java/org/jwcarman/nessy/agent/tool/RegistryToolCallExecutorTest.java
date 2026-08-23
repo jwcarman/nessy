@@ -22,9 +22,11 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.AgentEvent;
 import org.jwcarman.nessy.agent.AgentId;
@@ -33,15 +35,20 @@ import org.jwcarman.nessy.agent.CallAddress;
 import org.jwcarman.nessy.agent.ComputationApprover;
 import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.ModelResponseId;
+import org.jwcarman.nessy.agent.Phase;
+import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.SubstrateComputations;
 import org.jwcarman.nessy.agent.ToolInvocationId;
 import org.jwcarman.nessy.agent.ToolOutcome;
 import org.jwcarman.nessy.agent.spi.DeferredToolCallPolicy;
 import org.jwcarman.nessy.agent.spi.ToolExecution;
+import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
 import org.jwcarman.nessy.agent.support.PumpedExecutor;
 import org.jwcarman.nessy.agent.support.RecordingTurnObserver;
 import org.jwcarman.nessy.agent.support.TestMappers;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.ToolUseBlock;
 import org.jwcarman.nessy.api.tool.ActionContributor;
 import org.jwcarman.nessy.api.tool.ComputationId;
 import org.jwcarman.nessy.api.tool.RetrySemantics;
@@ -472,7 +479,6 @@ class RegistryToolCallExecutorTest {
         .isEqualTo(new CallAddress("cli", "cli", RESPONSE_ID.value(), "c1").approval());
     assertThat(request.agentType()).isEqualTo("cli");
     assertThat(request.agentId()).isEqualTo("cli");
-    assertThat(request.responseId()).isEqualTo(RESPONSE_ID.value());
     assertThat(request.context().action()).contains("EchoInput[value=hi]");
     assertThat(request.context().agentName()).isEqualTo("cli");
     assertThat(request.context().principal()).contains("ada");
@@ -565,16 +571,25 @@ class RegistryToolCallExecutorTest {
   void exactlyOneApproverNotificationSurvivesAStalenessRedriveAfterTheGrant() {
     var mapper = TestMappers.plainlyPinned();
     var substrate = new InMemorySubstrate();
+    var call =
+        new ToolCall("c1", "park_durable", JsonNodeFactory.instance.objectNode().put("value", "x"));
+    var store = new SubstrateAgentStateStore(substrate, "cli", Clock.systemUTC(), mapper);
+    store.save(
+        new State(
+            new Phase.AwaitingTools(
+                Message.assistant(List.of(new ToolUseBlock(call))),
+                Set.of("c1"),
+                List.of(),
+                RESPONSE_ID),
+            0));
     var approvalBackend = new SubstrateComputations(substrate, mapper, "approval", "outbox");
     var executionBackend = new SubstrateComputations(substrate, mapper, "computation", "outbox");
     var notifications = new ArrayList<ApprovalRequest>();
-    var approver = new ComputationApprover(approvalBackend, notifications::add, mapper);
+    var approver = new ComputationApprover(approvalBackend, store, notifications::add, mapper);
     var deferredPolicy =
         new ComputationDeferredToolCallPolicy(approvalBackend, executionBackend, mapper);
     var registry =
         ToolRegistry.of(ToolGrant.grant(new ParkingDurableTool(), UsagePolicy.requireApproval()));
-    var call =
-        new ToolCall("c1", "park_durable", JsonNodeFactory.instance.objectNode().put("value", "x"));
     var pump = new PumpedExecutor();
     var turn = new RecordingTurnObserver();
     var executor =

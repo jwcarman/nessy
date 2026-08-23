@@ -212,7 +212,7 @@ switch (decision) {
   case Deny(String reason)-> failed(call, reason);
   case RequireApproval _  -> switch (approver.adjudicate(
       new ApprovalRequest(address.approval(), call, address.agentType(), address.agentId(),
-                           address.responseId(), assembled))) {
+                           assembled))) {
       case Granted _              -> run(tool, input, call, address);
       case Refused(String reason) -> failed(call, reason);
       case Suspended(var computation) -> deferred(computation);
@@ -242,11 +242,14 @@ public sealed interface Adjudication {
 }
 ```
 
-`ApprovalRequest` is `(address, call, context)` — the assembled `AuthzContext`,
-never less. The rendered action is not a component of its own; it lives in
-`context`, read back the same way anywhere else does:
+`ApprovalRequest` is `(id, call, agentType, agentId, context)` — the ticket,
+the call, a plain-string agent coordinate for display, and the assembled
+`AuthzContext`, never less. The rendered action is not a component of its
+own; it lives in `context`, read back the same way anywhere else does:
 `context.action()`, `context.principal()`, `context.risk()`,
-`context.declaredIntent()`.
+`context.declaredIntent()`. It is a human decision surface, not a routing
+packet — a computation-backed approver that needs the committed model
+response reads it from the agent's own state at ask time instead.
 
 The default approver (the executor's 5- and 6-arg constructors) refuses
 loudly in-band — approval is a capability of the wiring, not a right of

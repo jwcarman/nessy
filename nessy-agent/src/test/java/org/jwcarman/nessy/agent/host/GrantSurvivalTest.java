@@ -97,13 +97,14 @@ class GrantSurvivalTest {
       input -> "restart " + input.target();
 
   /**
-   * {@code ApprovalRequest} no longer carries the full {@code CallAddress} (the whittle ruling) —
-   * this test white-box-rebuilds it from the request's display fields plus {@code responseId} to
-   * derive the execution id the eventual tool computation lands under.
+   * {@code ApprovalRequest} no longer carries the full {@code CallAddress} (the whittle ruling),
+   * nor {@code responseId} (identity spec §6, the continuation audit) — this test
+   * white-box-rebuilds it from the request's display fields plus the committed {@code responseId},
+   * read by the caller from the scope's own state, to derive the execution id the eventual tool
+   * computation lands under.
    */
-  private static ComputationId toolComputationFor(ApprovalRequest request) {
-    return new CallAddress(
-            request.agentType(), request.agentId(), request.responseId(), request.call().id())
+  private static ComputationId toolComputationFor(ApprovalRequest request, String responseId) {
+    return new CallAddress(request.agentType(), request.agentId(), responseId, request.call().id())
         .execution();
   }
 
@@ -298,7 +299,9 @@ class GrantSurvivalTest {
     var providerB =
         new ScriptedModel(List.of(List.of(new ModelEvent.TextChunk("Restarted — all good."))));
     var requestsB = new CopyOnWriteArrayList<ApprovalRequest>();
-    var toolComputation = toolComputationFor(firstAsk);
+    var stateA = new SubstrateAgentStateStore(substrate, "prod-eu", Clock.systemUTC(), mapper);
+    var committedResponseId = ((Phase.AwaitingTools) stateA.load().phase()).responseId().value();
+    var toolComputation = toolComputationFor(firstAsk, committedResponseId);
 
     var harnessB =
         Nessy.harness(
