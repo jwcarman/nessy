@@ -48,11 +48,52 @@ bytes are copied on write and on read, so nothing downstream can mutate
 stored truth behind the CAS.
 
 `org.jwcarman.nessy.spi.substrate` (module `nessy-spi`) is the whole package:
-`Substrate`, `Codec`, `ConflictException`, and `InMemorySubstrate` — the
-reference substrate, shipped alongside the contract so a feature jar can
-test against it without depending on `nessy-agent`. `Nessy.harness(...)`
-defaults to a fresh `InMemorySubstrate`; supply a durable implementation
-through `.substrate(Substrate)` to persist every scope beyond the process.
+`Substrate`, `Codec`, `CodecFactory`, `ConflictException`,
+`DocumentStore`/`JournalStore`, `Versioned`, `SubstrateSupport`, and
+`InMemorySubstrate` — the reference substrate, shipped alongside the
+contract so a feature jar can test against it without depending on
+`nessy-agent`. `Nessy.harness(...)` defaults to a fresh `InMemorySubstrate`;
+supply a durable implementation through `.substrate(Substrate)` to persist
+every scope beyond the process.
+
+## `DocumentStore<T>`/`JournalStore<T>`: typed views, implemented once
+
+A feature never juggles the byte dance directly — it mints a typed view and
+writes domain logic:
+
+```java
+DocumentStore<Phase> states = substrate.document("state", Phase.class);
+JournalStore<Message> transcript = substrate.journal("memory", Message.class);
+```
+
+`kind` is given explicitly at the mint, never derived from `T`'s class name
+— a rename must never orphan data. The codec comes from `Substrate#codecs()`
+(a `CodecFactory`) unless a `Codec<T>` is supplied directly, bypassing the
+factory for a caller-owned binding (a transform, a test probe). Every
+substrate implementation gets its `CodecFactory` for free by extending
+`SubstrateSupport`, which owns one pinned, standard `ObjectMapper` per
+substrate instance (never a shared static) — overriding that mapper at
+construction (`new InMemorySubstrate(mapper)`) *is* the codec extension
+point; there is no separate per-feature codec seam to thread anymore.
+
+`DocumentStore<T>` reads back a `Versioned<T>` (value plus version, the same
+pairing `Substrate.Document` always carried) and owns the read-modify-write
+CAS-retry loop once, for every caller: `documents.update(key, seed, fn)`
+reads current truth (or `seed` if absent), applies `fn`, and retries on a
+lost race until the write lands. `JournalStore<T>` owns the equivalent
+append-retry loop and returns decoded entries directly.
+
+Both views mint the same `Substrate.Op`s a hand-rolled batch would build —
+`writeOp`/`deleteOp`/`appendOp` — so a multi-store atomic commit (a
+fold-advance, a completion) composes typed writes from several stores into
+one `Substrate#batch` call without ever touching a raw payload. `create` in
+[Durable Computation](durable-computation.md) is exactly this: a
+`computations.writeOp(...)` composed with whatever else the caller's own
+batch needs.
+
+Every recipe below — state, memory, backlog, intent, computations — rides a
+typed view now; the CAS-retry loops described in earlier revisions of this
+page as hand-rolled per recipe are this one implementation, reused.
 
 ## `Codec<T>`: the typed seam above the bytes
 

@@ -330,10 +330,18 @@ public final class HarnessConfig<O> {
     ModelSettings effectiveSettings = settings != null ? settings : ModelSettings.defaults();
     ObservationRenderer<O> effectiveRenderer = renderer;
     ObjectMapper pinned = Codecs.copyAndPin(objectMapper);
-    // the String door (Nessy.harness()) presets backlogCodec to STRING_CODEC; the typed door
-    // (Nessy.harness(Class)) always derives it here — no override seam (parked for James).
+    // typed-stores spec §1 ruling 3: the substrate's own CodecFactory is the codec extension
+    // point now — the default substrate is constructed over the SAME pinned mapper every other
+    // recipe here threads through, so its codec factory derives byte-identical codecs to the
+    // retired Codec.json(pinned, ...) call it replaces; a caller-supplied substrate carries its
+    // own pinned mapper, the override door ruling 3 describes.
+    Substrate effectiveSubstrate = substrate != null ? substrate : new InMemorySubstrate(pinned);
+    // the String door (Nessy.harness()) presets backlogCodec to STRING_CODEC — an explicit
+    // caller-supplied codec, unaffected by this seam; the typed door (Nessy.harness(Class)) now
+    // derives its fallback from the substrate's own codec factory instead of a hand-rolled
+    // Codec.json call (the retired .backlogCodec derivation seam).
     Codec<O> effectiveBacklogCodec =
-        backlogCodec != null ? backlogCodec : Codec.json(pinned, observationType);
+        backlogCodec != null ? backlogCodec : effectiveSubstrate.codecs().codec(observationType);
     // The harness is immortal, not closeable (spec §4): an owned executor here lives exactly as
     // long as the process, same as the worker's daemon heartbeat — there is no lifecycle door to
     // shut it down through, and none is needed.
@@ -341,7 +349,6 @@ public final class HarnessConfig<O> {
     var agentType = AgentType.of(typeName);
     ToolRegistry base = ToolRegistry.of(grants.toArray(ToolGrant[]::new));
     ToolRegistry registry = ToolRegistry.limited(base, CompletionPolicy.DURABLE);
-    Substrate effectiveSubstrate = substrate != null ? substrate : new InMemorySubstrate();
     Function<String, Memory> effectiveMemoryFactory =
         memoryFactory != null
             ? memoryFactory

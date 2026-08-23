@@ -25,6 +25,33 @@ sequence of renames and interim shapes that produced it.
 
 ### Added
 
+- **Typed stores: `DocumentStore<T>`/`JournalStore<T>` over the substrate,
+  a substrate-level codec factory, op minting.** `Substrate` gains
+  `document(kind, Class<T>|Codec<T>)` and `journal(kind, Class<T>|Codec<T>)`
+  default methods minting typed views implemented once, as library code: the
+  codec dance, the version plumbing, and the CAS-retry read-modify-write
+  loop (`DocumentStore#update`) live in the view, not in every feature.
+  `Substrate#codecs()` exposes one `CodecFactory`, backed by one pinned
+  `ObjectMapper` per substrate instance (statics-die law) via the new
+  `SubstrateSupport` base class every concrete substrate extends;
+  overriding the mapper at construction (`InMemorySubstrate(ObjectMapper)`,
+  `InMemorySubstrate(Clock, ObjectMapper)`) is the codec extension point.
+  Both views mint batch-composable ops (`writeOp`/`deleteOp`/`appendOp`)
+  lowering to the existing `Substrate.Op` primitives, so a multi-store
+  atomic commit (fold-advance, completion) composes typed writes from
+  several stores into one `Substrate#batch` call. `Versioned<T>` is the
+  small value+version carrier `DocumentStore#read` returns.
+  `SubstrateBacklog`, `SubstrateMemory`, `SubstrateAgentStateStore`,
+  `SubstrateIntentStore`, and `SubstrateComputations` all rebase onto the
+  typed views; every hand-rolled CAS-retry loop and manual
+  `writeValueAsBytes`/`readValue` call site in these recipes retires. The
+  parked `HarnessConfig.backlogCodec` fallback derivation (a hand-rolled
+  `Codec.json(pinned, observationType)` for the typed door) retires in
+  favor of the default substrate's own codec factory, constructed over the
+  same pinned mapper every other recipe threads through — wire-format
+  identical for the default (no explicit `.substrate(...)`) case. Wire
+  formats and CAS/batch semantics are unchanged throughout.
+
 - **Opaque computation identity, kind-scoped keyspaces, replayable delivery.**
   `CallAddress.approval()`/`.execution()` derive a `ComputationId` by
   digesting — SHA-256 over a length-prefixed encoding of `(purpose,
