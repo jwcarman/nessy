@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spi.substrate;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
@@ -35,7 +36,7 @@ import java.util.TreeMap;
  * batch leaves the live store byte-for-byte as it was (spec §4.3) without ever copying the whole
  * store. This is a single-node, in-process reference implementation, not a durable substrate.
  */
-public final class InMemorySubstrate implements Substrate {
+public final class InMemorySubstrate extends SubstrateSupport implements Substrate {
 
   private static final String KIND_NULL_MESSAGE = "kind must not be null";
   private static final String KEY_NULL_MESSAGE = "key must not be null";
@@ -50,6 +51,21 @@ public final class InMemorySubstrate implements Substrate {
   }
 
   public InMemorySubstrate(Clock clock) {
+    super();
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+  }
+
+  /**
+   * {@code mapper} becomes this substrate's pinned codec mapper (typed-stores spec §1 ruling 3) —
+   * the codec extension point.
+   */
+  public InMemorySubstrate(ObjectMapper mapper) {
+    this(Clock.systemUTC(), mapper);
+  }
+
+  /** As {@link #InMemorySubstrate(ObjectMapper)}, with an explicit {@link Clock} as well. */
+  public InMemorySubstrate(Clock clock, ObjectMapper mapper) {
+    super(mapper);
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
   }
 

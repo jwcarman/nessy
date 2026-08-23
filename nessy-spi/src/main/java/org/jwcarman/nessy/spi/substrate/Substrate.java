@@ -101,6 +101,66 @@ public interface Substrate {
   void batch(List<Op> ops);
 
   /**
+   * This substrate's {@link CodecFactory} (typed-stores spec §1 ruling 3): {@link #document(String,
+   * Class)} and {@link #journal(String, Class)} derive their {@link Codec} from it. Implementations
+   * satisfy this by extending {@link SubstrateSupport}, which owns one pinned standard Jackson
+   * factory per substrate instance (statics-die law); overriding the mapper at construction is the
+   * codec extension point.
+   */
+  CodecFactory codecs();
+
+  /**
+   * Mints a {@link DocumentStore} over {@code kind}, kind-explicit (spec ruling 2: {@code kind} is
+   * a stable storage name given at the mint, never derived from {@code type}'s class name, so a
+   * rename never orphans data). The store's {@link Codec} comes from {@link #codecs()}.
+   *
+   * @throws NullPointerException if {@code kind} or {@code type} is null
+   */
+  default <T> DocumentStore<T> document(String kind, Class<T> type) {
+    Objects.requireNonNull(kind, "kind must not be null");
+    Objects.requireNonNull(type, "type must not be null");
+    return new SubstrateDocumentStore<>(this, kind, codecs().codec(type));
+  }
+
+  /**
+   * Mints a {@link DocumentStore} over {@code kind} with a caller-supplied {@link Codec}, bypassing
+   * {@link #codecs()} entirely — the same escape hatch a feature's own caller-supplied- codec
+   * constructor offered before this reform (a transform chained with {@link Codec#then(Codec)}, or
+   * a test probe).
+   *
+   * @throws NullPointerException if {@code kind} or {@code codec} is null
+   */
+  default <T> DocumentStore<T> document(String kind, Codec<T> codec) {
+    Objects.requireNonNull(kind, "kind must not be null");
+    Objects.requireNonNull(codec, "codec must not be null");
+    return new SubstrateDocumentStore<>(this, kind, codec);
+  }
+
+  /**
+   * Mints a {@link JournalStore} over {@code kind}, kind-explicit, mirroring {@link
+   * #document(String, Class)}.
+   *
+   * @throws NullPointerException if {@code kind} or {@code type} is null
+   */
+  default <T> JournalStore<T> journal(String kind, Class<T> type) {
+    Objects.requireNonNull(kind, "kind must not be null");
+    Objects.requireNonNull(type, "type must not be null");
+    return new SubstrateJournalStore<>(this, kind, codecs().codec(type));
+  }
+
+  /**
+   * Mints a {@link JournalStore} over {@code kind} with a caller-supplied {@link Codec}, bypassing
+   * {@link #codecs()} entirely, mirroring {@link #document(String, Codec)}.
+   *
+   * @throws NullPointerException if {@code kind} or {@code codec} is null
+   */
+  default <T> JournalStore<T> journal(String kind, Codec<T> codec) {
+    Objects.requireNonNull(kind, "kind must not be null");
+    Objects.requireNonNull(codec, "codec must not be null");
+    return new SubstrateJournalStore<>(this, kind, codec);
+  }
+
+  /**
    * A document's current payload, version, and last-write timestamp. Content-equal on {@code
    * payload} bytes ({@link Arrays#equals(byte[], byte[])}), never array identity; the payload is
    * defensively copied on construction and on read so no caller can alias stored truth (spec §4.5).

@@ -25,7 +25,9 @@ import org.jwcarman.nessy.agent.State;
 import org.jwcarman.nessy.agent.codec.StateCodec;
 import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code state} recipe (substrate spec §6.1): one document per scope, keyed by {@code agentId}.
@@ -46,7 +48,7 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
   private final Substrate store;
   private final String agentId;
   private final Instant birth;
-  private final Codec<Phase> codec;
+  private final DocumentStore<Phase> documents;
 
   /** Defaults the stored shape to the {@link StateCodec} binding over {@code mapper}. */
   public SubstrateAgentStateStore(
@@ -64,25 +66,24 @@ public final class SubstrateAgentStateStore implements AgentStateStore {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.birth = Objects.requireNonNull(clock, "clock must not be null").instant();
-    this.codec = Objects.requireNonNull(codec, "codec must not be null");
+    this.documents = store.document(KIND, Objects.requireNonNull(codec, "codec must not be null"));
   }
 
   @Override
   public State load() {
-    return store
-        .read(KIND, agentId)
-        .map(doc -> new State(codec.decode(doc.payload()), doc.version()))
+    return documents
+        .read(agentId)
+        .map(versioned -> new State(versioned.value(), versioned.version()))
         .orElseGet(State::initial);
   }
 
   @Override
   public void save(State state) {
     Objects.requireNonNull(state, "state must not be null");
-    byte[] payload = codec.encode(state.phase());
     try {
-      store.write(KIND, agentId, payload, state.version());
+      documents.write(agentId, state.phase(), state.version());
     } catch (ConflictException _) {
-      long actual = store.read(KIND, agentId).map(Substrate.Document::version).orElse(0L);
+      long actual = documents.read(agentId).map(Versioned::version).orElse(0L);
       throw new StaleStateException(state.version(), actual);
     }
   }

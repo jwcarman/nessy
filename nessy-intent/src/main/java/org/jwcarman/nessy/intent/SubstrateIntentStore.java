@@ -19,13 +19,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.spi.substrate.Codec;
-import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code intent} recipe (substrate spec §6.3): one document per scope, keyed by {@code
- * agentId}, holding the latest declaration — last write wins via a read-then-CAS retry loop, the
- * same read-decide-CAS shape the substrate's other recipes ride.
+ * agentId}, holding the latest declaration — last write wins via {@link DocumentStore#update}'s
+ * read-then-CAS retry loop (typed-stores spec §1 ruling 1), the same read-decide-CAS shape the
+ * substrate's other recipes ride.
  *
  * <p>The stored shape is a {@link Codec}{@code <T>} (spec §3, §7): the {@link
  * #SubstrateIntentStore(Substrate, String, Class, ObjectMapper)} constructor defaults it to {@link
@@ -42,9 +44,8 @@ public final class SubstrateIntentStore<T> implements IntentStore<T> {
 
   private static final String KIND = "intent";
 
-  private final Substrate store;
+  private final DocumentStore<T> documents;
   private final String agentId;
-  private final Codec<T> codec;
 
   /** Defaults the stored shape to {@link Codec#json(ObjectMapper, Class)} over {@code mapper}. */
   public SubstrateIntentStore(
@@ -58,29 +59,19 @@ public final class SubstrateIntentStore<T> implements IntentStore<T> {
   }
 
   public SubstrateIntentStore(Substrate store, String agentId, Codec<T> codec) {
-    this.store = Objects.requireNonNull(store, "store must not be null");
+    Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
-    this.codec = Objects.requireNonNull(codec, "codec must not be null");
+    this.documents = store.document(KIND, Objects.requireNonNull(codec, "codec must not be null"));
   }
 
   @Override
   public void declare(T declaration) {
     Objects.requireNonNull(declaration, "declaration must not be null");
-    byte[] payload = codec.encode(declaration);
-    while (true) {
-      Optional<Substrate.Document> doc = store.read(KIND, agentId);
-      long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
-      try {
-        store.write(KIND, agentId, payload, expectedVersion);
-        return;
-      } catch (ConflictException _) {
-        // another writer declared between our read and our write; retry
-      }
-    }
+    documents.update(agentId, declaration, current -> declaration);
   }
 
   @Override
   public Optional<T> latest() {
-    return store.read(KIND, agentId).map(doc -> codec.decode(doc.payload()));
+    return documents.read(agentId).map(Versioned::value);
   }
 }

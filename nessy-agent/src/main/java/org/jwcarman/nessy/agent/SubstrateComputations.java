@@ -26,25 +26,29 @@ import java.util.Optional;
 import org.jwcarman.nessy.agent.OutcomeCodec.DeliveryDocument;
 import org.jwcarman.nessy.agent.OutcomeCodec.PendingDocument;
 import org.jwcarman.nessy.api.tool.ComputationId;
+import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
-import org.jwcarman.nessy.spi.substrate.Substrate.Op.DeleteDocument;
-import org.jwcarman.nessy.spi.substrate.Substrate.Op.WriteDocument;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code computation} and {@code outbox} recipes, together (durable-deliveries spec §3, §4;
  * computation-identity spec §3): presence means pending — one document per computation, {@code
  * key=id.value()}, holding {@code {invocation, returnAddress, deadline?}}; one document per pending
  * result, in the SAME outbox kind, {@code key=} the completed computation's own id, holding {@code
- * {destination, outcome}}.
+ * {destination, outcome}}. Both documents ride a {@link DocumentStore} (typed-stores spec §1): the
+ * {@link OutcomeCodec}'s own {@code toJson}/{@code pendingDocument}/{@code deliveryDocument}
+ * rendering is unchanged, only wrapped as a {@link Codec} so the manual {@code getBytes}/{@code new
+ * String(...)} call sites at every read and write retire into the typed view.
  *
- * <p><b>Kind-scoped, one instance per (agent type, purpose) pair</b> (spec §3): {@code
- * computationKind} is either {@code computation/<agentType>} (execution) or {@code
- * approval/<agentType>} (approval) — never both — and {@code outboxKind} is {@code
- * outbox/<agentType>}, shared by both purposes for one agent type since a completion of either kind
- * lands in the same outbox. Isolation across agent types is by construction now: two harnesses of
- * different types over one substrate never share a kind, so neither's worker or reaper ever reads
- * or skips the other's records — no runtime type filter is needed anymore.
+ * <p>Kind-scoped, one instance per (agent type, purpose) pair (spec §3): {@code computationKind} is
+ * either {@code computation/<agentType>} (execution) or {@code approval/<agentType>} (approval) —
+ * never both — and {@code outboxKind} is {@code outbox/<agentType>}, shared by both purposes for
+ * one agent type since a completion of either kind lands in the same outbox. Isolation across agent
+ * types is by construction now: two harnesses of different types over one substrate never share a
+ * kind, so neither's worker or reaper ever reads or skips the other's records — no runtime type
+ * filter is needed anymore.
  *
  * <p>{@link #create} is a plain CAS write at version 0 — get-or-create, no read-decide loop needed
  * since a computation is never mutated after creation. {@link #complete} is the ownership transfer
@@ -75,8 +79,8 @@ public final class SubstrateComputations {
 
   private final Substrate store;
   private final OutcomeCodec codec;
-  private final String computationKind;
-  private final String outboxKind;
+  private final DocumentStore<PendingDocument> computations;
+  private final DocumentStore<DeliveryDocument> outbox;
 
   /**
    * @param computationKind this instance's own kind — {@code computation/<agentType>} for an
@@ -89,9 +93,10 @@ public final class SubstrateComputations {
       Substrate store, ObjectMapper mapper, String computationKind, String outboxKind) {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.codec = new OutcomeCodec(Objects.requireNonNull(mapper, "mapper must not be null"));
-    this.computationKind =
-        requireNonBlank(computationKind, "computationKind must not be null or blank");
-    this.outboxKind = requireNonBlank(outboxKind, "outboxKind must not be null or blank");
+    requireNonBlank(computationKind, "computationKind must not be null or blank");
+    requireNonBlank(outboxKind, "outboxKind must not be null or blank");
+    this.computations = store.document(computationKind, pendingDocumentCodec(codec));
+    this.outbox = store.document(outboxKind, deliveryDocumentCodec(codec));
   }
 
   private static String requireNonBlank(String value, String message) {
@@ -153,9 +158,8 @@ public final class SubstrateComputations {
     Objects.requireNonNull(invocation, "invocation must not be null");
     Objects.requireNonNull(returnAddress, "returnAddress must not be null");
     Objects.requireNonNull(deadline, "deadline must not be null");
-    String payload = codec.toJson(new PendingDocument(invocation, returnAddress, deadline));
-    return new WriteDocument(
-        computationKind, id.value(), payload.getBytes(StandardCharsets.UTF_8), 0);
+    return computations.writeOp(
+        id.value(), new PendingDocument(invocation, returnAddress, deadline), 0);
   }
 
   CompletionResult complete(ComputationId id, Outcome outcome) {
@@ -165,8 +169,13 @@ public final class SubstrateComputations {
     // leaving the store untouched.
     codec.toJson(new DeliveryDocument(new Continuation("VALIDATION", "{}"), outcome));
     while (true) {
-      Optional<Substrate.Document> doc = store.read(computationKind, id.value());
-      if (doc.isEmpty()) {
+      // Presence-only checks first (spec ruling: {@link DocumentStore#exists} never decodes) —
+      // mirrors the pre-typed-stores hot path, which read the raw {@code Substrate.Document} here
+      // without ever decoding it: decoding the computation's payload is deferred to the one branch
+      // that actually needs its content, so this loop's two racing-thread observation points stay
+      // as tight as the byte-level implementation's were (a wider window here measurably changes
+      // which branch a concurrent racer takes, not just how fast it gets there).
+      if (!computations.exists(id.value())) {
         return CompletionResult.ALREADY_DONE;
       }
       if (deliveryPending(id)) {
@@ -184,24 +193,31 @@ public final class SubstrateComputations {
         // permanently violated by a redrive's own re-create; a lost race on the delete just means
         // another racer (or a later reap/redrive) already did or will — never this call's problem
         // to retry over, since the fold itself already converged.
-        try {
-          store.delete(computationKind, id.value(), doc.get().version());
-        } catch (ConflictException _) {
-          // already deleted by another racer, or mutated further — not this call's concern once
-          // the fold has converged
-        }
+        computations
+            .read(id.value())
+            .ifPresent(
+                versioned -> {
+                  try {
+                    store.batch(List.of(computations.deleteOp(id.value(), versioned.version())));
+                  } catch (ConflictException _) {
+                    // already deleted by another racer, or mutated further — not this call's
+                    // concern once the fold has converged
+                  }
+                });
         return CompletionResult.TRANSFERRED;
       }
-      PendingDocument pending =
-          codec.pendingDocument(new String(doc.get().payload(), StandardCharsets.UTF_8));
-      byte[] deliveryPayload =
-          codec
-              .toJson(new DeliveryDocument(pending.returnAddress(), outcome))
-              .getBytes(StandardCharsets.UTF_8);
+      Optional<Versioned<PendingDocument>> doc = computations.read(id.value());
+      if (doc.isEmpty()) {
+        // vanished between the exists() check above and this read (another racer's own transfer
+        // landed in between) — loop back to the top and re-evaluate from current truth.
+        continue;
+      }
+      PendingDocument pending = doc.get().value();
+      DeliveryDocument delivery = new DeliveryDocument(pending.returnAddress(), outcome);
       List<Substrate.Op> ops =
           List.of(
-              new DeleteDocument(computationKind, id.value(), doc.get().version()),
-              new WriteDocument(outboxKind, id.value(), deliveryPayload, 0));
+              computations.deleteOp(id.value(), doc.get().version()),
+              outbox.writeOp(id.value(), delivery, 0));
       try {
         store.batch(ops);
         return CompletionResult.TRANSFERRED;
@@ -214,9 +230,9 @@ public final class SubstrateComputations {
 
   Optional<PendingComputation> find(ComputationId id) {
     Objects.requireNonNull(id, ID_NULL_MESSAGE);
-    return store
-        .read(computationKind, id.value())
-        .map(doc -> codec.pendingDocument(new String(doc.payload(), StandardCharsets.UTF_8)))
+    return computations
+        .read(id.value())
+        .map(Versioned::value)
         .map(
             pending ->
                 new PendingComputation(
@@ -233,7 +249,7 @@ public final class SubstrateComputations {
    */
   boolean deliveryPending(ComputationId id) {
     Objects.requireNonNull(id, ID_NULL_MESSAGE);
-    return store.read(outboxKind, id.value()).isPresent();
+    return outbox.exists(id.value());
   }
 
   /**
@@ -244,5 +260,39 @@ public final class SubstrateComputations {
    */
   JsonNode encodeSuccess(Object value) {
     return codec.encodeSuccess(value);
+  }
+
+  /**
+   * Adapts {@link OutcomeCodec#toJson(PendingDocument)}/{@code pendingDocument} to {@link Codec}.
+   */
+  private static Codec<PendingDocument> pendingDocumentCodec(OutcomeCodec codec) {
+    return new Codec<>() {
+      @Override
+      public byte[] encode(PendingDocument value) {
+        return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
+      }
+
+      @Override
+      public PendingDocument decode(byte[] bytes) {
+        return codec.pendingDocument(new String(bytes, StandardCharsets.UTF_8));
+      }
+    };
+  }
+
+  /**
+   * Adapts {@link OutcomeCodec#toJson(DeliveryDocument)}/{@code deliveryDocument} to {@link Codec}.
+   */
+  private static Codec<DeliveryDocument> deliveryDocumentCodec(OutcomeCodec codec) {
+    return new Codec<>() {
+      @Override
+      public byte[] encode(DeliveryDocument value) {
+        return codec.toJson(value).getBytes(StandardCharsets.UTF_8);
+      }
+
+      @Override
+      public DeliveryDocument decode(byte[] bytes) {
+        return codec.deliveryDocument(new String(bytes, StandardCharsets.UTF_8));
+      }
+    };
   }
 }

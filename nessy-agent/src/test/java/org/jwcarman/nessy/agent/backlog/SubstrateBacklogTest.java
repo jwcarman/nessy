@@ -201,8 +201,9 @@ class SubstrateBacklogTest {
   }
 
   /**
-   * Negative coverage for the mapper-bound envelope's malformed-payload rejection (json-repeal task
-   * 2: the hand-written parser is gone, {@code readQueue} now binds through {@code mapper}). Each
+   * Negative coverage for the typed envelope's malformed-payload rejection (typed-stores spec §1:
+   * the hand-written parser is gone, the outer envelope now binds through {@link
+   * org.jwcarman.nessy.spi.substrate.DocumentStore}{@code <String[]>}'s {@code Codec.json}). Each
    * seeds the substrate directly with a payload {@code mapper.readValue} cannot parse as a {@code
    * String[]} and asserts {@code poll()} fails loudly, wrapping Jackson's exception, rather than
    * silently misreading it.
@@ -218,7 +219,7 @@ class SubstrateBacklogTest {
 
     assertThatThrownBy(backlog::poll)
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("malformed backlog payload");
+        .hasMessageContaining("failed to decode");
   }
 
   private static Stream<Arguments> malformedBacklogPayloads() {

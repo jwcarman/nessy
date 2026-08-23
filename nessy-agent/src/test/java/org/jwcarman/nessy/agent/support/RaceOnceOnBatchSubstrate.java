@@ -18,6 +18,7 @@ package org.jwcarman.nessy.agent.support;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.spi.substrate.CodecFactory;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
@@ -83,5 +84,10 @@ public final class RaceOnceOnBatchSubstrate implements Substrate {
       delegate.write(kind, key, competitorPayload, currentVersion); // someone else won first
     }
     delegate.batch(ops);
+  }
+
+  @Override
+  public CodecFactory codecs() {
+    return delegate.codecs();
   }
 }

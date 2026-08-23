@@ -15,10 +15,7 @@
  */
 package org.jwcarman.nessy.agent.backlog;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -28,7 +25,9 @@ import java.util.Optional;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.spi.substrate.Codec;
 import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.DocumentStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
+import org.jwcarman.nessy.spi.substrate.Versioned;
 
 /**
  * The {@code backlog} recipe (substrate spec §6.4): one document per scope, keyed by {@code
@@ -39,34 +38,35 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * queue is rejected with an {@link IllegalStateException}, the bound the deleted {@code
  * BoundedBacklog} used to enforce (spec §12).
  *
- * <p>The outer array-of-strings envelope binds through {@code mapper} — a plain {@code
- * List<String>} — threaded via the constructor (spec §7's statics-die law: never static/ambient).
- * Every element is base64 ({@code [A-Za-z0-9+/=]}), so nothing in it is ever JSON-escapable; only
- * the elements' meaning is caller-controlled, through {@code codec}.
+ * <p>The outer array-of-strings envelope is a {@link DocumentStore}{@code <String[]>} (typed-
+ * stores spec §1): the {@link Substrate#document(String, Codec)} mint over {@code
+ * Codec.json(mapper, String[].class)} — a plain {@code String[]}, threaded via the constructor
+ * (spec §7's statics-die law: never static/ambient). Every element is base64 ({@code
+ * [A-Za-z0-9+/=]}), so nothing in it is ever JSON-escapable; only the elements' meaning is
+ * caller-controlled, through {@code codec}.
  *
  * @param <O> the observation vocabulary this backlog holds
  */
 public final class SubstrateBacklog<O> implements Backlog<O> {
 
   private static final String KIND = "backlog";
-  private static final String MALFORMED_PAYLOAD_MESSAGE = "malformed backlog payload";
 
-  private final Substrate store;
+  private final DocumentStore<String[]> documents;
   private final String agentId;
   private final int capacity;
   private final Codec<O> codec;
-  private final ObjectMapper mapper;
 
   public SubstrateBacklog(
       Substrate store, String agentId, int capacity, Codec<O> codec, ObjectMapper mapper) {
-    this.store = Objects.requireNonNull(store, "store must not be null");
+    Objects.requireNonNull(store, "store must not be null");
+    Objects.requireNonNull(mapper, "mapper must not be null");
+    this.documents = store.document(KIND, Codec.json(mapper, String[].class));
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     if (capacity < 1) {
       throw new IllegalArgumentException("capacity must be at least 1: " + capacity);
     }
     this.capacity = capacity;
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
-    this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
 
   @Override
@@ -74,18 +74,15 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
     Objects.requireNonNull(observation, "observation must not be null");
     String encoded = Base64.getEncoder().encodeToString(codec.encode(observation));
     while (true) {
-      Optional<Substrate.Document> doc = store.read(KIND, agentId);
-      List<String> queue =
-          doc.map(d -> readQueue(new String(d.payload(), StandardCharsets.UTF_8)))
-              .orElseGet(ArrayList::new);
+      Optional<Versioned<String[]>> existing = documents.read(agentId);
+      List<String> queue = queueOf(existing);
       if (queue.size() >= capacity) {
         throw new IllegalStateException("backlog full (capacity " + capacity + ")");
       }
       queue.add(encoded);
-      long expectedVersion = doc.map(Substrate.Document::version).orElse(0L);
+      long expectedVersion = existing.map(Versioned::version).orElse(0L);
       try {
-        store.write(
-            KIND, agentId, writeQueue(queue).getBytes(StandardCharsets.UTF_8), expectedVersion);
+        documents.write(agentId, queue.toArray(new String[0]), expectedVersion);
         return;
       } catch (ConflictException _) {
         // another writer changed the queue between our read and our write; retry
@@ -103,18 +100,17 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
   @Override
   public Optional<O> poll() {
     while (true) {
-      Optional<Substrate.Document> doc = store.read(KIND, agentId);
-      if (doc.isEmpty()) {
+      Optional<Versioned<String[]>> existing = documents.read(agentId);
+      if (existing.isEmpty()) {
         return Optional.empty();
       }
-      List<String> queue = readQueue(new String(doc.get().payload(), StandardCharsets.UTF_8));
+      List<String> queue = queueOf(existing);
       if (queue.isEmpty()) {
         return Optional.empty();
       }
       String head = queue.remove(0);
       try {
-        store.write(
-            KIND, agentId, writeQueue(queue).getBytes(StandardCharsets.UTF_8), doc.get().version());
+        documents.write(agentId, queue.toArray(new String[0]), existing.get().version());
         return Optional.of(codec.decode(Base64.getDecoder().decode(head)));
       } catch (ConflictException _) {
         // another writer changed the queue between our read and our write; retry
@@ -122,22 +118,9 @@ public final class SubstrateBacklog<O> implements Backlog<O> {
     }
   }
 
-  /** Parses the {@code ["base64","base64",...]} envelope through {@code mapper}. */
-  private List<String> readQueue(String payload) {
-    try {
-      String[] elements = mapper.readValue(payload, String[].class);
-      return new ArrayList<>(Arrays.asList(elements));
-    } catch (IOException e) {
-      throw new IllegalArgumentException(MALFORMED_PAYLOAD_MESSAGE, e);
-    }
-  }
-
-  /** Writes the {@code ["base64","base64",...]} envelope through {@code mapper}. */
-  private String writeQueue(List<String> queue) {
-    try {
-      return mapper.writeValueAsString(queue);
-    } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException("failed to encode backlog payload", e);
-    }
+  private static List<String> queueOf(Optional<Versioned<String[]>> existing) {
+    return existing
+        .map(versioned -> new ArrayList<>(Arrays.asList(versioned.value())))
+        .orElseGet(ArrayList::new);
   }
 }

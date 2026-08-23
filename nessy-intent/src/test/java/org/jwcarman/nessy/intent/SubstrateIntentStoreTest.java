@@ -29,6 +29,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.spi.substrate.Codec;
+import org.jwcarman.nessy.spi.substrate.CodecFactory;
 import org.jwcarman.nessy.spi.substrate.InMemorySubstrate;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
@@ -269,6 +270,11 @@ class SubstrateIntentStoreTest {
     @Override
     public void batch(List<Op> ops) {
       delegate.batch(ops);
+    }
+
+    @Override
+    public CodecFactory codecs() {
+      return delegate.codecs();
     }
   }
 }

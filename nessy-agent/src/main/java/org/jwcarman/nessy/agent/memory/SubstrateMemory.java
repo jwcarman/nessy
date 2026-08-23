@@ -17,14 +17,13 @@ package org.jwcarman.nessy.agent.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.agent.codec.MessageCodec;
 import org.jwcarman.nessy.api.message.Context;
 import org.jwcarman.nessy.api.message.Message;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.substrate.Codec;
-import org.jwcarman.nessy.spi.substrate.ConflictException;
+import org.jwcarman.nessy.spi.substrate.JournalStore;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
@@ -35,17 +34,20 @@ import org.jwcarman.nessy.spi.substrate.Substrate;
  * #recall()} folds every entry from seq 1 into a {@link Context}. The transcript is the permanent
  * record: nothing here ever rewrites an entry.
  *
- * <p>The stored shape is a {@link Codec}{@code <}{@link Message}{@code >} (spec §3, §7): the {@link
+ * <p>The stored shape is a {@link Codec}{@code <}{@link Message}{@code >} (spec §3, §7), bound to a
+ * {@link JournalStore}{@code <}{@link Message}{@code >} (typed-stores spec §1): the {@link
  * #SubstrateMemory(Substrate, String, ObjectMapper)} constructor defaults it to the {@link
  * MessageCodec} binding; {@link #SubstrateMemory(Substrate, String, Codec)} accepts a
  * caller-supplied codec directly — a transform chained on with {@link Codec#then(Codec)}
- * (encryption, compression) or a test probe.
+ * (encryption, compression) or a test probe. The typed view owns the append-retry loop (spec ruling
+ * 1); this recipe holds only the domain shape.
  */
 public final class SubstrateMemory implements Memory {
 
   private static final String KIND = "memory";
 
   private final Substrate store;
+  private final JournalStore<Message> journal;
   private final String agentId;
   private final Codec<Message> codec;
 
@@ -62,35 +64,18 @@ public final class SubstrateMemory implements Memory {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
+    this.journal = store.journal(KIND, this.codec);
   }
 
   @Override
   public void remember(Message message) {
     Objects.requireNonNull(message, "message must not be null");
-    byte[] payload = codec.encode(message);
-    while (true) {
-      long nextSeq = head() + 1;
-      try {
-        store.append(KIND, agentId, nextSeq, payload);
-        return;
-      } catch (ConflictException _) {
-        // another writer took nextSeq first; re-read the head and retry
-      }
-    }
+    journal.append(agentId, message);
   }
 
   @Override
   public Context recall() {
-    List<Message> messages =
-        store.entries(KIND, agentId, 1).stream()
-            .map(entry -> codec.decode(entry.payload()))
-            .toList();
-    return Context.of(messages);
-  }
-
-  private long head() {
-    List<Substrate.Entry> entries = store.entries(KIND, agentId, 1);
-    return entries.isEmpty() ? 0L : entries.getLast().seq();
+    return Context.of(journal.entries(agentId, 1));
   }
 
   /**
