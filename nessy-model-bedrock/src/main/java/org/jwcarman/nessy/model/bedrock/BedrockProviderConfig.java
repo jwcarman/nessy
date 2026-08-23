@@ -165,8 +165,8 @@ public final class BedrockProviderConfig {
    *
    * <p><b>Priming the pump.</b> This method blocks for the stream's first queue item — translated
    * event, {@link #DONE}, or {@link StreamFailure} — before returning, so a failure on the very
-   * first call (a 429 throttle, an expired credential, a guardrail-blocked request) throws from
-   * {@link BedrockModelProvider#stream} itself rather than only once the caller starts iterating.
+   * first call (a 429 throttle, an expired credential, a guardrail-blocked request) throws from the
+   * model handle's {@code stream(...)} itself rather than only once the caller starts iterating.
    * This matters: {@code RetryingModel} retries only the opening of a stream (its javadoc: "once
    * events flow, tokens have already been fed downstream"), so an opening failure that instead
    * surfaced from the first {@code hasNext()}/{@code next()} call would silently never be retried,

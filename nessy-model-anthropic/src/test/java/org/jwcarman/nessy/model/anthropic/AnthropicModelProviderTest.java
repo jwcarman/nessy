@@ -61,7 +61,7 @@ class AnthropicModelProviderTest {
   /**
    * {@link AnthropicClient} carries 8 abstract methods (async, withRawResponse, withOptions,
    * completions, messages, models, beta, close) and its {@link MessageService} carries 6 more, none
-   * of which {@link AnthropicModelProvider#stream} ever touches except {@code messages()} and
+   * of which the model handle's {@code stream(...)} ever touches except {@code messages()} and
    * {@code createStreaming(...)}. A JDK dynamic proxy — not a mocking library, just {@link
    * Proxy#newProxyInstance} — answers only the one call path exercised here and throws {@link
    * UnsupportedOperationException} for everything else, without hand-implementing over a dozen

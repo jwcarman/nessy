@@ -60,7 +60,7 @@ class OpenAiModelProviderTest {
 
   /**
    * {@link OpenAIClient} carries 26 unrelated abstract resource accessors (embeddings, files,
-   * images, batches, ...), none of which {@link OpenAiModelProvider#stream} ever touches except
+   * images, batches, ...), none of which the model handle's {@code stream(...)} ever touches except
    * {@code chat().completions().createStreaming(...)}. A JDK dynamic proxy — not a mocking library,
    * just {@link Proxy#newProxyInstance} — answers only that one call path and throws {@link
    * UnsupportedOperationException} for everything else, without hand-implementing dozens of
