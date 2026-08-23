@@ -45,6 +45,16 @@ parked until ids travel to untrusted parties.
   its other residents sink into `nessy-agent` at minimal visibility, public
   only where a desk signature forces them; demos/tests move into the package
   or through the desks rather than holding members public.
+- **The carrier whittle** (mid-round amendment, James 2026-08-23, "the
+  approvals continuation had everything needed" → "Yes"): `ApprovalRequest`
+  flattens — it carries the approval `ComputationId` directly (the ticket;
+  taught path `approve(request.id())`), the `ToolCall`, and plain display
+  strings for the asking scope; `CallAddress` leaves the record.
+  `ToolContext` drops `address` and `invocationId` for one opaque
+  `invocation` token — the execution `ComputationId`, a tool's stable
+  idempotency key for external effects under at-least-once redelivery.
+  `CallAddress` withdraws from `nessy-api` into `nessy-agent` at the
+  narrowest forced visibility; `ToolInvocationId` is eliminated.
 - Determinism-from-the-fold is unchanged law (durable-deliveries §2): same
   fold, same tuple, same id.
 
