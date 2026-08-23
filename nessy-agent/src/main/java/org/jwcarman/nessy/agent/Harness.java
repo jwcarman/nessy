@@ -17,6 +17,8 @@ package org.jwcarman.nessy.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
@@ -28,17 +30,20 @@ import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.api.turn.Subscription;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 import org.jwcarman.nessy.spi.substrate.Substrate;
 
 /**
  * The recipe compiled (§10.11), plus its life-support (harness-first spec §4): one per {@link
- * AgentType}, id-free, immortal. Every id-free collaborator (the renderer, the observer, the
- * model-call and tool-call guts, the drain policy, the staleness policy) lives here exactly once,
- * built by {@link org.jwcarman.nessy.agent.host.Nessy}'s builders and never reconstructed per
- * delivery — {@code Nessy} is the harness's only compiler; there is no other door to this class.
- * {@link #bind(AgentId)} stamps a fresh, id-specific {@link DefaultAgent} every time; binding is
- * cheap because the factories it calls hand back views over shared substrate, never build new
- * machinery.
+ * AgentType}, id-free, immortal. Every id-free collaborator (the renderer, the model-call and
+ * tool-call guts, the drain policy, the staleness policy) lives here exactly once, built by {@link
+ * org.jwcarman.nessy.agent.host.Nessy}'s builders and never reconstructed per delivery — {@code
+ * Nessy} is the harness's only compiler; there is no other door to this class. The one exception is
+ * the shell-failure {@link AgentObserver}: a caller-supplied one stays id-free, but the DEFAULT
+ * narrating one is stamped fresh, per id, by {@link #observerFor(AgentId)} — see that method's
+ * javadoc for why (front-ends spec §1, Task 3). {@link #bind(AgentId)} stamps a fresh, id-specific
+ * {@link DefaultAgent} every time; binding is cheap because the factories it calls hand back views
+ * over shared substrate, never build new machinery.
  *
  * <p>The host tier's machinery moved in here (harness-first spec §4): the {@link DeliveryWorker},
  * the {@link ApprovalDesk}/{@link CompletionDesk}, and the reaper sweep are constructed and
@@ -52,7 +57,7 @@ public final class Harness<O> {
 
   private final AgentType type;
   private final ObservationRenderer<O> renderer;
-  private final AgentObserver observer;
+  private final Function<TurnObserver, AgentObserver> agentObserverFactory;
   private final boolean drainOnIdle;
   private final StalenessPolicy stalenessPolicy;
   private final Function<String, Memory> memoryFactory;
@@ -61,6 +66,7 @@ public final class Harness<O> {
   private final BiFunction<Memory, TurnObserver, ModelCallExecutor> modelExecutorFactory;
   private final BiFunction<AgentId, TurnObserver, ToolCallExecutor> toolExecutorFactory;
   private final TurnFanout fanout;
+  private final ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters;
   private final DeliveryWorker<O> worker;
   private final ApprovalDesk approvals;
   private final CompletionDesk completions;
@@ -68,7 +74,7 @@ public final class Harness<O> {
   private Harness(
       AgentType type,
       ObservationRenderer<O> renderer,
-      AgentObserver observer,
+      Function<TurnObserver, AgentObserver> agentObserverFactory,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
@@ -80,12 +86,16 @@ public final class Harness<O> {
       Substrate substrate,
       ObjectMapper mapper,
       SubstrateComputations approvalBackend,
-      SubstrateComputations executionBackend) {
+      SubstrateComputations executionBackend,
+      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
     this.type = Objects.requireNonNull(type, "type must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
-    this.observer = Objects.requireNonNull(observer, "observer must not be null");
+    this.agentObserverFactory =
+        Objects.requireNonNull(agentObserverFactory, "agentObserverFactory must not be null");
     this.fanout =
         new TurnFanout(Objects.requireNonNull(turnObserver, "turnObserver must not be null"));
+    this.approvalWaiters =
+        Objects.requireNonNull(approvalWaiters, "approvalWaiters must not be null");
     this.drainOnIdle = drainOnIdle;
     this.stalenessPolicy =
         Objects.requireNonNull(stalenessPolicy, "stalenessPolicy must not be null");
@@ -120,7 +130,7 @@ public final class Harness<O> {
   public static <O> Harness<O> of(
       AgentType type,
       ObservationRenderer<O> renderer,
-      AgentObserver observer,
+      Function<TurnObserver, AgentObserver> agentObserverFactory,
       TurnObserver turnObserver,
       boolean drainOnIdle,
       StalenessPolicy stalenessPolicy,
@@ -132,12 +142,13 @@ public final class Harness<O> {
       Substrate substrate,
       ObjectMapper mapper,
       SubstrateComputations approvalBackend,
-      SubstrateComputations executionBackend) {
+      SubstrateComputations executionBackend,
+      ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters) {
     Harness<O> harness =
         new Harness<>(
             type,
             renderer,
-            observer,
+            agentObserverFactory,
             turnObserver,
             drainOnIdle,
             stalenessPolicy,
@@ -149,7 +160,8 @@ public final class Harness<O> {
             substrate,
             mapper,
             approvalBackend,
-            executionBackend);
+            executionBackend,
+            approvalWaiters);
     // Started here, after the constructor returns, not inside it: the heartbeat thread reads
     // `harness` (via DeliveryWorker's own field) the instant it runs, and starting a thread from
     // inside a constructor risks handing that thread a `this` reference before the object is fully
@@ -206,8 +218,47 @@ public final class Harness<O> {
     return renderer;
   }
 
-  AgentObserver observer() {
-    return observer;
+  /**
+   * The {@code id}-scoped {@link AgentObserver} {@link DefaultAgent} narrates the fold through
+   * (front-ends spec §1, Task 3's fix for Task 2's fanout gap): the default wiring's narrator
+   * ({@link org.jwcarman.nessy.agent.narrate.TurnNarrationAdapter}) targets {@link
+   * #observerFor(AgentId)}'s own per-id {@link TurnFanout#observerFor(AgentId)} rather than the
+   * harness's raw configured {@code TurnObserver} directly — the ONE path {@code AssistantSaid}/
+   * {@code TurnEnded} narration now takes, so a {@code subscribe}d observer for this id and the
+   * harness's global observer each see them exactly once, never twice. A caller-supplied {@code
+   * agentObserver} override, by contrast, ignores the per-id {@code TurnObserver} handed to it here
+   * and returns the same fixed instance for every id — {@code HarnessConfig#agentObserver}'s
+   * "replaces the wiring wholesale" promise, preserved.
+   */
+  AgentObserver observerFor(AgentId id) {
+    Objects.requireNonNull(id, "id must not be null");
+    return agentObserverFactory.apply(fanout.observerFor(id));
+  }
+
+  /**
+   * {@link DefaultAgent#ask}'s Parked-detection seam (front-ends spec §1): registers a fresh,
+   * unresolved wait for the next {@link ApprovalRequest} the harness's approval notifier captures
+   * for {@code id} — see {@link org.jwcarman.nessy.agent.host.HarnessConfig#finish()}'s
+   * capturing-notifier wrapper, which completes the live registration here (if any) before handing
+   * the request on to the caller's own configured notifier. Registering before {@code tell} avoids
+   * the obvious race; a stale, never-completed registration left behind by a turn that replied or
+   * failed instead of parking is the caller's job to retire via {@link #cancelApprovalWait}.
+   */
+  CompletableFuture<ApprovalRequest> awaitApproval(AgentId id) {
+    Objects.requireNonNull(id, "id must not be null");
+    CompletableFuture<ApprovalRequest> future = new CompletableFuture<>();
+    approvalWaiters.put(id, future);
+    return future;
+  }
+
+  /**
+   * Retires {@code id}'s registration from {@link #awaitApproval(AgentId)} — but only if it is
+   * still exactly {@code future}: a registration the capturing notifier already completed and
+   * removed, or one a LATER {@code ask} on the same id already replaced, is left alone rather than
+   * torn out from under its new owner.
+   */
+  void cancelApprovalWait(AgentId id, CompletableFuture<ApprovalRequest> future) {
+    approvalWaiters.remove(id, future);
   }
 
   boolean drainOnIdle() {

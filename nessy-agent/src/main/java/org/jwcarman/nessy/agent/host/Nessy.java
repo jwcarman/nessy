@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jwcarman.nessy.agent.Agent;
@@ -217,7 +218,11 @@ public final class Nessy {
           Harness.of(
               agentType,
               text -> List.of(new TextBlock(text)),
-              new TurnNarrationAdapter(relay),
+              // Ignores the per-id TurnObserver it is handed and always targets `relay` directly
+              // — the CLI's own single-scope, id-free wiring, unchanged by front-ends spec §1's
+              // per-id default (that default only applies when no agentObserver override is
+              // supplied at all; this builder always supplies one).
+              perIdTurnObserver -> new TurnNarrationAdapter(relay),
               relay,
               false,
               StalenessPolicy.never(),
@@ -239,7 +244,11 @@ public final class Nessy {
               substrate,
               pinned,
               approvalBackend,
-              executionBackend);
+              executionBackend,
+              // No ComputationApprover in this wiring (the plain RegistryToolCallExecutor
+              // constructor above refuses approval in-band) — nothing ever notifies into this
+              // map, so an empty one is exactly as inert as it looks.
+              new ConcurrentHashMap<>());
       Agent<String> agent = harness.bind(agentId);
       return new CliAgent(agent, harness, relay, exec, ownsExecutor);
     }

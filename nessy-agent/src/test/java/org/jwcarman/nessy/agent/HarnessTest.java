@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.junit.jupiter.api.Nested;
@@ -142,10 +143,15 @@ class HarnessTest {
     SubstrateComputations executionBackend =
         new SubstrateComputations(
             lifeSupportSubstrate, mapper, Kinds.computation(type), outboxKind);
+    // Preserves harnessRequiresAnObserver()'s null-through behavior: a literal null observer
+    // stays a literal null factory (Harness.of's own requireNonNull rejects it), rather than
+    // silently becoming a non-null factory that always hands back null.
+    Function<TurnObserver, AgentObserver> agentObserverFactory =
+        observer == null ? null : perIdTurnObserver -> observer;
     return Harness.of(
         type,
         renderer,
-        observer,
+        agentObserverFactory,
         turnObserver,
         false,
         stalenessPolicy,
@@ -157,7 +163,8 @@ class HarnessTest {
         lifeSupportSubstrate,
         mapper,
         approvalBackend,
-        executionBackend);
+        executionBackend,
+        new ConcurrentHashMap<>());
   }
 
   @Nested

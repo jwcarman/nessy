@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.agent.support;
 
+import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.Agent;
 import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
@@ -171,7 +172,7 @@ public final class TestAgents {
         Harness.of(
             type,
             renderer,
-            observer,
+            perIdTurnObserver -> observer,
             TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,
@@ -183,7 +184,8 @@ public final class TestAgents {
             lifeSupportSubstrate,
             mapper,
             approvalBackend,
-            executionBackend);
+            executionBackend,
+            new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     return harness;
   }

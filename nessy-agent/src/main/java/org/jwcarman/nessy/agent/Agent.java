@@ -38,13 +38,22 @@ public interface Agent<O> {
    * on this thin handle. Close the returned {@link Subscription} to stop listening; dropping it
    * unclosed leaks one routing entry, never a thread.
    *
-   * <p><b>Delivered roster (not yet the whole grammar):</b> {@code observer} currently receives
-   * {@code TextDelta}, {@code ThinkingDelta}, {@code RedactedThinking}, {@code ToolCallRequested},
-   * {@code ToolCallCompleted}, and {@code ToolCallProgressed} — the events the model- and tool-call
-   * executors narrate directly. {@code AssistantSaid} and {@code TurnEnded} do NOT ride this
-   * channel yet; they still narrate only through the harness's separate, id-free {@code
-   * AgentObserver} wiring. Widening this to include them is later front-ends work (the {@code ask}
-   * pattern needs them), not something this method does today.
+   * <p><b>Delivered roster:</b> {@code observer} receives every event the model- and tool-call
+   * executors and the fold narrate for this id — {@code TextDelta}, {@code ThinkingDelta}, {@code
+   * RedactedThinking}, {@code ToolCallRequested}, {@code ToolCallCompleted}, {@code
+   * ToolCallProgressed}, {@code AssistantSaid}, and {@code TurnEnded} (front-ends spec §1, Task 3:
+   * the last two now ride this same channel — a single path, not a second one alongside it). {@link
+   * #ask} is built on exactly this door: it subscribes its own capture, {@code tell}s, and resolves
+   * a {@link TurnOutcome} from {@code AssistantSaid}/{@code TurnEnded} alone.
    */
   Subscription subscribe(TurnObserver observer);
+
+  /**
+   * The pattern over the plain API above, not new machinery (front-ends spec §1): subscribe, tell,
+   * block for the turn's own outcome, close — see {@link DefaultAgent#ask} for the exact mechanics.
+   * {@code Replied} carries the assistant's final text; {@code Parked} carries the §5a {@link
+   * org.jwcarman.nessy.spi.approval.ApprovalRequest} the turn suspended on; {@code Failed} carries
+   * {@code TurnEnded}'s own reason.
+   */
+  TurnOutcome ask(O observation);
 }

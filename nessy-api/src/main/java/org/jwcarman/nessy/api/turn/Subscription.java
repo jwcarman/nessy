@@ -28,10 +28,11 @@ package org.jwcarman.nessy.api.turn;
  * synchronize with one already in flight on another thread — an event dispatch that started just
  * before {@code close()} runs may still reach the observer after {@code close()} returns.
  *
- * <p>The observer behind this subscription currently hears only part of a turn's grammar — {@code
- * TextDelta}, {@code ThinkingDelta}, {@code RedactedThinking}, {@code ToolCallRequested}, {@code
- * ToolCallCompleted}, and {@code ToolCallProgressed}. {@code AssistantSaid} and {@code TurnEnded}
- * do not ride this channel yet; see the subscribing door's own javadoc for why.
+ * <p>The observer behind this subscription hears a turn's whole grammar — {@code TextDelta}, {@code
+ * ThinkingDelta}, {@code RedactedThinking}, {@code ToolCallRequested}, {@code ToolCallCompleted},
+ * {@code ToolCallProgressed}, {@code AssistantSaid}, and {@code TurnEnded} (front-ends spec §1,
+ * Task 3: the last two now ride this same channel, not a second one alongside it) — see the
+ * subscribing door's own javadoc.
  */
 public interface Subscription extends AutoCloseable {
 

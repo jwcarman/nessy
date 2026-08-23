@@ -23,6 +23,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.Backlog;
@@ -120,7 +121,7 @@ class HarnessDemo {
         Harness.<String>of(
             demoType,
             text -> List.of(new TextBlock(text)),
-            narrator,
+            perIdTurnObserver -> narrator,
             TurnObserver.noop(),
             false,
             StalenessPolicy.never(),
@@ -132,7 +133,8 @@ class HarnessDemo {
             lifeSupportSubstrate,
             lifeSupportMapper,
             approvalBackend,
-            executionBackend);
+            executionBackend,
+            new ConcurrentHashMap<>());
     var agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("demo-scope")));
 
     // ---- script the world ----

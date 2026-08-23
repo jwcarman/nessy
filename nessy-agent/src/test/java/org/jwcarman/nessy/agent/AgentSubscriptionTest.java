@@ -24,6 +24,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -138,7 +139,7 @@ class AgentSubscriptionTest {
         Harness.of(
             type,
             text -> List.of(new TextBlock(text)),
-            AgentObserver.noop(),
+            perIdTurnObserver -> AgentObserver.noop(),
             TurnObserver.noop(),
             false,
             StalenessPolicy.never(),
@@ -158,7 +159,8 @@ class AgentSubscriptionTest {
             substrate,
             mapper,
             approvalBackend,
-            executionBackend);
+            executionBackend,
+            new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     return harness;
   }
@@ -202,7 +204,7 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              AgentObserver.noop(),
+              perIdTurnObserver -> AgentObserver.noop(),
               TurnObserver.noop(),
               false,
               StalenessPolicy.never(),
@@ -236,7 +238,8 @@ class AgentSubscriptionTest {
               substrate,
               mapper,
               approvalBackend,
-              executionBackend);
+              executionBackend,
+              new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of("scope-a"));
@@ -386,7 +389,7 @@ class AgentSubscriptionTest {
           Harness.of(
               type,
               text -> List.of(new TextBlock(text)),
-              AgentObserver.noop(),
+              perIdTurnObserver -> AgentObserver.noop(),
               TurnObserver.noop(),
               false,
               StalenessPolicy.never(),
@@ -406,7 +409,8 @@ class AgentSubscriptionTest {
               substrate,
               mapper,
               approvalBackend,
-              executionBackend);
+              executionBackend,
+              new ConcurrentHashMap<>());
       HarnessTeardown.track(harness);
 
       var agent = harness.bind(AgentId.of(scopeId));

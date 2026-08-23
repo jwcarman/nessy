@@ -20,6 +20,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.agent.spi.Backlog;
 import org.jwcarman.nessy.agent.store.AgentStateStore;
 import org.jwcarman.nessy.agent.store.SubstrateAgentStateStore;
@@ -76,7 +77,7 @@ final class AgentFixture {
         Harness.of(
             fixtureType,
             text -> List.of(new TextBlock(text)),
-            observer,
+            perIdTurnObserver -> observer,
             TurnObserver.noop(),
             drainOnIdle,
             stalenessPolicy,
@@ -88,7 +89,8 @@ final class AgentFixture {
             lifeSupportSubstrate,
             mapper,
             approvalBackend,
-            executionBackend);
+            executionBackend,
+            new ConcurrentHashMap<>());
     HarnessTeardown.track(harness);
     this.agent = new DefaultAgent<>(harness, harness.binding(AgentId.of("fixture-scope")));
   }

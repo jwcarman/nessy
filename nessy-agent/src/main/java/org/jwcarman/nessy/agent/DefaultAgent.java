@@ -18,15 +18,22 @@ package org.jwcarman.nessy.agent;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+import org.jwcarman.nessy.agent.spi.AgentObserver;
 import org.jwcarman.nessy.agent.spi.ModelCallExecutor;
 import org.jwcarman.nessy.agent.spi.ToolCallExecutor;
 import org.jwcarman.nessy.agent.store.StaleStateException;
 import org.jwcarman.nessy.api.Identifiers;
 import org.jwcarman.nessy.api.message.ContentBlock;
+import org.jwcarman.nessy.api.message.Message;
+import org.jwcarman.nessy.api.message.TextBlock;
 import org.jwcarman.nessy.api.turn.Subscription;
+import org.jwcarman.nessy.api.turn.TurnEvent;
 import org.jwcarman.nessy.api.turn.TurnObserver;
 import org.jwcarman.nessy.spi.Memory;
 import org.jwcarman.nessy.spi.Remembrance;
+import org.jwcarman.nessy.spi.approval.ApprovalRequest;
 
 /**
  * The shell: load–handle–save–dispatch with a retry (§3.4). No concurrency machinery — the store's
@@ -41,6 +48,7 @@ public final class DefaultAgent<O> implements Agent<O> {
   private final Binding<O> binding;
   private final ModelCallExecutor model;
   private final ToolCallExecutor tools;
+  private final AgentObserver observer;
 
   DefaultAgent(Harness<O> harness, Binding<O> binding) {
     this.harness = Objects.requireNonNull(harness, "harness must not be null");
@@ -49,6 +57,8 @@ public final class DefaultAgent<O> implements Agent<O> {
         Objects.requireNonNull(harness.modelExecutor(binding), "modelExecutor must not be null");
     this.tools =
         Objects.requireNonNull(harness.toolExecutor(binding), "toolExecutor must not be null");
+    this.observer =
+        Objects.requireNonNull(harness.observerFor(binding.id()), "agentObserver must not be null");
   }
 
   @Override
@@ -62,6 +72,68 @@ public final class DefaultAgent<O> implements Agent<O> {
     return harness.subscribe(binding.id(), observer);
   }
 
+  /**
+   * The pattern (front-ends spec §1): subscribe a private capture, {@code tell}, block for the
+   * turn's own {@link TurnOutcome}, close. Zero new event types — the resolution reads {@link
+   * TurnEvent.AssistantSaid}/{@link TurnEvent.TurnEnded} exactly as {@link #subscribe} always
+   * delivered them, since the fold retains no failure residue to read back any other way (a failed
+   * turn folds to {@link Phase.Idle} committing nothing).
+   *
+   * <p>Parking is the one outcome {@link TurnEvent} can never carry (its own javadoc: "Parking is
+   * never narrated at all"), so it is detected off-channel, through the harness's existing §5a
+   * approval notifier instead (see {@link Harness#awaitApproval(AgentId)}): a fresh wait is
+   * registered for this id BEFORE {@code tell} ever dispatches anything, so a synchronous park
+   * inside the very call that registers it can never race ahead of the registration. Whichever
+   * resolves first — the turn's own {@code TurnEnded}, or the notifier capturing an {@link
+   * ApprovalRequest} for this id — decides the {@link TurnOutcome}; the other input, if it never
+   * fires, is retired in the {@code finally} block so it cannot leak into a later, unrelated {@code
+   * ask} on the same id.
+   */
+  @Override
+  public TurnOutcome ask(O observation) {
+    Objects.requireNonNull(observation, "observation must not be null");
+    AgentId id = binding.id();
+    CompletableFuture<TurnOutcome> outcome = new CompletableFuture<>();
+    AtomicReference<String> lastAssistantText = new AtomicReference<>();
+    TurnObserver capture =
+        event -> {
+          switch (event) {
+            case TurnEvent.AssistantSaid said -> lastAssistantText.set(joinedText(said.message()));
+            case TurnEvent.TurnEnded ended ->
+                outcome.complete(
+                    ended.failed()
+                        ? new TurnOutcome.Failed(ended.failureReason())
+                        : new TurnOutcome.Replied(lastAssistantText.get()));
+            case TurnEvent.TextDelta _ -> {}
+            case TurnEvent.ThinkingDelta _ -> {}
+            case TurnEvent.RedactedThinking _ -> {}
+            case TurnEvent.ToolCallRequested _ -> {}
+            case TurnEvent.ToolCallDecided _ -> {}
+            case TurnEvent.ToolCallCompleted _ -> {}
+            case TurnEvent.ToolCallProgressed _ -> {}
+          }
+        };
+    CompletableFuture<ApprovalRequest> approvalWait = harness.awaitApproval(id);
+    approvalWait.thenAccept(request -> outcome.complete(new TurnOutcome.Parked(request)));
+    try (Subscription subscription = subscribe(capture)) {
+      tell(observation);
+      return outcome.join();
+    } finally {
+      harness.cancelApprovalWait(id, approvalWait);
+    }
+  }
+
+  /** The message's {@link TextBlock} content, concatenated in order — no separator, no filler. */
+  private static String joinedText(Message message) {
+    StringBuilder joined = new StringBuilder();
+    for (ContentBlock block : message.content()) {
+      if (block instanceof TextBlock(String text)) {
+        joined.append(text);
+      }
+    }
+    return joined.toString();
+  }
+
   @Override
   public void drive() {
     State state = binding.store().load();
@@ -71,7 +143,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     }
     if (isStale(state)) {
       List<Effect> outstanding = state.phase().outstandingEffects();
-      harness.observer().reFired(outstanding);
+      observer.reFired(outstanding);
       outstanding.forEach(effect -> dispatch(effect, state.phase())); // §6.1 — the re-fire arm
     }
   }
@@ -89,9 +161,7 @@ public final class DefaultAgent<O> implements Agent<O> {
       } catch (StaleStateException _) {
         // another writer advanced the scope — re-handle against what it left behind
       } catch (RuntimeException e) {
-        harness
-            .observer()
-            .applyFailed(event, e); // narrate-and-drop: the shell manufactures no events
+        observer.applyFailed(event, e); // narrate-and-drop: the shell manufactures no events
         return;
       }
     }
@@ -104,12 +174,12 @@ public final class DefaultAgent<O> implements Agent<O> {
   private void applyOnce(State state, AgentEvent event) {
     Transition t = state.phase().handle(event); // decide before committing
     if (t.isIgnored()) {
-      harness.observer().ignored(event);
+      observer.ignored(event);
       return;
     }
     remember(state.phase(), event, t); // remember before commit (remembrance spec §1 law 1)
     binding.store().save(new State(t.next(), state.version()));
-    harness.observer().applied(event, t);
+    observer.applied(event, t);
     t.effects().forEach(effect -> dispatch(effect, t.next()));
     if (t.next() instanceof Phase.Idle && harness.drainOnIdle()) {
       drive(); // §3.1 — the drain-on-idle wiring's own drive executor
@@ -170,7 +240,7 @@ public final class DefaultAgent<O> implements Agent<O> {
     try {
       content = harness.renderer().render(observation);
     } catch (RuntimeException e) {
-      harness.observer().renderFailed(observation, e); // discard; stay idle; keep draining
+      observer.renderFailed(observation, e); // discard; stay idle; keep draining
       return;
     }
     if (content.isEmpty()) {
@@ -180,7 +250,7 @@ public final class DefaultAgent<O> implements Agent<O> {
       applyOnce(state, new AgentEvent.Observed(content));
     } catch (StaleStateException _) {
       binding.backlog().add(observation); // lost race → back to the backlog (§3.3)
-      harness.observer().observationRequeued(observation);
+      observer.observationRequeued(observation);
     } catch (RuntimeException e) {
       // A genuine failure inside applyOnce (e.g. a throwing Memory#remember — Memory's own law 1,
       // the non-durable shell arm): the observation goes back to the backlog exactly as the
@@ -214,7 +284,7 @@ public final class DefaultAgent<O> implements Agent<O> {
         state.phase().outstandingEffects().stream()
             .filter(effect -> effect instanceof Effect.ExecuteTool)
             .toList();
-    harness.observer().reFired(outstanding);
+    observer.reFired(outstanding);
     outstanding.forEach(effect -> dispatch(effect, state.phase()));
   }
 

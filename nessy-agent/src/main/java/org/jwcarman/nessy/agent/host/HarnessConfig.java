@@ -20,10 +20,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.jwcarman.nessy.agent.AgentId;
 import org.jwcarman.nessy.agent.AgentType;
 import org.jwcarman.nessy.agent.ComputationApprover;
 import org.jwcarman.nessy.agent.ComputationDeferredToolCallPolicy;
@@ -376,8 +380,16 @@ public final class HarnessConfig<O> {
             : new SubstrateComputations(effectiveSubstrate, pinned, executionKind, outboxKind);
     SubstrateComputations effectiveApprovalBackend =
         new SubstrateComputations(effectiveSubstrate, pinned, approvalKind, outboxKind);
-    AgentObserver effectiveAgentObserver =
-        agentObserver != null ? agentObserver : new TurnNarrationAdapter(turnObserver);
+    // The default narrator targets the id-scoped TurnObserver Harness.observerFor(id) hands it
+    // (fanout.observerFor(id)) — the ONE path AssistantSaid/TurnEnded now narrate through (front-
+    // ends spec §1, Task 3's fix for Task 2's fanout gap): before this, TurnNarrationAdapter
+    // targeted the raw configured turnObserver directly, bypassing the fanout entirely, so a
+    // subscribe()d per-id observer never saw AssistantSaid/TurnEnded at all. A caller-supplied
+    // agentObserver, by contrast, still replaces the wiring wholesale and stays id-free — the
+    // factory below simply ignores the per-id TurnObserver it is handed and returns the same fixed
+    // instance every time, exactly as before this change.
+    Function<TurnObserver, AgentObserver> effectiveAgentObserverFactory =
+        agentObserver != null ? perIdTurnObserver -> agentObserver : TurnNarrationAdapter::new;
     // Fix round 1 M1: snapshot these three fields into locals so the two executor factory
     // lambdas below close over values captured at this atomic-construction moment, not over
     // `this` fields a later mutation (there is none in practice — the config never escapes — but
@@ -386,12 +398,30 @@ public final class HarnessConfig<O> {
     String effectiveSystemPrompt = systemPrompt;
     TurnObserver effectiveTurnObserver = turnObserver;
     Consumer<ApprovalRequest> effectiveApprovalNotifier = approvalNotifier;
+    // Agent#ask's Parked-detection seam (front-ends spec §1): a plain map, not a new public type,
+    // shared by reference between this notifier wrapper (built here, before Harness exists) and
+    // the finished Harness (Harness.awaitApproval/cancelApprovalWait just read/write it) — the
+    // only way to thread a per-id capture through the toolExecutorFactory closure below, which is
+    // baked here but not actually invoked until well after Harness.of returns. Threaded through
+    // the EXISTING notifier seam (no new event type): every request still reaches the caller's own
+    // configured notifier exactly as before; capturing is a side effect on the way there.
+    ConcurrentMap<AgentId, CompletableFuture<ApprovalRequest>> approvalWaiters =
+        new ConcurrentHashMap<>();
+    Consumer<ApprovalRequest> capturingApprovalNotifier =
+        request -> {
+          CompletableFuture<ApprovalRequest> waiting =
+              approvalWaiters.remove(AgentId.of(request.agentId()));
+          if (waiting != null) {
+            waiting.complete(request);
+          }
+          effectiveApprovalNotifier.accept(request);
+        };
 
     Harness<O> harness =
         Harness.of(
             agentType,
             effectiveRenderer,
-            effectiveAgentObserver,
+            effectiveAgentObserverFactory,
             effectiveTurnObserver,
             true,
             stalenessPolicy,
@@ -419,13 +449,14 @@ public final class HarnessConfig<O> {
                     new ComputationApprover(
                         effectiveApprovalBackend,
                         effectiveStoreFactory.apply(scopeId.value()),
-                        effectiveApprovalNotifier,
+                        capturingApprovalNotifier,
                         pinned),
                     pinned),
             effectiveSubstrate,
             pinned,
             effectiveApprovalBackend,
-            effectiveExecutionBackend);
+            effectiveExecutionBackend,
+            approvalWaiters);
 
     return harness;
   }
